@@ -1,4 +1,4 @@
-import { spawn } from 'bun'
+import { spawn } from 'node:child_process'
 
 type TimeoutToken = ReturnType<typeof setTimeout>
 
@@ -43,10 +43,10 @@ const defaultDeps: ReindexDeps = {
     clearTimeout(token)
   },
   spawnReindex: (cwd) => {
-    const child = spawn({
-      cmd: ['bun', 'run', 'codeindex/src/cli.ts', 'reindex'],
+    const child = spawn('bun', ['run', 'codeindex/src/cli.ts', 'reindex'], {
       cwd,
-      stdio: ['ignore', 'ignore', 'ignore'],
+      stdio: 'ignore',
+      detached: true,
     })
     child.unref()
   },
