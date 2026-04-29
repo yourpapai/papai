@@ -76,8 +76,7 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, _context) {
       let text = theme.fg('toolTitle', theme.bold('$ '))
-      const cmd = args.command.length > 80 ? `${args.command.slice(0, 77)}...` : args.command
-      text += theme.fg('accent', cmd)
+      text += theme.fg('accent', args.command)
       if (args.timeout) {
         text += theme.fg('dim', ` (timeout: ${args.timeout}s)`)
       }
@@ -108,12 +107,8 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (expanded) {
-        const lines = output.split('\n').slice(0, 20)
-        for (const line of lines) {
+        for (const line of output.split('\n')) {
           text += `\n${theme.fg('dim', line)}`
-        }
-        if (output.split('\n').length > 20) {
-          text += `\n${theme.fg('muted', '... more output')}`
         }
       }
 
