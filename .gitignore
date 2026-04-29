@@ -50,5 +50,10 @@ public/
 # Review loop state
 .review-loop/
 
+# Pi project-local package installs and overrides
+.pi/git/
+.pi/npm/
+.pi/mcp.json
+
 codeindex/.codeindex/
 papai-local.tar
