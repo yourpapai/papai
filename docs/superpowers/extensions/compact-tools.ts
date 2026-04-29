@@ -25,21 +25,21 @@ export default function (pi: ExtensionAPI) {
         if (args.limit) parts.push(`limit=${args.limit}`)
         text += theme.fg('dim', ` (${parts.join(', ')})`)
       }
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
 
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg('warning', 'Reading...'), 0, 0)
+      if (isPartial) return new Text(theme.fg('warning', 'Reading...'), 1, 0)
 
       const details = result.details as ReadToolDetails | undefined
       const content = result.content[0]
 
       if (content?.type === 'image') {
-        return new Text(theme.fg('success', 'Image loaded'), 0, 0)
+        return new Text(theme.fg('success', 'Image loaded'), 1, 0)
       }
 
       if (content?.type !== 'text') {
-        return new Text(theme.fg('error', 'No content'), 0, 0)
+        return new Text(theme.fg('error', 'No content'), 1, 0)
       }
 
       const lineCount = content.text.split('\n').length
@@ -59,7 +59,7 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
   })
 
@@ -80,11 +80,11 @@ export default function (pi: ExtensionAPI) {
       if (args.timeout) {
         text += theme.fg('dim', ` (timeout: ${args.timeout}s)`)
       }
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
 
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg('warning', 'Running...'), 0, 0)
+      if (isPartial) return new Text(theme.fg('warning', 'Running...'), 1, 0)
 
       const details = result.details as BashToolDetails | undefined
       const content = result.content[0]
@@ -112,7 +112,7 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
   })
 
@@ -131,21 +131,21 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, _context) {
       let text = theme.fg('toolTitle', theme.bold('edit '))
       text += theme.fg('accent', args.path)
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
 
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg('warning', 'Editing...'), 0, 0)
+      if (isPartial) return new Text(theme.fg('warning', 'Editing...'), 1, 0)
 
       const details = result.details as EditToolDetails | undefined
       const content = result.content[0]
 
       if (content?.type === 'text' && content.text.startsWith('Error')) {
-        return new Text(theme.fg('error', content.text.split('\n')[0]), 0, 0)
+        return new Text(theme.fg('error', content.text.split('\n')[0]), 1, 0)
       }
 
       if (!details?.diff) {
-        return new Text(theme.fg('success', 'Applied'), 0, 0)
+        return new Text(theme.fg('success', 'Applied'), 1, 0)
       }
 
       const diffLines = details.diff.split('\n')
@@ -175,7 +175,7 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
   })
 
@@ -195,18 +195,18 @@ export default function (pi: ExtensionAPI) {
       text += theme.fg('accent', args.path)
       const lineCount = args.content.split('\n').length
       text += theme.fg('dim', ` (${lineCount} lines)`)
-      return new Text(text, 0, 0)
+      return new Text(text, 1, 0)
     },
 
     renderResult(result, { isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg('warning', 'Writing...'), 0, 0)
+      if (isPartial) return new Text(theme.fg('warning', 'Writing...'), 1, 0)
 
       const content = result.content[0]
       if (content?.type === 'text' && content.text.startsWith('Error')) {
-        return new Text(theme.fg('error', content.text.split('\n')[0]), 0, 0)
+        return new Text(theme.fg('error', content.text.split('\n')[0]), 1, 0)
       }
 
-      return new Text(theme.fg('success', 'Written'), 0, 0)
+      return new Text(theme.fg('success', 'Written'), 1, 0)
     },
   })
 }
