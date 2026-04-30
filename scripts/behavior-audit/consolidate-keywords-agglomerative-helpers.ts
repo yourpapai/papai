@@ -92,7 +92,7 @@ function selectNearestCandidate(
 
     const distance = getDistance(matrix, cluster, candidate)
     distanceReads += 1
-    if (!Number.isFinite(distance)) {
+    if (Number.isNaN(distance)) {
       const fallbackCandidates: NearestCandidate[] = []
       for (const other of active) {
         if (other === cluster) continue

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 
 import { createClusteringProfile } from '../../../scripts/behavior-audit/clustering-profile.js'
 import {
@@ -554,6 +554,29 @@ describe('nearest-neighbor-chain distance helpers', () => {
     const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
 
     expect(result.nearest).toBe(3)
+  })
+
+  test('findNearestActiveCluster keeps all-infinity candidates on the fast path', () => {
+    const matrix = buildCondensedDistanceMatrix(
+      makeNormalized([
+        [1, 0],
+        [0, 1],
+        [1, 1],
+        [1, -1],
+      ]),
+    )
+    const state = createActiveState(4)
+    const profile = createClusteringProfile({ enabled: false, linkage: 'average', threshold: 0.5, size: 4 })
+    const toSortedSpy = spyOn(Array.prototype, 'toSorted')
+
+    setDistance(matrix, 0, 1, Infinity)
+    setDistance(matrix, 0, 2, Infinity)
+    setDistance(matrix, 0, 3, Infinity)
+
+    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+
+    expect(result.nearest).toBe(1)
+    expect(toSortedSpy).not.toHaveBeenCalled()
   })
 })
 
