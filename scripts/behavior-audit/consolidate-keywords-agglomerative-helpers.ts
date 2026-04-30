@@ -64,8 +64,8 @@ export function isActive(state: ActiveState, index: number): boolean {
   return state.active[index] === 1
 }
 
-export function pairKey(a: number, b: number): string {
-  return `${Math.min(a, b)}:${Math.max(a, b)}`
+export function pairKey(a: number, b: number, n: number): number {
+  return condensedIndex(a, b, n)
 }
 
 type NearestCandidate = Readonly<{ readonly candidate: number; readonly distance: number }>
@@ -80,7 +80,7 @@ function selectNearestCandidate(
   active: readonly number[],
   matrix: MutableDistanceMatrix,
   cluster: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
 ): Readonly<{ nearest: number | undefined; distanceReads: number }> {
   let nearest: number | undefined
   let bestDistance = Infinity
@@ -88,7 +88,7 @@ function selectNearestCandidate(
 
   for (const candidate of active) {
     if (candidate === cluster) continue
-    if (blockedPairs.has(pairKey(cluster, candidate))) continue
+    if (blockedPairs.has(pairKey(cluster, candidate, matrix.n))) continue
 
     const distance = getDistance(matrix, cluster, candidate)
     distanceReads += 1
@@ -96,7 +96,7 @@ function selectNearestCandidate(
       const fallbackCandidates: NearestCandidate[] = []
       for (const other of active) {
         if (other === cluster) continue
-        if (blockedPairs.has(pairKey(cluster, other))) continue
+        if (blockedPairs.has(pairKey(cluster, other, matrix.n))) continue
 
         const fallbackDistance = other === candidate ? distance : getDistance(matrix, cluster, other)
         if (other !== candidate) distanceReads += 1
@@ -125,7 +125,7 @@ export function findNearestActiveCluster(
   matrix: MutableDistanceMatrix,
   state: ActiveState,
   cluster: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
   const startedAt = performance.now()
@@ -232,7 +232,7 @@ export function hasMergeCandidate(
   active: readonly number[],
   matrix: MutableDistanceMatrix,
   maxDistance: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ hasCandidate: boolean; profile: ClusteringProfile }> {
   const startedAt = performance.now()
@@ -242,7 +242,7 @@ export function hasMergeCandidate(
     active.some((b) => {
       if (a >= b) return false
       scanned += 1
-      if (blockedPairs.has(pairKey(a, b))) return false
+      if (blockedPairs.has(pairKey(a, b, matrix.n))) return false
       distanceReads += 1
       return getDistance(matrix, a, b) <= maxDistance + DISTANCE_EPSILON
     }),
@@ -267,7 +267,7 @@ export function findChainStart(
   matrix: MutableDistanceMatrix,
   state: ActiveState,
   maxDistance: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ start: number | undefined; profile: ClusteringProfile }> {
   const startedAt = performance.now()

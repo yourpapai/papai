@@ -35,7 +35,7 @@ export function tryExtendOrMergeChain(
   chain: number[],
   matrix: MutableDistanceMatrix,
   state: ActiveState,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   maxDistance: number,
   profile: ClusteringProfile,
 ): Readonly<{ action: ChainAction; profile: ClusteringProfile }> {

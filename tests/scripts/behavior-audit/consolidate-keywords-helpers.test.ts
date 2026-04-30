@@ -427,6 +427,21 @@ describe('buildClustersAdvanced gap threshold', () => {
       expect(normalizeClusters(withGap)).toEqual([[3, 4]])
     },
   )
+
+  test('average linkage gap profiling preserves blocked-pair behavior after key optimization', () => {
+    const normalized = toNormalizedFloat64Arrays([
+      [1, 0, 0],
+      [0.85, 0.53, 0],
+      [0.85, -0.53, 0],
+      [0, 1, 0],
+      [0, 0.99, 0.01],
+    ])
+
+    const profiled = buildClustersAdvanced(normalized, 0.8, 2, 'average', 0.2, { profile: true })
+
+    expect(profiled.clusters).toEqual([[3, 4]])
+    expect(profiled.profile.counters.blockedPairs).toBeGreaterThan(0)
+  })
 })
 
 describe('nearest-neighbor-chain distance helpers', () => {

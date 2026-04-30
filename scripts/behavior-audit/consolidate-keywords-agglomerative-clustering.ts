@@ -78,12 +78,12 @@ function mergeChainRound(
   matrix: Parameters<typeof tryExtendOrMergeChain>[1],
   state: Parameters<typeof tryExtendOrMergeChain>[2],
   members: Map<number, Cluster>,
-  blockedPairs: Set<string>,
+  blockedPairs: Set<number>,
   maxDistance: number,
   gapThreshold: number,
   linkage: Exclude<LinkageMode, 'single'>,
   profile: ClusteringProfile,
-): Readonly<{ merged: boolean; blockedPairs: Set<string>; profile: ClusteringProfile }> {
+): Readonly<{ merged: boolean; blockedPairs: Set<number>; profile: ClusteringProfile }> {
   let currentProfile = profile
   for (;;) {
     const actionResult = tryExtendOrMergeChain(chain, matrix, state, blockedPairs, maxDistance, currentProfile)
@@ -96,7 +96,7 @@ function mergeChainRound(
     const gapResult = mergePassesGap(matrix, state, action.a, action.b, gapThreshold, currentProfile)
     currentProfile = gapResult.profile
     if (!gapResult.passes) {
-      const updatedBlockedPairs = new Set([...blockedPairs, pairKey(action.a, action.b)])
+      const updatedBlockedPairs = new Set([...blockedPairs, pairKey(action.a, action.b, matrix.n)])
       return {
         merged: false,
         blockedPairs: updatedBlockedPairs,
@@ -118,7 +118,7 @@ function mergeChainRound(
       'merges',
       1,
     )
-    return { merged: true, blockedPairs: new Set<string>(), profile: mergedProfile }
+    return { merged: true, blockedPairs: new Set<number>(), profile: mergedProfile }
   }
 }
 
@@ -133,7 +133,7 @@ export function buildAgglomerativeClusters(
   if (normalizedEmbeddings.length === 0) return { clusters: [], profile }
   const initialized = initializeClusteringState(normalizedEmbeddings, threshold, profile)
   const { matrix, state, members, maxDistance } = initialized
-  let blockedPairs = new Set<string>()
+  let blockedPairs = new Set<number>()
   let currentProfile = initialized.profile
 
   for (;;) {
