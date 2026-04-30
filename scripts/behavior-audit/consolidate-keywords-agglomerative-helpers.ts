@@ -132,7 +132,7 @@ export function findNearestActiveCluster(
   const { nearest, distanceReads } = selectNearestCandidate(active, matrix, cluster, blockedPairs)
 
   const withCounters = incrementClusteringCounter(
-    incrementClusteringCounter(profile, 'nearestNeighborCalls', 1),
+    incrementClusteringCounter(incrementClusteringCounter(profile, 'nearestNeighborCalls', 1), 'activeListBuilds', 1),
     'activeItemsVisited',
     active.length,
   )
@@ -173,7 +173,11 @@ export function updateMergedDistances(
   state.sizes[removed] = 0
   state.active[removed] = 0
   const withCounters = incrementClusteringCounter(
-    incrementClusteringCounter(profile, 'activeItemsVisited', active.length),
+    incrementClusteringCounter(
+      incrementClusteringCounter(profile, 'activeListBuilds', 1),
+      'activeItemsVisited',
+      active.length,
+    ),
     'distanceWrites',
     Math.max(active.length - 2, 0),
   )
@@ -205,7 +209,7 @@ export function mergePassesGap(
     return Math.min(best, getDistance(matrix, a, candidate), getDistance(matrix, b, candidate))
   }, Infinity)
   const withCounters = incrementClusteringCounter(
-    incrementClusteringCounter(profile, 'gapChecks', 1),
+    incrementClusteringCounter(incrementClusteringCounter(profile, 'gapChecks', 1), 'activeListBuilds', 1),
     'activeItemsVisited',
     active.length,
   )

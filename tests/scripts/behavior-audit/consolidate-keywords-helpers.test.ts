@@ -10,7 +10,11 @@ import {
   isActive,
   setDistance,
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
-import { findNearestActiveCluster } from '../../../scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.js'
+import {
+  findNearestActiveCluster,
+  mergePassesGap,
+  updateMergedDistances,
+} from '../../../scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.js'
 import {
   averageLinkageSimilarity,
   buildClustersAdvanced,
@@ -593,6 +597,61 @@ describe('nearest-neighbor-chain distance helpers', () => {
 
     expect(result.nearest).toBe(1)
     expect(toSortedSpy).not.toHaveBeenCalled()
+  })
+
+  test('findNearestActiveCluster preserves logical active-list build accounting with reused snapshots', () => {
+    const matrix = buildCondensedDistanceMatrix(
+      makeNormalized([
+        [1, 0],
+        [0.8, 0.6],
+        [0.99, 0.1],
+      ]),
+    )
+    const state = createActiveState(3)
+    const profile = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.5, size: 3 })
+
+    const result = findNearestActiveCluster(activeIndices(state), matrix, 0, new Set(), profile)
+
+    expect(result.nearest).toBe(2)
+    expect(result.profile.counters.activeListBuilds).toBe(1)
+    expect(result.profile.counters.activeItemsVisited).toBe(3)
+  })
+
+  test('mergePassesGap preserves logical active-list build accounting with reused snapshots', () => {
+    const matrix = buildCondensedDistanceMatrix(
+      makeNormalized([
+        [1, 0, 0],
+        [0.8, 0.6, 0],
+        [0, 1, 0],
+      ]),
+    )
+    const state = createActiveState(3)
+    const profile = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.5, size: 3 })
+
+    const result = mergePassesGap(activeIndices(state), matrix, 0, 1, 0.05, profile)
+
+    expect(result.passes).toBe(true)
+    expect(result.profile.counters.gapChecks).toBe(1)
+    expect(result.profile.counters.activeListBuilds).toBe(1)
+    expect(result.profile.counters.activeItemsVisited).toBe(3)
+  })
+
+  test('updateMergedDistances preserves logical active-list build accounting with reused snapshots', () => {
+    const matrix = buildCondensedDistanceMatrix(
+      makeNormalized([
+        [1, 0, 0],
+        [0.99, 0.1, 0],
+        [0, 1, 0],
+      ]),
+    )
+    const state = createActiveState(3)
+    const profile = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.5, size: 3 })
+
+    const updatedProfile = updateMergedDistances(activeIndices(state), matrix, state, 0, 1, 'average', profile)
+
+    expect(updatedProfile.counters.activeListBuilds).toBe(1)
+    expect(updatedProfile.counters.activeItemsVisited).toBe(3)
+    expect(updatedProfile.counters.distanceWrites).toBe(1)
   })
 })
 
