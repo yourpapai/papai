@@ -93,7 +93,7 @@ function selectNearestCandidate(
 
     if (preserveNearest) continue
 
-    if (Number.isNaN(distance - bestDistance)) {
+    if (Number.isNaN(distance) || Number.isNaN(bestDistance)) {
       preserveNearest = true
       continue
     }
