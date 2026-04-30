@@ -68,12 +68,6 @@ export function pairKey(a: number, b: number): string {
   return `${Math.min(a, b)}:${Math.max(a, b)}`
 }
 
-function compareNearest(a: { readonly distance: number; readonly candidate: number }, b: typeof a): number {
-  const distanceOrder = a.distance - b.distance
-  if (distanceOrder !== 0) return distanceOrder
-  return a.candidate - b.candidate
-}
-
 export function findNearestActiveCluster(
   matrix: MutableDistanceMatrix,
   state: ActiveState,
@@ -83,21 +77,35 @@ export function findNearestActiveCluster(
 ): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
   const startedAt = performance.now()
   const active = activeIndices(state)
-  const nearest = active
-    .filter((candidate) => candidate !== cluster)
-    .filter((candidate) => !blockedPairs.has(pairKey(cluster, candidate)))
-    .map((candidate) => ({ candidate, distance: getDistance(matrix, cluster, candidate) }))
-    .toSorted(compareNearest)[0]
+
+  let nearest: number | undefined
+  let bestDistance = Infinity
+  let distanceReads = 0
+
+  for (const candidate of active) {
+    if (candidate === cluster) continue
+    if (blockedPairs.has(pairKey(cluster, candidate))) continue
+
+    const distance = getDistance(matrix, cluster, candidate)
+    distanceReads += 1
+    if (distance < bestDistance || (distance === bestDistance && (nearest === undefined || candidate < nearest))) {
+      nearest = candidate
+      bestDistance = distance
+    }
+  }
+
   const withCounters = incrementClusteringCounter(
     incrementClusteringCounter(incrementClusteringCounter(profile, 'nearestNeighborCalls', 1), 'activeListBuilds', 1),
     'activeItemsVisited',
     active.length,
   )
-  const withDistanceReads = incrementClusteringCounter(withCounters, 'distanceReads', Math.max(active.length - 1, 0))
-  const nearestCandidate = nearest === undefined ? undefined : nearest.candidate
   return {
-    nearest: nearestCandidate,
-    profile: recordClusteringTiming(withDistanceReads, 'nearestNeighborMs', performance.now() - startedAt),
+    nearest,
+    profile: recordClusteringTiming(
+      incrementClusteringCounter(withCounters, 'distanceReads', distanceReads),
+      'nearestNeighborMs',
+      performance.now() - startedAt,
+    ),
   }
 }
 
