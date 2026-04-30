@@ -122,18 +122,17 @@ function selectNearestCandidate(
 }
 
 export function findNearestActiveCluster(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   cluster: number,
   blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
   const startedAt = performance.now()
-  const active = activeIndices(state)
   const { nearest, distanceReads } = selectNearestCandidate(active, matrix, cluster, blockedPairs)
 
   const withCounters = incrementClusteringCounter(
-    incrementClusteringCounter(incrementClusteringCounter(profile, 'nearestNeighborCalls', 1), 'activeListBuilds', 1),
+    incrementClusteringCounter(profile, 'nearestNeighborCalls', 1),
     'activeItemsVisited',
     active.length,
   )
@@ -148,6 +147,7 @@ export function findNearestActiveCluster(
 }
 
 export function updateMergedDistances(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
   state: ActiveState,
   survivor: number,
@@ -159,7 +159,6 @@ export function updateMergedDistances(
   const survivorSize = state.sizes[survivor]
   const removedSize = state.sizes[removed]
   if (survivorSize === undefined || removedSize === undefined) return profile
-  const active = activeIndices(state)
   for (const other of active) {
     if (other === survivor || other === removed) continue
     const distanceToSurvivor = getDistance(matrix, survivor, other)
@@ -174,11 +173,7 @@ export function updateMergedDistances(
   state.sizes[removed] = 0
   state.active[removed] = 0
   const withCounters = incrementClusteringCounter(
-    incrementClusteringCounter(
-      incrementClusteringCounter(profile, 'activeListBuilds', 1),
-      'activeItemsVisited',
-      active.length,
-    ),
+    incrementClusteringCounter(profile, 'activeItemsVisited', active.length),
     'distanceWrites',
     Math.max(active.length - 2, 0),
   )
@@ -186,8 +181,8 @@ export function updateMergedDistances(
 }
 
 export function mergePassesGap(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   a: number,
   b: number,
   gapThreshold: number,
@@ -205,13 +200,12 @@ export function mergePassesGap(
     }
   }
   const candidateDistance = getDistance(matrix, a, b)
-  const active = activeIndices(state)
   const alternativeDistance = active.reduce((best, candidate) => {
     if (candidate === a || candidate === b) return best
     return Math.min(best, getDistance(matrix, a, candidate), getDistance(matrix, b, candidate))
   }, Infinity)
   const withCounters = incrementClusteringCounter(
-    incrementClusteringCounter(incrementClusteringCounter(profile, 'gapChecks', 1), 'activeListBuilds', 1),
+    incrementClusteringCounter(profile, 'gapChecks', 1),
     'activeItemsVisited',
     active.length,
   )
@@ -265,7 +259,6 @@ export function hasMergeCandidate(
 export function findChainStart(
   active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   maxDistance: number,
   blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
@@ -273,7 +266,7 @@ export function findChainStart(
   const startedAt = performance.now()
   let currentProfile = profile
   const start = active.find((cluster) => {
-    const nearestResult = findNearestActiveCluster(matrix, state, cluster, blockedPairs, currentProfile)
+    const nearestResult = findNearestActiveCluster(active, matrix, cluster, blockedPairs, currentProfile)
     currentProfile = nearestResult.profile
     if (nearestResult.nearest === undefined) return false
     currentProfile = incrementClusteringCounter(currentProfile, 'distanceReads', 1)

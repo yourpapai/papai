@@ -313,19 +313,20 @@ describe('buildClustersAdvanced', () => {
     expect(clusters[0]).toHaveLength(3)
   })
 
-  test('average linkage handles hundreds of vectors without timing out', () => {
+  test('average linkage handles hundreds of vectors within the smoke budget', () => {
     const vectors = Array.from({ length: 600 }, (_, i) => {
       const group = Math.floor(i / 20)
       const angle = group * 0.1 + (i % 20) * 0.001
       return [Math.cos(angle), Math.sin(angle), (i % 7) / 100]
     })
-    const embeddings = makeNormalized(vectors)
-    const start = performance.now()
+    const normalized = makeNormalized(vectors)
+    const startedAt = performance.now()
 
-    const clusters = buildClustersAdvanced(embeddings, 0.99, 2, 'average', 0)
-    const elapsed = performance.now() - start
+    const profiled = buildClustersAdvanced(normalized, 0.99, 2, 'average', 0, { profile: true })
+    const elapsed = performance.now() - startedAt
 
-    expect(clusters.length).toBeGreaterThan(0)
+    expect(profiled.clusters.length).toBeGreaterThan(0)
+    expect(profiled.profile.counters.activeListBuilds).toBeGreaterThan(0)
     expect(elapsed).toBeLessThan(5000)
   })
 
@@ -501,7 +502,7 @@ describe('nearest-neighbor-chain distance helpers', () => {
     setDistance(matrix, 0, 1, Number.NaN)
     setDistance(matrix, 0, 2, 0.25)
 
-    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+    const result = findNearestActiveCluster(activeIndices(state), matrix, 0, new Set(), profile)
 
     expect(result.nearest).toBe(1)
   })
@@ -522,7 +523,7 @@ describe('nearest-neighbor-chain distance helpers', () => {
     setDistance(matrix, 0, 2, Number.NaN)
     setDistance(matrix, 0, 3, 0.25)
 
-    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+    const result = findNearestActiveCluster(activeIndices(state), matrix, 0, new Set(), profile)
 
     expect(result.nearest).toBe(1)
   })
@@ -545,7 +546,7 @@ describe('nearest-neighbor-chain distance helpers', () => {
     setDistance(matrix, 0, 3, Number.NaN)
     setDistance(matrix, 0, 4, 0)
 
-    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+    const result = findNearestActiveCluster(activeIndices(state), matrix, 0, new Set(), profile)
 
     expect(result.nearest).toBe(4)
   })
@@ -566,7 +567,7 @@ describe('nearest-neighbor-chain distance helpers', () => {
     setDistance(matrix, 0, 2, Infinity)
     setDistance(matrix, 0, 3, 0.25)
 
-    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+    const result = findNearestActiveCluster(activeIndices(state), matrix, 0, new Set(), profile)
 
     expect(result.nearest).toBe(3)
   })
@@ -588,7 +589,7 @@ describe('nearest-neighbor-chain distance helpers', () => {
     setDistance(matrix, 0, 2, Infinity)
     setDistance(matrix, 0, 3, Infinity)
 
-    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+    const result = findNearestActiveCluster(activeIndices(state), matrix, 0, new Set(), profile)
 
     expect(result.nearest).toBe(1)
     expect(toSortedSpy).not.toHaveBeenCalled()
