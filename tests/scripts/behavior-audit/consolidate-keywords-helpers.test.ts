@@ -512,6 +512,29 @@ describe('nearest-neighbor-chain distance helpers', () => {
     expect(result.nearest).toBe(1)
   })
 
+  test('findNearestActiveCluster lets a later better finite distance beat earlier finite candidates after NaN', () => {
+    const matrix = buildCondensedDistanceMatrix(
+      makeNormalized([
+        [1, 0],
+        [0, 1],
+        [1, 1],
+        [1, -1],
+        [0, -1],
+      ]),
+    )
+    const state = createActiveState(5)
+    const profile = createClusteringProfile({ enabled: false, linkage: 'average', threshold: 0.5, size: 5 })
+
+    setDistance(matrix, 0, 1, 0.25)
+    setDistance(matrix, 0, 2, 0.25)
+    setDistance(matrix, 0, 3, Number.NaN)
+    setDistance(matrix, 0, 4, 0)
+
+    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+
+    expect(result.nearest).toBe(4)
+  })
+
   test('findNearestActiveCluster lets finite distance beat earlier infinities', () => {
     const matrix = buildCondensedDistanceMatrix(
       makeNormalized([

@@ -68,6 +68,14 @@ export function pairKey(a: number, b: number): string {
   return `${Math.min(a, b)}:${Math.max(a, b)}`
 }
 
+type NearestCandidate = Readonly<{ readonly candidate: number; readonly distance: number }>
+
+function compareNearest(a: NearestCandidate, b: NearestCandidate): number {
+  const distanceOrder = a.distance - b.distance
+  if (distanceOrder === 0) return a.candidate - b.candidate
+  return distanceOrder
+}
+
 function selectNearestCandidate(
   active: readonly number[],
   matrix: MutableDistanceMatrix,
@@ -77,7 +85,6 @@ function selectNearestCandidate(
   let nearest: number | undefined
   let bestDistance = Infinity
   let distanceReads = 0
-  let preserveNearest = false
 
   for (const candidate of active) {
     if (candidate === cluster) continue
@@ -85,16 +92,23 @@ function selectNearestCandidate(
 
     const distance = getDistance(matrix, cluster, candidate)
     distanceReads += 1
+    if (!Number.isFinite(distance)) {
+      const fallbackCandidates: NearestCandidate[] = []
+      for (const other of active) {
+        if (other === cluster) continue
+        if (blockedPairs.has(pairKey(cluster, other))) continue
+
+        const fallbackDistance = other === candidate ? distance : getDistance(matrix, cluster, other)
+        if (other !== candidate) distanceReads += 1
+        fallbackCandidates.push({ candidate: other, distance: fallbackDistance })
+      }
+      const fallbackNearest = fallbackCandidates.toSorted(compareNearest)[0]
+      return { nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate, distanceReads }
+    }
+
     if (nearest === undefined) {
       nearest = candidate
       bestDistance = distance
-      continue
-    }
-
-    if (preserveNearest) continue
-
-    if (Number.isNaN(distance) || Number.isNaN(bestDistance)) {
-      preserveNearest = true
       continue
     }
 
