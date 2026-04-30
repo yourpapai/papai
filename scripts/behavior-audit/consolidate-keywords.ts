@@ -1,15 +1,20 @@
 import {
   CONSOLIDATION_DRY_RUN,
+  CONSOLIDATION_GAP_THRESHOLD,
+  CONSOLIDATION_LINKAGE,
+  CONSOLIDATION_MAX_CLUSTER_SIZE,
   CONSOLIDATION_MIN_CLUSTER_SIZE,
   CONSOLIDATION_THRESHOLD,
   EMBEDDING_CACHE_PATH,
+  EMBEDDING_BASE_URL,
   EMBEDDING_MODEL,
 } from './config.js'
 import { embedSlugBatch } from './consolidate-keywords-agent.js'
 import {
-  buildClustersNormalized,
+  buildClustersAdvanced,
   buildConsolidatedVocabulary,
   buildMergeMap,
+  subdivideOversizedClusters,
   toNormalizedFloat64Arrays,
 } from './consolidate-keywords-helpers.js'
 import { getOrEmbed } from './embedding-cache.js'
@@ -28,6 +33,7 @@ export interface Phase1bDeps {
   readonly saveKeywordVocabulary: typeof saveKeywordVocabulary
   readonly getOrEmbed: typeof getOrEmbed
   readonly embeddingCachePath: string | null
+  readonly embeddingBaseUrl: string
   readonly embeddingModel: string
   readonly loadManifest: () => Promise<IncrementalManifest | null>
   readonly remapKeywordsInExtractedFile: typeof RemapFn
@@ -40,6 +46,7 @@ const defaultPhase1bDeps: Phase1bDeps = {
   saveKeywordVocabulary,
   getOrEmbed,
   embeddingCachePath: EMBEDDING_CACHE_PATH,
+  embeddingBaseUrl: EMBEDDING_BASE_URL,
   embeddingModel: EMBEDDING_MODEL,
   loadManifest,
   remapKeywordsInExtractedFile,
@@ -52,12 +59,19 @@ async function markDoneAndSave(
   threshold: number,
   slugsBefore: number,
   now: string,
-  deps: Pick<Phase1bDeps, 'saveProgress'>,
+  deps: Pick<Phase1bDeps, 'saveProgress' | 'embeddingModel' | 'embeddingBaseUrl' | 'embeddingCachePath'>,
 ): Promise<void> {
   progress.phase1b = {
     status: 'done',
     lastRunAt: now,
     threshold,
+    minClusterSize: CONSOLIDATION_MIN_CLUSTER_SIZE,
+    linkage: CONSOLIDATION_LINKAGE,
+    maxClusterSize: CONSOLIDATION_MAX_CLUSTER_SIZE,
+    gapThreshold: CONSOLIDATION_GAP_THRESHOLD,
+    embeddingModel: deps.embeddingModel,
+    embeddingBaseUrl: deps.embeddingBaseUrl,
+    embeddingCachePath: deps.embeddingCachePath,
     stats: { slugsBefore, slugsAfter: slugsBefore, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
   }
   await deps.saveProgress(progress)
@@ -65,15 +79,34 @@ async function markDoneAndSave(
 
 async function computeMergeMap(
   vocabulary: readonly KeywordVocabularyEntry[],
-  deps: Pick<Phase1bDeps, 'getOrEmbed' | 'embeddingCachePath' | 'embeddingModel' | 'log'>,
+  deps: Pick<Phase1bDeps, 'getOrEmbed' | 'embeddingCachePath' | 'embeddingModel' | 'embeddingBaseUrl' | 'log'>,
 ): Promise<ReadonlyMap<string, string>> {
   const embeddingData = await deps.getOrEmbed(deps.embeddingCachePath, deps.embeddingModel, vocabulary, {
     embedSlugBatch,
+    providerIdentity: deps.embeddingBaseUrl,
     log: deps.log,
   })
   const normalized = toNormalizedFloat64Arrays(embeddingData.normalized)
-  deps.log.log(`[Phase 1b] Clustering at threshold ${CONSOLIDATION_THRESHOLD}...`)
-  const clusters = buildClustersNormalized(normalized, CONSOLIDATION_THRESHOLD, CONSOLIDATION_MIN_CLUSTER_SIZE)
+  deps.log.log(
+    `[Phase 1b] Clustering at threshold ${CONSOLIDATION_THRESHOLD}, linkage=${CONSOLIDATION_LINKAGE}, maxClusterSize=${CONSOLIDATION_MAX_CLUSTER_SIZE}, gap=${CONSOLIDATION_GAP_THRESHOLD}...`,
+  )
+  let clusters = buildClustersAdvanced(
+    normalized,
+    CONSOLIDATION_THRESHOLD,
+    CONSOLIDATION_MIN_CLUSTER_SIZE,
+    CONSOLIDATION_LINKAGE,
+    CONSOLIDATION_GAP_THRESHOLD,
+  )
+  if (CONSOLIDATION_MAX_CLUSTER_SIZE > 0) {
+    clusters = subdivideOversizedClusters(
+      normalized,
+      clusters,
+      CONSOLIDATION_MAX_CLUSTER_SIZE,
+      CONSOLIDATION_LINKAGE,
+      0.01,
+      CONSOLIDATION_GAP_THRESHOLD,
+    )
+  }
   return buildMergeMap(vocabulary, clusters)
 }
 
@@ -83,6 +116,21 @@ function logDryRunMerges(mergeMap: ReadonlyMap<string, string>, deps: Pick<Phase
     deps.log.log(`  ${oldSlug.padEnd(30)} → ${canonicalSlug}`)
   })
   deps.log.log(`No files were modified.`)
+}
+
+function shouldSkipCompletedPhase1b(progress: Progress, slugsBefore: number, deps: Phase1bDeps): boolean {
+  return (
+    progress.phase1b.status === 'done' &&
+    slugsBefore === progress.phase1b.stats.slugsBefore &&
+    CONSOLIDATION_THRESHOLD === progress.phase1b.threshold &&
+    CONSOLIDATION_MIN_CLUSTER_SIZE === progress.phase1b.minClusterSize &&
+    CONSOLIDATION_LINKAGE === progress.phase1b.linkage &&
+    CONSOLIDATION_MAX_CLUSTER_SIZE === progress.phase1b.maxClusterSize &&
+    CONSOLIDATION_GAP_THRESHOLD === progress.phase1b.gapThreshold &&
+    deps.embeddingModel === progress.phase1b.embeddingModel &&
+    deps.embeddingBaseUrl === progress.phase1b.embeddingBaseUrl &&
+    deps.embeddingCachePath === progress.phase1b.embeddingCachePath
+  )
 }
 
 async function applyMergesAndSave(
@@ -114,6 +162,13 @@ async function applyMergesAndSave(
     status: 'done',
     lastRunAt: now,
     threshold: CONSOLIDATION_THRESHOLD,
+    minClusterSize: CONSOLIDATION_MIN_CLUSTER_SIZE,
+    linkage: CONSOLIDATION_LINKAGE,
+    maxClusterSize: CONSOLIDATION_MAX_CLUSTER_SIZE,
+    gapThreshold: CONSOLIDATION_GAP_THRESHOLD,
+    embeddingModel: deps.embeddingModel,
+    embeddingBaseUrl: deps.embeddingBaseUrl,
+    embeddingCachePath: deps.embeddingCachePath,
     stats: {
       slugsBefore: vocabulary.length,
       slugsAfter,
@@ -146,11 +201,7 @@ export async function runPhase1b(progress: Progress, deps: Phase1bDeps = default
     return
   }
 
-  if (
-    !CONSOLIDATION_DRY_RUN &&
-    progress.phase1b.status === 'done' &&
-    vocabulary.length === progress.phase1b.stats.slugsBefore
-  ) {
+  if (!CONSOLIDATION_DRY_RUN && shouldSkipCompletedPhase1b(progress, vocabulary.length, deps)) {
     deps.log.log('[Phase 1b] Already complete, skipping.\n')
     return
   }

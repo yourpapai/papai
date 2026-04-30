@@ -1066,6 +1066,13 @@ describe('behavior-audit incremental manifest', () => {
             status: 'not-started',
             lastRunAt: null,
             threshold: 0,
+            minClusterSize: 2,
+            linkage: 'single',
+            maxClusterSize: 0,
+            gapThreshold: 0,
+            embeddingModel: '',
+            embeddingBaseUrl: '',
+            embeddingCachePath: null,
             stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
           },
           phase2a: {

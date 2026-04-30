@@ -14,6 +14,7 @@ import { emitLlmError, handleOrchestratorMessageError, handleToolCallFinish } fr
 import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
+import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
@@ -36,11 +37,9 @@ const defaultDeps: LlmOrchestratorDeps = {
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
 
-const persistFactsFromResults = (
-  contextId: string,
-  toolCalls: Array<{ toolName: string; input: unknown }>,
-  toolResults: Array<{ toolName: string; output: unknown }>,
-): void => {
+const persistFactsFromResults = (contextId: string, result: unknown): void => {
+  const toolCalls = extractFactToolCalls(result)
+  const toolResults = extractFactToolResults(result)
   const newFacts = extractFactsFromSdkResults(toolCalls, toolResults)
   if (newFacts.length === 0) return
   for (const fact of newFacts) upsertFact(contextId, fact)
@@ -202,7 +201,7 @@ const callLlm = async (
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
   log.debug({ contextId, toolCalls: toolCallCount, usage: result.usage }, 'LLM response received')
-  persistFactsFromResults(contextId, result.toolCalls, result.toolResults)
+  persistFactsFromResults(contextId, result)
   await sendLlmResponse(reply, contextId, result)
   return result
 }

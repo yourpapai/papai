@@ -56,8 +56,6 @@ export function clearFacts(userId: string): void {
   log.info({ userId }, 'Facts cleared')
 }
 
-// --- Rule-based fact extraction ---
-
 const TaskResultSchema = z.looseObject({
   id: z.string(),
   title: z.string().optional(),
@@ -70,72 +68,88 @@ const ProjectResultSchema = z.looseObject({
   url: z.string().optional(),
 })
 
-// Helper to extract projects from list_projects result
-function extractProjectsFromListResult(output: unknown): Omit<MemoryFact, 'last_seen'>[] {
-  if (!Array.isArray(output)) {
-    return []
-  }
+type SdkToolCall = Readonly<{ toolName: string; input: unknown }>
+type SdkToolResult = Readonly<{ toolName: string; output: unknown }>
+type ExtractedFact = Omit<MemoryFact, 'last_seen'>
 
-  const facts: Omit<MemoryFact, 'last_seen'>[] = []
-  // Cap at first 10 projects to avoid polluting the fact store
-  const projects = output.slice(0, 10)
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
-  for (const project of projects) {
-    const parsed = ProjectResultSchema.safeParse(project)
-    if (parsed.success) {
-      facts.push({
-        identifier: `proj:${parsed.data.id}`,
-        title: parsed.data.name,
-        url: parsed.data.url ?? '',
-      })
-    }
-  }
-
-  return facts
+const valueOrEmpty = (value: string | undefined): string => {
+  if (value === undefined) return ''
+  return value
+}
+const valueOrLabel = (value: string | undefined, label: string): string => {
+  if (value === undefined) return label
+  return value
+}
+const summaryOrPlaceholder = (value: string | null): string => {
+  if (value === null) return '(none)'
+  return value
+}
+const depsOrDefault = (deps: MemoryDeps | undefined): MemoryDeps => {
+  if (deps === undefined) return defaultMemoryDeps
+  return deps
 }
 
-// Wrapper to accept SDK result types directly without unsafe assignments
-// SDK v5 uses input/output properties typed as any
-export function extractFactsFromSdkResults(
-  _toolCalls: Array<{ toolName: string; input: unknown }>,
-  toolResults: Array<{ toolName: string; output: unknown }>,
-): readonly Omit<MemoryFact, 'last_seen'>[] {
-  const facts: Omit<MemoryFact, 'last_seen'>[] = []
+function extractProjectsFromListResult(output: unknown): ExtractedFact[] {
+  if (!Array.isArray(output)) return []
 
-  for (const result of toolResults) {
-    // Task-related facts from mutation and read operations
-    if (['create_task', 'update_task', 'delete_task', 'get_task'].includes(result.toolName)) {
-      const parsed = TaskResultSchema.safeParse(result.output)
-      if (parsed.success) {
-        const label = parsed.data.number === undefined ? parsed.data.id : `#${parsed.data.number}`
-        facts.push({
-          identifier: label,
-          title: parsed.data.title ?? label,
-          url: '',
-        })
-      }
-    }
+  return output.slice(0, 10).flatMap((project) => {
+    const parsed = ProjectResultSchema.safeParse(project)
+    if (!parsed.success) return []
+    const url = valueOrEmpty(parsed.data.url)
+    return [{ identifier: `proj:${parsed.data.id}`, title: parsed.data.name, url }]
+  })
+}
 
-    // Project facts from mutation operations (single project)
-    if (['create_project', 'update_project'].includes(result.toolName)) {
-      const parsed = ProjectResultSchema.safeParse(result.output)
-      if (parsed.success) {
-        facts.push({
-          identifier: `proj:${parsed.data.id}`,
-          title: parsed.data.name,
-          url: parsed.data.url ?? '',
-        })
-      }
-    }
+const extractFactsFromToolResult = (toolName: string, output: unknown): readonly ExtractedFact[] => {
+  if (['create_task', 'update_task', 'delete_task', 'get_task'].includes(toolName)) {
+    const parsed = TaskResultSchema.safeParse(output)
+    if (!parsed.success) return []
 
-    // Project facts from list_projects operation (array of projects)
-    if (result.toolName === 'list_projects') {
-      const projectFacts = extractProjectsFromListResult(result.output)
-      facts.push(...projectFacts)
-    }
+    const label = parsed.data.number === undefined ? parsed.data.id : `#${parsed.data.number}`
+    const title = valueOrLabel(parsed.data.title, label)
+    return [{ identifier: label, title, url: '' }]
   }
 
-  return facts
+  if (['create_project', 'update_project'].includes(toolName)) {
+    const parsed = ProjectResultSchema.safeParse(output)
+    if (!parsed.success) return []
+    const url = valueOrEmpty(parsed.data.url)
+
+    return [{ identifier: `proj:${parsed.data.id}`, title: parsed.data.name, url }]
+  }
+
+  if (toolName === 'list_projects') return extractProjectsFromListResult(output)
+
+  return []
+}
+
+export function extractFactsFromSdkResults(
+  toolCalls: SdkToolCall[],
+  toolResults: SdkToolResult[],
+): readonly ExtractedFact[] {
+  const proxiedToolNames = toolCalls.flatMap((call) => {
+    if (call.toolName !== 'papai_tool') return []
+    const toolName = isRecord(call.input) ? call.input['tool'] : undefined
+    return [typeof toolName === 'string' ? toolName : undefined]
+  })
+
+  const extracted = toolResults.reduce<{ readonly facts: readonly ExtractedFact[]; readonly proxiedIndex: number }>(
+    (state, result) => {
+      const isProxiedResult = result.toolName === 'papai_tool'
+      const proxiedToolName = proxiedToolNames[state.proxiedIndex]
+      const effectiveToolName = isProxiedResult && proxiedToolName !== undefined ? proxiedToolName : result.toolName
+      return {
+        facts: [...state.facts, ...extractFactsFromToolResult(effectiveToolName, result.output)],
+        proxiedIndex: state.proxiedIndex + (isProxiedResult ? 1 : 0),
+      }
+    },
+    { facts: [], proxiedIndex: 0 },
+  )
+
+  return extracted.facts
 }
 
 // --- Smart trimming with memory model ---
@@ -165,7 +179,12 @@ Conversation (index: [role] content):
 Return ONLY a raw JSON object (no markdown, no code fences) with this exact structure:
 {"keep_indices": [<list of integer indices>], "summary": "<summary text>"}`
 
-function clampIndices(selected: number[], trimMin: number, trimMax: number, historyLength: number): number[] {
+function clampIndices(
+  selected: readonly number[],
+  trimMin: number,
+  trimMax: number,
+  historyLength: number,
+): readonly number[] {
   if (selected.length > trimMax) {
     return selected.slice(selected.length - trimMax)
   }
@@ -173,12 +192,8 @@ function clampIndices(selected: number[], trimMin: number, trimMax: number, hist
     const selectedSet = new Set(selected)
     const candidates = Array.from({ length: historyLength }, (_, i) => i)
       .filter((i) => !selectedSet.has(i))
-      .reverse()
-    for (const i of candidates) {
-      if (selected.length >= trimMin) break
-      selected.push(i)
-    }
-    selected.sort((a, b) => a - b)
+      .toReversed()
+    return [...selected, ...candidates.slice(0, trimMin - selected.length)].toSorted((a, b) => a - b)
   }
   return selected
 }
@@ -214,7 +229,7 @@ export async function trimWithMemoryModel(
   trimMax: number,
   previousSummary: string | null,
   model: LanguageModel,
-  deps: MemoryDeps = defaultMemoryDeps,
+  ...depsInput: readonly [] | readonly [MemoryDeps]
 ): Promise<TrimResult> {
   log.debug(
     { messageCount: history.length, trimMin, trimMax, hasPrevious: previousSummary !== null },
@@ -225,11 +240,13 @@ export async function trimWithMemoryModel(
     .map((m, i) => `${i}: [${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
     .join('\n')
 
-  const prompt = TRIM_PROMPT.replace(/\{TOTAL\}/g, String(history.length))
-    .replace('{PREVIOUS_SUMMARY}', previousSummary ?? '(none)')
+  const summaryText = summaryOrPlaceholder(previousSummary)
+  const resolvedDeps = depsOrDefault(depsInput[0])
+  const prompt = TRIM_PROMPT.replaceAll('{TOTAL}', String(history.length))
+    .replace('{PREVIOUS_SUMMARY}', summaryText)
     .replace('{MESSAGES}', messagesText)
 
-  const result = await deps.generateText({
+  const result = await resolvedDeps.generateText({
     model,
     prompt,
     timeout: 1_200_000,
@@ -238,7 +255,7 @@ export async function trimWithMemoryModel(
   const data = parseModelResponse(result.text)
 
   const selected = clampIndices(
-    [...new Set(data.keep_indices)].filter((i) => i >= 0 && i < history.length).sort((a, b) => a - b),
+    [...new Set(data.keep_indices)].filter((i) => i >= 0 && i < history.length).toSorted((a, b) => a - b),
     trimMin,
     trimMax,
     history.length,

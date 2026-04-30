@@ -3,7 +3,6 @@
   "plugin": [
     "@ekroon/opencode-copilot-instructions",
     "./.opencode/plugins/tdd-enforcement.ts",
-    "./.opencode/plugins/opencode-tps-meter",
     "./.opencode/plugins/codeindex-reindex.ts"
   ],
   "mcp": {

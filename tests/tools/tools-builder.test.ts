@@ -3,6 +3,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { IncomingFile } from '../../src/chat/types.js'
 import { clearIncomingFiles, storeIncomingFiles } from '../../src/file-relay.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { makeTools } from '../../src/tools/index.js'
 import { buildTools } from '../../src/tools/tools-builder.js'
 import { getToolExecutor } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
@@ -378,5 +379,48 @@ describe('buildTools', () => {
       expect(tools['set_my_identity']).toBeUndefined()
       expect(tools['clear_my_identity']).toBeUndefined()
     })
+  })
+})
+
+describe('makeTools proxy integration', () => {
+  it('exposes only papai_tool by default', () => {
+    const provider = createMockProvider()
+
+    const tools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+
+    expect(Object.keys(tools)).toEqual(['papai_tool'])
+  })
+
+  it('keeps internal context gating available through proxy search', async () => {
+    const provider = createMockProvider({
+      identityResolver: {
+        searchUsers: () => Promise.resolve([]),
+      },
+    })
+
+    const dmTools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const groupTools = makeTools(provider, {
+      storageContextId: 'group-123',
+      chatUserId: 'user-123',
+      contextType: 'group',
+    })
+
+    const dmResult = await getToolExecutor(dmTools['papai_tool'])(
+      { search: 'identity', includeSchemas: false },
+      {
+        toolCallId: 'dm-search',
+        messages: [],
+      },
+    )
+    const groupResult = await getToolExecutor(groupTools['papai_tool'])(
+      { search: 'identity', includeSchemas: false },
+      {
+        toolCallId: 'group-search',
+        messages: [],
+      },
+    )
+
+    expect(JSON.stringify(dmResult)).not.toContain('set_my_identity')
+    expect(JSON.stringify(groupResult)).toContain('set_my_identity')
   })
 })

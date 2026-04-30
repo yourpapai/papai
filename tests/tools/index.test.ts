@@ -1,26 +1,65 @@
-import { describe, expect, it, test, mock, beforeEach } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
+
+import type { ToolExecutionOptions } from 'ai'
 
 import { setConfig } from '../../src/config.js'
 import { getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
+import { isToolFailureResult } from '../../src/tool-failure.js'
 import { makeTools, type MakeToolsOptions } from '../../src/tools/index.js'
 import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
-const COLLABORATION_CAPABILITIES = new Set([
-  'tasks.watchers',
-  'tasks.votes',
-  'tasks.visibility',
-  'comments.reactions',
-  'projects.team',
-])
-
-function excludesCollaborationCapabilities(capability: string): boolean {
-  return !COLLABORATION_CAPABILITIES.has(capability)
+type ProxyTextContent = {
+  readonly type: 'text'
+  readonly text: string
 }
 
-function hasId(val: unknown): val is Record<string, unknown> & { id: unknown } {
-  return typeof val === 'object' && val !== null && 'id' in val
+type ProxyTextResult = {
+  readonly content: readonly ProxyTextContent[]
+  readonly details: Readonly<Record<string, unknown>>
+}
+
+function toolOptions(toolCallId: string): ToolExecutionOptions {
+  return { toolCallId, messages: [] }
+}
+
+function hasId(value: unknown): value is Readonly<Record<string, unknown>> & { readonly id: string } {
+  return typeof value === 'object' && value !== null && 'id' in value && typeof value['id'] === 'string'
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null
+}
+
+function isProxyTextContent(value: unknown): value is ProxyTextContent {
+  return isRecord(value) && value['type'] === 'text' && typeof value['text'] === 'string'
+}
+
+function isProxyTextResult(value: unknown): value is ProxyTextResult {
+  if (!isRecord(value)) return false
+  if (!Array.isArray(value['content'])) return false
+  return value['content'].every(isProxyTextContent) && isRecord(value['details'])
+}
+
+function expectProxyTextResult(value: unknown): ProxyTextResult {
+  assert.ok(isProxyTextResult(value), 'Expected proxy text result')
+  return value
+}
+
+function firstText(result: ProxyTextResult): string {
+  const first = result.content[0]
+  assert.ok(first !== undefined, 'Expected proxy text content')
+  return first.text
+}
+
+async function searchProxy(options: MakeToolsOptions, query: string): Promise<ProxyTextResult> {
+  const tools = makeTools(createMockProvider(), options)
+  const result = await getToolExecutor(tools['papai_tool'])(
+    { search: query, includeSchemas: false },
+    toolOptions(query),
+  )
+  return expectProxyTextResult(result)
 }
 
 describe('makeTools', () => {
@@ -34,363 +73,169 @@ describe('makeTools', () => {
     setConfig('user-1', 'timezone', 'UTC')
   })
 
-  const provider = createMockProvider()
+  test('exposes only papai_tool', () => {
+    const tools = makeTools(createMockProvider(), { storageContextId: 'user-1', chatUserId: 'user-1' })
 
-  test('includes get_current_time tool', () => {
+    expect(Object.keys(tools)).toEqual(['papai_tool'])
+  })
+
+  test('returns proxy status with internal tool count', async () => {
+    const tools = makeTools(createMockProvider(), { storageContextId: 'user-1', chatUserId: 'user-1' })
+
+    const result = expectProxyTextResult(await getToolExecutor(tools['papai_tool'])({}, toolOptions('status')))
+
+    expect(result.details).toMatchObject({ mode: 'status' })
+    expect(firstText(result)).toContain('Papai tools:')
+  })
+
+  test('describes internal tools through papai_tool', async () => {
+    const tools = makeTools(createMockProvider(), { storageContextId: 'user-1', chatUserId: 'user-1' })
+
+    const result = expectProxyTextResult(
+      await getToolExecutor(tools['papai_tool'])({ describe: 'get_current_time' }, toolOptions('describe-time')),
+    )
+
+    expect(result.details).toMatchObject({ mode: 'describe', tool: 'get_current_time' })
+    expect(firstText(result)).toContain('current date and time')
+  })
+
+  test('executes underlying tools through papai_tool', async () => {
+    const getTask = mock(() =>
+      Promise.resolve({ id: 'task-1', title: 'Test', status: 'todo', url: 'https://test.com/task/1' }),
+    )
+    const provider = createMockProvider({ getTask })
     const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('get_current_time')
+
+    const result = await getToolExecutor(tools['papai_tool'])(
+      { tool: 'get_task', args: JSON.stringify({ taskId: 'task-1' }) },
+      toolOptions('get-task'),
+    )
+
+    expect(result).toEqual({ id: 'task-1', title: 'Test', status: 'todo', url: 'https://test.com/task/1' })
+    expect(getTask).toHaveBeenCalledWith('task-1')
   })
 
-  test('includes web_fetch when storageContextId is defined', () => {
+  test('wraps underlying tool failures through papai_tool', async () => {
+    const provider = createMockProvider({
+      getTask: mock(() => Promise.reject(new Error('provider unavailable'))),
+    })
     const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('web_fetch')
+
+    const result = await getToolExecutor(tools['papai_tool'])(
+      { tool: 'get_task', args: JSON.stringify({ taskId: 'task-1' }) },
+      toolOptions('wrapped-failure'),
+    )
+
+    assert.ok(isToolFailureResult(result), 'Expected wrapped tool failure result')
+    expect(result.toolName).toBe('get_task')
+    expect(result.toolCallId).toBe('wrapped-failure')
+    expect(result.error).toBe('provider unavailable')
   })
 
-  test('excludes web_fetch when storageContextId is undefined', () => {
-    const tools = makeTools(provider, { chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('web_fetch')
+  test('web_fetch availability is visible only through proxy search when storage context exists', async () => {
+    const withContext = await searchProxy({ storageContextId: 'user-1', chatUserId: 'user-1' }, 'web_fetch')
+    const withoutContext = await searchProxy({ chatUserId: 'user-1' }, 'web_fetch')
+
+    expect(firstText(withContext)).toContain('web_fetch')
+    expect(withoutContext.details).toMatchObject({ matches: [] })
   })
 
-  test('get_current_time tool has correct structure', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools['get_current_time']?.description).toContain('current date and time')
+  test('group history availability is visible only through proxy search for group storage contexts', async () => {
+    const dm = await searchProxy({ storageContextId: 'user-1', chatUserId: 'user-1' }, 'lookup_group_history')
+    const group = await searchProxy(
+      { storageContextId: 'user-1:group-1', chatUserId: 'user-1' },
+      'lookup_group_history',
+    )
+
+    expect(dm.details).toMatchObject({ matches: [] })
+    expect(firstText(group)).toContain('lookup_group_history')
   })
 
-  test('excludes lookup_group_history when storageContextId is undefined', () => {
-    const tools = makeTools(provider, { chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('lookup_group_history')
-  })
-
-  test('excludes lookup_group_history in DM contexts (plain userId)', () => {
-    // DMs use userId as storageContextId without colon separator
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('lookup_group_history')
-  })
-
-  test('includes lookup_group_history in group/thread contexts (contains colon)', () => {
-    // Groups use userId:groupId format (contains colon separator)
-    const tools = makeTools(provider, { storageContextId: 'user-1:group-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('lookup_group_history')
-    expect(tools['lookup_group_history']?.description).toContain('main group chat')
-  })
-
-  describe('identity tools', () => {
-    it('should include set_my_identity tool for group chats', () => {
-      const providerWithResolver = createMockProvider({
-        identityResolver: {
-          searchUsers: () => Promise.resolve([]),
-        },
-      })
-      const tools = makeTools(providerWithResolver, {
-        storageContextId: 'user-123:group-123',
-        chatUserId: 'user-123',
-        contextType: 'group',
-      })
-      expect(tools['set_my_identity']).toBeDefined()
+  test('identity tool gating is visible through proxy search', async () => {
+    const provider = createMockProvider({
+      identityResolver: {
+        searchUsers: () => Promise.resolve([]),
+      },
+    })
+    const dmTools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const groupTools = makeTools(provider, {
+      storageContextId: 'group-123',
+      chatUserId: 'user-456',
+      contextType: 'group',
     })
 
-    it('should include clear_my_identity tool for group chats', () => {
-      const providerWithResolver = createMockProvider({
-        identityResolver: {
-          searchUsers: () => Promise.resolve([]),
-        },
-      })
-      const tools = makeTools(providerWithResolver, {
-        storageContextId: 'user-123:group-123',
-        chatUserId: 'user-123',
-        contextType: 'group',
-      })
-      expect(tools['clear_my_identity']).toBeDefined()
-    })
+    const dmResult = expectProxyTextResult(
+      await getToolExecutor(dmTools['papai_tool'])({ search: 'identity', includeSchemas: false }, toolOptions('dm-id')),
+    )
+    const groupResult = expectProxyTextResult(
+      await getToolExecutor(groupTools['papai_tool'])(
+        { search: 'identity', includeSchemas: false },
+        toolOptions('group-id'),
+      ),
+    )
 
-    it('should exclude identity tools in DM contexts', () => {
-      const providerWithResolver = createMockProvider({
-        identityResolver: {
-          searchUsers: () => Promise.resolve([]),
-        },
-      })
-      const tools = makeTools(providerWithResolver, {
-        storageContextId: 'user-123',
-        chatUserId: 'user-123',
-        contextType: 'dm',
-      })
-      expect(tools['set_my_identity']).toBeUndefined()
-      expect(tools['clear_my_identity']).toBeUndefined()
-    })
-
-    it('should exclude identity tools when chatUserId is undefined', () => {
-      const providerWithResolver = createMockProvider({
-        identityResolver: {
-          searchUsers: () => Promise.resolve([]),
-        },
-      })
-      const tools = makeTools(providerWithResolver)
-      expect(tools['set_my_identity']).toBeUndefined()
-      expect(tools['clear_my_identity']).toBeUndefined()
-    })
-
-    it('should exclude identity tools when provider has no identityResolver', () => {
-      const providerWithoutResolver = createMockProvider({
-        identityResolver: undefined,
-      })
-      const tools = makeTools(providerWithoutResolver, {
-        storageContextId: 'user-123:group-123',
-        chatUserId: 'user-123',
-        contextType: 'group',
-      })
-      expect(tools['set_my_identity']).toBeUndefined()
-      expect(tools['clear_my_identity']).toBeUndefined()
-    })
+    expect(firstText(dmResult)).not.toContain('set_my_identity')
+    expect(firstText(groupResult)).toContain('set_my_identity')
+    expect(firstText(groupResult)).toContain('clear_my_identity')
   })
 
-  test('normal mode includes deferred prompt tools', () => {
+  test('mode gating is visible through proxy search for deferred prompt tools', async () => {
+    const normal = await searchProxy({ storageContextId: 'user-1', chatUserId: 'user-1' }, 'deferred_prompt')
+    const proactive = await searchProxy(
+      { storageContextId: 'user-1', chatUserId: 'user-1', mode: 'proactive' },
+      'deferred_prompt',
+    )
+
+    expect(firstText(normal)).toContain('create_deferred_prompt')
+    expect(firstText(proactive)).not.toContain('create_deferred_prompt')
+  })
+
+  test('capability gating is visible through proxy search', async () => {
+    const provider = createMockProvider({
+      capabilities: new Set(
+        [...createMockProvider().capabilities].filter((capability) => capability !== 'tasks.count'),
+      ),
+    })
     const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('create_deferred_prompt')
-    expect(tools).toHaveProperty('update_deferred_prompt')
-    expect(tools).toHaveProperty('list_deferred_prompts')
-    expect(tools).toHaveProperty('cancel_deferred_prompt')
-    expect(tools).toHaveProperty('get_deferred_prompt')
+
+    const result = expectProxyTextResult(
+      await getToolExecutor(tools['papai_tool'])(
+        { search: 'count_tasks', includeSchemas: false },
+        toolOptions('count'),
+      ),
+    )
+
+    expect(result.details).toMatchObject({ matches: [] })
   })
 
-  test('group deferred prompts created via makeTools preserve creator username for personal delivery', async () => {
-    const tools = makeTools(provider, {
+  test('group deferred prompts created through papai_tool preserve creator username for personal delivery', async () => {
+    const tools = makeTools(createMockProvider(), {
       storageContextId: '-1001:42',
       chatUserId: 'user-1',
       contextType: 'group',
       username: 'ki',
     })
-    const execute = getToolExecutor(tools['create_deferred_prompt'])
 
     const future = new Date(Date.now() + 3_600_000)
     const date = future.toISOString().slice(0, 10)
     const time = future.toISOString().slice(11, 16)
-
-    const result = await execute(
+    const result = await getToolExecutor(tools['papai_tool'])(
       {
-        prompt: 'Ping me later',
-        schedule: { fire_at: { date, time } },
-        delivery: { audience: 'personal' },
-        execution: { mode: 'context', delivery_brief: 'Personal reminder in thread' },
+        tool: 'create_deferred_prompt',
+        args: JSON.stringify({
+          prompt: 'Ping me later',
+          schedule: { fire_at: { date, time } },
+          delivery: { audience: 'personal', mention_user_ids: ['user-1'] },
+          execution: { mode: 'context', delivery_brief: 'Personal reminder in thread' },
+        }),
       },
-      { toolCallId: 'tc1', messages: [], abortSignal: new AbortController().signal },
+      { ...toolOptions('tc1'), abortSignal: new AbortController().signal },
     )
 
-    assert(hasId(result), 'Expected create_deferred_prompt result with id')
-    const id = result['id']
-    assert(typeof id === 'string', 'Expected id to be string')
-
-    const created = getScheduledPrompt(id, 'user-1')
+    assert.ok(hasId(result), 'Expected create_deferred_prompt result with id')
+    const created = getScheduledPrompt(result.id, 'user-1')
     expect(created).not.toBeNull()
-    expect(created?.deliveryTarget.createdByUsername).toBe('ki')
-  })
-
-  test('proactive mode excludes deferred prompt tools', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1', mode: 'proactive' })
-    expect(tools).not.toHaveProperty('create_deferred_prompt')
-    expect(tools).not.toHaveProperty('update_deferred_prompt')
-    expect(tools).not.toHaveProperty('list_deferred_prompts')
-    expect(tools).not.toHaveProperty('cancel_deferred_prompt')
-    expect(tools).not.toHaveProperty('get_deferred_prompt')
-  })
-
-  test('proactive mode still includes core task tools', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1', mode: 'proactive' })
-    expect(tools).toHaveProperty('create_task')
-    expect(tools).toHaveProperty('update_task')
-    expect(tools).toHaveProperty('search_tasks')
-    expect(tools).toHaveProperty('list_tasks')
-    expect(tools).toHaveProperty('get_task')
-  })
-
-  test('default mode is normal (includes deferred tools)', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('create_deferred_prompt')
-  })
-
-  test('no chatUserId skips deferred tools', () => {
-    const tools = makeTools(provider)
-    expect(tools).not.toHaveProperty('create_deferred_prompt')
-  })
-
-  test('includes attachment tools when capabilities present and chatUserId given', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('list_attachments')
-    expect(tools).toHaveProperty('upload_attachment')
-    expect(tools).toHaveProperty('remove_attachment')
-  })
-
-  test('excludes attachment tools when no chatUserId', () => {
-    const tools = makeTools(provider)
-    expect(tools).not.toHaveProperty('list_attachments')
-    expect(tools).not.toHaveProperty('upload_attachment')
-    expect(tools).not.toHaveProperty('remove_attachment')
-  })
-
-  test('includes work item tools when capabilities present', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('list_work')
-    expect(tools).toHaveProperty('log_work')
-    expect(tools).toHaveProperty('update_work')
-    expect(tools).toHaveProperty('remove_work')
-  })
-
-  test('includes agile and sprint tools when provider exposes phase-five sprint features', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('list_agiles')
-    expect(tools).toHaveProperty('list_sprints')
-    expect(tools).toHaveProperty('create_sprint')
-    expect(tools).toHaveProperty('update_sprint')
-    expect(tools).toHaveProperty('assign_task_to_sprint')
-  })
-
-  test('includes task history and saved query tools when provider exposes them', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('get_task_history')
-    expect(tools).toHaveProperty('list_saved_queries')
-    expect(tools).toHaveProperty('run_saved_query')
-  })
-
-  test('includes count_tasks when provider has countTasks method and capability', () => {
-    const tools = makeTools(createMockProvider(), { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('count_tasks')
-  })
-
-  test('excludes count_tasks when provider has no countTasks method', () => {
-    const tools = makeTools(createMockProvider({ countTasks: undefined }), {
-      storageContextId: 'user-1',
-      chatUserId: 'user-1',
-    })
-    expect(tools).not.toHaveProperty('count_tasks')
-  })
-
-  test('excludes count_tasks when provider lacks tasks.count capability', () => {
-    const limitedProvider = createMockProvider({
-      capabilities: new Set([...provider.capabilities].filter((capability) => capability !== 'tasks.count')),
-    })
-    const tools = makeTools(limitedProvider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('count_tasks')
-  })
-
-  test('includes collaboration tools when capabilities and helpers are present', () => {
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).toHaveProperty('find_user')
-    expect(tools).toHaveProperty('list_watchers')
-    expect(tools).toHaveProperty('add_watcher')
-    expect(tools).toHaveProperty('remove_watcher')
-    expect(tools).toHaveProperty('add_vote')
-    expect(tools).toHaveProperty('remove_vote')
-    expect(tools).toHaveProperty('set_visibility')
-    expect(tools).toHaveProperty('add_comment_reaction')
-    expect(tools).toHaveProperty('remove_comment_reaction')
-    expect(tools).toHaveProperty('list_project_team')
-    expect(tools).toHaveProperty('add_project_member')
-    expect(tools).toHaveProperty('remove_project_member')
-  })
-
-  test('excludes attachment tools when provider lacks capabilities', () => {
-    const { capabilities, ...rest } = provider
-    const limitedProvider = {
-      ...rest,
-      capabilities: new Set([...capabilities].filter((c) => !c.startsWith('attachments'))),
-    }
-    const tools = makeTools(limitedProvider as typeof provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('list_attachments')
-    expect(tools).not.toHaveProperty('upload_attachment')
-    expect(tools).not.toHaveProperty('remove_attachment')
-  })
-
-  test('excludes work item tools when provider lacks capabilities', () => {
-    const { capabilities, ...rest } = provider
-    const limitedProvider = {
-      ...rest,
-      capabilities: new Set([...capabilities].filter((c) => !c.startsWith('workItems'))),
-    }
-    const tools = makeTools(limitedProvider as typeof provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('list_work')
-    expect(tools).not.toHaveProperty('log_work')
-    expect(tools).not.toHaveProperty('update_work')
-    expect(tools).not.toHaveProperty('remove_work')
-  })
-
-  test('excludes find_user when provider has no listUsers helper', () => {
-    const tools = makeTools(createMockProvider({ listUsers: undefined }), {
-      storageContextId: 'user-1',
-      chatUserId: 'user-1',
-    })
-    expect(tools).not.toHaveProperty('find_user')
-  })
-
-  test('excludes collaboration tools when provider lacks related capabilities', () => {
-    const limitedProvider = createMockProvider({
-      capabilities: new Set([...provider.capabilities].filter(excludesCollaborationCapabilities)),
-    })
-    const tools = makeTools(limitedProvider, { storageContextId: 'user-1', chatUserId: 'user-1' })
-    expect(tools).not.toHaveProperty('list_watchers')
-    expect(tools).not.toHaveProperty('add_watcher')
-    expect(tools).not.toHaveProperty('remove_watcher')
-    expect(tools).not.toHaveProperty('add_vote')
-    expect(tools).not.toHaveProperty('remove_vote')
-    expect(tools).not.toHaveProperty('set_visibility')
-    expect(tools).not.toHaveProperty('add_comment_reaction')
-    expect(tools).not.toHaveProperty('remove_comment_reaction')
-    expect(tools).not.toHaveProperty('list_project_team')
-    expect(tools).not.toHaveProperty('add_project_member')
-    expect(tools).not.toHaveProperty('remove_project_member')
-  })
-
-  test('includes memos, recurring, and instructions tools when chatUserId provided', () => {
-    const options: MakeToolsOptions = {
-      storageContextId: 'user-1',
-      chatUserId: 'user-1',
-    }
-    const tools = makeTools(provider, options)
-    expect(tools).toHaveProperty('save_memo')
-    expect(tools).toHaveProperty('search_memos')
-    expect(tools).toHaveProperty('create_recurring_task')
-    expect(tools).toHaveProperty('save_instruction')
-  })
-
-  test('excludes user-scoped tools when storageContextId is undefined', () => {
-    // When storageContextId is undefined, user-scoped tools should be excluded
-    const tools = makeTools(provider)
-    expect(tools).not.toHaveProperty('save_memo')
-    expect(tools).not.toHaveProperty('create_recurring_task')
-    expect(tools).not.toHaveProperty('save_instruction')
-  })
-
-  describe('chatUserId isolation', () => {
-    it('should use chatUserId for identity tools when provided', () => {
-      const providerWithResolver = createMockProvider({
-        identityResolver: {
-          searchUsers: () => Promise.resolve([]),
-        },
-      })
-      // In a group chat: storageContextId is group ID, chatUserId is actual user
-      const tools = makeTools(providerWithResolver, {
-        storageContextId: 'group-123',
-        chatUserId: 'user-456',
-        contextType: 'group',
-      })
-      // Identity tools should be created with user-456, not group-123
-      expect(tools['set_my_identity']).toBeDefined()
-      expect(tools['clear_my_identity']).toBeDefined()
-    })
-
-    it('should work when chatUserId equals storageContextId in DM contexts', () => {
-      const providerWithResolver = createMockProvider({
-        identityResolver: {
-          searchUsers: () => Promise.resolve([]),
-        },
-      })
-      // In a DM: storageContextId and chatUserId are the same
-      const tools = makeTools(providerWithResolver, {
-        storageContextId: 'user-123',
-        chatUserId: 'user-123',
-        contextType: 'dm',
-      })
-      // Identity tools not available in DMs by design
-      expect(tools['set_my_identity']).toBeUndefined()
-      expect(tools['clear_my_identity']).toBeUndefined()
-    })
+    assert.ok(created !== null, 'Expected scheduled prompt to exist')
+    expect(created.deliveryTarget.createdByUsername).toBe('ki')
   })
 })

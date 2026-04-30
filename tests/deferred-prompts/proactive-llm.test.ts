@@ -13,6 +13,7 @@ import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
 import { loadFacts } from '../../src/memory.js'
+import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -21,6 +22,7 @@ type GenerateTextResult = {
   text: string
   toolCalls: unknown[]
   toolResults: unknown[]
+  steps: unknown[] | undefined
   response: { messages: ModelMessage[] }
 }
 type GenerateTextCall = { model: string; system: string; messages: ModelMessage[]; tools: unknown }
@@ -30,44 +32,54 @@ function messageIncludesText(msgs: readonly ModelMessage[], text: string): boole
   return msgs.some((m) => typeof m.content === 'string' && m.content.includes(text))
 }
 
-const USER_ID = 'exec-mode-user'
+const containsFact = (
+  facts: readonly MemoryFact[],
+  expected: Readonly<Pick<MemoryFact, 'identifier' | 'title' | 'url'>>,
+): boolean =>
+  facts.some(
+    (fact) => fact.identifier === expected.identifier && fact.title === expected.title && fact.url === expected.url,
+  )
 
-function makeExecCtx(userId: string = USER_ID): DeferredExecutionContext {
+const USER_ID = 'exec-mode-user'
+function makeExecCtx(): DeferredExecutionContext {
   return {
-    createdByUserId: userId,
+    createdByUserId: USER_ID,
     deliveryTarget: {
-      contextId: userId,
+      contextId: USER_ID,
       contextType: 'dm',
       threadId: null,
       audience: 'personal',
       mentionUserIds: [],
-      createdByUserId: userId,
+      createdByUserId: USER_ID,
       createdByUsername: null,
     },
   }
 }
 
-function makeGroupThreadExecCtx(userId: string = USER_ID): DeferredExecutionContext {
+function makeGroupThreadExecCtx(): DeferredExecutionContext {
   return {
-    createdByUserId: userId,
+    createdByUserId: USER_ID,
     deliveryTarget: {
       contextId: '-1001',
       contextType: 'group',
       threadId: '42',
       audience: 'personal',
-      mentionUserIds: [userId],
-      createdByUserId: userId,
+      mentionUserIds: [USER_ID],
+      createdByUserId: USER_ID,
       createdByUsername: null,
     },
   }
 }
 
-function setupUserConfig(opts?: { smallModel?: string }): void {
+type UserConfigOptions = Readonly<{ smallModel: string | null }>
+
+function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
   setConfig(USER_ID, 'llm_apikey', 'test-key')
   setConfig(USER_ID, 'llm_baseurl', 'http://localhost:11434/v1')
   setConfig(USER_ID, 'main_model', 'main-model')
   setConfig(USER_ID, 'timezone', 'UTC')
-  if (opts?.smallModel !== undefined) {
+  const opts = args[0]
+  if (opts !== undefined && opts.smallModel !== null) {
     setConfig(USER_ID, 'small_model', opts.smallModel)
   }
 }
@@ -77,7 +89,13 @@ describe('dispatchExecution', () => {
 
   let generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
     generateTextCalls.push(args)
-    return Promise.resolve({ text: 'Mock response', toolCalls: [], toolResults: [], response: { messages: [] } })
+    return Promise.resolve({
+      text: 'Mock response',
+      toolCalls: [],
+      toolResults: [],
+      steps: undefined,
+      response: { messages: [] },
+    })
   }
 
   beforeEach(async () => {
@@ -85,7 +103,13 @@ describe('dispatchExecution', () => {
     generateTextCalls.length = 0
     generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
       generateTextCalls.push(args)
-      return Promise.resolve({ text: 'Mock response', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Mock response',
+        toolCalls: [],
+        toolResults: [],
+        steps: undefined,
+        response: { messages: [] },
+      })
     }
     void mock.module('ai', () => ({
       generateText: (args: GenerateTextCall): Promise<GenerateTextResult> => generateTextImpl(args),
@@ -189,6 +213,7 @@ describe('dispatchExecution', () => {
           text: 'Thread reminder',
           toolCalls: [],
           toolResults: [],
+          steps: undefined,
           response: { messages: [{ role: 'assistant', content: 'Thread reminder' }] },
         })
       }
@@ -259,7 +284,7 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.tools).toBeDefined()
       // Full mode with proactive delivery should exclude deferred prompt tools
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_deferred_prompt')
-      expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
+      expect(generateTextCalls[0]!.tools).toHaveProperty('papai_tool')
     })
 
     test('uses full system prompt', async () => {
@@ -295,6 +320,7 @@ describe('dispatchExecution', () => {
           text: 'Created task',
           toolCalls: [],
           toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Thread task', number: 17 } }],
+          steps: undefined,
           response: { messages: [] },
         })
       }
@@ -304,6 +330,37 @@ describe('dispatchExecution', () => {
       expect(loadFacts('-1001:42')).toEqual([
         expect.objectContaining({ identifier: '#17', title: 'Thread task', url: '' }),
       ])
+      expect(loadFacts(USER_ID)).toEqual([])
+    })
+
+    test('stores extracted facts from all tool-call steps', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Created tasks',
+          toolCalls: [{ toolName: 'create_task', input: { title: 'Later task' } }],
+          toolResults: [{ toolName: 'create_task', output: { id: 'task-2', title: 'Later task', number: 19 } }],
+          steps: [
+            {
+              toolCalls: [{ toolName: 'create_task', input: { title: 'Earlier task' } }],
+              toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Earlier task', number: 18 } }],
+            },
+            {
+              toolCalls: [{ toolName: 'create_task', input: { title: 'Later task' } }],
+              toolResults: [{ toolName: 'create_task', output: { id: 'task-2', title: 'Later task', number: 19 } }],
+            },
+          ],
+          response: { messages: [] },
+        })
+      }
+
+      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, () => provider)
+
+      const threadFacts = loadFacts('-1001:42')
+      expect(containsFact(threadFacts, { identifier: '#18', title: 'Earlier task', url: '' })).toBe(true)
+      expect(containsFact(threadFacts, { identifier: '#19', title: 'Later task', url: '' })).toBe(true)
       expect(loadFacts(USER_ID)).toEqual([])
     })
   })
@@ -349,7 +406,7 @@ describe('dispatchExecution', () => {
       )
 
       expect(generateTextCalls).toHaveLength(1)
-      expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
+      expect(generateTextCalls[0]!.tools).toHaveProperty('papai_tool')
     })
   })
 })

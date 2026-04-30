@@ -50,6 +50,9 @@ export interface BehaviorAuditTestConfig {
   readonly EMBEDDING_BASE_URL: string
   readonly CONSOLIDATION_THRESHOLD: number
   readonly CONSOLIDATION_MIN_CLUSTER_SIZE: number
+  readonly CONSOLIDATION_LINKAGE: 'single' | 'average' | 'complete'
+  readonly CONSOLIDATION_MAX_CLUSTER_SIZE: number
+  readonly CONSOLIDATION_GAP_THRESHOLD: number
   readonly CONSOLIDATION_DRY_RUN: boolean
   readonly CONSOLIDATION_EMBED_BATCH_SIZE: number
 }
@@ -75,6 +78,9 @@ const DEFAULT_CONFIG = {
   EMBEDDING_BASE_URL: 'http://localhost:1234/v1',
   CONSOLIDATION_THRESHOLD: 0.92,
   CONSOLIDATION_MIN_CLUSTER_SIZE: 2,
+  CONSOLIDATION_LINKAGE: 'single',
+  CONSOLIDATION_MAX_CLUSTER_SIZE: 0,
+  CONSOLIDATION_GAP_THRESHOLD: 0,
   CONSOLIDATION_DRY_RUN: false,
   CONSOLIDATION_EMBED_BATCH_SIZE: 100,
 } satisfies Omit<
@@ -188,6 +194,13 @@ export function createEmptyProgressFixture(filesTotal: number): Progress {
       status: 'not-started',
       lastRunAt: null,
       threshold: 0,
+      minClusterSize: 2,
+      linkage: 'single',
+      maxClusterSize: 0,
+      gapThreshold: 0,
+      embeddingModel: '',
+      embeddingBaseUrl: '',
+      embeddingCachePath: null,
       stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
     },
     phase2a: {

@@ -9,6 +9,7 @@ import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
 import { processMessage } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
+import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { mockLogger, createMockReply, setupTestDb } from './utils/test-helpers.js'
 
@@ -31,6 +32,14 @@ const mentionsToolAndContent =
   (toolName: string, content: string) =>
   (call: string): boolean =>
     call.includes(toolName) && call.includes(content)
+
+const containsFact = (
+  facts: readonly MemoryFact[],
+  expected: Readonly<Pick<MemoryFact, 'identifier' | 'title' | 'url'>>,
+): boolean =>
+  facts.some(
+    (fact) => fact.identifier === expected.identifier && fact.title === expected.title && fact.url === expected.url,
+  )
 
 /** Creates a DebugEvent listener that captures the stepsDetail payload of llm:end events. */
 const makeLlmEndListener =
@@ -89,7 +98,7 @@ const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, bas
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
-import { getCachedHistory, _userCaches } from '../src/cache.js'
+import { getCachedFacts, getCachedHistory, _userCaches } from '../src/cache.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
@@ -713,6 +722,62 @@ describe('processMessage', () => {
 
       // Should complete without error
       expect(textCalls.length).toBeGreaterThanOrEqual(0)
+    })
+
+    test('persists facts from all tool-call steps', async () => {
+      const ctxId = 'multi-step-facts-ctx'
+      seedConfigForContext(ctxId)
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Created both tasks',
+          toolCalls: [{ toolName: 'create_task', toolCallId: 'call-2', input: { title: 'Second task' } }],
+          toolResults: [
+            {
+              toolName: 'create_task',
+              toolCallId: 'call-2',
+              output: { id: 'task-2', title: 'Second task', number: 2 },
+            },
+          ],
+          steps: [
+            {
+              text: 'Creating first task...',
+              finishReason: 'tool-calls',
+              toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'First task' } }],
+              toolResults: [
+                {
+                  toolName: 'create_task',
+                  toolCallId: 'call-1',
+                  output: { id: 'task-1', title: 'First task', number: 1 },
+                },
+              ],
+            },
+            {
+              text: 'Creating second task...',
+              finishReason: 'tool-calls',
+              toolCalls: [{ toolName: 'create_task', toolCallId: 'call-2', input: { title: 'Second task' } }],
+              toolResults: [
+                {
+                  toolName: 'create_task',
+                  toolCallId: 'call-2',
+                  output: { id: 'task-2', title: 'Second task', number: 2 },
+                },
+              ],
+            },
+          ],
+          response: { messages: [{ role: 'assistant' as const, content: 'Created both tasks' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+      const { reply } = createMockReply()
+
+      await processMessage(reply, ctxId, 'user-1', null, 'create two tasks', 'dm')
+
+      const facts = getCachedFacts(ctxId)
+      expect(containsFact(facts, { identifier: '#1', title: 'First task', url: '' })).toBe(true)
+      expect(containsFact(facts, { identifier: '#2', title: 'Second task', url: '' })).toBe(true)
     })
   })
 

@@ -120,3 +120,20 @@ test('restoreBehaviorAuditEnv also restores live config exports for already-load
 
   expect(behaviorAuditConfig.MAX_RETRIES).toBe(defaultMaxRetries)
 })
+
+test('applyBehaviorAuditEnv applies clustering overrides through shared config helper', () => {
+  const testConfig = createAuditBehaviorConfig('/tmp/behavior-audit-runtime-helper', {
+    CONSOLIDATION_MIN_CLUSTER_SIZE: 4,
+    CONSOLIDATION_LINKAGE: 'average',
+    CONSOLIDATION_MAX_CLUSTER_SIZE: 7,
+    CONSOLIDATION_GAP_THRESHOLD: 0.2,
+  })
+
+  applyBehaviorAuditEnv(testConfig)
+  behaviorAuditConfig.reloadBehaviorAuditConfig()
+
+  expect(behaviorAuditConfig.CONSOLIDATION_MIN_CLUSTER_SIZE).toBe(4)
+  expect(behaviorAuditConfig.CONSOLIDATION_LINKAGE).toBe('average')
+  expect(behaviorAuditConfig.CONSOLIDATION_MAX_CLUSTER_SIZE).toBe(7)
+  expect(behaviorAuditConfig.CONSOLIDATION_GAP_THRESHOLD).toBe(0.2)
+})

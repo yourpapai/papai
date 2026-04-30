@@ -15,6 +15,7 @@ const EmbeddingEntrySchema = z.object({
 
 const EmbeddingCacheSchema = z.object({
   model: z.string(),
+  providerIdentity: z.string(),
   slugFingerprint: z.string(),
   entries: z.array(EmbeddingEntrySchema),
 })
@@ -35,6 +36,7 @@ function normalizeVector(vec: readonly number[]): readonly number[] {
 async function loadEmbeddingCache(
   cachePath: string,
   model: string,
+  providerIdentity: string,
   vocabulary: readonly KeywordVocabularyEntry[],
 ): Promise<{
   readonly raw: readonly (readonly number[])[]
@@ -49,6 +51,7 @@ async function loadEmbeddingCache(
 
   const cache = parsed.data
   if (cache.model !== model) return null
+  if (cache.providerIdentity !== providerIdentity) return null
   if (cache.slugFingerprint !== buildSlugFingerprint(vocabulary)) return null
 
   const rawMap = new Map<string, readonly number[]>()
@@ -69,6 +72,7 @@ async function loadEmbeddingCache(
 async function saveEmbeddingCache(
   cachePath: string,
   model: string,
+  providerIdentity: string,
   vocabulary: readonly KeywordVocabularyEntry[],
   embeddings: readonly (readonly number[])[],
 ): Promise<void> {
@@ -80,6 +84,7 @@ async function saveEmbeddingCache(
 
   const cache: EmbeddingCache = {
     model,
+    providerIdentity,
     slugFingerprint: buildSlugFingerprint(vocabulary),
     entries,
   }
@@ -98,6 +103,7 @@ export interface EmbeddingData {
 
 export interface GetOrEmbedDeps {
   readonly embedSlugBatch: typeof embedSlugBatch
+  readonly providerIdentity?: string
   readonly log: Pick<typeof console, 'log'>
 }
 
@@ -108,8 +114,9 @@ export async function getOrEmbed(
   deps: GetOrEmbedDeps,
   forceReembed: boolean = false,
 ): Promise<EmbeddingData> {
+  const providerIdentity = deps.providerIdentity ?? 'default'
   if (cachePath !== null && !forceReembed) {
-    const cached = await loadEmbeddingCache(cachePath, model, vocabulary)
+    const cached = await loadEmbeddingCache(cachePath, model, providerIdentity, vocabulary)
     if (cached !== null) {
       deps.log.log(`[embedding-cache] Reusing cached embeddings (${vocabulary.length} slugs)`)
       return cached
@@ -122,7 +129,7 @@ export async function getOrEmbed(
 
   if (cachePath !== null) {
     deps.log.log(`[embedding-cache] Saving embeddings to ${cachePath}`)
-    await saveEmbeddingCache(cachePath, model, vocabulary, embeddings)
+    await saveEmbeddingCache(cachePath, model, providerIdentity, vocabulary, embeddings)
   }
 
   return {

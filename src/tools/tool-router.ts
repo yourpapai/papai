@@ -1,7 +1,7 @@
 import type { ToolSet } from 'ai'
 
 import { logger } from '../logger.js'
-import { getToolMetadata, type ToolDomain, type ToolMetadata } from './tool-metadata.js'
+import { getToolMetadata, type ToolClassification, type ToolDomain } from './tool-metadata.js'
 
 const log = logger.child({ scope: 'tool-router' })
 
@@ -87,7 +87,7 @@ export function classifyToolRoutingIntent(userText: string): ToolRoutingDecision
   return { intent: 'full', confidence: 0.4, reason: 'uncertain-intent' }
 }
 
-function shouldKeepForIntent(intent: ToolRoutingIntent, metadata: ToolMetadata | undefined): boolean {
+function shouldKeepForIntent(intent: ToolRoutingIntent, metadata: ToolClassification | undefined): boolean {
   if (metadata === undefined) return intent === 'full'
   if (intent === 'full') return true
   if (intent === 'trivial') return false

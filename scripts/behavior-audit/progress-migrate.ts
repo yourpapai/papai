@@ -26,6 +26,33 @@ const Phase1bCheckpointSchema = z.strictObject({
   status: z.enum(['not-started', 'in-progress', 'done']),
   lastRunAt: z.string().nullable(),
   threshold: z.number(),
+  minClusterSize: z.number(),
+  linkage: z.enum(['single', 'average', 'complete']),
+  maxClusterSize: z.number(),
+  gapThreshold: z.number(),
+  embeddingModel: z.string(),
+  embeddingBaseUrl: z.string(),
+  embeddingCachePath: z.string().nullable(),
+  stats: z.object({
+    slugsBefore: z.number(),
+    slugsAfter: z.number(),
+    mergesApplied: z.number(),
+    behaviorsUpdated: z.number(),
+    keywordsRemapped: z.number(),
+  }),
+})
+
+const LegacyPhase1bCheckpointSchema = z.strictObject({
+  status: z.enum(['not-started', 'in-progress', 'done']),
+  lastRunAt: z.string().nullable(),
+  threshold: z.number(),
+  minClusterSize: z.number().optional(),
+  linkage: z.enum(['single', 'average', 'complete']).optional(),
+  maxClusterSize: z.number().optional(),
+  gapThreshold: z.number().optional(),
+  embeddingModel: z.string().optional(),
+  embeddingBaseUrl: z.string().optional(),
+  embeddingCachePath: z.string().nullable().optional(),
   stats: z.object({
     slugsBefore: z.number(),
     slugsAfter: z.number(),
@@ -83,6 +110,16 @@ const ProgressV5Schema = z.strictObject({
   startedAt: z.string(),
   phase1: Phase1CheckpointSchema,
   phase1b: Phase1bCheckpointSchema,
+  phase2a: Phase2aCheckpointSchema,
+  phase2b: Phase2bCheckpointSchema,
+  phase3: Phase3CheckpointSchema,
+})
+
+const LegacyProgressV5Schema = z.strictObject({
+  version: z.literal(5),
+  startedAt: z.string(),
+  phase1: Phase1CheckpointSchema,
+  phase1b: LegacyPhase1bCheckpointSchema,
   phase2a: Phase2aCheckpointSchema,
   phase2b: Phase2bCheckpointSchema,
   phase3: Phase3CheckpointSchema,
@@ -158,6 +195,18 @@ function createIncompatibleResetProgress(startedAt: string): Progress {
 export function validateOrMigrateProgress(raw: unknown): Progress | null {
   const v5Result = ProgressV5Schema.safeParse(raw)
   if (v5Result.success) return v5Result.data
+
+  const legacyV5Result = LegacyProgressV5Schema.safeParse(raw)
+  if (legacyV5Result.success) {
+    return toVersion5Progress({
+      startedAt: legacyV5Result.data.startedAt,
+      phase1: legacyV5Result.data.phase1,
+      phase1b: legacyV5Result.data.phase1b,
+      phase2a: legacyV5Result.data.phase2a,
+      phase2b: legacyV5Result.data.phase2b,
+      phase3: legacyV5Result.data.phase3,
+    })
+  }
 
   const v4Result = ProgressV4Schema.safeParse(raw)
   if (v4Result.success) {

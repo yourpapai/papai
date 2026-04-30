@@ -1,3 +1,5 @@
+import type { ToolSet } from 'ai'
+
 export type ToolDomain =
   | 'task'
   | 'project'
@@ -22,21 +24,25 @@ export type ToolOperation = 'read' | 'create' | 'update' | 'delete' | 'manage'
 
 export type ToolRisk = 'read' | 'write' | 'destructive' | 'open-world'
 
-export type ToolMetadata = {
+export type ToolClassification = {
   domain: ToolDomain
   operation: ToolOperation
   risk: ToolRisk
 }
 
-const read = (domain: ToolDomain): ToolMetadata => ({ domain, operation: 'read', risk: 'read' })
-const write = (domain: ToolDomain, operation: Exclude<ToolOperation, 'read'>): ToolMetadata => ({
+const read = (domain: ToolDomain): ToolClassification => ({ domain, operation: 'read', risk: 'read' })
+const write = (domain: ToolDomain, operation: Exclude<ToolOperation, 'read'>): ToolClassification => ({
   domain,
   operation,
   risk: 'write',
 })
-const destructive = (domain: ToolDomain): ToolMetadata => ({ domain, operation: 'delete', risk: 'destructive' })
+const destructive = (domain: ToolDomain): ToolClassification => ({
+  domain,
+  operation: 'delete',
+  risk: 'destructive',
+})
 
-export const TOOL_METADATA: Readonly<Record<string, ToolMetadata>> = {
+export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   create_task: write('task', 'create'),
   update_task: write('task', 'update'),
   search_tasks: read('task'),
@@ -139,6 +145,44 @@ export const TOOL_METADATA: Readonly<Record<string, ToolMetadata>> = {
   web_fetch: { domain: 'web', operation: 'read', risk: 'open-world' },
 }
 
-export function getToolMetadata(toolName: string): ToolMetadata | undefined {
+export function getToolMetadata(toolName: string): ToolClassification | undefined {
   return TOOL_METADATA[toolName]
+}
+
+export type ToolMetadata = {
+  readonly name: string
+  readonly description: string
+  readonly inputSchema: unknown
+  readonly executable: boolean
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null
+}
+
+function normalizeToolName(value: string): string {
+  return value.replaceAll('-', '_')
+}
+
+export function buildToolMetadata(tools: ToolSet): readonly ToolMetadata[] {
+  return Object.entries(tools).flatMap(([name, tool]) => {
+    if (!isRecord(tool)) return []
+    const description = typeof tool['description'] === 'string' ? tool['description'] : ''
+    return [
+      {
+        name,
+        description,
+        inputSchema: tool['inputSchema'],
+        executable: typeof tool['execute'] === 'function',
+      },
+    ]
+  })
+}
+
+export function findToolMetadata(metadata: readonly ToolMetadata[], toolName: string): ToolMetadata | undefined {
+  const exact = metadata.find((tool) => tool.name === toolName)
+  if (exact !== undefined) return exact
+
+  const normalized = normalizeToolName(toolName)
+  return metadata.find((tool) => normalizeToolName(tool.name) === normalized)
 }

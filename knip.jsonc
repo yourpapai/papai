@@ -12,6 +12,7 @@
     "review-loop/src/cli.ts!",
     "tests/review-loop/**/*.test.ts!",
     "scripts/behavior-audit/reset.ts!",
+    "scripts/behavior-audit/migrate-trust.ts!",
     "tests/scripts/behavior-audit*.ts!",
     "tests/scripts/behavior-audit/**/*.ts!",
   ],

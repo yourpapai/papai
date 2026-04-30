@@ -1,5 +1,7 @@
 import { resolve } from 'node:path'
 
+import type { LinkageMode } from './consolidate-keywords-helpers.js'
+
 const DEFAULT_PROJECT_ROOT = resolve(import.meta.dir, '../..')
 const DEFAULT_REPORTS_DIR = resolve(DEFAULT_PROJECT_ROOT, 'reports')
 const DEFAULT_AUDIT_BEHAVIOR_DIR = resolve(DEFAULT_REPORTS_DIR, 'audit-behavior')
@@ -77,11 +79,14 @@ export let PROGRESS_RENDERER = 'auto'
 export let EXCLUDED_PREFIXES: readonly string[] = DEFAULT_EXCLUDED_PREFIXES
 
 export let EMBEDDING_MODEL = 'Qwen3-Embedding-8B'
-export let EMBEDDING_BASE_URL = BASE_URL
+export let EMBEDDING_BASE_URL = 'http://localhost:8000/v1'
 export let CONSOLIDATION_THRESHOLD = 0.92
 export let CONSOLIDATION_MIN_CLUSTER_SIZE = 2
 export let CONSOLIDATION_DRY_RUN = false
 export let CONSOLIDATION_EMBED_BATCH_SIZE = 100
+export let CONSOLIDATION_LINKAGE: LinkageMode = 'single'
+export let CONSOLIDATION_MAX_CLUSTER_SIZE = 0
+export let CONSOLIDATION_GAP_THRESHOLD = 0
 
 function reloadPathConfig(): void {
   PROJECT_ROOT = resolveStringOverride('BEHAVIOR_AUDIT_PROJECT_ROOT', DEFAULT_PROJECT_ROOT)
@@ -138,6 +143,10 @@ export function reloadBehaviorAuditConfig(): void {
   CONSOLIDATION_MIN_CLUSTER_SIZE = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_MIN_CLUSTER_SIZE', 2)
   CONSOLIDATION_DRY_RUN = resolveStringOverride('BEHAVIOR_AUDIT_CONSOLIDATION_DRY_RUN', '0') === '1'
   CONSOLIDATION_EMBED_BATCH_SIZE = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_EMBED_BATCH_SIZE', 100)
+  const linkageRaw = resolveStringOverride('BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE', 'single')
+  CONSOLIDATION_LINKAGE = linkageRaw === 'average' || linkageRaw === 'complete' ? linkageRaw : 'single'
+  CONSOLIDATION_MAX_CLUSTER_SIZE = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_MAX_CLUSTER_SIZE', 0)
+  CONSOLIDATION_GAP_THRESHOLD = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_GAP_THRESHOLD', 0)
 }
 
 export const formatElapsedMs = (ms: number): string =>

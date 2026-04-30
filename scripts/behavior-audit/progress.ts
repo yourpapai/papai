@@ -1,3 +1,4 @@
+import type { LinkageMode } from './consolidate-keywords-helpers.js'
 import type { ConsolidatedBehavior } from './report-writer.js'
 
 export { loadProgress, saveProgress } from './progress-io.js'
@@ -19,6 +20,13 @@ export interface Phase1bProgress {
   status: PhaseStatus
   lastRunAt: string | null
   threshold: number
+  minClusterSize: number
+  linkage: LinkageMode
+  maxClusterSize: number
+  gapThreshold: number
+  embeddingModel: string
+  embeddingBaseUrl: string
+  embeddingCachePath: string | null
   stats: {
     slugsBefore: number
     slugsAfter: number
@@ -81,6 +89,13 @@ export function emptyPhase1b(): Phase1bProgress {
     status: 'not-started',
     lastRunAt: null,
     threshold: 0,
+    minClusterSize: 2,
+    linkage: 'single',
+    maxClusterSize: 0,
+    gapThreshold: 0,
+    embeddingModel: '',
+    embeddingBaseUrl: '',
+    embeddingCachePath: null,
     stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
   }
 }

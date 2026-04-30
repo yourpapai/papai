@@ -41,6 +41,53 @@ test('validateOrMigrateProgress returns a valid v5 progress unchanged', () => {
   expect(result?.phase1b).toEqual(emptyPhase1b())
 })
 
+test('validateOrMigrateProgress backfills missing phase1b clustering fields for legacy v5 progress', () => {
+  const legacyV5 = {
+    ...validV4Base,
+    version: 5,
+    phase1: {
+      ...validV4Base.phase1,
+      status: 'done',
+      stats: { filesTotal: 12, filesDone: 12, testsExtracted: 40, testsFailed: 1 },
+    },
+    phase1b: {
+      status: 'done',
+      lastRunAt: '2026-01-02T00:00:00.000Z',
+      threshold: 0.92,
+      stats: {
+        slugsBefore: 30,
+        slugsAfter: 24,
+        mergesApplied: 6,
+        behaviorsUpdated: 4,
+        keywordsRemapped: 10,
+      },
+    },
+    phase2a: {
+      ...validV4Base.phase2a,
+      status: 'in-progress',
+      stats: { behaviorsTotal: 24, behaviorsDone: 10, behaviorsFailed: 2 },
+    },
+  }
+
+  const result = validateOrMigrateProgress(legacyV5)
+
+  expect(result).not.toBeNull()
+  expect(result?.version).toBe(5)
+  expect(result?.phase1.status).toBe('done')
+  expect(result?.phase1.stats.filesDone).toBe(12)
+  expect(result?.phase1b.status).toBe('done')
+  expect(result?.phase1b.lastRunAt).toBe('2026-01-02T00:00:00.000Z')
+  expect(result?.phase1b.threshold).toBe(0.92)
+  expect(result?.phase1b.minClusterSize).toBe(2)
+  expect(result?.phase1b.linkage).toBe('single')
+  expect(result?.phase1b.maxClusterSize).toBe(0)
+  expect(result?.phase1b.gapThreshold).toBe(0)
+  expect(result?.phase1b.embeddingBaseUrl).toBe('')
+  expect(result?.phase1b.stats.mergesApplied).toBe(6)
+  expect(result?.phase2a.status).toBe('in-progress')
+  expect(result?.phase2a.stats.behaviorsDone).toBe(10)
+})
+
 test('validateOrMigrateProgress migrates v4 to v5 by injecting emptyPhase1b', () => {
   const result = validateOrMigrateProgress(validV4Base)
   expect(result).not.toBeNull()
