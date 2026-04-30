@@ -6,6 +6,39 @@ import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'llm-orchestrator-events' })
 
+type TokenUsage = {
+  inputTokens: number | undefined
+  outputTokens: number | undefined
+}
+
+type ResultToolCall = {
+  toolName: string
+  toolCallId: string
+  input: unknown
+}
+
+type ResultToolResult = {
+  toolCallId: string
+  output: unknown
+}
+
+type ResultStep = {
+  toolCalls: Array<ResultToolCall>
+  toolResults: Array<ResultToolResult>
+} & Partial<{
+  text: string
+  finishReason: string
+  content: ReadonlyArray<unknown>
+  usage: TokenUsage
+}>
+
+type ResultResponse = {
+  messages: ModelMessage[]
+} & Partial<{
+  id: string
+  modelId: string
+}>
+
 export type ToolRoutingTelemetry = {
   intent: string
   confidence: number
@@ -17,23 +50,17 @@ export type ToolRoutingTelemetry = {
 // Result type after awaiting all streamText promises
 export type ResolvedStreamTextResult = {
   text: string
-  toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
-  toolResults: Array<{ toolCallId: string; output: unknown }>
-  steps: Array<{
-    text?: string
-    finishReason?: string
-    toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
-    toolResults: Array<{ toolCallId: string; output: unknown }>
-    content?: ReadonlyArray<unknown>
-    usage?: { inputTokens: number | undefined; outputTokens: number | undefined }
-  }>
-  response: { messages: ModelMessage[]; id?: string; modelId?: string }
-  usage: { inputTokens: number | undefined; outputTokens: number | undefined }
+  toolCalls: Array<ResultToolCall>
+  toolResults: Array<ResultToolResult>
+  steps: Array<ResultStep>
+  response: ResultResponse
+  usage: TokenUsage
   finishReason: string
-  warnings?: unknown[]
-  request?: unknown
-  providerMetadata?: unknown
-}
+} & Partial<{
+  warnings: unknown[]
+  request: unknown
+  providerMetadata: unknown
+}>
 
 function stringifySingleToolSchema(toolName: string, value: unknown): string {
   log.debug({ toolName }, 'stringifySingleToolSchema')
@@ -63,31 +90,36 @@ function estimateToolSchemaBytes(tools: ToolSet): number {
   return total
 }
 
-function buildToolTelemetry(tools: ToolSet, routing?: ToolRoutingTelemetry): Record<string, unknown> {
+function buildRoutingTelemetry(routing: ToolRoutingTelemetry | undefined): Record<string, unknown> {
+  if (routing === undefined) {
+    return {}
+  }
+  return {
+    routingIntent: routing.intent,
+    routingConfidence: routing.confidence,
+    routingReason: routing.reason,
+  }
+}
+
+function buildToolTelemetry(tools: ToolSet, routing: ToolRoutingTelemetry | undefined): Record<string, unknown> {
   const exposedToolCount = Object.keys(tools).length
+  const fullToolCount = routing === undefined ? exposedToolCount : routing.fullToolCount
   log.debug({ exposedToolCount, hasRouting: routing !== undefined }, 'buildToolTelemetry')
   return {
     toolCount: exposedToolCount,
     exposedToolCount,
-    fullToolCount: routing?.fullToolCount ?? exposedToolCount,
+    fullToolCount,
     toolSchemaBytes: estimateToolSchemaBytes(tools),
-    ...(routing === undefined
-      ? {}
-      : {
-          routingIntent: routing.intent,
-          routingConfidence: routing.confidence,
-          routingReason: routing.reason,
-        }),
+    ...buildRoutingTelemetry(routing),
   }
 }
 
 export function emitLlmStart(
-  contextId: string,
-  mainModel: string,
-  messages: ModelMessage[],
-  tools: ToolSet,
-  routing?: ToolRoutingTelemetry,
+  ...args:
+    | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet]
+    | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet, routing: ToolRoutingTelemetry]
 ): void {
+  const [contextId, mainModel, messages, tools, routing] = args
   emit('llm:start', {
     userId: contextId,
     model: mainModel,
@@ -97,22 +129,34 @@ export function emitLlmStart(
 }
 
 export function emitLlmEnd(
-  contextId: string,
-  mainModel: string,
-  result: ResolvedStreamTextResult,
-  startTime: number,
-  messages: ModelMessage[],
-  tools: ToolSet,
-  routing?: ToolRoutingTelemetry,
+  ...args:
+    | [
+        contextId: string,
+        mainModel: string,
+        result: ResolvedStreamTextResult,
+        startTime: number,
+        messages: ModelMessage[],
+        tools: ToolSet,
+      ]
+    | [
+        contextId: string,
+        mainModel: string,
+        result: ResolvedStreamTextResult,
+        startTime: number,
+        messages: ModelMessage[],
+        tools: ToolSet,
+        routing: ToolRoutingTelemetry,
+      ]
 ): void {
+  const [contextId, mainModel, result, startTime, messages, tools, routing] = args
   emit('llm:end', {
     userId: contextId,
     model: mainModel,
     steps: result.steps.length,
     totalDuration: Date.now() - startTime,
     tokenUsage: result.usage,
-    responseId: result.response?.id,
-    actualModel: result.response?.modelId,
+    responseId: result.response.id,
+    actualModel: result.response.modelId,
     finishReason: result.finishReason,
     messageCount: messages.length,
     ...buildToolTelemetry(tools, routing),

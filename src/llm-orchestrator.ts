@@ -81,7 +81,11 @@ const invokeModel = async (
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
   const { contextId, mainModel, model, provider, tools, messages, deps, reply } = args
   const start = Date.now()
-  emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting)
+  if (args.toolRouting === undefined) {
+    emitLlmStart(contextId, mainModel, messages, tools)
+  } else {
+    emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting)
+  }
   const result = await deps.generateText({
     model,
     system: buildSystemPrompt(provider, contextId),
@@ -101,7 +105,11 @@ const invokeModel = async (
       handleToolCallFinish(contextId, reply, event)
     },
   })
-  emitLlmEnd(contextId, mainModel, result, start, messages, tools, args.toolRouting)
+  if (args.toolRouting === undefined) {
+    emitLlmEnd(contextId, mainModel, result, start, messages, tools)
+  } else {
+    emitLlmEnd(contextId, mainModel, result, start, messages, tools, args.toolRouting)
+  }
   return result
 }
 

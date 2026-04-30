@@ -14,11 +14,12 @@ type LogContext = Record<string, unknown>
 
 type ToolCallFinishEvent = {
   toolCall: { toolName: string; toolCallId: string }
-  success?: boolean
-  output?: unknown
-  error?: unknown
-  durationMs?: number
-}
+} & Partial<{
+  success: boolean
+  output: unknown
+  error: unknown
+  durationMs: number
+}>
 
 export interface LlmOrchestratorSupportDeps {
   emit: (event: string, payload: Record<string, unknown>) => void
@@ -30,9 +31,20 @@ export interface LlmOrchestratorSupportDeps {
 
 const defaultDeps: LlmOrchestratorSupportDeps = { emit, log }
 
+const resolveSupportDeps = (deps: LlmOrchestratorSupportDeps | undefined): LlmOrchestratorSupportDeps => {
+  if (deps === undefined) {
+    return defaultDeps
+  }
+  return deps
+}
+
 const getToolFailureResult = (event: ToolCallFinishEvent): ToolFailureResult | null => {
-  if (event.success === true) return isToolFailureResult(event.output) ? event.output : null
-  if (event.success !== false) return null
+  if (event.success === true) {
+    return isToolFailureResult(event.output) ? event.output : null
+  }
+  if (event.success !== false) {
+    return null
+  }
   return buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
 }
 
@@ -79,19 +91,20 @@ const emitToolSuccess = (contextId: string, event: ToolCallFinishEvent, deps: Ll
   })
 }
 
-export const handleToolCallFinish = (
-  contextId: string,
-  reply: ReplyFn | undefined,
-  event: ToolCallFinishEvent,
-  deps: LlmOrchestratorSupportDeps = defaultDeps,
-): void => {
+export function handleToolCallFinish(
+  ...args:
+    | [contextId: string, reply: ReplyFn | undefined, event: ToolCallFinishEvent]
+    | [contextId: string, reply: ReplyFn | undefined, event: ToolCallFinishEvent, deps: LlmOrchestratorSupportDeps]
+): void {
+  const [contextId, reply, event, deps] = args
+  const resolvedDeps = resolveSupportDeps(deps)
   const toolFailure = getToolFailureResult(event)
   if (toolFailure !== null) {
-    emitToolFailure(contextId, reply, event, toolFailure, deps)
+    emitToolFailure(contextId, reply, event, toolFailure, resolvedDeps)
     return
   }
   if (event.success !== true) return
-  emitToolSuccess(contextId, event, deps)
+  emitToolSuccess(contextId, event, resolvedDeps)
 }
 
 export const extractOrchestratorErrorDetails = (error: unknown): Record<string, unknown> => {
@@ -121,13 +134,14 @@ export const extractOrchestratorErrorDetails = (error: unknown): Record<string, 
   return { type: 'unknown', value: String(error) }
 }
 
-export const handleOrchestratorMessageError = async (
-  reply: ReplyFn,
-  contextId: string,
-  error: unknown,
-  deps: LlmOrchestratorSupportDeps = defaultDeps,
-): Promise<void> => {
-  deps.log.error({ contextId, error: extractOrchestratorErrorDetails(error) }, 'Message handling failed')
+export async function handleOrchestratorMessageError(
+  ...args:
+    | [reply: ReplyFn, contextId: string, error: unknown]
+    | [reply: ReplyFn, contextId: string, error: unknown, deps: LlmOrchestratorSupportDeps]
+): Promise<void> {
+  const [reply, contextId, error, deps] = args
+  const resolvedDeps = resolveSupportDeps(deps)
+  resolvedDeps.log.error({ contextId, error: extractOrchestratorErrorDetails(error) }, 'Message handling failed')
   const appError = extractAppError(error)
   if (appError === null) {
     await reply.text(
