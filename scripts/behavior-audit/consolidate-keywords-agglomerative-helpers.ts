@@ -68,19 +68,16 @@ export function pairKey(a: number, b: number): string {
   return `${Math.min(a, b)}:${Math.max(a, b)}`
 }
 
-export function findNearestActiveCluster(
+function selectNearestCandidate(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   cluster: number,
   blockedPairs: ReadonlySet<string>,
-  profile: ClusteringProfile,
-): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
-  const startedAt = performance.now()
-  const active = activeIndices(state)
-
+): Readonly<{ nearest: number | undefined; distanceReads: number }> {
   let nearest: number | undefined
   let bestDistance = Infinity
   let distanceReads = 0
+  let preserveNearest = false
 
   for (const candidate of active) {
     if (candidate === cluster) continue
@@ -94,11 +91,32 @@ export function findNearestActiveCluster(
       continue
     }
 
+    if (preserveNearest) continue
+
+    if (Number.isNaN(distance - bestDistance)) {
+      preserveNearest = true
+      continue
+    }
+
     if (distance < bestDistance || (distance === bestDistance && candidate < nearest)) {
       nearest = candidate
       bestDistance = distance
     }
   }
+
+  return { nearest, distanceReads }
+}
+
+export function findNearestActiveCluster(
+  matrix: MutableDistanceMatrix,
+  state: ActiveState,
+  cluster: number,
+  blockedPairs: ReadonlySet<string>,
+  profile: ClusteringProfile,
+): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
+  const startedAt = performance.now()
+  const active = activeIndices(state)
+  const { nearest, distanceReads } = selectNearestCandidate(active, matrix, cluster, blockedPairs)
 
   const withCounters = incrementClusteringCounter(
     incrementClusteringCounter(incrementClusteringCounter(profile, 'nearestNeighborCalls', 1), 'activeListBuilds', 1),
