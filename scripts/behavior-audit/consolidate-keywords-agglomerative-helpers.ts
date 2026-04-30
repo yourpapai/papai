@@ -88,7 +88,13 @@ export function findNearestActiveCluster(
 
     const distance = getDistance(matrix, cluster, candidate)
     distanceReads += 1
-    if (distance < bestDistance || (distance === bestDistance && (nearest === undefined || candidate < nearest))) {
+    if (nearest === undefined) {
+      nearest = candidate
+      bestDistance = distance
+      continue
+    }
+
+    if (distance < bestDistance || (distance === bestDistance && candidate < nearest)) {
       nearest = candidate
       bestDistance = distance
     }

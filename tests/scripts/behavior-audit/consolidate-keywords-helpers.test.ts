@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { createClusteringProfile } from '../../../scripts/behavior-audit/clustering-profile.js'
 import {
   activeIndices,
   buildCondensedDistanceMatrix,
@@ -9,6 +10,7 @@ import {
   isActive,
   setDistance,
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
+import { findNearestActiveCluster } from '../../../scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.js'
 import {
   averageLinkageSimilarity,
   buildClustersAdvanced,
@@ -468,6 +470,25 @@ describe('nearest-neighbor-chain distance helpers', () => {
     expect(activeIndices(state)).toEqual([0, 2])
     expect(isActive(state, 1)).toBe(false)
     expect(Array.from(state.sizes)).toEqual([2, 0, 1])
+  })
+
+  test('findNearestActiveCluster preserves active-order choice when comparator distance is NaN', () => {
+    const matrix = buildCondensedDistanceMatrix(
+      makeNormalized([
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ]),
+    )
+    const state = createActiveState(3)
+    const profile = createClusteringProfile({ enabled: false, linkage: 'average', threshold: 0.5, size: 3 })
+
+    setDistance(matrix, 0, 1, Number.NaN)
+    setDistance(matrix, 0, 2, 0.25)
+
+    const result = findNearestActiveCluster(matrix, state, 0, new Set(), profile)
+
+    expect(result.nearest).toBe(1)
   })
 })
 
