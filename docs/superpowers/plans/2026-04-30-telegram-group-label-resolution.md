@@ -1,10 +1,20 @@
 # Telegram Group Label Resolution Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Improve Telegram `/groups` and `/group users` so they resolve group IDs and user IDs to readable labels via live Bot API lookups first, cached local observations second, and raw IDs last.
+**Goal:** Improve Telegram `/groups` and `/group users` so they resolve group
+IDs and user IDs to readable labels via live Bot API lookups first, cached
+local observations second, and raw IDs last.
 
-**Architecture:** Keep `src/commands/group.ts` responsible for authorization and reply formatting, but move Telegram-specific display fallback logic into a dedicated helper under `src/chat/telegram/`. Add a small provider-scoped observation table plus registry helpers so group messages can seed cached user labels and command resolvers can reuse those labels when Telegram live lookups fail.
+**Architecture:** Keep `src/commands/group.ts` responsible for authorization
+and reply formatting, but move Telegram-specific display fallback logic into a
+dedicated helper under `src/chat/telegram/`. Add a small provider-scoped
+observation table plus registry helpers so group messages can seed cached user
+labels and command resolvers can reuse those labels when Telegram live lookups
+fail.
 
 **Tech Stack:** Bun, TypeScript, Drizzle ORM with SQLite migrations, Grammy Telegram adapter, Bun test
 
@@ -19,15 +29,19 @@
 - `src/db/index.ts`
   - Register the new migration.
 - `src/group-settings/registry.ts`
-  - Add upsert/query helpers for cached group user display observations and a small exported lookup for known group labels.
+  - Add upsert/query helpers for cached group user display observations and a
+    small exported lookup for known group labels.
 - `src/chat/types.ts`
-  - Add an optional `displayLabel` field on `ChatUser` so adapters can pass already-known human-readable labels into observation recording.
+  - Add an optional `displayLabel` field on `ChatUser` so adapters can pass
+    already-known human-readable labels into observation recording.
 - `src/chat/telegram/index.ts`
   - Populate `msg.user.displayLabel` from Telegram `from.first_name`, `from.last_name`, and `from.username`.
 - `src/bot.ts`
   - Persist cached group user display observations when group messages are recorded.
 - `src/commands/group.ts`
-  - Route Telegram `/groups` and `/group users` label resolution through the Telegram-specific resolver while preserving existing concurrency limits and non-Telegram behavior.
+  - Route Telegram `/groups` and `/group users` label resolution through the
+    Telegram-specific resolver while preserving existing concurrency limits and
+    non-Telegram behavior.
 - `tests/group-settings/registry.test.ts`
   - Add regression tests for the new observation table and helper functions.
 - `tests/bot.test.ts`
