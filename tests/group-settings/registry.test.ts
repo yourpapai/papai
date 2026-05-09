@@ -23,13 +23,20 @@ function getGroupContext(provider: string, contextId: string): typeof knownGroup
 }
 
 function getAdminObservation(
+  provider: string,
   contextId: string,
   userId: string,
 ): typeof groupAdminObservations.$inferSelect | undefined {
   return getDrizzleDb()
     .select()
     .from(groupAdminObservations)
-    .where(and(eq(groupAdminObservations.contextId, contextId), eq(groupAdminObservations.userId, userId)))
+    .where(
+      and(
+        eq(groupAdminObservations.provider, provider),
+        eq(groupAdminObservations.contextId, contextId),
+        eq(groupAdminObservations.userId, userId),
+      ),
+    )
     .get()
 }
 
@@ -123,15 +130,34 @@ describe('group-settings registry', () => {
     expect(findKnownGroupContext('discord', 'group-1')).toBeNull()
   })
 
+  test('stores known group contexts separately per provider for the same context id', () => {
+    upsertKnownGroupContext({
+      contextId: 'shared-group',
+      provider: 'telegram',
+      displayName: 'Telegram Operations',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: 'shared-group',
+      provider: 'discord',
+      displayName: 'Discord Operations',
+      parentName: null,
+    })
+
+    expect(findKnownGroupContext('telegram', 'shared-group')?.displayName).toBe('Telegram Operations')
+    expect(findKnownGroupContext('discord', 'shared-group')?.displayName).toBe('Discord Operations')
+  })
+
   test('stores the latest admin observation per group and user', () => {
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-1',
       userId: 'user-1',
       username: 'alice',
       isAdmin: true,
     })
 
-    const observation = getAdminObservation('group-1', 'user-1')
+    const observation = getAdminObservation('telegram', 'group-1', 'user-1')
     expect(observation?.username).toBe('alice')
     expect(observation?.isAdmin).toBe(true)
   })
@@ -140,9 +166,27 @@ describe('group-settings registry', () => {
     upsertKnownGroupContext({ contextId: 'g-1', provider: 'telegram', displayName: 'Alpha', parentName: null })
     upsertKnownGroupContext({ contextId: 'g-2', provider: 'telegram', displayName: 'Beta', parentName: null })
     upsertKnownGroupContext({ contextId: 'g-3', provider: 'telegram', displayName: 'Gamma', parentName: null })
-    upsertGroupAdminObservation({ contextId: 'g-1', userId: 'u-1', username: 'alice', isAdmin: true })
-    upsertGroupAdminObservation({ contextId: 'g-2', userId: 'u-1', username: 'alice', isAdmin: false })
-    upsertGroupAdminObservation({ contextId: 'g-3', userId: 'u-1', username: 'alice', isAdmin: true })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-1',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: true,
+    })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-2',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: false,
+    })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-3',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: true,
+    })
 
     const groups = listAdminGroupContextsForUser('u-1')
     expect(groups.map((g) => g.contextId)).toEqual(['g-1', 'g-3'])
@@ -150,7 +194,13 @@ describe('group-settings registry', () => {
 
   test('returns empty array when user has no admin groups', () => {
     upsertKnownGroupContext({ contextId: 'g-1', provider: 'telegram', displayName: 'Alpha', parentName: null })
-    upsertGroupAdminObservation({ contextId: 'g-1', userId: 'u-1', username: 'alice', isAdmin: false })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-1',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: false,
+    })
 
     expect(listAdminGroupContextsForUser('u-1')).toEqual([])
     expect(listAdminGroupContextsForUser('nonexistent')).toEqual([])
@@ -183,38 +233,80 @@ describe('group-settings registry', () => {
   })
 
   test('skips admin observation upsert when lastSeenAt is within throttle window', () => {
-    upsertGroupAdminObservation({ contextId: 'g-t', userId: 'u-1', username: 'alice', isAdmin: true })
-    const first = getAdminObservation('g-t', 'u-1')!
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-t',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: true,
+    })
+    const first = getAdminObservation('telegram', 'g-t', 'u-1')!
 
-    upsertGroupAdminObservation({ contextId: 'g-t', userId: 'u-1', username: 'alice', isAdmin: true })
-    const second = getAdminObservation('g-t', 'u-1')!
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-t',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: true,
+    })
+    const second = getAdminObservation('telegram', 'g-t', 'u-1')!
 
     expect(second.lastSeenAt).toBe(first.lastSeenAt)
   })
 
   test('writes through throttle when isAdmin changes within throttle window', () => {
-    upsertGroupAdminObservation({ contextId: 'g-t', userId: 'u-1', username: 'alice', isAdmin: true })
-    const first = getAdminObservation('g-t', 'u-1')!
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-t',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: true,
+    })
+    const first = getAdminObservation('telegram', 'g-t', 'u-1')!
 
-    upsertGroupAdminObservation({ contextId: 'g-t', userId: 'u-1', username: 'alice', isAdmin: false })
-    const second = getAdminObservation('g-t', 'u-1')!
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-t',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: false,
+    })
+    const second = getAdminObservation('telegram', 'g-t', 'u-1')!
 
     expect(second.isAdmin).toBe(false)
     expect(second.lastSeenAt >= first.lastSeenAt).toBe(true)
   })
 
   test('updates admin observation when lastSeenAt is outside throttle window', () => {
-    upsertGroupAdminObservation({ contextId: 'g-e', userId: 'u-1', username: 'alice', isAdmin: true })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-e',
+      userId: 'u-1',
+      username: 'alice',
+      isAdmin: true,
+    })
 
     const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString()
     getDrizzleDb()
       .update(groupAdminObservations)
       .set({ lastSeenAt: staleTime })
-      .where(and(eq(groupAdminObservations.contextId, 'g-e'), eq(groupAdminObservations.userId, 'u-1')))
+      .where(
+        and(
+          eq(groupAdminObservations.provider, 'telegram'),
+          eq(groupAdminObservations.contextId, 'g-e'),
+          eq(groupAdminObservations.userId, 'u-1'),
+        ),
+      )
       .run()
 
-    upsertGroupAdminObservation({ contextId: 'g-e', userId: 'u-1', username: 'bob', isAdmin: false })
-    const after = getAdminObservation('g-e', 'u-1')!
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'g-e',
+      userId: 'u-1',
+      username: 'bob',
+      isAdmin: false,
+    })
+    const after = getAdminObservation('telegram', 'g-e', 'u-1')!
 
     expect(after.lastSeenAt > staleTime).toBe(true)
     expect(after.username).toBe('bob')

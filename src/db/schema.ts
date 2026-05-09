@@ -220,18 +220,22 @@ export const userIdentityMappings = sqliteTable(
 export const knownGroupContexts = sqliteTable(
   'known_group_contexts',
   {
-    contextId: text('context_id').primaryKey(),
     provider: text('provider').notNull(),
+    contextId: text('context_id').notNull(),
     displayName: text('display_name').notNull(),
     parentName: text('parent_name'),
     firstSeenAt: text('first_seen_at').notNull(),
     lastSeenAt: text('last_seen_at').notNull(),
   },
-  (table) => [index('idx_known_group_contexts_provider').on(table.provider)],
+  (table) => [
+    primaryKey({ columns: [table.provider, table.contextId] }),
+    index('idx_known_group_contexts_provider').on(table.provider),
+  ],
 )
 export const groupAdminObservations = sqliteTable(
   'group_admin_observations',
   {
+    provider: text('provider').notNull(),
     contextId: text('context_id').notNull(),
     userId: text('user_id').notNull(),
     username: text('username'),
@@ -239,8 +243,8 @@ export const groupAdminObservations = sqliteTable(
     lastSeenAt: text('last_seen_at').notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.contextId, table.userId] }),
-    index('idx_group_admin_observations_user_admin').on(table.userId, table.isAdmin),
+    primaryKey({ columns: [table.provider, table.contextId, table.userId] }),
+    index('idx_group_admin_observations_user_admin').on(table.provider, table.userId, table.isAdmin),
   ],
 )
 export const groupUserObservations = sqliteTable(

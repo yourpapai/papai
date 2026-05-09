@@ -685,11 +685,21 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(groupMessage, reply)
 
     const db = getDrizzleDb()
-    const knownGroup = db.select().from(knownGroupContexts).where(eq(knownGroupContexts.contextId, 'group-ops')).get()
+    const knownGroup = db
+      .select()
+      .from(knownGroupContexts)
+      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, 'group-ops')))
+      .get()
     const adminObservation = db
       .select()
       .from(groupAdminObservations)
-      .where(and(eq(groupAdminObservations.contextId, 'group-ops'), eq(groupAdminObservations.userId, 'group-admin')))
+      .where(
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, 'group-ops'),
+          eq(groupAdminObservations.userId, 'group-admin'),
+        ),
+      )
       .get()
 
     expect(knownGroup).toBeDefined()
@@ -1171,12 +1181,20 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(groupMessage, reply)
 
     const db = getDrizzleDb()
-    const knownGroup = db.select().from(knownGroupContexts).where(eq(knownGroupContexts.contextId, 'group-noise')).get()
+    const knownGroup = db
+      .select()
+      .from(knownGroupContexts)
+      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, 'group-noise')))
+      .get()
     const adminObservation = db
       .select()
       .from(groupAdminObservations)
       .where(
-        and(eq(groupAdminObservations.contextId, 'group-noise'), eq(groupAdminObservations.userId, 'group-member')),
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, 'group-noise'),
+          eq(groupAdminObservations.userId, 'group-member'),
+        ),
       )
       .get()
 

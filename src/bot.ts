@@ -199,6 +199,7 @@ function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void 
   if (msg.contextParentName !== undefined) parentName = msg.contextParentName
   upsertKnownGroupContext({ contextId: msg.contextId, provider: chat.name, displayName, parentName })
   upsertGroupAdminObservation({
+    provider: chat.name,
     contextId: msg.contextId,
     userId: msg.user.id,
     username: msg.user.username,

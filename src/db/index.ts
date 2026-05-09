@@ -34,6 +34,7 @@ import { migration025DeferredPromptDeliveryTargets } from './migrations/025_defe
 import { migration026RruleUnification } from './migrations/026_rrule_unification.js'
 import { migration027ScheduledPromptTimezone } from './migrations/027_scheduled_prompt_timezone.js'
 import { migration028GroupUserObservations } from './migrations/028_group_user_observations.js'
+import { migration029ProviderScopeGroupObservations } from './migrations/029_provider_scope_group_observations.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -97,6 +98,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration026RruleUnification,
   migration027ScheduledPromptTimezone,
   migration028GroupUserObservations,
+  migration029ProviderScopeGroupObservations,
 ]
 
 export const initDb = (): void => {

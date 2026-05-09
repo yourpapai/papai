@@ -83,7 +83,8 @@ describe('groupAdminObservations', () => {
     await setupTestDb()
   })
 
-  it('should expose a composite key over contextId and userId', () => {
+  it('should expose a composite key over provider, contextId, and userId', () => {
+    expect(groupAdminObservations.provider).toBeDefined()
     expect(groupAdminObservations.contextId).toBeDefined()
     expect(groupAdminObservations.userId).toBeDefined()
     expect(groupAdminObservations.isAdmin).toBeDefined()

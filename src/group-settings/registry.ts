@@ -3,7 +3,20 @@ import { and, eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
 import { logger } from '../logger.js'
+import type {
+  GroupUserObservation,
+  UpsertGroupAdminObservationInput,
+  UpsertGroupUserObservationInput,
+  UpsertKnownGroupContextInput,
+} from './registry-types.js'
 import type { KnownGroupContext } from './types.js'
+
+export type {
+  GroupUserObservation,
+  UpsertGroupAdminObservationInput,
+  UpsertGroupUserObservationInput,
+  UpsertKnownGroupContextInput,
+} from './registry-types.js'
 
 const log = logger.child({ scope: 'group-settings:registry' })
 
@@ -14,36 +27,6 @@ function isWithinThrottleWindow(lastSeenAtIso: string): boolean {
 }
 
 type KnownGroupContextRow = typeof knownGroupContexts.$inferSelect
-
-export interface UpsertKnownGroupContextInput {
-  readonly contextId: string
-  readonly provider: string
-  readonly displayName: string
-  readonly parentName: string | null
-}
-
-export interface UpsertGroupAdminObservationInput {
-  readonly contextId: string
-  readonly userId: string
-  readonly username: string | null
-  readonly isAdmin: boolean
-}
-
-export interface UpsertGroupUserObservationInput {
-  readonly provider: string
-  readonly contextId: string
-  readonly userId: string
-  readonly username: string | null
-  readonly displayLabel: string
-}
-
-export interface GroupUserObservation {
-  readonly provider: string
-  readonly contextId: string
-  readonly userId: string
-  readonly username: string | null
-  readonly displayLabel: string
-}
 
 const toKnownGroupContext = (row: KnownGroupContextRow): KnownGroupContext => ({
   contextId: row.contextId,
@@ -82,6 +65,30 @@ const findExistingGroupUserObservation = (
     )
     .get()
 
+const findExistingKnownGroupContext = (
+  input: UpsertKnownGroupContextInput,
+): Pick<typeof knownGroupContexts.$inferSelect, 'lastSeenAt'> | undefined =>
+  getDrizzleDb()
+    .select({ lastSeenAt: knownGroupContexts.lastSeenAt })
+    .from(knownGroupContexts)
+    .where(and(eq(knownGroupContexts.provider, input.provider), eq(knownGroupContexts.contextId, input.contextId)))
+    .get()
+
+const findExistingGroupAdminObservation = (
+  input: UpsertGroupAdminObservationInput,
+): Pick<typeof groupAdminObservations.$inferSelect, 'lastSeenAt' | 'isAdmin'> | undefined =>
+  getDrizzleDb()
+    .select({ lastSeenAt: groupAdminObservations.lastSeenAt, isAdmin: groupAdminObservations.isAdmin })
+    .from(groupAdminObservations)
+    .where(
+      and(
+        eq(groupAdminObservations.provider, input.provider),
+        eq(groupAdminObservations.contextId, input.contextId),
+        eq(groupAdminObservations.userId, input.userId),
+      ),
+    )
+    .get()
+
 const upsertGroupUserObservationRow = (input: UpsertGroupUserObservationInput, now: string): void => {
   getDrizzleDb()
     .insert(groupUserObservations)
@@ -100,6 +107,24 @@ const upsertGroupUserObservationRow = (input: UpsertGroupUserObservationInput, n
         displayLabel: input.displayLabel,
         lastSeenAt: now,
       },
+    })
+    .run()
+}
+
+const upsertGroupAdminObservationRow = (input: UpsertGroupAdminObservationInput, now: string): void => {
+  getDrizzleDb()
+    .insert(groupAdminObservations)
+    .values({
+      provider: input.provider,
+      contextId: input.contextId,
+      userId: input.userId,
+      username: input.username,
+      isAdmin: input.isAdmin,
+      lastSeenAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [groupAdminObservations.provider, groupAdminObservations.contextId, groupAdminObservations.userId],
+      set: { username: input.username, isAdmin: input.isAdmin, lastSeenAt: now },
     })
     .run()
 }
@@ -125,12 +150,7 @@ export function upsertKnownGroupContext(input: UpsertKnownGroupContextInput): vo
   log.debug({ contextId: input.contextId, provider: input.provider }, 'upsertKnownGroupContext called')
 
   const db = getDrizzleDb()
-
-  const existing = db
-    .select({ lastSeenAt: knownGroupContexts.lastSeenAt })
-    .from(knownGroupContexts)
-    .where(eq(knownGroupContexts.contextId, input.contextId))
-    .get()
+  const existing = findExistingKnownGroupContext(input)
 
   if (existing !== undefined && isWithinThrottleWindow(existing.lastSeenAt)) {
     log.debug({ contextId: input.contextId }, 'Skipping group context upsert (throttled)')
@@ -149,9 +169,8 @@ export function upsertKnownGroupContext(input: UpsertKnownGroupContextInput): vo
       lastSeenAt: now,
     })
     .onConflictDoUpdate({
-      target: knownGroupContexts.contextId,
+      target: [knownGroupContexts.provider, knownGroupContexts.contextId],
       set: {
-        provider: input.provider,
         displayName: input.displayName,
         parentName: input.parentName,
         lastSeenAt: now,
@@ -164,46 +183,25 @@ export function upsertKnownGroupContext(input: UpsertKnownGroupContextInput): vo
 
 export function upsertGroupAdminObservation(input: UpsertGroupAdminObservationInput): void {
   log.debug(
-    { contextId: input.contextId, userId: input.userId, isAdmin: input.isAdmin },
+    { provider: input.provider, contextId: input.contextId, userId: input.userId },
     'upsertGroupAdminObservation called',
   )
 
-  const db = getDrizzleDb()
-
-  const existing = db
-    .select({ lastSeenAt: groupAdminObservations.lastSeenAt, isAdmin: groupAdminObservations.isAdmin })
-    .from(groupAdminObservations)
-    .where(and(eq(groupAdminObservations.contextId, input.contextId), eq(groupAdminObservations.userId, input.userId)))
-    .get()
+  const existing = findExistingGroupAdminObservation(input)
 
   const adminStatusChanged = existing !== undefined && existing.isAdmin !== input.isAdmin
   if (existing !== undefined && !adminStatusChanged && isWithinThrottleWindow(existing.lastSeenAt)) {
-    log.debug({ contextId: input.contextId, userId: input.userId }, 'Skipping admin observation upsert (throttled)')
+    log.debug(
+      { provider: input.provider, contextId: input.contextId, userId: input.userId },
+      'Skipping admin observation upsert (throttled)',
+    )
     return
   }
 
   const now = new Date().toISOString()
-
-  db.insert(groupAdminObservations)
-    .values({
-      contextId: input.contextId,
-      userId: input.userId,
-      username: input.username,
-      isAdmin: input.isAdmin,
-      lastSeenAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [groupAdminObservations.contextId, groupAdminObservations.userId],
-      set: {
-        username: input.username,
-        isAdmin: input.isAdmin,
-        lastSeenAt: now,
-      },
-    })
-    .run()
-
+  upsertGroupAdminObservationRow(input, now)
   log.info(
-    { contextId: input.contextId, userId: input.userId, isAdmin: input.isAdmin },
+    { provider: input.provider, contextId: input.contextId, userId: input.userId, isAdmin: input.isAdmin },
     'Group admin observation upserted',
   )
 }
@@ -276,6 +274,7 @@ export function listAdminGroupContextsForUser(userId: string): KnownGroupContext
     .innerJoin(
       groupAdminObservations,
       and(
+        eq(knownGroupContexts.provider, groupAdminObservations.provider),
         eq(knownGroupContexts.contextId, groupAdminObservations.contextId),
         eq(groupAdminObservations.userId, userId),
         eq(groupAdminObservations.isAdmin, true),
