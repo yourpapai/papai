@@ -56,7 +56,7 @@
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
-    "tests/scripts/behavior-audit/test-fixtures.ts": ["exports", "types"]
+    "tests/scripts/behavior-audit/test-fixtures.ts": ["exports", "types"],
   },
 
   // Report unused exports even in entry files
@@ -67,9 +67,5 @@
   "ignoreExportsUsedInFile": true,
 
   // Ignore migration files and generated/runtime-only code that knip should not analyze as files
-  "ignore": [
-    "src/db/migrations/**",
-    "codeindex/.codeindex/**",
-    "codeindex/test-preload.ts"
-  ],
+  "ignore": ["src/db/migrations/**", "codeindex/.codeindex/**", "codeindex/test-preload.ts"],
 }
