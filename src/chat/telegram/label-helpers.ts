@@ -20,6 +20,24 @@ export function formatTelegramUserLabel(
   return at
 }
 
+export function getTelegramDisplayLabel(
+  firstName: string,
+  lastName: string | undefined,
+  username: string | null,
+): string | undefined {
+  let resolvedUsername: string | undefined
+  if (username !== null) {
+    resolvedUsername = username
+  }
+
+  const label = formatTelegramUserLabel(firstName, lastName, resolvedUsername)
+  if (label === null) {
+    return undefined
+  }
+
+  return label
+}
+
 export async function resolveTelegramGroupLabel(getChat: GetChatFn, groupId: string): Promise<string | null> {
   const id = Number(groupId)
   if (!Number.isInteger(id)) return null

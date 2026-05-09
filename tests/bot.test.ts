@@ -20,7 +20,7 @@ import type {
 } from '../src/chat/types.js'
 import { getConfig, setConfig } from '../src/config.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
-import { groupAdminObservations, knownGroupContexts } from '../src/db/schema.js'
+import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import { getIncomingFiles } from '../src/file-relay.js'
 import { listManageableGroups } from '../src/group-settings/access.js'
@@ -546,7 +546,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
       setupBot(replyingChat, ADMIN_ID, {
         processMessage: async (reply: ReplyFn): Promise<void> => {
-          assert(reply.replaceText !== undefined)
+          assert.ok(reply.replaceText !== undefined)
           await reply.replaceText('queued replacement')
         },
       })
@@ -580,7 +580,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
       setupBot(replyingChat, ADMIN_ID, {
         processMessage: async (reply: ReplyFn): Promise<void> => {
-          assert(reply.replaceButtons !== undefined)
+          assert.ok(reply.replaceButtons !== undefined)
           await reply.replaceButtons('queued replacement buttons', { buttons: [] })
         },
       })
@@ -704,11 +704,49 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     expect(knownGroup).toBeDefined()
     expect(adminObservation).toBeDefined()
-    assert(knownGroup !== undefined)
-    assert(adminObservation !== undefined)
+    assert.ok(knownGroup !== undefined)
+    assert.ok(adminObservation !== undefined)
     expect(knownGroup.displayName).toBe('Operations')
     expect(knownGroup.parentName).toBe('Platform')
     expect(adminObservation.isAdmin).toBe(true)
+  })
+
+  test('records group user display observations before normal message handling', async () => {
+    addUser('group-admin', ADMIN_ID)
+    addAuthorizedGroup('group-ops', ADMIN_ID)
+    setupUserConfig('group-admin')
+
+    const messageHandler = getMessageHandler()
+    expect(messageHandler).not.toBeNull()
+
+    const groupMessage = createGroupMessage('group-admin', '@bot status', true, 'group-ops')
+    groupMessage.contextName = 'Operations'
+    groupMessage.contextParentName = 'Platform'
+    groupMessage.user = {
+      ...groupMessage.user,
+      username: 'itsmike',
+      displayLabel: 'John Johnson (@itsmike)',
+    }
+
+    const { reply } = createMockReply()
+    await messageHandler!(groupMessage, reply)
+
+    const observation = getDrizzleDb()
+      .select()
+      .from(groupUserObservations)
+      .where(
+        and(
+          eq(groupUserObservations.provider, 'mock'),
+          eq(groupUserObservations.contextId, 'group-ops'),
+          eq(groupUserObservations.userId, 'group-admin'),
+        ),
+      )
+      .get()
+
+    expect(observation).toBeDefined()
+    assert.ok(observation !== undefined)
+    expect(observation.displayLabel).toBe('John Johnson (@itsmike)')
+    expect(observation.username).toBe('itsmike')
   })
 
   test('does not surface unauthorized mentioned group admin as manageable', async () => {
@@ -840,7 +878,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     const contextHandler = commandHandlers.get('context')
     expect(contextHandler).toBeDefined()
-    assert(contextHandler !== undefined, 'Expected context command to be registered')
+    assert.ok(contextHandler !== undefined, 'Expected context command to be registered')
 
     const { reply, textCalls } = createMockReply()
     await contextHandler(createDmMessage('context-user', '/context'), reply, createAuth('context-user'))
@@ -1523,7 +1561,7 @@ describe('File relay integration (setupBot)', () => {
     expect(capturedStorageId).toBe('relay-user')
     // Files are cleared after processing, so check what was captured during processing
     expect(filesAtProcessingTime).toHaveLength(1)
-    assert(filesAtProcessingTime[0] !== undefined)
+    assert.ok(filesAtProcessingTime[0] !== undefined)
     expect(filesAtProcessingTime[0].fileId).toBe('f1')
   })
 

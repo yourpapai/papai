@@ -17,7 +17,11 @@ import {
 import { getAllConfig } from './config.js'
 import { emit } from './debug/event-bus.js'
 import { clearIncomingFiles, storeIncomingFiles } from './file-relay.js'
-import { upsertGroupAdminObservation, upsertKnownGroupContext } from './group-settings/registry.js'
+import {
+  upsertGroupAdminObservation,
+  upsertGroupUserObservation,
+  upsertKnownGroupContext,
+} from './group-settings/registry.js'
 import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -205,6 +209,15 @@ function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void 
     username: msg.user.username,
     isAdmin: msg.user.isAdmin,
   })
+  if (msg.user.displayLabel !== undefined && msg.user.displayLabel !== '') {
+    upsertGroupUserObservation({
+      provider: chat.name,
+      contextId: msg.contextId,
+      userId: msg.user.id,
+      username: msg.user.username,
+      displayLabel: msg.user.displayLabel,
+    })
+  }
 }
 function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationResult): boolean {
   if (!auth.allowed) return false
