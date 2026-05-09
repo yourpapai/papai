@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
 
@@ -74,9 +75,10 @@ describe('group-settings registry', () => {
 
     const row = getGroupContext('telegram', 'group-1')
     expect(row).toBeDefined()
-    expect(row?.contextId).toBe('group-1')
-    expect(row?.displayName).toBe('Operations')
-    expect(row?.parentName).toBe('Platform')
+    assert.ok(row !== undefined)
+    expect(row.contextId).toBe('group-1')
+    expect(row.displayName).toBe('Operations')
+    expect(row.parentName).toBe('Platform')
   })
 
   test('stores the latest observed group user label per provider, group, and user', () => {
@@ -89,8 +91,10 @@ describe('group-settings registry', () => {
     })
 
     const observation = getGroupUserObservation('telegram', 'group-1', 'user-1')
-    expect(observation?.displayLabel).toBe('Alice Example (@alice)')
-    expect(observation?.username).toBe('alice')
+    expect(observation).toBeDefined()
+    assert.ok(observation !== undefined)
+    expect(observation.displayLabel).toBe('Alice Example (@alice)')
+    expect(observation.username).toBe('alice')
   })
 
   test('finds group user observations by exact provider, context, and user', () => {
@@ -126,7 +130,11 @@ describe('group-settings registry', () => {
       parentName: 'Platform',
     })
 
-    expect(findKnownGroupContext('telegram', 'group-1')?.displayName).toBe('Operations')
+    const telegramContext = findKnownGroupContext('telegram', 'group-1')
+
+    expect(telegramContext).not.toBeNull()
+    assert.ok(telegramContext !== null)
+    expect(telegramContext.displayName).toBe('Operations')
     expect(findKnownGroupContext('discord', 'group-1')).toBeNull()
   })
 
@@ -144,8 +152,15 @@ describe('group-settings registry', () => {
       parentName: null,
     })
 
-    expect(findKnownGroupContext('telegram', 'shared-group')?.displayName).toBe('Telegram Operations')
-    expect(findKnownGroupContext('discord', 'shared-group')?.displayName).toBe('Discord Operations')
+    const telegramContext = findKnownGroupContext('telegram', 'shared-group')
+    const discordContext = findKnownGroupContext('discord', 'shared-group')
+
+    expect(telegramContext).not.toBeNull()
+    expect(discordContext).not.toBeNull()
+    assert.ok(telegramContext !== null)
+    assert.ok(discordContext !== null)
+    expect(telegramContext.displayName).toBe('Telegram Operations')
+    expect(discordContext.displayName).toBe('Discord Operations')
   })
 
   test('stores the latest admin observation per group and user', () => {
@@ -158,8 +173,10 @@ describe('group-settings registry', () => {
     })
 
     const observation = getAdminObservation('telegram', 'group-1', 'user-1')
-    expect(observation?.username).toBe('alice')
-    expect(observation?.isAdmin).toBe(true)
+    expect(observation).toBeDefined()
+    assert.ok(observation !== undefined)
+    expect(observation.username).toBe('alice')
+    expect(observation.isAdmin).toBe(true)
   })
 
   test('lists admin groups for a user with a single join query', () => {

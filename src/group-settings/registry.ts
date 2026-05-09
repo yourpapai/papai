@@ -32,7 +32,7 @@ const toKnownGroupContext = (row: KnownGroupContextRow): KnownGroupContext => ({
   contextId: row.contextId,
   provider: row.provider,
   displayName: row.displayName,
-  parentName: row.parentName ?? null,
+  parentName: row.parentName,
   firstSeenAt: row.firstSeenAt,
   lastSeenAt: row.lastSeenAt,
 })
@@ -281,7 +281,7 @@ export function listAdminGroupContextsForUser(userId: string): KnownGroupContext
       ),
     )
     .all()
-    .map(toKnownGroupContext)
+    .map((row) => toKnownGroupContext(row))
     .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
 
   log.debug({ userId, count: groups.length }, 'Listed admin group contexts for user')
