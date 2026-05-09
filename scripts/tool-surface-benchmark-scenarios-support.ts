@@ -100,7 +100,10 @@ const hasUnchangedSeededTasks = (snapshot: BenchmarkScenarioSnapshot): boolean =
 
 export const scenarios: readonly BenchmarkScenario[] = [
   { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
-  { id: 'search_then_update_status', prompt: 'Search for the benchmark report task and mark it in progress.' },
+  {
+    id: 'search_then_update_status',
+    prompt: 'Update the benchmark report task to in progress after searching for it.',
+  },
   { id: 'search_then_comment', prompt: 'Find the benchmark report task and add a comment about routed mode.' },
   { id: 'search_then_assign_user', prompt: 'Find the benchmark report task and assign it to Alex.' },
   { id: 'list_or_search_read_only', prompt: 'List the current benchmark tasks.' },

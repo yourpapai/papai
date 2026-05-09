@@ -245,4 +245,16 @@ describe('tool-surface benchmark scenarios', () => {
     expect(setup.tools).toHaveProperty('web_fetch')
     expect(setup.tools).toHaveProperty('get_current_time')
   })
+
+  it('builds routed mode with update_task for search_then_update_status', () => {
+    const store = createBenchmarkStore()
+    const scenarioPrompt = 'Update the benchmark report task to in progress after searching for it.'
+
+    expect(scenarios).toContainEqual({ id: 'search_then_update_status', prompt: scenarioPrompt })
+
+    const setup = toolsForMode('direct_routed', scenarioPrompt, store)
+
+    expect(setup.tools).toHaveProperty('search_tasks')
+    expect(setup.tools).toHaveProperty('update_task')
+  })
 })
