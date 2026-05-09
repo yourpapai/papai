@@ -41,6 +41,11 @@ const hasCall = (snapshot: BenchmarkScenarioSnapshot, toolName: string): boolean
   snapshot.toolCalls.includes(toolName)
 const hasCalls = (snapshot: BenchmarkScenarioSnapshot, names: readonly string[]): boolean =>
   names.every((toolName) => hasCall(snapshot, toolName))
+const callOccursBefore = (snapshot: BenchmarkScenarioSnapshot, first: string, second: string): boolean => {
+  const firstIndex = snapshot.toolCalls.indexOf(first)
+  const secondIndex = snapshot.toolCalls.lastIndexOf(second)
+  return firstIndex !== -1 && secondIndex !== -1 && firstIndex < secondIndex
+}
 const findTask = (snapshot: BenchmarkScenarioSnapshot, taskId: string): BenchmarkTask | undefined =>
   snapshot.tasks.find((task) => task.id === taskId)
 const findTaskByTitle = (snapshot: BenchmarkScenarioSnapshot, title: string): BenchmarkTask | undefined =>
@@ -54,6 +59,26 @@ const seedTask = (id: string, title: string, priority: string): BenchmarkTask =>
   comments: [],
   deleted: false,
 })
+const seededTasks = [
+  seedTask('task-1', 'Prepare benchmark report', 'medium'),
+  seedTask('task-2', 'Review release notes', 'low'),
+  seedTask('task-3', 'Confirm benchmark routing prompts', 'high'),
+] as const satisfies readonly BenchmarkTask[]
+const matchesSeededTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask: BenchmarkTask): boolean => {
+  const actualTask = findTask(snapshot, expectedTask.id)
+  return (
+    actualTask !== undefined &&
+    actualTask.title === expectedTask.title &&
+    actualTask.priority === expectedTask.priority &&
+    actualTask.status === expectedTask.status &&
+    actualTask.assigneeId === expectedTask.assigneeId &&
+    actualTask.deleted === expectedTask.deleted &&
+    actualTask.comments.length === expectedTask.comments.length &&
+    actualTask.comments.every((comment, index) => comment === expectedTask.comments[index])
+  )
+}
+const hasUnchangedSeededTasks = (snapshot: BenchmarkScenarioSnapshot): boolean =>
+  snapshot.tasks.length === seededTasks.length && seededTasks.every((task) => matchesSeededTask(snapshot, task))
 
 export const scenarios: readonly BenchmarkScenario[] = [
   { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
@@ -69,11 +94,7 @@ export const scenarios: readonly BenchmarkScenario[] = [
 ] as const satisfies readonly ScenarioEntry[]
 
 export const createBenchmarkStore = (): BenchmarkStore => ({
-  tasks: new Map([
-    ['task-1', seedTask('task-1', 'Prepare benchmark report', 'medium')],
-    ['task-2', seedTask('task-2', 'Review release notes', 'low')],
-    ['task-3', seedTask('task-3', 'Confirm benchmark routing prompts', 'high')],
-  ]),
+  tasks: new Map(seededTasks.map((task) => [task.id, task])),
   recurringEntries: new Map(),
   deferredEntries: new Map(),
   toolCalls: [],
@@ -115,6 +136,7 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       : validationFailed(),
   list_or_search_read_only: (snapshot) =>
     (hasCall(snapshot, 'list_tasks') || hasCall(snapshot, 'search_tasks')) &&
+    hasUnchangedSeededTasks(snapshot) &&
     snapshot.recurringEntries.length === 0 &&
     snapshot.deferredEntries.length === 0
       ? ok()
@@ -135,7 +157,8 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       : validationFailed(),
   ambiguous_but_solvable_task_update: (snapshot) =>
     hasCalls(snapshot, ['search_tasks', 'update_task']) &&
-    snapshot.tasks.some((task) => task.status === 'in_progress' || task.priority === 'high')
+    callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
+    findTask(snapshot, 'task-1')?.status === 'in_progress'
       ? ok()
       : validationFailed(),
 }

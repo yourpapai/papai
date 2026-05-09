@@ -7,6 +7,36 @@ import {
   toolsForMode,
 } from '../../scripts/tool-surface-benchmark-scenarios.js'
 
+const seededTasks = [
+  {
+    id: 'task-1',
+    title: 'Prepare benchmark report',
+    priority: 'medium',
+    status: 'todo',
+    assigneeId: null,
+    comments: [],
+    deleted: false,
+  },
+  {
+    id: 'task-2',
+    title: 'Review release notes',
+    priority: 'low',
+    status: 'todo',
+    assigneeId: null,
+    comments: [],
+    deleted: false,
+  },
+  {
+    id: 'task-3',
+    title: 'Confirm benchmark routing prompts',
+    priority: 'high',
+    status: 'todo',
+    assigneeId: null,
+    comments: [],
+    deleted: false,
+  },
+] as const
+
 describe('tool-surface benchmark scenarios', () => {
   it('defines exactly 10 benchmark scenarios', () => {
     expect(scenarios.map((scenario) => scenario.id)).toEqual([
@@ -83,6 +113,39 @@ describe('tool-surface benchmark scenarios', () => {
         toolCalls: ['create_deferred_prompt'],
       }),
     ).toEqual({ success: true, failureCategory: null })
+  })
+
+  it('fails list_or_search_read_only when a seeded task was mutated', () => {
+    expect(
+      evaluateBenchmarkScenario('list_or_search_read_only', {
+        tasks: [{ ...seededTasks[0], status: 'in_progress' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['list_tasks'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails ambiguous_but_solvable_task_update when the wrong seeded task changed', () => {
+    expect(
+      evaluateBenchmarkScenario('ambiguous_but_solvable_task_update', {
+        tasks: [seededTasks[0], { ...seededTasks[1], status: 'in_progress' }, seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['search_tasks', 'update_task'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails ambiguous_but_solvable_task_update when update happens before discovery', () => {
+    expect(
+      evaluateBenchmarkScenario('ambiguous_but_solvable_task_update', {
+        tasks: [{ ...seededTasks[0], status: 'in_progress' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['update_task', 'search_tasks'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })
 
   it('builds proxy mode with one exposed tool and preserved full count', () => {
