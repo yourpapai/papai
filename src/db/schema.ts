@@ -243,4 +243,19 @@ export const groupAdminObservations = sqliteTable(
     index('idx_group_admin_observations_user_admin').on(table.userId, table.isAdmin),
   ],
 )
+export const groupUserObservations = sqliteTable(
+  'group_user_observations',
+  {
+    provider: text('provider').notNull(),
+    contextId: text('context_id').notNull(),
+    userId: text('user_id').notNull(),
+    username: text('username'),
+    displayLabel: text('display_label').notNull(),
+    lastSeenAt: text('last_seen_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.provider, table.contextId, table.userId] }),
+    index('idx_group_user_observations_provider_user').on(table.provider, table.userId),
+  ],
+)
 export { webCache, webRateLimit } from './web-schema.js'

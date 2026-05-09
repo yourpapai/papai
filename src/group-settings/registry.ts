@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { groupAdminObservations, knownGroupContexts } from '../db/schema.js'
+import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
 import { logger } from '../logger.js'
 import type { KnownGroupContext } from './types.js'
 
@@ -29,6 +29,22 @@ export interface UpsertGroupAdminObservationInput {
   readonly isAdmin: boolean
 }
 
+export interface UpsertGroupUserObservationInput {
+  readonly provider: string
+  readonly contextId: string
+  readonly userId: string
+  readonly username: string | null
+  readonly displayLabel: string
+}
+
+export interface GroupUserObservation {
+  readonly provider: string
+  readonly contextId: string
+  readonly userId: string
+  readonly username: string | null
+  readonly displayLabel: string
+}
+
 const toKnownGroupContext = (row: KnownGroupContextRow): KnownGroupContext => ({
   contextId: row.contextId,
   provider: row.provider,
@@ -37,6 +53,73 @@ const toKnownGroupContext = (row: KnownGroupContextRow): KnownGroupContext => ({
   firstSeenAt: row.firstSeenAt,
   lastSeenAt: row.lastSeenAt,
 })
+
+const toGroupUserObservation = (
+  row: Pick<
+    typeof groupUserObservations.$inferSelect,
+    'provider' | 'contextId' | 'userId' | 'username' | 'displayLabel'
+  >,
+): GroupUserObservation => ({
+  provider: row.provider,
+  contextId: row.contextId,
+  userId: row.userId,
+  username: row.username,
+  displayLabel: row.displayLabel,
+})
+
+const findExistingGroupUserObservation = (
+  input: UpsertGroupUserObservationInput,
+): Pick<typeof groupUserObservations.$inferSelect, 'lastSeenAt'> | undefined =>
+  getDrizzleDb()
+    .select({ lastSeenAt: groupUserObservations.lastSeenAt })
+    .from(groupUserObservations)
+    .where(
+      and(
+        eq(groupUserObservations.provider, input.provider),
+        eq(groupUserObservations.contextId, input.contextId),
+        eq(groupUserObservations.userId, input.userId),
+      ),
+    )
+    .get()
+
+const upsertGroupUserObservationRow = (input: UpsertGroupUserObservationInput, now: string): void => {
+  getDrizzleDb()
+    .insert(groupUserObservations)
+    .values({
+      provider: input.provider,
+      contextId: input.contextId,
+      userId: input.userId,
+      username: input.username,
+      displayLabel: input.displayLabel,
+      lastSeenAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [groupUserObservations.provider, groupUserObservations.contextId, groupUserObservations.userId],
+      set: {
+        username: input.username,
+        displayLabel: input.displayLabel,
+        lastSeenAt: now,
+      },
+    })
+    .run()
+}
+
+export function findKnownGroupContext(provider: string, contextId: string): KnownGroupContext | null {
+  const row = getDrizzleDb()
+    .select({
+      contextId: knownGroupContexts.contextId,
+      provider: knownGroupContexts.provider,
+      displayName: knownGroupContexts.displayName,
+      parentName: knownGroupContexts.parentName,
+      firstSeenAt: knownGroupContexts.firstSeenAt,
+      lastSeenAt: knownGroupContexts.lastSeenAt,
+    })
+    .from(knownGroupContexts)
+    .where(and(eq(knownGroupContexts.provider, provider), eq(knownGroupContexts.contextId, contextId)))
+    .get()
+
+  return row === undefined ? null : toKnownGroupContext(row)
+}
 
 export function upsertKnownGroupContext(input: UpsertKnownGroupContextInput): void {
   log.debug({ contextId: input.contextId, provider: input.provider }, 'upsertKnownGroupContext called')
@@ -123,6 +206,58 @@ export function upsertGroupAdminObservation(input: UpsertGroupAdminObservationIn
     { contextId: input.contextId, userId: input.userId, isAdmin: input.isAdmin },
     'Group admin observation upserted',
   )
+}
+
+export function upsertGroupUserObservation(input: UpsertGroupUserObservationInput): void {
+  log.debug(
+    { provider: input.provider, contextId: input.contextId, userId: input.userId },
+    'upsertGroupUserObservation called',
+  )
+
+  const existing = findExistingGroupUserObservation(input)
+
+  if (existing !== undefined && isWithinThrottleWindow(existing.lastSeenAt)) {
+    log.debug(
+      { provider: input.provider, contextId: input.contextId, userId: input.userId },
+      'Skipping group user observation upsert (throttled)',
+    )
+    return
+  }
+
+  const now = new Date().toISOString()
+
+  upsertGroupUserObservationRow(input, now)
+
+  log.info(
+    { provider: input.provider, contextId: input.contextId, userId: input.userId },
+    'Group user observation upserted',
+  )
+}
+
+export function findGroupUserObservation(
+  provider: string,
+  contextId: string,
+  userId: string,
+): GroupUserObservation | null {
+  const row = getDrizzleDb()
+    .select({
+      provider: groupUserObservations.provider,
+      contextId: groupUserObservations.contextId,
+      userId: groupUserObservations.userId,
+      username: groupUserObservations.username,
+      displayLabel: groupUserObservations.displayLabel,
+    })
+    .from(groupUserObservations)
+    .where(
+      and(
+        eq(groupUserObservations.provider, provider),
+        eq(groupUserObservations.contextId, contextId),
+        eq(groupUserObservations.userId, userId),
+      ),
+    )
+    .get()
+
+  return row === undefined ? null : toGroupUserObservation(row)
 }
 
 export function listAdminGroupContextsForUser(userId: string): KnownGroupContext[] {

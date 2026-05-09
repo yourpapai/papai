@@ -3,16 +3,23 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
-import { groupAdminObservations, knownGroupContexts } from '../../src/db/schema.js'
+import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../../src/db/schema.js'
 import {
+  findGroupUserObservation,
+  findKnownGroupContext,
   listAdminGroupContextsForUser,
   upsertGroupAdminObservation,
+  upsertGroupUserObservation,
   upsertKnownGroupContext,
 } from '../../src/group-settings/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-function getGroupContext(contextId: string): typeof knownGroupContexts.$inferSelect | undefined {
-  return getDrizzleDb().select().from(knownGroupContexts).where(eq(knownGroupContexts.contextId, contextId)).get()
+function getGroupContext(provider: string, contextId: string): typeof knownGroupContexts.$inferSelect | undefined {
+  return getDrizzleDb()
+    .select()
+    .from(knownGroupContexts)
+    .where(and(eq(knownGroupContexts.provider, provider), eq(knownGroupContexts.contextId, contextId)))
+    .get()
 }
 
 function getAdminObservation(
@@ -23,6 +30,24 @@ function getAdminObservation(
     .select()
     .from(groupAdminObservations)
     .where(and(eq(groupAdminObservations.contextId, contextId), eq(groupAdminObservations.userId, userId)))
+    .get()
+}
+
+function getGroupUserObservation(
+  provider: string,
+  contextId: string,
+  userId: string,
+): typeof groupUserObservations.$inferSelect | undefined {
+  return getDrizzleDb()
+    .select()
+    .from(groupUserObservations)
+    .where(
+      and(
+        eq(groupUserObservations.provider, provider),
+        eq(groupUserObservations.contextId, contextId),
+        eq(groupUserObservations.userId, userId),
+      ),
+    )
     .get()
 }
 
@@ -40,11 +65,62 @@ describe('group-settings registry', () => {
       parentName: 'Platform',
     })
 
-    const row = getGroupContext('group-1')
+    const row = getGroupContext('telegram', 'group-1')
     expect(row).toBeDefined()
     expect(row?.contextId).toBe('group-1')
     expect(row?.displayName).toBe('Operations')
     expect(row?.parentName).toBe('Platform')
+  })
+
+  test('stores the latest observed group user label per provider, group, and user', () => {
+    upsertGroupUserObservation({
+      provider: 'telegram',
+      contextId: 'group-1',
+      userId: 'user-1',
+      username: 'alice',
+      displayLabel: 'Alice Example (@alice)',
+    })
+
+    const observation = getGroupUserObservation('telegram', 'group-1', 'user-1')
+    expect(observation?.displayLabel).toBe('Alice Example (@alice)')
+    expect(observation?.username).toBe('alice')
+  })
+
+  test('finds group user observations by exact provider, context, and user', () => {
+    upsertGroupUserObservation({
+      provider: 'telegram',
+      contextId: 'group-1',
+      userId: 'user-1',
+      username: 'alice',
+      displayLabel: 'Alice Example (@alice)',
+    })
+    upsertGroupUserObservation({
+      provider: 'discord',
+      contextId: 'group-1',
+      userId: 'user-1',
+      username: 'alice-discord',
+      displayLabel: 'Alice Discord',
+    })
+
+    expect(findGroupUserObservation('telegram', 'group-1', 'user-1')).toEqual({
+      provider: 'telegram',
+      contextId: 'group-1',
+      userId: 'user-1',
+      username: 'alice',
+      displayLabel: 'Alice Example (@alice)',
+    })
+  })
+
+  test('finds known group contexts by provider and context id', () => {
+    upsertKnownGroupContext({
+      contextId: 'group-1',
+      provider: 'telegram',
+      displayName: 'Operations',
+      parentName: 'Platform',
+    })
+
+    expect(findKnownGroupContext('telegram', 'group-1')?.displayName).toBe('Operations')
+    expect(findKnownGroupContext('discord', 'group-1')).toBeNull()
   })
 
   test('stores the latest admin observation per group and user', () => {
@@ -82,10 +158,10 @@ describe('group-settings registry', () => {
 
   test('skips known group context upsert when lastSeenAt is within throttle window', () => {
     upsertKnownGroupContext({ contextId: 'g-t', provider: 'telegram', displayName: 'Ops', parentName: null })
-    const first = getGroupContext('g-t')!
+    const first = getGroupContext('telegram', 'g-t')!
 
     upsertKnownGroupContext({ contextId: 'g-t', provider: 'telegram', displayName: 'Ops', parentName: null })
-    const second = getGroupContext('g-t')!
+    const second = getGroupContext('telegram', 'g-t')!
 
     expect(second.lastSeenAt).toBe(first.lastSeenAt)
   })
@@ -97,11 +173,11 @@ describe('group-settings registry', () => {
     getDrizzleDb()
       .update(knownGroupContexts)
       .set({ lastSeenAt: staleTime })
-      .where(eq(knownGroupContexts.contextId, 'g-e'))
+      .where(and(eq(knownGroupContexts.provider, 'telegram'), eq(knownGroupContexts.contextId, 'g-e')))
       .run()
 
     upsertKnownGroupContext({ contextId: 'g-e', provider: 'telegram', displayName: 'Ops', parentName: null })
-    const after = getGroupContext('g-e')!
+    const after = getGroupContext('telegram', 'g-e')!
 
     expect(after.lastSeenAt > staleTime).toBe(true)
   })
