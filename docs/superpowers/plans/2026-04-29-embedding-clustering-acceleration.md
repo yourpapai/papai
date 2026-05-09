@@ -10,6 +10,12 @@
 
 ---
 
+## Current Implementation State
+
+- The profiling plan in `docs/superpowers/plans/2026-04-29-embedding-clustering-profiling.md` is implemented through Task 6: profiling primitives, HAC instrumentation, `tune-embedding` profiling flags, the focused `profile-clustering.ts` runner, collected profile evidence, and this follow-up acceleration plan all exist.
+- The current hot path still uses `toSorted(...)` in `findNearestActiveCluster(...)` and string blocked-pair keys via `pairKey(a, b): string`, so Tasks 1 and 2 below are still pending implementation. Task 1 optimizes the normal non-NaN path; exact historical behavior for actual `NaN` distances may keep a dedicated legacy-sort fallback because the previous comparator returned `NaN`, which JavaScript sort treats like equality.
+- `buildAgglomerativeClusters(...)` already computes one active snapshot per outer loop iteration and passes it to `findChainStart(...)` and `hasMergeCandidate(...)`; Task 3 below is narrowed to the remaining repeated active-list rebuilds inside nearest-neighbor, merge-update, gap-check, and chain-extension helpers.
+
 ## File Structure
 
 | File                                                                      | Responsibility                                                                                      |
@@ -21,16 +27,16 @@
 
 ---
 
-### Task 1: Replace Sort-Based Nearest-Neighbor Search
+### Task 1: Replace Sort-Based Nearest-Neighbor Search For Normal Distances
 
 **Files:**
 
 - Modify: `scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts`
 - Modify: `tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts`
 
-- [ ] **Step 1: Add a failing regression test for profiled parity**
+- [ ] **Step 1: Add or confirm a regression test for profiled parity**
 
-Add this test near the existing profiling test block in `tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts`:
+If the existing `buildClustersAdvanced returns identical clusters when profiling is enabled` test is present, keep it as the baseline guard. If it is absent, add this test near the profiling test block in `tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts`:
 
 ```typescript
 test('average profiling counters remain stable after nearest-neighbor optimization', () => {
@@ -55,40 +61,82 @@ test('average profiling counters remain stable after nearest-neighbor optimizati
 
 - [ ] **Step 2: Run the targeted test to verify the current baseline**
 
-Run: `bun test tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts -t "nearest-neighbor optimization"`
+Run: `bun test tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts -t "profiling is enabled"`
 
 Expected: PASS. This locks the exact output/counter baseline before the helper rewrite.
 
-- [ ] **Step 3: Replace `findNearestActiveCluster` with a one-pass minimum scan**
+- [ ] **Step 3: Replace the normal path with a one-pass minimum scan**
 
-In `scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts`, replace the current `findNearestActiveCluster(...)` implementation with a one-pass scan that avoids `.filter(...).filter(...).map(...).toSorted(...)` allocation:
+In `scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts`, replace the current `findNearestActiveCluster(...)` implementation so the normal no-`NaN` path avoids `.filter(...).filter(...).map(...).toSorted(...)` allocation. Preserve exact historical behavior when an actual `NaN` distance appears by falling back to the prior comparator/sort selection for that rare case.
+
+Keep this comparator helper for the fallback path:
 
 ```typescript
-export function findNearestActiveCluster(
-  matrix: MutableDistanceMatrix,
-  state: ActiveState,
-  cluster: number,
-  blockedPairs: ReadonlySet<number>,
-  profile: ClusteringProfile,
-): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
-  const startedAt = performance.now()
-  const active = activeIndices(state)
+type NearestCandidate = Readonly<{ readonly candidate: number; readonly distance: number }>
 
+function compareNearest(a: NearestCandidate, b: NearestCandidate): number {
+  const distanceOrder = a.distance - b.distance
+  if (distanceOrder === 0) return a.candidate - b.candidate
+  return distanceOrder
+}
+```
+
+Use this selection structure:
+
+```typescript
+function selectNearestCandidate(
+  active: readonly number[],
+  matrix: MutableDistanceMatrix,
+  cluster: number,
+  blockedPairs: ReadonlySet<string>,
+): Readonly<{ nearest: number | undefined; distanceReads: number }> {
   let nearest: number | undefined
   let bestDistance = Infinity
   let distanceReads = 0
+  let nanFallback: NearestCandidate[] | undefined
 
   for (const candidate of active) {
     if (candidate === cluster) continue
-    if (blockedPairs.has(pairKey(cluster, candidate, matrix.n))) continue
+    if (blockedPairs.has(pairKey(cluster, candidate))) continue
 
     const distance = getDistance(matrix, cluster, candidate)
     distanceReads += 1
+
+    if (Number.isNaN(distance)) {
+      nanFallback = [{ candidate, distance }]
+      break
+    }
+
     if (distance < bestDistance || (distance === bestDistance && (nearest === undefined || candidate < nearest))) {
       nearest = candidate
       bestDistance = distance
     }
   }
+
+  if (nanFallback !== undefined) {
+    const candidates = active.flatMap((candidate) => {
+      if (candidate === cluster) return []
+      if (blockedPairs.has(pairKey(cluster, candidate))) return []
+      const distance = getDistance(matrix, cluster, candidate)
+      return [{ candidate, distance }]
+    })
+    const fallbackNearest = candidates.toSorted(compareNearest)[0]
+    return { nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate, distanceReads }
+  }
+
+  return { nearest, distanceReads }
+}
+
+export function findNearestActiveCluster(
+  matrix: MutableDistanceMatrix,
+  state: ActiveState,
+  cluster: number,
+  blockedPairs: ReadonlySet<string>,
+  profile: ClusteringProfile,
+): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
+  const startedAt = performance.now()
+  const active = activeIndices(state)
+  const { nearest, distanceReads } = selectNearestCandidate(active, matrix, cluster, blockedPairs)
 
   const withCounters = incrementClusteringCounter(
     incrementClusteringCounter(incrementClusteringCounter(profile, 'nearestNeighborCalls', 1), 'activeListBuilds', 1),
@@ -107,9 +155,11 @@ export function findNearestActiveCluster(
 }
 ```
 
+Do not trigger the fallback for `Infinity`; only an actual `NaN` distance should use the legacy comparator path.
+
 - [ ] **Step 4: Run the helper regression test**
 
-Run: `bun test tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts -t "nearest-neighbor optimization"`
+Run: `bun test tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts -t "profiling is enabled"`
 
 Expected: PASS.
 
@@ -131,7 +181,7 @@ git commit -m "perf: replace sorted nearest-neighbor scans"
 - Modify: `scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts`
 - Modify: `tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts`
 
-- [ ] **Step 1: Add a failing regression test for gap-mode parity**
+- [ ] **Step 1: Add a regression test for gap-mode parity**
 
 Add this test near the gap-threshold coverage in `tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts`:
 
@@ -196,27 +246,29 @@ git commit -m "perf: remove string blocked-pair keys"
 **Files:**
 
 - Modify: `scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts`
+- Modify: `scripts/behavior-audit/consolidate-keywords-agglomerative-chain.ts`
 - Modify: `scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts`
 - Modify: `tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts`
 
-- [ ] **Step 1: Add a failing performance smoke test guard**
+- [ ] **Step 1: Add a performance smoke test guard**
 
-Add this test near the existing hundreds-of-vectors smoke test:
+Replace the existing `average linkage handles hundreds of vectors without timing out` test with a profiling-aware smoke guard:
 
 ```typescript
-test('average linkage still handles hundreds of vectors within the smoke budget', () => {
-  const vectors = Array.from({ length: 600 }, (_, index) => {
-    const group = Math.floor(index / 20)
-    const angle = group * 0.1 + (index % 20) * 0.001
-    return [Math.cos(angle), Math.sin(angle), (index % 7) / 100]
+test('average linkage handles hundreds of vectors within the smoke budget', () => {
+  const vectors = Array.from({ length: 600 }, (_, i) => {
+    const group = Math.floor(i / 20)
+    const angle = group * 0.1 + (i % 20) * 0.001
+    return [Math.cos(angle), Math.sin(angle), (i % 7) / 100]
   })
-  const normalized = toNormalizedFloat64Arrays(vectors)
+  const normalized = makeNormalized(vectors)
   const startedAt = performance.now()
 
-  const clusters = buildClustersAdvanced(normalized, 0.99, 2, 'average', 0)
+  const profiled = buildClustersAdvanced(normalized, 0.99, 2, 'average', 0, { profile: true })
   const elapsed = performance.now() - startedAt
 
-  expect(clusters.length).toBeGreaterThan(0)
+  expect(profiled.clusters.length).toBeGreaterThan(0)
+  expect(profiled.profile.counters.activeListBuilds).toBeGreaterThan(0)
   expect(elapsed).toBeLessThan(5000)
 })
 ```
@@ -227,11 +279,64 @@ Run: `bun test tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Thread a reusable active snapshot through candidate-scan helpers**
+- [ ] **Step 3: Thread active snapshots through remaining helper rebuilds**
 
-In `scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts`, compute `const active = activeIndices(state)` once per outer loop iteration and pass it to `findChainStart(...)`, `hasMergeCandidate(...)`, and any helper that can reuse it instead of rebuilding the same list repeatedly.
+`buildAgglomerativeClusters(...)` already computes `const active = activeIndices(state)` once per outer loop iteration and passes it to `findChainStart(...)` and `hasMergeCandidate(...)`. Keep that outer-loop behavior intact.
 
-In `scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts`, update those helpers so their signatures accept `active: readonly number[]` and remove any redundant `activeIndices(state)` calls that are no longer needed.
+In `scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts`, update the remaining helpers that still rebuild active lists so they can reuse a caller-provided snapshot when one is available:
+
+This task assumes Task 2 has already converted `blockedPairs` to numeric keys.
+
+```typescript
+export function findNearestActiveCluster(
+  active: readonly number[],
+  matrix: MutableDistanceMatrix,
+  cluster: number,
+  blockedPairs: ReadonlySet<number>,
+  profile: ClusteringProfile,
+): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
+  const startedAt = performance.now()
+
+  let nearest: number | undefined
+  let bestDistance = Infinity
+  let distanceReads = 0
+
+  for (const candidate of active) {
+    if (candidate === cluster) continue
+    if (blockedPairs.has(pairKey(cluster, candidate, matrix.n))) continue
+
+    const distance = getDistance(matrix, cluster, candidate)
+    distanceReads += 1
+    if (distance < bestDistance || (distance === bestDistance && (nearest === undefined || candidate < nearest))) {
+      nearest = candidate
+      bestDistance = distance
+    }
+  }
+
+  const withCounters = incrementClusteringCounter(
+    incrementClusteringCounter(profile, 'nearestNeighborCalls', 1),
+    'activeItemsVisited',
+    active.length,
+  )
+
+  return {
+    nearest,
+    profile: recordClusteringTiming(
+      incrementClusteringCounter(withCounters, 'distanceReads', distanceReads),
+      'nearestNeighborMs',
+      performance.now() - startedAt,
+    ),
+  }
+}
+```
+
+Then update callers:
+
+- `findChainStart(...)` calls `findNearestActiveCluster(active, matrix, cluster, blockedPairs, currentProfile)`.
+- `tryExtendOrMergeChain(...)` receives `active: readonly number[]` and calls `findNearestActiveCluster(active, matrix, current, blockedPairs, profile)`.
+- `mergeChainRound(...)` receives the outer-loop active snapshot and passes it to `tryExtendOrMergeChain(...)`.
+- `mergePassesGap(...)` receives `active: readonly number[]` and no longer calls `activeIndices(state)` internally.
+- `updateMergedDistances(...)` receives `active: readonly number[]` and no longer calls `activeIndices(state)` internally.
 
 Keep counter accounting stable by still incrementing `activeListBuilds` only for the active lists that are truly materialized.
 
@@ -244,7 +349,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit Task 3**
 
 ```bash
-git add scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts
+git add scripts/behavior-audit/consolidate-keywords-agglomerative-helpers.ts scripts/behavior-audit/consolidate-keywords-agglomerative-chain.ts scripts/behavior-audit/consolidate-keywords-agglomerative-clustering.ts tests/scripts/behavior-audit/consolidate-keywords-helpers.test.ts
 git commit -m "perf: reuse active cluster snapshots"
 ```
 
@@ -300,5 +405,5 @@ If no code changes were needed, do not create an empty commit.
 ## Self-Review
 
 - Spec coverage: The plan follows the evidence-driven decision to start with pure TypeScript scan optimization, targeting the measured `toSorted`, nearest-neighbor, and blocked-pair overhead before any native/WASM rewrite.
-- Placeholder scan: No `TODO`, `TBD`, or deferred implementation placeholders remain. Each task names exact files, commands, and expected outcomes.
+- Placeholder scan: No deferred implementation placeholders remain. Each task names exact files, commands, and expected outcomes.
 - Type consistency: The plan keeps the existing `buildClustersAdvanced(...)` API intact and optimizes the current helper modules rather than introducing a second clustering surface.
