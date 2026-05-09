@@ -107,9 +107,10 @@ const listTasks: ToolExecutor = (store) => [...store.tasks.values()]
 const updateTask: ToolExecutor = (store, input) => {
   const taskId = readString(input['taskId'], 'taskId')
   const task = currentTask(store, taskId)
+  const assigneeId = maybeNullableString(input['assigneeId'])
   return patchTask(store, taskId, {
     status: maybeString(input['status']) ?? task.status,
-    assigneeId: maybeNullableString(input['assigneeId']) ?? task.assigneeId,
+    assigneeId: assigneeId === undefined ? task.assigneeId : assigneeId,
     priority: maybeString(input['priority']) ?? task.priority,
     title: maybeString(input['title']) ?? task.title,
   })

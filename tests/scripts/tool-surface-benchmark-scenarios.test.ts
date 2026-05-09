@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 
+import { buildDirectTools } from '../../scripts/tool-surface-benchmark-scenarios-tools.js'
 import {
   createBenchmarkStore,
   evaluateBenchmarkScenario,
   scenarios,
   toolsForMode,
 } from '../../scripts/tool-surface-benchmark-scenarios.js'
+import { getToolExecutor } from '../utils/test-helpers.js'
 
 const seededTasks = [
   {
@@ -168,6 +170,53 @@ describe('tool-surface benchmark scenarios', () => {
         toolCalls: ['update_task', 'search_tasks', 'update_task'],
       }),
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails search_then_update_status when update happens before search', () => {
+    expect(
+      evaluateBenchmarkScenario('search_then_update_status', {
+        tasks: [{ ...seededTasks[0], status: 'in_progress' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['update_task', 'search_tasks'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails search_then_comment when comment happens before search', () => {
+    expect(
+      evaluateBenchmarkScenario('search_then_comment', {
+        tasks: [
+          { ...seededTasks[0], comments: ['Route this through the smaller tool set.'] },
+          seededTasks[1],
+          seededTasks[2],
+        ],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['add_comment', 'search_tasks'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails search_then_assign_user when mutation happens before discovery', () => {
+    expect(
+      evaluateBenchmarkScenario('search_then_assign_user', {
+        tasks: [{ ...seededTasks[0], assigneeId: 'user-alex' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['update_task', 'search_tasks', 'find_user'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('clears assignee when update_task receives assigneeId null', async () => {
+    const store = createBenchmarkStore()
+    store.tasks.set('task-1', { ...seededTasks[0], assigneeId: 'user-alex' })
+
+    const updateTask = buildDirectTools(store)['update_task']
+    await getToolExecutor(updateTask)({ taskId: 'task-1', assigneeId: null })
+
+    expect(store.tasks.get('task-1')?.assigneeId).toBeNull()
   })
 
   it('builds proxy mode with one exposed tool and preserved full count', () => {

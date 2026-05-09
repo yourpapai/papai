@@ -54,6 +54,16 @@ const firstCallIndex = (snapshot: BenchmarkScenarioSnapshot, toolName: string): 
   snapshot.toolCalls.indexOf(toolName)
 const firstMutationIndex = (snapshot: BenchmarkScenarioSnapshot): number =>
   snapshot.toolCalls.findIndex((toolName) => mutationToolNames.includes(toolName))
+const mutationHappensAfter = (
+  snapshot: BenchmarkScenarioSnapshot,
+  requiredDiscoveryCalls: readonly string[],
+): boolean => {
+  const mutationIndex = firstMutationIndex(snapshot)
+  return (
+    mutationIndex !== -1 &&
+    requiredDiscoveryCalls.every((toolName) => firstCallIndex(snapshot, toolName) < mutationIndex)
+  )
+}
 const findTask = (snapshot: BenchmarkScenarioSnapshot, taskId: string): BenchmarkTask | undefined =>
   snapshot.tasks.find((task) => task.id === taskId)
 const findTaskByTitle = (snapshot: BenchmarkScenarioSnapshot, title: string): BenchmarkTask | undefined =>
@@ -126,12 +136,17 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       : validationFailed()
   },
   search_then_update_status: (snapshot) =>
-    hasCalls(snapshot, ['search_tasks', 'update_task']) && findTask(snapshot, 'task-1')?.status === 'in_progress'
+    hasCalls(snapshot, ['search_tasks', 'update_task']) &&
+    mutationHappensAfter(snapshot, ['search_tasks']) &&
+    callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
+    findTask(snapshot, 'task-1')?.status === 'in_progress'
       ? ok()
       : validationFailed(),
   search_then_comment: (snapshot) => {
     const task = findTask(snapshot, 'task-1')
     return hasCalls(snapshot, ['search_tasks', 'add_comment']) &&
+      mutationHappensAfter(snapshot, ['search_tasks']) &&
+      callOccursBefore(snapshot, 'search_tasks', 'add_comment') &&
       task !== undefined &&
       task.comments.includes('Route this through the smaller tool set.')
       ? ok()
@@ -139,6 +154,9 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
   },
   search_then_assign_user: (snapshot) =>
     hasCalls(snapshot, ['search_tasks', 'find_user', 'update_task']) &&
+    mutationHappensAfter(snapshot, ['search_tasks', 'find_user']) &&
+    callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
+    callOccursBefore(snapshot, 'find_user', 'update_task') &&
     findTask(snapshot, 'task-1')?.assigneeId === 'user-alex'
       ? ok()
       : validationFailed(),
