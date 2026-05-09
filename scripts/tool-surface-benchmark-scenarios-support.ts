@@ -46,6 +46,14 @@ const callOccursBefore = (snapshot: BenchmarkScenarioSnapshot, first: string, se
   const secondIndex = snapshot.toolCalls.lastIndexOf(second)
   return firstIndex !== -1 && secondIndex !== -1 && firstIndex < secondIndex
 }
+const readOnlyToolNames: readonly string[] = ['list_tasks', 'search_tasks']
+const mutationToolNames: readonly string[] = ['create_task', 'update_task', 'add_comment', 'delete_task']
+const hasOnlyAllowedCalls = (snapshot: BenchmarkScenarioSnapshot, allowedToolNames: readonly string[]): boolean =>
+  snapshot.toolCalls.every((toolName) => allowedToolNames.includes(toolName))
+const firstCallIndex = (snapshot: BenchmarkScenarioSnapshot, toolName: string): number =>
+  snapshot.toolCalls.indexOf(toolName)
+const firstMutationIndex = (snapshot: BenchmarkScenarioSnapshot): number =>
+  snapshot.toolCalls.findIndex((toolName) => mutationToolNames.includes(toolName))
 const findTask = (snapshot: BenchmarkScenarioSnapshot, taskId: string): BenchmarkTask | undefined =>
   snapshot.tasks.find((task) => task.id === taskId)
 const findTaskByTitle = (snapshot: BenchmarkScenarioSnapshot, title: string): BenchmarkTask | undefined =>
@@ -136,6 +144,7 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       : validationFailed(),
   list_or_search_read_only: (snapshot) =>
     (hasCall(snapshot, 'list_tasks') || hasCall(snapshot, 'search_tasks')) &&
+    hasOnlyAllowedCalls(snapshot, readOnlyToolNames) &&
     hasUnchangedSeededTasks(snapshot) &&
     snapshot.recurringEntries.length === 0 &&
     snapshot.deferredEntries.length === 0
@@ -155,12 +164,18 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
     snapshot.deferredEntries.find((entry) => entry.prompt === 'Review benchmark results')?.when === 'tomorrow 09:00'
       ? ok()
       : validationFailed(),
-  ambiguous_but_solvable_task_update: (snapshot) =>
-    hasCalls(snapshot, ['search_tasks', 'update_task']) &&
-    callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
-    findTask(snapshot, 'task-1')?.status === 'in_progress'
+  ambiguous_but_solvable_task_update: (snapshot) => {
+    const discoveryIndex = firstCallIndex(snapshot, 'search_tasks')
+    const mutationIndex = firstMutationIndex(snapshot)
+    return hasCalls(snapshot, ['search_tasks', 'update_task']) &&
+      discoveryIndex !== -1 &&
+      mutationIndex !== -1 &&
+      discoveryIndex < mutationIndex &&
+      callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
+      findTask(snapshot, 'task-1')?.status === 'in_progress'
       ? ok()
-      : validationFailed(),
+      : validationFailed()
+  },
 }
 
 export function evaluateBenchmarkScenario(

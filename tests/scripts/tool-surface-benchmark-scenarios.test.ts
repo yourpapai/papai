@@ -126,6 +126,17 @@ describe('tool-surface benchmark scenarios', () => {
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })
 
+  it('fails list_or_search_read_only when a mutation tool was attempted', () => {
+    expect(
+      evaluateBenchmarkScenario('list_or_search_read_only', {
+        tasks: seededTasks,
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['list_tasks', 'update_task'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
   it('fails ambiguous_but_solvable_task_update when the wrong seeded task changed', () => {
     expect(
       evaluateBenchmarkScenario('ambiguous_but_solvable_task_update', {
@@ -144,6 +155,17 @@ describe('tool-surface benchmark scenarios', () => {
         recurringEntries: [],
         deferredEntries: [],
         toolCalls: ['update_task', 'search_tasks'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails ambiguous_but_solvable_task_update when an earlier mutation precedes discovery', () => {
+    expect(
+      evaluateBenchmarkScenario('ambiguous_but_solvable_task_update', {
+        tasks: [{ ...seededTasks[0], status: 'in_progress' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['update_task', 'search_tasks', 'update_task'],
       }),
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })
