@@ -46,7 +46,7 @@ const defaultTuneParams = (): TuneParams => ({
   threshold: 0.92,
   minClusterSize: 2,
   maxClusterSize: 0,
-  linkage: 'single',
+  linkage: 'complete',
   gapThreshold: 0,
   reembed: false,
   cacheDir: join(tmpdir(), 'tune-embed-cache'),

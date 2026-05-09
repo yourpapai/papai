@@ -84,7 +84,7 @@ export let CONSOLIDATION_THRESHOLD = 0.92
 export let CONSOLIDATION_MIN_CLUSTER_SIZE = 2
 export let CONSOLIDATION_DRY_RUN = false
 export let CONSOLIDATION_EMBED_BATCH_SIZE = 100
-export let CONSOLIDATION_LINKAGE: LinkageMode = 'single'
+export let CONSOLIDATION_LINKAGE: LinkageMode = 'complete'
 export let CONSOLIDATION_MAX_CLUSTER_SIZE = 0
 export let CONSOLIDATION_GAP_THRESHOLD = 0
 
@@ -143,7 +143,7 @@ export function reloadBehaviorAuditConfig(): void {
   CONSOLIDATION_MIN_CLUSTER_SIZE = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_MIN_CLUSTER_SIZE', 2)
   CONSOLIDATION_DRY_RUN = resolveStringOverride('BEHAVIOR_AUDIT_CONSOLIDATION_DRY_RUN', '0') === '1'
   CONSOLIDATION_EMBED_BATCH_SIZE = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_EMBED_BATCH_SIZE', 100)
-  const linkageRaw = resolveStringOverride('BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE', 'single')
+  const linkageRaw = resolveStringOverride('BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE', 'complete')
   CONSOLIDATION_LINKAGE = linkageRaw === 'average' || linkageRaw === 'complete' ? linkageRaw : 'single'
   CONSOLIDATION_MAX_CLUSTER_SIZE = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_MAX_CLUSTER_SIZE', 0)
   CONSOLIDATION_GAP_THRESHOLD = resolveNumberOverride('BEHAVIOR_AUDIT_CONSOLIDATION_GAP_THRESHOLD', 0)

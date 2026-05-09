@@ -161,6 +161,10 @@ function isProfileOptionEnabled(options: ClusteringProfileOptions | undefined): 
 }
 
 describe('tune-embedding wiring', () => {
+  test('parseArgs defaults linkage to complete', () => {
+    expect(parseArgs([]).linkage).toBe('complete')
+  })
+
   test('rejects unsupported linkage values explicitly', () => {
     expect(() => parseArgs(['--linkage', 'ward'])).toThrow("Unsupported linkage 'ward'")
   })
