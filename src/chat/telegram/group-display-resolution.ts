@@ -56,7 +56,12 @@ export async function resolveTelegramGroupDisplayLabel(chat: ChatProvider, group
     return liveLabel
   }
 
-  return findKnownGroupContext(TELEGRAM_PROVIDER, groupId)?.displayName ?? null
+  const cachedGroup = findKnownGroupContext(TELEGRAM_PROVIDER, groupId)
+  if (cachedGroup === null) {
+    return null
+  }
+
+  return cachedGroup.displayName
 }
 
 export async function resolveTelegramUserDisplayLabel(
@@ -80,5 +85,10 @@ export async function resolveTelegramUserDisplayLabel(
     return liveLabel
   }
 
-  return findGroupUserObservation(TELEGRAM_PROVIDER, contextId, userId)?.displayLabel ?? null
+  const cachedUser = findGroupUserObservation(TELEGRAM_PROVIDER, contextId, userId)
+  if (cachedUser === null) {
+    return null
+  }
+
+  return cachedUser.displayLabel
 }

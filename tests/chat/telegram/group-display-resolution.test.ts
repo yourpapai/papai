@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import {
   resolveTelegramGroupDisplayLabel,
@@ -71,12 +72,32 @@ describe('telegram group display resolution', () => {
     expect(await resolveTelegramUserDisplayLabel(chat, '-1001', '42')).toBe('John Johnson (@itsmike)')
   })
 
+  test('prefers live user labels over cached observed user labels', async () => {
+    upsertGroupUserObservation({
+      provider: 'telegram',
+      contextId: '-1001',
+      userId: '42',
+      username: 'itsmike',
+      displayLabel: 'Cached John (@itsmike)',
+    })
+
+    const chat = createTelegramChat({
+      resolveUserLabel: (): Promise<string | null> => Promise.resolve('Live John (@itsmike)'),
+    })
+
+    expect(await resolveTelegramUserDisplayLabel(chat, '-1001', '42')).toBe('Live John (@itsmike)')
+  })
+
   test('caches successful live user labels for later fallback', async () => {
     const chat = createTelegramChat({
       resolveUserLabel: (): Promise<string | null> => Promise.resolve('Jane Example (@jane)'),
     })
 
     expect(await resolveTelegramUserDisplayLabel(chat, '-1001', '99')).toBe('Jane Example (@jane)')
-    expect(findGroupUserObservation('telegram', '-1001', '99')?.displayLabel).toBe('Jane Example (@jane)')
+    const cachedUser = findGroupUserObservation('telegram', '-1001', '99')
+
+    expect(cachedUser).not.toBeNull()
+    assert.ok(cachedUser !== null)
+    expect(cachedUser.displayLabel).toBe('Jane Example (@jane)')
   })
 })
