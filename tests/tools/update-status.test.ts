@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeUpdateStatusTool } from '../../src/tools/update-status.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -27,7 +28,7 @@ describe('makeUpdateStatusTool', () => {
     })
 
     const tool = makeUpdateStatusTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', statusId: 'col-1', name: 'Updated Name' },
       { toolCallId: '1', messages: [] },
@@ -52,7 +53,7 @@ describe('makeUpdateStatusTool', () => {
     const provider = createMockProvider({ updateStatus })
 
     const tool = makeUpdateStatusTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       { projectId: 'proj-1', statusId: 'col-1', name: 'Updated', confirm: true },
       { toolCallId: '1', messages: [] },
@@ -78,7 +79,7 @@ describe('makeUpdateStatusTool', () => {
     const provider = createMockProvider({ updateStatus })
 
     const tool = makeUpdateStatusTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', statusId: 'col-1', name: 'Updated' },
       { toolCallId: '1', messages: [] },

@@ -140,25 +140,16 @@ describe('listYouTrackProjectTeam', () => {
   })
 
   test('paginates through team members', async () => {
-    let callIndex = 0
-    installFetchMock(() => {
-      const data =
-        callIndex++ === 1
-          ? Array.from({ length: 100 }, (_, index) =>
-              makeTeamUser({
-                id: `ring-user-${index + 1}`,
-                login: `user${index + 1}`,
-                name: `User ${index + 1}`,
-              }),
-            )
-          : callIndex === 1
-            ? makeProject()
-            : [makeTeamUser({ id: 'ring-user-101', login: 'user101', name: 'User 101' })]
+    const page1Users = Array.from({ length: 100 }, (_, index) =>
+      makeTeamUser({
+        id: `ring-user-${index + 1}`,
+        login: `user${index + 1}`,
+        name: `User ${index + 1}`,
+      }),
+    )
+    const page2Users = [makeTeamUser({ id: 'ring-user-101', login: 'user101', name: 'User 101' })]
 
-      return Promise.resolve(
-        new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockFetchSequence([{ data: makeProject() }, { data: page1Users }, { data: page2Users }])
 
     const team = await listYouTrackProjectTeam(config, 'proj-1')
 

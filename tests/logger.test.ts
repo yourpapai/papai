@@ -2,6 +2,22 @@ import { describe, expect, test, mock, beforeEach } from 'bun:test'
 
 import pino from 'pino'
 
+import { getLogLevel } from '../src/logger.js'
+
+function withLogLevel(level: string, fn: () => void): void {
+  const originalEnv = process.env['LOG_LEVEL']
+  process.env['LOG_LEVEL'] = level
+  try {
+    fn()
+  } finally {
+    if (originalEnv === undefined) {
+      delete process.env['LOG_LEVEL']
+    } else {
+      process.env['LOG_LEVEL'] = originalEnv
+    }
+  }
+}
+
 describe('logger', () => {
   beforeEach(() => {
     mock.restore()
@@ -156,66 +172,31 @@ describe('logger', () => {
 
   describe('getLogLevel', () => {
     test('returns default info when LOG_LEVEL is not set', async () => {
-      const { getLogLevel } = await import('../src/logger.js')
+      const { getLogLevel: freshGetLogLevel } = await import('../src/logger.js')
       // This depends on actual env, but default should be 'info'
-      const result = getLogLevel()
+      const result = freshGetLogLevel()
       expect(['info', 'trace', 'debug', 'silent']).toContain(result)
     })
 
     test('returns trace when LOG_LEVEL=trace', () => {
-      const originalEnv = process.env['LOG_LEVEL']
-      process.env['LOG_LEVEL'] = 'trace'
-
-      try {
-        // Must re-import to get fresh evaluation
-        // But due to module caching, we need to test the logic directly
-        const envLevel = process.env['LOG_LEVEL']?.toLowerCase()
-        const validLevels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']
-        const result = envLevel !== undefined && envLevel !== '' && validLevels.includes(envLevel) ? envLevel : 'info'
+      withLogLevel('trace', () => {
+        const result = getLogLevel()
         expect(result).toBe('trace')
-      } finally {
-        if (originalEnv === undefined) {
-          delete process.env['LOG_LEVEL']
-        } else {
-          process.env['LOG_LEVEL'] = originalEnv
-        }
-      }
+      })
     })
 
     test('returns debug when LOG_LEVEL=DEBUG (case insensitive)', () => {
-      const originalEnv = process.env['LOG_LEVEL']
-      process.env['LOG_LEVEL'] = 'DEBUG'
-
-      try {
-        const envLevel = process.env['LOG_LEVEL']?.toLowerCase()
-        const validLevels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']
-        const result = envLevel !== undefined && envLevel !== '' && validLevels.includes(envLevel) ? envLevel : 'info'
+      withLogLevel('DEBUG', () => {
+        const result = getLogLevel()
         expect(result).toBe('debug')
-      } finally {
-        if (originalEnv === undefined) {
-          delete process.env['LOG_LEVEL']
-        } else {
-          process.env['LOG_LEVEL'] = originalEnv
-        }
-      }
+      })
     })
 
     test('returns default for invalid LOG_LEVEL value', () => {
-      const originalEnv = process.env['LOG_LEVEL']
-      process.env['LOG_LEVEL'] = 'invalid'
-
-      try {
-        const envLevel = process.env['LOG_LEVEL']?.toLowerCase()
-        const validLevels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']
-        const result = envLevel !== undefined && envLevel !== '' && validLevels.includes(envLevel) ? envLevel : 'info'
+      withLogLevel('invalid', () => {
+        const result = getLogLevel()
         expect(result).toBe('info')
-      } finally {
-        if (originalEnv === undefined) {
-          delete process.env['LOG_LEVEL']
-        } else {
-          process.env['LOG_LEVEL'] = originalEnv
-        }
-      }
+      })
     })
   })
 })

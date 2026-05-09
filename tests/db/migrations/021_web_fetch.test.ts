@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { migration021WebFetch } from '../../../src/db/migrations/021_web_fetch.js'
 import { mockLogger } from '../../utils/test-helpers.js'
@@ -66,10 +67,8 @@ describe('migration021WebFetch', () => {
     const row = db
       .query<{ truncated: number }, [string]>('SELECT truncated FROM web_cache WHERE url_hash = ?')
       .get('hash-1')
-    expect(row).not.toBeNull()
-    if (row !== null) {
-      expect(row.truncated).toBe(0)
-    }
+    assert(row)
+    expect(row.truncated).toBe(0)
 
     expect(() => {
       db.run(`
@@ -131,6 +130,19 @@ describe('migration021WebFetch', () => {
 
   test('creates index on web_cache expires_at', () => {
     migration021WebFetch.up(db)
+
+    const indexNames = getIndexNames(db)
+    expect(indexNames).toContain('idx_web_cache_expires')
+  })
+
+  test('is idempotent - can run multiple times without error', () => {
+    migration021WebFetch.up(db)
+    migration021WebFetch.up(db)
+    migration021WebFetch.up(db)
+
+    const tableNames = getTableNames(db)
+    expect(tableNames).toContain('web_cache')
+    expect(tableNames).toContain('web_rate_limit')
 
     const indexNames = getIndexNames(db)
     expect(indexNames).toContain('idx_web_cache_expires')

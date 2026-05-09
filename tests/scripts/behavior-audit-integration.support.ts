@@ -1,7 +1,6 @@
-import type * as ResetModule from '../../scripts/behavior-audit-reset.js'
-import type * as BehaviorAuditModule from '../../scripts/behavior-audit.ts'
 import type * as ClassifiedStoreModule from '../../scripts/behavior-audit/classified-store.js'
 import type * as ClassifyAgentModule from '../../scripts/behavior-audit/classify-agent.js'
+import type * as ConsolidateKeywordsModule from '../../scripts/behavior-audit/consolidate-keywords.js'
 import type * as ConsolidateModule from '../../scripts/behavior-audit/consolidate.js'
 import type * as EvaluateReportingModule from '../../scripts/behavior-audit/evaluate-reporting.js'
 import type * as EvaluateModule from '../../scripts/behavior-audit/evaluate.js'
@@ -12,24 +11,21 @@ import type * as KeywordVocabularyModule from '../../scripts/behavior-audit/keyw
 import type { Progress } from '../../scripts/behavior-audit/progress.js'
 import type * as ProgressModule from '../../scripts/behavior-audit/progress.js'
 import type * as ReportWriterModule from '../../scripts/behavior-audit/report-writer.js'
-import type { ParsedTestFile } from '../../scripts/behavior-audit/test-parser.js'
+import type * as ResetModule from '../../scripts/behavior-audit/reset.js'
 
 export type IncrementalModuleShape = typeof IncrementalModule
-export type BehaviorAuditModuleShape = typeof BehaviorAuditModule
 export type ProgressModuleShape = typeof ProgressModule
 export type ExtractModuleShape = typeof ExtractModule
 export type ClassifyAgentModuleShape = typeof ClassifyAgentModule
 export type EvaluateModuleShape = typeof EvaluateModule
 export type EvaluateReportingModuleShape = typeof EvaluateReportingModule
 export type ConsolidateModuleShape = typeof ConsolidateModule
+export type ConsolidateKeywordsModuleShape = typeof ConsolidateKeywordsModule
 export type ClassifiedStoreModuleShape = typeof ClassifiedStoreModule
 export type KeywordVocabularyModuleShape = typeof KeywordVocabularyModule
 export type ReportWriterModuleShape = typeof ReportWriterModule
 export type ResetModuleShape = typeof ResetModule
-export type SelectIncrementalWorkInput = Parameters<IncrementalModuleShape['selectIncrementalWork']>[0]
-export type CaptureRunStartResult = ReturnType<IncrementalModuleShape['captureRunStart']>
 export type ManifestTestEntry = IncrementalManifest['tests'][string]
-export type MockClassificationResult = Awaited<ReturnType<ClassifyAgentModuleShape['classifyBehaviorWithRetry']>>
 export type MockEvaluationResult = Awaited<
   ReturnType<(typeof import('../../scripts/behavior-audit/evaluate-agent.js'))['evaluateWithRetry']>
 >
@@ -49,12 +45,6 @@ export function createEmptyManifest(): IncrementalManifest {
   }
 }
 
-export function getParsedTestKeys(testFiles: readonly ParsedTestFile[]): readonly string[] {
-  return testFiles
-    .flatMap((testFile) => testFile.tests.map((testCase) => `${testFile.filePath}::${testCase.fullPath}`))
-    .toSorted()
-}
-
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -68,34 +58,6 @@ function isStringOrNull(value: unknown): value is string | null {
 
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((item): item is string => typeof item === 'string')
-}
-
-function isKeywordVocabularyEntry(value: unknown): value is {
-  readonly slug: string
-  readonly description: string
-  readonly createdAt: string
-  readonly updatedAt: string
-} {
-  return (
-    isObject(value) &&
-    'slug' in value &&
-    typeof value['slug'] === 'string' &&
-    'description' in value &&
-    typeof value['description'] === 'string' &&
-    'createdAt' in value &&
-    typeof value['createdAt'] === 'string' &&
-    'updatedAt' in value &&
-    typeof value['updatedAt'] === 'string'
-  )
-}
-
-export function isKeywordVocabulary(value: unknown): value is readonly {
-  readonly slug: string
-  readonly description: string
-  readonly createdAt: string
-  readonly updatedAt: string
-}[] {
-  return Array.isArray(value) && value.every((entry) => isKeywordVocabularyEntry(entry))
 }
 
 function isManifestTestEntry(value: unknown): value is ManifestTestEntry {
@@ -180,10 +142,6 @@ function isIncrementalModule(value: unknown): value is IncrementalModuleShape {
   )
 }
 
-function isBehaviorAuditModule(value: unknown): value is BehaviorAuditModuleShape {
-  return isObject(value) && hasFunctionProperty(value, 'runBehaviorAudit')
-}
-
 function isProgressModule(value: unknown): value is ProgressModuleShape {
   return (
     isObject(value) &&
@@ -241,104 +199,11 @@ export async function readSavedManifest(filePath: string): Promise<IncrementalMa
   return raw
 }
 
-export function resolveNullableManifest(manifest: IncrementalManifest | null): IncrementalManifest {
-  if (manifest === null) {
-    return createEmptyManifest()
-  }
-  return manifest
-}
-
-function isParsedTestFile(value: unknown): value is ParsedTestFile {
-  return (
-    isObject(value) &&
-    'filePath' in value &&
-    'tests' in value &&
-    typeof value['filePath'] === 'string' &&
-    Array.isArray(value['tests'])
-  )
-}
-
-function isPhase1Input(value: unknown): value is {
-  readonly testFiles: readonly ParsedTestFile[]
-  readonly progress: Progress
-  readonly selectedTestKeys: ReadonlySet<string>
-} {
-  return (
-    isObject(value) &&
-    'testFiles' in value &&
-    Array.isArray(value['testFiles']) &&
-    value['testFiles'].every((item) => isParsedTestFile(item)) &&
-    'selectedTestKeys' in value &&
-    value['selectedTestKeys'] instanceof Set &&
-    'progress' in value
-  )
-}
-
-function isPhase2Input(value: unknown): value is {
-  readonly progress: Progress
-  readonly selectedConsolidatedIds: ReadonlySet<string>
-} {
-  return (
-    isObject(value) &&
-    'selectedConsolidatedIds' in value &&
-    value['selectedConsolidatedIds'] instanceof Set &&
-    'progress' in value
-  )
-}
-
-export function normalizePhase1Call(args: readonly unknown[]): {
-  readonly parsedTestKeys: readonly string[]
-  readonly selectedTestKeys: readonly string[]
-} {
-  const firstArg = args[0]
-  if (isPhase1Input(firstArg)) {
-    return {
-      parsedTestKeys: getParsedTestKeys(firstArg.testFiles),
-      selectedTestKeys: [...firstArg.selectedTestKeys].toSorted(),
-    }
-  }
-
-  if (Array.isArray(firstArg) && firstArg.every((item) => isParsedTestFile(item))) {
-    return {
-      parsedTestKeys: getParsedTestKeys(firstArg),
-      selectedTestKeys: [],
-    }
-  }
-
-  return { parsedTestKeys: [], selectedTestKeys: [] }
-}
-
-export function normalizePhase2Call(args: readonly unknown[]): {
-  readonly selectedConsolidatedIds: readonly string[]
-} {
-  const firstArg = args[0]
-  if (isPhase2Input(firstArg)) {
-    return { selectedConsolidatedIds: [...firstArg.selectedConsolidatedIds].toSorted() }
-  }
-  return { selectedConsolidatedIds: [] }
-}
-
-export async function loadBehaviorAuditEntryPoint(tag: string): Promise<void> {
-  const behaviorAudit = await loadBehaviorAuditModule(tag)
-  await behaviorAudit.runBehaviorAudit().catch((error: unknown) => {
-    console.error('Fatal error:', error instanceof Error ? error.message : String(error))
-    process.exit(1)
-  })
-}
-
 export function loadIncrementalModule(tag: string): Promise<IncrementalModuleShape> {
   return importWithGuard(
     `../../scripts/behavior-audit/incremental.js?test=${tag}`,
     isIncrementalModule,
     'Unexpected incremental module shape',
-  )
-}
-
-export function loadBehaviorAuditModule(tag: string): Promise<BehaviorAuditModuleShape> {
-  return importWithGuard(
-    `../../scripts/behavior-audit.ts?test=${tag}`,
-    isBehaviorAuditModule,
-    'Unexpected behavior-audit module shape',
   )
 }
 
@@ -412,7 +277,7 @@ function isKeywordVocabularyModule(value: unknown): value is KeywordVocabularyMo
 }
 
 export function isReportWriterModule(value: unknown): value is ReportWriterModuleShape {
-  return isObject(value) && hasFunctionProperty(value, 'writeBehaviorFile')
+  return isObject(value) && hasFunctionProperty(value, 'writeConsolidatedFile')
 }
 
 export function isResetModule(value: unknown): value is ResetModuleShape {
@@ -461,8 +326,20 @@ export function loadReportWriterModule(tag: string): Promise<ReportWriterModuleS
 
 export function loadResetModule(tag: string): Promise<ResetModuleShape> {
   return importWithGuard(
-    `../../scripts/behavior-audit-reset.js?test=${tag}`,
+    `../../scripts/behavior-audit/reset.js?test=${tag}`,
     isResetModule,
     'Unexpected reset module shape',
+  )
+}
+
+function isConsolidateKeywordsModule(value: unknown): value is ConsolidateKeywordsModuleShape {
+  return isObject(value) && hasFunctionProperty(value, 'runPhase1b')
+}
+
+export function loadConsolidateKeywordsModule(tag: string): Promise<ConsolidateKeywordsModuleShape> {
+  return importWithGuard(
+    `../../scripts/behavior-audit/consolidate-keywords.js?test=${tag}`,
+    isConsolidateKeywordsModule,
+    'Unexpected consolidate-keywords module shape',
   )
 }

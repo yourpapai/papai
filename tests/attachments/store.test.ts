@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import {
   _createInMemoryBlobStore,
@@ -42,11 +43,12 @@ describe('attachment store', () => {
     const record = await loadAttachmentRecord('ctx-store', ref.attachmentId)
 
     expect(record).not.toBeNull()
-    expect(record?.filename).toBe('report.pdf')
-    expect(record?.content.toString('utf8')).toBe('data')
-    expect(record?.checksum).toBeDefined()
-    expect(record?.blobKey).toContain(ref.attachmentId)
-    expect(blobs.has(record?.blobKey ?? '')).toBe(true)
+    assert(record !== null)
+    expect(record.filename).toBe('report.pdf')
+    expect(record.content.toString('utf8')).toBe('data')
+    expect(record.checksum).toBeDefined()
+    expect(record.blobKey).toContain(ref.attachmentId)
+    expect(blobs.has(record.blobKey)).toBe(true)
   })
 
   test('returns null for unknown attachment ids', async () => {

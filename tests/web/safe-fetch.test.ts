@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getUserMessage, webFetchError } from '../../src/errors.js'
 import { assertPublicUrl, safeFetchContent, type SafeFetchDeps } from '../../src/web/safe-fetch.js'
@@ -12,6 +13,27 @@ function hasAppError(error: unknown): error is Error & { appError: unknown } {
   return error instanceof Error && 'appError' in error
 }
 
+function makeRedirectThenSuccessFetch(): typeof fetch {
+  let fetchCount = 0
+  return createFetchMock((..._args: Parameters<typeof fetch>): Promise<Response> => {
+    fetchCount += 1
+    if (fetchCount === 1) {
+      return Promise.resolve(
+        new Response(null, {
+          status: 302,
+          headers: { location: 'https://example.com/final' },
+        }),
+      )
+    }
+    return Promise.resolve(
+      new Response('<html><body>Hello</body></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      }),
+    )
+  })
+}
+
 describe('safeFetchContent', () => {
   beforeEach(() => {
     mockLogger()
@@ -19,25 +41,7 @@ describe('safeFetchContent', () => {
 
   test('validates the initial URL and each redirect target', async () => {
     const assertPublicUrlMock = mock((_url: URL): Promise<void> => Promise.resolve())
-    let fetchCount = 0
-    const fetchMock = createFetchMock((..._args: Parameters<typeof fetch>): Promise<Response> => {
-      fetchCount += 1
-      if (fetchCount === 1) {
-        return Promise.resolve(
-          new Response(null, {
-            status: 302,
-            headers: { location: 'https://example.com/final' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response('<html><body>Hello</body></html>', {
-          status: 200,
-          headers: { 'content-type': 'text/html; charset=utf-8' },
-        }),
-      )
-    })
+    const fetchMock = makeRedirectThenSuccessFetch()
 
     const result = await safeFetchContent(
       'https://example.com/start',
@@ -70,9 +74,7 @@ describe('safeFetchContent', () => {
       throw new Error('Expected safeFetchContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.blockedContentType()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'blocked-content-type',
@@ -122,9 +124,7 @@ describe('safeFetchContent', () => {
       throw new Error('Expected safeFetchContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.tooLarge()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'too-large',
@@ -146,9 +146,7 @@ describe('safeFetchContent', () => {
       throw new Error('Expected safeFetchContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.timeout()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'timeout',
@@ -173,9 +171,7 @@ describe('safeFetchContent', () => {
       throw new Error('Expected safeFetchContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.timeout()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'timeout',
@@ -191,9 +187,7 @@ describe('safeFetchContent', () => {
         throw new Error('Expected assertPublicUrl to reject')
       } catch (error) {
         expectAppError(error, getUserMessage(webFetchError.blockedHost()))
-        if (!hasAppError(error)) {
-          throw new Error('Expected error with appError', { cause: error })
-        }
+        assert(hasAppError(error))
         expect(error).toMatchObject({
           type: 'web-fetch',
           code: 'blocked-host',
@@ -216,9 +210,7 @@ describe('safeFetchContent', () => {
       throw new Error('Expected safeFetchContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.upstreamError()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'upstream-error',

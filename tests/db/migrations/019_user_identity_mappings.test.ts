@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { migration019UserIdentityMappings } from '../../../src/db/migrations/019_user_identity_mappings.js'
 import { mockLogger } from '../../utils/test-helpers.js'
@@ -87,10 +88,8 @@ describe('migration019UserIdentityMappings', () => {
       )
       .get('user-1')
 
-    expect(row).not.toBeNull()
-    if (row !== null) {
-      expect(row.provider_user_id).toBeNull()
-      expect(row.match_method).toBe('unmatched')
-    }
+    assert(row)
+    expect(row.provider_user_id).toBeNull()
+    expect(row.match_method).toBe('unmatched')
   })
 })

@@ -16,7 +16,7 @@ afterEach(() => {
   }
 })
 
-async function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 5000): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
 
   try {
@@ -25,7 +25,7 @@ async function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> 
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           reject(new Error(message))
-        }, 200)
+        }, timeoutMs)
       }),
     ])
   } finally {

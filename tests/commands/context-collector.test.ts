@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
 
@@ -83,8 +84,9 @@ describe('collectContext', () => {
     })
     const snapshot = collectContext('user1', deps)
     const sysPrompt = snapshot.sections.find((s) => s.label === 'System prompt')
-    expect(sysPrompt).toBeDefined()
-    const labels = sysPrompt?.children?.map((c) => c.label) ?? []
+    assert(sysPrompt !== undefined)
+    assert(sysPrompt.children !== undefined)
+    const labels = sysPrompt.children.map((c) => c.label)
     expect(labels).toContain('Base instructions')
     expect(labels).toContain('Custom instructions')
     expect(labels).toContain('Provider addendum')

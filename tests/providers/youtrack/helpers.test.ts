@@ -156,14 +156,11 @@ describe('paginate', () => {
   test('paginates through multiple pages', async () => {
     const page1: Item[] = Array.from({ length: 5 }, (_, i) => ({ id: String(i), name: `item-${i}` }))
     const page2: Item[] = [{ id: '5', name: 'item-5' }]
-    let call = 0
-    installFetchMock(() => {
-      const data = call === 0 ? page1 : page2
-      call++
-      return Promise.resolve(
-        new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    const responses = [
+      new Response(JSON.stringify(page1), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(page2), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    ]
+    installFetchMock(() => Promise.resolve(responses.shift()!))
     const result = await paginate(config, '/api/items', {}, ItemSchema.array(), 10, 5)
     expect(result).toHaveLength(6)
   })

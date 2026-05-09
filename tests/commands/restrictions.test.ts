@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerAdminCommands } from '../../src/commands/admin.js'
@@ -15,10 +16,14 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
+function firstCall(calls: readonly string[]): string {
+  assert(calls.length > 0, 'Expected at least one call')
+  return calls[0]!
+}
+
 describe('command context restrictions', () => {
   let mockChat: ChatProvider
   let commandHandlers: Map<string, CommandHandler>
-  let lastReply: string | null
   const adminUserId = 'admin123'
 
   const checkAuthorization = (userId: string): boolean => {
@@ -42,8 +47,6 @@ describe('command context restrictions', () => {
     registerClearCommand(mockChat, checkAuthorization, adminUserId)
     registerConfigCommand(mockChat, checkAuthorization)
     registerAdminCommands(mockChat, adminUserId)
-
-    lastReply = null
   })
 
   describe('/clear command', () => {
@@ -57,8 +60,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe('Only group admins can run this command.')
+      expect(firstCall(textCalls)).toBe('Only group admins can run this command.')
     })
 
     test('allowed for group admin in group', async () => {
@@ -70,8 +72,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe('Conversation history, memory, and attachments cleared.')
+      expect(firstCall(textCalls)).toBe('Conversation history, memory, and attachments cleared.')
     })
 
     test('allowed for regular user in DM', async () => {
@@ -86,8 +87,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe('Conversation history, memory, and attachments cleared.')
+      expect(firstCall(textCalls)).toBe('Conversation history, memory, and attachments cleared.')
     })
   })
 
@@ -102,8 +102,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe(
+      expect(firstCall(textCalls)).toBe(
         'Only group admins can configure group settings, and group settings are configured in direct messages with the bot.',
       )
     })
@@ -117,8 +116,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe(
+      expect(firstCall(textCalls)).toBe(
         'Group settings are configured in direct messages with the bot. Open a DM with me and run /config.',
       )
     })
@@ -135,8 +133,7 @@ describe('command context restrictions', () => {
       const { reply, buttonCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      lastReply = buttonCalls[0] ?? null
-      expect(lastReply).toContain('What do you want to configure?')
+      expect(firstCall(buttonCalls)).toContain('What do you want to configure?')
     })
   })
 
@@ -151,8 +148,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true, isGroupAdmin: true }))
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe('This command is only available in direct messages.')
+      expect(firstCall(textCalls)).toBe('This command is only available in direct messages.')
     })
 
     test('allowed in DM for admin', async () => {
@@ -164,8 +160,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true }))
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe('User @user789 authorized.')
+      expect(firstCall(textCalls)).toBe('User @user789 authorized.')
     })
   })
 
@@ -179,8 +174,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true, isGroupAdmin: true }))
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toBe('This command is only available in direct messages.')
+      expect(firstCall(textCalls)).toBe('This command is only available in direct messages.')
     })
 
     test('allowed in DM for admin', async () => {
@@ -191,9 +185,8 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true }))
 
-      lastReply = textCalls[0] ?? null
-      expect(lastReply).toContain(adminUserId)
-      expect(lastReply).toContain('(admin)')
+      expect(firstCall(textCalls)).toContain(adminUserId)
+      expect(firstCall(textCalls)).toContain('(admin)')
     })
   })
 })

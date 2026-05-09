@@ -16,6 +16,7 @@ import { handleOrchestratorMessageError, handleToolCallFinish } from './llm-orch
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
+import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
@@ -38,11 +39,9 @@ const defaultDeps: LlmOrchestratorDeps = {
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
 
-const persistFactsFromResults = (
-  contextId: string,
-  toolCalls: Array<{ toolName: string; input: unknown }>,
-  toolResults: Array<{ toolName: string; output: unknown }>,
-): void => {
+const persistFactsFromResults = (contextId: string, result: unknown): void => {
+  const toolCalls = extractFactToolCalls(result)
+  const toolResults = extractFactToolResults(result)
   const newFacts = extractFactsFromSdkResults(toolCalls, toolResults)
   if (newFacts.length === 0) return
   for (const fact of newFacts) upsertFact(contextId, fact)
@@ -55,6 +54,11 @@ const persistFactsFromResults = (
 const isToolSet = (value: unknown): value is ToolSet =>
   typeof value === 'object' && value !== null && Object.keys(value).length > 0
 
+const cacheUsernamePart = (username: string | null): string => {
+  if (username === null) return ''
+  return username
+}
+
 const getOrCreateTools = (
   contextId: string,
   chatUserId: string,
@@ -64,7 +68,7 @@ const getOrCreateTools = (
 ): ToolSet => {
   // Security fix: In group chats, tools embed chatUserId-specific closures for "me" resolution.
   // The cache key must include chatUserId to prevent cross-user contamination.
-  const cacheKey = contextType === 'group' ? `${contextId}:${chatUserId}:${username ?? ''}` : contextId
+  const cacheKey = contextType === 'group' ? `${contextId}:${chatUserId}:${cacheUsernamePart(username)}` : contextId
   const cachedTools = getCachedTools(cacheKey)
   if (cachedTools !== undefined && cachedTools !== null && isToolSet(cachedTools)) {
     log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Using cached tools')
@@ -212,7 +216,7 @@ const callLlm = async (
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
   log.debug({ contextId, toolCalls: toolCallCount, usage: result.usage }, 'LLM response received')
-  persistFactsFromResults(contextId, result.toolCalls, result.toolResults)
+  persistFactsFromResults(contextId, result)
   await sendLlmResponse(reply, contextId, result)
   return result
 }
@@ -229,7 +233,7 @@ export const processMessage = async (
   username: string | null,
   userText: string,
   contextType: 'dm' | 'group',
-  configContextId: string | undefined = undefined,
+  configContextId?: string,
   deps: LlmOrchestratorDeps = defaultDeps,
   newAttachmentIds: readonly string[] = [],
 ): Promise<void> => {

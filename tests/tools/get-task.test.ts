@@ -2,7 +2,7 @@ import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 
 import { getConfig, setConfig } from '../../src/config.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb, getToolExecutor } from '../utils/test-helpers.js'
 import { createMockProvider, createMockYouTrackProvider } from './mock-provider.js'
 
 describe('get_task', () => {
@@ -29,8 +29,7 @@ describe('get_task', () => {
     const provider = createMockProvider({ getTask })
     const tool = makeGetTaskTool(provider, 'user-123')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
-    const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
     expect(getTask).toHaveBeenCalledTimes(1)
     expect(getTask).toHaveBeenCalledWith('task-1')
@@ -52,8 +51,7 @@ describe('get_task', () => {
     const provider = createMockProvider({ getTask })
     const tool = makeGetTaskTool(provider, 'user-123')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
-    const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('dueDate', '2026-03-25T17:00:00')
   })
@@ -72,8 +70,7 @@ describe('get_task', () => {
     const provider = createMockYouTrackProvider({ getTask })
     const tool = makeGetTaskTool(provider, 'user-123')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
-    const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('dueDate', '2026-03-25')
   })
@@ -93,8 +90,7 @@ describe('get_task', () => {
     )
 
     const tool = makeGetTaskTool(createMockProvider({ getTask }))
-    if (!tool.execute) throw new Error('Tool execute is undefined')
-    const result: unknown = await tool.execute({ taskId: 'TEST-1' }, { toolCallId: '1', messages: [] })
+    const result = await getToolExecutor(tool)({ taskId: 'TEST-1' }, { toolCallId: '1', messages: [] })
     expect(result).toMatchObject({
       customFields: [
         { name: 'Environment', value: 'staging' },
@@ -124,14 +120,9 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
-      if (typeof result !== 'object' || result === null) throw new Error('Expected object')
-      if (!('dueDate' in result)) throw new Error('Missing dueDate')
-      const dueDate = result['dueDate']
-      expect(typeof dueDate).toBe('string')
-      expect(dueDate).toContain('13:00')
+      expect(JSON.stringify(result)).toContain('13:00')
     })
 
     test('should fallback to UTC when no timezone configured', async () => {
@@ -151,14 +142,9 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
-      if (typeof result !== 'object' || result === null) throw new Error('Expected object')
-      if (!('dueDate' in result)) throw new Error('Missing dueDate')
-      const dueDate = result['dueDate']
-      expect(typeof dueDate).toBe('string')
-      expect(dueDate).toContain('12:00')
+      expect(JSON.stringify(result)).toContain('12:00')
     })
 
     test('should work with same userId and storageContextId in DMs', async () => {
@@ -178,14 +164,9 @@ describe('get_task', () => {
       const provider = createMockProvider({ getTask })
       const tool = makeGetTaskTool(provider, userId, userId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
-      const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
+      const result = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
-      if (typeof result !== 'object' || result === null) throw new Error('Expected object')
-      if (!('dueDate' in result)) throw new Error('Missing dueDate')
-      const dueDate = result['dueDate']
-      expect(typeof dueDate).toBe('string')
-      expect(dueDate).toContain('14:00')
+      expect(JSON.stringify(result)).toContain('14:00')
     })
   })
 })

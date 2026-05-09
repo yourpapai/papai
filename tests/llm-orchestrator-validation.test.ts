@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ModelMessage, ToolCallPart, ToolResultPart } from 'ai'
 
@@ -69,19 +70,17 @@ describe('validateToolResults', () => {
     expect(toolContent[0]!.output.type).toBe('json')
     const output = toolContent[0]!.output
     expect(output.type).toBe('json')
-    if (output.type === 'json') {
-      expect(isToolFailureResult(output.value)).toBe(true)
-      if (isToolFailureResult(output.value)) {
-        expect(output.value).toMatchObject({
-          toolName: 'create_task',
-          toolCallId: 'call-1',
-          errorType: 'tool-execution',
-          errorCode: 'interrupted',
-          recovered: true,
-          retryable: true,
-        })
-      }
-    }
+    assert(output.type === 'json')
+    expect(isToolFailureResult(output.value)).toBe(true)
+    assert(isToolFailureResult(output.value))
+    expect(output.value).toMatchObject({
+      toolName: 'create_task',
+      toolCallId: 'call-1',
+      errorType: 'tool-execution',
+      errorCode: 'interrupted',
+      recovered: true,
+      retryable: true,
+    })
   })
 
   test('handles multiple missing results', () => {

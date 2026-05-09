@@ -9,35 +9,10 @@ import { applyBehaviorAuditEnv } from './behavior-audit-integration.runtime-help
 type ManifestTestEntry = IncrementalManifest['tests'][string]
 type ConsolidatedManifestEntry = ConsolidatedManifest['entries'][string]
 
-type ExtractedBehavior = {
-  readonly testName: string
-  readonly fullPath: string
-  readonly behavior: string
-  readonly context: string
-  readonly keywords: readonly string[]
-}
-
-type ClassifiedBehavior = {
-  readonly behaviorId: string
-  readonly testKey: string
-  readonly domain: string
-  readonly visibility: 'user-facing' | 'internal' | 'ambiguous'
-  readonly featureKey: string | null
-  readonly featureLabel: string | null
-  readonly supportingBehaviorRefs: readonly { readonly behaviorId: string; readonly reason: string }[]
-  readonly relatedBehaviorHints: readonly {
-    readonly testKey: string
-    readonly relation: 'same-feature' | 'supporting-detail' | 'possibly-related'
-    readonly reason: string
-  }[]
-  readonly classificationNotes: string
-}
-
 export interface BehaviorAuditTestPaths {
   readonly root: string
   readonly reportsDir: string
   readonly auditBehaviorDir: string
-  readonly behaviorsDir: string
   readonly extractedDir: string
   readonly classifiedDir: string
   readonly consolidatedDir: string
@@ -55,7 +30,6 @@ export interface BehaviorAuditTestConfig {
   readonly PROJECT_ROOT: string
   readonly REPORTS_DIR: string
   readonly AUDIT_BEHAVIOR_DIR: string
-  readonly BEHAVIORS_DIR: string
   readonly EXTRACTED_DIR: string
   readonly CLASSIFIED_DIR: string
   readonly CONSOLIDATED_DIR: string
@@ -72,6 +46,15 @@ export interface BehaviorAuditTestConfig {
   readonly RETRY_BACKOFF_MS: readonly [number, number, number]
   readonly MAX_STEPS: number
   readonly EXCLUDED_PREFIXES: readonly string[]
+  readonly EMBEDDING_MODEL: string
+  readonly EMBEDDING_BASE_URL: string
+  readonly CONSOLIDATION_THRESHOLD: number
+  readonly CONSOLIDATION_MIN_CLUSTER_SIZE: number
+  readonly CONSOLIDATION_LINKAGE: 'single' | 'average' | 'complete'
+  readonly CONSOLIDATION_MAX_CLUSTER_SIZE: number
+  readonly CONSOLIDATION_GAP_THRESHOLD: number
+  readonly CONSOLIDATION_DRY_RUN: boolean
+  readonly CONSOLIDATION_EMBED_BATCH_SIZE: number
 }
 
 const DEFAULT_CONFIG = {
@@ -91,12 +74,20 @@ const DEFAULT_CONFIG = {
     'tests/review-loop/',
     'tests/types/',
   ] as const,
+  EMBEDDING_MODEL: '',
+  EMBEDDING_BASE_URL: 'http://localhost:1234/v1',
+  CONSOLIDATION_THRESHOLD: 0.92,
+  CONSOLIDATION_MIN_CLUSTER_SIZE: 2,
+  CONSOLIDATION_LINKAGE: 'single',
+  CONSOLIDATION_MAX_CLUSTER_SIZE: 0,
+  CONSOLIDATION_GAP_THRESHOLD: 0,
+  CONSOLIDATION_DRY_RUN: false,
+  CONSOLIDATION_EMBED_BATCH_SIZE: 100,
 } satisfies Omit<
   BehaviorAuditTestConfig,
   | 'PROJECT_ROOT'
   | 'REPORTS_DIR'
   | 'AUDIT_BEHAVIOR_DIR'
-  | 'BEHAVIORS_DIR'
   | 'EXTRACTED_DIR'
   | 'CLASSIFIED_DIR'
   | 'CONSOLIDATED_DIR'
@@ -116,7 +107,6 @@ function createPaths(root: string, auditBehaviorRoot: boolean): BehaviorAuditTes
     root,
     reportsDir,
     auditBehaviorDir,
-    behaviorsDir: path.join(auditBehaviorDir, 'behaviors'),
     extractedDir: path.join(auditBehaviorDir, 'extracted'),
     classifiedDir: path.join(auditBehaviorDir, 'classified'),
     consolidatedDir: path.join(auditBehaviorDir, 'consolidated'),
@@ -152,7 +142,6 @@ function createConfig(
     PROJECT_ROOT: paths.root,
     REPORTS_DIR: paths.reportsDir,
     AUDIT_BEHAVIOR_DIR: paths.auditBehaviorDir,
-    BEHAVIORS_DIR: paths.behaviorsDir,
     EXTRACTED_DIR: paths.extractedDir,
     CLASSIFIED_DIR: paths.classifiedDir,
     CONSOLIDATED_DIR: paths.consolidatedDir,
@@ -192,7 +181,7 @@ export function mockAuditBehaviorConfig(root: string, overrides: Partial<Behavio
 
 export function createEmptyProgressFixture(filesTotal: number): Progress {
   return {
-    version: 4,
+    version: 5,
     startedAt: '2026-04-17T12:00:00.000Z',
     phase1: {
       status: 'not-started',
@@ -200,6 +189,19 @@ export function createEmptyProgressFixture(filesTotal: number): Progress {
       failedTests: {},
       completedFiles: [],
       stats: { filesTotal, filesDone: 0, testsExtracted: 0, testsFailed: 0 },
+    },
+    phase1b: {
+      status: 'not-started',
+      lastRunAt: null,
+      threshold: 0,
+      minClusterSize: 2,
+      linkage: 'single',
+      maxClusterSize: 0,
+      gapThreshold: 0,
+      embeddingModel: '',
+      embeddingBaseUrl: '',
+      embeddingCachePath: null,
+      stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
     },
     phase2a: {
       status: 'not-started',
@@ -228,28 +230,6 @@ export function createEmptyProgressFixture(filesTotal: number): Progress {
         consolidatedIdsFailed: 0,
       },
     },
-  }
-}
-
-export function createExtractedBehaviorFixture(
-  input: Omit<ExtractedBehavior, 'keywords'> & Partial<Pick<ExtractedBehavior, 'keywords'>>,
-): ExtractedBehavior {
-  return {
-    keywords: [],
-    ...input,
-  }
-}
-
-export function createClassifiedBehaviorFixture(
-  input: Omit<ClassifiedBehavior, 'supportingBehaviorRefs' | 'relatedBehaviorHints' | 'featureKey'> &
-    Partial<Pick<ClassifiedBehavior, 'supportingBehaviorRefs' | 'relatedBehaviorHints' | 'featureKey'>>,
-): ClassifiedBehavior {
-  return {
-    supportingBehaviorRefs: [],
-    relatedBehaviorHints: [],
-    ...input,
-    featureKey: input.featureKey ?? null,
-    featureLabel: input.featureLabel ?? null,
   }
 }
 

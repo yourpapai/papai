@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { emitLlmStart, emitLlmEnd, type ResolvedStreamTextResult } from '../src/llm-orchestrator-events.js'
 import { makeTools } from '../src/tools/index.js'
@@ -7,6 +8,19 @@ import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function makeEventCapture(eventType: string): {
+  capture: () => unknown
+  listener: (event: { type: string; data: unknown }) => void
+} {
+  let capturedData: unknown = null
+  return {
+    capture: () => capturedData,
+    listener: (event: { type: string; data: unknown }): void => {
+      if (event.type === eventType) capturedData = event.data
+    },
+  }
 }
 
 describe('llm-orchestrator-events', () => {
@@ -19,10 +33,7 @@ describe('llm-orchestrator-events', () => {
     test('emits llm:start event with correct payload', async () => {
       const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
 
-      let capturedEvent: unknown = null
-      const listener = (event: { type: string; data: unknown }): void => {
-        if (event.type === 'llm:start') capturedEvent = event.data
-      }
+      const { capture, listener } = makeEventCapture('llm:start')
       subscribe(listener)
 
       try {
@@ -30,7 +41,7 @@ describe('llm-orchestrator-events', () => {
         const tools = makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
         emitLlmStart('ctx-1', 'gpt-4', [{ role: 'user', content: 'hi' }], tools)
 
-        expect(capturedEvent).toEqual({
+        expect(capture()).toEqual({
           userId: 'ctx-1',
           model: 'gpt-4',
           messageCount: 1,
@@ -46,10 +57,7 @@ describe('llm-orchestrator-events', () => {
     test('emits llm:end event with steps detail', async () => {
       const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
 
-      let capturedEvent: unknown = null
-      const listener = (event: { type: string; data: unknown }): void => {
-        if (event.type === 'llm:end') capturedEvent = event.data
-      }
+      const { capture, listener } = makeEventCapture('llm:end')
       subscribe(listener)
 
       try {
@@ -76,8 +84,8 @@ describe('llm-orchestrator-events', () => {
 
         emitLlmEnd('ctx-1', 'gpt-4', result, startTime, [{ role: 'user', content: 'hi' }], tools)
 
-        expect(isRecord(capturedEvent)).toBe(true)
-        if (!isRecord(capturedEvent)) return
+        const capturedEvent = capture()
+        assert(isRecord(capturedEvent))
         expect(capturedEvent['userId']).toBe('ctx-1')
         expect(capturedEvent['model']).toBe('gpt-4')
         expect(capturedEvent['steps']).toBe(1)

@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
 import { eq } from 'drizzle-orm'
@@ -109,21 +110,19 @@ describe('loadHistory', () => {
     const assistantMsg = result[1]
     expect(assistantMsg).toBeDefined()
     const assistantContent = assistantMsg?.content
-    expect(Array.isArray(assistantContent)).toBe(true)
+    assert(Array.isArray(assistantContent))
     expect(assistantContent).toHaveLength(1)
     // Verify structure of first item in array content
-    const firstAssistantItem = Array.isArray(assistantContent) ? assistantContent[0] : undefined
-    expect(firstAssistantItem).toMatchObject({ type: 'tool-call', toolCallId: 'tc1', toolName: 'list_tasks' })
+    expect(assistantContent[0]).toMatchObject({ type: 'tool-call', toolCallId: 'tc1', toolName: 'list_tasks' })
 
     // Verify tool message has tool-result content
     const toolMsg = result[2]
     expect(toolMsg).toBeDefined()
     const toolContent = toolMsg?.content
-    expect(Array.isArray(toolContent)).toBe(true)
+    assert(Array.isArray(toolContent))
     expect(toolContent).toHaveLength(1)
     // Verify structure of first item in array content
-    const firstToolItem = Array.isArray(toolContent) ? toolContent[0] : undefined
-    expect(firstToolItem).toMatchObject({ type: 'tool-result', toolCallId: 'tc1', toolName: 'list_tasks' })
+    expect(toolContent[0]).toMatchObject({ type: 'tool-result', toolCallId: 'tc1', toolName: 'list_tasks' })
   })
 
   test('rejects messages where content is neither string nor array', () => {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeAddTaskRelationTool } from '../../src/tools/add-task-relation.js'
 import { makeRemoveTaskRelationTool } from '../../src/tools/remove-task-relation.js'
@@ -59,7 +60,7 @@ describe('Task Relation Tools', () => {
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'blocks' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTaskRelation(result)) throw new Error('Invalid result')
+      assert(isTaskRelation(result))
 
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
@@ -180,7 +181,7 @@ describe('Task Relation Tools', () => {
         { taskId: 'task-1', relatedTaskId: 'task-1', type: 'blocks' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTaskRelation(result)) throw new Error('Invalid result')
+      assert(isTaskRelation(result))
 
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-1')
@@ -234,7 +235,7 @@ describe('Task Relation Tools', () => {
         { taskId: 'task-1', relatedTaskId: 'task-2', type: 'related' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTaskRelation(result)) throw new Error('Invalid result')
+      assert(isTaskRelation(result))
 
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
@@ -333,7 +334,7 @@ describe('Task Relation Tools', () => {
         { taskId: 'task-1', relatedTaskId: 'task-2' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isRemoveResult(result)) throw new Error('Invalid result')
+      assert(isRemoveResult(result))
 
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')

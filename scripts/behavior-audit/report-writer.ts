@@ -4,9 +4,7 @@ import { dirname, join } from 'node:path'
 
 import { z } from 'zod'
 
-import { behaviorMarkdownPathForTestFile } from './artifact-paths.js'
 import { CONSOLIDATED_DIR, STORIES_DIR } from './config.js'
-import type { IncrementalManifest } from './incremental.js'
 import {
   buildFailedSection,
   buildSummaryHeader,
@@ -19,8 +17,6 @@ import {
   collectStoryEvaluations,
   loadConsolidatedArtifacts,
   loadEvaluatedArtifacts,
-  loadExtractedArtifacts,
-  type BehaviorMarkdownEntry,
 } from './report-rebuild-helpers.js'
 export type { DomainSummary, FailedItem } from './report-index-helpers.js'
 
@@ -67,26 +63,7 @@ const ConsolidatedBehaviorSchema = z.object({
 const ConsolidatedBehaviorArraySchema = z.array(ConsolidatedBehaviorSchema).readonly()
 
 interface RebuildReportsInput {
-  readonly manifest: IncrementalManifest
   readonly consolidatedManifest: import('./incremental.js').ConsolidatedManifest | null
-}
-
-export async function writeBehaviorFile(
-  testFilePath: string,
-  behaviors: readonly BehaviorMarkdownEntry[],
-): Promise<void> {
-  const outPath = behaviorMarkdownPathForTestFile(testFilePath)
-  await mkdir(dirname(outPath), { recursive: true })
-
-  const lines: string[] = [`# ${testFilePath}\n`]
-  for (const b of behaviors) {
-    lines.push(`## Test: "${b.fullPath}"\n`)
-    lines.push(`**Behavior:** ${b.behavior}`)
-    lines.push(`**Context:** ${b.context}`)
-    lines.push(`**Keywords:** ${b.keywords.join(', ')}\n`)
-  }
-
-  await Bun.write(outPath, lines.join('\n'))
 }
 
 export async function writeConsolidatedFile(
@@ -156,19 +133,6 @@ export async function writeStoryFile(domain: string, evaluations: readonly Story
   await Bun.write(outPath, lines.join('\n'))
 }
 
-async function writeRebuiltBehaviorFiles(
-  extractedByFile: Readonly<Record<string, readonly BehaviorMarkdownEntry[]>>,
-): Promise<void> {
-  await Promise.all(
-    Object.entries(extractedByFile).map(([testFile, behaviors]) =>
-      writeBehaviorFile(
-        testFile,
-        [...behaviors].toSorted((a, b) => a.fullPath.localeCompare(b.fullPath)),
-      ),
-    ),
-  )
-}
-
 async function writeRebuiltStoryFiles(
   evaluationsByDomain: ReadonlyMap<string, readonly StoryEvaluation[]>,
 ): Promise<void> {
@@ -207,13 +171,7 @@ export async function writeIndexFile(
   await Bun.write(outPath, lines.join('\n'))
 }
 
-export async function rebuildReportsFromStoredResults({
-  manifest,
-  consolidatedManifest,
-}: RebuildReportsInput): Promise<void> {
-  const extractedByFile = await loadExtractedArtifacts(manifest)
-  await writeRebuiltBehaviorFiles(extractedByFile)
-
+export async function rebuildReportsFromStoredResults({ consolidatedManifest }: RebuildReportsInput): Promise<void> {
   if (consolidatedManifest === null) {
     await writeIndexFile([], 0, 0, new Map(), new Map(), [])
     return

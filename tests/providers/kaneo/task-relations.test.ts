@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
 import { createMockTask, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
@@ -16,6 +17,205 @@ function isUpdateDescriptionBody(value: unknown): value is UpdateDescriptionBody
     typeof (value as Record<string, unknown>)['description'] === 'string'
   )
 }
+
+function parseBody(options: RequestInit): unknown {
+  if (typeof options.body === 'string') {
+    return JSON.parse(options.body)
+  }
+  return undefined
+}
+
+function makeOkResponse(data: unknown): Promise<Response> {
+  return Promise.resolve(new Response(JSON.stringify(data), { status: 200 }))
+}
+
+function makeNotFoundResponse(): Promise<Response> {
+  return Promise.resolve(new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 }))
+}
+
+function make500Response(): Promise<Response> {
+  return Promise.resolve(new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }))
+}
+
+// ---------------------------------------------------------------------------
+// Shared fetch routers (defined outside test/describe blocks per lint policy)
+// ---------------------------------------------------------------------------
+
+type OnPut = (body: unknown) => void
+
+function makeAddRelationRouter(
+  taskBase: ReturnType<typeof createMockTask>,
+  relatedTaskBase: ReturnType<typeof createMockTask>,
+  sourceDescription: string,
+  onPut: OnPut,
+) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-2') && method === 'GET') {
+      return makeOkResponse(relatedTaskBase)
+    }
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: sourceDescription })
+    }
+    if (url.includes('/task/description/task-1') && method === 'PUT') {
+      onPut(parseBody(options))
+      return makeOkResponse(taskBase)
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeAddRelationCountingRouter(
+  taskBase: ReturnType<typeof createMockTask>,
+  relatedTaskBase: ReturnType<typeof createMockTask>,
+  onPut: OnPut,
+  counter: { count: number },
+) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    counter.count++
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-2') && method === 'GET') {
+      return makeOkResponse(relatedTaskBase)
+    }
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: '' })
+    }
+    if (url.includes('/task/description/task-1') && method === 'PUT') {
+      onPut(parseBody(options))
+      return makeOkResponse(taskBase)
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeAddRelationDuplicateRouter(
+  taskBase: ReturnType<typeof createMockTask>,
+  relatedTaskBase: ReturnType<typeof createMockTask>,
+) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-2') && method === 'GET') {
+      return makeOkResponse(relatedTaskBase)
+    }
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: '' })
+    }
+    if (url.includes('/task/description/task-1')) {
+      return makeOkResponse(taskBase)
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeSourceNotFoundRouter(relatedTaskBase: ReturnType<typeof createMockTask>) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-2') && method === 'GET') {
+      return makeOkResponse(relatedTaskBase)
+    }
+    return makeNotFoundResponse()
+  }
+}
+
+function makeSelfRelationRouter(taskBase: ReturnType<typeof createMockTask>) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: '' })
+    }
+    if (url.includes('/task/description/task-1') && method === 'PUT') {
+      return makeOkResponse(taskBase)
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeDescriptionUpdate500Router(
+  taskBase: ReturnType<typeof createMockTask>,
+  relatedTaskBase: ReturnType<typeof createMockTask>,
+) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-2') && method === 'GET') {
+      return makeOkResponse(relatedTaskBase)
+    }
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: '' })
+    }
+    if (url.includes('/task/description/task-1') && method === 'PUT') {
+      return make500Response()
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeRemoveRelationRouter(
+  taskBase: ReturnType<typeof createMockTask>,
+  sourceDescription: string,
+  onPut: OnPut,
+) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: sourceDescription })
+    }
+    if (url.includes('/task/description/task-1') && method === 'PUT') {
+      onPut(parseBody(options))
+      return makeOkResponse(taskBase)
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeRemoveRelationNotFoundRouter(taskBase: ReturnType<typeof createMockTask>, sourceDescription: string) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: sourceDescription })
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeTaskGetEmptyDescriptionRouter(taskBase: ReturnType<typeof createMockTask>) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: '' })
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeUpdateRelationRouter(
+  taskBase: ReturnType<typeof createMockTask>,
+  sourceDescription: string,
+  onPut: OnPut,
+) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: sourceDescription })
+    }
+    if (url.includes('/task/description/task-1') && method === 'PUT') {
+      onPut(parseBody(options))
+      return makeOkResponse(taskBase)
+    }
+    return makeOkResponse({})
+  }
+}
+
+function makeUpdateRelationNotFoundRouter(taskBase: ReturnType<typeof createMockTask>, sourceDescription: string) {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const method = options.method ?? 'GET'
+    if (url.includes('/task/task-1') && method === 'GET') {
+      return makeOkResponse({ ...taskBase, description: sourceDescription })
+    }
+    return makeOkResponse({})
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 describe('Task Relations', () => {
   const mockConfig: KaneoConfig = {
@@ -48,32 +248,24 @@ describe('Task Relations', () => {
 
   describe('addRelation', () => {
     test('validates related task, fetches source task, then updates description', async () => {
-      let callCount = 0
+      const counter = { count: 0 }
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        callCount++
-
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeAddRelationCountingRouter(
+          taskBase,
+          relatedTaskBase,
+          (b) => {
+            putBody = b
+          },
+          counter,
+        ),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-2', 'blocks')
 
-      expect(callCount).toBe(3)
+      expect(counter.count).toBe(3)
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
       expect(result.type).toBe('blocks')
@@ -83,19 +275,11 @@ describe('Task Relations', () => {
     test('adds relation with type "related"', async () => {
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeAddRelationRouter(taskBase, relatedTaskBase, '', (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-2', 'related')
@@ -104,18 +288,7 @@ describe('Task Relations', () => {
     })
 
     test('adds relation with type "duplicate"', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1')) {
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeAddRelationDuplicateRouter(taskBase, relatedTaskBase))
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-2', 'duplicate')
@@ -123,7 +296,7 @@ describe('Task Relations', () => {
     })
 
     test('throws when related task does not exist', async () => {
-      setMockFetch(() => Promise.resolve(new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 })))
+      setMockFetch(() => makeNotFoundResponse())
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.addRelation('task-1', 'missing-task', 'blocks')
@@ -131,12 +304,7 @@ describe('Task Relations', () => {
     })
 
     test('throws when source task does not exist', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 }))
-      })
+      setMockFetch(makeSourceNotFoundRouter(relatedTaskBase))
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.addRelation('missing-source', 'task-2', 'blocks')
@@ -147,28 +315,16 @@ describe('Task Relations', () => {
       const descriptionWithExisting = '---\nrelated: task-3\n---\nExisting task'
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: descriptionWithExisting }), { status: 200 }),
-          )
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeAddRelationRouter(taskBase, relatedTaskBase, descriptionWithExisting, (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       await resource.addRelation('task-1', 'task-2', 'blocks')
 
-      if (!isUpdateDescriptionBody(putBody)) {
-        throw new Error('putBody is not UpdateDescriptionBody')
-      }
+      assert(isUpdateDescriptionBody(putBody))
       expect(putBody.description).toContain('task-3')
       expect(putBody.description).toContain('task-2')
     })
@@ -176,19 +332,11 @@ describe('Task Relations', () => {
     test('adds relation with type "blocked_by"', async () => {
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeAddRelationRouter(taskBase, relatedTaskBase, '', (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-2', 'blocked_by')
@@ -199,19 +347,11 @@ describe('Task Relations', () => {
     test('adds relation with type "duplicate_of"', async () => {
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeAddRelationRouter(taskBase, relatedTaskBase, '', (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-2', 'duplicate_of')
@@ -222,19 +362,11 @@ describe('Task Relations', () => {
     test('adds relation with type "parent"', async () => {
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeAddRelationRouter(taskBase, relatedTaskBase, '', (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-2', 'parent')
@@ -243,15 +375,7 @@ describe('Task Relations', () => {
     })
 
     test('adding self-relation (taskId === relatedTaskId) succeeds — no guard', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeSelfRelationRouter(taskBase))
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.addRelation('task-1', 'task-1', 'blocks')
@@ -261,18 +385,7 @@ describe('Task Relations', () => {
     })
 
     test('throws classified error when description update returns 500', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-2') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify(relatedTaskBase), { status: 200 }))
-        }
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          return Promise.resolve(new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeDescriptionUpdate500Router(taskBase, relatedTaskBase))
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.addRelation('task-1', 'task-2', 'blocks')
@@ -285,18 +398,11 @@ describe('Task Relations', () => {
       const descriptionWithRelation = '---\nblocks: task-2\n---\nTask body'
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: descriptionWithRelation }), { status: 200 }),
-          )
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeRemoveRelationRouter(taskBase, descriptionWithRelation, (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.removeRelation('task-1', 'task-2')
@@ -308,14 +414,7 @@ describe('Task Relations', () => {
     })
 
     test('throws relationNotFound when relation does not exist on task', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: '---\nrelated: task-3\n---' }), { status: 200 }),
-          )
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeRemoveRelationNotFoundRouter(taskBase, '---\nrelated: task-3\n---'))
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.removeRelation('task-1', 'task-2')
@@ -323,7 +422,7 @@ describe('Task Relations', () => {
     })
 
     test('throws when task does not exist', async () => {
-      setMockFetch(() => Promise.resolve(new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 })))
+      setMockFetch(() => makeNotFoundResponse())
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.removeRelation('missing', 'task-2')
@@ -331,12 +430,7 @@ describe('Task Relations', () => {
     })
 
     test('throws when task has no relations (empty description)', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(new Response(JSON.stringify({ ...taskBase, description: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeTaskGetEmptyDescriptionRouter(taskBase))
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.removeRelation('task-1', 'task-2')
@@ -349,18 +443,11 @@ describe('Task Relations', () => {
       const descriptionWithRelation = '---\nblocks: task-2\n---\nTask body'
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: descriptionWithRelation }), { status: 200 }),
-          )
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeUpdateRelationRouter(taskBase, descriptionWithRelation, (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       const result = await resource.updateRelation('task-1', 'task-2', 'related')
@@ -373,14 +460,7 @@ describe('Task Relations', () => {
     })
 
     test('throws relationNotFound when relation does not exist', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: '---\nrelated: task-3\n---' }), { status: 200 }),
-          )
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeUpdateRelationNotFoundRouter(taskBase, '---\nrelated: task-3\n---'))
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.updateRelation('task-1', 'task-2', 'blocks')
@@ -388,7 +468,7 @@ describe('Task Relations', () => {
     })
 
     test('throws when task does not exist', async () => {
-      setMockFetch(() => Promise.resolve(new Response(JSON.stringify({ error: 'Task not found' }), { status: 404 })))
+      setMockFetch(() => makeNotFoundResponse())
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.updateRelation('missing', 'task-2', 'related')
@@ -399,40 +479,22 @@ describe('Task Relations', () => {
       const descriptionWithMultiple = '---\nblocks: task-2\nrelated: task-3\n---\nBody'
       let putBody: unknown
 
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: descriptionWithMultiple }), { status: 200 }),
-          )
-        }
-        if (url.includes('/task/description/task-1') && options.method === 'PUT') {
-          putBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify(taskBase), { status: 200 }))
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeUpdateRelationRouter(taskBase, descriptionWithMultiple, (b) => {
+          putBody = b
+        }),
+      )
 
       const resource = new TaskResource(mockConfig)
       await resource.updateRelation('task-1', 'task-2', 'duplicate')
 
-      if (!isUpdateDescriptionBody(putBody)) {
-        throw new Error('putBody is not UpdateDescriptionBody')
-      }
+      assert(isUpdateDescriptionBody(putBody))
       expect(putBody.description).toContain('task-3')
       expect(putBody.description).toContain('task-2')
     })
 
     test('throws relationNotFound when task description has no frontmatter', async () => {
-      setMockFetch((url, options) => {
-        if (url.includes('/task/task-1') && options.method === 'GET') {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ...taskBase, description: 'Just plain text, no frontmatter' }), {
-              status: 200,
-            }),
-          )
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(makeUpdateRelationNotFoundRouter(taskBase, 'Just plain text, no frontmatter'))
 
       const resource = new TaskResource(mockConfig)
       const promise = resource.updateRelation('task-1', 'task-2', 'related')

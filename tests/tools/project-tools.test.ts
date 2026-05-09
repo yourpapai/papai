@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeCreateProjectTool } from '../../src/tools/create-project.js'
 import { makeDeleteProjectTool } from '../../src/tools/delete-project.js'
@@ -30,6 +31,47 @@ function isProjectArray(val: unknown): val is Project[] {
   return Array.isArray(val) && val.every(isProject)
 }
 
+interface DeletedProject {
+  id: string
+}
+
+function isDeletedProject(val: unknown): val is DeletedProject {
+  return (
+    val !== null && typeof val === 'object' && 'id' in val && typeof (val as Record<string, unknown>)['id'] === 'string'
+  )
+}
+
+interface ConfirmationResult {
+  status: string
+}
+
+function isConfirmationResult(val: unknown): val is ConfirmationResult {
+  return (
+    val !== null &&
+    typeof val === 'object' &&
+    'status' in val &&
+    typeof (val as Record<string, unknown>)['status'] === 'string'
+  )
+}
+
+interface ConfirmationResultWithMessage {
+  status: string
+  message: string
+}
+
+function isConfirmationResultWithMessage(val: unknown): val is ConfirmationResultWithMessage {
+  return (
+    isConfirmationResult(val) &&
+    'message' in val &&
+    typeof (val as { status: string; message: unknown })['message'] === 'string'
+  )
+}
+
+function resolveProjectName(name: string | undefined, fallback: string): string {
+  if (name !== undefined) return name
+  return fallback
+}
+
 describe('Project Tools', () => {
   beforeEach(() => {
     mockLogger()
@@ -54,9 +96,9 @@ describe('Project Tools', () => {
       })
 
       const tool = makeListProjectsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
-      if (!isProjectArray(result)) throw new Error('Invalid result')
+      assert(isProjectArray(result))
 
       expect(result).toHaveLength(2)
       expect(result[0]!['name']).toBe('Project 1')
@@ -69,9 +111,9 @@ describe('Project Tools', () => {
       })
 
       const tool = makeListProjectsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result))
 
       expect(result).toHaveLength(0)
     })
@@ -81,7 +123,7 @@ describe('Project Tools', () => {
       const provider = createMockProvider({ listProjects })
 
       const tool = makeListProjectsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({}, { toolCallId: '1', messages: [] })
 
       expect(listProjects).toHaveBeenCalledTimes(1)
@@ -118,9 +160,9 @@ describe('Project Tools', () => {
       })
 
       const tool = makeGetProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isProject(result)) throw new Error('Invalid result')
+      assert(isProject(result))
 
       expect(result.id).toBe('proj-1')
       expect(result.name).toBe('Project 1')
@@ -133,7 +175,7 @@ describe('Project Tools', () => {
       const provider = createMockProvider({ getProject })
 
       const tool = makeGetProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
       expect(getProject).toHaveBeenCalledWith('proj-1')
@@ -180,9 +222,9 @@ describe('Project Tools', () => {
       })
 
       const tool = makeCreateProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ name: 'New Project' }, { toolCallId: '1', messages: [] })
-      if (!isProject(result)) throw new Error('Invalid result')
+      assert(isProject(result))
 
       expect(result.id).toBe('proj-1')
       expect(result.name).toBe('New Project')
@@ -200,7 +242,7 @@ describe('Project Tools', () => {
       const provider = createMockProvider({ createProject })
 
       const tool = makeCreateProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ name: 'New Project', description: 'Project description' }, { toolCallId: '1', messages: [] })
 
       expect(createProject).toHaveBeenCalledWith({ name: 'New Project', description: 'Project description' })
@@ -217,7 +259,7 @@ describe('Project Tools', () => {
       const provider = createMockProvider({ createProject })
 
       const tool = makeCreateProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ name: 'Test' }, { toolCallId: '1', messages: [] })
 
       expect(createProject).toHaveBeenCalledWith({ name: 'Test', description: undefined })
@@ -264,12 +306,12 @@ describe('Project Tools', () => {
       })
 
       const tool = makeUpdateProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', name: 'Updated Name' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isProject(result)) throw new Error('Invalid result')
+      assert(isProject(result))
 
       expect(result.id).toBe('proj-1')
       expect(result.name).toBe('Updated Name')
@@ -287,7 +329,7 @@ describe('Project Tools', () => {
       const provider = createMockProvider({ updateProject })
 
       const tool = makeUpdateProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ projectId: 'proj-1', description: 'New description' }, { toolCallId: '1', messages: [] })
 
       expect(updateProject).toHaveBeenCalledWith('proj-1', { name: undefined, description: 'New description' })
@@ -297,7 +339,7 @@ describe('Project Tools', () => {
       const updateProject = mock((_projectId: string, params: { name?: string; description?: string }) =>
         Promise.resolve({
           id: 'proj-1',
-          name: params.name ?? 'Test',
+          name: resolveProjectName(params.name, 'Test'),
           description: params.description,
           url: 'https://test.com/project/1',
         }),
@@ -305,7 +347,7 @@ describe('Project Tools', () => {
       const provider = createMockProvider({ updateProject })
 
       const tool = makeUpdateProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute(
         { projectId: 'proj-1', name: 'New Name', description: 'New description' },
         { toolCallId: '1', messages: [] },
@@ -346,7 +388,7 @@ describe('Project Tools', () => {
     test('returns tool with correct structure', () => {
       const provider = createMockProvider()
       const tool = makeDeleteProjectTool(provider)
-      if (tool.description === undefined) throw new Error('Tool description is undefined')
+      assert(tool.description !== undefined)
       expect(tool.description).toContain('Delete')
       expect(tool.description.toLowerCase()).toContain('project')
     })
@@ -355,7 +397,7 @@ describe('Project Tools', () => {
       const deleteProject = mock(() => Promise.resolve({ id: 'proj-1' }))
       const provider = createMockProvider({ deleteProject })
       const tool = makeDeleteProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
 
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', confidence: 0.9 },
@@ -363,22 +405,15 @@ describe('Project Tools', () => {
       )
 
       expect(deleteProject).toHaveBeenCalledWith('proj-1')
-      if (
-        result === null ||
-        typeof result !== 'object' ||
-        !('id' in result) ||
-        typeof (result as Record<string, unknown>)['id'] !== 'string'
-      ) {
-        throw new Error('Invalid result')
-      }
-      expect((result as Record<string, unknown>)['id']).toBe('proj-1')
+      assert(isDeletedProject(result))
+      expect(result.id).toBe('proj-1')
     })
 
     test('returns confirmation_required when confidence is low', async () => {
       const deleteProject = mock(() => Promise.resolve({ id: 'proj-1' }))
       const provider = createMockProvider({ deleteProject })
       const tool = makeDeleteProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
 
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', confidence: 0.5 },
@@ -386,39 +421,23 @@ describe('Project Tools', () => {
       )
 
       expect(deleteProject).not.toHaveBeenCalled()
-      if (
-        result === null ||
-        typeof result !== 'object' ||
-        !('status' in result) ||
-        typeof (result as Record<string, unknown>)['status'] !== 'string'
-      ) {
-        throw new Error('Invalid result')
-      }
-      expect((result as Record<string, unknown>)['status']).toBe('confirmation_required')
+      assert(isConfirmationResult(result))
+      expect(result.status).toBe('confirmation_required')
     })
 
     test('includes label in confirmation message when provided', async () => {
       const provider = createMockProvider()
       const tool = makeDeleteProjectTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
 
       const result: unknown = await tool.execute(
         { projectId: 'proj-1', label: 'My Project', confidence: 0.5 },
         { toolCallId: '1', messages: [] },
       )
 
-      if (
-        result === null ||
-        typeof result !== 'object' ||
-        !('status' in result) ||
-        typeof (result as Record<string, unknown>)['status'] !== 'string' ||
-        !('message' in result) ||
-        typeof (result as Record<string, unknown>)['message'] !== 'string'
-      ) {
-        throw new Error('Invalid result')
-      }
-      expect((result as Record<string, unknown>)['status']).toBe('confirmation_required')
-      expect((result as Record<string, unknown>)['message']).toContain('My Project')
+      assert(isConfirmationResultWithMessage(result))
+      expect(result.status).toBe('confirmation_required')
+      expect(result.message).toContain('My Project')
     })
 
     test('propagates API errors', async () => {

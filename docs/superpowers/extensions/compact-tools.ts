@@ -1,0 +1,212 @@
+import type { BashToolDetails, EditToolDetails, ExtensionAPI, ReadToolDetails } from '@mariozechner/pi-coding-agent'
+import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@mariozechner/pi-coding-agent'
+import { Text } from '@mariozechner/pi-tui'
+
+export default function (pi: ExtensionAPI) {
+  const cwd = process.cwd()
+
+  const originalRead = createReadTool(cwd)
+  pi.registerTool({
+    name: 'read',
+    label: 'read',
+    description: originalRead.description,
+    parameters: originalRead.parameters,
+
+    async execute(toolCallId, params, signal, onUpdate) {
+      return originalRead.execute(toolCallId, params, signal, onUpdate)
+    },
+
+    renderCall(args, theme, _context) {
+      let text = theme.fg('toolTitle', theme.bold('read '))
+      text += theme.fg('accent', args.path)
+      if (args.offset || args.limit) {
+        const parts: string[] = []
+        if (args.offset) parts.push(`offset=${args.offset}`)
+        if (args.limit) parts.push(`limit=${args.limit}`)
+        text += theme.fg('dim', ` (${parts.join(', ')})`)
+      }
+      return new Text(text, 1, 0)
+    },
+
+    renderResult(result, { expanded, isPartial }, theme, _context) {
+      if (isPartial) return new Text(theme.fg('warning', 'Reading...'), 1, 0)
+
+      const details = result.details as ReadToolDetails | undefined
+      const content = result.content[0]
+
+      if (content?.type === 'image') {
+        return new Text(theme.fg('success', 'Image loaded'), 1, 0)
+      }
+
+      if (content?.type !== 'text') {
+        return new Text(theme.fg('error', 'No content'), 1, 0)
+      }
+
+      const lineCount = content.text.split('\n').length
+      let text = theme.fg('success', `${lineCount} lines`)
+
+      if (details?.truncation?.truncated) {
+        text += theme.fg('warning', ` (truncated from ${details.truncation.totalLines})`)
+      }
+
+      if (expanded) {
+        const lines = content.text.split('\n').slice(0, 15)
+        for (const line of lines) {
+          text += `\n${theme.fg('dim', line)}`
+        }
+        if (lineCount > 15) {
+          text += `\n${theme.fg('muted', `... ${lineCount - 15} more lines`)}`
+        }
+      }
+
+      return new Text(text, 1, 0)
+    },
+  })
+
+  const originalBash = createBashTool(cwd)
+  pi.registerTool({
+    name: 'bash',
+    label: 'bash',
+    description: originalBash.description,
+    parameters: originalBash.parameters,
+
+    async execute(toolCallId, params, signal, onUpdate) {
+      return originalBash.execute(toolCallId, params, signal, onUpdate)
+    },
+
+    renderCall(args, theme, _context) {
+      let text = theme.fg('toolTitle', theme.bold('$ '))
+      text += theme.fg('accent', args.command)
+      if (args.timeout) {
+        text += theme.fg('dim', ` (timeout: ${args.timeout}s)`)
+      }
+      return new Text(text, 1, 0)
+    },
+
+    renderResult(result, { expanded, isPartial }, theme, _context) {
+      if (isPartial) return new Text(theme.fg('warning', 'Running...'), 1, 0)
+
+      const details = result.details as BashToolDetails | undefined
+      const content = result.content[0]
+      const output = content?.type === 'text' ? content.text : ''
+
+      const exitMatch = output.match(/exit code: (\d+)/)
+      const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : null
+      const lineCount = output.split('\n').filter((l) => l.trim()).length
+
+      let text = ''
+      if (exitCode === 0 || exitCode === null) {
+        text += theme.fg('success', 'done')
+      } else {
+        text += theme.fg('error', `exit ${exitCode}`)
+      }
+      text += theme.fg('dim', ` (${lineCount} lines)`)
+
+      if (details?.truncation?.truncated) {
+        text += theme.fg('warning', ' [truncated]')
+      }
+
+      if (expanded) {
+        for (const line of output.split('\n')) {
+          text += `\n${theme.fg('dim', line)}`
+        }
+      }
+
+      return new Text(text, 1, 0)
+    },
+  })
+
+  const originalEdit = createEditTool(cwd)
+  pi.registerTool({
+    name: 'edit',
+    label: 'edit',
+    description: originalEdit.description,
+    parameters: originalEdit.parameters,
+    renderShell: 'self',
+
+    async execute(toolCallId, params, signal, onUpdate) {
+      return originalEdit.execute(toolCallId, params, signal, onUpdate)
+    },
+
+    renderCall(args, theme, _context) {
+      let text = theme.fg('toolTitle', theme.bold('edit '))
+      text += theme.fg('accent', args.path)
+      return new Text(text, 1, 0)
+    },
+
+    renderResult(result, { expanded, isPartial }, theme, _context) {
+      if (isPartial) return new Text(theme.fg('warning', 'Editing...'), 1, 0)
+
+      const details = result.details as EditToolDetails | undefined
+      const content = result.content[0]
+
+      if (content?.type === 'text' && content.text.startsWith('Error')) {
+        return new Text(theme.fg('error', content.text.split('\n')[0]), 1, 0)
+      }
+
+      if (!details?.diff) {
+        return new Text(theme.fg('success', 'Applied'), 1, 0)
+      }
+
+      const diffLines = details.diff.split('\n')
+      let additions = 0
+      let removals = 0
+      for (const line of diffLines) {
+        if (line.startsWith('+') && !line.startsWith('+++')) additions++
+        if (line.startsWith('-') && !line.startsWith('---')) removals++
+      }
+
+      let text = theme.fg('success', `+${additions}`)
+      text += theme.fg('dim', ' / ')
+      text += theme.fg('error', `-${removals}`)
+
+      if (expanded) {
+        for (const line of diffLines.slice(0, 30)) {
+          if (line.startsWith('+') && !line.startsWith('+++')) {
+            text += `\n${theme.fg('success', line)}`
+          } else if (line.startsWith('-') && !line.startsWith('---')) {
+            text += `\n${theme.fg('error', line)}`
+          } else {
+            text += `\n${theme.fg('dim', line)}`
+          }
+        }
+        if (diffLines.length > 30) {
+          text += `\n${theme.fg('muted', `... ${diffLines.length - 30} more diff lines`)}`
+        }
+      }
+
+      return new Text(text, 1, 0)
+    },
+  })
+
+  const originalWrite = createWriteTool(cwd)
+  pi.registerTool({
+    name: 'write',
+    label: 'write',
+    description: originalWrite.description,
+    parameters: originalWrite.parameters,
+
+    async execute(toolCallId, params, signal, onUpdate) {
+      return originalWrite.execute(toolCallId, params, signal, onUpdate)
+    },
+
+    renderCall(args, theme, _context) {
+      let text = theme.fg('toolTitle', theme.bold('write '))
+      text += theme.fg('accent', args.path)
+      const lineCount = args.content.split('\n').length
+      text += theme.fg('dim', ` (${lineCount} lines)`)
+      return new Text(text, 1, 0)
+    },
+
+    renderResult(result, { isPartial }, theme, _context) {
+      if (isPartial) return new Text(theme.fg('warning', 'Writing...'), 1, 0)
+
+      const content = result.content[0]
+      if (content?.type === 'text' && content.text.startsWith('Error')) {
+        return new Text(theme.fg('error', content.text.split('\n')[0]), 1, 0)
+      }
+
+      return new Text(theme.fg('success', 'Written'), 1, 0)
+    },
+  })
+}

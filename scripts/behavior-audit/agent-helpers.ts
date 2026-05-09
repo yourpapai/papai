@@ -1,6 +1,18 @@
 import { generateText } from 'ai'
+import pino from 'pino'
 
 import { VERBOSE } from './config.js'
+
+declare global {
+  interface RequestInit {
+    timeout?: number | false
+  }
+}
+
+export const fetchWithoutTimeout: typeof fetch = (input, init) => fetch(input, { ...init, timeout: false })
+fetchWithoutTimeout.preconnect = fetch.preconnect
+
+const log = pino({ level: VERBOSE ? 'debug' : 'silent', base: undefined, timestamp: pino.stdTimeFunctions.isoTime })
 
 type GenerateTextInput = Parameters<typeof generateText>[0]
 type GenerateTextOutput = Awaited<ReturnType<typeof generateText>>
@@ -15,24 +27,35 @@ type CallbackKeys =
 
 const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
   experimental_onStart: ({ model }) => {
-    console.log(`[start] model=${model.modelId} provider=${model.provider}`)
+    log.debug({ modelId: model.modelId, provider: model.provider }, 'start')
   },
   experimental_onStepStart: ({ stepNumber }) => {
-    console.log(`[step ${stepNumber}] starting`)
+    log.debug({ stepNumber }, 'step start')
   },
   experimental_onToolCallStart: ({ toolCall }) => {
-    const inputPreview = JSON.stringify(toolCall.input).slice(0, 200)
-    console.log(`[tool ${toolCall.toolName}] start input=${inputPreview}`)
+    log.debug({ tool: toolCall.toolName, input: JSON.stringify(toolCall.input).slice(0, 200) }, 'tool call start')
   },
   experimental_onToolCallFinish: ({ toolCall, durationMs, success, error }) => {
-    const status = success ? 'ok' : `error: ${error instanceof Error ? error.message : String(error)}`
-    console.log(`[tool ${toolCall.toolName}] ${status} (${durationMs}ms)`)
+    if (success) {
+      log.debug({ tool: toolCall.toolName, durationMs }, 'tool call finish')
+    } else {
+      log.warn(
+        { tool: toolCall.toolName, durationMs, error: error instanceof Error ? error.message : String(error) },
+        'tool call error',
+      )
+    }
   },
   onStepFinish: ({ stepNumber, finishReason, usage }) => {
-    console.log(`[step ${stepNumber}] finish=${finishReason} in=${usage.inputTokens} out=${usage.outputTokens}`)
+    log.debug(
+      { stepNumber, finishReason, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
+      'step finish',
+    )
   },
   onFinish: ({ totalUsage, steps }) => {
-    console.log(`[done] steps=${steps.length} totalIn=${totalUsage.inputTokens} totalOut=${totalUsage.outputTokens}`)
+    log.debug(
+      { steps: steps.length, totalInputTokens: totalUsage.inputTokens, totalOutputTokens: totalUsage.outputTokens },
+      'done',
+    )
   },
 }
 

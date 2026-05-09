@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeGetCurrentUserTool } from '../../src/tools/get-current-user.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -25,7 +26,7 @@ describe('Get Current User Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
 
-    if (!isUserRef(result)) throw new Error('Invalid result')
+    assert(isUserRef(result), 'Invalid result')
     expect(result).toEqual({ id: 'user-42', login: 'alice', name: 'Alice Smith' })
     expect(getCurrentUser).toHaveBeenCalledTimes(1)
   })

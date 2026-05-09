@@ -80,7 +80,7 @@ This pattern applies to destructive removals such as task deletion, project dele
 
 ## Current Context-Sensitive Tool Areas
 
-- attachments: `upload_attachment` consumes incoming files from `src/file-relay.ts`
+- attachments: `upload_attachment` consumes incoming files from the per-context attachment workspace in `src/attachments/`
 - web fetch: `web_fetch` is user/context scoped, rate-limited, cached, and restricted to public HTTP(S) content
 - identity: `set_my_identity` and `clear_my_identity` are group-only and provider-dependent
 - history lookup: `lookup_group_history` searches the main group history when the current context is a thread-scoped group conversation

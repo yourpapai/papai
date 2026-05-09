@@ -26,3 +26,14 @@ export function getDomain(testPath: string): string {
   }
   return 'core'
 }
+
+/**
+ * Returns the matched domain prefix string for a test file path, or null when
+ * the path falls through to the default "core" domain (no rule matched).
+ */
+export function getDomainPrefix(testPath: string): string | null {
+  for (const [prefix] of DOMAIN_RULES) {
+    if (testPath.startsWith(prefix)) return prefix
+  }
+  return null
+}

@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeListStatusesTool } from '../../src/tools/list-statuses.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -50,9 +51,9 @@ describe('makeListStatusesTool', () => {
     })
 
     const tool = makeListStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-    if (!isStatusArray(result)) throw new Error('Invalid result')
+    assert(isStatusArray(result), 'Invalid result')
 
     expect(result).toHaveLength(3)
     expect(result[0]?.name).toBe('todo')
@@ -66,9 +67,9 @@ describe('makeListStatusesTool', () => {
     })
 
     const tool = makeListStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute({ projectId: 'empty-proj' }, { toolCallId: '1', messages: [] })
-    if (!Array.isArray(result)) throw new Error('Invalid result')
+    assert(Array.isArray(result), 'Invalid result')
 
     expect(result).toHaveLength(0)
   })
@@ -78,7 +79,7 @@ describe('makeListStatusesTool', () => {
     const provider = createMockProvider({ listStatuses })
 
     const tool = makeListStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute({ projectId: 'proj-123' }, { toolCallId: '1', messages: [] })
 
     expect(listStatuses).toHaveBeenCalledWith('proj-123')
@@ -133,9 +134,9 @@ describe('makeListStatusesTool', () => {
     })
 
     const tool = makeListStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-    if (!isStatusArray(result)) throw new Error('Invalid result')
+    assert(isStatusArray(result), 'Invalid result')
 
     expect(result).toHaveLength(4)
     for (const status of result) {

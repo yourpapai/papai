@@ -94,13 +94,12 @@ describe('review-loop fake integration', () => {
 
     const runRoot = path.join(dir, '.review-loop', 'runs')
     const runId = readdirSync(runRoot)[0]
-    if (runId === undefined) {
-      throw new Error('Expected a fake run directory')
-    }
-    const summary = readFileSync(path.join(runRoot, runId, 'summary.txt'), 'utf8')
-    const reviewerTranscript = readFileSync(path.join(runRoot, runId, 'transcripts', 'reviewer.ndjson'), 'utf8')
-    const fixerTranscript = readFileSync(path.join(runRoot, runId, 'transcripts', 'fixer.ndjson'), 'utf8')
-    const reviewerSession = readFileSync(path.join(runRoot, runId, 'reviewer-session.json'), 'utf8')
+    expect(runId).toBeDefined()
+    const runDirName = runId!
+    const summary = readFileSync(path.join(runRoot, runDirName, 'summary.txt'), 'utf8')
+    const reviewerTranscript = readFileSync(path.join(runRoot, runDirName, 'transcripts', 'reviewer.ndjson'), 'utf8')
+    const fixerTranscript = readFileSync(path.join(runRoot, runDirName, 'transcripts', 'fixer.ndjson'), 'utf8')
+    const reviewerSession = readFileSync(path.join(runRoot, runDirName, 'reviewer-session.json'), 'utf8')
 
     expect(summary).toContain('Done reason: clean')
     expect(reviewerTranscript).toContain('"sessionUpdate":"agent_message_chunk"')

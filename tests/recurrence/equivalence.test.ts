@@ -4,6 +4,36 @@ import { cronToRrule } from '../../src/recurrence-translator.js'
 import { nextOccurrence } from '../../src/recurrence.js'
 import { nextCronOccurrence, parseCron } from './legacy-cron-oracle.js'
 
+const collectCronOccurrences = (cron: ReturnType<typeof parseCron>, start: Date, tz: string, count: number): Date[] => {
+  const results: Date[] = []
+  let cursor = start
+  for (let i = 0; i < count; i++) {
+    const next = nextCronOccurrence(cron!, cursor, tz)
+    if (next === null) break
+    results.push(next)
+    cursor = next
+  }
+  return results
+}
+
+const collectFacadeOccurrences = (
+  rrule: string,
+  dtstartUtc: string,
+  tz: string,
+  start: Date,
+  count: number,
+): Date[] => {
+  const results: Date[] = []
+  let cursor = start
+  for (let i = 0; i < count; i++) {
+    const next = nextOccurrence({ rrule, dtstartUtc, timezone: tz }, cursor)
+    if (next === null) break
+    results.push(next)
+    cursor = next
+  }
+  return results
+}
+
 const patterns = [
   { cron: '0 9 * * *', name: 'every day 09:00' },
   { cron: '30 14 * * 1,3,5', name: 'MWF 14:30' },
@@ -30,26 +60,8 @@ describe('cron engine vs facade equivalence', () => {
           const cron = parseCron(p.cron)!
           const translated = cronToRrule(p.cron, tz, DTSTART_UTC)!
 
-          const cronResults: Date[] = []
-          let cursor = anchor
-          for (let i = 0; i < 10; i++) {
-            const next = nextCronOccurrence(cron, cursor, tz)
-            if (next === null) break
-            cronResults.push(next)
-            cursor = next
-          }
-
-          const facadeResults: Date[] = []
-          let cursor2 = anchor
-          for (let i = 0; i < 10; i++) {
-            const next = nextOccurrence(
-              { rrule: translated.rrule, dtstartUtc: translated.dtstartUtc, timezone: tz },
-              cursor2,
-            )
-            if (next === null) break
-            facadeResults.push(next)
-            cursor2 = next
-          }
+          const cronResults = collectCronOccurrences(cron, anchor, tz, 10)
+          const facadeResults = collectFacadeOccurrences(translated.rrule, translated.dtstartUtc, tz, anchor, 10)
 
           expect(facadeResults.map((d) => d.toISOString())).toEqual(cronResults.map((d) => d.toISOString()))
         })

@@ -3,6 +3,13 @@
   "plugin": [
     "@ekroon/opencode-copilot-instructions",
     "./.opencode/plugins/tdd-enforcement.ts",
-    "./.opencode/plugins/opencode-tps-meter"
-  ]
+    "./.opencode/plugins/codeindex-reindex.ts"
+  ],
+  "mcp": {
+    "codeindex": {
+      "type": "local",
+      "enabled": true,
+      "command": ["bun", "run", "/Users/ki/Projects/experiments/papai/codeindex/src/cli.ts", "mcp"]
+    }
+  }
 }

@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeDeleteStatusTool } from '../../src/tools/delete-status.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -39,12 +40,12 @@ describe('makeDeleteStatusTool', () => {
     )
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
-    if (typeof result === 'object' && result !== null && 'message' in result) {
-      const message = (result as Record<string, unknown>)['message']
-      expect(typeof message === 'string' && message.includes('In Progress')).toBe(true)
-    } else {
-      throw new Error('Expected result to have a message string')
-    }
+    assert(typeof result === 'object')
+    assert(result !== null)
+    assert('message' in result)
+    const message = (result as Record<string, unknown>)['message']
+    assert(typeof message === 'string')
+    expect(message.includes('In Progress')).toBe(true)
   })
 
   test('passes confirm parameter to provider', async () => {

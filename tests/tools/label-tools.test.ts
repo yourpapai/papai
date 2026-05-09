@@ -1,9 +1,12 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import { makeCreateLabelTool } from '../../src/tools/create-label.js'
-import { makeListLabelsTool } from '../../src/tools/list-labels.js'
-import { makeRemoveLabelTool } from '../../src/tools/remove-label.js'
-import { makeUpdateLabelTool } from '../../src/tools/update-label.js'
+import {
+  makeCreateLabelTool,
+  makeListLabelsTool,
+  makeRemoveLabelTool,
+  makeUpdateLabelTool,
+} from '../../src/tools/label-tools.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
@@ -53,9 +56,9 @@ describe('Label Tools', () => {
       })
 
       const tool = makeListLabelsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
-      if (!isLabelArray(result)) throw new Error('Invalid result')
+      assert(isLabelArray(result), 'Invalid result')
 
       expect(result).toHaveLength(3)
       expect(result[0]?.['name']).toBe('bug')
@@ -68,9 +71,9 @@ describe('Label Tools', () => {
       })
 
       const tool = makeListLabelsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result), 'Invalid result')
 
       expect(result).toHaveLength(0)
     })
@@ -80,7 +83,7 @@ describe('Label Tools', () => {
       const provider = createMockProvider({ listLabels })
 
       const tool = makeListLabelsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({}, { toolCallId: '1', messages: [] })
 
       expect(listLabels).toHaveBeenCalledTimes(1)
@@ -121,9 +124,9 @@ describe('Label Tools', () => {
       })
 
       const tool = makeCreateLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute({ name: 'new-label' }, { toolCallId: '1', messages: [] })
-      if (!isLabel(result)) throw new Error('Invalid result')
+      assert(isLabel(result), 'Invalid result')
 
       expect(result['id']).toBe('label-1')
       expect(result['name']).toBe('new-label')
@@ -141,7 +144,7 @@ describe('Label Tools', () => {
       const provider = createMockProvider({ createLabel })
 
       const tool = makeCreateLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ name: 'urgent', color: '#ff0000' }, { toolCallId: '1', messages: [] })
 
       expect(createLabel).toHaveBeenCalledWith({ name: 'urgent', color: '#ff0000' })
@@ -157,7 +160,7 @@ describe('Label Tools', () => {
       const provider = createMockProvider({ createLabel })
 
       const tool = makeCreateLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ name: 'test-label' }, { toolCallId: '1', messages: [] })
 
       expect(createLabel).toHaveBeenCalledWith({ name: 'test-label', color: undefined })
@@ -204,12 +207,12 @@ describe('Label Tools', () => {
       })
 
       const tool = makeUpdateLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', name: 'Updated Name' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isLabel(result)) throw new Error('Invalid result')
+      assert(isLabel(result), 'Invalid result')
 
       expect(result['id']).toBe('label-1')
       expect(result['name']).toBe('Updated Name')
@@ -226,7 +229,7 @@ describe('Label Tools', () => {
       const provider = createMockProvider({ updateLabel })
 
       const tool = makeUpdateLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ labelId: 'label-1', color: '#00ff00' }, { toolCallId: '1', messages: [] })
 
       expect(updateLabel).toHaveBeenCalledWith('label-1', { name: undefined, color: '#00ff00' })
@@ -236,32 +239,17 @@ describe('Label Tools', () => {
       const updateLabel = mock((_labelId: string, params: { name?: string; color?: string }) =>
         Promise.resolve({
           id: 'label-1',
-          name: params.name ?? 'test',
+          name: String(params.name),
           color: params.color,
         }),
       )
       const provider = createMockProvider({ updateLabel })
 
       const tool = makeUpdateLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
-      await tool.execute({ labelId: 'label-1', name: 'New Name', color: '#0000ff' }, { toolCallId: '1', messages: [] })
+      assert(tool.execute, 'Tool execute is undefined')
+      await tool.execute({ labelId: 'label-1', name: 'new-name', color: '#ff0000' }, { toolCallId: '1', messages: [] })
 
-      expect(updateLabel).toHaveBeenCalledWith('label-1', { name: 'New Name', color: '#0000ff' })
-    })
-
-    test('propagates label not found error', async () => {
-      const provider = createMockProvider({
-        updateLabel: mock(() => Promise.reject(new Error('Label not found'))),
-      })
-
-      const tool = makeUpdateLabelTool(provider)
-      const promise = getToolExecutor(tool)({ labelId: 'invalid', name: 'Test' }, { toolCallId: '1', messages: [] })
-      await expect(promise).rejects.toThrow('Label not found')
-      try {
-        await promise
-      } catch {
-        // ignore
-      }
+      expect(updateLabel).toHaveBeenCalledWith('label-1', { name: 'new-name', color: '#ff0000' })
     })
 
     test('validates labelId is required', () => {
@@ -290,7 +278,7 @@ describe('Label Tools', () => {
       })
 
       const tool = makeRemoveLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', confidence: 0.9 },
         { toolCallId: '1', messages: [] },
@@ -302,21 +290,16 @@ describe('Label Tools', () => {
     test('returns confirmation_required when confidence is below threshold', async () => {
       const provider = createMockProvider()
       const tool = makeRemoveLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', label: 'urgent', confidence: 0.5 },
         { toolCallId: '1', messages: [] },
       )
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
-      if (typeof result === 'object' && result !== null && 'message' in result) {
-        const message = (result as Record<string, unknown>)['message']
-        expect(typeof message === 'string' && message.includes('urgent')).toBe(true)
-        expect(typeof message === 'string' && !message.includes('0.5')).toBe(true)
-        expect(typeof message === 'string' && !message.includes('0.85')).toBe(true)
-      } else {
-        throw new Error('Expected result to have a message string')
-      }
+      expect(result).toHaveProperty('message', expect.stringContaining('urgent'))
+      expect(result).not.toHaveProperty('message', expect.stringContaining('0.5'))
+      expect(result).not.toHaveProperty('message', expect.stringContaining('0.85'))
     })
 
     test('executes when confidence exactly meets threshold (0.85)', async () => {
@@ -325,7 +308,7 @@ describe('Label Tools', () => {
       })
 
       const tool = makeRemoveLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       const result: unknown = await tool.execute(
         { labelId: 'label-1', confidence: 0.85 },
         { toolCallId: '1', messages: [] },

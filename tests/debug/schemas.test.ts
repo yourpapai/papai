@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import {
   FactSchema,
@@ -22,10 +23,9 @@ describe('schemas', () => {
       }
       const result = FactSchema.safeParse(fact)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.identifier).toBe('task-123')
-        expect(result.data.title).toBe('Example Task')
-      }
+      assert(result.success)
+      expect(result.data.identifier).toBe('task-123')
+      expect(result.data.title).toBe('Example Task')
     })
   })
 
@@ -38,9 +38,8 @@ describe('schemas', () => {
       }
       const result = InstructionSchema.safeParse(instruction)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.text).toBe('Be helpful and concise')
-      }
+      assert(result.success)
+      expect(result.data.text).toBe('Be helpful and concise')
     })
   })
 
@@ -57,11 +56,10 @@ describe('schemas', () => {
       }
       const result = LogEntrySchema.safeParse(entry)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.msg).toBe('Processing completed')
-        expect(result.data['userId']).toBe('user-123')
-        expect(result.data['count']).toBe(42)
-      }
+      assert(result.success)
+      expect(result.data.msg).toBe('Processing completed')
+      expect(result.data['userId']).toBe('user-123')
+      expect(result.data['count']).toBe(42)
     })
 
     test('parses basic log entry without extra properties', () => {
@@ -83,10 +81,9 @@ describe('schemas', () => {
       }
       const result = HistoryMessageSchema.safeParse(message)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.role).toBe('user')
-        expect(result.data.content).toBe('Hello, how are you?')
-      }
+      assert(result.success)
+      expect(result.data.role).toBe('user')
+      expect(result.data.content).toBe('Hello, how are you?')
     })
 
     test('parses assistant message with tool_calls', () => {
@@ -97,10 +94,9 @@ describe('schemas', () => {
       }
       const result = HistoryMessageSchema.safeParse(message)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.role).toBe('assistant')
-        expect(result.data.tool_calls).toBeDefined()
-      }
+      assert(result.success)
+      expect(result.data.role).toBe('assistant')
+      expect(result.data.tool_calls).toBeDefined()
     })
 
     test('parses tool message with tool_call_id', () => {
@@ -111,10 +107,9 @@ describe('schemas', () => {
       }
       const result = HistoryMessageSchema.safeParse(message)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.role).toBe('tool')
-        expect(result.data.tool_call_id).toBe('call-1')
-      }
+      assert(result.success)
+      expect(result.data.role).toBe('tool')
+      expect(result.data.tool_call_id).toBe('call-1')
     })
   })
 
@@ -142,12 +137,11 @@ describe('schemas', () => {
       }
       const result = safeParseSession(session)
       expect(result).not.toBeNull()
-      if (result !== null) {
-        expect(result.userId).toBe('user-123')
-        expect(result.facts).toHaveLength(1)
-        expect(result.config?.['key1']).toBe('value1')
-        expect(result.hasTools).toBe(true)
-      }
+      assert(result !== null)
+      expect(result.userId).toBe('user-123')
+      expect(result.facts).toHaveLength(1)
+      expect(result.config?.['key1']).toBe('value1')
+      expect(result.hasTools).toBe(true)
     })
 
     test('parses session with history', () => {
@@ -167,12 +161,11 @@ describe('schemas', () => {
       }
       const result = safeParseSession(session)
       expect(result).not.toBeNull()
-      if (result !== null) {
-        expect(result.history).toHaveLength(3)
-        expect(result.history?.[0]?.role).toBe('user')
-        expect(result.history?.[0]?.content).toBe('Hello')
-        expect(result.history?.[1]?.role).toBe('assistant')
-      }
+      assert(result !== null)
+      expect(result.history).toHaveLength(3)
+      expect(result.history?.[0]?.role).toBe('user')
+      expect(result.history?.[0]?.content).toBe('Hello')
+      expect(result.history?.[1]?.role).toBe('assistant')
     })
 
     test('parses session without optional full data', () => {
@@ -202,11 +195,10 @@ describe('schemas', () => {
       }
       const result = ToolCallDetailSchema.safeParse(toolCall)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.toolName).toBe('create_task')
-        expect(result.data.toolCallId).toBe('call-1')
-        expect(result.data.args).toEqual({ title: 'Test task', priority: 'high' })
-      }
+      assert(result.success)
+      expect(result.data.toolName).toBe('create_task')
+      expect(result.data.toolCallId).toBe('call-1')
+      expect(result.data.args).toEqual({ title: 'Test task', priority: 'high' })
     })
 
     test('parses tool call with error', () => {
@@ -220,10 +212,9 @@ describe('schemas', () => {
       }
       const result = ToolCallDetailSchema.safeParse(toolCall)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.success).toBe(false)
-        expect(result.data.error).toBe('API error: 500 Internal Server Error')
-      }
+      assert(result.success)
+      expect(result.data.success).toBe(false)
+      expect(result.data.error).toBe('API error: 500 Internal Server Error')
     })
 
     test('parses minimal tool call', () => {
@@ -249,11 +240,10 @@ describe('schemas', () => {
       }
       const result = StepDetailSchema.safeParse(step)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.stepNumber).toBe(1)
-        expect(result.data.toolCalls).toHaveLength(2)
-        expect(result.data.usage?.inputTokens).toBe(100)
-      }
+      assert(result.success)
+      expect(result.data.stepNumber).toBe(1)
+      expect(result.data.toolCalls).toHaveLength(2)
+      expect(result.data.usage?.inputTokens).toBe(100)
     })
 
     test('parses minimal step', () => {
@@ -262,9 +252,8 @@ describe('schemas', () => {
       }
       const result = StepDetailSchema.safeParse(step)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.stepNumber).toBe(2)
-      }
+      assert(result.success)
+      expect(result.data.stepNumber).toBe(2)
     })
 
     test('parses step with text and finishReason', () => {
@@ -276,10 +265,9 @@ describe('schemas', () => {
       }
       const result = StepDetailSchema.safeParse(step)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.text).toBe('I will search for matching tasks.')
-        expect(result.data.finishReason).toBe('tool-calls')
-      }
+      assert(result.success)
+      expect(result.data.text).toBe('I will search for matching tasks.')
+      expect(result.data.finishReason).toBe('tool-calls')
     })
 
     test('parses step with inline tool result', () => {
@@ -296,9 +284,8 @@ describe('schemas', () => {
       }
       const result = StepDetailSchema.safeParse(step)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.toolCalls?.[0]?.result).toEqual({ id: 'task-abc' })
-      }
+      assert(result.success)
+      expect(result.data.toolCalls?.[0]?.result).toEqual({ id: 'task-abc' })
     })
 
     test('parses step with inline tool error', () => {
@@ -315,9 +302,8 @@ describe('schemas', () => {
       }
       const result = StepDetailSchema.safeParse(step)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.toolCalls?.[0]?.error).toBe('permission denied')
-      }
+      assert(result.success)
+      expect(result.data.toolCalls?.[0]?.error).toBe('permission denied')
     })
   })
 
@@ -356,12 +342,11 @@ describe('schemas', () => {
       }
       const result = safeParseLlmTrace(trace)
       expect(result).not.toBeNull()
-      if (result !== null) {
-        expect(result.responseId).toBe('resp-123')
-        expect(result.actualModel).toBe('gpt-4-0125-preview')
-        expect(result.generatedText).toBe('I created a task for you.')
-        expect(result.stepsDetail).toHaveLength(1)
-      }
+      assert(result !== null)
+      expect(result.responseId).toBe('resp-123')
+      expect(result.actualModel).toBe('gpt-4-0125-preview')
+      expect(result.generatedText).toBe('I created a task for you.')
+      expect(result.stepsDetail).toHaveLength(1)
     })
   })
 })

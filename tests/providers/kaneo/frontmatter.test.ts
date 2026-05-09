@@ -169,8 +169,8 @@ describe('addRelation', () => {
   test('skips duplicate relations', () => {
     const initial = '---\nblocks: task-1\n---\n'
     const result = addRelation(initial, { type: 'blocks', taskId: 'task-1' })
-    const matches = result.match(/blocks: task-1/g)
-    expect(matches ? matches.length : 0).toBe(1)
+    const matches = Array.from(result.matchAll(/blocks: task-1/g))
+    expect(matches.length).toBe(1)
   })
 
   test('adds different relation type to existing', () => {
@@ -257,9 +257,9 @@ describe('updateRelation', () => {
     const result = updateRelation(desc, 'task-1', 'duplicate')
     // task-1 appears in both blocks and related
     // Should update one instance
-    const blocksMatches = (result.match(/blocks:/g) ?? []).length
-    const relatedMatches = (result.match(/related:/g) ?? []).length
-    const duplicateMatches = (result.match(/duplicate:/g) ?? []).length
+    const blocksMatches = Array.from(result.matchAll(/blocks:/g)).length
+    const relatedMatches = Array.from(result.matchAll(/related:/g)).length
+    const duplicateMatches = Array.from(result.matchAll(/duplicate:/g)).length
     expect(blocksMatches + relatedMatches + duplicateMatches).toBe(2)
   })
 
@@ -278,18 +278,14 @@ describe('updateRelation', () => {
 
   test('supports all relation type updates', () => {
     const types = ['blocks', 'blocked_by', 'duplicate', 'duplicate_of', 'related', 'parent'] as const
+    const pairs = types.flatMap((fromType) =>
+      types.filter((toType) => toType !== fromType).map((toType) => ({ fromType, toType })),
+    )
 
-    for (const fromType of types) {
-      for (const toType of types) {
-        if (fromType === toType) continue
-
-        const desc = `---
-${fromType}: task-1
----
-Body`
-        const result = updateRelation(desc, 'task-1', toType)
-        expect(result).toContain(`${toType}: task-1`)
-      }
+    for (const { fromType, toType } of pairs) {
+      const desc = `---\n${fromType}: task-1\n---\nBody`
+      const result = updateRelation(desc, 'task-1', toType)
+      expect(result).toContain(`${toType}: task-1`)
     }
   })
 })

@@ -1,55 +1,21 @@
 import { afterEach, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { z } from 'zod'
 
-import type { ReviewLoopConfig } from '../../review-loop/src/config.js'
 import { createRunState, loadRunState, saveRunState } from '../../review-loop/src/run-state.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
-const tempDirs: string[] = []
 const SessionPointerSchema = z.object({
   sessionId: z.string().nullable(),
 })
 
-const makeTempDir = (): string => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'review-loop-state-'))
-  tempDirs.push(dir)
-  return dir
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
+afterEach(cleanupTempDirs)
 
 test('run state persists session ids through pointer files', async () => {
-  const repoRoot = makeTempDir()
-  const config: ReviewLoopConfig = {
-    repoRoot,
-    workDir: path.join(repoRoot, '.review-loop'),
-    maxRounds: 5,
-    maxNoProgressRounds: 2,
-    reviewer: {
-      command: '/usr/local/bin/claude-acp-adapter',
-      args: [],
-      env: {},
-      sessionConfig: {},
-      invocationPrefix: '/review-code',
-      requireInvocationPrefix: false,
-    },
-    fixer: {
-      command: 'opencode',
-      args: ['acp'],
-      env: {},
-      sessionConfig: {},
-      verifyInvocationPrefix: '/verify-issue',
-      fixInvocationPrefix: null,
-      requireVerifyInvocation: false,
-    },
-  }
+  const repoRoot = makeTempDir('review-loop-state-')
+  const config = createReviewLoopConfigFixture(repoRoot)
 
   const state = await createRunState(
     config,

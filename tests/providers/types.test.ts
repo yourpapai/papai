@@ -172,12 +172,12 @@ describe('Identity types', () => {
 
   test('UserIdentityResolver interface is implemented correctly', async () => {
     const mockResolver: UserIdentityResolver = {
-      searchUsers(query: string, limit?: number): Promise<IdentityUser[]> {
+      searchUsers(query: string, _limit: number = 10): Promise<IdentityUser[]> {
         const users: IdentityUser[] = [
           { id: 'u-1', login: 'alice', name: 'Alice Smith' },
           { id: 'u-2', login: 'bob', name: 'Bob Jones' },
         ]
-        return Promise.resolve(users.filter((u) => u.login.includes(query)).slice(0, limit ?? 10))
+        return Promise.resolve(users.filter((u) => u.login.includes(query)).slice(0, _limit))
       },
     }
 

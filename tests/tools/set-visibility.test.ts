@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeSetVisibilityTool } from '../../src/tools/set-visibility.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -48,7 +49,7 @@ describe('Set Visibility Tool', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    if (!isVisibilityResult(result)) throw new Error('Invalid result')
+    assert(isVisibilityResult(result))
     expect(result.visibility.kind).toBe('public')
     expect(setVisibility).toHaveBeenCalledWith('task-1', { kind: 'public' })
   })
@@ -77,9 +78,8 @@ describe('Set Visibility Tool', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    if (!isVisibilityResult(result)) throw new Error('Invalid result')
-    expect(result.visibility.kind).toBe('restricted')
-    if (result.visibility.kind !== 'restricted') throw new Error('Expected restricted visibility')
+    assert(isVisibilityResult(result))
+    assert.equal(result.visibility.kind, 'restricted')
     expect(result.visibility.users).toEqual([{ id: 'user-1' }])
     expect(result.visibility.groups).toEqual([{ name: 'group-1' }])
     expect(setVisibility).toHaveBeenCalledWith('task-1', {

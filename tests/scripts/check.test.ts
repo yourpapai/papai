@@ -1,3 +1,4 @@
+// Integration tests for ../../scripts/check.js (check.sh — no TS module; shell script under test)
 import { describe, expect, test } from 'bun:test'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,6 +20,8 @@ const baseEnv = Object.fromEntries(
     },
   ),
 )
+
+const basePath = baseEnv['PATH'] ?? ''
 
 const createEnv = (overrides: Readonly<Record<string, string>>): Record<string, string> => ({
   ...baseEnv,
@@ -111,7 +114,7 @@ describe('check.sh --staged', () => {
       expectSuccess(runCommand(repoDir, ['git', 'add', 'README.md']))
 
       const env = createEnv({
-        PATH: `${binDir}:${baseEnv['PATH'] ?? ''}`,
+        PATH: `${binDir}:${basePath}`,
         CHECK_LOG_FILE: logFile,
       })
       const result = runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env)

@@ -1,8 +1,102 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { LabelResource } from './test-resources.js'
+
+// ---------------------------------------------------------------------------
+// Helpers (defined outside all test/describe blocks)
+// ---------------------------------------------------------------------------
+
+function parseBody(options: RequestInit): unknown {
+  assert(typeof options.body === 'string')
+  return JSON.parse(options.body)
+}
+
+function parseBodyIfPut(options: RequestInit): unknown {
+  if (options.method !== 'PUT') return undefined
+  assert(typeof options.body === 'string')
+  return JSON.parse(options.body)
+}
+
+function parseBodyIfPost(options: RequestInit): unknown {
+  if (options.method !== 'POST') return undefined
+  assert(typeof options.body === 'string')
+  return JSON.parse(options.body)
+}
+
+// Route a fetch call for addToTask tests that require GET label + POST task-label
+function makeAddToTaskRouter(
+  labelId: string,
+  labelPayload: object,
+  taskLabelPayload: object,
+): (url: string, options: RequestInit) => Promise<Response> {
+  return (url) => {
+    if (url.includes(`/label/${labelId}`) && !url.includes('/task')) {
+      return Promise.resolve(new Response(JSON.stringify(labelPayload), { status: 200 }))
+    }
+    if (url.includes('/label') && !url.includes(`/${labelId}`)) {
+      return Promise.resolve(new Response(JSON.stringify(taskLabelPayload), { status: 200 }))
+    }
+    return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+  }
+}
+
+// Route for removeFromTask "no matching name" negative test
+function makeNoMatchRouter(
+  wsLabelId: string,
+  wsLabelPayload: object,
+  taskCopies: object[],
+): (url: string) => Promise<Response> {
+  return (url) => {
+    if (url.includes(`/label/${wsLabelId}`) && !url.includes('/task')) {
+      return Promise.resolve(new Response(JSON.stringify(wsLabelPayload), { status: 200 }))
+    }
+    if (url.includes('/label/task/')) {
+      return Promise.resolve(new Response(JSON.stringify(taskCopies), { status: 200 }))
+    }
+    return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+  }
+}
+
+// Route for addToTask "includes label details" test — captures POST body via ref
+function makeAddToTaskBodyCaptureRouter(
+  labelId: string,
+  labelPayload: object,
+  taskLabelPayload: object,
+  ref: { capturedBody: unknown },
+): (url: string, options: RequestInit) => Promise<Response> {
+  return (url, options) => {
+    if (url.includes(`/label/${labelId}`) && !url.includes('/task')) {
+      return Promise.resolve(new Response(JSON.stringify(labelPayload), { status: 200 }))
+    }
+    ref.capturedBody = parseBodyIfPost(options)
+    return Promise.resolve(new Response(JSON.stringify(taskLabelPayload), { status: 200 }))
+  }
+}
+
+// Route for removeFromTask tests that also need to capture the DELETE url via ref
+function makeLabelAndTaskCopyRouterWithCapture(
+  wsLabelId: string,
+  taskId: string,
+  wsLabelPayload: object,
+  taskCopies: object[],
+  ref: { callCount: number; deleteUrl: string | undefined },
+): (url: string, options: RequestInit) => Promise<Response> {
+  return (url, options) => {
+    ref.callCount++
+    if (url.includes(`/label/${wsLabelId}`) && !url.includes('/task')) {
+      return Promise.resolve(new Response(JSON.stringify(wsLabelPayload), { status: 200 }))
+    }
+    if (url.includes(`/label/task/${taskId}`)) {
+      return Promise.resolve(new Response(JSON.stringify(taskCopies), { status: 200 }))
+    }
+    assert(options.method === 'DELETE')
+    ref.deleteUrl = url
+    return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }))
+  }
+}
 
 describe('LabelResource', () => {
   const mockConfig: KaneoConfig = {
@@ -47,7 +141,7 @@ describe('LabelResource', () => {
     test('uses default color when not provided', async () => {
       let capturedBody: unknown
       setMockFetch((_url, options) => {
-        capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+        capturedBody = parseBody(options)
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -72,7 +166,7 @@ describe('LabelResource', () => {
     test('accepts custom color', async () => {
       let capturedBody: unknown
       setMockFetch((_url, options) => {
-        capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+        capturedBody = parseBody(options)
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -98,7 +192,7 @@ describe('LabelResource', () => {
     test('includes workspaceId in request', async () => {
       let capturedBody: unknown
       setMockFetch((_url, options) => {
-        capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+        capturedBody = parseBody(options)
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -180,9 +274,7 @@ describe('LabelResource', () => {
       let callCount = 0
       setMockFetch((_url, options) => {
         callCount++
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
+        capturedBody = parseBodyIfPut(options)
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -206,9 +298,7 @@ describe('LabelResource', () => {
     test('updates only color', async () => {
       let capturedBody: unknown
       setMockFetch((_url, options) => {
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
+        capturedBody = parseBodyIfPut(options)
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -230,9 +320,7 @@ describe('LabelResource', () => {
     test('updates both name and color', async () => {
       let capturedBody: unknown
       setMockFetch((_url, options) => {
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
+        capturedBody = parseBodyIfPut(options)
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -290,37 +378,14 @@ describe('LabelResource', () => {
   describe('addToTask', () => {
     test('fetches label and creates task-label', async () => {
       let callCount = 0
-      setMockFetch((url) => {
+      const handler = makeAddToTaskRouter(
+        'label-1',
+        { id: 'label-1', name: 'bug', color: '#ff0000' },
+        { id: 'tl-1', name: 'bug', color: '#ff0000', taskId: 'task-1' },
+      )
+      setMockFetch((url, options) => {
         callCount++
-
-        if (url.includes('/label/label-1') && !url.includes('/task')) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'label-1',
-                name: 'bug',
-                color: '#ff0000',
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-
-        if (url.includes('/label') && !url.includes('/label-1')) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'tl-1',
-                name: 'bug',
-                color: '#ff0000',
-                taskId: 'task-1',
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+        return handler(url, options)
       })
 
       const resource = new LabelResource(mockConfig)
@@ -342,42 +407,20 @@ describe('LabelResource', () => {
     })
 
     test('includes label details in task-label creation', async () => {
-      let taskLabelBody: unknown
-      setMockFetch((url, options) => {
-        if (url.includes('/label/label-1') && !url.includes('/task')) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'label-1',
-                name: 'urgent',
-                color: '#ff0000',
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-
-        if (options.method === 'POST') {
-          taskLabelBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'tl-1',
-              name: 'urgent',
-              color: '#ff0000',
-              taskId: 'task-1',
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const ref = { capturedBody: undefined as unknown }
+      setMockFetch(
+        makeAddToTaskBodyCaptureRouter(
+          'label-1',
+          { id: 'label-1', name: 'urgent', color: '#ff0000' },
+          { id: 'tl-1', name: 'urgent', color: '#ff0000', taskId: 'task-1' },
+          ref,
+        ),
+      )
 
       const resource = new LabelResource(mockConfig)
       await resource.addToTask('task-1', 'label-1', 'ws-1')
 
-      expect(taskLabelBody).toMatchObject({
+      expect(ref.capturedBody).toMatchObject({
         name: 'urgent',
         color: '#ff0000',
         workspaceId: 'ws-1',
@@ -391,47 +434,28 @@ describe('LabelResource', () => {
       // Task-scoped label copies have a DIFFERENT id from the workspace label.
       // removeFromTask receives the workspace label id, fetches its name, then
       // finds the task copy by matching name.
-      let callCount = 0
-      let deleteUrl: string | undefined
+      const ref = { callCount: 0, deleteUrl: undefined as string | undefined }
 
-      setMockFetch((url, options) => {
-        callCount++
-
-        // GET workspace label by id
-        if (url.includes('/label/ws-label-1') && !url.includes('/task')) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ id: 'ws-label-1', name: 'bug', color: '#ff0000' }), { status: 200 }),
-          )
-        }
-
-        // GET task-scoped label copies — note: copy id differs from workspace id
-        if (url.includes('/label/task/task-1')) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify([
-                { id: 'copy-bug-1', name: 'bug', color: '#ff0000' },
-                { id: 'copy-urgent-1', name: 'urgent', color: '#ff0000' },
-              ]),
-              { status: 200 },
-            ),
-          )
-        }
-
-        if (options.method === 'DELETE') {
-          deleteUrl = url
-          return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }))
-        }
-
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-      })
+      setMockFetch(
+        makeLabelAndTaskCopyRouterWithCapture(
+          'ws-label-1',
+          'task-1',
+          { id: 'ws-label-1', name: 'bug', color: '#ff0000' },
+          [
+            { id: 'copy-bug-1', name: 'bug', color: '#ff0000' },
+            { id: 'copy-urgent-1', name: 'urgent', color: '#ff0000' },
+          ],
+          ref,
+        ),
+      )
 
       const resource = new LabelResource(mockConfig)
       const result = await resource.removeFromTask('task-1', 'ws-label-1')
 
       // 3 calls: GET workspace label, GET task labels, DELETE copy
-      expect(callCount).toBe(3)
+      expect(ref.callCount).toBe(3)
       // Deletes the COPY id, not the workspace label id
-      expect(deleteUrl).toContain('/label/copy-bug-1')
+      expect(ref.deleteUrl).toContain('/label/copy-bug-1')
       expect(result.taskId).toBe('task-1')
       // Returns the workspace label id passed in
       expect(result.labelId).toBe('ws-label-1')
@@ -447,19 +471,10 @@ describe('LabelResource', () => {
     })
 
     test('throws when task has no labels with matching name', async () => {
-      setMockFetch((url) => {
-        if (url.includes('/label/ws-label-1') && !url.includes('/task')) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ id: 'ws-label-1', name: 'bug', color: '#ff0000' }), { status: 200 }),
-          )
-        }
-        if (url.includes('/label/task/')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([{ id: 'copy-other', name: 'other', color: '#aaa' }]), { status: 200 }),
-          )
-        }
-        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
-      })
+      const handler = makeNoMatchRouter('ws-label-1', { id: 'ws-label-1', name: 'bug', color: '#ff0000' }, [
+        { id: 'copy-other', name: 'other', color: '#aaa' },
+      ])
+      setMockFetch(handler)
 
       const resource = new LabelResource(mockConfig)
       const promise = resource.removeFromTask('task-1', 'ws-label-1')

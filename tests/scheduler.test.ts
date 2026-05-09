@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 
@@ -195,7 +196,8 @@ describe('scheduler', () => {
       await Promise.resolve()
       await Promise.resolve()
 
-      if (resolveCreateTask !== null) resolveCreateTask()
+      assert(resolveCreateTask !== null, 'resolveCreateTask should be set by now')
+      resolveCreateTask()
 
       await firstTick
       await secondTick
@@ -270,19 +272,19 @@ describe('scheduler', () => {
       seedUser(USER_2)
       const taskId2 = createDueTask({ userId: USER_2, title: 'Task 2' })
 
-      let callIdx = 0
-      createTaskImpl = (): Promise<MockTask> => {
-        callIdx++
-        if (callIdx === 1) return Promise.reject(new Error('API down'))
-        return Promise.resolve({
-          id: 'new-task-2',
-          title: 'Task 2',
-          projectId: 'proj-1',
-          status: 'todo',
-          priority: 'medium',
-          url: 'https://test.com/task/new-task-2',
-        })
-      }
+      const responses: Array<() => Promise<MockTask>> = [
+        () => Promise.reject(new Error('API down')),
+        () =>
+          Promise.resolve({
+            id: 'new-task-2',
+            title: 'Task 2',
+            projectId: 'proj-1',
+            status: 'todo',
+            priority: 'medium',
+            url: 'https://test.com/task/new-task-2',
+          }),
+      ]
+      createTaskImpl = (): Promise<MockTask> => responses.shift()!()
 
       await awaitTick()
 
@@ -376,19 +378,28 @@ describe('scheduler', () => {
 
     test('createMissedTasks where one creation fails returns partial count', async () => {
       const taskId = createDueTask()
-      let callIdx = 0
-      createTaskImpl = (): Promise<MockTask> => {
-        callIdx++
-        if (callIdx === 2) return Promise.reject(new Error('API down'))
-        return Promise.resolve({
-          id: `new-task-${callIdx}`,
-          title: 'Missed',
-          projectId: 'proj-1',
-          status: 'todo',
-          priority: 'medium',
-          url: `https://test.com/task/new-task-${callIdx}`,
-        })
-      }
+      const responses: Array<() => Promise<MockTask>> = [
+        () =>
+          Promise.resolve({
+            id: 'new-task-1',
+            title: 'Missed',
+            projectId: 'proj-1',
+            status: 'todo',
+            priority: 'medium',
+            url: 'https://test.com/task/new-task-1',
+          }),
+        () => Promise.reject(new Error('API down')),
+        () =>
+          Promise.resolve({
+            id: 'new-task-3',
+            title: 'Missed',
+            projectId: 'proj-1',
+            status: 'todo',
+            priority: 'medium',
+            url: 'https://test.com/task/new-task-3',
+          }),
+      ]
+      createTaskImpl = (): Promise<MockTask> => responses.shift()!()
       const result = await createMissedTasks(taskId, ['2026-03-02', '2026-03-09', '2026-03-16'], schedulerDeps)
       expect(result).toBe(2)
     })

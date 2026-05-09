@@ -16,11 +16,12 @@ import type {
   ReplyOptions,
   ResolveUserContext,
 } from '../types.js'
+import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
 import { extractFilesFromContext, type TelegramFileFetcher } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
-import { resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
+import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -157,21 +158,7 @@ export class TelegramChatProvider implements ChatProvider {
     return resolveTelegramUserLabel((chatId, uid) => this.bot.api.getChatMember(chatId, uid), userId, context)
   }
   async setCommands(adminUserId: string): Promise<void> {
-    const userCmds = [
-      { command: 'help', description: 'Show available commands' },
-      { command: 'setup', description: 'Interactive configuration wizard' },
-      { command: 'config', description: 'View current configuration' },
-      { command: 'clear', description: 'Clear conversation history and memory' },
-      { command: 'context', description: 'Show current LLM context usage' },
-    ]
-    const adminCmds = [
-      ...userCmds,
-      { command: 'user', description: 'Manage users — /user add|remove <id|@username>' },
-      { command: 'users', description: 'List authorized users' },
-    ]
-    await this.bot.api.setMyCommands(userCmds, { scope: { type: 'all_private_chats' } })
-    await this.bot.api.setMyCommands(adminCmds, { scope: { type: 'chat', chat_id: parseInt(adminUserId, 10) } })
-    log.info({ adminUserId }, 'Telegram command menu registered')
+    await registerTelegramCommands(this.bot, adminUserId)
   }
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderTelegramContext(snapshot)
@@ -190,9 +177,11 @@ export class TelegramChatProvider implements ChatProvider {
     const from = ctx.from
     const chat = ctx.chat
     const username = from === undefined ? null : getTelegramUsername(from.username)
+    const displayLabel =
+      from === undefined ? undefined : getTelegramDisplayLabel(from.first_name, from.last_name, username)
     const contextName = contextType === 'group' && chat !== undefined && 'title' in chat ? chat.title : undefined
     return {
-      user: { id: String(id), username, isAdmin },
+      user: { id: String(id), username, displayLabel, isAdmin },
       contextId,
       contextType,
       contextName,

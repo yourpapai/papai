@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type {
   ChatCapability,
@@ -62,6 +63,12 @@ describe('IncomingMessage context metadata', () => {
   })
 })
 
+const resolveUserIdByUsername = new Map<string, string>([['testuser', 'user123']])
+
+function resolveUserIdMock(username: string, _context: ResolveUserContext): Promise<string | null> {
+  return Promise.resolve(resolveUserIdByUsername.get(username) ?? null)
+}
+
 describe('ChatProvider interface', () => {
   test('resolveUserId accepts username and context', async () => {
     const mockProvider: ChatProvider = {
@@ -77,10 +84,7 @@ describe('ChatProvider interface', () => {
       registerCommand: (): void => {},
       onMessage: (): void => {},
       sendMessage: async (): Promise<void> => {},
-      resolveUserId: (username: string, _context: ResolveUserContext): Promise<string | null> => {
-        if (username === 'testuser') return Promise.resolve('user123')
-        return Promise.resolve(null)
-      },
+      resolveUserId: resolveUserIdMock,
       renderContext: () => ({ method: 'text', content: '' }),
       start: async (): Promise<void> => {},
       stop: async (): Promise<void> => {},
@@ -238,9 +242,8 @@ describe('ContextSnapshot and related types', () => {
       content: 'Raw text content',
     }
     expect(rendered.method).toBe('text')
-    if (rendered.method === 'text') {
-      expect(rendered.content).toBe('Raw text content')
-    }
+    assert(rendered.method === 'text')
+    expect(rendered.content).toBe('Raw text content')
   })
 
   test('ContextRendered discriminated union - formatted method', () => {
@@ -249,9 +252,8 @@ describe('ContextSnapshot and related types', () => {
       content: '**markdown** content',
     }
     expect(rendered.method).toBe('formatted')
-    if (rendered.method === 'formatted') {
-      expect(rendered.content).toBe('**markdown** content')
-    }
+    assert(rendered.method === 'formatted')
+    expect(rendered.content).toBe('**markdown** content')
   })
 
   test('ContextRendered discriminated union - embed method', () => {
@@ -265,9 +267,8 @@ describe('ContextSnapshot and related types', () => {
       },
     }
     expect(rendered.method).toBe('embed')
-    if (rendered.method === 'embed') {
-      expect(rendered.embed.title).toBe('Context · gpt-4o')
-      expect(rendered.embed.color).toBe(0x2ecc71)
-    }
+    assert(rendered.method === 'embed')
+    expect(rendered.embed.title).toBe('Context · gpt-4o')
+    expect(rendered.embed.color).toBe(0x2ecc71)
   })
 })

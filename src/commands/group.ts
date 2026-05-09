@@ -2,6 +2,7 @@ import pLimit from 'p-limit'
 
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
 import { supportsUserResolution } from '../chat/capabilities.js'
+import { resolveChatGroupDisplayLabel, resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn, ResolveUserContext } from '../chat/types.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.js'
 import { logger } from '../logger.js'
@@ -34,26 +35,23 @@ function resolveUserLabelCached(
   const cacheKey = `${resolverContext.contextType}:${resolverContext.contextId}:${userId}`
   const existing = cache.get(cacheKey)
   if (existing !== undefined) return existing
-  const fn = resolverContext.chat.resolveUserLabel
-  const pending =
-    fn === undefined
-      ? Promise.resolve(null)
-      : scheduleLookup(() =>
-          fn(userId, { contextId: resolverContext.contextId, contextType: resolverContext.contextType }).catch(
-            (error: unknown): string | null => {
-              log.warn(
-                {
-                  userId,
-                  contextId: resolverContext.contextId,
-                  contextType: resolverContext.contextType,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-                'User label lookup failed in group command',
-              )
-              return null
-            },
-          ),
-        )
+  const pending = scheduleLookup(() =>
+    resolveChatUserDisplayLabel(resolverContext.chat, userId, {
+      contextId: resolverContext.contextId,
+      contextType: resolverContext.contextType,
+    }).catch((error: unknown): string | null => {
+      log.warn(
+        {
+          userId,
+          contextId: resolverContext.contextId,
+          contextType: resolverContext.contextType,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'User label lookup failed in group command',
+      )
+      return null
+    }),
+  )
 
   cache.set(cacheKey, pending)
   return pending
@@ -67,19 +65,15 @@ function resolveGroupLabelCached(
 ): Promise<string | null> {
   const existing = cache.get(groupId)
   if (existing !== undefined) return existing
-  const fn = chat.resolveGroupLabel
-  const pending =
-    fn === undefined
-      ? Promise.resolve(null)
-      : scheduleLookup(() =>
-          fn(groupId).catch((error: unknown): string | null => {
-            log.warn(
-              { groupId, error: error instanceof Error ? error.message : String(error) },
-              'Group label lookup failed in group command',
-            )
-            return null
-          }),
-        )
+  const pending = scheduleLookup(() =>
+    resolveChatGroupDisplayLabel(chat, groupId).catch((error: unknown): string | null => {
+      log.warn(
+        { groupId, error: error instanceof Error ? error.message : String(error) },
+        'Group label lookup failed in group command',
+      )
+      return null
+    }),
+  )
   cache.set(groupId, pending)
   return pending
 }

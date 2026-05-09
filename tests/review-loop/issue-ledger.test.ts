@@ -64,18 +64,17 @@ describe('issue ledger', () => {
       },
     ])
 
-    if (invalidRecord === undefined || alreadyFixedRecord === undefined) {
-      throw new Error('Expected two ledger records')
-    }
+    expect(invalidRecord).toBeDefined()
+    expect(alreadyFixedRecord).toBeDefined()
 
-    recordVerification(ledger, invalidRecord.fingerprint, {
+    recordVerification(ledger, invalidRecord!.fingerprint, {
       verdict: 'invalid',
       fixability: 'manual',
       reasoning: 'The bug report is not supported by the current code.',
       targetFiles: ['src/message-queue/queue.ts'],
       needsPlanning: false,
     })
-    recordVerification(ledger, alreadyFixedRecord.fingerprint, {
+    recordVerification(ledger, alreadyFixedRecord!.fingerprint, {
       verdict: 'already_fixed',
       fixability: 'manual',
       reasoning: 'The implementation already contains the described fix.',
@@ -86,10 +85,10 @@ describe('issue ledger', () => {
     await saveIssueLedger(ledger)
     const loaded = await loadIssueLedger(runDir)
 
-    expect(loaded.snapshot.issues[invalidRecord.fingerprint]?.status).toBe('rejected')
-    expect(loaded.snapshot.issues[alreadyFixedRecord.fingerprint]?.status).toBe('already_fixed')
-    expect(loaded.snapshot.issues[invalidRecord.fingerprint]?.verifierDecision?.verdict).toBe('invalid')
-    expect(loaded.snapshot.issues[alreadyFixedRecord.fingerprint]?.verifierDecision?.verdict).toBe('already_fixed')
+    expect(loaded.snapshot.issues[invalidRecord!.fingerprint]?.status).toBe('rejected')
+    expect(loaded.snapshot.issues[alreadyFixedRecord!.fingerprint]?.status).toBe('already_fixed')
+    expect(loaded.snapshot.issues[invalidRecord!.fingerprint]?.verifierDecision?.verdict).toBe('invalid')
+    expect(loaded.snapshot.issues[alreadyFixedRecord!.fingerprint]?.verifierDecision?.verdict).toBe('already_fixed')
   })
 
   test('reopens closed issues when the reviewer reports them again', async () => {
@@ -98,9 +97,7 @@ describe('issue ledger', () => {
 
     const ledger = await createIssueLedger(runDir)
     const record = applyReviewRound(ledger, 1, [issue])[0]
-    if (record === undefined) {
-      throw new Error('Expected a ledger record')
-    }
+    expect(record).toBeDefined()
 
     const decision: VerifierDecision = {
       verdict: 'valid',
@@ -110,15 +107,15 @@ describe('issue ledger', () => {
       needsPlanning: false,
     }
 
-    recordVerification(ledger, record.fingerprint, decision)
-    recordFixAttempt(ledger, record.fingerprint)
-    ledger.snapshot.issues[record.fingerprint]!.status = 'closed'
+    recordVerification(ledger, record!.fingerprint, decision)
+    recordFixAttempt(ledger, record!.fingerprint)
+    ledger.snapshot.issues[record!.fingerprint]!.status = 'closed'
     applyReviewRound(ledger, 2, [issue])
     await saveIssueLedger(ledger)
     const persisted = await loadIssueLedger(runDir)
 
-    expect(persisted.snapshot.issues[record.fingerprint]?.status).toBe('reopened')
-    expect(persisted.snapshot.issues[record.fingerprint]?.fixAttempts).toBe(1)
+    expect(persisted.snapshot.issues[record!.fingerprint]?.status).toBe('reopened')
+    expect(persisted.snapshot.issues[record!.fingerprint]?.fixAttempts).toBe(1)
   })
 
   test('reopens fixed pending review issues when the reviewer reports them again', async () => {
@@ -127,9 +124,7 @@ describe('issue ledger', () => {
 
     const ledger = await createIssueLedger(runDir)
     const record = applyReviewRound(ledger, 1, [issue])[0]
-    if (record === undefined) {
-      throw new Error('Expected a ledger record')
-    }
+    expect(record).toBeDefined()
 
     const decision: VerifierDecision = {
       verdict: 'valid',
@@ -139,14 +134,14 @@ describe('issue ledger', () => {
       needsPlanning: false,
     }
 
-    recordVerification(ledger, record.fingerprint, decision)
-    recordFixAttempt(ledger, record.fingerprint)
+    recordVerification(ledger, record!.fingerprint, decision)
+    recordFixAttempt(ledger, record!.fingerprint)
     applyReviewRound(ledger, 2, [issue])
     await saveIssueLedger(ledger)
 
     const persisted = IssueLedgerSnapshotSchema.parse(JSON.parse(readFileSync(ledger.path, 'utf8')))
 
-    expect(persisted.issues[record.fingerprint]?.status).toBe('reopened')
-    expect(persisted.issues[record.fingerprint]?.fixAttempts).toBe(1)
+    expect(persisted.issues[record!.fingerprint]?.status).toBe('reopened')
+    expect(persisted.issues[record!.fingerprint]?.fixAttempts).toBe(1)
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach, mock } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { setCachedConfig } from '../../src/cache.js'
 import { makeGetCurrentTimeTool } from '../../src/tools/get-current-time.js'
@@ -38,32 +39,32 @@ describe('makeGetCurrentTimeTool', () => {
 
   test('returns current time in user timezone', async () => {
     const tool = makeGetCurrentTimeTool('user-1')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
 
     const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
 
-    if (!isTimeResult(result)) throw new Error('Invalid result')
+    assert(isTimeResult(result), 'Invalid result')
     expect(result).toHaveProperty('datetime')
     expect(result).toHaveProperty('timezone')
   })
 
   test('returns UTC when no timezone configured', async () => {
     const tool = makeGetCurrentTimeTool('user-2')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
 
     const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
 
-    if (!isTimeResult(result)) throw new Error('Invalid result')
+    assert(isTimeResult(result), 'Invalid result')
     expect(result.timezone).toBe('UTC')
   })
 
   test('returns ISO string datetime', async () => {
     const tool = makeGetCurrentTimeTool('user-1')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
 
     const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
 
-    if (!isTimeResult(result)) throw new Error('Invalid result')
+    assert(isTimeResult(result), 'Invalid result')
     // ISO 8601 format check: YYYY-MM-DDTHH:MM:SS.sssZ or similar
     const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
     expect(result.datetime).toMatch(isoPattern)
@@ -71,11 +72,11 @@ describe('makeGetCurrentTimeTool', () => {
 
   test('includes formatted local date string', async () => {
     const tool = makeGetCurrentTimeTool('user-1')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
 
     const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
 
-    if (!isTimeResult(result)) throw new Error('Invalid result')
+    assert(isTimeResult(result), 'Invalid result')
     expect(result).toHaveProperty('formatted')
   })
 })

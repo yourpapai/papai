@@ -1,10 +1,12 @@
 import { afterEach, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 import type { runPhase2b as runPhase2bType } from '../../scripts/behavior-audit/consolidate.js'
 import type { ExtractedBehaviorRecord } from '../../scripts/behavior-audit/extracted-store.js'
 import type { IncrementalManifest } from '../../scripts/behavior-audit/incremental.js'
+import type { AgentResult } from '../../scripts/behavior-audit/phase-stats.js'
 import {
   createEmptyProgressFixture,
   createManifestTestEntry,
@@ -12,6 +14,7 @@ import {
 } from './behavior-audit-integration.helpers.js'
 import { cleanupTempDirs, makeTempDir, restoreBehaviorAuditEnv } from './behavior-audit-integration.runtime-helpers.js'
 import { getArrayItem, loadConsolidateModule } from './behavior-audit-integration.support.js'
+import { makeExtractedRecord } from './behavior-audit/test-fixtures.js'
 
 type LoadedConsolidateModule = {
   readonly runPhase2b: typeof runPhase2bType
@@ -63,7 +66,7 @@ function createExtractedRecord(input: {
   readonly context: string
   readonly keywords: readonly string[]
 }): ExtractedBehaviorRecord {
-  return {
+  return makeExtractedRecord({
     behaviorId: input.testKey,
     testKey: input.testKey,
     testFile: input.testFile,
@@ -73,8 +76,7 @@ function createExtractedRecord(input: {
     behavior: input.behavior,
     context: input.context,
     keywords: input.keywords,
-    extractedAt: '2026-04-21T12:00:00.000Z',
-  }
+  })
 }
 
 function createClassifiedRecord(input: {
@@ -217,8 +219,8 @@ test('runPhase2b joins classified and extracted artifacts by behavior id and wri
     new Set(['task-creation']),
     manifest,
     {
-      consolidateWithRetry: () =>
-        Promise.resolve([
+      consolidateWithRetry: (): Promise<AgentResult<typeof consolidationItems>> => {
+        const consolidationItems = [
           {
             id: 'task-creation::task-creation',
             item: {
@@ -237,7 +239,12 @@ test('runPhase2b joins classified and extracted artifacts by behavior id and wri
               ],
             },
           },
-        ]),
+        ]
+        return Promise.resolve({
+          result: consolidationItems,
+          usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+        })
+      },
       writeConsolidatedFile: (featureKey, consolidations): Promise<void> => {
         writtenFiles.set(featureKey, JSON.stringify(consolidations, null, 2) + '\n')
         return Promise.resolve()
@@ -246,16 +253,12 @@ test('runPhase2b joins classified and extracted artifacts by behavior id and wri
   )
 
   const entry = result.entries['task-creation::task-creation']
-  if (entry === undefined) {
-    throw new Error('Expected consolidated entry')
-  }
+  assert(entry !== undefined, 'Expected consolidated entry')
   expect(entry.featureKey).toBe('task-creation')
   expect(entry.consolidatedArtifactPath).toBe(buildRelativeArtifactPath('consolidated', 'task-creation'))
 
   const fileText = writtenFiles.get('task-creation')
-  if (fileText === undefined) {
-    throw new Error('Expected consolidated file contents to be captured')
-  }
+  assert(fileText !== undefined, 'Expected consolidated file contents to be captured')
   expect(fileText).toContain('supportingInternalRefs')
 })
 
@@ -368,50 +371,51 @@ test('runPhase2b groups joined artifact inputs by feature key and preserves cros
       consolidateWithRetry: (
         featureKey: string,
         inputs: readonly ConsolidateInput[],
-      ): Promise<
-        | readonly {
-            readonly id: string
-            readonly item: {
-              readonly featureName: string
-              readonly isUserFacing: boolean
-              readonly behavior: string
-              readonly userStory: string | null
-              readonly context: string
-              readonly sourceTestKeys: string[]
-              readonly sourceBehaviorIds: string[]
-              readonly supportingInternalRefs: { behaviorId: string; summary: string }[]
-            }
-          }[]
-        | null
-      > => {
+      ): Promise<AgentResult<
+        readonly {
+          readonly id: string
+          readonly item: {
+            readonly featureName: string
+            readonly isUserFacing: boolean
+            readonly behavior: string
+            readonly userStory: string | null
+            readonly context: string
+            readonly sourceTestKeys: string[]
+            readonly sourceBehaviorIds: string[]
+            readonly supportingInternalRefs: { behaviorId: string; summary: string }[]
+          }
+        }[]
+      > | null> => {
         capturedFeatureKey = featureKey
         capturedDomains = inputs.map((input) => input.domain)
 
-        return Promise.resolve([
-          {
-            id: `${featureKey}::combined-feature`,
-            item: {
-              featureName: 'Combined feature',
-              isUserFacing: true,
-              behavior: 'When a user acts, something happens.',
-              userStory: 'As a user, I can do something.',
-              context: 'Implementation context.',
-              sourceTestKeys: inputs.map((input) => input.testKey),
-              sourceBehaviorIds: inputs.map((input) => input.behaviorId),
-              supportingInternalRefs: [],
+        return Promise.resolve({
+          result: [
+            {
+              id: `${featureKey}::combined-feature`,
+              item: {
+                featureName: 'Combined feature',
+                isUserFacing: true,
+                behavior: 'When a user acts, something happens.',
+                userStory: 'As a user, I can do something.',
+                context: 'Implementation context.',
+                sourceTestKeys: inputs.map((input) => input.testKey),
+                sourceBehaviorIds: inputs.map((input) => input.behaviorId),
+                supportingInternalRefs: [],
+              },
             },
-          },
-        ])
+          ],
+          usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+        })
       },
       writeConsolidatedFile: async (): Promise<void> => {},
     },
   )
 
   expect(Object.keys(result.entries).length).toBeGreaterThan(0)
-  if (capturedFeatureKey === null) {
-    throw new Error('Expected captured feature key')
-  }
-  expect(capturedFeatureKey === 'group-targeting').toBe(true)
+  assert(capturedFeatureKey !== null, 'Expected captured feature key')
+  const featureKey: string = capturedFeatureKey
+  expect(featureKey).toBe('group-targeting')
   expect(capturedDomains).toEqual(['tools', 'commands'])
   const savedEntries = Object.values(result.entries) as readonly ConsolidatedEntry[]
   expect(savedEntries).toHaveLength(1)

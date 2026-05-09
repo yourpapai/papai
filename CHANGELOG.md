@@ -5,6 +5,192 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-04-28
+
+### Added
+
+- **audit:** Add ConsolidatedBehavior type, Zod-validated file I/O
+- **audit:** Add phase2 consolidation + phase3 scoring, Zod validation, schema v2
+- **audit:** Add ConsolidatedManifest, Phase 3 selection, downstream invalidation
+- **audit:** Add consolidation LLM agent with structured output (Phase 2)
+- **audit:** Add Phase 2 consolidation runner with structured input
+- **audit:** Align behavior audit scoring and planning flow
+- **audit:** Implement keyword-batched behavior audit pipeline
+- **recurrence:** Add RecurrenceSpec types and Zod schemas
+- **recurrence:** Add recurrenceSpecToRrule
+- **recurrence:** Add parseRrule, nextOccurrence, occurrencesBetween
+- **recurrence:** Add describeRecurrence
+- **recurrence:** Add cronToRrule translator for migration
+- **db:** Migration 026 — unify recurrence storage on rrule
+- Replace cronExpression with rrule/dtstartUtc across all layers
+- **tools:** Migrate create_recurring_task to RRULE schedule schema
+- **tools:** Migrate update_recurring_task to RRULE schedule schema
+- **audit:** Move audit artifacts under dedicated root
+- **tps-meter:** Add validation utilities for config hardening
+- **tps-meter:** Update submodule with validation utilities
+- **tps-meter:** Security hardening — all 15 audit findings addressed
+- **opencode:** Enable tps meter plugin
+- **behavior-audit:** Split phase2 into classify and consolidate
+- **review-loop:** Swap agents, raise maxRounds default to 10
+- **review-loop:** Expand severity to medium/low, replace fixPlan with needsPlanning
+- **review-loop:** Simplify permission policy to always-allow
+- **review-loop:** Expand severities, add planning prompt, commit discipline in fix prompt
+- **review-loop:** Add plan-then-fix flow when needsPlanning is true
+- **codeindex:** Scaffold workspace package
+- **codeindex:** Implement tier1 workspace
+- **review-loop:** Add ProgressLog interface
+- **review-loop:** Wire console.log progress logging in CLI
+- **review-loop:** Add detailed progress logging to loop controller
+- **behavior-audit:** Add verbose generation output via BEHAVIOR_AUDIT_VERBOSE=1
+- **behavior-audit:** Add spent time to per-item output across all phases
+- **behavior-audit:** Add phase-stats types, accumulation, and formatting
+- **behavior-audit:** Extract-agent returns AgentResult with usage
+- **behavior-audit:** Keyword-resolver-agent returns AgentResult with usage
+- **behavior-audit:** ResolveKeywords returns usage alongside keywords
+- **behavior-audit:** Extract phase runner unwraps AgentResult, renders stats
+- **behavior-audit:** Classify-agent returns AgentResult with usage
+- **behavior-audit:** Classify phase runner unwraps AgentResult, renders stats
+- **behavior-audit:** Consolidate agent and phase runner use AgentResult, render stats
+- **behavior-audit:** Evaluate agent and phase runner use AgentResult, render stats
+- **behavior-audit:** Add Phase1bProgress, migrate Progress to version 5
+- **behavior-audit:** Add pure consolidate-keywords-helpers (Task 3)
+- **behavior-audit:** Add embedding and consolidation config env vars
+- Enrich codeindex search results with ranking metadata and structured MCP output
+- **behavior-audit:** Add embedSlugBatch agent for keyword consolidation
+- **behavior-audit:** Implement phase 1b keyword consolidation pipeline
+
+### Changed
+
+- **recurring:** Replace cronExpression with rrule+dtstartUtc across types, schema, and runtime
+- Retire src/cron.ts — inline parser into translator, relocate to test oracle
+- **datetime:** Remove semanticScheduleToCompiled and its helpers
+- **recurrence:** Extract module, add timezone to scheduled prompts, wire recurring tool barrels
+- **behavior-audit:** Separate canonical artifacts from checkpoints
+- **behavior-audit:** Persist phase2a classifications as artifacts
+- **behavior-audit:** Make phase2b and phase3 artifact-driven
+- **behavior-audit:** Remove legacy manifest aliases
+- **behavior-audit:** Complete feature-key helper rename
+- **behavior-audit:** Migrate legacy manifest aliases on load
+- **behavior-audit:** Require canonical artifacts for phase loading
+- **behavior-audit:** Rebuild reports from canonical artifacts
+- **behavior-audit:** Normalize keyword vocabulary
+- **behavior-audit:** Finish artifact-model convergence
+- **review-loop:** Move into root workspace
+- **behavior-audit:** Remove dead exports from progress.ts and keyword-vocabulary.ts
+- **behavior-audit:** Remove void-parameter anti-pattern from progress and reporting
+- **behavior-audit:** Replace duplicate ConsolidatedStoryRecord with canonical ConsolidatedBehavior
+- **behavior-audit:** Unify duplicate buildPhase2Fingerprint and buildPhase2aFingerprint
+- **behavior-audit:** Simplify legacy migration, delete progress-schemas.ts
+- **behavior-audit:** Narrow ConsolidatedManifestEntry.featureKey to required string
+- **behavior-audit:** Remove behavior markdown output, harden agent config, add knip coverage
+- **behavior-audit:** Remove legacy helpers, harden config, update knip coverage
+- **tests:** Fix codeindex lint failures, remove conditional guards, update CI/Docker/migration fixes
+- **tests:** Fix review-loop lint errors, remove conditionals, clean dead code, fix YouTrack classify error tests
+- **tests:** Extract shared ContextSnapshot fixture
+- **tests:** Extract shared YouTrack fetch mock utilities
+- **tests:** Extract shared review-loop config fixture and temp-dir helpers
+- **tests:** Extract shared Kaneo task search response fixture
+- **tests:** Extract shared group setup helper in interaction-router tests
+- **tests:** Extract race-condition reviewer helper in loop-controller tests
+- **tests:** Remove duplicate behavior-audit-phase-stats test file
+- **behavior-audit:** Remove resolver agent, simplify keyword extraction to single phase
+- Add scripts/behavior-audit/index.ts (new home for orchestrator)
+- Add scripts/behavior-audit/reset.ts (new home for reset script)
+- Move behavior-audit-entrypoint.test.ts into behavior-audit/
+- Move behavior-audit-interrupted-run.test.ts into behavior-audit/
+- Move behavior-audit-incremental.test.ts into behavior-audit/
+- Move behavior-audit-classify-agent.test.ts into behavior-audit/
+- Move behavior-audit-storage.test.ts into behavior-audit/
+- Move behavior-audit-phase1-keywords.test.ts into behavior-audit/
+- Move behavior-audit-phase1-selection.test.ts into behavior-audit/
+- Move behavior-audit-phase1-write-failure.test.ts into behavior-audit/
+- Move behavior-audit-phase2a.test.ts into behavior-audit/
+- Update in-place test imports to new behavior-audit module paths
+- Delete top-level behavior-audit barrel and source files (moved into behavior-audit/)
+- Update package.json and knip.jsonc for consolidated behavior-audit layout
+
+### Documentation
+
+- **calendar-sync:** Remove rrule-parser coupling after unification
+- **system-prompt:** Align RECURRING TASKS section to RRULE vocabulary
+- Add security hardening design spec for opencode-tps-meter plugin
+- Self-review fixes for tps-meter security spec
+- Add implementation plan for tps-meter security hardening
+- **behavior-audit:** Add phase2 redesign spec and plan
+- Review-loop enhancements design spec
+- Review-loop enhancements implementation plan
+- Review-loop config fix and progress logging design spec
+- Review-loop config fix and progress logging implementation plan
+- **research:** Add prompt-optimization research report
+- **research:** Refine prompt-optimization report formatting
+- Add behavior-audit legacy cleanup plan, reformat stale hybrid-to-artifact plan
+- Revise plugin system implementation plan
+- Address plugin plan review feedback
+- Add behavior audit keyword consolidation design spec
+- Clarify codeindex search workflow
+- Expand pi migration plan with superpowers skills and TPS meter; add behavior-audit consolidation plan
+- Update consolidation plan to match current codebase state
+
+### Fixed
+
+- **audit:** Apply lint fixes and formatting to audit pipeline files
+- **recurring:** Persist timezone when updating recurring task schedule
+- **recurrence:** Stabilize RRULE schedule updates
+- **audit:** Keep incremental behavior reruns consistent
+- **opencode:** Preserve session ids for idle rechecks
+- **codeindex:** Finalize validation follow-ups
+- **codeindex:** Commit updated bun.lock with workspace deps
+- **codeindex:** Improve reference extraction and reorganize tests
+- **codeindex:** Tighten tier1 symbol indexing and resolution
+- **review-loop:** Correct agent commands and model IDs in example config
+- **behavior-audit:** Make rebuild tolerate stale manifest metadata
+- **behavior-audit:** Reject empty normalized keywords
+- **behavior-audit:** Reset evaluated artifacts with downstream phases
+- **behavior-audit:** Tighten phase3 selection and clear stale failures
+- **lint:** Eliminate all no-conditional-in-test violations across test suite
+- **lint:** Fix unsafe-array-assignment in behavior-audit-phase-stats test
+- **tests:** Make recurring missed-dates test time-independent
+- Align code symbol lookup with exact matches
+- **behavior-audit:** Tighten keyword range and clear embedding base URL default
+- **behavior-audit:** Prevent artifact filename collisions and parallelize processing
+- **behavior-audit:** Unify attributed progress reporting
+
+### Miscellaneous
+
+- **audit:** Add CONSOLIDATED_DIR + PHASE3_TIMEOUT_MS to config
+- Add rrule-temporal dependency
+- **repo:** Capture planning updates and harden safe fetch
+- **knip:** Register review-loop workspace entries and cover formatSummary
+
+### Styling
+
+- **review-loop:** Apply formatter fixes
+
+### Testing
+
+- **recurrence:** Add cron vs rrule facade equivalence oracle
+- **behavior-audit:** Split integration test support helpers
+- **behavior-audit:** Split phase1 keyword scenarios
+- **behavior-audit:** Split storage and reset scenarios
+- **behavior-audit:** Split phase2 and phase3 scenarios
+- **behavior-audit:** Stabilize audit suite migration
+- **behavior-audit:** Replace remaining avoidable module mocks
+- **behavior-audit:** Reload config for injected classify defaults
+- **review-loop:** Add log mock to all runReviewLoop calls
+- **behavior-audit:** Cover vocabulary migration on load
+- **behavior-audit:** Fix phase3 reset regression coverage
+
+### WIP
+
+- Refactor(tests): DRY duplicate test code (Tasks 1-2)
+
+### Build
+
+- **review-loop:** Scaffold empty workspace
+
+### Guardrails
+
+- Block git checkout -- in both Claude Code and OpenCode hooks
 ## [5.1.3] - 2026-04-20
 
 ### Added

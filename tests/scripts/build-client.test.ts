@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
+import { PUBLIC_DIR } from '../../scripts/build-client.js'
 
 describe('build-client', () => {
   beforeAll(() => {
@@ -39,7 +39,7 @@ describe('build-client', () => {
     const content = fs.readFileSync(jsPath, 'utf8')
     expect(content.length).toBeGreaterThan(0)
     // IIFE format: starts with ( or !
-    expect(content.startsWith('(') || content.startsWith('!')).toBe(true)
+    expect(content).toMatch(/^[(!]/)
     // No ES module syntax
     expect(content).not.toContain('export *')
     expect(content).not.toContain('export {')

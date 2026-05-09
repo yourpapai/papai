@@ -4,7 +4,10 @@ export type ChatUser = {
   username: string | null
   /** platform admin in current context */
   isAdmin: boolean
-}
+} & Partial<{
+  /** provider-formatted display label when the adapter already knows it */
+  displayLabel: string
+}>
 
 /** Context type for messages - DM or group chat. */
 export type ContextType = 'dm' | 'group'

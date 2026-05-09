@@ -1,16 +1,39 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname } from 'node:path'
-
-import { PROGRESS_PATH } from './config.js'
-import { validateOrMigrateProgress } from './progress-migrate.js'
+import type { LinkageMode } from './consolidate-keywords-helpers.js'
 import type { ConsolidatedBehavior } from './report-writer.js'
 
+export { loadProgress, saveProgress } from './progress-io.js'
+export {
+  invalidatePhase3ForReevaluation,
+  resetPhase1bAndBelow,
+  resetPhase2AndPhase3,
+  resetPhase3,
+} from './progress-resets.js'
 export type PhaseStatus = 'not-started' | 'in-progress' | 'done'
 
 export interface FailedEntry {
   readonly error: string
   readonly attempts: number
   readonly lastAttempt: string
+}
+
+export interface Phase1bProgress {
+  status: PhaseStatus
+  lastRunAt: string | null
+  threshold: number
+  minClusterSize: number
+  linkage: LinkageMode
+  maxClusterSize: number
+  gapThreshold: number
+  embeddingModel: string
+  embeddingBaseUrl: string
+  embeddingCachePath: string | null
+  stats: {
+    slugsBefore: number
+    slugsAfter: number
+    mergesApplied: number
+    behaviorsUpdated: number
+    keywordsRemapped: number
+  }
 }
 
 export interface Phase1Progress {
@@ -52,12 +75,29 @@ export interface Phase3Progress {
 }
 
 export interface Progress {
-  version: 4
+  version: 5
   startedAt: string
   phase1: Phase1Progress
+  phase1b: Phase1bProgress
   phase2a: Phase2aProgress
   phase2b: Phase2bProgress
   phase3: Phase3Progress
+}
+
+export function emptyPhase1b(): Phase1bProgress {
+  return {
+    status: 'not-started',
+    lastRunAt: null,
+    threshold: 0,
+    minClusterSize: 2,
+    linkage: 'single',
+    maxClusterSize: 0,
+    gapThreshold: 0,
+    embeddingModel: '',
+    embeddingBaseUrl: '',
+    embeddingCachePath: null,
+    stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+  }
 }
 
 export function emptyPhase2a(): Phase2aProgress {
@@ -94,7 +134,7 @@ export function emptyPhase3(): Phase3Progress {
 
 export function createEmptyProgress(filesTotal: number): Progress {
   return {
-    version: 4,
+    version: 5,
     startedAt: new Date().toISOString(),
     phase1: {
       status: 'not-started',
@@ -103,29 +143,11 @@ export function createEmptyProgress(filesTotal: number): Progress {
       completedFiles: [],
       stats: { filesTotal, filesDone: 0, testsExtracted: 0, testsFailed: 0 },
     },
+    phase1b: emptyPhase1b(),
     phase2a: emptyPhase2a(),
     phase2b: emptyPhase2b(),
     phase3: emptyPhase3(),
   }
-}
-
-export async function loadProgress(): Promise<Progress | null> {
-  const file = Bun.file(PROGRESS_PATH)
-  if (!(await file.exists())) {
-    return null
-  }
-
-  const text = await file.text()
-  const progress = validateOrMigrateProgress(JSON.parse(text))
-  if (progress === null) {
-    throw new Error('Invalid behavior-audit progress file')
-  }
-  return progress
-}
-
-export async function saveProgress(progress: Progress): Promise<void> {
-  await mkdir(dirname(PROGRESS_PATH), { recursive: true })
-  await Bun.write(PROGRESS_PATH, JSON.stringify(progress, null, 2) + '\n')
 }
 
 export function isFileCompleted(progress: Progress, filePath: string): boolean {
@@ -274,14 +296,4 @@ export function markBehaviorFailed(progress: Progress, key: string, error: strin
 
 export function getFailedBehaviorAttempts(progress: Progress, key: string): number {
   return progress.phase3.failedConsolidatedIds[key]?.attempts ?? 0
-}
-
-export function resetPhase2AndPhase3(progress: Progress): void {
-  progress.phase2a = emptyPhase2a()
-  progress.phase2b = emptyPhase2b()
-  progress.phase3 = emptyPhase3()
-}
-
-export function resetPhase3(progress: Progress): void {
-  progress.phase3 = emptyPhase3()
 }

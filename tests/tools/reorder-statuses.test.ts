@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeReorderStatusesTool } from '../../src/tools/reorder-statuses.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -24,7 +25,7 @@ describe('makeReorderStatusesTool', () => {
     const provider = createMockProvider({ reorderStatuses })
 
     const tool = makeReorderStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       {
         projectId: 'proj-1',
@@ -56,7 +57,7 @@ describe('makeReorderStatusesTool', () => {
     const provider = createMockProvider({ reorderStatuses })
 
     const tool = makeReorderStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       {
         projectId: 'proj-1',
@@ -76,7 +77,7 @@ describe('makeReorderStatusesTool', () => {
     const provider = createMockProvider({ reorderStatuses })
 
     const tool = makeReorderStatusesTool(provider)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       {
         projectId: 'proj-1',

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
 import { registerGroupCommand } from '../../src/commands/group.js'
+import { upsertGroupUserObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
   createAuth,
   createDmMessage,
@@ -24,6 +25,30 @@ const getFirstReply = (textCalls: readonly string[]): string | null => {
 const flushMicrotasks = async (): Promise<void> => {
   await Promise.resolve()
   await Promise.resolve()
+}
+
+// Label-lookup helpers defined outside test blocks — required by no-conditional-in-test
+function resolveGroupLabelByKnownId(groupId: string): Promise<string | null> {
+  if (groupId === 'group-123') return Promise.resolve('Engineering Chat')
+  return Promise.resolve(null)
+}
+
+function resolveUserLabelForAdmin1(userId: string): Promise<string | null> {
+  if (userId === 'admin1') return Promise.resolve('John Johnson (@itsmike)')
+  return Promise.resolve(null)
+}
+
+function resolveUserLabelByContextId(userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
+  if (userId !== 'admin1') return Promise.resolve(null)
+  if (context !== undefined && context.contextId === 'group-123') return Promise.resolve('Alice One (@admin1)')
+  if (context !== undefined && context.contextId === 'group-456') return Promise.resolve('Alice Two (@admin1)')
+  return Promise.resolve(null)
+}
+
+function resolveUserLabelForMembersAndAdder(userId: string): Promise<string | null> {
+  if (userId === 'user1') return Promise.resolve('John Johnson (@itsmike)')
+  if (userId === 'admin1') return Promise.resolve('Jane Admin (@janeadmin)')
+  return Promise.resolve(null)
 }
 
 const createBlockingLabelLookup = (): {
@@ -606,14 +631,8 @@ describe('group commands', () => {
       const labeledHandlers = new Map<string, CommandHandler>()
       const labeledChat = createMockChat({
         commandHandlers: labeledHandlers,
-        resolveGroupLabel: (groupId: string): Promise<string | null> => {
-          if (groupId === 'group-123') return Promise.resolve('Engineering Chat')
-          return Promise.resolve(null)
-        },
-        resolveUserLabel: (userId: string): Promise<string | null> => {
-          if (userId === 'admin1') return Promise.resolve('John Johnson (@itsmike)')
-          return Promise.resolve(null)
-        },
+        resolveGroupLabel: resolveGroupLabelByKnownId,
+        resolveUserLabel: resolveUserLabelForAdmin1,
       })
       registerGroupCommand(labeledChat)
 
@@ -636,12 +655,7 @@ describe('group commands', () => {
       const labeledChat = createMockChat({
         commandHandlers: labeledHandlers,
         resolveGroupLabel: (groupId: string): Promise<string | null> => Promise.resolve(groupId),
-        resolveUserLabel: (userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
-          if (userId !== 'admin1') return Promise.resolve(null)
-          if (context !== undefined && context.contextId === 'group-123') return Promise.resolve('Alice One (@admin1)')
-          if (context !== undefined && context.contextId === 'group-456') return Promise.resolve('Alice Two (@admin1)')
-          return Promise.resolve(null)
-        },
+        resolveUserLabel: resolveUserLabelByContextId,
       })
       registerGroupCommand(labeledChat)
 
@@ -663,11 +677,7 @@ describe('group commands', () => {
       const labeledHandlers = new Map<string, CommandHandler>()
       const labeledChat = createMockChat({
         commandHandlers: labeledHandlers,
-        resolveUserLabel: (userId: string): Promise<string | null> => {
-          if (userId === 'user1') return Promise.resolve('John Johnson (@itsmike)')
-          if (userId === 'admin1') return Promise.resolve('Jane Admin (@janeadmin)')
-          return Promise.resolve(null)
-        },
+        resolveUserLabel: resolveUserLabelForMembersAndAdder,
       })
       registerGroupCommand(labeledChat)
 
@@ -824,6 +834,84 @@ describe('group commands', () => {
       await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
 
       expect(textCalls[0]).toContain('- user1 (added by admin1)')
+    })
+
+    test('uses cached telegram group and adder labels for /groups when live lookup returns null', async () => {
+      const telegramHandlers = new Map<string, CommandHandler>()
+      const telegramChat: ChatProvider = {
+        ...createMockChat({
+          commandHandlers: telegramHandlers,
+          resolveGroupLabel: (): Promise<string | null> => Promise.resolve(null),
+          resolveUserLabel: (): Promise<string | null> => Promise.resolve(null),
+        }),
+        name: 'telegram',
+      }
+      registerGroupCommand(telegramChat)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      addAuthorizedGroup('-100123', '42')
+      upsertKnownGroupContext({
+        contextId: '-100123',
+        provider: 'telegram',
+        displayName: 'Operations',
+        parentName: null,
+      })
+      upsertGroupUserObservation({
+        provider: 'telegram',
+        contextId: '-100123',
+        userId: '42',
+        username: 'itsmike',
+        displayLabel: 'John Johnson (@itsmike)',
+      })
+
+      const handler = telegramHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toContain('Operations (added by John Johnson (@itsmike))')
+    })
+
+    test('uses cached telegram member and adder labels for /group users when live lookup returns null', async () => {
+      const telegramHandlers = new Map<string, CommandHandler>()
+      const telegramChat: ChatProvider = {
+        ...createMockChat({
+          commandHandlers: telegramHandlers,
+          resolveUserLabel: (): Promise<string | null> => Promise.resolve(null),
+        }),
+        name: 'telegram',
+      }
+      registerGroupCommand(telegramChat)
+
+      const { addGroupMember } = await import('../../src/groups.js')
+      addGroupMember('-100123', '99', '42')
+      upsertGroupUserObservation({
+        provider: 'telegram',
+        contextId: '-100123',
+        userId: '99',
+        username: 'worker99',
+        displayLabel: 'Worker Ninety Nine (@worker99)',
+      })
+      upsertGroupUserObservation({
+        provider: 'telegram',
+        contextId: '-100123',
+        userId: '42',
+        username: 'itsmike',
+        displayLabel: 'John Johnson (@itsmike)',
+      })
+
+      const handler = telegramHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(
+        createGroupMessage('42', 'users', true, '-100123'),
+        reply,
+        createAuth('42', { isGroupAdmin: true }),
+      )
+
+      expect(textCalls[0]).toContain('- Worker Ninety Nine (@worker99) (added by John Johnson (@itsmike))')
     })
   })
 })

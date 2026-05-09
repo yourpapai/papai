@@ -1,24 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { closeClients, parseCliArgs } from '../../review-loop/src/cli.js'
 import { loadReviewLoopConfig } from '../../review-loop/src/config.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
-const tempDirs: string[] = []
-
-const makeTempDir = (): string => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'review-loop-cli-'))
-  tempDirs.push(dir)
-  return dir
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
+afterEach(cleanupTempDirs)
 
 describe('review-loop CLI bootstrap', () => {
   test('parseCliArgs requires --plan and returns resume-run when provided', () => {
@@ -42,7 +30,7 @@ describe('review-loop CLI bootstrap', () => {
   })
 
   test('loadReviewLoopConfig resolves relative config paths from config and repo roots', async () => {
-    const dir = makeTempDir()
+    const dir = makeTempDir('review-loop-cli-')
     const configDir = path.join(dir, 'config')
     const repoDir = path.join(dir, 'repo')
     const configPath = path.join(configDir, 'review-loop.config.json')
@@ -52,23 +40,7 @@ describe('review-loop CLI bootstrap', () => {
       configPath,
       JSON.stringify(
         {
-          repoRoot: '../repo',
-          workDir: '.review-loop',
-          maxRounds: 5,
-          maxNoProgressRounds: 2,
-          reviewer: {
-            command: '/usr/local/bin/claude-acp-adapter',
-            args: [],
-            invocationPrefix: '/review-code',
-            requireInvocationPrefix: false,
-          },
-          fixer: {
-            command: 'opencode',
-            args: ['acp'],
-            verifyInvocationPrefix: '/verify-issue',
-            fixInvocationPrefix: null,
-            requireVerifyInvocation: false,
-          },
+          ...createReviewLoopConfigFixture('../repo', { workDir: '.review-loop' }),
         },
         null,
         2,
@@ -85,7 +57,7 @@ describe('review-loop CLI bootstrap', () => {
   })
 
   test('loadReviewLoopConfig resolves --repo overrides from the caller cwd', async () => {
-    const dir = makeTempDir()
+    const dir = makeTempDir('review-loop-cli-')
     const configDir = path.join(dir, 'config')
     const configPath = path.join(configDir, 'review-loop.config.json')
     const previousCwd = process.cwd()
@@ -95,23 +67,7 @@ describe('review-loop CLI bootstrap', () => {
       configPath,
       JSON.stringify(
         {
-          repoRoot: '../repo',
-          workDir: '.review-loop',
-          maxRounds: 5,
-          maxNoProgressRounds: 2,
-          reviewer: {
-            command: '/usr/local/bin/claude-acp-adapter',
-            args: [],
-            invocationPrefix: '/review-code',
-            requireInvocationPrefix: false,
-          },
-          fixer: {
-            command: 'opencode',
-            args: ['acp'],
-            verifyInvocationPrefix: '/verify-issue',
-            fixInvocationPrefix: null,
-            requireVerifyInvocation: false,
-          },
+          ...createReviewLoopConfigFixture('../repo', { workDir: '.review-loop' }),
         },
         null,
         2,

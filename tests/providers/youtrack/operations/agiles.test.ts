@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-
-import { z } from 'zod'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
 import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
@@ -11,73 +10,21 @@ import {
   listYouTrackSprints,
   updateYouTrackSprint,
 } from '../../../../src/providers/youtrack/operations/agiles.js'
-import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
+import { mockLogger, restoreFetch } from '../../../utils/test-helpers.js'
+import {
+  type FetchMockFn,
+  defaultConfig,
+  getFetchBodyAt,
+  getFetchMethodAt,
+  getFetchUrlAt,
+  mockFetchError,
+  mockFetchResponse,
+  mockFetchSequence,
+} from '../fetch-mock-utils.js'
 
-let fetchMock: ReturnType<typeof mock<(url: string, init: RequestInit) => Promise<Response>>> | undefined
+const fetchMock: { current?: FetchMockFn } = {}
 
-const config: YouTrackConfig = {
-  baseUrl: 'https://test.youtrack.cloud',
-  token: 'test-token',
-}
-
-const installFetchMock = (handler: () => Promise<Response>): void => {
-  const mocked = mock<(url: string, init: RequestInit) => Promise<Response>>(handler)
-  fetchMock = mocked
-  setMockFetch((url: string, init: RequestInit) => mocked(url, init))
-}
-
-const createJsonResponse = (data: unknown, status = 200): Response =>
-  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
-
-const mockFetchResponse = (data: unknown, status = 200): void => {
-  installFetchMock(() => Promise.resolve(createJsonResponse(data, status)))
-}
-
-const mockFetchSequence = (responses: Array<{ data: unknown; status?: number }>): void => {
-  let callIndex = 0
-  installFetchMock(() => {
-    const response = responses[callIndex]
-    callIndex++
-    if (response === undefined) {
-      return Promise.resolve(createJsonResponse({}, 200))
-    }
-    if (response.status === 204) {
-      return Promise.resolve(new Response(null, { status: 204 }))
-    }
-    return Promise.resolve(createJsonResponse(response.data, response.status ?? 200))
-  })
-}
-
-const mockFetchError = (status: number, body: unknown = { error: 'Something went wrong' }): void => {
-  installFetchMock(() => Promise.resolve(createJsonResponse(body, status)))
-}
-
-const FetchCallSchema = z.tuple([
-  z.string(),
-  z.looseObject({ method: z.string().optional(), body: z.string().optional() }),
-])
-
-const BodySchema = z.looseObject({})
-
-const getFetchUrlAt = (index: number): URL => {
-  const parsed = FetchCallSchema.safeParse(fetchMock?.mock.calls[index])
-  if (!parsed.success) return new URL('https://empty')
-  return new URL(parsed.data[0])
-}
-
-const getFetchMethodAt = (index: number): string => {
-  const parsed = FetchCallSchema.safeParse(fetchMock?.mock.calls[index])
-  if (!parsed.success) return ''
-  return parsed.data[1].method ?? ''
-}
-
-const getFetchBodyAt = (index: number): z.infer<typeof BodySchema> => {
-  const parsed = FetchCallSchema.safeParse(fetchMock?.mock.calls[index])
-  if (!parsed.success) return {}
-  const { body } = parsed.data[1]
-  if (body === undefined) return {}
-  return BodySchema.parse(JSON.parse(body))
-}
+const config: YouTrackConfig = defaultConfig
 
 const makeSprintResponse = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: 'sprint-1',
@@ -97,24 +44,23 @@ beforeEach(() => {
 
 afterEach(() => {
   restoreFetch()
-  fetchMock = undefined
 })
 
 describe('listYouTrackAgiles', () => {
   test('lists agiles and maps response', async () => {
-    mockFetchResponse([{ id: 'agile-1', name: 'Team Board' }])
+    mockFetchResponse(fetchMock, [{ id: 'agile-1', name: 'Team Board' }])
 
     const agiles = await listYouTrackAgiles(config)
 
     expect(agiles).toEqual([{ id: 'agile-1', name: 'Team Board' }])
-    expect(getFetchUrlAt(0).pathname).toBe('/api/agiles')
-    expect(getFetchUrlAt(0).searchParams.get('fields')).toBe('id,name')
-    expect(getFetchUrlAt(0).searchParams.get('$top')).toBe('100')
-    expect(getFetchMethodAt(0)).toBe('GET')
+    expect(getFetchUrlAt(fetchMock.current, 0).pathname).toBe('/api/agiles')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('fields')).toBe('id,name')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('$top')).toBe('100')
+    expect(getFetchMethodAt(fetchMock.current, 0)).toBe('GET')
   })
 
   test('paginates beyond the first agile page', async () => {
-    mockFetchSequence([
+    mockFetchSequence(fetchMock, [
       {
         data: Array.from({ length: 100 }, (_, index) => ({ id: `agile-${index + 1}`, name: `Agile ${index + 1}` })),
       },
@@ -127,12 +73,12 @@ describe('listYouTrackAgiles', () => {
 
     expect(agiles).toHaveLength(101)
     expect(agiles.at(100)).toEqual({ id: 'agile-101', name: 'Agile 101' })
-    expect(getFetchUrlAt(0).searchParams.get('$skip')).toBe('0')
-    expect(getFetchUrlAt(1).searchParams.get('$skip')).toBe('100')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('$skip')).toBe('0')
+    expect(getFetchUrlAt(fetchMock.current, 1).searchParams.get('$skip')).toBe('100')
   })
 
   test('throws classified error on failure', async () => {
-    mockFetchError(401)
+    mockFetchError(fetchMock, 401)
 
     await expect(listYouTrackAgiles(config)).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
@@ -140,7 +86,7 @@ describe('listYouTrackAgiles', () => {
 
 describe('listYouTrackSprints', () => {
   test('lists sprints and maps timestamps to iso strings', async () => {
-    mockFetchResponse([makeSprintResponse()])
+    mockFetchResponse(fetchMock, [makeSprintResponse()])
 
     const sprints = await listYouTrackSprints(config, 'agile-1')
 
@@ -157,16 +103,16 @@ describe('listYouTrackSprints', () => {
         unresolvedIssuesCount: 7,
       },
     ])
-    expect(getFetchUrlAt(0).pathname).toBe('/api/agiles/agile-1/sprints')
-    expect(getFetchUrlAt(0).searchParams.get('fields')).toBe(
+    expect(getFetchUrlAt(fetchMock.current, 0).pathname).toBe('/api/agiles/agile-1/sprints')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('fields')).toBe(
       'id,name,archived,goal,isDefault,start,finish,unresolvedIssuesCount',
     )
-    expect(getFetchUrlAt(0).searchParams.get('$top')).toBe('100')
-    expect(getFetchMethodAt(0)).toBe('GET')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('$top')).toBe('100')
+    expect(getFetchMethodAt(fetchMock.current, 0)).toBe('GET')
   })
 
   test('paginates beyond the first sprint page', async () => {
-    mockFetchSequence([
+    mockFetchSequence(fetchMock, [
       {
         data: Array.from({ length: 100 }, (_, index) =>
           makeSprintResponse({
@@ -194,8 +140,8 @@ describe('listYouTrackSprints', () => {
       isDefault: true,
       unresolvedIssuesCount: 7,
     })
-    expect(getFetchUrlAt(0).searchParams.get('$skip')).toBe('0')
-    expect(getFetchUrlAt(1).searchParams.get('$skip')).toBe('100')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('$skip')).toBe('0')
+    expect(getFetchUrlAt(fetchMock.current, 1).searchParams.get('$skip')).toBe('100')
   })
 })
 
@@ -204,6 +150,7 @@ describe('createYouTrackSprint', () => {
     const start = '2024-01-15T00:00:00.000Z'
     const finish = '2024-01-22T00:00:00.000Z'
     mockFetchResponse(
+      fetchMock,
       makeSprintResponse({
         start: new Date(start).getTime(),
         finish: new Date(finish).getTime(),
@@ -230,12 +177,12 @@ describe('createYouTrackSprint', () => {
       isDefault: true,
       unresolvedIssuesCount: 7,
     })
-    expect(getFetchUrlAt(0).pathname).toBe('/api/agiles/agile-1/sprints')
-    expect(getFetchUrlAt(0).searchParams.get('fields')).toBe(
+    expect(getFetchUrlAt(fetchMock.current, 0).pathname).toBe('/api/agiles/agile-1/sprints')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('fields')).toBe(
       'id,name,archived,goal,isDefault,start,finish,unresolvedIssuesCount',
     )
-    expect(getFetchMethodAt(0)).toBe('POST')
-    expect(getFetchBodyAt(0)).toEqual({
+    expect(getFetchMethodAt(fetchMock.current, 0)).toBe('POST')
+    expect(getFetchBodyAt(fetchMock.current, 0)).toEqual({
       name: 'Sprint 1',
       goal: 'Ship it',
       start: new Date(start).getTime(),
@@ -246,7 +193,7 @@ describe('createYouTrackSprint', () => {
   })
 
   test('rejects invalid start and finish timestamps before sending request', async () => {
-    mockFetchResponse(makeSprintResponse())
+    mockFetchResponse(fetchMock, makeSprintResponse())
 
     await expect(
       createYouTrackSprint(config, 'agile-1', {
@@ -255,7 +202,7 @@ describe('createYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
 
     await expect(
       createYouTrackSprint(config, 'agile-1', {
@@ -264,11 +211,11 @@ describe('createYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
   })
 
   test('rejects impossible ISO datetimes before sending request', async () => {
-    mockFetchResponse(makeSprintResponse())
+    mockFetchResponse(fetchMock, makeSprintResponse())
 
     await expect(
       createYouTrackSprint(config, 'agile-1', {
@@ -277,7 +224,7 @@ describe('createYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
 
     await expect(
       createYouTrackSprint(config, 'agile-1', {
@@ -286,13 +233,14 @@ describe('createYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
   })
 })
 
 describe('updateYouTrackSprint', () => {
   test('updates sprint with null reset fields and archived flag', async () => {
     mockFetchResponse(
+      fetchMock,
       makeSprintResponse({
         id: 'sprint-2',
         name: 'Sprint 2',
@@ -325,9 +273,9 @@ describe('updateYouTrackSprint', () => {
       isDefault: false,
       unresolvedIssuesCount: 7,
     })
-    expect(getFetchUrlAt(0).pathname).toBe('/api/agiles/agile-1/sprints/sprint-2')
-    expect(getFetchMethodAt(0)).toBe('POST')
-    expect(getFetchBodyAt(0)).toEqual({
+    expect(getFetchUrlAt(fetchMock.current, 0).pathname).toBe('/api/agiles/agile-1/sprints/sprint-2')
+    expect(getFetchMethodAt(fetchMock.current, 0)).toBe('POST')
+    expect(getFetchBodyAt(fetchMock.current, 0)).toEqual({
       name: 'Sprint 2',
       goal: 'Updated goal',
       start: null,
@@ -339,18 +287,18 @@ describe('updateYouTrackSprint', () => {
   })
 
   test('clears sprint goal when null is provided', async () => {
-    mockFetchResponse(makeSprintResponse({ id: 'sprint-3', goal: null }))
+    mockFetchResponse(fetchMock, makeSprintResponse({ id: 'sprint-3', goal: null }))
 
     const sprint = await updateYouTrackSprint(config, 'agile-1', 'sprint-3', {
       goal: null,
     })
 
     expect(sprint.goal).toBeNull()
-    expect(getFetchBodyAt(0)).toEqual({ goal: null })
+    expect(getFetchBodyAt(fetchMock.current, 0)).toEqual({ goal: null })
   })
 
   test('rejects invalid update timestamps before sending request', async () => {
-    mockFetchResponse(makeSprintResponse())
+    mockFetchResponse(fetchMock, makeSprintResponse())
 
     await expect(
       updateYouTrackSprint(config, 'agile-1', 'sprint-3', {
@@ -358,7 +306,7 @@ describe('updateYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
 
     await expect(
       updateYouTrackSprint(config, 'agile-1', 'sprint-3', {
@@ -366,11 +314,11 @@ describe('updateYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
   })
 
   test('rejects impossible ISO datetimes when updating before sending request', async () => {
-    mockFetchResponse(makeSprintResponse())
+    mockFetchResponse(fetchMock, makeSprintResponse())
 
     await expect(
       updateYouTrackSprint(config, 'agile-1', 'sprint-3', {
@@ -378,7 +326,7 @@ describe('updateYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
 
     await expect(
       updateYouTrackSprint(config, 'agile-1', 'sprint-3', {
@@ -386,13 +334,13 @@ describe('updateYouTrackSprint', () => {
       }),
     ).rejects.toBeInstanceOf(YouTrackClassifiedError)
 
-    expect(fetchMock?.mock.calls).toHaveLength(0)
+    expect(fetchMock.current?.mock.calls).toHaveLength(0)
   })
 })
 
 describe('assignYouTrackTaskToSprint', () => {
   test('resolves issue id and agile board before assigning sprint', async () => {
-    mockFetchSequence([
+    mockFetchSequence(fetchMock, [
       { data: { id: 'issue-db-1' } },
       {
         data: [
@@ -406,20 +354,20 @@ describe('assignYouTrackTaskToSprint', () => {
     const result = await assignYouTrackTaskToSprint(config, 'TEST-1', 'sprint-2')
 
     expect(result).toEqual({ taskId: 'TEST-1', sprintId: 'sprint-2' })
-    expect(getFetchUrlAt(0).pathname).toBe('/api/issues/TEST-1')
-    expect(getFetchUrlAt(0).searchParams.get('fields')).toBe('id')
-    expect(getFetchMethodAt(0)).toBe('GET')
-    expect(getFetchUrlAt(1).pathname).toBe('/api/agiles')
-    expect(getFetchUrlAt(1).searchParams.get('fields')).toBe('id,sprints(id)')
-    expect(getFetchUrlAt(1).searchParams.get('$top')).toBe('100')
-    expect(getFetchMethodAt(1)).toBe('GET')
-    expect(getFetchUrlAt(2).pathname).toBe('/api/agiles/agile-1/sprints/sprint-2/issues')
-    expect(getFetchMethodAt(2)).toBe('POST')
-    expect(getFetchBodyAt(2)).toEqual({ id: 'issue-db-1', $type: 'Issue' })
+    expect(getFetchUrlAt(fetchMock.current, 0).pathname).toBe('/api/issues/TEST-1')
+    expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('fields')).toBe('id')
+    expect(getFetchMethodAt(fetchMock.current, 0)).toBe('GET')
+    expect(getFetchUrlAt(fetchMock.current, 1).pathname).toBe('/api/agiles')
+    expect(getFetchUrlAt(fetchMock.current, 1).searchParams.get('fields')).toBe('id,sprints(id)')
+    expect(getFetchUrlAt(fetchMock.current, 1).searchParams.get('$top')).toBe('100')
+    expect(getFetchMethodAt(fetchMock.current, 1)).toBe('GET')
+    expect(getFetchUrlAt(fetchMock.current, 2).pathname).toBe('/api/agiles/agile-1/sprints/sprint-2/issues')
+    expect(getFetchMethodAt(fetchMock.current, 2)).toBe('POST')
+    expect(getFetchBodyAt(fetchMock.current, 2)).toEqual({ id: 'issue-db-1', $type: 'Issue' })
   })
 
   test('searches across paginated agile results when resolving sprint ownership', async () => {
-    mockFetchSequence([
+    mockFetchSequence(fetchMock, [
       { data: { id: 'issue-db-1' } },
       {
         data: Array.from({ length: 100 }, (_, index) => ({
@@ -436,13 +384,13 @@ describe('assignYouTrackTaskToSprint', () => {
     const result = await assignYouTrackTaskToSprint(config, 'TEST-1', 'sprint-2')
 
     expect(result).toEqual({ taskId: 'TEST-1', sprintId: 'sprint-2' })
-    expect(getFetchUrlAt(1).searchParams.get('$skip')).toBe('0')
-    expect(getFetchUrlAt(2).searchParams.get('$skip')).toBe('100')
-    expect(getFetchUrlAt(3).pathname).toBe('/api/agiles/agile-101/sprints/sprint-2/issues')
+    expect(getFetchUrlAt(fetchMock.current, 1).searchParams.get('$skip')).toBe('0')
+    expect(getFetchUrlAt(fetchMock.current, 2).searchParams.get('$skip')).toBe('100')
+    expect(getFetchUrlAt(fetchMock.current, 3).pathname).toBe('/api/agiles/agile-101/sprints/sprint-2/issues')
   })
 
   test('throws classified error on api failure', async () => {
-    mockFetchError(404, { error: 'Issue not found' })
+    mockFetchError(fetchMock, 404, { error: 'Issue not found' })
 
     await expect(assignYouTrackTaskToSprint(config, 'TEST-1', 'sprint-2')).rejects.toBeInstanceOf(
       YouTrackClassifiedError,
@@ -450,7 +398,7 @@ describe('assignYouTrackTaskToSprint', () => {
   })
 
   test('classifies missing sprint lookup as a not found provider error', async () => {
-    mockFetchSequence([
+    mockFetchSequence(fetchMock, [
       { data: { id: 'issue-db-1' } },
       {
         data: [
@@ -465,9 +413,7 @@ describe('assignYouTrackTaskToSprint', () => {
       throw new Error('Expected assignYouTrackTaskToSprint to throw')
     } catch (error) {
       expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) {
-        throw error
-      }
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError).toEqual({
         type: 'provider',
         code: 'not-found',
@@ -476,6 +422,6 @@ describe('assignYouTrackTaskToSprint', () => {
       })
     }
 
-    expect(fetchMock?.mock.calls).toHaveLength(2)
+    expect(fetchMock.current?.mock.calls).toHaveLength(2)
   })
 })

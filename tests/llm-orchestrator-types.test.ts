@@ -13,8 +13,9 @@ describe('llm-orchestrator-types', () => {
     const __stepOut: StepOutput | undefined = undefined
 
     // Use the variables to avoid unused warnings
-    expect(__deps === undefined && __invoke === undefined && __stepIn === undefined && __stepOut === undefined).toBe(
-      true,
-    )
+    expect(__deps).toBeUndefined()
+    expect(__invoke).toBeUndefined()
+    expect(__stepIn).toBeUndefined()
+    expect(__stepOut).toBeUndefined()
   })
 })
