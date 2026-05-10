@@ -119,7 +119,7 @@ describe('tool-surface benchmark scenarios', () => {
   it('evaluates recurring and deferred scenarios from stored state', () => {
     expect(
       evaluateBenchmarkScenario('recurring_task_creation', {
-        tasks: [],
+        tasks: seededTasks,
         recurringEntries: [{ id: 'recurring-1', title: 'Send weekly benchmark summary', cadence: 'weekly' }],
         deferredEntries: [],
         toolCalls: ['create_recurring_task'],
@@ -128,7 +128,7 @@ describe('tool-surface benchmark scenarios', () => {
 
     expect(
       evaluateBenchmarkScenario('deferred_prompt_creation', {
-        tasks: [],
+        tasks: seededTasks,
         recurringEntries: [],
         deferredEntries: [{ id: 'deferred-1', prompt: 'Review benchmark results', when: 'tomorrow 09:00' }],
         toolCalls: ['create_deferred_prompt'],
@@ -202,6 +202,30 @@ describe('tool-surface benchmark scenarios', () => {
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })
 
+  it('fails search_then_update_status when unrelated state also mutates', () => {
+    expect(
+      evaluateBenchmarkScenario('search_then_update_status', {
+        tasks: [
+          { ...seededTasks[0], status: 'in_progress' },
+          seededTasks[1],
+          seededTasks[2],
+          {
+            id: 'task-4',
+            title: 'Unexpected extra task',
+            priority: 'low',
+            status: 'todo',
+            assigneeId: null,
+            comments: [],
+            deleted: false,
+          },
+        ],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['search_tasks', 'update_task', 'create_task'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
   it('fails search_then_comment when comment happens before search', () => {
     expect(
       evaluateBenchmarkScenario('search_then_comment', {
@@ -224,6 +248,39 @@ describe('tool-surface benchmark scenarios', () => {
         recurringEntries: [],
         deferredEntries: [],
         toolCalls: ['update_task', 'search_tasks', 'find_user'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails search_then_assign_user when recurring state was also mutated', () => {
+    expect(
+      evaluateBenchmarkScenario('search_then_assign_user', {
+        tasks: [{ ...seededTasks[0], assigneeId: 'user-alex' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [{ id: 'recurring-1', title: 'Unexpected recurring task', cadence: 'weekly' }],
+        deferredEntries: [],
+        toolCalls: ['search_tasks', 'find_user', 'update_task', 'create_recurring_task'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails time_plus_web_lookup when unrelated task state changed', () => {
+    expect(
+      evaluateBenchmarkScenario('time_plus_web_lookup', {
+        tasks: [{ ...seededTasks[0], deleted: true }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [{ id: 'recurring-1', title: 'Unexpected recurring task', cadence: 'weekly' }],
+        deferredEntries: [{ id: 'deferred-1', prompt: 'Unexpected prompt', when: 'tomorrow 09:00' }],
+        toolCalls: ['get_current_time', 'web_fetch', 'delete_task', 'create_recurring_task', 'create_deferred_prompt'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
+  it('fails deferred_prompt_creation when an unrelated task changed', () => {
+    expect(
+      evaluateBenchmarkScenario('deferred_prompt_creation', {
+        tasks: [{ ...seededTasks[0], status: 'in_progress' }, seededTasks[1], seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [{ id: 'deferred-1', prompt: 'Review benchmark results', when: 'tomorrow 09:00' }],
+        toolCalls: ['create_deferred_prompt', 'update_task'],
       }),
     ).toEqual({ success: false, failureCategory: 'validation_failed' })
   })

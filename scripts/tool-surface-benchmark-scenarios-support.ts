@@ -1,5 +1,9 @@
 import type { ToolSet } from 'ai'
 
+import { seededTasks } from './tool-surface-benchmark-scenarios-data.js'
+
+export { createBenchmarkStore, scenarios, snapshotFromStore } from './tool-surface-benchmark-scenarios-data.js'
+
 export type BenchmarkMode = 'direct_full' | 'proxy' | 'direct_routed'
 export type BenchmarkTask = Readonly<{
   id: string
@@ -31,7 +35,6 @@ export type BenchmarkStore = {
   nextDeferredId: number
 }
 
-type ScenarioEntry = Readonly<{ id: string; prompt: string }>
 type ScenarioEvaluator = (snapshot: BenchmarkScenarioSnapshot) => BenchmarkEvaluation
 
 const ok = (): BenchmarkEvaluation => ({ success: true, failureCategory: null })
@@ -47,13 +50,13 @@ const callOccursBefore = (snapshot: BenchmarkScenarioSnapshot, first: string, se
   return firstIndex !== -1 && secondIndex !== -1 && firstIndex < secondIndex
 }
 const readOnlyToolNames: readonly string[] = ['list_tasks', 'search_tasks']
-const mutationToolNames: readonly string[] = ['create_task', 'update_task', 'add_comment', 'delete_task']
+const mutationToolNames = new Set(['create_task', 'update_task', 'add_comment', 'delete_task'])
 const hasOnlyAllowedCalls = (snapshot: BenchmarkScenarioSnapshot, allowedToolNames: readonly string[]): boolean =>
   snapshot.toolCalls.every((toolName) => allowedToolNames.includes(toolName))
 const firstCallIndex = (snapshot: BenchmarkScenarioSnapshot, toolName: string): number =>
   snapshot.toolCalls.indexOf(toolName)
 const firstMutationIndex = (snapshot: BenchmarkScenarioSnapshot): number =>
-  snapshot.toolCalls.findIndex((toolName) => mutationToolNames.includes(toolName))
+  snapshot.toolCalls.findIndex((toolName) => mutationToolNames.has(toolName))
 const mutationHappensAfter = (
   snapshot: BenchmarkScenarioSnapshot,
   requiredDiscoveryCalls: readonly string[],
@@ -68,20 +71,6 @@ const findTask = (snapshot: BenchmarkScenarioSnapshot, taskId: string): Benchmar
   snapshot.tasks.find((task) => task.id === taskId)
 const findTaskByTitle = (snapshot: BenchmarkScenarioSnapshot, title: string): BenchmarkTask | undefined =>
   snapshot.tasks.find((task) => task.title === title)
-const seedTask = (id: string, title: string, priority: string): BenchmarkTask => ({
-  id,
-  title,
-  priority,
-  status: 'todo',
-  assigneeId: null,
-  comments: [],
-  deleted: false,
-})
-const seededTasks = [
-  seedTask('task-1', 'Prepare benchmark report', 'medium'),
-  seedTask('task-2', 'Review release notes', 'low'),
-  seedTask('task-3', 'Confirm benchmark routing prompts', 'high'),
-] as const satisfies readonly BenchmarkTask[]
 const matchesSeededTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask: BenchmarkTask): boolean => {
   const actualTask = findTask(snapshot, expectedTask.id)
   return (
@@ -97,6 +86,8 @@ const matchesSeededTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask: Be
 }
 const hasUnchangedSeededTasks = (snapshot: BenchmarkScenarioSnapshot): boolean =>
   snapshot.tasks.length === seededTasks.length && seededTasks.every((task) => matchesSeededTask(snapshot, task))
+const hasNoExtraEntries = (snapshot: BenchmarkScenarioSnapshot): boolean =>
+  snapshot.recurringEntries.length === 0 && snapshot.deferredEntries.length === 0
 const hasExactlyOneNewTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask: BenchmarkTask): boolean => {
   const matchingTasks = snapshot.tasks.filter(
     (task) =>
@@ -107,48 +98,57 @@ const hasExactlyOneNewTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask:
       task.deleted === expectedTask.deleted &&
       task.comments.length === expectedTask.comments.length,
   )
+  const matchingTask = matchingTasks[0]
 
   return (
     snapshot.tasks.length === seededTasks.length + 1 &&
     hasUnchangedSeededTasks({ ...snapshot, tasks: snapshot.tasks.filter((task) => task.id !== expectedTask.id) }) &&
     matchingTasks.length === 1 &&
-    !seededTasks.some((task) => task.id === matchingTasks[0]?.id)
+    matchingTask !== undefined &&
+    !seededTasks.some((task) => task.id === matchingTask.id)
   )
 }
-
-export const scenarios: readonly BenchmarkScenario[] = [
-  { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
-  {
-    id: 'search_then_update_status',
-    prompt: 'Update the benchmark report task to in progress after searching for it.',
-  },
-  { id: 'search_then_comment', prompt: 'Find the benchmark report task and add a comment about routed mode.' },
-  { id: 'search_then_assign_user', prompt: 'Find the benchmark report task and assign it to Alex.' },
-  { id: 'list_or_search_read_only', prompt: 'List the current benchmark tasks.' },
-  { id: 'delete_needs_confirmation', prompt: 'Delete the benchmark report task.' },
-  { id: 'time_plus_web_lookup', prompt: 'Check https://example.com/release-notes and tell me the current time.' },
-  { id: 'recurring_task_creation', prompt: 'Create a weekly recurring task to send a benchmark summary.' },
-  { id: 'deferred_prompt_creation', prompt: 'Remind me tomorrow about benchmark results.' },
-  { id: 'ambiguous_but_solvable_task_update', prompt: 'Update the benchmark item that still needs progress.' },
-] as const satisfies readonly ScenarioEntry[]
-
-export const createBenchmarkStore = (): BenchmarkStore => ({
-  tasks: new Map(seededTasks.map((task) => [task.id, task])),
-  recurringEntries: new Map(),
-  deferredEntries: new Map(),
-  toolCalls: [],
-  nextTaskId: 4,
-  nextRecurringId: 1,
-  nextDeferredId: 1,
-})
-
-export const snapshotFromStore = (store: BenchmarkStore): BenchmarkScenarioSnapshot => ({
-  tasks: [...store.tasks.values()],
-  recurringEntries: [...store.recurringEntries.values()],
-  deferredEntries: [...store.deferredEntries.values()],
-  toolCalls: [...store.toolCalls],
-})
-
+const hasOnlyExpectedDeferredEntry = (
+  snapshot: BenchmarkScenarioSnapshot,
+  expectedPrompt: string,
+  expectedWhen: string,
+): boolean => {
+  const entry = snapshot.deferredEntries[0]
+  return (
+    snapshot.recurringEntries.length === 0 &&
+    snapshot.deferredEntries.length === 1 &&
+    entry !== undefined &&
+    entry.prompt === expectedPrompt &&
+    entry.when === expectedWhen
+  )
+}
+const hasOnlyExpectedRecurringEntry = (
+  snapshot: BenchmarkScenarioSnapshot,
+  expectedTitle: string,
+  expectedCadence: string,
+): boolean => {
+  const entry = snapshot.recurringEntries[0]
+  return (
+    snapshot.deferredEntries.length === 0 &&
+    snapshot.recurringEntries.length === 1 &&
+    entry !== undefined &&
+    entry.title === expectedTitle &&
+    entry.cadence === expectedCadence
+  )
+}
+const hasOnlyExpectedTaskMutation = (
+  snapshot: BenchmarkScenarioSnapshot,
+  expectedTaskId: string,
+  matchesExpectedMutation: (task: BenchmarkTask) => boolean,
+): boolean =>
+  hasNoExtraEntries(snapshot) &&
+  snapshot.tasks.length === seededTasks.length &&
+  seededTasks.every((task) => {
+    const actualTask = findTask(snapshot, task.id)
+    if (actualTask === undefined) return false
+    if (task.id === expectedTaskId) return matchesExpectedMutation(actualTask)
+    return matchesSeededTask(snapshot, task)
+  })
 const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
   create_basic_task: (snapshot) => {
     const createdTask = findTaskByTitle(snapshot, 'Draft tool benchmark summary')
@@ -170,7 +170,17 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
     hasCalls(snapshot, ['search_tasks', 'update_task']) &&
     mutationHappensAfter(snapshot, ['search_tasks']) &&
     callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
-    findTask(snapshot, 'task-1')?.status === 'in_progress'
+    hasOnlyExpectedTaskMutation(
+      snapshot,
+      'task-1',
+      (task) =>
+        task.status === 'in_progress' &&
+        task.title === seededTasks[0].title &&
+        task.priority === seededTasks[0].priority &&
+        task.assigneeId === seededTasks[0].assigneeId &&
+        task.deleted === seededTasks[0].deleted &&
+        task.comments.length === seededTasks[0].comments.length,
+    )
       ? ok()
       : validationFailed(),
   search_then_comment: (snapshot) => {
@@ -178,8 +188,18 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
     return hasCalls(snapshot, ['search_tasks', 'add_comment']) &&
       mutationHappensAfter(snapshot, ['search_tasks']) &&
       callOccursBefore(snapshot, 'search_tasks', 'add_comment') &&
+      hasNoExtraEntries(snapshot) &&
+      snapshot.tasks.length === seededTasks.length &&
       task !== undefined &&
-      task.comments.includes('Route this through the smaller tool set.')
+      task.title === seededTasks[0].title &&
+      task.priority === seededTasks[0].priority &&
+      task.status === seededTasks[0].status &&
+      task.assigneeId === seededTasks[0].assigneeId &&
+      task.deleted === seededTasks[0].deleted &&
+      task.comments.length === seededTasks[0].comments.length + 1 &&
+      task.comments.includes('Route this through the smaller tool set.') &&
+      matchesSeededTask(snapshot, seededTasks[1]) &&
+      matchesSeededTask(snapshot, seededTasks[2])
       ? ok()
       : validationFailed()
   },
@@ -188,7 +208,17 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
     mutationHappensAfter(snapshot, ['search_tasks', 'find_user']) &&
     callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
     callOccursBefore(snapshot, 'find_user', 'update_task') &&
-    findTask(snapshot, 'task-1')?.assigneeId === 'user-alex'
+    hasOnlyExpectedTaskMutation(
+      snapshot,
+      'task-1',
+      (task) =>
+        task.assigneeId === 'user-alex' &&
+        task.title === seededTasks[0].title &&
+        task.priority === seededTasks[0].priority &&
+        task.status === seededTasks[0].status &&
+        task.deleted === seededTasks[0].deleted &&
+        task.comments.length === seededTasks[0].comments.length,
+    )
       ? ok()
       : validationFailed(),
   list_or_search_read_only: (snapshot) =>
@@ -200,22 +230,25 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       ? ok()
       : validationFailed(),
   delete_needs_confirmation: (snapshot) =>
-    hasCall(snapshot, 'delete_task') &&
-    hasUnchangedSeededTasks(snapshot) &&
-    snapshot.recurringEntries.length === 0 &&
-    snapshot.deferredEntries.length === 0
+    hasCall(snapshot, 'delete_task') && hasUnchangedSeededTasks(snapshot) && hasNoExtraEntries(snapshot)
       ? ok()
       : confirmationFailed(),
   time_plus_web_lookup: (snapshot) =>
-    hasCalls(snapshot, ['get_current_time', 'web_fetch']) ? ok() : validationFailed(),
+    hasCalls(snapshot, ['get_current_time', 'web_fetch']) &&
+    hasUnchangedSeededTasks(snapshot) &&
+    hasNoExtraEntries(snapshot)
+      ? ok()
+      : validationFailed(),
   recurring_task_creation: (snapshot) =>
     hasCall(snapshot, 'create_recurring_task') &&
-    snapshot.recurringEntries.find((entry) => entry.title === 'Send weekly benchmark summary')?.cadence === 'weekly'
+    hasUnchangedSeededTasks(snapshot) &&
+    hasOnlyExpectedRecurringEntry(snapshot, 'Send weekly benchmark summary', 'weekly')
       ? ok()
       : validationFailed(),
   deferred_prompt_creation: (snapshot) =>
     hasCall(snapshot, 'create_deferred_prompt') &&
-    snapshot.deferredEntries.find((entry) => entry.prompt === 'Review benchmark results')?.when === 'tomorrow 09:00'
+    hasUnchangedSeededTasks(snapshot) &&
+    hasOnlyExpectedDeferredEntry(snapshot, 'Review benchmark results', 'tomorrow 09:00')
       ? ok()
       : validationFailed(),
   ambiguous_but_solvable_task_update: (snapshot) => {
@@ -226,7 +259,17 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       mutationIndex !== -1 &&
       discoveryIndex < mutationIndex &&
       callOccursBefore(snapshot, 'search_tasks', 'update_task') &&
-      findTask(snapshot, 'task-1')?.status === 'in_progress'
+      hasOnlyExpectedTaskMutation(
+        snapshot,
+        'task-1',
+        (task) =>
+          task.status === 'in_progress' &&
+          task.title === seededTasks[0].title &&
+          task.priority === seededTasks[0].priority &&
+          task.assigneeId === seededTasks[0].assigneeId &&
+          task.deleted === seededTasks[0].deleted &&
+          task.comments.length === seededTasks[0].comments.length,
+      )
       ? ok()
       : validationFailed()
   },
@@ -236,5 +279,7 @@ export function evaluateBenchmarkScenario(
   scenarioId: string,
   snapshot: BenchmarkScenarioSnapshot,
 ): BenchmarkEvaluation {
-  return evaluators[scenarioId]?.(snapshot) ?? validationFailed()
+  const evaluator = evaluators[scenarioId]
+  if (evaluator === undefined) return validationFailed()
+  return evaluator(snapshot)
 }
