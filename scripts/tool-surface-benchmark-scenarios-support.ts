@@ -97,6 +97,24 @@ const matchesSeededTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask: Be
 }
 const hasUnchangedSeededTasks = (snapshot: BenchmarkScenarioSnapshot): boolean =>
   snapshot.tasks.length === seededTasks.length && seededTasks.every((task) => matchesSeededTask(snapshot, task))
+const hasExactlyOneNewTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask: BenchmarkTask): boolean => {
+  const matchingTasks = snapshot.tasks.filter(
+    (task) =>
+      task.title === expectedTask.title &&
+      task.priority === expectedTask.priority &&
+      task.status === expectedTask.status &&
+      task.assigneeId === expectedTask.assigneeId &&
+      task.deleted === expectedTask.deleted &&
+      task.comments.length === expectedTask.comments.length,
+  )
+
+  return (
+    snapshot.tasks.length === seededTasks.length + 1 &&
+    hasUnchangedSeededTasks({ ...snapshot, tasks: snapshot.tasks.filter((task) => task.id !== expectedTask.id) }) &&
+    matchingTasks.length === 1 &&
+    !seededTasks.some((task) => task.id === matchingTasks[0]?.id)
+  )
+}
 
 export const scenarios: readonly BenchmarkScenario[] = [
   { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
@@ -133,8 +151,18 @@ export const snapshotFromStore = (store: BenchmarkStore): BenchmarkScenarioSnaps
 
 const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
   create_basic_task: (snapshot) => {
-    const task = findTaskByTitle(snapshot, 'Draft tool benchmark summary')
-    return hasCall(snapshot, 'create_task') && task?.priority === 'high' && task.status === 'todo'
+    const createdTask = findTaskByTitle(snapshot, 'Draft tool benchmark summary')
+    return hasCall(snapshot, 'create_task') &&
+      createdTask !== undefined &&
+      hasExactlyOneNewTask(snapshot, {
+        id: createdTask.id,
+        title: 'Draft tool benchmark summary',
+        priority: 'high',
+        status: 'todo',
+        assigneeId: null,
+        comments: [],
+        deleted: false,
+      })
       ? ok()
       : validationFailed()
   },
@@ -172,7 +200,12 @@ const evaluators: Readonly<Record<string, ScenarioEvaluator>> = {
       ? ok()
       : validationFailed(),
   delete_needs_confirmation: (snapshot) =>
-    hasCall(snapshot, 'delete_task') && findTask(snapshot, 'task-1')?.deleted === false ? ok() : confirmationFailed(),
+    hasCall(snapshot, 'delete_task') &&
+    hasUnchangedSeededTasks(snapshot) &&
+    snapshot.recurringEntries.length === 0 &&
+    snapshot.deferredEntries.length === 0
+      ? ok()
+      : confirmationFailed(),
   time_plus_web_lookup: (snapshot) =>
     hasCalls(snapshot, ['get_current_time', 'web_fetch']) ? ok() : validationFailed(),
   recurring_task_creation: (snapshot) =>

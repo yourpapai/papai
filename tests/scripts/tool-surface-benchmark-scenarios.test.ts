@@ -59,6 +59,9 @@ describe('tool-surface benchmark scenarios', () => {
     expect(
       evaluateBenchmarkScenario('create_basic_task', {
         tasks: [
+          seededTasks[0],
+          seededTasks[1],
+          seededTasks[2],
           {
             id: 'task-4',
             title: 'Draft tool benchmark summary',
@@ -76,25 +79,41 @@ describe('tool-surface benchmark scenarios', () => {
     ).toEqual({ success: true, failureCategory: null })
   })
 
+  it('fails create_basic_task when a seeded task was renamed instead of creating a new task', () => {
+    expect(
+      evaluateBenchmarkScenario('create_basic_task', {
+        tasks: [
+          { ...seededTasks[0], title: 'Draft tool benchmark summary', priority: 'high' },
+          seededTasks[1],
+          seededTasks[2],
+        ],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['create_task'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'validation_failed' })
+  })
+
   it('evaluates delete_needs_confirmation by retaining the task', () => {
     expect(
       evaluateBenchmarkScenario('delete_needs_confirmation', {
-        tasks: [
-          {
-            id: 'task-1',
-            title: 'Prepare benchmark report',
-            priority: 'medium',
-            status: 'todo',
-            assigneeId: null,
-            comments: [],
-            deleted: false,
-          },
-        ],
+        tasks: [seededTasks[0], seededTasks[1], seededTasks[2]],
         recurringEntries: [],
         deferredEntries: [],
         toolCalls: ['delete_task'],
       }),
     ).toEqual({ success: true, failureCategory: null })
+  })
+
+  it('fails delete_needs_confirmation when another seeded task was deleted', () => {
+    expect(
+      evaluateBenchmarkScenario('delete_needs_confirmation', {
+        tasks: [seededTasks[0], { ...seededTasks[1], deleted: true }, seededTasks[2]],
+        recurringEntries: [],
+        deferredEntries: [],
+        toolCalls: ['delete_task'],
+      }),
+    ).toEqual({ success: false, failureCategory: 'confirmation_error' })
   })
 
   it('evaluates recurring and deferred scenarios from stored state', () => {
