@@ -6,6 +6,11 @@ import { z } from 'zod'
 
 import { _userCaches, setCachedTools } from '../../src/cache.js'
 import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
+import {
+  buildDirectToolCatalogPages,
+  resolveActiveToolDefinitions,
+  safeBuildProvider,
+} from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { makeTools } from '../../src/tools/index.js'
@@ -42,6 +47,7 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       maxTokens: 128_000,
       approximate: false,
     }),
+    buildProvider: safeBuildProvider,
     buildLiveToolSet: (storageContextId, actorUserId, contextType, provider): ToolSet | null => {
       if (provider === null) return null
       return makeTools(provider, {
@@ -51,6 +57,8 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
         contextType,
       })
     },
+    resolveActiveToolDefinitions,
+    buildToolCatalogPages: buildDirectToolCatalogPages,
     ...resolveOverrides(overrides),
   }
 }
@@ -191,6 +199,37 @@ describe('registerContextCommand', () => {
     expect(activeToolDefinitions).not.toBeNull()
     expect(activeToolDefinitions).toHaveProperty('set_my_identity')
     expect(activeToolDefinitions).toHaveProperty('clear_my_identity')
+    expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
+    expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
+  })
+
+  test('uses injected provider construction instead of the hardwired provider factory', async () => {
+    const provider = createIdentityCapableProvider()
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): never => {
+        throw new Error('factory should not be used')
+      },
+    }))
+
+    const commands = new Map<string, CommandHandler>()
+    const chat = createFormattedContextChat(commands, null)
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildProvider: (): typeof provider => provider,
+      }),
+    )
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      createGroupMessage('actor-user', '/context', false, 'group-1'),
+      reply,
+      createAuth('group-1', { isGroupAdmin: true }),
+    )
+
+    const catalogReplies = getCatalogReplies(textCalls)
+
     expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
     expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
   })
@@ -443,6 +482,60 @@ describe('registerContextCommand', () => {
       expect(textCalls[0]).toBe('**context summary**')
       expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
       expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
+    })
+
+    test('keeps summary tool definitions aligned with degraded cached tools when live tool construction throws', async () => {
+      const provider = createMockProvider()
+      setCachedTools('user1', {
+        'add-task-relation': tool({
+          description: 'Add a relation using cached tool metadata',
+          inputSchema: z.object({
+            taskId: z.string().describe('Primary task identifier'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      })
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): never => {
+          throw new Error('factory should not be used')
+        },
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands, null)
+      let activeToolDefinitions: Record<string, unknown> | null = null
+      const handler = await registerContextHandler(
+        commands,
+        chat,
+        snapshotDeps({
+          buildProvider: (): typeof provider => provider,
+          buildLiveToolSet: (): never => {
+            throw new Error('live tool build failed')
+          },
+          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+            return {
+              modelName: 'gpt-4o',
+              sections: [],
+              totalTokens: 0,
+              maxTokens: 128_000,
+              approximate: false,
+            }
+          },
+        }),
+      )
+      const { reply, textCalls } = createMockReply()
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(textCalls[0]).toBe('**context summary**')
+      expect(activeToolDefinitions).not.toBeNull()
+      expect(activeToolDefinitions).toHaveProperty('add-task-relation')
+      expect(activeToolDefinitions).not.toHaveProperty('create_task')
+      expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(false)
     })
 
     test('shows no active tools when live tool construction throws without cached tools', async () => {

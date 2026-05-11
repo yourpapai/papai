@@ -1,6 +1,5 @@
-import type { ModelMessage, ToolSet } from 'ai'
+import type { ModelMessage } from 'ai'
 
-import { getCachedTools } from '../cache.js'
 import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/types.js'
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
@@ -8,10 +7,8 @@ import { loadHistory } from '../history.js'
 import { buildInstructionsBlock } from '../instructions.js'
 import { logger } from '../logger.js'
 import { loadFacts, loadSummary } from '../memory.js'
-import { buildProviderForUser } from '../providers/factory.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
-import { makeTools } from '../tools/index.js'
 import {
   collectContext,
   type ContextCollectorDeps,
@@ -19,21 +16,43 @@ import {
   prepareDefaultCountTokens,
   resolveEncodingName,
 } from './context-collector.js'
-import { buildContextToolCatalogPages } from './context-tool-catalog.js'
+import {
+  buildDirectToolCatalogPages,
+  buildInvocationToolSet,
+  resolveActiveToolDefinitions,
+  safeBuildProvider,
+  type BuildLiveToolSet,
+} from './context-tool-resolution.js'
 
 const log = logger.child({ scope: 'commands:context' })
 
 export interface ContextCommandDeps {
   collectContext: (contextId: string, collectorDeps: ContextCollectorDeps) => ContextSnapshot
-  buildLiveToolSet: (
+  buildProvider: (contextId: string) => TaskProvider | null
+  buildLiveToolSet: BuildLiveToolSet
+  resolveActiveToolDefinitions: (
     storageContextId: string,
     actorUserId: string,
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
-  ) => ToolSet | null
+    buildLiveToolSet: BuildLiveToolSet,
+  ) => Record<string, unknown>
+  buildToolCatalogPages: (
+    storageContextId: string,
+    actorUserId: string,
+    contextType: 'dm' | 'group',
+    provider: TaskProvider | null,
+    buildLiveToolSet: BuildLiveToolSet,
+  ) => readonly string[]
 }
 
-const defaultDeps: ContextCommandDeps = { collectContext, buildLiveToolSet: buildInvocationToolSet }
+const defaultDeps: ContextCommandDeps = {
+  collectContext,
+  buildProvider: safeBuildProvider,
+  buildLiveToolSet: buildInvocationToolSet,
+  resolveActiveToolDefinitions,
+  buildToolCatalogPages: buildDirectToolCatalogPages,
+}
 function resolveModelName(modelName: string | null | undefined): string {
   if (modelName !== undefined && modelName !== null) return modelName
   return 'unknown'
@@ -43,50 +62,13 @@ function resolveEncoding(encoding: 'o200k_base' | 'cl100k_base' | null | undefin
   return 'cl100k_base'
 }
 function resolveRegisterDeps(rest: readonly [ContextCommandDeps] | readonly []): ContextCommandDeps {
-  if (rest[0] !== undefined) return rest[0]
+  if (rest[0] !== undefined) return { ...defaultDeps, ...rest[0] }
   return defaultDeps
-}
-
-function safeBuildProvider(contextId: string): TaskProvider | null {
-  try {
-    return buildProviderForUser(contextId, false)
-  } catch (error) {
-    log.warn(
-      { contextId, error: error instanceof Error ? error.message : String(error) },
-      'Provider unavailable while building context view',
-    )
-    return null
-  }
 }
 
 function buildMemoryMessageText(contextId: string, history: readonly ModelMessage[]): string | null {
   const { memoryMsg } = buildMessagesWithMemory(contextId, history)
   return memoryMsg === null ? null : memoryMsg.content
-}
-
-function resolveActiveToolDefinitions(
-  storageContextId: string,
-  actorUserId: string,
-  contextType: 'dm' | 'group',
-  provider: TaskProvider | null,
-  deps: ContextCommandDeps,
-): Record<string, unknown> {
-  try {
-    const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
-    if (liveTools !== null) return toToolRecord(liveTools)
-  } catch (error) {
-    log.warn(
-      {
-        storageContextId,
-        actorUserId,
-        contextType,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Live tool definition build failed; falling back to cached tools for context summary',
-    )
-  }
-
-  return toToolRecord(getCachedTools(storageContextId))
 }
 
 async function buildCollectorDeps(
@@ -115,47 +97,10 @@ async function buildCollectorDeps(
     getSummary: () => loadSummary(storageContextId),
     getFacts: () => loadFacts(storageContextId),
     getActiveToolDefinitions: (): Record<string, unknown> =>
-      resolveActiveToolDefinitions(storageContextId, actorUserId, contextType, provider, deps),
+      deps.resolveActiveToolDefinitions(storageContextId, actorUserId, contextType, provider, deps.buildLiveToolSet),
     getProviderName: () => providerName,
     countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
-}
-
-function toToolRecord(value: unknown): Record<string, unknown> {
-  if (value === undefined || value === null || typeof value !== 'object') return {}
-  return Object.fromEntries(Object.entries(value).map(([key, entryValue]) => [key, entryValue as unknown]))
-}
-
-function isToolSet(value: Record<string, unknown>): value is ToolSet {
-  return Object.values(value).every((entry) => typeof entry === 'object' && entry !== null)
-}
-
-function buildInvocationToolSet(
-  storageContextId: string,
-  actorUserId: string,
-  contextType: 'dm' | 'group',
-  provider: TaskProvider | null,
-): ToolSet | null {
-  if (provider === null) return null
-
-  return makeTools(provider, {
-    storageContextId,
-    chatUserId: actorUserId,
-    mode: 'normal',
-    contextType,
-  })
-}
-
-function resolveActiveToolSet(contextId: string, provider: TaskProvider | null): ToolSet {
-  if (provider === null) return {}
-  const tools = toToolRecord(
-    makeTools(provider, { storageContextId: contextId, chatUserId: contextId, mode: 'normal', contextType: 'dm' }),
-  )
-  return isToolSet(tools) ? tools : {}
-}
-function resolveCachedToolSet(contextId: string): ToolSet {
-  const cachedTools = toToolRecord(getCachedTools(contextId))
-  return isToolSet(cachedTools) ? cachedTools : {}
 }
 
 function renderFallback(rendered: ContextRendered & { method: 'embed' }): string {
@@ -188,35 +133,6 @@ async function sendContextResponse(
   } else {
     await reply.text(rendered.content)
   }
-}
-
-function buildDirectToolCatalogPages(
-  storageContextId: string,
-  actorUserId: string,
-  contextType: 'dm' | 'group',
-  provider: TaskProvider | null,
-  deps: ContextCommandDeps,
-): readonly string[] {
-  try {
-    const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
-    if (liveTools !== null) return buildContextToolCatalogPages(liveTools)
-  } catch (error) {
-    log.warn(
-      {
-        storageContextId,
-        actorUserId,
-        contextType,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Live tool catalog build failed; falling back to cached tools',
-    )
-    return buildContextToolCatalogPages(resolveCachedToolSet(storageContextId))
-  }
-
-  const cachedTools = resolveCachedToolSet(storageContextId)
-  if (Object.keys(cachedTools).length > 0) return buildContextToolCatalogPages(cachedTools)
-
-  return buildContextToolCatalogPages(resolveActiveToolSet(storageContextId, provider))
 }
 
 async function buildContextSnapshot(
@@ -253,7 +169,7 @@ async function handleContextCommand(
 ): Promise<void> {
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
-  const provider = safeBuildProvider(auth.storageContextId)
+  const provider = deps.buildProvider(auth.storageContextId)
   let snapshot: ContextSnapshot
   try {
     snapshot = await buildContextSnapshot(auth.storageContextId, msg.user.id, msg.contextType, provider, deps)
@@ -272,12 +188,12 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
-  const toolCatalogPages = buildDirectToolCatalogPages(
+  const toolCatalogPages = deps.buildToolCatalogPages(
     auth.storageContextId,
     msg.user.id,
     msg.contextType,
     provider,
-    deps,
+    deps.buildLiveToolSet,
   )
   await toolCatalogPages.reduce<Promise<void>>(
     (pending, page) => pending.then(() => reply.formatted(page)),
