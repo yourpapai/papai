@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { tool } from 'ai'
+import { z } from 'zod'
+
+import { setCachedTools } from '../../src/cache.js'
 import type { AuthorizationResult, ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { createDmMessage, createMockChat, createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -193,6 +197,64 @@ describe('registerContextCommand', () => {
     expect(textCalls.slice(1).some((content) => content.includes('`create_task`'))).toBe(true)
     expect(textCalls.slice(1).some((content) => content.includes('Domain: `task`'))).toBe(true)
     expect(textCalls.slice(1).some((content) => content.includes('Parameters'))).toBe(true)
+  })
+
+  test('uses cached tools for the follow-up catalog when provider construction is unavailable', async () => {
+    setCachedTools('user1', {
+      'add-task-relation': tool({
+        description: 'Add a relation using cached tool metadata',
+        inputSchema: z.object({
+          taskId: z.string().describe('Primary task identifier'),
+        }),
+        execute: () => Promise.resolve({ ok: true }),
+      }),
+    })
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): never => {
+        throw new Error('provider unavailable')
+      },
+    }))
+    const { registerContextCommand } = await import('../../src/commands/context.js')
+    const commands = new Map<string, CommandHandler>()
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: () => ({ method: 'formatted', content: '**context summary**' }),
+    }
+    let activeToolDefinitions: Record<string, unknown> | null = null
+
+    registerContextCommand(
+      chat,
+      snapshotDeps({
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+    const handler = captureCommand(commands)
+
+    const { reply, textCalls } = createMockReply()
+    const auth: AuthorizationResult = {
+      allowed: true,
+      isBotAdmin: false,
+      isGroupAdmin: false,
+      storageContextId: 'user1',
+    }
+
+    await handler(createDmMessage('user1'), reply, auth)
+
+    expect(activeToolDefinitions).not.toBeNull()
+    expect(activeToolDefinitions).toHaveProperty('add-task-relation')
+    expect(textCalls[0]).toBe('**context summary**')
+    expect(textCalls.slice(1).some((content) => content.includes('`add-task-relation`'))).toBe(true)
+    expect(textCalls.slice(1).some((content) => content.includes('Domain: `task`'))).toBe(true)
+    expect(textCalls.slice(1).some((content) => content.includes('_No active tools._'))).toBe(false)
   })
 
   test('dispatches embed output via reply.embed when available', async () => {

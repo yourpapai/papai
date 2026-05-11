@@ -4,7 +4,7 @@ import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 
 import { buildContextToolCatalogPages } from '../../src/commands/context-tool-catalog.js'
-import { buildToolMetadata, findToolMetadata, TOOL_METADATA } from '../../src/tools/tool-metadata.js'
+import { TOOL_METADATA } from '../../src/tools/tool-metadata.js'
 
 describe('context tool catalog', () => {
   test('formats live tool metadata, classification, and schema details', () => {
@@ -31,9 +31,9 @@ describe('context tool catalog', () => {
     expect(pages[0]).toContain('projectId (string) - Optional project identifier')
   })
 
-  test('supports hyphen-normalized lookup through findToolMetadata', () => {
+  test('supports hyphen-normalized classification through the catalog builder path', () => {
     const tools: ToolSet = {
-      add_task_relation: tool({
+      'add-task-relation': tool({
         description: 'Add a relation between two tasks',
         inputSchema: z.object({
           taskId: z.string().describe('Primary task identifier'),
@@ -42,9 +42,13 @@ describe('context tool catalog', () => {
       }),
     }
 
-    const metadata = buildToolMetadata(tools)
+    const pages = buildContextToolCatalogPages(tools)
 
-    expect(findToolMetadata(metadata, 'add-task-relation')?.name).toBe('add_task_relation')
+    expect(pages).toHaveLength(1)
+    expect(pages[0]).toContain('`add-task-relation`')
+    expect(pages[0]).toContain('Domain: `task`')
+    expect(pages[0]).toContain('Operation: `create`')
+    expect(pages[0]).toContain('Risk: `write`')
   })
 
   test('paginates long catalogs instead of emitting one oversized block', () => {
@@ -69,5 +73,24 @@ describe('context tool catalog', () => {
     expect(pages.length).toBeGreaterThan(1)
     expect(pages.every((page) => page.length <= 3500)).toBe(true)
     expect(pages.join('\n')).toContain(`\`${lastToolName}\``)
+  })
+
+  test('chunks a single oversized entry so every page stays within the cap', () => {
+    const tools: ToolSet = {
+      create_task: tool({
+        description: 'very long description '.repeat(400).trim(),
+        inputSchema: z.object({
+          title: z.string().describe('Task title'),
+        }),
+        execute: () => Promise.resolve({ id: 'task-1' }),
+      }),
+    }
+
+    const pages = buildContextToolCatalogPages(tools)
+
+    expect(pages.length).toBeGreaterThan(1)
+    expect(pages.every((page) => page.length <= 3500)).toBe(true)
+    expect(pages.join('\n')).toContain('`create_task`')
+    expect(pages.join('\n')).toContain('very long description')
   })
 })

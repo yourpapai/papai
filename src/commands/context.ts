@@ -1,4 +1,4 @@
-import type { ModelMessage } from 'ai'
+import type { ModelMessage, ToolSet } from 'ai'
 
 import { getCachedTools } from '../cache.js'
 import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/types.js'
@@ -65,23 +65,42 @@ async function buildCollectorDeps(contextId: string, provider: TaskProvider | nu
     getMemoryMessage: () => buildMemoryMessageText(contextId, loadHistory(contextId)),
     getSummary: () => loadSummary(contextId),
     getFacts: () => loadFacts(contextId),
-    getActiveToolDefinitions: (): Record<string, unknown> => {
-      const cached = getCachedTools(contextId)
-      if (cached !== undefined && cached !== null && typeof cached === 'object') {
-        return Object.fromEntries(Object.entries(cached).map(([key, value]) => [key, value as unknown]))
-      }
-      if (provider === null) return {}
-      const tools = makeTools(provider, {
-        storageContextId: contextId,
-        chatUserId: contextId,
-        mode: 'normal',
-        contextType: 'dm',
-      })
-      return Object.fromEntries(Object.entries(tools).map(([key, value]) => [key, value as unknown]))
-    },
+    getActiveToolDefinitions: (): Record<string, unknown> => resolveActiveToolDefinitions(contextId, provider),
     getProviderName: () => provider?.name ?? 'none',
     countTokens: (text: string): number => defaultCountTokens(text, encoding ?? 'cl100k_base'),
   }
+}
+
+function toToolRecord(value: unknown): Record<string, unknown> {
+  if (value === undefined || value === null || typeof value !== 'object') return {}
+  return Object.fromEntries(Object.entries(value).map(([key, entryValue]) => [key, entryValue as unknown]))
+}
+
+function isToolSet(value: Record<string, unknown>): value is ToolSet {
+  return Object.values(value).every((entry) => typeof entry === 'object' && entry !== null)
+}
+
+function buildLiveTools(contextId: string, provider: TaskProvider | null): Record<string, unknown> {
+  if (provider === null) return {}
+
+  const tools = makeTools(provider, {
+    storageContextId: contextId,
+    chatUserId: contextId,
+    mode: 'normal',
+    contextType: 'dm',
+  })
+  return toToolRecord(tools)
+}
+
+function resolveActiveToolDefinitions(contextId: string, provider: TaskProvider | null): Record<string, unknown> {
+  const cached = toToolRecord(getCachedTools(contextId))
+  if (Object.keys(cached).length > 0) return cached
+  return buildLiveTools(contextId, provider)
+}
+
+function resolveActiveToolSet(contextId: string, provider: TaskProvider | null): ToolSet {
+  const tools = resolveActiveToolDefinitions(contextId, provider)
+  return isToolSet(tools) ? tools : {}
 }
 
 function renderFallback(rendered: ContextRendered & { method: 'embed' }): string {
@@ -120,15 +139,7 @@ async function sendContextResponse(
 }
 
 function buildDirectToolCatalogPages(contextId: string, provider: TaskProvider | null): readonly string[] {
-  if (provider === null) return buildContextToolCatalogPages({})
-
-  const tools = makeTools(provider, {
-    storageContextId: contextId,
-    chatUserId: contextId,
-    mode: 'normal',
-    contextType: 'dm',
-  })
-  return buildContextToolCatalogPages(tools)
+  return buildContextToolCatalogPages(resolveActiveToolSet(contextId, provider))
 }
 
 async function buildContextSnapshot(
