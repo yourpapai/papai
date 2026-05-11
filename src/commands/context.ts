@@ -33,21 +33,18 @@ export interface ContextCommandDeps {
   ) => ToolSet | null
 }
 
-const defaultDeps: ContextCommandDeps = {
-  collectContext,
-  buildLiveToolSet: buildInvocationToolSet,
-}
+const defaultDeps: ContextCommandDeps = { collectContext, buildLiveToolSet: buildInvocationToolSet }
 function resolveModelName(modelName: string | null | undefined): string {
-  if (modelName === undefined || modelName === null) return 'unknown'
-  return modelName
+  if (modelName !== undefined && modelName !== null) return modelName
+  return 'unknown'
 }
-function resolveEncoding(encoding: string | null | undefined): 'o200k_base' | 'cl100k_base' {
-  if (encoding === undefined || encoding === null) return 'cl100k_base'
-  return resolveEncodingName(encoding)
+function resolveEncoding(encoding: 'o200k_base' | 'cl100k_base' | null | undefined): 'o200k_base' | 'cl100k_base' {
+  if (encoding !== undefined && encoding !== null) return encoding
+  return 'cl100k_base'
 }
-function resolveContextCommandDeps(deps: ContextCommandDeps | null | undefined): ContextCommandDeps {
-  if (deps === null || deps === undefined) return defaultDeps
-  return deps
+function resolveRegisterDeps(rest: readonly [ContextCommandDeps] | readonly []): ContextCommandDeps {
+  if (rest[0] !== undefined) return rest[0]
+  return defaultDeps
 }
 
 function safeBuildProvider(contextId: string): TaskProvider | null {
@@ -74,11 +71,22 @@ function resolveActiveToolDefinitions(
   provider: TaskProvider | null,
   deps: ContextCommandDeps,
 ): Record<string, unknown> {
-  const cached = toToolRecord(getCachedTools(storageContextId))
-  if (Object.keys(cached).length > 0) return cached
+  try {
+    const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
+    if (liveTools !== null) return toToolRecord(liveTools)
+  } catch (error) {
+    log.warn(
+      {
+        storageContextId,
+        actorUserId,
+        contextType,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Live tool definition build failed; falling back to cached tools for context summary',
+    )
+  }
 
-  const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
-  return toToolRecord(liveTools)
+  return toToolRecord(getCachedTools(storageContextId))
 }
 
 async function buildCollectorDeps(
@@ -139,20 +147,12 @@ function buildInvocationToolSet(
 }
 
 function resolveActiveToolSet(contextId: string, provider: TaskProvider | null): ToolSet {
-  const tools =
-    provider === null
-      ? {}
-      : toToolRecord(
-          makeTools(provider, {
-            storageContextId: contextId,
-            chatUserId: contextId,
-            mode: 'normal',
-            contextType: 'dm',
-          }),
-        )
+  if (provider === null) return {}
+  const tools = toToolRecord(
+    makeTools(provider, { storageContextId: contextId, chatUserId: contextId, mode: 'normal', contextType: 'dm' }),
+  )
   return isToolSet(tools) ? tools : {}
 }
-
 function resolveCachedToolSet(contextId: string): ToolSet {
   const cachedTools = toToolRecord(getCachedTools(contextId))
   return isToolSet(cachedTools) ? cachedTools : {}
@@ -287,12 +287,9 @@ async function handleContextCommand(
 }
 
 export function registerContextCommand(chat: ChatProvider): void
-export function registerContextCommand(chat: ChatProvider, deps: ContextCommandDeps | null): void
-export function registerContextCommand(
-  chat: ChatProvider,
-  ...rest: readonly [ContextCommandDeps | null] | readonly []
-): void {
-  const resolvedDeps = resolveContextCommandDeps(rest[0])
+export function registerContextCommand(chat: ChatProvider, deps: ContextCommandDeps): void
+export function registerContextCommand(chat: ChatProvider, ...rest: readonly [ContextCommandDeps] | readonly []): void {
+  const resolvedDeps = resolveRegisterDeps(rest)
   chat.registerCommand('context', async (msg, reply, auth) => {
     if (!auth.allowed) return
     await handleContextCommand(msg, reply, auth, chat, resolvedDeps)

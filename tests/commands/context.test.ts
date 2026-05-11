@@ -58,7 +58,7 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
 async function registerContextHandler(
   commands: Map<string, CommandHandler>,
   chat: ChatProvider,
-  deps: ContextCommandDeps | null,
+  deps: ContextCommandDeps,
 ): Promise<CommandHandler> {
   const { registerContextCommand } = await import('../../src/commands/context.js')
   registerContextCommand(chat, deps)
@@ -270,6 +270,57 @@ describe('registerContextCommand', () => {
       const catalogReplies = getCatalogReplies(textCalls)
 
       expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
+    })
+
+    test('keeps summary tool definitions aligned with live follow-up tools when cache is warmed', async () => {
+      const provider = createIdentityCapableProvider()
+      setCachedTools('group-1', {
+        stale_cached_tool: tool({
+          description: 'Stale cached tool that should not be used when live tools are available',
+          inputSchema: z.object({
+            query: z.string().describe('Cached-only query'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      })
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands, null)
+      let activeToolDefinitions: Record<string, unknown> | null = null
+      const handler = await registerContextHandler(
+        commands,
+        chat,
+        snapshotDeps({
+          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+            return {
+              modelName: 'gpt-4o',
+              sections: [],
+              totalTokens: 0,
+              maxTokens: 128_000,
+              approximate: false,
+            }
+          },
+        }),
+      )
+      const { reply, textCalls } = createMockReply()
+
+      await handler(
+        createGroupMessage('actor-user', '/context', false, 'group-1'),
+        reply,
+        createAuth('group-1', { isGroupAdmin: true }),
+      )
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(activeToolDefinitions).not.toBeNull()
+      expect(activeToolDefinitions).toHaveProperty('set_my_identity')
+      expect(activeToolDefinitions).not.toHaveProperty('stale_cached_tool')
+      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
       expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
     })
 
