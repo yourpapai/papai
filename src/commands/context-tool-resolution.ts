@@ -92,10 +92,7 @@ export function buildDirectToolCatalogPages(
     return buildContextToolCatalogPages(resolveCachedToolSet(storageContextId))
   }
 
-  const cachedTools = resolveCachedToolSet(storageContextId)
-  if (Object.keys(cachedTools).length > 0) return buildContextToolCatalogPages(cachedTools)
-
-  return buildContextToolCatalogPages(resolveActiveToolSet(storageContextId, provider))
+  return buildContextToolCatalogPages(resolveCachedToolSet(storageContextId))
 }
 
 function toToolRecord(value: unknown): Record<string, unknown> {
@@ -105,14 +102,6 @@ function toToolRecord(value: unknown): Record<string, unknown> {
 
 function isToolSet(value: Record<string, unknown>): value is ToolSet {
   return Object.values(value).every((entry) => typeof entry === 'object' && entry !== null)
-}
-
-function resolveActiveToolSet(contextId: string, provider: TaskProvider | null): ToolSet {
-  if (provider === null) return {}
-  const tools = toToolRecord(
-    makeTools(provider, { storageContextId: contextId, chatUserId: contextId, mode: 'normal', contextType: 'dm' }),
-  )
-  return isToolSet(tools) ? tools : {}
 }
 
 function resolveCachedToolSet(contextId: string): ToolSet {

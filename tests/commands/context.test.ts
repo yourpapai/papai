@@ -363,17 +363,8 @@ describe('registerContextCommand', () => {
       expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
     })
 
-    test('shows no active tools when live build succeeds but returns no tools', async () => {
-      const provider = createMockProvider()
-      setCachedTools('user1', {
-        stale_cached_tool: tool({
-          description: 'Stale cached tool that should not appear when live build succeeds',
-          inputSchema: z.object({
-            query: z.string().describe('Cached-only query'),
-          }),
-          execute: () => Promise.resolve({ ok: true }),
-        }),
-      })
+    test('shows no active tools when live build returns null without cached tools', async () => {
+      const provider = createIdentityCapableProvider()
       void mock.module('../../src/providers/factory.js', () => ({
         buildProviderForUser: (): typeof provider => provider,
       }))
@@ -384,17 +375,22 @@ describe('registerContextCommand', () => {
         commands,
         chat,
         snapshotDeps({
-          buildLiveToolSet: () => ({}),
+          buildLiveToolSet: () => null,
         }),
       )
       const { reply, textCalls } = createMockReply()
 
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
+      await handler(
+        createGroupMessage('actor-user', '/context', false, 'group-1'),
+        reply,
+        createAuth('group-1', { isGroupAdmin: true }),
+      )
 
       const catalogReplies = getCatalogReplies(textCalls)
 
       expect(catalogReplies).toEqual(['_No active tools._'])
-      expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
+      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(false)
+      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(false)
     })
 
     test('uses cached tools for the follow-up catalog when provider construction is unavailable', async () => {
