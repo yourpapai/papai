@@ -51,6 +51,38 @@ describe('context tool catalog', () => {
     expect(pages[0]).toContain('Risk: `write`')
   })
 
+  test('uses hyphen-normalized metadata lookup to preserve preferred catalog ordering', () => {
+    const tools: ToolSet = {
+      list_statuses: tool({
+        description: 'List statuses in the active project',
+        inputSchema: z.object({
+          projectId: z.string().describe('Project identifier'),
+        }),
+        execute: () => Promise.resolve({ ok: true }),
+      }),
+      'add-task-relation': tool({
+        description: 'Add a relation between two tasks',
+        inputSchema: z.object({
+          taskId: z.string().describe('Primary task identifier'),
+        }),
+        execute: () => Promise.resolve({ ok: true }),
+      }),
+    }
+
+    const pages = buildContextToolCatalogPages(tools)
+
+    expect(pages).toHaveLength(1)
+
+    const page = pages[0]!
+
+    const relationIndex = page.indexOf('`add-task-relation`')
+    const statusIndex = page.indexOf('`list_statuses`')
+
+    expect(relationIndex).toBeGreaterThanOrEqual(0)
+    expect(statusIndex).toBeGreaterThanOrEqual(0)
+    expect(relationIndex).toBeLessThan(statusIndex)
+  })
+
   test('paginates long catalogs instead of emitting one oversized block', () => {
     const toolNames = Object.keys(TOOL_METADATA).slice(0, 18)
     const lastToolName = toolNames[toolNames.length - 1]!
