@@ -295,15 +295,6 @@ describe('tool-surface benchmark scenarios', () => {
     expect(store.tasks.get('task-1')?.assigneeId).toBeNull()
   })
 
-  it('builds proxy mode with one exposed tool and preserved full count', () => {
-    const store = createBenchmarkStore()
-    const setup = toolsForMode('proxy', 'Create a high priority benchmark task.', store)
-
-    expect(Object.keys(setup.tools)).toEqual(['papai_tool'])
-    expect(setup.exposedToolCount).toBe(1)
-    expect(setup.fullToolCount).toBeGreaterThan(1)
-  })
-
   it('builds routed mode with deferred tools for reminder prompts', () => {
     const store = createBenchmarkStore()
     const setup = toolsForMode('direct_routed', 'Remind me tomorrow about benchmark results.', store)

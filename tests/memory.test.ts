@@ -565,16 +565,13 @@ describe('memory', () => {
       expect(facts[0]!.url).toBe('')
     })
 
-    test('extracts task fact from proxied create_task result', () => {
+    test('ignores legacy papai_tool results', () => {
       const facts = extractFactsFromSdkResults(
         [{ toolName: 'papai_tool', input: { tool: 'create_task', args: '{"title":"New task"}' } }],
         [{ toolName: 'papai_tool', output: { id: 'task-1', title: 'New task', number: 42 } }],
       )
 
-      expect(facts).toHaveLength(1)
-      expect(facts[0]!.identifier).toBe('#42')
-      expect(facts[0]!.title).toBe('New task')
-      expect(facts[0]!.url).toBe('')
+      expect(facts).toHaveLength(0)
     })
 
     test('extracts fact from get_task result', () => {
@@ -640,38 +637,6 @@ describe('memory', () => {
       expect(facts).toHaveLength(10)
       expect(facts[0]!.identifier).toBe('proj:proj-0')
       expect(facts[9]!.identifier).toBe('proj:proj-9')
-    })
-
-    test('extracts project facts from proxied list_projects result', () => {
-      const facts = extractFactsFromSdkResults(
-        [{ toolName: 'papai_tool', input: { tool: 'list_projects', args: '{}' } }],
-        [
-          {
-            toolName: 'papai_tool',
-            output: [
-              { id: 'proj-1', name: 'Backend' },
-              { id: 'proj-2', name: 'Frontend', url: 'https://example.com' },
-            ],
-          },
-        ],
-      )
-
-      expect(facts).toHaveLength(2)
-      expect(facts[0]).toMatchObject({ identifier: 'proj:proj-1', title: 'Backend', url: '' })
-      expect(facts[1]).toMatchObject({
-        identifier: 'proj:proj-2',
-        title: 'Frontend',
-        url: 'https://example.com',
-      })
-    })
-
-    test('does not extract facts from papai_tool without internal tool name', () => {
-      const facts = extractFactsFromSdkResults(
-        [{ toolName: 'papai_tool', input: { args: '{"title":"New task"}' } }],
-        [{ toolName: 'papai_tool', output: { id: 'task-1', title: 'New task', number: 42 } }],
-      )
-
-      expect(facts).toHaveLength(0)
     })
 
     test('returns empty for non-array list_projects output', () => {

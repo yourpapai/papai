@@ -76,4 +76,3 @@ export const taskSnapshots = sqliteTable(
 
 export type ScheduledPromptRow = typeof scheduledPrompts.$inferSelect
 export type AlertPromptRow = typeof alertPrompts.$inferSelect
-export type TaskSnapshotRow = typeof taskSnapshots.$inferSelect

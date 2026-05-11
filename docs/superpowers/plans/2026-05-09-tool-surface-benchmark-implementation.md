@@ -2,18 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an advisory benchmark that compares full direct tools, a single proxy tool, and intent-routed direct tools across 10 deterministic papai-style scenarios using state-only success scoring.
+**Goal:** Add an advisory benchmark that compares full direct tools and intent-routed direct tools across 10 deterministic papai-style scenarios using state-only success scoring.
 
-**Architecture:** Keep the benchmark isolated from the full papai runtime. Reuse the existing benchmark pattern of real model calls plus deterministic fake tools, but create a new benchmark pair that adds a third mode, expands the scenario catalog to 10 cases, and emits both markdown and JSON results. Reuse production `makeToolProxy(...)` and `routeToolsForMessage(...)` so proxy and routing behavior match the branch implementation without dragging in provider runtime code.
+**Architecture:** Keep the benchmark isolated from the full papai runtime. Reuse the existing benchmark pattern of real model calls plus deterministic fake tools, expand the scenario catalog to 10 cases, and emit both markdown and JSON results. Reuse production `routeToolsForMessage(...)` so routing behavior matches the branch implementation without dragging in provider runtime code.
 
-**Tech Stack:** Bun, TypeScript, Vercel AI SDK `generateText()` and `stepCountIs()`, existing `makeToolProxy(...)`, existing `routeToolsForMessage(...)`, Zod v4, Bun test runner, `p-limit`.
+**Tech Stack:** Bun, TypeScript, Vercel AI SDK `generateText()` and `stepCountIs()`, existing `routeToolsForMessage(...)`, Zod v4, Bun test runner, `p-limit`.
 
 ---
 
 ## File Structure
 
 - Create: `scripts/tool-surface-benchmark-scenarios.ts`
-  Benchmark-local fake store, fake tool factories, the 10-scenario catalog, scenario evaluators, and `toolsForMode(...)` for `direct_full`, `proxy`, and `direct_routed`.
+  Benchmark-local fake store, fake tool factories, the 10-scenario catalog, scenario evaluators, and `toolsForMode(...)` for `direct_full` and `direct_routed`.
 - Create: `tests/scripts/tool-surface-benchmark-scenarios.test.ts`
   Deterministic tests for scenario evaluation and mode-specific tool exposure.
 - Create: `scripts/tool-surface-benchmark.ts`
@@ -1162,7 +1162,6 @@ Update `package.json` scripts near the existing benchmark entry:
 
 ```json
 "scripts": {
-  "benchmark:tool-proxy": "bun scripts/tool-proxy-benchmark.ts",
   "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
   "build:client": "bun scripts/build-client.ts"
 }

@@ -13,6 +13,7 @@ import { loadProgressModule } from '../behavior-audit-integration.support.js'
 type ManifestTestEntry = IncrementalModule.IncrementalManifest['tests'][string]
 
 const tempDirs: string[] = []
+const originalOpenAiApiKey = process.env['OPENAI_API_KEY']
 
 function makeTempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'behavior-audit-incremental-'))
@@ -225,6 +226,13 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
   }
+
+  if (originalOpenAiApiKey === undefined) {
+    delete process.env['OPENAI_API_KEY']
+    return
+  }
+
+  process.env['OPENAI_API_KEY'] = originalOpenAiApiKey
 })
 
 describe('behavior-audit incremental manifest', () => {
@@ -235,6 +243,7 @@ describe('behavior-audit incremental manifest', () => {
   let phase1Calls: number
 
   beforeEach(() => {
+    process.env['OPENAI_API_KEY'] = 'test-openai-api-key'
     root = makeTempDir()
     reportsDir = path.join(root, 'reports')
     manifestPath = path.join(reportsDir, 'incremental-manifest.json')

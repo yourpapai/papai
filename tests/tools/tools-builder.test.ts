@@ -382,16 +382,17 @@ describe('buildTools', () => {
   })
 })
 
-describe('makeTools proxy integration', () => {
-  it('exposes only papai_tool by default', () => {
+describe('makeTools direct integration', () => {
+  it('exposes direct tools by default', () => {
     const provider = createMockProvider()
 
     const tools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
 
-    expect(Object.keys(tools)).toEqual(['papai_tool'])
+    expect(tools).toHaveProperty('create_task')
+    expect(tools).not.toHaveProperty('papai_tool')
   })
 
-  it('keeps internal context gating available through proxy search', async () => {
+  it('keeps internal context gating available through direct tool exposure', () => {
     const provider = createMockProvider({
       identityResolver: {
         searchUsers: () => Promise.resolve([]),
@@ -405,22 +406,7 @@ describe('makeTools proxy integration', () => {
       contextType: 'group',
     })
 
-    const dmResult = await getToolExecutor(dmTools['papai_tool'])(
-      { search: 'identity', includeSchemas: false },
-      {
-        toolCallId: 'dm-search',
-        messages: [],
-      },
-    )
-    const groupResult = await getToolExecutor(groupTools['papai_tool'])(
-      { search: 'identity', includeSchemas: false },
-      {
-        toolCallId: 'group-search',
-        messages: [],
-      },
-    )
-
-    expect(JSON.stringify(dmResult)).not.toContain('set_my_identity')
-    expect(JSON.stringify(groupResult)).toContain('set_my_identity')
+    expect(dmTools).not.toHaveProperty('set_my_identity')
+    expect(groupTools).toHaveProperty('set_my_identity')
   })
 })

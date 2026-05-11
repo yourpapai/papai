@@ -128,7 +128,7 @@ export const recurringTaskOccurrences = sqliteTable(
 export type RecurringTask = typeof recurringTasks.$inferSelect
 export type RecurringTaskOccurrence = typeof recurringTaskOccurrences.$inferSelect
 export { scheduledPrompts, alertPrompts, taskSnapshots } from './deferred-schema.js'
-export type { ScheduledPromptRow, AlertPromptRow, TaskSnapshotRow } from './deferred-schema.js'
+export type { ScheduledPromptRow, AlertPromptRow } from './deferred-schema.js'
 export const userInstructions = sqliteTable(
   'user_instructions',
   {

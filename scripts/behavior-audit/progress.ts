@@ -150,10 +150,6 @@ export function createEmptyProgress(filesTotal: number): Progress {
   }
 }
 
-export function isFileCompleted(progress: Progress, filePath: string): boolean {
-  return progress.phase1.completedFiles.includes(filePath)
-}
-
 function ensureCompletedTestsForFile(progress: Progress, filePath: string): Record<string, 'done'> {
   const existing = progress.phase1.completedTests[filePath]
   if (existing !== undefined) return existing
@@ -203,19 +199,6 @@ export function markClassificationDone(progress: Progress, behaviorId: string): 
   progress.phase2a.stats.behaviorsDone++
 }
 
-export function markClassificationFailed(progress: Progress, behaviorId: string, error: string): void {
-  const existing = progress.phase2a.failedBehaviors[behaviorId]
-  const attempts = existing === undefined ? 0 : existing.attempts
-  progress.phase2a.failedBehaviors[behaviorId] = {
-    error,
-    attempts: attempts + 1,
-    lastAttempt: new Date().toISOString(),
-  }
-  if (existing === undefined) {
-    progress.phase2a.stats.behaviorsFailed++
-  }
-}
-
 export function setClassificationFailedAttempts(
   progress: Progress,
   behaviorId: string,
@@ -252,10 +235,6 @@ export function markFeatureKeyDone(
   progress.phase2b.completedFeatureKeys[featureKey] = 'done'
   progress.phase2b.stats.featureKeysDone++
   progress.phase2b.stats.behaviorsConsolidated += consolidations.length
-}
-
-export function isFeatureKeyCompleted(progress: Progress, featureKey: string): boolean {
-  return progress.phase2b.completedFeatureKeys[featureKey] === 'done'
 }
 
 export function markFeatureKeyFailed(progress: Progress, featureKey: string, error: string, attempts: number): void {

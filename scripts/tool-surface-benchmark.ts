@@ -6,6 +6,7 @@ import { generateText, stepCountIs } from 'ai'
 import pLimit from 'p-limit'
 
 import { summarizeBenchmarkResults, type BenchmarkResult } from './tool-surface-benchmark-report.js'
+import { failedBenchmarkResult, successBenchmarkResult } from './tool-surface-benchmark-runner-support.js'
 import {
   createBenchmarkStore,
   evaluateBenchmarkScenario,
@@ -23,11 +24,31 @@ export type BenchmarkArgs = Readonly<
 
 type RawBenchmarkArgs = Omit<BenchmarkArgs, 'models'> & { models: string | readonly string[] }
 type StepRecord = Readonly<Record<string, unknown>>
+type GenerateScenarioTextResult = Readonly<{ steps: readonly StepRecord[] }>
+type ScenarioFailure = Readonly<Record<'failureCategory', string | null> & { failureMessage: string | null }>
+type BenchmarkProvider = ReturnType<ReturnType<typeof createOpenAICompatible>>
+type GenerateScenarioTextInput = Readonly<{
+  model: BenchmarkProvider
+  mode: BenchmarkMode
+  prompt: string
+  tools: ReturnType<typeof toolsForMode>['tools']
+}>
+type GenerateScenarioText = (input: GenerateScenarioTextInput) => Promise<GenerateScenarioTextResult>
+type RunScenarioDeps = Readonly<{ generateScenarioText: GenerateScenarioText }>
+type AttemptSetup = Readonly<{ store: ReturnType<typeof createBenchmarkStore>; setup: ReturnType<typeof toolsForMode> }>
+type ScenarioContext = Readonly<{
+  model: string
+  mode: BenchmarkMode
+  scenario: (typeof scenarios)[number]
+  provider: BenchmarkProvider
+  deps: RunScenarioDeps
+}>
 
-const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const DEFAULT_BASE_URL = 'https://api.synthetic.new/openai/v1'
 const DEFAULT_API_KEY_ENV = 'TOOL_SURFACE_BENCHMARK_API_KEY'
-const DEFAULT_MODEL = 'gpt-4.1-mini'
+const DEFAULT_MODEL = 'hf:moonshotai/Kimi-K2.6'
 const DEFAULT_OUTPUT_PATH = 'docs/superpowers/plans/tool-surface-benchmark-results.md'
+const MAX_ATTEMPTS = 3
 
 const present = (value: string | undefined): value is string => value !== undefined && value.length > 0
 
@@ -99,11 +120,9 @@ export function parseBenchmarkArgs(args: readonly string[]): BenchmarkArgs {
   }
 }
 
-export const jsonOutputPathFor = (markdownPath: string): string => markdownPath.replace(/\.md$/u, '.json')
-
 const systemForMode = (mode: BenchmarkMode): string =>
-  mode === 'proxy'
-    ? 'Use papai_tool to search, describe, and call internal tools with JSON args.'
+  mode === 'direct_routed'
+    ? 'Use the routed subset of direct tools selected for the user message.'
     : 'Use the available direct tools. Search before updating when the task is ambiguous.'
 
 const stepToolCalls = (step: StepRecord): readonly unknown[] => {
@@ -122,53 +141,102 @@ const failureCategoryForError = (error: unknown): string => {
   return message.includes('confirmation') ? 'confirmation_error' : 'model_error'
 }
 
-const runScenario = async (
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+const truncate = (value: string, limit: number): string =>
+  value.length <= limit ? value : `${value.slice(0, limit - 3)}...`
+
+const failureForEvaluation = (
+  scenarioId: string,
+  evaluation: Readonly<{ success: boolean; failureCategory: string | null }>,
+): ScenarioFailure => {
+  if (evaluation.success) {
+    return { failureCategory: null, failureMessage: null }
+  }
+
+  return {
+    failureCategory: evaluation.failureCategory,
+    failureMessage: `Scenario ${scenarioId} remained in an unexpected final state after ${MAX_ATTEMPTS} attempts.`,
+  }
+}
+
+const failureForError = (error: unknown, attempts: number): ScenarioFailure => ({
+  failureCategory: failureCategoryForError(error),
+  failureMessage: `Run failed after ${attempts} attempts: ${truncate(errorMessage(error), 240)}`,
+})
+
+const generateScenarioText = (input: GenerateScenarioTextInput): Promise<GenerateScenarioTextResult> =>
+  generateText({
+    model: input.model,
+    system: systemForMode(input.mode),
+    prompt: input.prompt,
+    tools: input.tools,
+    stopWhen: stepCountIs(8),
+    maxOutputTokens: 1024,
+    maxRetries: 0,
+  })
+
+const defaultRunScenarioDeps: RunScenarioDeps = { generateScenarioText }
+
+const createAttemptSetup = (mode: BenchmarkMode, prompt: string): AttemptSetup => {
+  const store = createBenchmarkStore()
+  return { store, setup: toolsForMode(mode, prompt, store) }
+}
+
+const attemptScenarioRun = async (context: ScenarioContext, attemptNumber: number): Promise<BenchmarkResult> => {
+  const { store, setup } = createAttemptSetup(context.mode, context.scenario.prompt)
+
+  try {
+    const result = await context.deps.generateScenarioText({
+      model: context.provider,
+      mode: context.mode,
+      prompt: context.scenario.prompt,
+      tools: setup.tools,
+    })
+    const evaluation = evaluateBenchmarkScenario(context.scenario.id, snapshotFromStore(store))
+
+    if (!evaluation.success && attemptNumber < MAX_ATTEMPTS) {
+      return await attemptScenarioRun(context, attemptNumber + 1)
+    }
+
+    return successBenchmarkResult(
+      { model: context.model, mode: context.mode, scenario: context.scenario.id },
+      { fullToolCount: setup.fullToolCount, exposedToolCount: setup.exposedToolCount },
+      { toolCallCount: countToolCalls(result.steps), stepCount: result.steps.length },
+      failureForEvaluation(context.scenario.id, evaluation),
+      evaluation.success,
+    )
+  } catch (error) {
+    if (attemptNumber < MAX_ATTEMPTS) {
+      return attemptScenarioRun(context, attemptNumber + 1)
+    }
+
+    return failedBenchmarkResult(
+      { model: context.model, mode: context.mode, scenario: context.scenario.id },
+      { fullToolCount: setup.fullToolCount, exposedToolCount: setup.exposedToolCount },
+      failureForError(error, attemptNumber),
+    )
+  }
+}
+
+export const runScenario = (
   model: string,
   mode: BenchmarkMode,
   scenario: (typeof scenarios)[number],
   args: BenchmarkArgs,
   apiKey: string,
+  deps: RunScenarioDeps = defaultRunScenarioDeps,
 ): Promise<BenchmarkResult> => {
-  const store = createBenchmarkStore()
-  const provider = createOpenAICompatible({ name: 'tool-surface-benchmark', apiKey, baseURL: args.baseUrl })(model)
-  const setup = toolsForMode(mode, scenario.prompt, store)
-
-  try {
-    const result = await generateText({
-      model: provider,
-      system: systemForMode(mode),
-      prompt: scenario.prompt,
-      tools: setup.tools,
-      stopWhen: stepCountIs(8),
-      maxOutputTokens: 1024,
-    })
-
-    const evaluation = evaluateBenchmarkScenario(scenario.id, snapshotFromStore(store))
-
-    return {
+  return attemptScenarioRun(
+    {
       model,
       mode,
-      scenario: scenario.id,
-      success: evaluation.success,
-      failureCategory: evaluation.failureCategory,
-      toolCallCount: countToolCalls(result.steps),
-      stepCount: result.steps.length,
-      fullToolCount: setup.fullToolCount,
-      exposedToolCount: setup.exposedToolCount,
-    }
-  } catch (error) {
-    return {
-      model,
-      mode,
-      scenario: scenario.id,
-      success: false,
-      failureCategory: failureCategoryForError(error),
-      toolCallCount: 0,
-      stepCount: 0,
-      fullToolCount: setup.fullToolCount,
-      exposedToolCount: setup.exposedToolCount,
-    }
-  }
+      scenario,
+      provider: createOpenAICompatible({ name: 'tool-surface-benchmark', apiKey, baseURL: args.baseUrl })(model),
+      deps,
+    },
+    1,
+  )
 }
 
 const runBenchmark = (args: BenchmarkArgs, apiKey: string): Promise<readonly BenchmarkResult[]> => {
@@ -177,7 +245,7 @@ const runBenchmark = (args: BenchmarkArgs, apiKey: string): Promise<readonly Ben
   const runs = args.models.flatMap((model) =>
     repetitions.flatMap(() =>
       scenarios.flatMap((scenario) =>
-        (['direct_full', 'proxy', 'direct_routed'] as const).map((mode) => ({ model, mode, scenario })),
+        (['direct_full', 'direct_routed'] as const).map((mode) => ({ model, mode, scenario })),
       ),
     ),
   )
@@ -196,11 +264,9 @@ const main = async (): Promise<void> => {
 
   const results = await runBenchmark(args, apiKey)
   const markdown = summarizeBenchmarkResults(results)
-  const jsonPath = jsonOutputPathFor(args.outputPath)
 
   await mkdir(dirname(args.outputPath), { recursive: true })
   await writeFile(args.outputPath, markdown, 'utf-8')
-  await writeFile(jsonPath, `${JSON.stringify(results, null, 2)}\n`, 'utf-8')
   console.log(markdown)
 }
 

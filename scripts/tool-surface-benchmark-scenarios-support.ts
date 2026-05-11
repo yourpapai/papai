@@ -4,7 +4,7 @@ import { seededTasks } from './tool-surface-benchmark-scenarios-data.js'
 
 export { createBenchmarkStore, scenarios, snapshotFromStore } from './tool-surface-benchmark-scenarios-data.js'
 
-export type BenchmarkMode = 'direct_full' | 'proxy' | 'direct_routed'
+export type BenchmarkMode = 'direct_full' | 'direct_routed'
 export type BenchmarkTask = Readonly<{
   id: string
   title: string

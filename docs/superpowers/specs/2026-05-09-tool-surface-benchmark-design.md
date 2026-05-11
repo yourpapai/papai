@@ -1,22 +1,19 @@
 # Tool Surface Benchmark Design
 
 **Date:** 2026-05-09
-**Scope:** Design a simple advisory benchmark that compares three LLM tool-surface strategies for papai-style task workflows.
-**Primary Goal:** Measure tool-use success rate across deterministic user scenarios when the model sees full direct tools, a single proxy tool, or an intent-routed subset of direct tools.
+**Scope:** Design a simple advisory benchmark that compares two LLM tool-surface strategies for papai-style task workflows.
+**Primary Goal:** Measure tool-use success rate across deterministic user scenarios when the model sees full direct tools or an intent-routed subset of direct tools.
 **Non-Goal:** Recreate the full papai runtime, grade free-form assistant prose, or make the benchmark a required CI gate.
 
 ---
 
 ## Context
 
-The repository already contains a real-LLM benchmark scaffold for comparing direct tools against a single proxy tool using deterministic fake tools and state-based evaluation. That scaffold lives in `scripts/tool-proxy-benchmark.ts` and `scripts/tool-proxy-benchmark-scenarios.ts`.
-
 The current branch also introduces an alternate tool-surface reduction strategy: intent-based routing of direct tools. In that strategy, the model still calls normal tools directly, but the exposed tool subset is filtered before invocation based on the user request.
 
-The benchmark should compare these three strategies fairly:
+The benchmark should compare these two strategies fairly:
 
 - `direct_full` — all direct tools are exposed.
-- `proxy` — only `papai_tool` is exposed.
 - `direct_routed` — direct tools are filtered to an intent-matched subset before the model sees them.
 
 The benchmark should stay simple and trustworthy. It should use real model calls and deterministic fake backend state, then score success from final state rather than from assistant wording.
@@ -48,8 +45,6 @@ The benchmark modes are:
 
 - `direct_full`
   Expose all fake direct tools.
-- `proxy`
-  Build the same fake direct tools, then wrap them behind `makeToolProxy(...)` so only `papai_tool` is visible to the model.
 - `direct_routed`
   Build the same fake direct tools, then apply routing before the model sees them. This mode should follow the same routing shape as the branch implementation: start from the full tool set, classify the prompt, and expose only the filtered subset.
 

@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { AuthorizationResult, ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
-import { registerContextCommand } from '../../src/commands/context.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { createDmMessage, createMockChat, createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 function captureCommand(commands: Map<string, CommandHandler>): CommandHandler {
@@ -36,7 +36,51 @@ describe('registerContextCommand', () => {
     await setupTestDb()
   })
 
+  test('builds full direct tool definitions on cache miss', async () => {
+    const provider = createMockProvider()
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): typeof provider => provider,
+    }))
+    const { registerContextCommand } = await import('../../src/commands/context.js')
+
+    const commands = new Map<string, CommandHandler>()
+    const chat = createMockChat({ commandHandlers: commands })
+    let activeToolDefinitions: Record<string, unknown> | null = null
+
+    registerContextCommand(
+      chat,
+      snapshotDeps({
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const handler = captureCommand(commands)
+    const { reply } = createMockReply()
+    const auth: AuthorizationResult = {
+      allowed: true,
+      isBotAdmin: false,
+      isGroupAdmin: false,
+      storageContextId: 'user1',
+    }
+
+    await handler(createDmMessage('user1'), reply, auth)
+
+    expect(activeToolDefinitions).not.toBeNull()
+    expect(activeToolDefinitions).toHaveProperty('create_task')
+    expect(activeToolDefinitions).not.toHaveProperty('papai_tool')
+  })
+
   test('available to non-admin users', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const provider = createMockChat({ commandHandlers: commands })
     registerContextCommand(provider, snapshotDeps())
@@ -57,6 +101,7 @@ describe('registerContextCommand', () => {
   })
 
   test('does not reject unauthorized users before the bot dispatcher (auth gate is upstream)', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
     registerContextCommand(chat, snapshotDeps())
@@ -77,6 +122,7 @@ describe('registerContextCommand', () => {
   })
 
   test('dispatches text output via reply.text', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat: ChatProvider = {
       ...createMockChat({ commandHandlers: commands }),
@@ -98,6 +144,7 @@ describe('registerContextCommand', () => {
   })
 
   test('dispatches formatted output via reply.formatted', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat: ChatProvider = {
       ...createMockChat({ commandHandlers: commands }),
@@ -119,6 +166,7 @@ describe('registerContextCommand', () => {
   })
 
   test('dispatches embed output via reply.embed when available', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat: ChatProvider = {
       ...createMockChat({ commandHandlers: commands }),
@@ -149,6 +197,7 @@ describe('registerContextCommand', () => {
   })
 
   test('falls back to reply.formatted when embed is requested but reply.embed is undefined', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat: ChatProvider = {
       ...createMockChat({ commandHandlers: commands }),
@@ -179,6 +228,7 @@ describe('registerContextCommand', () => {
   })
 
   test('falls back to formatted with fields in renderFallback', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat: ChatProvider = {
       ...createMockChat({ commandHandlers: commands }),
@@ -214,6 +264,7 @@ describe('registerContextCommand', () => {
   })
 
   test('reports collector errors with a friendly text message', async () => {
+    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
     registerContextCommand(

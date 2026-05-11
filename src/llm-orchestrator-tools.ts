@@ -6,7 +6,6 @@ import { resolveTimezone } from './llm-orchestrator-config.js'
 import { validateToolResults } from './llm-orchestrator-validation.js'
 import { logger } from './logger.js'
 import type { TaskProvider } from './providers/types.js'
-import type { MakeToolsOptions } from './tools/index.js'
 import { makeTools } from './tools/index.js'
 import { routeToolsForMessage } from './tools/tool-router.js'
 
@@ -41,8 +40,7 @@ const getOrCreateTools = (
     chatUserId,
     username,
     contextType,
-    proxy: false,
-  } satisfies MakeToolsOptions & { readonly proxy: false }
+  }
   const tools = makeTools(provider, toolOptions)
   setCachedTools(cacheKey, tools)
   return tools

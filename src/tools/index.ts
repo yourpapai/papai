@@ -1,7 +1,6 @@
 import type { ToolSet } from 'ai'
 
 import type { TaskProvider } from '../providers/types.js'
-import { makeToolProxy } from './tool-proxy.js'
 import { buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
@@ -15,13 +14,6 @@ function wrapToolSet(tools: ToolSet): ToolSet {
       return [[name, { ...tool, execute: wrapToolExecution(tool.execute.bind(tool), name) }]]
     }),
   )
-}
-
-function isProxyDisabled(options: MakeToolsOptions | undefined): boolean {
-  if (options === undefined) return false
-  if (typeof options !== 'object' || options === null) return false
-  if (!('proxy' in options)) return false
-  return options['proxy'] === false
 }
 
 /**
@@ -42,12 +34,7 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
   const contextId = storageContextId
   const mode = options === undefined || options.mode === undefined ? 'normal' : options.mode
   const contextType = options === undefined ? undefined : options.contextType
-  const proxyDisabled = isProxyDisabled(options)
 
   const internalTools = buildTools(provider, chatUserId, contextId, mode, contextType, username)
-  const wrappedInternalTools = wrapToolSet(internalTools)
-  if (proxyDisabled) {
-    return wrappedInternalTools
-  }
-  return { papai_tool: makeToolProxy(wrappedInternalTools) }
+  return wrapToolSet(internalTools)
 }

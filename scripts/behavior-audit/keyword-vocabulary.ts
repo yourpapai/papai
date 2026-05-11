@@ -23,8 +23,6 @@ export const KeywordVocabularyEntryCoreSchema = z.object({
   description: z.string(),
 })
 
-export type KeywordVocabularyEntryCore = z.infer<typeof KeywordVocabularyEntryCoreSchema>
-
 const KeywordVocabularyEntrySchema = KeywordVocabularyEntryCoreSchema.extend({
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -33,13 +31,6 @@ const KeywordVocabularyEntrySchema = KeywordVocabularyEntryCoreSchema.extend({
 const KeywordVocabularySchema = z.array(KeywordVocabularyEntrySchema)
 
 export type KeywordVocabularyEntry = z.infer<typeof KeywordVocabularyEntrySchema>
-
-export function stampVocabularyEntry(
-  core: KeywordVocabularyEntryCore,
-  now: string = new Date().toISOString(),
-): KeywordVocabularyEntry {
-  return { slug: core.slug, description: core.description, createdAt: now, updatedAt: now }
-}
 
 function normalizeKeywordVocabularyEntryGroup(
   entries: readonly [KeywordVocabularyEntry, ...KeywordVocabularyEntry[]],

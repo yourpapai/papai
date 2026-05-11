@@ -4,14 +4,22 @@ type BenchmarkCounts = Record<'toolCallCount' | 'stepCount' | 'fullToolCount' | 
 
 export type BenchmarkResult = Readonly<
   Record<'model' | 'scenario', string> &
-    BenchmarkCounts & { mode: BenchmarkMode; success: boolean; failureCategory: string | null }
+    BenchmarkCounts & {
+      mode: BenchmarkMode
+      success: boolean
+      failureCategory: string | null
+      failureMessage: string | null
+    }
 >
 
 type SummaryGroup = Record<'model' | 'mode', string> &
   Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & { failures: Record<string, number> }
 
 type ScenarioGroup = Record<'model' | 'mode' | 'scenario', string> &
-  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & { failures: Record<string, number> }
+  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & {
+    failures: Record<string, number>
+    latestFailureMessage: string | null
+  }
 
 type GroupedResults = Readonly<{
   summaryGroups: Record<string, SummaryGroup>
@@ -62,6 +70,7 @@ const createScenarioGroup = (result: BenchmarkResult): ScenarioGroup => ({
   toolCalls: 0,
   steps: 0,
   failures: {},
+  latestFailureMessage: null,
 })
 
 const incrementFailure = (counts: Record<string, number>, failureCategory: string): void => {
@@ -98,6 +107,10 @@ const addResultToGroups = (grouped: GroupedResults, result: BenchmarkResult): vo
   updateRunCounts(summary, result)
   updateRunCounts(detail, result)
 
+  if (result.failureMessage !== null) {
+    detail.latestFailureMessage = result.failureMessage
+  }
+
   if (result.failureCategory === null) return
   incrementFailure(summary.failures, result.failureCategory)
   incrementFailure(detail.failures, result.failureCategory)
@@ -115,7 +128,7 @@ const summaryRow = (group: SummaryGroup): string =>
   `| ${group.model} | ${group.mode} | ${group.runs} | ${rate(group.successes, group.runs)} | ${average(group.toolCalls, group.runs)} | ${average(group.steps, group.runs)} | ${failureText(group.failures)} |`
 
 const detailRow = (group: ScenarioGroup): string =>
-  `| ${group.model} | ${group.mode} | ${group.scenario} | ${group.runs} | ${rate(group.successes, group.runs)} | ${average(group.toolCalls, group.runs)} | ${average(group.steps, group.runs)} | ${topFailure(group.failures)} |`
+  `| ${group.model} | ${group.mode} | ${group.scenario} | ${group.runs} | ${rate(group.successes, group.runs)} | ${average(group.toolCalls, group.runs)} | ${average(group.steps, group.runs)} | ${topFailure(group.failures)} | ${group.latestFailureMessage ?? 'none'} |`
 
 const sortedSummaryRows = (summaryGroups: Record<string, SummaryGroup>): readonly string[] =>
   Object.values(summaryGroups)
@@ -155,8 +168,8 @@ export function summarizeBenchmarkResults(results: readonly BenchmarkResult[]): 
     '',
     '## Scenario Detail',
     '',
-    '| Model | Mode | Scenario | Runs | Success Rate | Avg Tool Calls | Avg Steps | Top Failure |',
-    '| --- | --- | --- | ---: | ---: | ---: | ---: | --- |',
+    '| Model | Mode | Scenario | Runs | Success Rate | Avg Tool Calls | Avg Steps | Top Failure | Failure Message |',
+    '| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |',
     ...detailRows,
     '',
   ].join('\n')
