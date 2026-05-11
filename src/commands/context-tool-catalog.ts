@@ -108,16 +108,14 @@ function normalizeEntries(entries: readonly string[]): readonly string[] {
   return entries.flatMap((entry) => (entry.length <= MAX_ENTRY_LENGTH ? [entry] : splitOversizedEntry(entry)))
 }
 
-function paginateEntries(entries: readonly string[]): readonly string[] {
-  if (entries.length === 0) return [EMPTY_CATALOG_PAGE]
-
-  const normalizedEntries = normalizeEntries(entries)
-  const pages = normalizedEntries.reduce<readonly string[][]>(
+function paginateWithTitleLimit(entries: readonly string[], totalPages: number): readonly string[][] {
+  return entries.reduce<readonly string[][]>(
     (currentPages, entry) => {
       const lastPage = currentPages.at(-1) ?? []
       const nextCandidate = [...lastPage, entry]
       const candidateBody = nextCandidate.join('\n\n')
-      const candidateText = [buildPageTitle(currentPages.length, currentPages.length), candidateBody].join('\n\n')
+      const pageIndex = currentPages.length
+      const candidateText = [buildPageTitle(pageIndex, totalPages), candidateBody].join('\n\n')
 
       if (candidateText.length <= MAX_PAGE_LENGTH || lastPage.length === 0) {
         return [...currentPages.slice(0, -1), nextCandidate]
@@ -127,10 +125,27 @@ function paginateEntries(entries: readonly string[]): readonly string[] {
     },
     [[]],
   )
+}
 
-  return pages.map((pageEntries, index) => {
+function stabilizePagination(entries: readonly string[]): readonly string[][] {
+  let totalPages = 1
+
+  while (true) {
+    const pages = paginateWithTitleLimit(entries, totalPages)
+    if (pages.length === totalPages) return pages
+    totalPages = pages.length
+  }
+}
+
+function paginateEntries(entries: readonly string[]): readonly string[] {
+  if (entries.length === 0) return [EMPTY_CATALOG_PAGE]
+
+  const normalizedEntries = normalizeEntries(entries)
+  const finalPages = stabilizePagination(normalizedEntries)
+
+  return finalPages.map((pageEntries, index) => {
     const body = pageEntries.join('\n\n')
-    return [buildPageTitle(index + 1, pages.length), body].join('\n\n')
+    return [buildPageTitle(index + 1, finalPages.length), body].join('\n\n')
   })
 }
 

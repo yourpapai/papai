@@ -93,4 +93,25 @@ describe('context tool catalog', () => {
     expect(pages.join('\n')).toContain('`create_task`')
     expect(pages.join('\n')).toContain('very long description')
   })
+
+  test('keeps final rendered pages within the cap when total-page title grows', () => {
+    const toolNames = Object.keys(TOOL_METADATA).slice(0, 12)
+    const tools = Object.fromEntries(
+      toolNames.map((name) => [
+        name,
+        tool({
+          description: `${name} `.repeat(70).trim(),
+          inputSchema: z.object({
+            taskId: z.string().describe('Task identifier used by this tool'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      ]),
+    ) satisfies ToolSet
+
+    const pages = buildContextToolCatalogPages(tools)
+
+    expect(pages.length).toBeGreaterThan(1)
+    expect(pages.every((page) => page.length <= 3500)).toBe(true)
+  })
 })

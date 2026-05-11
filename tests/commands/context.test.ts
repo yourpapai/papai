@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { tool } from 'ai'
+import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
 import { _userCaches, setCachedTools } from '../../src/cache.js'
 import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { makeTools } from '../../src/tools/index.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createAuth,
@@ -39,6 +41,15 @@ const snapshotDeps = (overrides?: Partial<ContextCommandDeps>): ContextCommandDe
     maxTokens: 128_000,
     approximate: false,
   }),
+  buildLiveToolSet: (storageContextId, actorUserId, contextType, provider): ToolSet | null => {
+    if (provider === null) return null
+    return makeTools(provider, {
+      storageContextId,
+      chatUserId: actorUserId,
+      mode: 'normal',
+      contextType,
+    })
+  },
   ...overrides,
 })
 
@@ -193,6 +204,40 @@ describe('registerContextCommand', () => {
       const catalogReplies = getCatalogReplies(textCalls)
 
       expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
+    })
+
+    test('shows no active tools when live build succeeds but returns no tools', async () => {
+      const provider = createMockProvider()
+      setCachedTools('user1', {
+        stale_cached_tool: tool({
+          description: 'Stale cached tool that should not appear when live build succeeds',
+          inputSchema: z.object({
+            query: z.string().describe('Cached-only query'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      })
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands)
+      const handler = await registerContextHandler(
+        commands,
+        chat,
+        snapshotDeps({
+          buildLiveToolSet: () => ({}),
+        }),
+      )
+      const { reply, textCalls } = createMockReply()
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(catalogReplies).toEqual(['_No active tools._'])
       expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
     })
 

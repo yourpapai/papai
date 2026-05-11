@@ -25,10 +25,17 @@ const log = logger.child({ scope: 'commands:context' })
 
 export interface ContextCommandDeps {
   collectContext: (contextId: string, collectorDeps: ContextCollectorDeps) => ContextSnapshot
+  buildLiveToolSet: (
+    storageContextId: string,
+    actorUserId: string,
+    contextType: 'dm' | 'group',
+    provider: TaskProvider | null,
+  ) => ToolSet | null
 }
 
 const defaultDeps: ContextCommandDeps = {
   collectContext,
+  buildLiveToolSet: buildInvocationToolSet,
 }
 
 function safeBuildProvider(contextId: string): TaskProvider | null {
@@ -97,8 +104,8 @@ function buildInvocationToolSet(
   actorUserId: string,
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
-): ToolSet {
-  if (provider === null) return {}
+): ToolSet | null {
+  if (provider === null) return null
 
   return makeTools(provider, {
     storageContextId,
@@ -159,9 +166,10 @@ function buildDirectToolCatalogPages(
   actorUserId: string,
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
+  deps: ContextCommandDeps,
 ): readonly string[] {
-  const liveTools = buildInvocationToolSet(storageContextId, actorUserId, contextType, provider)
-  if (Object.keys(liveTools).length > 0) return buildContextToolCatalogPages(liveTools)
+  const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
+  if (liveTools !== null) return buildContextToolCatalogPages(liveTools)
 
   return buildContextToolCatalogPages(resolveActiveToolSet(storageContextId, provider))
 }
@@ -217,7 +225,13 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
-  const toolCatalogPages = buildDirectToolCatalogPages(auth.storageContextId, msg.user.id, msg.contextType, provider)
+  const toolCatalogPages = buildDirectToolCatalogPages(
+    auth.storageContextId,
+    msg.user.id,
+    msg.contextType,
+    provider,
+    deps,
+  )
   await toolCatalogPages.reduce<Promise<void>>(
     (pending, page) => pending.then(() => reply.formatted(page)),
     Promise.resolve(),
