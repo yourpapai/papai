@@ -168,8 +168,20 @@ function buildDirectToolCatalogPages(
   provider: TaskProvider | null,
   deps: ContextCommandDeps,
 ): readonly string[] {
-  const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
-  if (liveTools !== null) return buildContextToolCatalogPages(liveTools)
+  try {
+    const liveTools = deps.buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
+    if (liveTools !== null) return buildContextToolCatalogPages(liveTools)
+  } catch (error) {
+    log.warn(
+      {
+        storageContextId,
+        actorUserId,
+        contextType,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Live tool catalog build failed; falling back to cached tools',
+    )
+  }
 
   return buildContextToolCatalogPages(resolveActiveToolSet(storageContextId, provider))
 }

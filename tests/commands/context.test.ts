@@ -291,6 +291,43 @@ describe('registerContextCommand', () => {
       expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
     })
 
+    test('falls back to cached tools when live tool construction throws', async () => {
+      const provider = createMockProvider()
+      setCachedTools('user1', {
+        'add-task-relation': tool({
+          description: 'Add a relation using cached tool metadata',
+          inputSchema: z.object({
+            taskId: z.string().describe('Primary task identifier'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      })
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands)
+      const handler = await registerContextHandler(
+        commands,
+        chat,
+        snapshotDeps({
+          buildLiveToolSet: (): never => {
+            throw new Error('live tool build failed')
+          },
+        }),
+      )
+      const { reply, textCalls } = createMockReply()
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(textCalls[0]).toBe('**context summary**')
+      expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
+    })
+
     test('reflects group-context tool gating in the follow-up catalog', async () => {
       const provider = createIdentityCapableProvider()
       void mock.module('../../src/providers/factory.js', () => ({
