@@ -28,49 +28,71 @@ function captureCommand(commands: Map<string, CommandHandler>): CommandHandler {
   return handler
 }
 
-const snapshotDeps = (overrides?: Partial<ContextCommandDeps>): ContextCommandDeps => ({
-  collectContext: (): ContextSnapshot => ({
-    modelName: 'gpt-4o',
-    sections: [
-      { label: 'System prompt', tokens: 1000 },
-      { label: 'Memory context', tokens: 500 },
-      { label: 'Conversation history', tokens: 2000 },
-      { label: 'Tools', tokens: 3000 },
-    ],
-    totalTokens: 6500,
-    maxTokens: 128_000,
-    approximate: false,
-  }),
-  buildLiveToolSet: (storageContextId, actorUserId, contextType, provider): ToolSet | null => {
-    if (provider === null) return null
-    return makeTools(provider, {
-      storageContextId,
-      chatUserId: actorUserId,
-      mode: 'normal',
-      contextType,
-    })
-  },
-  ...overrides,
-})
+function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCommandDeps {
+  return {
+    collectContext: (): ContextSnapshot => ({
+      modelName: 'gpt-4o',
+      sections: [
+        { label: 'System prompt', tokens: 1000 },
+        { label: 'Memory context', tokens: 500 },
+        { label: 'Conversation history', tokens: 2000 },
+        { label: 'Tools', tokens: 3000 },
+      ],
+      totalTokens: 6500,
+      maxTokens: 128_000,
+      approximate: false,
+    }),
+    buildLiveToolSet: (storageContextId, actorUserId, contextType, provider): ToolSet | null => {
+      if (provider === null) return null
+      return makeTools(provider, {
+        storageContextId,
+        chatUserId: actorUserId,
+        mode: 'normal',
+        contextType,
+      })
+    },
+    ...resolveOverrides(overrides),
+  }
+}
 
 async function registerContextHandler(
   commands: Map<string, CommandHandler>,
   chat: ChatProvider,
-  deps: ContextCommandDeps = snapshotDeps(),
+  deps: ContextCommandDeps | null,
 ): Promise<CommandHandler> {
   const { registerContextCommand } = await import('../../src/commands/context.js')
   registerContextCommand(chat, deps)
   return captureCommand(commands)
 }
 
-function createFormattedContextChat(
+async function registerDefaultContextHandler(
   commands: Map<string, CommandHandler>,
-  content = '**context summary**',
-): ChatProvider {
+  chat: ChatProvider,
+): Promise<CommandHandler> {
+  const { registerContextCommand } = await import('../../src/commands/context.js')
+  registerContextCommand(chat)
+  return captureCommand(commands)
+}
+
+function createFormattedContextChat(commands: Map<string, CommandHandler>, content: string | null): ChatProvider {
   return {
     ...createMockChat({ commandHandlers: commands }),
-    renderContext: () => ({ method: 'formatted', content }),
+    renderContext: () => ({ method: 'formatted', content: resolveFormattedContent(content) }),
   }
+}
+
+function resolveOverrides(overrides: Partial<ContextCommandDeps> | null): Partial<ContextCommandDeps> {
+  if (overrides === null) return {}
+  return overrides
+}
+
+function resolveFormattedContent(content: string | null): string {
+  if (content === null) return '**context summary**'
+  return content
+}
+
+function removeEmbedReply(reply: Record<string, unknown>): void {
+  delete reply['embed']
 }
 
 function getCatalogReplies(textCalls: readonly string[]): readonly string[] {
@@ -129,11 +151,55 @@ describe('registerContextCommand', () => {
     expect(activeToolDefinitions).not.toHaveProperty('papai_tool')
   })
 
+  test('uses invocation-aware active tool definitions for group summaries on cache miss', async () => {
+    const provider = createIdentityCapableProvider()
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): typeof provider => provider,
+    }))
+
+    const commands = new Map<string, CommandHandler>()
+    const chat = createFormattedContextChat(commands, null)
+    let activeToolDefinitions: Record<string, unknown> | null = null
+
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
+        },
+      }),
+    )
+
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      createGroupMessage('actor-user', '/context', false, 'group-1'),
+      reply,
+      createAuth('group-1', { isGroupAdmin: true }),
+    )
+
+    const catalogReplies = getCatalogReplies(textCalls)
+
+    expect(activeToolDefinitions).not.toBeNull()
+    expect(activeToolDefinitions).toHaveProperty('set_my_identity')
+    expect(activeToolDefinitions).toHaveProperty('clear_my_identity')
+    expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
+    expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
+  })
+
   test('available to non-admin users', async () => {
     const commands = new Map<string, CommandHandler>()
     const provider = createMockChat({ commandHandlers: commands })
 
-    const handler = await registerContextHandler(commands, provider)
+    const handler = await registerContextHandler(commands, provider, snapshotDeps(null))
     const { reply, textCalls } = createMockReply()
     const msg = createDmMessage('some-regular-user')
     const auth = createAuth('some-regular-user')
@@ -147,7 +213,7 @@ describe('registerContextCommand', () => {
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
 
-    const handler = await registerContextHandler(commands, chat)
+    const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
     const { reply, textCalls } = createMockReply()
     const msg = createDmMessage('user1')
     const auth = createAuth('user1', { allowed: false })
@@ -164,8 +230,8 @@ describe('registerContextCommand', () => {
         buildProviderForUser: (): typeof provider => provider,
       }))
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
-      const handler = await registerContextHandler(commands, chat)
+      const chat = createFormattedContextChat(commands, null)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
 
@@ -195,8 +261,8 @@ describe('registerContextCommand', () => {
       }))
 
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
-      const handler = await registerContextHandler(commands, chat)
+      const chat = createFormattedContextChat(commands, null)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
       const { reply, textCalls } = createMockReply()
 
       await handler(createDmMessage('user1'), reply, createAuth('user1'))
@@ -223,7 +289,7 @@ describe('registerContextCommand', () => {
       }))
 
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
+      const chat = createFormattedContextChat(commands, null)
       const handler = await registerContextHandler(
         commands,
         chat,
@@ -258,7 +324,7 @@ describe('registerContextCommand', () => {
       }))
 
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
+      const chat = createFormattedContextChat(commands, null)
       let activeToolDefinitions: Record<string, unknown> | null = null
       const handler = await registerContextHandler(
         commands,
@@ -307,7 +373,7 @@ describe('registerContextCommand', () => {
       }))
 
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
+      const chat = createFormattedContextChat(commands, null)
       const handler = await registerContextHandler(
         commands,
         chat,
@@ -335,7 +401,7 @@ describe('registerContextCommand', () => {
       }))
 
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
+      const chat = createFormattedContextChat(commands, null)
       const handler = await registerContextHandler(
         commands,
         chat,
@@ -363,8 +429,32 @@ describe('registerContextCommand', () => {
       }))
 
       const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands)
-      const handler = await registerContextHandler(commands, chat)
+      const chat = createFormattedContextChat(commands, null)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+      const { reply, textCalls } = createMockReply()
+
+      await handler(
+        createGroupMessage('actor-user', '/context', false, 'group-1'),
+        reply,
+        createAuth('group-1', { isGroupAdmin: true }),
+      )
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`create_deferred_prompt`'))).toBe(true)
+    })
+
+    test('uses invocation-aware tool construction in the default runtime wiring', async () => {
+      const provider = createIdentityCapableProvider()
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands, null)
+      const handler = await registerDefaultContextHandler(commands, chat)
       const { reply, textCalls } = createMockReply()
 
       await handler(
@@ -388,7 +478,7 @@ describe('registerContextCommand', () => {
         ...createMockChat({ commandHandlers: commands }),
         renderContext: () => ({ method: 'text', content: 'RAW TEXT PAYLOAD' }),
       }
-      const handler = await registerContextHandler(commands, chat)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
 
@@ -400,7 +490,7 @@ describe('registerContextCommand', () => {
     test('dispatches formatted output via reply.formatted', async () => {
       const commands = new Map<string, CommandHandler>()
       const chat = createFormattedContextChat(commands, '**markdown**')
-      const handler = await registerContextHandler(commands, chat)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
 
@@ -423,14 +513,15 @@ describe('registerContextCommand', () => {
           },
         }),
       }
-      const handler = await registerContextHandler(commands, chat)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, embedCalls } = createMockReply()
 
       await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
       expect(embedCalls).toHaveLength(1)
-      expect(embedCalls[0]?.title).toBe('Context · gpt-4o')
+      const firstEmbed = embedCalls[0]!
+      expect(firstEmbed.title).toBe('Context · gpt-4o')
     })
 
     test('falls back to reply.formatted when embed is requested but reply.embed is undefined', async () => {
@@ -446,10 +537,10 @@ describe('registerContextCommand', () => {
           },
         }),
       }
-      const handler = await registerContextHandler(commands, chat)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
-      delete (reply as { embed?: unknown }).embed
+      removeEmbedReply(reply as Record<string, unknown>)
 
       await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
@@ -473,10 +564,10 @@ describe('registerContextCommand', () => {
           },
         }),
       }
-      const handler = await registerContextHandler(commands, chat)
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
 
       const { reply, textCalls } = createMockReply()
-      delete (reply as { embed?: unknown }).embed
+      removeEmbedReply(reply as Record<string, unknown>)
 
       await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
