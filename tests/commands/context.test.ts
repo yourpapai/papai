@@ -6,10 +6,12 @@ import { z } from 'zod'
 import { _userCaches, setCachedTools } from '../../src/cache.js'
 import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
+import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createAuth,
   createDmMessage,
+  createGroupMessage,
   createMockChat,
   createMockReply,
   mockLogger,
@@ -62,6 +64,14 @@ function createFormattedContextChat(
 
 function getCatalogReplies(textCalls: readonly string[]): readonly string[] {
   return textCalls.slice(1)
+}
+
+function createIdentityCapableProvider(): TaskProvider {
+  return createMockProvider({
+    identityResolver: {
+      searchUsers: () => Promise.resolve([]),
+    },
+  })
 }
 
 describe('registerContextCommand', () => {
@@ -158,6 +168,34 @@ describe('registerContextCommand', () => {
       expect(catalogReplies.some((content) => content.includes('Parameters'))).toBe(true)
     })
 
+    test('prefers live provider tools over warmed cached tools in normal operation', async () => {
+      const provider = createMockProvider()
+      setCachedTools('user1', {
+        stale_cached_tool: tool({
+          description: 'Stale cached tool that should not appear in live catalog output',
+          inputSchema: z.object({
+            query: z.string().describe('Cached-only query'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      })
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands)
+      const handler = await registerContextHandler(commands, chat)
+      const { reply, textCalls } = createMockReply()
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
+    })
+
     test('uses cached tools for the follow-up catalog when provider construction is unavailable', async () => {
       setCachedTools('user1', {
         'add-task-relation': tool({
@@ -206,6 +244,30 @@ describe('registerContextCommand', () => {
       expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
       expect(catalogReplies.some((content) => content.includes('Domain: `task`'))).toBe(true)
       expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
+    })
+
+    test('reflects group-context tool gating in the follow-up catalog', async () => {
+      const provider = createIdentityCapableProvider()
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands)
+      const handler = await registerContextHandler(commands, chat)
+      const { reply, textCalls } = createMockReply()
+
+      await handler(
+        createGroupMessage('actor-user', '/context', false, 'group-1'),
+        reply,
+        createAuth('group-1', { isGroupAdmin: true }),
+      )
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('`create_deferred_prompt`'))).toBe(true)
     })
   })
 

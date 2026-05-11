@@ -92,6 +92,22 @@ function buildLiveTools(contextId: string, provider: TaskProvider | null): Recor
   return toToolRecord(tools)
 }
 
+function buildInvocationToolSet(
+  storageContextId: string,
+  actorUserId: string,
+  contextType: 'dm' | 'group',
+  provider: TaskProvider | null,
+): ToolSet {
+  if (provider === null) return {}
+
+  return makeTools(provider, {
+    storageContextId,
+    chatUserId: actorUserId,
+    mode: 'normal',
+    contextType,
+  })
+}
+
 function resolveActiveToolDefinitions(contextId: string, provider: TaskProvider | null): Record<string, unknown> {
   const cached = toToolRecord(getCachedTools(contextId))
   if (Object.keys(cached).length > 0) return cached
@@ -138,8 +154,16 @@ async function sendContextResponse(
   }
 }
 
-function buildDirectToolCatalogPages(contextId: string, provider: TaskProvider | null): readonly string[] {
-  return buildContextToolCatalogPages(resolveActiveToolSet(contextId, provider))
+function buildDirectToolCatalogPages(
+  storageContextId: string,
+  actorUserId: string,
+  contextType: 'dm' | 'group',
+  provider: TaskProvider | null,
+): readonly string[] {
+  const liveTools = buildInvocationToolSet(storageContextId, actorUserId, contextType, provider)
+  if (Object.keys(liveTools).length > 0) return buildContextToolCatalogPages(liveTools)
+
+  return buildContextToolCatalogPages(resolveActiveToolSet(storageContextId, provider))
 }
 
 async function buildContextSnapshot(
@@ -193,7 +217,7 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
-  const toolCatalogPages = buildDirectToolCatalogPages(auth.storageContextId, provider)
+  const toolCatalogPages = buildDirectToolCatalogPages(auth.storageContextId, msg.user.id, msg.contextType, provider)
   await toolCatalogPages.reduce<Promise<void>>(
     (pending, page) => pending.then(() => reply.formatted(page)),
     Promise.resolve(),
