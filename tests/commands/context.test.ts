@@ -165,6 +165,36 @@ describe('registerContextCommand', () => {
     expect(textCalls).toContain('**markdown**')
   })
 
+  test('emits live direct tool catalog pages after the summary response', async () => {
+    const provider = createMockProvider()
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): typeof provider => provider,
+    }))
+    const { registerContextCommand } = await import('../../src/commands/context.js')
+    const commands = new Map<string, CommandHandler>()
+    const chat: ChatProvider = {
+      ...createMockChat({ commandHandlers: commands }),
+      renderContext: () => ({ method: 'formatted', content: '**context summary**' }),
+    }
+    registerContextCommand(chat, snapshotDeps())
+    const handler = captureCommand(commands)
+
+    const { reply, textCalls } = createMockReply()
+    const auth: AuthorizationResult = {
+      allowed: true,
+      isBotAdmin: false,
+      isGroupAdmin: false,
+      storageContextId: 'user1',
+    }
+
+    await handler(createDmMessage('user1'), reply, auth)
+
+    expect(textCalls[0]).toBe('**context summary**')
+    expect(textCalls.slice(1).some((content) => content.includes('`create_task`'))).toBe(true)
+    expect(textCalls.slice(1).some((content) => content.includes('Domain: `task`'))).toBe(true)
+    expect(textCalls.slice(1).some((content) => content.includes('Parameters'))).toBe(true)
+  })
+
   test('dispatches embed output via reply.embed when available', async () => {
     const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()

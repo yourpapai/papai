@@ -19,6 +19,7 @@ import {
   prepareDefaultCountTokens,
   resolveEncodingName,
 } from './context-collector.js'
+import { buildContextToolCatalogPages } from './context-tool-catalog.js'
 
 const log = logger.child({ scope: 'commands:context' })
 
@@ -118,8 +119,23 @@ async function sendContextResponse(
   }
 }
 
-async function buildContextSnapshot(contextId: string, deps: ContextCommandDeps): Promise<ContextSnapshot> {
-  const provider = safeBuildProvider(contextId)
+function buildDirectToolCatalogPages(contextId: string, provider: TaskProvider | null): readonly string[] {
+  if (provider === null) return buildContextToolCatalogPages({})
+
+  const tools = makeTools(provider, {
+    storageContextId: contextId,
+    chatUserId: contextId,
+    mode: 'normal',
+    contextType: 'dm',
+  })
+  return buildContextToolCatalogPages(tools)
+}
+
+async function buildContextSnapshot(
+  contextId: string,
+  provider: TaskProvider | null,
+  deps: ContextCommandDeps,
+): Promise<ContextSnapshot> {
   const collectorDeps = await buildCollectorDeps(contextId, provider)
   return deps.collectContext(contextId, collectorDeps)
 }
@@ -147,9 +163,10 @@ async function handleContextCommand(
 ): Promise<void> {
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
+  const provider = safeBuildProvider(auth.storageContextId)
   let snapshot: ContextSnapshot
   try {
-    snapshot = await buildContextSnapshot(auth.storageContextId, deps)
+    snapshot = await buildContextSnapshot(auth.storageContextId, provider, deps)
   } catch (error) {
     log.warn(
       {
@@ -165,6 +182,11 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
+  const toolCatalogPages = buildDirectToolCatalogPages(auth.storageContextId, provider)
+  await toolCatalogPages.reduce<Promise<void>>(
+    (pending, page) => pending.then(() => reply.formatted(page)),
+    Promise.resolve(),
+  )
   logContextExecuted(msg.user.id, auth.storageContextId, snapshot, rendered.method)
 }
 
