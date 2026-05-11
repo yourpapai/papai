@@ -126,6 +126,11 @@ function resolveActiveToolSet(contextId: string, provider: TaskProvider | null):
   return isToolSet(tools) ? tools : {}
 }
 
+function resolveCachedToolSet(contextId: string): ToolSet {
+  const cachedTools = toToolRecord(getCachedTools(contextId))
+  return isToolSet(cachedTools) ? cachedTools : {}
+}
+
 function renderFallback(rendered: ContextRendered & { method: 'embed' }): string {
   const lines: string[] = []
   lines.push(rendered.embed.title)
@@ -181,6 +186,7 @@ function buildDirectToolCatalogPages(
       },
       'Live tool catalog build failed; falling back to cached tools',
     )
+    return buildContextToolCatalogPages(resolveCachedToolSet(storageContextId))
   }
 
   return buildContextToolCatalogPages(resolveActiveToolSet(storageContextId, provider))
