@@ -3,10 +3,18 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { setCachedTools } from '../../src/cache.js'
-import type { AuthorizationResult, ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
+import { _userCaches, setCachedTools } from '../../src/cache.js'
+import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
+import type { ContextCommandDeps } from '../../src/commands/context.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { createDmMessage, createMockChat, createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  createAuth,
+  createDmMessage,
+  createMockChat,
+  createMockReply,
+  mockLogger,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 function captureCommand(commands: Map<string, CommandHandler>): CommandHandler {
   const handler = commands.get('context')
@@ -16,9 +24,7 @@ function captureCommand(commands: Map<string, CommandHandler>): CommandHandler {
   return handler
 }
 
-const snapshotDeps = (
-  overrides?: Partial<import('../../src/commands/context.js').ContextCommandDeps>,
-): import('../../src/commands/context.js').ContextCommandDeps => ({
+const snapshotDeps = (overrides?: Partial<ContextCommandDeps>): ContextCommandDeps => ({
   collectContext: (): ContextSnapshot => ({
     modelName: 'gpt-4o',
     sections: [
@@ -34,9 +40,34 @@ const snapshotDeps = (
   ...overrides,
 })
 
+async function registerContextHandler(
+  commands: Map<string, CommandHandler>,
+  chat: ChatProvider,
+  deps: ContextCommandDeps = snapshotDeps(),
+): Promise<CommandHandler> {
+  const { registerContextCommand } = await import('../../src/commands/context.js')
+  registerContextCommand(chat, deps)
+  return captureCommand(commands)
+}
+
+function createFormattedContextChat(
+  commands: Map<string, CommandHandler>,
+  content = '**context summary**',
+): ChatProvider {
+  return {
+    ...createMockChat({ commandHandlers: commands }),
+    renderContext: () => ({ method: 'formatted', content }),
+  }
+}
+
+function getCatalogReplies(textCalls: readonly string[]): readonly string[] {
+  return textCalls.slice(1)
+}
+
 describe('registerContextCommand', () => {
   beforeEach(async () => {
     mockLogger()
+    _userCaches.clear()
     await setupTestDb()
   })
 
@@ -45,13 +76,13 @@ describe('registerContextCommand', () => {
     void mock.module('../../src/providers/factory.js', () => ({
       buildProviderForUser: (): typeof provider => provider,
     }))
-    const { registerContextCommand } = await import('../../src/commands/context.js')
 
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
     let activeToolDefinitions: Record<string, unknown> | null = null
 
-    registerContextCommand(
+    const handler = await registerContextHandler(
+      commands,
       chat,
       snapshotDeps({
         collectContext: (_contextId, collectorDeps): ContextSnapshot => {
@@ -67,14 +98,8 @@ describe('registerContextCommand', () => {
       }),
     )
 
-    const handler = captureCommand(commands)
     const { reply } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: false,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
+    const auth = createAuth('user1')
 
     await handler(createDmMessage('user1'), reply, auth)
 
@@ -84,20 +109,13 @@ describe('registerContextCommand', () => {
   })
 
   test('available to non-admin users', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const provider = createMockChat({ commandHandlers: commands })
-    registerContextCommand(provider, snapshotDeps())
 
-    const handler = captureCommand(commands)
+    const handler = await registerContextHandler(commands, provider)
     const { reply, textCalls } = createMockReply()
     const msg = createDmMessage('some-regular-user')
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: false,
-      isGroupAdmin: false,
-      storageContextId: 'some-regular-user',
-    }
+    const auth = createAuth('some-regular-user')
 
     await handler(msg, reply, auth)
 
@@ -105,261 +123,203 @@ describe('registerContextCommand', () => {
   })
 
   test('does not reject unauthorized users before the bot dispatcher (auth gate is upstream)', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
-    registerContextCommand(chat, snapshotDeps())
 
-    const handler = captureCommand(commands)
+    const handler = await registerContextHandler(commands, chat)
     const { reply, textCalls } = createMockReply()
     const msg = createDmMessage('user1')
-    const auth: AuthorizationResult = {
-      allowed: false,
-      isBotAdmin: false,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
+    const auth = createAuth('user1', { allowed: false })
 
     await handler(msg, reply, auth)
 
     expect(textCalls.length).toBe(0)
   })
 
-  test('dispatches text output via reply.text', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({ method: 'text', content: 'RAW TEXT PAYLOAD' }),
-    }
-    registerContextCommand(chat, snapshotDeps())
-    const handler = captureCommand(commands)
+  describe('tool catalog follow-up', () => {
+    test('emits live direct tool catalog pages after the summary response', async () => {
+      const provider = createMockProvider()
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands)
+      const handler = await registerContextHandler(commands, chat)
 
-    const { reply, textCalls } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: true,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-    await handler(createDmMessage('user1'), reply, auth)
+      const { reply, textCalls } = createMockReply()
 
-    expect(textCalls).toContain('RAW TEXT PAYLOAD')
-  })
+      await handler(createDmMessage('user1'), reply, createAuth('user1'))
 
-  test('dispatches formatted output via reply.formatted', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({ method: 'formatted', content: '**markdown**' }),
-    }
-    registerContextCommand(chat, snapshotDeps())
-    const handler = captureCommand(commands)
+      const catalogReplies = getCatalogReplies(textCalls)
 
-    const { reply, textCalls } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: true,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-    await handler(createDmMessage('user1'), reply, auth)
-
-    expect(textCalls).toContain('**markdown**')
-  })
-
-  test('emits live direct tool catalog pages after the summary response', async () => {
-    const provider = createMockProvider()
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof provider => provider,
-    }))
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({ method: 'formatted', content: '**context summary**' }),
-    }
-    registerContextCommand(chat, snapshotDeps())
-    const handler = captureCommand(commands)
-
-    const { reply, textCalls } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: false,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-
-    await handler(createDmMessage('user1'), reply, auth)
-
-    expect(textCalls[0]).toBe('**context summary**')
-    expect(textCalls.slice(1).some((content) => content.includes('`create_task`'))).toBe(true)
-    expect(textCalls.slice(1).some((content) => content.includes('Domain: `task`'))).toBe(true)
-    expect(textCalls.slice(1).some((content) => content.includes('Parameters'))).toBe(true)
-  })
-
-  test('uses cached tools for the follow-up catalog when provider construction is unavailable', async () => {
-    setCachedTools('user1', {
-      'add-task-relation': tool({
-        description: 'Add a relation using cached tool metadata',
-        inputSchema: z.object({
-          taskId: z.string().describe('Primary task identifier'),
-        }),
-        execute: () => Promise.resolve({ ok: true }),
-      }),
+      expect(textCalls[0]).toBe('**context summary**')
+      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('Domain: `task`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('Parameters'))).toBe(true)
     })
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): never => {
-        throw new Error('provider unavailable')
-      },
-    }))
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({ method: 'formatted', content: '**context summary**' }),
-    }
-    let activeToolDefinitions: Record<string, unknown> | null = null
 
-    registerContextCommand(
-      chat,
-      snapshotDeps({
-        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
-          activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
-          return {
-            modelName: 'gpt-4o',
-            sections: [],
-            totalTokens: 0,
-            maxTokens: 128_000,
-            approximate: false,
-          }
+    test('uses cached tools for the follow-up catalog when provider construction is unavailable', async () => {
+      setCachedTools('user1', {
+        'add-task-relation': tool({
+          description: 'Add a relation using cached tool metadata',
+          inputSchema: z.object({
+            taskId: z.string().describe('Primary task identifier'),
+          }),
+          execute: () => Promise.resolve({ ok: true }),
+        }),
+      })
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): never => {
+          throw new Error('provider unavailable')
         },
-      }),
-    )
-    const handler = captureCommand(commands)
+      }))
 
-    const { reply, textCalls } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: false,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands)
+      let activeToolDefinitions: Record<string, unknown> | null = null
+      const handler = await registerContextHandler(
+        commands,
+        chat,
+        snapshotDeps({
+          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+            return {
+              modelName: 'gpt-4o',
+              sections: [],
+              totalTokens: 0,
+              maxTokens: 128_000,
+              approximate: false,
+            }
+          },
+        }),
+      )
 
-    await handler(createDmMessage('user1'), reply, auth)
+      const { reply, textCalls } = createMockReply()
 
-    expect(activeToolDefinitions).not.toBeNull()
-    expect(activeToolDefinitions).toHaveProperty('add-task-relation')
-    expect(textCalls[0]).toBe('**context summary**')
-    expect(textCalls.slice(1).some((content) => content.includes('`add-task-relation`'))).toBe(true)
-    expect(textCalls.slice(1).some((content) => content.includes('Domain: `task`'))).toBe(true)
-    expect(textCalls.slice(1).some((content) => content.includes('_No active tools._'))).toBe(false)
+      await handler(createDmMessage('user1'), reply, createAuth('user1'))
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(activeToolDefinitions).not.toBeNull()
+      expect(activeToolDefinitions).toHaveProperty('add-task-relation')
+      expect(textCalls[0]).toBe('**context summary**')
+      expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('Domain: `task`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
+    })
   })
 
-  test('dispatches embed output via reply.embed when available', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({
-        method: 'embed',
-        embed: {
-          title: 'Context · gpt-4o',
-          description: '🟦🟦⬜',
-          footer: '6,500 / 128,000 tokens',
-          color: 0x2ecc71,
-        },
-      }),
-    }
-    registerContextCommand(chat, snapshotDeps())
-    const handler = captureCommand(commands)
+  describe('response dispatch', () => {
+    test('dispatches text output via reply.text', async () => {
+      const commands = new Map<string, CommandHandler>()
+      const chat: ChatProvider = {
+        ...createMockChat({ commandHandlers: commands }),
+        renderContext: () => ({ method: 'text', content: 'RAW TEXT PAYLOAD' }),
+      }
+      const handler = await registerContextHandler(commands, chat)
 
-    const { reply, embedCalls } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: true,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-    await handler(createDmMessage('user1'), reply, auth)
+      const { reply, textCalls } = createMockReply()
 
-    expect(embedCalls).toHaveLength(1)
-    expect(embedCalls[0]?.title).toBe('Context · gpt-4o')
-  })
+      await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
-  test('falls back to reply.formatted when embed is requested but reply.embed is undefined', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({
-        method: 'embed',
-        embed: {
-          title: 'Context · gpt-4o',
-          description: '🟦🟦⬜',
-          footer: '6,500 / 128,000 tokens',
-        },
-      }),
-    }
-    registerContextCommand(chat, snapshotDeps())
-    const handler = captureCommand(commands)
+      expect(textCalls).toContain('RAW TEXT PAYLOAD')
+    })
 
-    const { reply, textCalls } = createMockReply()
-    delete (reply as { embed?: unknown }).embed
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: true,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-    await handler(createDmMessage('user1'), reply, auth)
+    test('dispatches formatted output via reply.formatted', async () => {
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands, '**markdown**')
+      const handler = await registerContextHandler(commands, chat)
 
-    expect(textCalls.some((t) => t.includes('Context · gpt-4o'))).toBe(true)
-    expect(textCalls.some((t) => t.includes('🟦🟦⬜'))).toBe(true)
-  })
+      const { reply, textCalls } = createMockReply()
 
-  test('falls back to formatted with fields in renderFallback', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
-    const commands = new Map<string, CommandHandler>()
-    const chat: ChatProvider = {
-      ...createMockChat({ commandHandlers: commands }),
-      renderContext: () => ({
-        method: 'embed',
-        embed: {
-          title: 'Context · gpt-4o',
-          description: '🟦🟦⬜',
-          fields: [
-            { name: 'Field1', value: 'Value1' },
-            { name: 'Field2', value: 'Value2' },
-          ],
-        },
-      }),
-    }
-    registerContextCommand(chat, snapshotDeps())
-    const handler = captureCommand(commands)
+      await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
-    const { reply, textCalls } = createMockReply()
-    delete (reply as { embed?: unknown }).embed
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: true,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-    await handler(createDmMessage('user1'), reply, auth)
+      expect(textCalls).toContain('**markdown**')
+    })
 
-    expect(textCalls.some((t) => t.includes('Context · gpt-4o'))).toBe(true)
-    expect(textCalls.some((t) => t.includes('🟦🟦⬜'))).toBe(true)
-    expect(textCalls.some((t) => t.includes('Field1: Value1'))).toBe(true)
-    expect(textCalls.some((t) => t.includes('Field2: Value2'))).toBe(true)
+    test('dispatches embed output via reply.embed when available', async () => {
+      const commands = new Map<string, CommandHandler>()
+      const chat: ChatProvider = {
+        ...createMockChat({ commandHandlers: commands }),
+        renderContext: () => ({
+          method: 'embed',
+          embed: {
+            title: 'Context · gpt-4o',
+            description: '🟦🟦⬜',
+            footer: '6,500 / 128,000 tokens',
+            color: 0x2ecc71,
+          },
+        }),
+      }
+      const handler = await registerContextHandler(commands, chat)
+
+      const { reply, embedCalls } = createMockReply()
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
+
+      expect(embedCalls).toHaveLength(1)
+      expect(embedCalls[0]?.title).toBe('Context · gpt-4o')
+    })
+
+    test('falls back to reply.formatted when embed is requested but reply.embed is undefined', async () => {
+      const commands = new Map<string, CommandHandler>()
+      const chat: ChatProvider = {
+        ...createMockChat({ commandHandlers: commands }),
+        renderContext: () => ({
+          method: 'embed',
+          embed: {
+            title: 'Context · gpt-4o',
+            description: '🟦🟦⬜',
+            footer: '6,500 / 128,000 tokens',
+          },
+        }),
+      }
+      const handler = await registerContextHandler(commands, chat)
+
+      const { reply, textCalls } = createMockReply()
+      delete (reply as { embed?: unknown }).embed
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
+
+      expect(textCalls.some((content) => content.includes('Context · gpt-4o'))).toBe(true)
+      expect(textCalls.some((content) => content.includes('🟦🟦⬜'))).toBe(true)
+    })
+
+    test('falls back to formatted with fields in renderFallback', async () => {
+      const commands = new Map<string, CommandHandler>()
+      const chat: ChatProvider = {
+        ...createMockChat({ commandHandlers: commands }),
+        renderContext: () => ({
+          method: 'embed',
+          embed: {
+            title: 'Context · gpt-4o',
+            description: '🟦🟦⬜',
+            fields: [
+              { name: 'Field1', value: 'Value1' },
+              { name: 'Field2', value: 'Value2' },
+            ],
+          },
+        }),
+      }
+      const handler = await registerContextHandler(commands, chat)
+
+      const { reply, textCalls } = createMockReply()
+      delete (reply as { embed?: unknown }).embed
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
+
+      expect(textCalls.some((content) => content.includes('Context · gpt-4o'))).toBe(true)
+      expect(textCalls.some((content) => content.includes('🟦🟦⬜'))).toBe(true)
+      expect(textCalls.some((content) => content.includes('Field1: Value1'))).toBe(true)
+      expect(textCalls.some((content) => content.includes('Field2: Value2'))).toBe(true)
+    })
   })
 
   test('reports collector errors with a friendly text message', async () => {
-    const { registerContextCommand } = await import('../../src/commands/context.js')
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
-    registerContextCommand(
+    const handler = await registerContextHandler(
+      commands,
       chat,
       snapshotDeps({
         collectContext: (): ContextSnapshot => {
@@ -367,16 +327,9 @@ describe('registerContextCommand', () => {
         },
       }),
     )
-    const handler = captureCommand(commands)
 
     const { reply, textCalls } = createMockReply()
-    const auth: AuthorizationResult = {
-      allowed: true,
-      isBotAdmin: true,
-      isGroupAdmin: false,
-      storageContextId: 'user1',
-    }
-    await handler(createDmMessage('user1'), reply, auth)
+    await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
     expect(textCalls.length).toBe(1)
     expect(textCalls[0]).toMatch(/could not build context view/i)
