@@ -39,4 +39,5 @@ export type MakeToolsOptions = {
    * in specific contexts (e.g., identity tools are only available in groups).
    */
   contextType?: ContextType
+  stagedDownloadFn?: import('../attachments/types.js').StagedFileDownloadFn
 }

@@ -35,8 +35,9 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
   const contextId = storageContextId
   const mode = options === undefined || options.mode === undefined ? 'normal' : options.mode
   const contextType = options === undefined ? undefined : options.contextType
+  const stagedDownloadFn = options === undefined ? undefined : options.stagedDownloadFn
 
-  const internalTools = buildTools(provider, chatUserId, contextId, mode, contextType, username)
+  const internalTools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
   const wrappedInternalTools = wrapToolSet(internalTools)
   return { papai_tool: makeToolProxy(wrappedInternalTools) }
 }
