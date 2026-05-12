@@ -10,21 +10,14 @@ import {
   setDistance,
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
 import {
-  averageLinkageSimilarity,
   buildClustersAdvanced,
   buildClusters,
-  buildClustersNormalized,
   buildConsolidatedVocabulary,
   buildMergeMap,
-  buildUnionFind,
-  completeLinkageSimilarity,
-  cosineSimilarity,
   electCanonical,
-  find,
   remapKeywords,
   subdivideOversizedClusters,
   toNormalizedFloat64Arrays,
-  union,
 } from '../../../scripts/behavior-audit/consolidate-keywords-helpers.js'
 import type { LinkageMode } from '../../../scripts/behavior-audit/consolidate-keywords-helpers.js'
 import type { KeywordVocabularyEntry } from '../../../scripts/behavior-audit/keyword-vocabulary.js'
@@ -41,11 +34,128 @@ function normalizeClusters(clusters: readonly (readonly number[])[]): readonly (
   return clusters.map((cluster) => cluster.toSorted((a, b) => a - b)).toSorted((a, b) => a[0]! - b[0]!)
 }
 
+function referenceCosineSimilarity(a: readonly number[], b: readonly number[]): number {
+  const dot = a.reduce((sum, value, index) => sum + value * (b[index] ?? 0), 0)
+  const magnitudeA = Math.sqrt(a.reduce((sum, value) => sum + value * value, 0))
+  const magnitudeB = Math.sqrt(b.reduce((sum, value) => sum + value * value, 0))
+  return magnitudeA === 0 || magnitudeB === 0 ? 0 : dot / (magnitudeA * magnitudeB)
+}
+
+type ReferenceUnionFind = {
+  parent: Int32Array
+  rank: Uint8Array
+}
+
+function createReferenceUnionFind(size: number): ReferenceUnionFind {
+  return {
+    parent: Int32Array.from({ length: size }, (_, index) => index),
+    rank: new Uint8Array(size),
+  }
+}
+
+function referenceFind(unionFind: ReferenceUnionFind, index: number): number {
+  const parent = unionFind.parent[index]
+  if (parent === undefined || parent === index) return index
+  unionFind.parent[index] = referenceFind(unionFind, parent)
+  return unionFind.parent[index] ?? index
+}
+
+function referenceUnion(unionFind: ReferenceUnionFind, left: number, right: number): void {
+  const leftRoot = referenceFind(unionFind, left)
+  const rightRoot = referenceFind(unionFind, right)
+  if (leftRoot === rightRoot) return
+
+  const leftRank = unionFind.rank[leftRoot] ?? 0
+  const rightRank = unionFind.rank[rightRoot] ?? 0
+  if (leftRank < rightRank) {
+    unionFind.parent[leftRoot] = rightRoot
+    return
+  }
+  if (leftRank > rightRank) {
+    unionFind.parent[rightRoot] = leftRoot
+    return
+  }
+
+  unionFind.parent[rightRoot] = leftRoot
+  unionFind.rank[leftRoot] = leftRank + 1
+}
+
+function referenceBuildClustersNormalized(
+  normalizedEmbeddings: readonly Float64Array[],
+  threshold: number,
+  minClusterSize: number,
+): readonly (readonly number[])[] {
+  const unionFind = createReferenceUnionFind(normalizedEmbeddings.length)
+  for (let i = 0; i < normalizedEmbeddings.length; i++) {
+    for (let j = i + 1; j < normalizedEmbeddings.length; j++) {
+      const left = normalizedEmbeddings[i]
+      const right = normalizedEmbeddings[j]
+      if (left === undefined || right === undefined) continue
+      const similarity = referenceCosineSimilarity(Array.from(left), Array.from(right))
+      if (similarity >= threshold) {
+        referenceUnion(unionFind, i, j)
+      }
+    }
+  }
+
+  const groups = normalizedEmbeddings.reduce<Map<number, number[]>>((result, _, index) => {
+    const root = referenceFind(unionFind, index)
+    const existing = result.get(root)
+    if (existing === undefined) {
+      result.set(root, [index])
+      return result
+    }
+    existing.push(index)
+    return result
+  }, new Map<number, number[]>())
+
+  return [...groups.values()].filter((group) => group.length >= minClusterSize).map((group) => [...group])
+}
+
+function referenceAverageLinkageSimilarity(
+  embeddings: readonly Float64Array[],
+  clusterA: readonly number[],
+  clusterB: readonly number[],
+): number {
+  if (clusterA.length === 0 || clusterB.length === 0) return 0
+
+  const similarities = clusterA.flatMap((leftIndex) => {
+    const left = embeddings[leftIndex]
+    if (left === undefined) return []
+    return clusterB.flatMap((rightIndex) => {
+      const right = embeddings[rightIndex]
+      return right === undefined ? [] : [referenceCosineSimilarity(Array.from(left), Array.from(right))]
+    })
+  })
+
+  if (similarities.length === 0) return 0
+  return similarities.reduce((sum, similarity) => sum + similarity, 0) / similarities.length
+}
+
+function referenceCompleteLinkageSimilarity(
+  embeddings: readonly Float64Array[],
+  clusterA: readonly number[],
+  clusterB: readonly number[],
+): number {
+  if (clusterA.length === 0 || clusterB.length === 0) return 0
+
+  const similarities = clusterA.flatMap((leftIndex) => {
+    const left = embeddings[leftIndex]
+    if (left === undefined) return []
+    return clusterB.flatMap((rightIndex) => {
+      const right = embeddings[rightIndex]
+      return right === undefined ? [] : [referenceCosineSimilarity(Array.from(left), Array.from(right))]
+    })
+  })
+
+  return similarities.length === 0 ? 0 : Math.min(...similarities)
+}
+
 function naiveAverageOrCompleteCandidates(
   embeddings: readonly Float64Array[],
   clusters: readonly (readonly number[])[],
   threshold: number,
-  linkageFn: typeof averageLinkageSimilarity,
+  linkageFn: (embeddings: readonly Float64Array[], clusterA: readonly number[], clusterB: readonly number[]) => number,
 ): readonly { readonly i: number; readonly j: number; readonly similarity: number }[] {
   return clusters.flatMap((clusterA, i) =>
     clusters.slice(i + 1).flatMap((clusterB, offset) => {
@@ -62,7 +172,7 @@ function naiveAverageOrCompleteClusters(
   minClusterSize: number,
   linkage: 'average' | 'complete',
 ): readonly (readonly number[])[] {
-  const linkageFn = linkage === 'average' ? averageLinkageSimilarity : completeLinkageSimilarity
+  const linkageFn = linkage === 'average' ? referenceAverageLinkageSimilarity : referenceCompleteLinkageSimilarity
   let clusters: readonly (readonly number[])[] = embeddings.map((_, index) => [index])
   for (;;) {
     const candidates = naiveAverageOrCompleteCandidates(embeddings, clusters, threshold, linkageFn)
@@ -77,45 +187,21 @@ function naiveAverageOrCompleteClusters(
   }
 }
 
-// ── cosineSimilarity ──────────────────────────────────────────────────────────
+test('helpers barrel excludes clustering internals kept only for tests', async () => {
+  const module = await import('../../../scripts/behavior-audit/consolidate-keywords-helpers.js')
 
-test('cosineSimilarity of identical vectors is 1', () => {
-  expect(cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1)
-})
+  expect(module.buildClusters).toBeDefined()
+  expect(module.buildClustersAdvanced).toBeDefined()
+  expect(module.toNormalizedFloat64Arrays).toBeDefined()
+  expect(module.remapKeywords).toBeDefined()
 
-test('cosineSimilarity of orthogonal vectors is 0', () => {
-  expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0)
-})
-
-test('cosineSimilarity of known angle', () => {
-  const s = 1 / Math.sqrt(2)
-  expect(cosineSimilarity([1, 0], [s, s])).toBeCloseTo(s)
-})
-
-test('cosineSimilarity with zero vector returns 0', () => {
-  expect(cosineSimilarity([0, 0, 0], [1, 2, 3])).toBe(0)
-})
-
-// ── union-find ────────────────────────────────────────────────────────────────
-
-test('buildUnionFind initialises each element as its own root', () => {
-  const uf = buildUnionFind(3)
-  expect(find(uf, 0)).toBe(0)
-  expect(find(uf, 1)).toBe(1)
-  expect(find(uf, 2)).toBe(2)
-})
-
-test('union merges two elements into the same component', () => {
-  const uf = buildUnionFind(3)
-  union(uf, 0, 1)
-  expect(find(uf, 0)).toBe(find(uf, 1))
-})
-
-test('union is transitive via union-find', () => {
-  const uf = buildUnionFind(3)
-  union(uf, 0, 1)
-  union(uf, 1, 2)
-  expect(find(uf, 0)).toBe(find(uf, 2))
+  expect('averageLinkageSimilarity' in module).toBe(false)
+  expect('buildClustersNormalized' in module).toBe(false)
+  expect('buildUnionFind' in module).toBe(false)
+  expect('completeLinkageSimilarity' in module).toBe(false)
+  expect('cosineSimilarity' in module).toBe(false)
+  expect('find' in module).toBe(false)
+  expect('union' in module).toBe(false)
 })
 
 // ── buildClusters ─────────────────────────────────────────────────────────────
@@ -160,44 +246,42 @@ test('buildClusters respects minClusterSize', () => {
   expect(clusters).toHaveLength(0)
 })
 
-describe('averageLinkageSimilarity', () => {
-  test('returns 1 for identical singleton clusters', () => {
-    const embs = [new Float64Array([1, 0, 0])]
-    const result = averageLinkageSimilarity(embs, [0], [0])
+describe('reference linkage helpers', () => {
+  test('average linkage reference returns 1 for identical singleton clusters', () => {
+    const embeddings = [new Float64Array([1, 0, 0])]
+    const result = referenceAverageLinkageSimilarity(embeddings, [0], [0])
     expect(result).toBeCloseTo(1)
   })
 
-  test('returns correct average for known vectors', () => {
+  test('average linkage reference returns correct average for known vectors', () => {
     const s = 1 / Math.sqrt(2)
-    const embs = [new Float64Array([1, 0]), new Float64Array([s, s]), new Float64Array([0, 1])]
-    const result = averageLinkageSimilarity(embs, [0, 1], [2])
+    const embeddings = [new Float64Array([1, 0]), new Float64Array([s, s]), new Float64Array([0, 1])]
+    const result = referenceAverageLinkageSimilarity(embeddings, [0, 1], [2])
     expect(result).toBeCloseTo(s / 2)
   })
 
-  test('returns 0 for orthogonal clusters', () => {
-    const embs = [new Float64Array([1, 0, 0]), new Float64Array([0, 1, 0])]
-    const result = averageLinkageSimilarity(embs, [0], [1])
+  test('average linkage reference returns 0 for orthogonal clusters', () => {
+    const embeddings = [new Float64Array([1, 0, 0]), new Float64Array([0, 1, 0])]
+    const result = referenceAverageLinkageSimilarity(embeddings, [0], [1])
     expect(result).toBeCloseTo(0)
   })
-})
 
-describe('completeLinkageSimilarity', () => {
-  test('returns 1 for identical singleton clusters', () => {
-    const embs = [new Float64Array([1, 0, 0])]
-    const result = completeLinkageSimilarity(embs, [0], [0])
+  test('complete linkage reference returns 1 for identical singleton clusters', () => {
+    const embeddings = [new Float64Array([1, 0, 0])]
+    const result = referenceCompleteLinkageSimilarity(embeddings, [0], [0])
     expect(result).toBeCloseTo(1)
   })
 
-  test('returns minimum pairwise similarity', () => {
+  test('complete linkage reference returns minimum pairwise similarity', () => {
     const s = 1 / Math.sqrt(2)
-    const embs = [new Float64Array([1, 0]), new Float64Array([s, s]), new Float64Array([0, 1])]
-    const result = completeLinkageSimilarity(embs, [0, 1], [2])
+    const embeddings = [new Float64Array([1, 0]), new Float64Array([s, s]), new Float64Array([0, 1])]
+    const result = referenceCompleteLinkageSimilarity(embeddings, [0, 1], [2])
     expect(result).toBeCloseTo(0)
   })
 
-  test('returns max when all pairs have same similarity', () => {
-    const embs = [new Float64Array([1, 0]), new Float64Array([1, 0])]
-    const result = completeLinkageSimilarity(embs, [0], [1])
+  test('complete linkage reference returns max when all pairs have same similarity', () => {
+    const embeddings = [new Float64Array([1, 0]), new Float64Array([1, 0])]
+    const result = referenceCompleteLinkageSimilarity(embeddings, [0], [1])
     expect(result).toBeCloseTo(1)
   })
 })
@@ -255,7 +339,7 @@ describe('buildClustersAdvanced', () => {
     ])
 
     const clusters = buildClustersAdvanced(embeddings, 0.5, 2, 'single', 0)
-    const original = buildClustersNormalized(embeddings, 0.5, 2)
+    const original = referenceBuildClustersNormalized(embeddings, 0.5, 2)
 
     expect(normalizeClusters(clusters)).toEqual(normalizeClusters(original))
   })

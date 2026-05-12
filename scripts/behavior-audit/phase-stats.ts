@@ -21,13 +21,6 @@ export interface PhaseStats {
   wallStartMs: number
 }
 
-export const emptyAgentUsage: AgentUsage = {
-  inputTokens: 0,
-  outputTokens: 0,
-  toolCalls: 0,
-  toolNames: [],
-}
-
 export function addAgentUsage(a: AgentUsage, b: AgentUsage): AgentUsage {
   return {
     inputTokens: a.inputTokens + b.inputTokens,

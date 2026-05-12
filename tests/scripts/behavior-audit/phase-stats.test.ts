@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test'
 import {
   addAgentUsage,
   createPhaseStats,
-  emptyAgentUsage,
   formatPhaseSummary,
   formatPerItemSuffix,
   recordItemDone,
@@ -11,6 +10,13 @@ import {
   recordItemSkipped,
   type AgentUsage,
 } from '../../../scripts/behavior-audit/phase-stats.js'
+
+const zeroAgentUsage: AgentUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  toolCalls: 0,
+  toolNames: [],
+}
 
 describe('phase-stats', () => {
   describe('createPhaseStats', () => {
@@ -203,12 +209,19 @@ describe('phase-stats', () => {
     })
   })
 
-  describe('emptyAgentUsage', () => {
-    test('is a zero-valued usage', () => {
-      expect(emptyAgentUsage.inputTokens).toBe(0)
-      expect(emptyAgentUsage.outputTokens).toBe(0)
-      expect(emptyAgentUsage.toolCalls).toBe(0)
-      expect(emptyAgentUsage.toolNames).toEqual([])
+  describe('module exports', () => {
+    test('does not expose emptyAgentUsage as part of the public API', async () => {
+      const module = await import('../../../scripts/behavior-audit/phase-stats.js')
+
+      expect(module.createPhaseStats).toBeDefined()
+      expect('emptyAgentUsage' in module).toBe(false)
+    })
+
+    test('local zero usage fixture remains zero-valued', () => {
+      expect(zeroAgentUsage.inputTokens).toBe(0)
+      expect(zeroAgentUsage.outputTokens).toBe(0)
+      expect(zeroAgentUsage.toolCalls).toBe(0)
+      expect(zeroAgentUsage.toolNames).toEqual([])
     })
   })
 })
