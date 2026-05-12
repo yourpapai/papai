@@ -274,7 +274,7 @@ if (process.argv[1] === import.meta.filename) {
   try {
     await main()
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
+    console.error('Benchmark run failed.')
     process.exitCode = 1
   }
 }
