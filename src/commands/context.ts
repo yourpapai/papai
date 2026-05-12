@@ -20,8 +20,10 @@ import {
   buildDirectToolCatalogPages,
   buildInvocationToolSet,
   resolveActiveToolDefinitions,
+  resolveContextToolSurface,
   safeBuildProvider,
   type BuildLiveToolSet,
+  type ResolvedContextToolSurface,
 } from './context-tool-resolution.js'
 
 const log = logger.child({ scope: 'commands:context' })
@@ -30,20 +32,15 @@ export interface ContextCommandDeps {
   collectContext: (contextId: string, collectorDeps: ContextCollectorDeps) => ContextSnapshot
   buildProvider: (contextId: string) => TaskProvider | null
   buildLiveToolSet: BuildLiveToolSet
-  resolveActiveToolDefinitions: (
+  resolveActiveToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
+  buildToolCatalogPages: (resolvedToolSurface: ResolvedContextToolSurface) => readonly string[]
+  resolveToolSurface: (
     storageContextId: string,
     actorUserId: string,
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
-  ) => Record<string, unknown>
-  buildToolCatalogPages: (
-    storageContextId: string,
-    actorUserId: string,
-    contextType: 'dm' | 'group',
-    provider: TaskProvider | null,
-    buildLiveToolSet: BuildLiveToolSet,
-  ) => readonly string[]
+  ) => ResolvedContextToolSurface
 }
 
 const defaultDeps: ContextCommandDeps = {
@@ -52,6 +49,7 @@ const defaultDeps: ContextCommandDeps = {
   buildLiveToolSet: buildInvocationToolSet,
   resolveActiveToolDefinitions,
   buildToolCatalogPages: buildDirectToolCatalogPages,
+  resolveToolSurface: resolveContextToolSurface,
 }
 function resolveModelName(modelName: string | null | undefined): string {
   if (modelName !== undefined && modelName !== null) return modelName
@@ -73,9 +71,8 @@ function buildMemoryMessageText(contextId: string, history: readonly ModelMessag
 
 async function buildCollectorDeps(
   storageContextId: string,
-  actorUserId: string,
-  contextType: 'dm' | 'group',
   provider: TaskProvider | null,
+  resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
 ): Promise<ContextCollectorDeps> {
   const modelName = getConfig(storageContextId, 'main_model')
@@ -96,8 +93,7 @@ async function buildCollectorDeps(
     getMemoryMessage: () => buildMemoryMessageText(storageContextId, loadHistory(storageContextId)),
     getSummary: () => loadSummary(storageContextId),
     getFacts: () => loadFacts(storageContextId),
-    getActiveToolDefinitions: (): Record<string, unknown> =>
-      deps.resolveActiveToolDefinitions(storageContextId, actorUserId, contextType, provider, deps.buildLiveToolSet),
+    getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
     getProviderName: () => providerName,
     countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
@@ -137,12 +133,11 @@ async function sendContextResponse(
 
 async function buildContextSnapshot(
   storageContextId: string,
-  actorUserId: string,
-  contextType: 'dm' | 'group',
   provider: TaskProvider | null,
+  resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
 ): Promise<ContextSnapshot> {
-  const collectorDeps = await buildCollectorDeps(storageContextId, actorUserId, contextType, provider, deps)
+  const collectorDeps = await buildCollectorDeps(storageContextId, provider, resolvedToolSurface, deps)
   return deps.collectContext(storageContextId, collectorDeps)
 }
 
@@ -170,9 +165,16 @@ async function handleContextCommand(
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
   const provider = deps.buildProvider(auth.storageContextId)
+  const resolvedToolSurface = deps.resolveToolSurface(
+    auth.storageContextId,
+    msg.user.id,
+    msg.contextType,
+    provider,
+    deps.buildLiveToolSet,
+  )
   let snapshot: ContextSnapshot
   try {
-    snapshot = await buildContextSnapshot(auth.storageContextId, msg.user.id, msg.contextType, provider, deps)
+    snapshot = await buildContextSnapshot(auth.storageContextId, provider, resolvedToolSurface, deps)
   } catch (error) {
     log.warn(
       {
@@ -188,13 +190,7 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
-  const toolCatalogPages = deps.buildToolCatalogPages(
-    auth.storageContextId,
-    msg.user.id,
-    msg.contextType,
-    provider,
-    deps.buildLiveToolSet,
-  )
+  const toolCatalogPages = deps.buildToolCatalogPages(resolvedToolSurface)
   await toolCatalogPages.reduce<Promise<void>>(
     (pending, page) => pending.then(() => reply.formatted(page)),
     Promise.resolve(),

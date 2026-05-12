@@ -9,6 +9,7 @@ import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/ch
 import {
   buildDirectToolCatalogPages,
   resolveActiveToolDefinitions,
+  resolveContextToolSurface,
   safeBuildProvider,
 } from '../../src/commands/context-tool-resolution.js'
 import type { ContextCommandDeps } from '../../src/commands/context.js'
@@ -59,6 +60,7 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
     },
     resolveActiveToolDefinitions,
     buildToolCatalogPages: buildDirectToolCatalogPages,
+    resolveToolSurface: resolveContextToolSurface,
     ...resolveOverrides(overrides),
   }
 }
@@ -113,6 +115,18 @@ function createIdentityCapableProvider(): TaskProvider {
       searchUsers: () => Promise.resolve([]),
     },
   })
+}
+
+function createSequentialLiveToolSet(results: readonly (ToolSet | null)[]): () => ToolSet | null {
+  let nextIndex = 0
+
+  return (): ToolSet | null => {
+    const nextResult = results[nextIndex]
+    nextIndex += 1
+
+    if (nextResult === undefined) return null
+    return nextResult
+  }
 }
 
 describe('registerContextCommand', () => {
@@ -361,6 +375,55 @@ describe('registerContextCommand', () => {
       expect(activeToolDefinitions).not.toHaveProperty('stale_cached_tool')
       expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
       expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
+    })
+
+    test('keeps summary and follow-up aligned when live tool resolution is transient across calls', async () => {
+      const provider = createIdentityCapableProvider()
+      const firstLiveTools = makeTools(provider, {
+        storageContextId: 'group-1',
+        chatUserId: 'actor-user',
+        mode: 'normal',
+        contextType: 'group',
+      })
+      const liveResults: readonly [ToolSet, null] = [firstLiveTools, null]
+      void mock.module('../../src/providers/factory.js', () => ({
+        buildProviderForUser: (): typeof provider => provider,
+      }))
+
+      const commands = new Map<string, CommandHandler>()
+      const chat = createFormattedContextChat(commands, null)
+      let activeToolDefinitions: Record<string, unknown> | null = null
+      const handler = await registerContextHandler(
+        commands,
+        chat,
+        snapshotDeps({
+          buildLiveToolSet: createSequentialLiveToolSet(liveResults),
+          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+            return {
+              modelName: 'gpt-4o',
+              sections: [],
+              totalTokens: 0,
+              maxTokens: 128_000,
+              approximate: false,
+            }
+          },
+        }),
+      )
+      const { reply, textCalls } = createMockReply()
+
+      await handler(
+        createGroupMessage('actor-user', '/context', false, 'group-1'),
+        reply,
+        createAuth('group-1', { isGroupAdmin: true }),
+      )
+
+      const catalogReplies = getCatalogReplies(textCalls)
+
+      expect(activeToolDefinitions).not.toBeNull()
+      expect(activeToolDefinitions).toHaveProperty('set_my_identity')
+      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
+      expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
     })
 
     test('shows no active tools when live build returns null without cached tools', async () => {

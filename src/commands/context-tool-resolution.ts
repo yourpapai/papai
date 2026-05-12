@@ -16,6 +16,11 @@ export type BuildLiveToolSet = (
   provider: TaskProvider | null,
 ) => ToolSet | null
 
+export interface ResolvedContextToolSurface {
+  definitions: Record<string, unknown>
+  catalogPages: readonly string[]
+}
+
 export function safeBuildProvider(contextId: string): TaskProvider | null {
   try {
     return buildProviderForUser(contextId, false)
@@ -28,29 +33,8 @@ export function safeBuildProvider(contextId: string): TaskProvider | null {
   }
 }
 
-export function resolveActiveToolDefinitions(
-  storageContextId: string,
-  actorUserId: string,
-  contextType: 'dm' | 'group',
-  provider: TaskProvider | null,
-  buildLiveToolSet: BuildLiveToolSet,
-): Record<string, unknown> {
-  try {
-    const liveTools = buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
-    if (liveTools !== null) return toToolRecord(liveTools)
-  } catch (error) {
-    log.warn(
-      {
-        storageContextId,
-        actorUserId,
-        contextType,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Live tool definition build failed; falling back to cached tools for context summary',
-    )
-  }
-
-  return toToolRecord(getCachedTools(storageContextId))
+export function resolveActiveToolDefinitions(resolvedToolSurface: ResolvedContextToolSurface): Record<string, unknown> {
+  return resolvedToolSurface.definitions
 }
 
 export function buildInvocationToolSet(
@@ -69,16 +53,26 @@ export function buildInvocationToolSet(
   })
 }
 
-export function buildDirectToolCatalogPages(
+export function buildDirectToolCatalogPages(resolvedToolSurface: ResolvedContextToolSurface): readonly string[] {
+  return resolvedToolSurface.catalogPages
+}
+
+export function resolveContextToolSurface(
   storageContextId: string,
   actorUserId: string,
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
   buildLiveToolSet: BuildLiveToolSet,
-): readonly string[] {
+): ResolvedContextToolSurface {
   try {
     const liveTools = buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
-    if (liveTools !== null) return buildContextToolCatalogPages(liveTools)
+    if (liveTools !== null) {
+      const definitions = toToolRecord(liveTools)
+      return {
+        definitions,
+        catalogPages: buildContextToolCatalogPages(liveTools),
+      }
+    }
   } catch (error) {
     log.warn(
       {
@@ -87,12 +81,11 @@ export function buildDirectToolCatalogPages(
         contextType,
         error: error instanceof Error ? error.message : String(error),
       },
-      'Live tool catalog build failed; falling back to cached tools',
+      'Live tool resolution failed; falling back to cached tools',
     )
-    return buildContextToolCatalogPages(resolveCachedToolSet(storageContextId))
   }
 
-  return buildContextToolCatalogPages(resolveCachedToolSet(storageContextId))
+  return buildDegradedToolSurface(storageContextId)
 }
 
 function toToolRecord(value: unknown): Record<string, unknown> {
@@ -107,4 +100,13 @@ function isToolSet(value: Record<string, unknown>): value is ToolSet {
 function resolveCachedToolSet(contextId: string): ToolSet {
   const cachedTools = toToolRecord(getCachedTools(contextId))
   return isToolSet(cachedTools) ? cachedTools : {}
+}
+
+function buildDegradedToolSurface(storageContextId: string): ResolvedContextToolSurface {
+  const cachedTools = resolveCachedToolSet(storageContextId)
+
+  return {
+    definitions: toToolRecord(cachedTools),
+    catalogPages: buildContextToolCatalogPages(cachedTools),
+  }
 }
