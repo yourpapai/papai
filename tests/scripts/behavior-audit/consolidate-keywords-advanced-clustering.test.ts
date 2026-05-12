@@ -2,18 +2,16 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   activeIndices,
+  buildClustersAdvanced,
   buildCondensedDistanceMatrix,
   condensedIndex,
   createActiveState,
   getDistance,
   isActive,
   setDistance,
+  subdivideOversizedClusters,
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
 import type { LinkageMode } from '../../../scripts/behavior-audit/consolidate-keywords-clustering.js'
-import {
-  buildClustersAdvanced,
-  subdivideOversizedClusters,
-} from '../../../scripts/behavior-audit/consolidate-keywords-helpers.js'
 
 function makeNormalized(vectors: readonly (readonly number[])[]): readonly Float64Array[] {
   return vectors.map((vector) => {
