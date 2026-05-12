@@ -1,10 +1,10 @@
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import { ingestAttachmentsForMessage } from './bot-attachments.js'
+import { resolveMessageAttachments, stageGroupFileCandidates, toSourceProvider } from './bot-attachments.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import type { AuthorizationResult, ChatProvider, IncomingFile, IncomingMessage, ReplyFn } from './chat/types.js'
+import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
   registerClearCommand,
@@ -171,16 +171,10 @@ async function handleMessage(
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
-  const files: readonly IncomingFile[] = msg.files ?? []
-  const { newAttachmentIds, activeAttachments } = await ingestAttachmentsForMessage({
-    chat,
-    msg,
-    storageContextId: auth.storageContextId,
-    files,
-  })
+  const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   enqueueMessage(
     {
-      text: buildPromptWithReplyContext(msg, activeAttachments),
+      text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
       userId: msg.user.id,
       username: msg.user.username,
       storageContextId: auth.storageContextId,
@@ -252,6 +246,13 @@ async function onIncomingMessage(
     return
   }
   const willQueue = willQueueAuthorizedMessage(msg, auth)
+  if (msg.contextType === 'group' && msg.fileCandidates !== undefined && msg.fileCandidates.length > 0) {
+    stageGroupFileCandidates({
+      storageContextId: auth.storageContextId,
+      msg,
+      sourceProvider: toSourceProvider(chat.name),
+    })
+  }
   await handleMessage(chat, msg, tracked.reply, auth, deps)
   if (!willQueue) emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }

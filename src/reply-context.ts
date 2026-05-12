@@ -1,4 +1,5 @@
 import { buildAttachmentManifest } from './attachments/resolver.js'
+import { findStagedFilesByMessageId } from './attachments/staged.js'
 import type { AttachmentRef } from './attachments/types.js'
 import type { IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
@@ -50,9 +51,7 @@ export function buildReplyContextChain(
  * surfaced as stable `AttachmentRef`s.
  */
 function hasContextData(msg: IncomingMessage, attachments: readonly AttachmentRef[]): boolean {
-  const hasReplyContext = msg.replyContext !== undefined
-  const hasAttachments = attachments.length > 0
-  return hasReplyContext || hasAttachments
+  return msg.replyContext !== undefined || attachments.length > 0
 }
 
 function logReplyContextDebug(msg: IncomingMessage): void {
@@ -109,8 +108,12 @@ function logPromptBuilt(contextLength: number, finalPrompt: string, originalText
   )
 }
 
-export function buildPromptWithReplyContext(msg: IncomingMessage, attachments: readonly AttachmentRef[] = []): string {
-  if (!hasContextData(msg, attachments)) {
+export function buildPromptWithReplyContext(
+  msg: IncomingMessage,
+  attachments: readonly AttachmentRef[] = [],
+  storageContextId?: string,
+): string {
+  if (!hasContextData(msg, attachments) && storageContextId === undefined) {
     return msg.text
   }
 
@@ -123,6 +126,16 @@ export function buildPromptWithReplyContext(msg: IncomingMessage, attachments: r
 
   const manifest = buildAttachmentManifest(attachments)
   if (manifest !== null) context.push(manifest)
+
+  if (msg.replyToMessageId !== undefined && storageContextId !== undefined) {
+    const stagedForReply = findStagedFilesByMessageId(storageContextId, msg.replyToMessageId)
+    if (stagedForReply.length > 0) {
+      const stagedLines = stagedForReply.map(
+        (sf) => `[Staged file available: ${sf.stagedId} "${sf.filename}" from ${sf.senderUsername ?? 'unknown user'}]`,
+      )
+      context.push(...stagedLines)
+    }
+  }
 
   if (context.length === 0) {
     return msg.text
