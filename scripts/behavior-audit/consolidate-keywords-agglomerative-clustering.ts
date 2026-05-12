@@ -23,6 +23,7 @@ export {
   setDistance,
 } from './consolidate-keywords-agglomerative-helpers.js'
 import type { ClusteringProfile } from './clustering-profile.js'
+import type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 import type { LinkageMode } from './consolidate-keywords-clustering.js'
 export type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 
@@ -75,28 +76,29 @@ function initializeClusteringState(
 
 function mergeChainRound(
   chain: number[],
-  matrix: Parameters<typeof tryExtendOrMergeChain>[1],
-  state: Parameters<typeof tryExtendOrMergeChain>[2],
+  active: readonly number[],
+  matrix: MutableDistanceMatrix,
+  state: ActiveState,
   members: Map<number, Cluster>,
-  blockedPairs: Set<string>,
+  blockedPairs: Set<number>,
   maxDistance: number,
   gapThreshold: number,
   linkage: Exclude<LinkageMode, 'single'>,
   profile: ClusteringProfile,
-): Readonly<{ merged: boolean; blockedPairs: Set<string>; profile: ClusteringProfile }> {
+): Readonly<{ merged: boolean; blockedPairs: Set<number>; profile: ClusteringProfile }> {
   let currentProfile = profile
   for (;;) {
-    const actionResult = tryExtendOrMergeChain(chain, matrix, state, blockedPairs, maxDistance, currentProfile)
+    const actionResult = tryExtendOrMergeChain(chain, active, matrix, blockedPairs, maxDistance, currentProfile)
     currentProfile = actionResult.profile
     const action = actionResult.action
     if (action.kind === 'blocked') {
       return { merged: false, blockedPairs, profile: currentProfile }
     }
     if (action.kind === 'extended') continue
-    const gapResult = mergePassesGap(matrix, state, action.a, action.b, gapThreshold, currentProfile)
+    const gapResult = mergePassesGap(active, matrix, action.a, action.b, gapThreshold, currentProfile)
     currentProfile = gapResult.profile
     if (!gapResult.passes) {
-      const updatedBlockedPairs = new Set([...blockedPairs, pairKey(action.a, action.b)])
+      const updatedBlockedPairs = new Set([...blockedPairs, pairKey(action.a, action.b, matrix.n)])
       return {
         merged: false,
         blockedPairs: updatedBlockedPairs,
@@ -108,6 +110,7 @@ function mergeChainRound(
     members.delete(action.b)
     const mergedProfile = incrementClusteringCounter(
       updateMergedDistances(
+        active,
         matrix,
         state,
         action.a,
@@ -118,7 +121,7 @@ function mergeChainRound(
       'merges',
       1,
     )
-    return { merged: true, blockedPairs: new Set<string>(), profile: mergedProfile }
+    return { merged: true, blockedPairs: new Set<number>(), profile: mergedProfile }
   }
 }
 
@@ -133,19 +136,20 @@ export function buildAgglomerativeClusters(
   if (normalizedEmbeddings.length === 0) return { clusters: [], profile }
   const initialized = initializeClusteringState(normalizedEmbeddings, threshold, profile)
   const { matrix, state, members, maxDistance } = initialized
-  let blockedPairs = new Set<string>()
+  let blockedPairs = new Set<number>()
   let currentProfile = initialized.profile
 
   for (;;) {
     const active = activeIndices(state)
     currentProfile = recordActiveSnapshot(currentProfile, active)
     if (active.length <= 1) break
-    const startResult = findChainStart(active, matrix, state, maxDistance, blockedPairs, currentProfile)
+    const startResult = findChainStart(active, matrix, maxDistance, blockedPairs, currentProfile)
     currentProfile = startResult.profile
     if (startResult.start === undefined) break
 
     const roundResult = mergeChainRound(
       [startResult.start],
+      active,
       matrix,
       state,
       members,

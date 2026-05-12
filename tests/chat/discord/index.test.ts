@@ -981,6 +981,7 @@ describe('DiscordChatProvider', () => {
       })
       addAuthorizedGroup('group-1', 'admin-id')
       upsertGroupAdminObservation({
+        provider: 'discord',
         contextId: 'group-1',
         userId: 'user-1',
         username: 'alice',
@@ -1025,6 +1026,7 @@ describe('DiscordChatProvider', () => {
         parentName: 'Platform',
       })
       upsertGroupAdminObservation({
+        provider: 'discord',
         contextId: 'group-1',
         userId: 'user-1',
         username: 'alice',

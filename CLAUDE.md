@@ -276,7 +276,7 @@ Important current points:
 
 ## Path-Scoped Conventions
 
-Detailed conventions live in path-scoped `CLAUDE.md` files and `.github/instructions/*.instructions.md` files:
+Detailed conventions live in path-scoped `CLAUDE.md` files:
 
 | Path                      | Covers                                                                 |
 | ------------------------- | ---------------------------------------------------------------------- |
@@ -287,6 +287,14 @@ Detailed conventions live in path-scoped `CLAUDE.md` files and `.github/instruct
 | `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |
 | `codeindex/CLAUDE.md`     | codeindex workspace structure, scripts, storage, and indexing rules    |
 | `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, and TDD rules       |
+
+## Pi Workflow
+
+When the current harness supports `obra/superpowers` skills, preserve that workflow instead of replacing it with unrelated agent packages.
+
+- Load `using-superpowers` at the start of the session before taking action.
+- Load any other applicable `obra/superpowers` skill before responding, editing files, or running commands.
+- Do not rely on memory of skill contents; load the current skill text each time.
 
 ## Codebase Search Protocol
 

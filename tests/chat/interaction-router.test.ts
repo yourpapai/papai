@@ -58,6 +58,7 @@ function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'
     parentName: 'Platform',
   })
   upsertGroupAdminObservation({
+    provider: 'telegram',
     contextId: 'group-9',
     userId,
     username: interaction.user.username,
@@ -381,6 +382,7 @@ describe('routeInteraction', () => {
     setConfig('group-9', 'kaneo_apikey', 'test-kaneo-key')
     setKaneoWorkspace('group-9', 'workspace-9')
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-9',
       userId: interaction.user.id,
       username: interaction.user.username,

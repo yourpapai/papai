@@ -76,6 +76,7 @@ describe('group settings selector', () => {
     })
     addAuthorizedGroup('group-1', 'admin-id')
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-1',
       userId: 'user-1',
       username: 'alice',

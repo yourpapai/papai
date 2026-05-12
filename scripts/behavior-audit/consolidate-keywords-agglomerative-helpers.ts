@@ -64,44 +64,90 @@ export function isActive(state: ActiveState, index: number): boolean {
   return state.active[index] === 1
 }
 
-export function pairKey(a: number, b: number): string {
-  return `${Math.min(a, b)}:${Math.max(a, b)}`
+export function pairKey(a: number, b: number, n: number): number {
+  return condensedIndex(a, b, n)
 }
 
-function compareNearest(a: { readonly distance: number; readonly candidate: number }, b: typeof a): number {
+type NearestCandidate = Readonly<{ readonly candidate: number; readonly distance: number }>
+
+function compareNearest(a: NearestCandidate, b: NearestCandidate): number {
   const distanceOrder = a.distance - b.distance
-  if (distanceOrder !== 0) return distanceOrder
-  return a.candidate - b.candidate
+  if (distanceOrder === 0) return a.candidate - b.candidate
+  return distanceOrder
+}
+
+function selectNearestCandidate(
+  active: readonly number[],
+  matrix: MutableDistanceMatrix,
+  cluster: number,
+  blockedPairs: ReadonlySet<number>,
+): Readonly<{ nearest: number | undefined; distanceReads: number }> {
+  let nearest: number | undefined
+  let bestDistance = Infinity
+  let distanceReads = 0
+
+  for (const candidate of active) {
+    if (candidate === cluster) continue
+    if (blockedPairs.has(pairKey(cluster, candidate, matrix.n))) continue
+
+    const distance = getDistance(matrix, cluster, candidate)
+    distanceReads += 1
+    if (Number.isNaN(distance)) {
+      const fallbackCandidates: NearestCandidate[] = []
+      for (const other of active) {
+        if (other === cluster) continue
+        if (blockedPairs.has(pairKey(cluster, other, matrix.n))) continue
+
+        const fallbackDistance = other === candidate ? distance : getDistance(matrix, cluster, other)
+        if (other !== candidate) distanceReads += 1
+        fallbackCandidates.push({ candidate: other, distance: fallbackDistance })
+      }
+      const fallbackNearest = fallbackCandidates.toSorted(compareNearest)[0]
+      return { nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate, distanceReads }
+    }
+
+    if (nearest === undefined) {
+      nearest = candidate
+      bestDistance = distance
+      continue
+    }
+
+    if (distance < bestDistance || (distance === bestDistance && candidate < nearest)) {
+      nearest = candidate
+      bestDistance = distance
+    }
+  }
+
+  return { nearest, distanceReads }
 }
 
 export function findNearestActiveCluster(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   cluster: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ nearest: number | undefined; profile: ClusteringProfile }> {
   const startedAt = performance.now()
-  const active = activeIndices(state)
-  const nearest = active
-    .filter((candidate) => candidate !== cluster)
-    .filter((candidate) => !blockedPairs.has(pairKey(cluster, candidate)))
-    .map((candidate) => ({ candidate, distance: getDistance(matrix, cluster, candidate) }))
-    .toSorted(compareNearest)[0]
+  const { nearest, distanceReads } = selectNearestCandidate(active, matrix, cluster, blockedPairs)
+
   const withCounters = incrementClusteringCounter(
     incrementClusteringCounter(incrementClusteringCounter(profile, 'nearestNeighborCalls', 1), 'activeListBuilds', 1),
     'activeItemsVisited',
     active.length,
   )
-  const withDistanceReads = incrementClusteringCounter(withCounters, 'distanceReads', Math.max(active.length - 1, 0))
-  const nearestCandidate = nearest === undefined ? undefined : nearest.candidate
   return {
-    nearest: nearestCandidate,
-    profile: recordClusteringTiming(withDistanceReads, 'nearestNeighborMs', performance.now() - startedAt),
+    nearest,
+    profile: recordClusteringTiming(
+      incrementClusteringCounter(withCounters, 'distanceReads', distanceReads),
+      'nearestNeighborMs',
+      performance.now() - startedAt,
+    ),
   }
 }
 
 export function updateMergedDistances(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
   state: ActiveState,
   survivor: number,
@@ -113,7 +159,6 @@ export function updateMergedDistances(
   const survivorSize = state.sizes[survivor]
   const removedSize = state.sizes[removed]
   if (survivorSize === undefined || removedSize === undefined) return profile
-  const active = activeIndices(state)
   for (const other of active) {
     if (other === survivor || other === removed) continue
     const distanceToSurvivor = getDistance(matrix, survivor, other)
@@ -140,8 +185,8 @@ export function updateMergedDistances(
 }
 
 export function mergePassesGap(
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   a: number,
   b: number,
   gapThreshold: number,
@@ -159,7 +204,6 @@ export function mergePassesGap(
     }
   }
   const candidateDistance = getDistance(matrix, a, b)
-  const active = activeIndices(state)
   const alternativeDistance = active.reduce((best, candidate) => {
     if (candidate === a || candidate === b) return best
     return Math.min(best, getDistance(matrix, a, candidate), getDistance(matrix, b, candidate))
@@ -186,7 +230,7 @@ export function hasMergeCandidate(
   active: readonly number[],
   matrix: MutableDistanceMatrix,
   maxDistance: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ hasCandidate: boolean; profile: ClusteringProfile }> {
   const startedAt = performance.now()
@@ -196,7 +240,7 @@ export function hasMergeCandidate(
     active.some((b) => {
       if (a >= b) return false
       scanned += 1
-      if (blockedPairs.has(pairKey(a, b))) return false
+      if (blockedPairs.has(pairKey(a, b, matrix.n))) return false
       distanceReads += 1
       return getDistance(matrix, a, b) <= maxDistance + DISTANCE_EPSILON
     }),
@@ -219,15 +263,14 @@ export function hasMergeCandidate(
 export function findChainStart(
   active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
   maxDistance: number,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   profile: ClusteringProfile,
 ): Readonly<{ start: number | undefined; profile: ClusteringProfile }> {
   const startedAt = performance.now()
   let currentProfile = profile
   const start = active.find((cluster) => {
-    const nearestResult = findNearestActiveCluster(matrix, state, cluster, blockedPairs, currentProfile)
+    const nearestResult = findNearestActiveCluster(active, matrix, cluster, blockedPairs, currentProfile)
     currentProfile = nearestResult.profile
     if (nearestResult.nearest === undefined) return false
     currentProfile = incrementClusteringCounter(currentProfile, 'distanceReads', 1)

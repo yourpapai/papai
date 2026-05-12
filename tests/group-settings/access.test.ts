@@ -26,12 +26,14 @@ describe('group settings access', () => {
       parentName: 'Platform',
     })
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-1',
       userId: 'user-1',
       username: 'alice',
       isAdmin: true,
     })
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-2',
       userId: 'user-1',
       username: 'alice',
@@ -51,6 +53,7 @@ describe('group settings access', () => {
       parentName: 'Platform',
     })
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-1',
       userId: 'user-1',
       username: 'alice',
@@ -74,12 +77,14 @@ describe('group settings access', () => {
       parentName: 'Platform',
     })
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-1',
       userId: 'user-1',
       username: 'alice',
       isAdmin: true,
     })
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-2',
       userId: 'user-1',
       username: 'alice',

@@ -1,7 +1,7 @@
 import { incrementClusteringCounter, recordClusteringTiming } from './clustering-profile.js'
 import type { ClusteringProfile } from './clustering-profile.js'
 import { findNearestActiveCluster, getDistance } from './consolidate-keywords-agglomerative-helpers.js'
-import type { ActiveState, MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
+import type { MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 
 const DISTANCE_EPSILON = 1e-6
 
@@ -33,9 +33,9 @@ function completeChainAction(
 
 export function tryExtendOrMergeChain(
   chain: number[],
+  active: readonly number[],
   matrix: MutableDistanceMatrix,
-  state: ActiveState,
-  blockedPairs: ReadonlySet<string>,
+  blockedPairs: ReadonlySet<number>,
   maxDistance: number,
   profile: ClusteringProfile,
 ): Readonly<{ action: ChainAction; profile: ClusteringProfile }> {
@@ -43,7 +43,7 @@ export function tryExtendOrMergeChain(
   const current = chain.at(-1)
   if (current === undefined) return blockedAction(profile, startedAt)
 
-  const nearestResult = findNearestActiveCluster(matrix, state, current, blockedPairs, profile)
+  const nearestResult = findNearestActiveCluster(active, matrix, current, blockedPairs, profile)
   let currentProfile = nearestResult.profile
   if (nearestResult.nearest === undefined) return blockedAction(currentProfile, startedAt)
 
