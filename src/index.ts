@@ -1,4 +1,5 @@
 import { announceNewVersion } from './announcements.js'
+import { createStagedDownloader, setStagedDownloader } from './attachments/staged-download.js'
 import { setupBot } from './bot.js'
 import { createChatProvider } from './chat/registry.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
@@ -74,6 +75,28 @@ log.info(
 setupBot(chatProvider, adminUserId)
 
 await chatProvider.start()
+
+const initializeStagedDownloader = async (chat: typeof chatProvider): Promise<void> => {
+  if (chat.name === 'telegram') {
+    const { getTelegramFileFetcher } = await import('./chat/telegram/index.js')
+    const fetcher = getTelegramFileFetcher()
+    if (fetcher !== undefined) {
+      setStagedDownloader(
+        createStagedDownloader({ telegramFetcher: fetcher, mattermostFetcher: () => Promise.resolve(null) }),
+      )
+    }
+  } else if (chat.name === 'mattermost') {
+    const { getMattermostFileFetcher } = await import('./chat/mattermost/index.js')
+    const fetcher = getMattermostFileFetcher()
+    if (fetcher !== undefined) {
+      setStagedDownloader(
+        createStagedDownloader({ telegramFetcher: () => Promise.resolve(null), mattermostFetcher: fetcher }),
+      )
+    }
+  }
+}
+
+await initializeStagedDownloader(chatProvider)
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 

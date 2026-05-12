@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from 'ai'
 
+import { getStagedDownloader } from './attachments/staged-download.js'
 import { getCachedHistory, getCachedTools, setCachedTools } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
@@ -75,7 +76,14 @@ const getOrCreateTools = (
     return cachedTools
   }
   log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Building tools (cache miss)')
-  const tools = makeTools(provider, { storageContextId: contextId, chatUserId, username, contextType })
+  const stagedDownloadFn = getStagedDownloader() ?? undefined
+  const tools = makeTools(provider, {
+    storageContextId: contextId,
+    chatUserId,
+    username,
+    contextType,
+    stagedDownloadFn,
+  })
   setCachedTools(cacheKey, tools)
   return tools
 }
