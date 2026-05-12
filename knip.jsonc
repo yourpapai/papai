@@ -18,14 +18,6 @@
       // All shipped source files for the root workspace
       "project": ["src/**/*.ts!", "client/**/*.ts!", "scripts/behavior-audit/**/*.ts!"],
     },
-    "codeindex": {
-      "entry": ["src/cli.ts!", "../tests/codeindex/**/*.test.ts"],
-      "project": ["src/**/*.ts!", "../tests/codeindex/**/*.ts"],
-    },
-    "review-loop": {
-      "entry": ["src/cli.ts!", "../tests/review-loop/**/*.test.ts"],
-      "project": ["src/**/*.ts!", "../tests/review-loop/**/*.ts"],
-    },
   },
 
   "ignoreWorkspaces": ["codeindex", "review-loop"],
