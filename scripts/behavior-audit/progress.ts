@@ -1,4 +1,4 @@
-import type { LinkageMode } from './consolidate-keywords-helpers.js'
+import type { LinkageMode } from './consolidate-keywords-clustering.js'
 import type { ConsolidatedBehavior } from './report-writer.js'
 
 export { loadProgress, saveProgress } from './progress-io.js'

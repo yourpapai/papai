@@ -7,7 +7,7 @@ import type {
   ClusteringProfileOptions,
   ProfiledClusters,
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
-import type { LinkageMode } from '../../../scripts/behavior-audit/consolidate-keywords-helpers.js'
+import type { LinkageMode } from '../../../scripts/behavior-audit/consolidate-keywords-clustering.js'
 import { parseArgs, runTuneEmbedding } from '../../../scripts/behavior-audit/tune-embedding.js'
 
 type RecordedSubdivideCall = {
@@ -161,6 +161,20 @@ function isProfileOptionEnabled(options: ClusteringProfileOptions | undefined): 
 }
 
 describe('tune-embedding wiring', () => {
+  test('rejects unsupported linkage values explicitly', () => {
+    expect(() => parseArgs(['--linkage', 'ward'])).toThrow("Unsupported linkage 'ward'")
+  })
+
+  test.each([
+    ['--threshold', 'NaN'],
+    ['--threshold', 'Infinity'],
+    ['--min-cluster-size', 'NaN'],
+    ['--max-cluster-size', 'Infinity'],
+    ['--gap-threshold', 'NaN'],
+  ])('rejects non-finite numeric value for %s', (flag, value) => {
+    expect(() => parseArgs([flag, value])).toThrow(`Invalid numeric value for ${flag}: ${value}`)
+  })
+
   test('parseArgs enables clustering profile output', () => {
     expect(parseArgs(['--profile-clustering']).profileClustering).toBe(true)
   })
