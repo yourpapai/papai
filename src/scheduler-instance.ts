@@ -3,6 +3,7 @@
  * All periodic tasks are registered here.
  */
 
+import { purgeExpiredStagedFiles } from './attachments/staged.js'
 import { cleanupExpiredCaches } from './cache.js'
 import { sweepExpiredMessages } from './message-cache/cache.js'
 import { cleanupExpiredMessages } from './message-cache/persistence.js'
@@ -48,9 +49,16 @@ scheduler.register('wizard-session-cleanup', {
 })
 
 scheduler.register('message-queue-cleanup', {
-  // Every 5 minutes
   interval: 5 * 60 * 1000,
   handler: cleanupExpiredQueues,
+  options: { immediate: true },
+})
+
+scheduler.register('staged-files-purge', {
+  interval: 60 * 60 * 1000,
+  handler: () => {
+    purgeExpiredStagedFiles()
+  },
   options: { immediate: true },
 })
 

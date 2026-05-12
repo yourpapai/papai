@@ -26,6 +26,7 @@ describe('Scheduler Integration', () => {
     expect(scheduler.hasTask('user-cache-cleanup')).toBe(true)
     expect(scheduler.hasTask('message-cache-sweep')).toBe(true)
     expect(scheduler.hasTask('message-cleanup')).toBe(true)
+    expect(scheduler.hasTask('staged-files-purge')).toBe(true)
   })
 
   test('should start and stop cleanup tasks', () => {
