@@ -288,3 +288,5 @@ export const attachments = sqliteTable(
   ],
 )
 export type AttachmentRow = typeof attachments.$inferSelect
+export { stagedFiles } from './staged-schema.js'
+export type { StagedFileRow } from './staged-schema.js'

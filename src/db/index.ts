@@ -36,6 +36,7 @@ import { migration027ScheduledPromptTimezone } from './migrations/027_scheduled_
 import { migration028GroupUserObservations } from './migrations/028_group_user_observations.js'
 import { migration029ProviderScopeGroupObservations } from './migrations/029_provider_scope_group_observations.js'
 import { migration030AttachmentWorkspace } from './migrations/030_attachment_workspace.js'
+import { migration031StagedFiles } from './migrations/031_staged_files.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -101,6 +102,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration028GroupUserObservations,
   migration029ProviderScopeGroupObservations,
   migration030AttachmentWorkspace,
+  migration031StagedFiles,
 ]
 
 export const initDb = (): void => {
