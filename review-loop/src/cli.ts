@@ -20,6 +20,9 @@ export interface CliArgs {
 
 type ClosableClient = Pick<AcpProcessClient, 'close'>
 
+const COMMAND_WAIT_POLL_MS = 10
+const COMMAND_WAIT_TIMEOUT_MS = 5_000
+
 function isRejectedCloseResult(result: PromiseSettledResult<unknown>): result is PromiseRejectedResult {
   return result.status === 'rejected'
 }
@@ -120,6 +123,61 @@ async function bootstrapSessions(
   return { reviewerSession, fixerSession }
 }
 
+function getRequiredSlashCommand(prefix: string | null, required: boolean): string | null {
+  if (!required || prefix === null || !prefix.startsWith('/')) {
+    return null
+  }
+  return prefix.slice(1).split(/\s+/, 1)[0] ?? null
+}
+
+async function waitForRequiredCommand(
+  session: BootstrappedAgentSession,
+  client: AcpProcessClient,
+  command: string | null,
+): Promise<void> {
+  if (command === null || session.availableCommands.includes(command)) {
+    return
+  }
+
+  const deadline = Date.now() + COMMAND_WAIT_TIMEOUT_MS
+
+  const waitForAdvertisement = async (): Promise<void> => {
+    if (session.availableCommands.includes(command)) {
+      return
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Required command /${command} is not advertised by the agent`)
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, COMMAND_WAIT_POLL_MS)
+    })
+    await client.waitForSessionUpdates()
+    await waitForAdvertisement()
+  }
+
+  await waitForAdvertisement()
+}
+
+async function waitForRequiredCommands(
+  config: ReviewLoopConfig,
+  reviewerSession: BootstrappedAgentSession,
+  fixerSession: BootstrappedAgentSession,
+  reviewerClient: AcpProcessClient,
+  fixerClient: AcpProcessClient,
+): Promise<void> {
+  await waitForRequiredCommand(
+    reviewerSession,
+    reviewerClient,
+    getRequiredSlashCommand(config.reviewer.invocationPrefix, config.reviewer.requireInvocationPrefix),
+  )
+  await waitForRequiredCommand(
+    fixerSession,
+    fixerClient,
+    getRequiredSlashCommand(config.fixer.verifyInvocationPrefix, config.fixer.requireVerifyInvocation),
+  )
+}
+
 async function persistSessionIds(
   runState: RunState,
   reviewerSession: BootstrappedAgentSession,
@@ -176,6 +234,8 @@ export async function runCli(argv: readonly string[]): Promise<void> {
     fixerClient = clients.fixerClient
 
     const { reviewerSession, fixerSession } = await bootstrapSessions(config, runState, reviewerClient, fixerClient)
+
+    await waitForRequiredCommands(config, reviewerSession, fixerSession, reviewerClient, fixerClient)
 
     await persistSessionIds(runState, reviewerSession, fixerSession)
 
