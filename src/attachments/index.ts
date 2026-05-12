@@ -3,11 +3,16 @@ export type {
   AttachmentSourceProvider,
   AttachmentStatus,
   SaveAttachmentInput,
+  StageFileParams,
+  StagedFileDownloadFn,
+  StagedFileRef,
+  StagedFileStatus,
+  StagedResolutionError,
   StoredAttachment,
 } from './types.js'
 export { loadAttachmentRecord, saveAttachment } from './store.js'
 export { persistIncomingAttachments } from './ingest.js'
-export { clearAttachmentWorkspace, listActiveAttachments } from './workspace.js'
+export { listActiveAttachments } from './workspace.js'
 export {
   buildAttachmentManifest,
   buildHistoryAttachmentLines,
@@ -24,3 +29,10 @@ export {
   type BlobStore,
   type InMemoryBlobStore,
 } from './blob-store.js'
+export {
+  findStagedFilesByMessageId,
+  purgeExpiredStagedFiles,
+  resolveStagedFile,
+  searchStagedFiles,
+  stageFileMetadata,
+} from './staged.js'
