@@ -18,7 +18,7 @@ import type {
 } from '../types.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
-import { extractFilesFromContext, type TelegramFileFetcher } from './file-helpers.js'
+import { extractFileCandidatesFromContext, extractFilesFromContext, type TelegramFileFetcher } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
 import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
@@ -48,6 +48,7 @@ import {
 export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
+let telegramFileFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
 
 export class TelegramChatProvider implements ChatProvider {
   readonly name = 'telegram'
@@ -101,8 +102,15 @@ export class TelegramChatProvider implements ChatProvider {
         const isAdmin = await this.checkAdminStatus(ctx)
         const msg = await this.extractMessage(ctx, isAdmin)
         if (msg === null) return
-        const files = await this.fetchFilesFromContext(ctx)
-        if (files.length > 0) msg.files = files
+
+        if (msg.contextType === 'group') {
+          const candidates = extractFileCandidatesFromContext(ctx)
+          if (candidates.length > 0) msg.fileCandidates = candidates
+        } else {
+          const files = await this.fetchFilesFromContext(ctx)
+          if (files.length > 0) msg.files = files
+        }
+
         const reply = this.buildReplyFn(ctx, msg.threadId, false)
         await handler(msg, reply)
       },
@@ -262,12 +270,9 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const envToken = process.env['TELEGRAM_BOT_TOKEN']
-    let token = ''
-    if (envToken !== undefined) {
-      token = envToken
-    }
+    const token = process.env['TELEGRAM_BOT_TOKEN'] ?? ''
     const fetcher: TelegramFileFetcher = async (fileId: string) => {
+      telegramFileFetcher = fetcher
       try {
         const fileInfo = await this.bot.api.getFile(fileId)
         if (fileInfo.file_path === undefined) return null
@@ -286,4 +291,8 @@ export class TelegramChatProvider implements ChatProvider {
     }
     return extractFilesFromContext(ctx, fetcher)
   }
+}
+
+export function getTelegramFileFetcher(): ((fileId: string) => Promise<Buffer | null>) | undefined {
+  return telegramFileFetcher
 }
