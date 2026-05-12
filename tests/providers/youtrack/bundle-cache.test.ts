@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 
-import { resolveStateBundle } from '../../../src/providers/youtrack/bundle-cache.js'
+import * as bundleCacheModule from '../../../src/providers/youtrack/bundle-cache.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
-import { clearBundleCache } from './test-helpers.js'
+import { createUniqueProjectId, createUniqueYouTrackConfig } from './fetch-mock-utils.js'
 
 // ---------------------------------------------------------------------------
 // Reusable fetch-response builders (defined outside test blocks)
@@ -111,11 +111,10 @@ function makeMultiInstanceFetch(
 // ---------------------------------------------------------------------------
 
 describe('bundle-cache', () => {
-  const config = { baseUrl: 'https://example.com', token: 'test-token' }
+  const resolveStateBundle = bundleCacheModule.resolveStateBundle
 
   beforeEach(() => {
     restoreFetch()
-    clearBundleCache()
   })
 
   afterEach(() => {
@@ -123,51 +122,65 @@ describe('bundle-cache', () => {
   })
 
   describe('resolveStateBundle', () => {
+    test('does not export cache reset helpers', () => {
+      expect('clearBundleCache' in bundleCacheModule).toBe(false)
+    })
+
     test('fetches and caches bundle info', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/fetches-and-caches' })
+      const projectId = createUniqueProjectId()
       const counters = { count: 0 }
       setMockFetch(makeSequencedFetch(counters, 'bundle-123', 'bundle-123', ['proj-1', 'proj-2']))
 
-      const result = await resolveStateBundle(config, 'proj-1')
+      const result = await resolveStateBundle(config, projectId)
 
       expect(result).toEqual({ bundleId: 'bundle-123', isShared: true })
     })
 
     test('returns null when State field not found', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/state-missing' })
+      const projectId = createUniqueProjectId()
       setMockFetch(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 })))
 
-      const result = await resolveStateBundle(config, 'proj-1')
+      const result = await resolveStateBundle(config, projectId)
 
       expect(result).toBeNull()
     })
 
     test('caches successful result', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/caches-success' })
+      const projectId = createUniqueProjectId()
       const counter = { count: 0 }
       setMockFetch(makeRoutedFetch(counter, 'bundle-123', 'bundle-123', ['proj-1']))
 
-      await resolveStateBundle(config, 'proj-1')
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
+      await resolveStateBundle(config, projectId)
 
       expect(counter.count).toBe(2)
     })
 
     test('determines bundle is not shared when single project', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/not-shared' })
+      const projectId = createUniqueProjectId()
       const counters = { count: 0 }
       setMockFetch(makeSequencedFetch(counters, 'bundle-456', 'bundle-456', ['proj-1']))
 
-      const result = await resolveStateBundle(config, 'proj-1')
+      const result = await resolveStateBundle(config, projectId)
 
       expect(result).toEqual({ bundleId: 'bundle-456', isShared: false })
     })
 
     test('caches failures with shorter TTL', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/caches-failure' })
+      const projectId = createUniqueProjectId()
       let fetchCount = 0
       setMockFetch(() => {
         fetchCount++
         return Promise.resolve(makeErrorResponse(404))
       })
 
-      await resolveStateBundle(config, 'proj-1')
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
+      await resolveStateBundle(config, projectId)
 
       expect(fetchCount).toBe(1)
     })
@@ -175,6 +188,8 @@ describe('bundle-cache', () => {
 
   describe('TTL expiration', () => {
     test('success cache expires after TTL', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/success-ttl' })
+      const projectId = createUniqueProjectId()
       const originalDateNow = Date.now
       let currentTime = 1000000
       Date.now = (): number => currentTime
@@ -182,20 +197,22 @@ describe('bundle-cache', () => {
       const counter = { count: 0 }
       setMockFetch(makeRoutedFetch(counter, 'bundle-123', 'bundle-123', ['proj-1']))
 
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
       expect(counter.count).toBe(2)
 
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
       expect(counter.count).toBe(2)
 
       currentTime += 5 * 60 * 1000
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
       expect(counter.count).toBe(4)
 
       Date.now = originalDateNow
     })
 
     test('failure cache expires after TTL', async () => {
+      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/failure-ttl' })
+      const projectId = createUniqueProjectId()
       const originalDateNow = Date.now
       let currentTime = 1000000
       Date.now = (): number => currentTime
@@ -206,30 +223,17 @@ describe('bundle-cache', () => {
         return Promise.resolve(makeErrorResponse(404))
       })
 
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
       expect(fetchCount).toBe(1)
 
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
       expect(fetchCount).toBe(1)
 
       currentTime += 30 * 1000
-      await resolveStateBundle(config, 'proj-1')
+      await resolveStateBundle(config, projectId)
       expect(fetchCount).toBe(2)
 
       Date.now = originalDateNow
-    })
-  })
-
-  describe('clearBundleCache', () => {
-    test('clears all cached entries', async () => {
-      const counter = { count: 0 }
-      setMockFetch(makeRoutedFetch(counter, 'bundle-789', 'bundle-789', ['proj-1']))
-
-      await resolveStateBundle(config, 'proj-1')
-      clearBundleCache()
-      await resolveStateBundle(config, 'proj-1')
-
-      expect(counter.count).toBe(4)
     })
   })
 

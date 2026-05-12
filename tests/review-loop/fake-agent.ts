@@ -19,6 +19,7 @@ const ScenarioSchema = z.object({
   availableCommands: z.array(z.object({ name: z.string(), description: z.string() })),
   promptReplies: z.array(PromptReplySchema),
   emitAvailableCommandsUpdate: z.boolean().optional(),
+  availableCommandsUpdateDelayMs: z.number().int().nonnegative().optional(),
   ignoreSigtermOnShutdown: z.boolean().optional(),
 })
 
@@ -60,6 +61,17 @@ function sendAvailableCommandsUpdate(sessionId: string): void {
   })
 }
 
+function sendDelayedAvailableCommandsUpdate(sessionId: string): void {
+  const delayMs = scenario.availableCommandsUpdateDelayMs ?? 0
+  if (delayMs === 0) {
+    sendAvailableCommandsUpdate(sessionId)
+    return
+  }
+  setTimeout(() => {
+    sendAvailableCommandsUpdate(sessionId)
+  }, delayMs)
+}
+
 const rl = readline.createInterface({
   input: process.stdin,
   crlfDelay: Number.POSITIVE_INFINITY,
@@ -95,7 +107,7 @@ rl.on('line', (line) => {
       id: message.id,
       result: { sessionId: 'sess_fake' },
     })
-    sendAvailableCommandsUpdate('sess_fake')
+    sendDelayedAvailableCommandsUpdate('sess_fake')
     return
   }
 
@@ -105,7 +117,7 @@ rl.on('line', (line) => {
       id: message.id,
       result: null,
     })
-    sendAvailableCommandsUpdate(resolveSessionId(message.params?.['sessionId']))
+    sendDelayedAvailableCommandsUpdate(resolveSessionId(message.params?.['sessionId']))
     return
   }
 

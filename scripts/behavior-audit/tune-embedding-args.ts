@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { LinkageMode } from './consolidate-keywords-helpers.js'
+import type { LinkageMode } from './consolidate-keywords-clustering.js'
 
 const VALID_LINKAGES: readonly LinkageMode[] = ['single', 'average', 'complete']
 

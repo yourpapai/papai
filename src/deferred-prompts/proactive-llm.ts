@@ -13,6 +13,7 @@ import type { TaskProvider } from '../providers/types.js'
 import { buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { makeTools } from '../tools/index.js'
+import { routeToolsForMessage } from '../tools/tool-router.js'
 import {
   buildMetadataMessages,
   buildMinimalSystemPrompt,
@@ -192,13 +193,15 @@ function buildFullToolSet(
   createdByUserId: string,
   storageContextId: string,
   contextType: 'dm' | 'group',
+  prompt: string,
 ): ToolSet {
-  return makeTools(provider, {
+  const fullTools = makeTools(provider, {
     storageContextId,
     chatUserId: createdByUserId,
     mode: 'proactive',
     contextType,
   })
+  return routeToolsForMessage(prompt, fullTools).tools
 }
 
 function buildFullMessages(
@@ -246,7 +249,7 @@ async function invokeFull(
   }
 
   const model = deps.buildModel(config, config.mainModel)
-  const tools = buildFullToolSet(provider, createdByUserId, storageContextId, deliveryTarget.contextType)
+  const tools = buildFullToolSet(provider, createdByUserId, storageContextId, deliveryTarget.contextType, prompt)
   const systemPrompt = buildSystemPrompt(provider, createdByUserId)
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
 

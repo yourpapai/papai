@@ -1,31 +1,20 @@
-export type UnionFind = { parent: Int32Array; rank: Uint8Array }
+type UnionFind = { parent: Int32Array; rank: Uint8Array }
 
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-  const dot = a.reduce((sum, ai, i) => {
-    const other = b[i]
-    if (other === undefined) return sum
-    return sum + ai * other
-  }, 0)
-  const magA = Math.sqrt(a.reduce((sum, ai) => sum + ai * ai, 0))
-  const magB = Math.sqrt(b.reduce((sum, bi) => sum + bi * bi, 0))
-  return magA === 0 || magB === 0 ? 0 : dot / (magA * magB)
-}
-
-export function buildUnionFind(n: number): UnionFind {
+function buildUnionFind(n: number): UnionFind {
   return {
     parent: Int32Array.from({ length: n }, (_, i) => i),
     rank: new Uint8Array(n),
   }
 }
 
-export function find(uf: UnionFind, i: number): number {
+function find(uf: UnionFind, i: number): number {
   if (uf.parent[i] !== i) {
     uf.parent[i] = find(uf, uf.parent[i]!)
   }
   return uf.parent[i]
 }
 
-export function union(uf: UnionFind, i: number, j: number): void {
+function union(uf: UnionFind, i: number, j: number): void {
   const ri = find(uf, i)
   const rj = find(uf, j)
   if (ri === rj) return
@@ -42,14 +31,6 @@ export function union(uf: UnionFind, i: number, j: number): void {
       uf.rank[ri] = rank + 1
     }
   }
-}
-
-export function buildClusters(
-  embeddings: readonly (readonly number[])[],
-  threshold: number,
-  minClusterSize: number,
-): readonly (readonly number[])[] {
-  return buildClustersNormalized(toNormalizedFloat64Arrays(embeddings), threshold, minClusterSize)
 }
 
 export function toNormalizedFloat64Arrays(embeddings: readonly (readonly number[])[]): readonly Float64Array[] {
@@ -117,49 +98,6 @@ export function mapToGlobalClusters(
   localClusters: readonly (readonly number[])[],
 ): readonly (readonly number[])[] {
   return localClusters.map((localCluster) => localCluster.map((localIndex) => indexedSubEmbeddings[localIndex]!.index))
-}
-
-export function averageLinkageSimilarity(
-  embeddings: readonly Float64Array[],
-  clusterA: readonly number[],
-  clusterB: readonly number[],
-): number {
-  if (clusterA.length === 0 || clusterB.length === 0) return 0
-  let total = 0
-  let count = 0
-  for (const i of clusterA) {
-    const embI = embeddings[i]
-    if (embI === undefined) continue
-    for (const j of clusterB) {
-      const embJ = embeddings[j]
-      if (embJ === undefined) continue
-      total += dotProduct(embI, embJ)
-      count++
-    }
-  }
-  return count === 0 ? 0 : total / count
-}
-
-export function completeLinkageSimilarity(
-  embeddings: readonly Float64Array[],
-  clusterA: readonly number[],
-  clusterB: readonly number[],
-): number {
-  if (clusterA.length === 0 || clusterB.length === 0) return 0
-  let minSimilarity = Infinity
-  for (const i of clusterA) {
-    const embI = embeddings[i]
-    if (embI === undefined) continue
-    for (const j of clusterB) {
-      const embJ = embeddings[j]
-      if (embJ === undefined) continue
-      const similarity = dotProduct(embI, embJ)
-      if (similarity < minSimilarity) {
-        minSimilarity = similarity
-      }
-    }
-  }
-  return minSimilarity === Infinity ? 0 : minSimilarity
 }
 
 export type LinkageMode = 'single' | 'average' | 'complete'

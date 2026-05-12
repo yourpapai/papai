@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { closeClients, parseCliArgs } from '../../review-loop/src/cli.js'
+import { closeClients, parseCliArgs, runCli } from '../../review-loop/src/cli.js'
 import { loadReviewLoopConfig } from '../../review-loop/src/config.js'
 import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
@@ -116,5 +116,86 @@ describe('review-loop CLI bootstrap', () => {
     })
     expect(reviewerClosed).toBe(true)
     expect(fixerClosed).toBe(true)
+  })
+
+  test('runCli waits for delayed required command advertisements before starting the loop', async () => {
+    const dir = makeTempDir('review-loop-cli-')
+    const reviewerScenarioPath = path.join(dir, 'reviewer.json')
+    const fixerScenarioPath = path.join(dir, 'fixer.json')
+    const configPath = path.join(dir, 'config.json')
+    const planPath = path.join(dir, 'plan.md')
+
+    writeFileSync(planPath, '# Implementation plan\n')
+    writeFileSync(
+      reviewerScenarioPath,
+      JSON.stringify(
+        {
+          availableCommands: [{ name: 'review-code', description: 'Review code' }],
+          availableCommandsUpdateDelayMs: 25,
+          promptReplies: [
+            {
+              text: '{"round":1,"issues":[]}',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    )
+    writeFileSync(
+      fixerScenarioPath,
+      JSON.stringify(
+        {
+          availableCommands: [{ name: 'verify-issue', description: 'Verify issue' }],
+          availableCommandsUpdateDelayMs: 25,
+          promptReplies: [
+            {
+              text: '{"verdict":"invalid","fixability":"manual","reasoning":"False positive.","targetFiles":["src/message-queue/queue.ts"],"needsPlanning":false}',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    )
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          repoRoot: process.cwd(),
+          workDir: path.join(dir, '.review-loop'),
+          maxRounds: 1,
+          maxNoProgressRounds: 1,
+          reviewer: {
+            command: 'bun',
+            args: ['tests/review-loop/fake-agent.ts'],
+            env: { ACP_SCENARIO_FILE: reviewerScenarioPath },
+            sessionConfig: {},
+            invocationPrefix: '/review-code',
+            requireInvocationPrefix: true,
+          },
+          fixer: {
+            command: 'bun',
+            args: ['tests/review-loop/fake-agent.ts'],
+            env: { ACP_SCENARIO_FILE: fixerScenarioPath },
+            sessionConfig: {},
+            verifyInvocationPrefix: '/verify-issue',
+            fixInvocationPrefix: '/fix-issue',
+            requireVerifyInvocation: true,
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    await runCli(['--config', configPath, '--plan', planPath])
+
+    const runRoot = path.join(dir, '.review-loop', 'runs')
+    const runId = readdirSync(runRoot)[0]
+    expect(runId).toBeDefined()
+    const summary = readFileSync(path.join(runRoot, runId!, 'summary.txt'), 'utf8')
+
+    expect(summary).toContain('Done reason: clean')
   })
 })

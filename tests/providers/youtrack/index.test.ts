@@ -7,15 +7,13 @@ import { YouTrackApiError } from '../../../src/providers/youtrack/client.js'
 import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
 import { YouTrackProvider } from '../../../src/providers/youtrack/index.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
-import { clearBundleCache } from './test-helpers.js'
+import { createUniqueYouTrackConfig } from './fetch-mock-utils.js'
 
 // Store reference to current fetch mock for call inspection
 let fetchMock: ReturnType<typeof mock<(url: string, init: RequestInit) => Promise<Response>>> | undefined
+let config: YouTrackConfig
 
-const createConfig = (): YouTrackConfig => ({
-  baseUrl: 'https://test.youtrack.cloud',
-  token: 'test-token',
-})
+const createConfig = (): YouTrackConfig => createUniqueYouTrackConfig()
 
 const installFetchMock = (handler: () => Promise<Response>): void => {
   const mocked = mock<(url: string, init: RequestInit) => Promise<Response>>(handler)
@@ -183,8 +181,8 @@ describe('YouTrackProvider', () => {
 
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
-    provider = new YouTrackProvider(createConfig())
+    config = createConfig()
+    provider = new YouTrackProvider(config)
     fetchMock = undefined
   })
 
@@ -315,7 +313,7 @@ describe('YouTrackProvider', () => {
       expect(task.title).toBe('New task')
       expect(task.description).toBe('A description')
       expect(task.priority).toBe('Normal')
-      expect(task.url).toBe('https://test.youtrack.cloud/issue/TEST-1')
+      expect(task.url).toBe(`${config.baseUrl}/issue/TEST-1`)
     })
 
     test('sends custom fields for priority and status', async () => {
@@ -787,11 +785,11 @@ describe('YouTrackProvider', () => {
 
   describe('URL builders', () => {
     test('buildTaskUrl returns correct URL', () => {
-      expect(provider.buildTaskUrl('TEST-1')).toBe('https://test.youtrack.cloud/issue/TEST-1')
+      expect(provider.buildTaskUrl('TEST-1')).toBe(`${config.baseUrl}/issue/TEST-1`)
     })
 
     test('buildProjectUrl returns correct URL', () => {
-      expect(provider.buildProjectUrl('proj-1')).toBe('https://test.youtrack.cloud/projects/proj-1')
+      expect(provider.buildProjectUrl('proj-1')).toBe(`${config.baseUrl}/projects/proj-1`)
     })
   })
 

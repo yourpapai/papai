@@ -27,7 +27,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getFirstCallArg(enqueueMock: MockController['enqueueMock']): unknown {
-  return enqueueMock.mock.calls[0]?.[0]
+  const firstCall = enqueueMock.mock.calls[0]
+  if (firstCall === undefined) {
+    return undefined
+  }
+  return firstCall[0]
 }
 
 function parseSseFromUnknown(chunk: unknown): { event: string; data: Record<string, unknown> } {
@@ -35,9 +39,25 @@ function parseSseFromUnknown(chunk: unknown): { event: string; data: Record<stri
   const text = new TextDecoder().decode(raw)
   const eventMatch = text.match(/^event: (.+)$/m)
   const dataMatch = text.match(/^data: (.+)$/m)
-  const parsed: unknown = JSON.parse(dataMatch?.[1] ?? '{}')
+
+  let event = ''
+  if (eventMatch !== null) {
+    const matchedEvent = eventMatch[1]
+    if (matchedEvent !== undefined) {
+      event = matchedEvent
+    }
+  }
+
+  let parsed: unknown = {}
+  if (dataMatch !== null) {
+    const matchedData = dataMatch[1]
+    if (matchedData !== undefined) {
+      parsed = JSON.parse(matchedData)
+    }
+  }
+
   return {
-    event: eventMatch?.[1] ?? '',
+    event,
     data: isRecord(parsed) ? parsed : {},
   }
 }
@@ -46,6 +66,35 @@ function getAllSseEvents(
   enqueueMock: MockController['enqueueMock'],
 ): Array<{ event: string; data: Record<string, unknown> }> {
   return enqueueMock.mock.calls.map((call) => parseSseFromUnknown(call[0]))
+}
+
+function getEventAt(
+  events: Array<{ event: string; data: Record<string, unknown> }>,
+  index: number,
+): {
+  event: string
+  data: Record<string, unknown>
+} {
+  const event = events[index]
+  assert.ok(event !== undefined)
+  return event
+}
+
+function getLastEventByName(
+  events: Array<{ event: string; data: Record<string, unknown> }>,
+  eventName: string,
+): { event: string; data: Record<string, unknown> } {
+  const matchingEvents = events.filter((event) => event.event === eventName)
+  const lastEvent = matchingEvents.at(-1)
+  assert.ok(lastEvent !== undefined, `expected ${eventName}`)
+  return lastEvent
+}
+
+function getTraceEventData(event: { event: string; data: Record<string, unknown> }): Record<string, unknown> {
+  assert.ok(isRecord(event.data), 'expected event payload')
+  const eventData = event.data['data']
+  assert.ok(isRecord(eventData), 'expected trace data')
+  return eventData
 }
 
 describe('state-collector', () => {
@@ -80,7 +129,7 @@ describe('state-collector', () => {
 
     const { data } = parseSseFromUnknown(getFirstCallArg(enqueueMock))
     const initData = data['data']
-    assert(isRecord(initData))
+    assert.ok(isRecord(initData))
     expect(initData).toHaveProperty('sessions')
     expect(initData).toHaveProperty('wizards')
     expect(initData).toHaveProperty('scheduler')
@@ -90,7 +139,7 @@ describe('state-collector', () => {
     expect(initData).toHaveProperty('recentLlm')
 
     const stats = initData['stats']
-    assert(isRecord(stats))
+    assert.ok(isRecord(stats))
     expect(stats['totalMessages']).toBe(0)
     expect(stats['totalLlmCalls']).toBe(0)
     expect(stats['totalToolCalls']).toBe(0)
@@ -105,7 +154,7 @@ describe('state-collector', () => {
 
     expect(enqueueMock).toHaveBeenCalledTimes(2)
     const events = getAllSseEvents(enqueueMock)
-    expect(events[1]?.event).toBe('message:received')
+    expect(getEventAt(events, 1).event).toBe('message:received')
   })
 
   test('non-admin user events are filtered out', () => {
@@ -127,7 +176,7 @@ describe('state-collector', () => {
 
     expect(enqueueMock).toHaveBeenCalledTimes(2)
     const events = getAllSseEvents(enqueueMock)
-    expect(events[1]?.event).toBe('scheduler:tick')
+    expect(getEventAt(events, 1).event).toBe('scheduler:tick')
   })
 
   test('removeClient stops delivery to that client', () => {
@@ -187,32 +236,34 @@ describe('state-collector', () => {
         finishReason: 'stop',
         messageCount: 5,
         toolCount: 10,
+        exposedToolCount: 6,
+        fullToolCount: 10,
+        toolSchemaBytes: 1234,
+        routingIntent: 'task_read',
+        routingConfidence: 0.75,
+        routingReason: 'read-keyword',
         generatedText: 'Task created successfully.',
       })
 
       const events = getAllSseEvents(enqueueMock)
-      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
-      expect(llmFullEvents.length).toBeGreaterThanOrEqual(1)
-
-      const llmFull = llmFullEvents[llmFullEvents.length - 1]
-      assert(isRecord(llmFull?.data))
-
-      // The data field contains the event object, trace data is in data.data
-      const eventData = llmFull.data['data']
-      assert(isRecord(eventData))
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
 
       expect(eventData['responseId']).toBe('resp-123')
       expect(eventData['actualModel']).toBe('gpt-4-0125-preview')
       expect(eventData['finishReason']).toBe('stop')
       expect(eventData['messageCount']).toBe(5)
       expect(eventData['toolCount']).toBe(10)
+      expect(eventData['exposedToolCount']).toBe(6)
+      expect(eventData['fullToolCount']).toBe(10)
+      expect(eventData['toolSchemaBytes']).toBe(1234)
+      expect(eventData['routingIntent']).toBe('task_read')
       expect(eventData['generatedText']).toBe('Task created successfully.')
 
       const toolCalls: unknown = eventData['toolCalls']
-      assert(Array.isArray(toolCalls))
+      assert.ok(Array.isArray(toolCalls))
       expect(toolCalls).toHaveLength(1)
       const firstToolCall: unknown = toolCalls[0]
-      assert(isRecord(firstToolCall))
+      assert.ok(isRecord(firstToolCall))
       expect(firstToolCall['toolCallId']).toBe('call-1')
       expect(firstToolCall['args']).toEqual({ title: 'Test' })
       expect(firstToolCall['result']).toEqual({ id: 'task-1' })
@@ -242,17 +293,12 @@ describe('state-collector', () => {
       })
 
       const events = getAllSseEvents(enqueueMock)
-      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
-      const llmFull = llmFullEvents[llmFullEvents.length - 1]
-
-      assert(isRecord(llmFull?.data))
-      const eventData = llmFull.data['data']
-      assert(isRecord(eventData))
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
       const toolCalls: unknown = eventData['toolCalls']
-      assert(Array.isArray(toolCalls))
+      assert.ok(Array.isArray(toolCalls))
       expect(toolCalls).toHaveLength(1)
       const firstToolCall: unknown = toolCalls[0]
-      assert(isRecord(firstToolCall))
+      assert.ok(isRecord(firstToolCall))
       expect(firstToolCall['success']).toBe(false)
       expect(firstToolCall['error']).toBe('API error: 500')
     })
@@ -284,22 +330,16 @@ describe('state-collector', () => {
       })
 
       const events = getAllSseEvents(enqueueMock)
-      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
-      const llmFull = llmFullEvents[llmFullEvents.length - 1]
-
-      assert(isRecord(llmFull?.data))
-      // The data field contains the event object, trace data is in data.data
-      const eventData = llmFull.data['data']
-      assert(isRecord(eventData))
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
 
       const stepsDetail: unknown = eventData['stepsDetail']
-      assert(Array.isArray(stepsDetail))
+      assert.ok(Array.isArray(stepsDetail))
 
       expect(stepsDetail).toHaveLength(2)
       const firstStep: unknown = stepsDetail[0]
       const secondStep: unknown = stepsDetail[1]
-      assert(isRecord(firstStep))
-      assert(isRecord(secondStep))
+      assert.ok(isRecord(firstStep))
+      assert.ok(isRecord(secondStep))
       expect(firstStep['stepNumber']).toBe(1)
       expect(secondStep['stepNumber']).toBe(2)
     })
@@ -313,11 +353,7 @@ describe('state-collector', () => {
       emit('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'boom' })
 
       const events = getAllSseEvents(enqueueMock)
-      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
-      const llmFull = llmFullEvents[llmFullEvents.length - 1]
-      assert(isRecord(llmFull?.data), 'expected llm:full')
-      const eventData = llmFull.data['data']
-      assert(isRecord(eventData), 'expected trace data')
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
       expect(eventData['error']).toBe('boom')
       expect(eventData['model']).toBe('gpt-4')
       expect(eventData['steps']).toBe(0)
@@ -331,10 +367,7 @@ describe('state-collector', () => {
       emit('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'crash' })
 
       const events = getAllSseEvents(enqueueMock)
-      const llmFull = events.filter((e) => e.event === 'llm:full').pop()
-      assert(isRecord(llmFull?.data), 'expected llm:full')
-      const eventData = llmFull.data['data']
-      assert(isRecord(eventData), 'expected trace data')
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
       expect(eventData['error']).toBe('crash')
       expect(eventData['duration']).toBe(0)
     })
@@ -375,29 +408,24 @@ describe('state-collector', () => {
       })
 
       const events = getAllSseEvents(enqueueMock)
-      const llmFullEvents = events.filter((e) => e.event === 'llm:full')
-      const llmFull = llmFullEvents[llmFullEvents.length - 1]
-
-      assert(isRecord(llmFull?.data))
-      const eventData = llmFull.data['data']
-      assert(isRecord(eventData))
+      const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
 
       const stepsDetail: unknown = eventData['stepsDetail']
-      assert(Array.isArray(stepsDetail))
+      assert.ok(Array.isArray(stepsDetail))
       const first: unknown = stepsDetail[0]
-      assert(isRecord(first))
+      assert.ok(isRecord(first))
 
       expect(first['text']).toBe('Calling the search tool now.')
       expect(first['finishReason']).toBe('tool-calls')
 
       const toolCalls: unknown = first['toolCalls']
-      assert(Array.isArray(toolCalls))
+      assert.ok(Array.isArray(toolCalls))
       expect(toolCalls).toHaveLength(2)
 
       const tc0: unknown = toolCalls[0]
       const tc1: unknown = toolCalls[1]
-      assert(isRecord(tc0))
-      assert(isRecord(tc1))
+      assert.ok(isRecord(tc0))
+      assert.ok(isRecord(tc1))
       expect(tc0['result']).toEqual({ hits: 3 })
       expect(tc1['error']).toBe('permission denied')
     })

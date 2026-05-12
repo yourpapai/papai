@@ -114,9 +114,3 @@ export async function resolveStateBundle(config: YouTrackConfig, projectId: stri
     return null
   }
 }
-
-export function clearBundleCache(): void {
-  bundleCache.clear()
-  failureCache.clear()
-  log.debug({}, 'bundle cache cleared')
-}

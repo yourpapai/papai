@@ -10,7 +10,8 @@
   "type": "module",
   "module": "src/index.ts",
   "scripts": {
-    "benchmark:tool-proxy": "bun scripts/tool-proxy-benchmark.ts",
+    "inventory:architecture": "bun scripts/architecture-inventory.ts",
+    "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",
     "build:client": "bun scripts/build-client.ts",
     "start": "bun build:client && bun run src/index.ts",
     "start:debug": "bun build:client && DEBUG_SERVER=true bun run src/index.ts",

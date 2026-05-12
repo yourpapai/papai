@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 
-import type { LinkageMode } from './consolidate-keywords-helpers.js'
+import type { LinkageMode } from './consolidate-keywords-clustering.js'
 
 const DEFAULT_PROJECT_ROOT = resolve(import.meta.dir, '../..')
 const DEFAULT_REPORTS_DIR = resolve(DEFAULT_PROJECT_ROOT, 'reports')
