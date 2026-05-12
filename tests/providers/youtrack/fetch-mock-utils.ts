@@ -11,6 +11,23 @@ export const defaultConfig = {
   token: 'test-token',
 }
 
+let uniqueConfigCounter = 0
+
+export function createUniqueYouTrackConfig(overrides: Partial<typeof defaultConfig> = {}): typeof defaultConfig {
+  uniqueConfigCounter += 1
+
+  return {
+    ...defaultConfig,
+    baseUrl: `${defaultConfig.baseUrl}/${uniqueConfigCounter}`,
+    ...overrides,
+  }
+}
+
+export function createUniqueProjectId(prefix = 'proj'): string {
+  uniqueConfigCounter += 1
+  return `${prefix}-${uniqueConfigCounter}`
+}
+
 export function installFetchMock(
   fetchMockRef: { current?: FetchMockFn },
   handler: (url: string, init: RequestInit) => Promise<Response>,
