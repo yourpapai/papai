@@ -37,3 +37,44 @@ export type SaveAttachmentInput = {
   mimeType: string
   size: number
 }>
+
+export type StagedFileStatus = 'staged' | 'resolved' | 'failed' | 'expired'
+
+export type StagedFileRef = {
+  stagedId: string
+  contextId: string
+  messageId: string | null
+  senderId: string
+  senderUsername: string | null
+  filename: string
+  mimeType: string | null
+  size: number | null
+  platformFileId: string
+  sourceProvider: AttachmentSourceProvider
+  status: StagedFileStatus
+  createdAt: string
+  expiresAt: string
+}
+
+export type StageFileParams = {
+  contextId: string
+  messageId: string | null
+  senderId: string
+  senderUsername: string | null
+  filename: string
+  mimeType: string | null
+  size: number | null
+  platformFileId: string
+  sourceProvider: AttachmentSourceProvider
+}
+
+export type StagedResolutionError =
+  | { status: 'staged_file_expired'; message: string }
+  | { status: 'download_failed'; message: string }
+  | { status: 'already_resolved'; attachmentId: string }
+  | { status: 'not_found'; message: string }
+
+export type StagedFileDownloadFn = (
+  platformFileId: string,
+  sourceProvider: AttachmentSourceProvider,
+) => Promise<Buffer | null>
