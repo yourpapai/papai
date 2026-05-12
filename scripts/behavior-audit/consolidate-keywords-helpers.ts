@@ -1,14 +1,7 @@
 import type { KeywordVocabularyEntry } from './keyword-vocabulary.js'
 
 // Clustering helpers are implemented in the extracted clustering module.
-export {
-  buildClusters,
-  dotProduct,
-  findWeakestInternalSimilarity,
-  mapToGlobalClusters,
-  toIndexedSubEmbeddings,
-  toNormalizedFloat64Arrays,
-} from './consolidate-keywords-clustering.js'
+export { toNormalizedFloat64Arrays } from './consolidate-keywords-clustering.js'
 export type { LinkageMode } from './consolidate-keywords-clustering.js'
 export { buildClustersAdvanced, subdivideOversizedClusters } from './consolidate-keywords-advanced-clustering.js'
 

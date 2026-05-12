@@ -11,7 +11,6 @@ import {
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
 import {
   buildClustersAdvanced,
-  buildClusters,
   buildConsolidatedVocabulary,
   buildMergeMap,
   electCanonical,
@@ -190,11 +189,11 @@ function naiveAverageOrCompleteClusters(
 test('helpers barrel excludes clustering internals kept only for tests', async () => {
   const module = await import('../../../scripts/behavior-audit/consolidate-keywords-helpers.js')
 
-  expect(module.buildClusters).toBeDefined()
   expect(module.buildClustersAdvanced).toBeDefined()
   expect(module.toNormalizedFloat64Arrays).toBeDefined()
   expect(module.remapKeywords).toBeDefined()
 
+  expect('buildClusters' in module).toBe(false)
   expect('averageLinkageSimilarity' in module).toBe(false)
   expect('buildClustersNormalized' in module).toBe(false)
   expect('buildUnionFind' in module).toBe(false)
@@ -202,48 +201,6 @@ test('helpers barrel excludes clustering internals kept only for tests', async (
   expect('cosineSimilarity' in module).toBe(false)
   expect('find' in module).toBe(false)
   expect('union' in module).toBe(false)
-})
-
-// ── buildClusters ─────────────────────────────────────────────────────────────
-
-test('buildClusters returns no clusters when all pairs are below threshold', () => {
-  const embeddings = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
-  const clusters = buildClusters(embeddings, 0.99, 2)
-  expect(clusters).toHaveLength(0)
-})
-
-test('buildClusters returns a cluster when similarity meets threshold', () => {
-  // a=[1,0], b=[0.9,0.1] — cosine similarity ≈ 0.994
-  const a = [1, 0]
-  const mag = Math.sqrt(0.9 * 0.9 + 0.1 * 0.1)
-  const b = [0.9 / mag, 0.1 / mag]
-  const clusters = buildClusters([a, b], 0.99, 2)
-  expect(clusters).toHaveLength(1)
-  expect(clusters[0]).toHaveLength(2)
-})
-
-test('buildClusters handles transitivity: a~b and b~c should merge all three', () => {
-  const s = 1 / Math.sqrt(2)
-  const a = [1, 0, 0]
-  const b = [s, s, 0]
-  const c = [0, 1, 0]
-  // cos(a,b) ≈ 0.707, cos(b,c) ≈ 0.707, cos(a,c) = 0
-  const clusters = buildClusters([a, b, c], 0.5, 2)
-  expect(clusters).toHaveLength(1)
-  expect(clusters[0]).toHaveLength(3)
-})
-
-test('buildClusters respects minClusterSize', () => {
-  // a=[1,0], b=[0.9,0.1] would form a cluster but minClusterSize=3
-  const a = [1, 0]
-  const mag = Math.sqrt(0.9 * 0.9 + 0.1 * 0.1)
-  const b = [0.9 / mag, 0.1 / mag]
-  const clusters = buildClusters([a, b], 0.99, 3)
-  expect(clusters).toHaveLength(0)
 })
 
 describe('reference linkage helpers', () => {
