@@ -33,14 +33,6 @@ function union(uf: UnionFind, i: number, j: number): void {
   }
 }
 
-export function buildClusters(
-  embeddings: readonly (readonly number[])[],
-  threshold: number,
-  minClusterSize: number,
-): readonly (readonly number[])[] {
-  return buildClustersNormalized(toNormalizedFloat64Arrays(embeddings), threshold, minClusterSize)
-}
-
 export function toNormalizedFloat64Arrays(embeddings: readonly (readonly number[])[]): readonly Float64Array[] {
   return embeddings.map((emb) => {
     const arr = new Float64Array(emb.length)
