@@ -37,6 +37,7 @@ import { migration028GroupUserObservations } from './migrations/028_group_user_o
 import { migration029ProviderScopeGroupObservations } from './migrations/029_provider_scope_group_observations.js'
 import { migration030AttachmentWorkspace } from './migrations/030_attachment_workspace.js'
 import { migration031StagedFiles } from './migrations/031_staged_files.js'
+import { migration032StagedAttachmentId } from './migrations/032_staged_attachment_id.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -103,6 +104,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration029ProviderScopeGroupObservations,
   migration030AttachmentWorkspace,
   migration031StagedFiles,
+  migration032StagedAttachmentId,
 ]
 
 export const initDb = (): void => {

@@ -21,6 +21,7 @@ describe('StagedFileRef', () => {
       platformFileId: 'file-123',
       sourceProvider: 'telegram',
       status: 'staged',
+      attachmentId: null,
       createdAt: '2025-01-01T00:00:00Z',
       expiresAt: '2025-01-01T01:00:00Z',
     }

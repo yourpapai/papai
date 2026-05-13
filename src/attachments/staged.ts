@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { and, eq, like, or, sql } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { stagedFiles } from '../db/schema.js'
@@ -51,6 +51,7 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   platformFileId: row.platformFileId,
   sourceProvider: toSourceProvider(row.sourceProvider),
   status: toStagedStatus(row.status),
+  attachmentId: row.attachmentId,
   createdAt: row.createdAt,
   expiresAt: row.expiresAt,
 })
@@ -72,6 +73,7 @@ const buildStagedValues = (
   platformFileId: params.platformFileId,
   sourceProvider: params.sourceProvider,
   status: 'staged' as const,
+  attachmentId: null,
   createdAt: nowIso,
   expiresAt: expiresIso,
 })
@@ -139,7 +141,8 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
 
 export function searchStagedFiles(contextId: string, query: string, limit: number = 10): StagedFileRef[] {
   const db = getDrizzleDb()
-  const pattern = `%${query}%`
+  const escaped = query.replace(/[%_]/g, '\\$&')
+  const pattern = `%${escaped}%`
 
   return db
     .select()
@@ -148,7 +151,10 @@ export function searchStagedFiles(contextId: string, query: string, limit: numbe
       and(
         eq(stagedFiles.contextId, contextId),
         eq(stagedFiles.status, 'staged'),
-        or(like(stagedFiles.senderUsername, pattern), like(stagedFiles.filename, pattern)),
+        or(
+          sql`${stagedFiles.senderUsername} LIKE ${pattern} ESCAPE '\\'`,
+          sql`${stagedFiles.filename} LIKE ${pattern} ESCAPE '\\'`,
+        ),
       ),
     )
     .limit(limit)
@@ -190,9 +196,17 @@ const markStagedStatus = (stagedId: string, status: string): void => {
   getDrizzleDb().update(stagedFiles).set({ status }).where(eq(stagedFiles.stagedId, stagedId)).run()
 }
 
+const markStagedResolved = (stagedId: string, attachmentId: string): void => {
+  getDrizzleDb()
+    .update(stagedFiles)
+    .set({ status: 'resolved', attachmentId })
+    .where(eq(stagedFiles.stagedId, stagedId))
+    .run()
+}
+
 const checkStagedRowState = (row: StagedRow, stagedId: string): StagedResolutionError | null => {
   if (row.status === 'resolved') {
-    return { status: 'already_resolved', attachmentId: 'unknown' }
+    return { status: 'already_resolved', attachmentId: row.attachmentId ?? 'unknown' }
   }
 
   if (row.status === 'failed') {
@@ -239,7 +253,7 @@ const downloadAndPersist = async (
     sourceFileId: row.platformFileId,
   })
 
-  markStagedStatus(stagedId, 'resolved')
+  markStagedResolved(stagedId, attachmentRef.attachmentId)
   log.info({ stagedId, attachmentId: attachmentRef.attachmentId }, 'Staged file resolved into workspace')
   return attachmentRef
 }

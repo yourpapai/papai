@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { _createInMemoryBlobStore, _resetBlobStore, _setBlobStore } from '../../src/attachments/blob-store.js'
 import { stageFileMetadata } from '../../src/attachments/staged.js'
@@ -6,6 +7,17 @@ import { makeResolveStagedFileTool, makeSearchStagedFilesTool } from '../../src/
 import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 const CTX = 'ctx-staged-tools'
+
+function isNonNullObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function extractAttachmentId(value: unknown): string {
+  assert(isNonNullObject(value))
+  const maybeId = value['attachmentId']
+  assert(typeof maybeId === 'string')
+  return maybeId
+}
 
 describe('staged file tools', () => {
   let downloadCalls: Array<{ platformFileId: string }>
@@ -103,6 +115,32 @@ describe('staged file tools', () => {
       const execute = getToolExecutor(makeResolveStagedFileTool(CTX, mockDownloadFn))
       const result = await execute({ stagedId: 'stg_nonexistent' })
       expect(result).toMatchObject({ status: 'not_found' })
+    })
+
+    test('returns already_resolved with attachmentId when called twice', async () => {
+      const staged = await stageFileMetadata({
+        contextId: CTX,
+        messageId: 'msg-dup',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'dup.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_dup',
+        sourceProvider: 'telegram',
+      })
+
+      const tool = makeResolveStagedFileTool(CTX, mockDownloadFn)
+      const execute = getToolExecutor(tool)
+
+      const first = await execute({ stagedId: staged.stagedId })
+      expect(first).toMatchObject({ status: 'resolved', filename: 'dup.pdf' })
+
+      const firstAttachmentId = extractAttachmentId(first)
+      expect(firstAttachmentId).toMatch(/^att_[0-9a-f-]+$/)
+
+      const second = await execute({ stagedId: staged.stagedId })
+      expect(second).toEqual({ status: 'already_resolved', attachmentId: firstAttachmentId })
     })
   })
 })

@@ -52,6 +52,7 @@ export type StagedFileRef = {
   platformFileId: string
   sourceProvider: AttachmentSourceProvider
   status: StagedFileStatus
+  attachmentId: string | null
   createdAt: string
   expiresAt: string
 }

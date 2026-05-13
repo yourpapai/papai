@@ -180,6 +180,58 @@ describe('staged file cache', () => {
       expect(results).toHaveLength(2)
     })
 
+    test('treats LIKE wildcard characters as literals', async () => {
+      // Base entries without wildcards in searched fields
+      await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 1024,
+        platformFileId: 'tg_1',
+        sourceProvider: 'telegram',
+      })
+
+      await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-2',
+        senderId: 'user-2',
+        senderUsername: 'bob',
+        filename: 'notes.txt',
+        mimeType: 'text/plain',
+        size: 50,
+        platformFileId: 'tg_2',
+        sourceProvider: 'telegram',
+      })
+
+      // Queries with bare wildcards should return nothing when no field contains them
+      expect(searchStagedFiles('ctx-1', '%')).toHaveLength(0)
+      expect(searchStagedFiles('ctx-1', '_')).toHaveLength(0)
+
+      // Entries that DO contain wildcard characters in searched fields
+      await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-3',
+        senderId: 'user-3',
+        senderUsername: 'a%lice',
+        filename: 'data_.pdf',
+        mimeType: 'application/pdf',
+        size: 1024,
+        platformFileId: 'tg_3',
+        sourceProvider: 'telegram',
+      })
+
+      const patternResults = searchStagedFiles('ctx-1', 'a%lic')
+      expect(patternResults).toHaveLength(1)
+      expect(patternResults[0]!.senderUsername).toBe('a%lice')
+
+      const underscoreResults = searchStagedFiles('ctx-1', 'ata_.pd')
+      expect(underscoreResults).toHaveLength(1)
+      expect(underscoreResults[0]!.filename).toBe('data_.pdf')
+    })
+
     test('only returns staged status entries', async () => {
       const ref = await stageFileMetadata({
         contextId: 'ctx-1',

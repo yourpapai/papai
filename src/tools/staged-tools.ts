@@ -41,7 +41,7 @@ export function makeResolveStagedFileTool(contextId: string, downloadFn: StagedF
     execute: async ({ stagedId }) => {
       log.debug({ contextId, stagedId }, 'resolve_staged_file called')
       const result = await resolveStagedFile(stagedId, contextId, downloadFn)
-      if ('attachmentId' in result && 'filename' in result) {
+      if ('contextId' in result) {
         return { status: 'resolved' as const, attachmentId: result.attachmentId, filename: result.filename }
       }
       return result

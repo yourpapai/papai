@@ -14,6 +14,7 @@ export const stagedFiles = sqliteTable(
     platformFileId: text('platform_file_id').notNull(),
     sourceProvider: text('source_provider').notNull(),
     status: text('status').notNull().default('staged'),
+    attachmentId: text('attachment_id'),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at').notNull(),
   },
