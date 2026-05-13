@@ -5,8 +5,6 @@ export type StagedDownloaderDeps = {
   mattermostFetcher: (fileId: string) => Promise<Buffer | null>
 }
 
-let activeDownloader: StagedFileDownloadFn | null = null
-
 export function createStagedDownloader(deps: StagedDownloaderDeps): StagedFileDownloadFn {
   const resolveProvider = (
     platformFileId: string,
@@ -14,16 +12,11 @@ export function createStagedDownloader(deps: StagedDownloaderDeps): StagedFileDo
   ): Promise<Buffer | null> => {
     if (sourceProvider === 'telegram') return deps.telegramFetcher(platformFileId)
     if (sourceProvider === 'mattermost') return deps.mattermostFetcher(platformFileId)
+    // Discord does not produce fileCandidates on IncomingMessage, so staged files
+    // are never created for Discord conversations. This default path is unreachable
+    // in practice for Discord; it serves as a graceful fallback for unknown providers.
     return Promise.resolve(null)
   }
 
   return resolveProvider
-}
-
-export function setStagedDownloader(fn: StagedFileDownloadFn): void {
-  activeDownloader = fn
-}
-
-export function getStagedDownloader(): StagedFileDownloadFn | null {
-  return activeDownloader
 }

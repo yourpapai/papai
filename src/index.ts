@@ -1,6 +1,6 @@
 import { announceNewVersion } from './announcements.js'
 import { isS3Configured } from './attachments/index.js'
-import { createStagedDownloader, setStagedDownloader } from './attachments/staged-download.js'
+import { createStagedDownloader } from './attachments/staged-download.js'
 import { setupBot } from './bot.js'
 import { createChatProvider } from './chat/registry.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
@@ -74,31 +74,33 @@ log.info(
   'Starting papai...',
 )
 
-setupBot(chatProvider, adminUserId)
-
 await chatProvider.start()
 
-const initializeStagedDownloader = async (chat: typeof chatProvider): Promise<void> => {
+const createStagedDownloadFn = async (
+  chat: typeof chatProvider,
+): Promise<import('./attachments/types.js').StagedFileDownloadFn | null> => {
   if (chat.name === 'telegram') {
     const { getTelegramFileFetcher } = await import('./chat/telegram/index.js')
     const fetcher = getTelegramFileFetcher()
     if (fetcher !== undefined) {
-      setStagedDownloader(
-        createStagedDownloader({ telegramFetcher: fetcher, mattermostFetcher: () => Promise.resolve(null) }),
-      )
+      return createStagedDownloader({ telegramFetcher: fetcher, mattermostFetcher: () => Promise.resolve(null) })
     }
   } else if (chat.name === 'mattermost') {
     const { getMattermostFileFetcher } = await import('./chat/mattermost/index.js')
     const fetcher = getMattermostFileFetcher()
     if (fetcher !== undefined) {
-      setStagedDownloader(
-        createStagedDownloader({ telegramFetcher: () => Promise.resolve(null), mattermostFetcher: fetcher }),
-      )
+      return createStagedDownloader({ telegramFetcher: () => Promise.resolve(null), mattermostFetcher: fetcher })
     }
   }
+  return null
 }
 
-await initializeStagedDownloader(chatProvider)
+const stagedDownloadFn = await createStagedDownloadFn(chatProvider)
+
+setupBot(chatProvider, adminUserId, {
+  processMessage: (...args) => import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args)),
+  stagedDownloadFn: stagedDownloadFn ?? undefined,
+})
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 

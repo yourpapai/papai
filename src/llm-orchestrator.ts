@@ -1,7 +1,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from 'ai'
 
-import { getStagedDownloader } from './attachments/staged-download.js'
 import { getCachedHistory, getCachedTools, setCachedTools } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
@@ -39,6 +38,7 @@ const defaultDeps: LlmOrchestratorDeps = {
   getKaneoWorkspace,
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
+export { defaultDeps }
 
 const persistFactsFromResults = (contextId: string, result: unknown): void => {
   const toolCalls = extractFactToolCalls(result)
@@ -66,6 +66,7 @@ const getOrCreateTools = (
   username: string | null,
   provider: TaskProvider,
   contextType: 'dm' | 'group' | undefined,
+  stagedDownloadFn: import('./attachments/types.js').StagedFileDownloadFn | undefined,
 ): ToolSet => {
   // Security fix: In group chats, tools embed chatUserId-specific closures for "me" resolution.
   // The cache key must include chatUserId to prevent cross-user contamination.
@@ -76,7 +77,6 @@ const getOrCreateTools = (
     return cachedTools
   }
   log.debug({ contextId, chatUserId, hasUsername: username !== null }, 'Building tools (cache miss)')
-  const stagedDownloadFn = getStagedDownloader() ?? undefined
   const tools = makeTools(provider, {
     storageContextId: contextId,
     chatUserId,
@@ -205,7 +205,7 @@ const callLlm = async (
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
   const provider = deps.buildProviderForUser(configId)
   await maybeAutoLinkIdentity(chatUserId, username, provider)
-  const tools = getOrCreateTools(contextId, chatUserId, username, provider, contextType)
+  const tools = getOrCreateTools(contextId, chatUserId, username, provider, contextType, deps.stagedDownloadFn)
   const timezone = resolveTimezone(configId)
   const { messages: messagesWithMemory, memoryMsg } = buildMessagesWithMemory(contextId, history)
   const validatedMessages = validateToolResults(messagesWithMemory)

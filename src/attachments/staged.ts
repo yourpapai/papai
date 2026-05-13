@@ -78,47 +78,6 @@ const buildStagedValues = (
   expiresAt: expiresIso,
 })
 
-const updateExistingStaged = (
-  existing: StagedRow,
-  params: StageFileParams,
-  nowIso: string,
-  expiresIso: string,
-): StagedFileRef => {
-  const db = getDrizzleDb()
-  db.update(stagedFiles)
-    .set({
-      messageId: params.messageId ?? null,
-      senderId: params.senderId,
-      senderUsername: params.senderUsername ?? null,
-      filename: params.filename,
-      mimeType: params.mimeType ?? null,
-      size: params.size ?? null,
-      createdAt: nowIso,
-      expiresAt: expiresIso,
-      status: 'staged',
-    })
-    .where(eq(stagedFiles.stagedId, existing.stagedId))
-    .run()
-
-  log.debug({ stagedId: existing.stagedId }, 'Updated existing staged file metadata')
-  return toRef({
-    ...existing,
-    messageId: params.messageId ?? null,
-    createdAt: nowIso,
-    expiresAt: expiresIso,
-    status: 'staged',
-  })
-}
-
-const insertNewStaged = (params: StageFileParams, nowIso: string, expiresIso: string): StagedFileRef => {
-  const db = getDrizzleDb()
-  const stagedId = `stg_${randomUUID()}`
-  const values = buildStagedValues(params, stagedId, nowIso, expiresIso)
-  db.insert(stagedFiles).values(values).run()
-  log.info({ stagedId, contextId: params.contextId, filename: params.filename }, 'Staged file metadata')
-  return toRef(values)
-}
-
 export function stageFileMetadata(params: StageFileParams): StagedFileRef {
   const db = getDrizzleDb()
   const now = new Date()
@@ -126,17 +85,45 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
   const nowIso = now.toISOString()
   const expiresIso = expiresAt.toISOString()
 
-  const existing = db
+  const stagedId = `stg_${randomUUID()}`
+  const values = buildStagedValues(params, stagedId, nowIso, expiresIso)
+
+  db.insert(stagedFiles)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [stagedFiles.platformFileId, stagedFiles.contextId],
+      set: {
+        messageId: params.messageId ?? null,
+        senderId: params.senderId,
+        senderUsername: params.senderUsername ?? null,
+        filename: params.filename,
+        mimeType: params.mimeType ?? null,
+        size: params.size ?? null,
+        createdAt: nowIso,
+        expiresAt: expiresIso,
+        status: 'staged',
+      },
+    })
+    .run()
+
+  // After upsert, fetch the row to return the actual stagedId (existing or new)
+  const row = db
     .select()
     .from(stagedFiles)
     .where(and(eq(stagedFiles.platformFileId, params.platformFileId), eq(stagedFiles.contextId, params.contextId)))
     .get()
 
-  if (existing !== undefined) {
-    return updateExistingStaged(existing, params, nowIso, expiresIso)
+  if (row === undefined) {
+    throw new Error('Failed to retrieve staged file after upsert')
   }
 
-  return insertNewStaged(params, nowIso, expiresIso)
+  if (row.stagedId === stagedId) {
+    log.info({ stagedId, contextId: params.contextId, filename: params.filename }, 'Staged file metadata')
+  } else {
+    log.debug({ stagedId: row.stagedId }, 'Updated existing staged file metadata')
+  }
+
+  return toRef(row)
 }
 
 export function searchStagedFiles(contextId: string, query: string, limit: number = 10): StagedFileRef[] {

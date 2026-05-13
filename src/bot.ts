@@ -1,3 +1,4 @@
+import type { StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates, toSourceProvider } from './bot-attachments.js'
 import { recordGroupObservation } from './bot-group-observation.js'
@@ -18,7 +19,7 @@ import {
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
 import { emit } from './debug/event-bus.js'
-import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
+import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
@@ -26,9 +27,11 @@ import { buildPromptWithReplyContext } from './reply-context.js'
 import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
+
 type ProcessMessageFn = typeof defaultProcessMessage
 export interface BotDeps {
   processMessage: ProcessMessageFn
+  stagedDownloadFn?: StagedFileDownloadFn
 }
 const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage }
 const log = logger.child({ scope: 'bot' })
@@ -143,7 +146,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.text,
       coalescedItem.contextType,
       coalescedItem.configContextId,
-      undefined,
+      { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
       coalescedItem.newAttachmentIds,
     )
   } finally {
