@@ -169,13 +169,21 @@ export function findStagedFilesByMessageId(contextId: string, messageId: string)
 }
 
 export function purgeExpiredStagedFiles(): void {
-  const db = getDrizzleDb()
-  const now = new Date().toISOString()
-  db.delete(stagedFiles)
-    .where(sql`${stagedFiles.status} = 'expired' OR ${stagedFiles.expiresAt} < ${now}`)
-    .run()
+  try {
+    const db = getDrizzleDb()
+    const now = new Date().toISOString()
+    db.delete(stagedFiles)
+      .where(sql`${stagedFiles.status} = 'expired' OR ${stagedFiles.expiresAt} < ${now}`)
+      .run()
 
-  log.info('Purged expired staged files')
+    log.info('Purged expired staged files')
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table: staged_files')) {
+      log.debug('staged_files table not found, skipping purge')
+      return
+    }
+    throw error
+  }
 }
 
 const markStagedStatus = (stagedId: string, status: string): void => {
