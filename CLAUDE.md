@@ -111,7 +111,7 @@ The repo also blocks a few unsafe AI-editing escape hatches:
 
 - `.oxlintrc.json` is protected from direct write-tool edits by hook policy
 - inline suppression comments such as `eslint-disable`, `oxlint-disable`, `@ts-ignore`, and `@ts-nocheck` are blocked before writes complete
-- bash-hook policy blocks `git stash` in the Claude/bash flow
+- bash-hook policy blocks `git stash` and `git checkout --` in the Claude/bash flow
 
 Fix the underlying issue instead of trying to bypass linting or hook policy.
 
@@ -151,6 +151,20 @@ Optional but important runtime flags include:
 - `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
 
 The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
+
+### File Attachments (S3-compatible Object Storage)
+
+Required when the bot needs to receive, persist, or attach files to tasks.
+
+| Variable               | Required | Description                                                           |
+| ---------------------- | -------- | --------------------------------------------------------------------- |
+| `S3_BUCKET`            | Yes      | S3 bucket name where attachment objects are stored                    |
+| `S3_ACCESS_KEY_ID`     | Yes      | Access key for the S3-compatible service                              |
+| `S3_SECRET_ACCESS_KEY` | Yes      | Secret key for the S3-compatible service                              |
+| `S3_ENDPOINT`          | No\*     | Endpoint URL. Required for non-AWS providers such as MinIO, R2, or B2 |
+| `S3_REGION`            | No       | AWS region (e.g. `us-east-1`)                                         |
+| `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
+| `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
 
 Common runtime config keys:
 
@@ -192,7 +206,7 @@ Optional: debug server + dashboard client
 - `src/chat/interaction-router.ts` — config-editor, group-selector, and wizard callback routing
 - `src/config.ts` — per-user config store
 - `src/conversation.ts` / `src/history.ts` / `src/memory.ts` — history, summary, and fact management
-- `src/file-relay.ts` — turn-scoped incoming file storage for attachment tools
+- `src/attachments/` — durable attachment workspace: ingest, S3 blob store, metadata, manifest, and resolver
 - `src/message-queue/` — message coalescing and orderly orchestrator dispatch
 - `src/group-settings/` — DM selection of personal vs group settings target
 - `src/identity/` — chat-to-provider identity mapping and “me” resolution
@@ -276,7 +290,7 @@ Important current points:
 
 ## Path-Scoped Conventions
 
-Detailed conventions live in path-scoped `CLAUDE.md` files and `.github/instructions/*.instructions.md` files:
+Detailed conventions live in path-scoped `CLAUDE.md` files:
 
 | Path                      | Covers                                                                 |
 | ------------------------- | ---------------------------------------------------------------------- |
@@ -287,3 +301,47 @@ Detailed conventions live in path-scoped `CLAUDE.md` files and `.github/instruct
 | `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |
 | `codeindex/CLAUDE.md`     | codeindex workspace structure, scripts, storage, and indexing rules    |
 | `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, and TDD rules       |
+
+## Pi Workflow
+
+When the current harness supports `obra/superpowers` skills, preserve that workflow instead of replacing it with unrelated agent packages.
+
+- Load `using-superpowers` at the start of the session before taking action.
+- Load any other applicable `obra/superpowers` skill before responding, editing files, or running commands.
+- Do not rely on memory of skill contents; load the current skill text each time.
+
+## Codebase Search Protocol
+
+When working inside this project, prefer the `codeindex` MCP server tools for structural code queries.
+
+### Tool selection
+
+| When                                                      | Use                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------- |
+| You know the exact symbol, export name, or qualified name | `code_symbol` with `limit: 5`                           |
+| Keyword, concept, or exploratory search                   | `code_search` with `scopeTiers: ["exported", "member"]` |
+| You found a symbol and need callers/references/dependents | `code_impact`                                           |
+| Stale data suspected after edits                          | `code_index` with `mode: "incremental"`                 |
+
+### Query-shaping tips
+
+- Use `kinds` to narrow results to specific declarations (e.g., `["function_declaration", "class_declaration", "interface_declaration"]`).
+- Use `scopeTiers` to skip local-variable noise. Prefer `["exported", "member"]` unless local symbols are intentionally needed.
+- Use `code_symbol` for names you know (e.g., `resolveMattermostUserId`, `src/chat/mattermost/index#MattermostChatProvider>resolveUserId`).
+- Use `code_search` for concepts (e.g., `mattermost user identity`, `task provider resolver`).
+
+### Fallback
+
+1. **Fallback** — Use `grep` or `glob` ONLY for files outside the indexed source tree (config files, markdown, `.json`, non-JS/TS assets).
+2. **Last resort** — Use `read` on individual files when `codeindex` returns no results and the file is known to exist.
+
+### Do not
+
+- Do NOT use `grep` to search for symbol definitions or usage inside `src/` or `client/`.
+- Do NOT use `glob` with `src/**/*.ts` to discover symbols by filename.
+- Do NOT use `task explore` for structural codebase navigation when the repository is indexed.
+- Do NOT run `bun run codeindex/src/cli.ts ...` directly in conversation; use the MCP tools instead.
+
+### Auto-reindexing
+
+This repository includes an auto-reindex plugin. After `write`/`edit`/`multiedit` calls on files under `src/` or `client/`, incremental reindexing happens automatically. If you suspect stale data, call `code_index` with mode `incremental` explicitly.

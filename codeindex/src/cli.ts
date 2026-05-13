@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
@@ -9,12 +10,17 @@ import { createCodeindexServer } from './mcp/server.js'
 import { findIncomingReferences, findSymbolCandidates, searchSymbols } from './search/index.js'
 import { openDatabase } from './storage/db.js'
 
-const resolveConfigPath = (cwd: string): string => path.join(cwd, '.codeindex.json')
+export const resolveRepoRoot = (targetPath?: string): string => {
+  if (targetPath !== undefined) return path.resolve(targetPath)
 
-const loadConfigForPath = (targetPath: string): Promise<CodeindexConfig> => {
-  const repoRoot = path.resolve(targetPath)
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+  return path.resolve(scriptDir, '..', '..')
+}
+
+export const loadConfigForPath = (targetPath?: string): Promise<CodeindexConfig> => {
+  const repoRoot = resolveRepoRoot(targetPath)
   return loadCodeindexConfig({
-    configPath: resolveConfigPath(repoRoot),
+    configPath: path.join(repoRoot, '.codeindex.json'),
     repoRoot,
   })
 }
@@ -89,7 +95,7 @@ const runMcpCommand = async (config: CodeindexConfig): Promise<void> => {
 
 const main = async (): Promise<void> => {
   const [, , command = 'index', rawArg] = process.argv
-  const config = await loadConfigForPath(process.cwd())
+  const config = await loadConfigForPath()
 
   switch (command) {
     case 'index':

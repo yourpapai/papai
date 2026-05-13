@@ -24,6 +24,8 @@ interface TreeSitterModule {
   readonly Language: LanguageLoader
 }
 
+const parserInitPromises = new WeakMap<ParserConstructor, Promise<void>>()
+
 export interface LoadedParser {
   readonly parser: ParserLike
   readonly language: SupportedLanguage
@@ -76,16 +78,33 @@ const loadDefaultModule = async (): Promise<TreeSitterModule> => {
   }
 }
 
+const locateParserWasm = (fileName: string): string =>
+  Bun.fileURLToPath(
+    import.meta.resolve(`web-tree-sitter/${fileName === 'tree-sitter.wasm' ? 'web-tree-sitter.wasm' : fileName}`),
+  )
+
+const initializeParserRuntime = (Parser: ParserConstructor): Promise<void> => {
+  const cached = parserInitPromises.get(Parser)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const initialized = Parser.init({
+    locateFile: locateParserWasm,
+  }).catch((error: unknown) => {
+    parserInitPromises.delete(Parser)
+    throw error
+  })
+
+  parserInitPromises.set(Parser, initialized)
+  return initialized
+}
+
 export const createParserLoader = async (deps: Readonly<CreateParserLoaderDeps> = {}): Promise<ParserLoader> => {
   const treeSitterModule = await (deps.loadModule?.() ?? loadDefaultModule())
   const { Language, Parser } = treeSitterModule
 
-  await Parser.init({
-    locateFile: (fileName: string) =>
-      Bun.fileURLToPath(
-        import.meta.resolve(`web-tree-sitter/${fileName === 'tree-sitter.wasm' ? 'web-tree-sitter.wasm' : fileName}`),
-      ),
-  })
+  await initializeParserRuntime(Parser)
 
   const cache = new Map<SupportedLanguage, Promise<unknown>>()
 

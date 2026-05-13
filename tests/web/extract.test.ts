@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { DefuddleResponse } from 'defuddle/node'
 import { parseHTML } from 'linkedom'
@@ -78,9 +79,7 @@ describe('extractHtmlContent', () => {
       throw new Error('Expected extractHtmlContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.extractFailed()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'extract-failed',
@@ -106,9 +105,7 @@ describe('extractHtmlContent', () => {
       throw new Error('Expected extractHtmlContent to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(webFetchError.extractFailed()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error))
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'extract-failed',

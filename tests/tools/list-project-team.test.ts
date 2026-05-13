@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeListProjectTeamTool } from '../../src/tools/list-project-team.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -30,7 +31,7 @@ describe('List Project Team Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)({ projectId: 'project-1' }, { toolCallId: '1', messages: [] })
 
-    if (!isUserArray(result)) throw new Error('Invalid result')
+    assert(isUserArray(result))
     expect(result).toHaveLength(2)
     expect(listProjectTeam).toHaveBeenCalledWith('project-1')
   })

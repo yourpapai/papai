@@ -7,6 +7,7 @@
 
 import type { Plugin } from '@opencode-ai/plugin'
 
+import { blockGitCheckoutDiscard } from '../../.hooks/git/checks/block-git-checkout-discard.mjs'
 import { blockGitStash } from '../../.hooks/git/checks/block-git-stash.mjs'
 import { checkFull } from '../../.hooks/tdd/checks/check-full.mjs'
 import { enforceTdd } from '../../.hooks/tdd/checks/enforce-tdd.mjs'
@@ -30,11 +31,13 @@ export const TddEnforcement: Plugin = async ({ client, directory }) => {
       // Capture session ID from every tool call so session.idle always knows it
       currentSessionID = input.sessionID
 
-      // Block git stash regardless of tool type
+      // Block destructive git commands regardless of tool type
       if (input.tool === 'bash') {
         const command = (output.args?.command as string) ?? ''
         const gitStashResult = blockGitStash({ tool_name: 'bash', tool_input: { command } })
         if (gitStashResult) throw new Error(gitStashResult.reason)
+        const gitCheckoutResult = blockGitCheckoutDiscard({ tool_name: 'bash', tool_input: { command } })
+        if (gitCheckoutResult) throw new Error(gitCheckoutResult.reason)
       }
 
       // Only process edit tools

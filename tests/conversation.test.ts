@@ -10,6 +10,17 @@ import { flushMicrotasks } from './utils/test-helpers.js'
 // Helper type for spy instances that need cleanup
 type SpyInstance = { mockRestore: () => void }
 
+// Mock lookup helpers — defined outside test blocks to satisfy no-conditional-in-test
+function mockConfigLookup(
+  mockConfigs: Map<string, Map<string, string | null>>,
+): (userId: string, key: string) => string | null {
+  return (userId: string, key: string): string | null => mockConfigs.get(userId)?.get(key) ?? null
+}
+
+function mockHistoryLookup(mockHistories: Map<string, ModelMessage[]>): (userId: string) => ModelMessage[] {
+  return (userId: string): ModelMessage[] => mockHistories.get(userId) ?? []
+}
+
 // Define local type and mutable implementation BEFORE mocking
 type GenerateTextResult = { text: string }
 const defaultGenerateTextImpl = (): Promise<GenerateTextResult> =>
@@ -221,14 +232,8 @@ describe('runTrimInBackground', () => {
       ]),
     )
 
-    trackSpy(
-      spyOn(cacheModule, 'getCachedConfig').mockImplementation(
-        (userId: string, key: string) => mockConfigs.get(userId)?.get(key) ?? null,
-      ),
-    )
-    trackSpy(
-      spyOn(cacheModule, 'getCachedHistory').mockImplementation((userId: string) => mockHistories.get(userId) ?? []),
-    )
+    trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
         mockHistories.set(userId, [...messages])
@@ -262,23 +267,13 @@ describe('runTrimInBackground', () => {
       ]),
     )
 
-    let callCount = 0
-    generateTextImpl = (): Promise<GenerateTextResult> => {
-      callCount++
-      if (callCount === 1) {
-        mockHistories.set('user1', [...history, { role: 'user', content: 'New message during trim' }])
-      }
-      return Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Trimmed' }) })
-    }
+    // Inject the new message unconditionally on the first (and only) generateText call
+    mockHistories.set('user1', [...history, { role: 'user', content: 'New message during trim' }])
+    generateTextImpl = (): Promise<GenerateTextResult> =>
+      Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Trimmed' }) })
 
-    trackSpy(
-      spyOn(cacheModule, 'getCachedConfig').mockImplementation(
-        (userId: string, key: string) => mockConfigs.get(userId)?.get(key) ?? null,
-      ),
-    )
-    trackSpy(
-      spyOn(cacheModule, 'getCachedHistory').mockImplementation((userId: string) => mockHistories.get(userId) ?? []),
-    )
+    trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
         mockHistories.set(userId, [...messages])
@@ -323,14 +318,8 @@ describe('runTrimInBackground', () => {
 
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('LLM API error'))
 
-    trackSpy(
-      spyOn(cacheModule, 'getCachedConfig').mockImplementation(
-        (userId: string, key: string) => mockConfigs.get(userId)?.get(key) ?? null,
-      ),
-    )
-    trackSpy(
-      spyOn(cacheModule, 'getCachedHistory').mockImplementation((userId: string) => mockHistories.get(userId) ?? []),
-    )
+    trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(spyOn(cacheModule, 'setCachedHistory').mockImplementation(() => {}))
     trackSpy(spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null))
     trackSpy(spyOn(logger, 'warn').mockImplementation(() => {}))
@@ -366,16 +355,8 @@ describe('runTrimInBackground', () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
       Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Concurrent trim summary' }) })
 
-    trackSpy(
-      spyOn(cacheModule, 'getCachedConfig').mockImplementation(
-        (userId: string, key: string) => concurrentConfigs.get(userId)?.get(key) ?? null,
-      ),
-    )
-    trackSpy(
-      spyOn(cacheModule, 'getCachedHistory').mockImplementation(
-        (userId: string) => concurrentHistories.get(userId) ?? [],
-      ),
-    )
+    trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(concurrentConfigs)))
+    trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(concurrentHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
         concurrentHistories.set(userId, [...messages])

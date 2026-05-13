@@ -11,10 +11,23 @@
     "tests/codeindex/**/*.test.ts!",
     "review-loop/src/cli.ts!",
     "tests/review-loop/**/*.test.ts!",
+    "scripts/behavior-audit/index.ts!",
+    "scripts/behavior-audit/profile-clustering.ts!",
+    "scripts/behavior-audit/tune-embedding.ts!",
+    "scripts/behavior-audit/reset.ts!",
+    "scripts/behavior-audit/migrate-trust.ts!",
+    "tests/scripts/behavior-audit*.ts!",
+    "tests/scripts/behavior-audit/**/*.ts!",
   ],
 
   // All source files (production only)
-  "project": ["src/**/*.ts!", "client/**/*.ts!", "codeindex/src/**/*.ts!", "review-loop/src/**/*.ts!"],
+  "project": [
+    "src/**/*.ts!",
+    "client/**/*.ts!",
+    "codeindex/src/**/*.ts!",
+    "review-loop/src/**/*.ts!",
+    "scripts/behavior-audit/**/*.ts!",
+  ],
 
   // All issue types treated as hard errors
   "rules": {
@@ -37,6 +50,16 @@
   // Ignore Stryker plugin (loaded at runtime, not imported)
   "ignoreDependencies": ["@stryker-mutator/typescript-checker"],
 
+  "ignoreIssues": {
+    "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
+    "scripts/behavior-audit/phase-stats.ts": ["exports"],
+    "src/attachments/workspace.ts": ["exports"],
+    "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
+    "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
+    "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
+    "tests/scripts/behavior-audit/test-fixtures.ts": ["exports", "types"],
+  },
+
   // Report unused exports even in entry files
   "includeEntryExports": true,
 
@@ -44,6 +67,6 @@
   "treatConfigHintsAsErrors": true,
   "ignoreExportsUsedInFile": true,
 
-  // Ignore migration files (executed at runtime, not imported)
+  // Ignore migration files and generated/runtime-only code that knip should not analyze as files
   "ignore": ["src/db/migrations/**", "codeindex/.codeindex/**", "codeindex/test-preload.ts"],
 }

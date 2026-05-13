@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { isConfigKey, type ConfigKey } from '../../src/types/config.js'
 
@@ -34,11 +35,10 @@ describe('config types', () => {
 
     test('type guard narrows string to ConfigKey', () => {
       const maybeKey = 'llm_apikey'
-      if (isConfigKey(maybeKey)) {
-        // TypeScript should recognize this as ConfigKey
-        const key: ConfigKey = maybeKey
-        expect(key).toBe('llm_apikey')
-      }
+      assert(isConfigKey(maybeKey), 'expected isConfigKey to return true for a valid key')
+      // TypeScript should recognize this as ConfigKey after the assertion
+      const key: ConfigKey = maybeKey
+      expect(key).toBe('llm_apikey')
     })
   })
 })

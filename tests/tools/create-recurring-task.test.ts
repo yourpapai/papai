@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { setCachedConfig } from '../../src/cache.js'
 import type { CreateRecurringTaskDeps } from '../../src/tools/create-recurring-task.js'
@@ -50,7 +51,7 @@ describe('create-recurring-task — DTSTART anchor', () => {
 
   test('uses startDate and startTime as DTSTART when provided', async () => {
     const tool = makeCreateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       {
         title: 'Task',
@@ -72,7 +73,7 @@ describe('create-recurring-task — DTSTART anchor', () => {
 
   test('uses startDate at midnight when startTime is omitted', async () => {
     const tool = makeCreateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       {
         title: 'Task',
@@ -92,7 +93,7 @@ describe('create-recurring-task — DTSTART anchor', () => {
 
   test('falls back to midnight today when startDate is omitted', async () => {
     const tool = makeCreateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       {
         title: 'Task',

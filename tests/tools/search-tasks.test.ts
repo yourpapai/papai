@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { makeSearchTasksTool } from '../../src/tools/search-tasks.js'
@@ -60,7 +61,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks, preferredUserIdentifier: 'login' })
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
@@ -87,7 +88,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks, preferredUserIdentifier: 'id' })
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
@@ -104,7 +105,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks })
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'my tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
@@ -121,7 +122,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks })
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'tasks', assigneeId: 'user-123' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
@@ -138,7 +139,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks })
       const tool = makeSearchTasksTool(provider, undefined)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
@@ -155,7 +156,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks })
       const tool = makeSearchTasksTool(provider, 'no-mapping-user')
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'tasks', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
@@ -172,7 +173,7 @@ describe('search_tasks', () => {
       const provider = createMockProvider({ searchTasks })
       const tool = makeSearchTasksTool(provider, 'test-search-identity')
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute({ query: 'bug fix' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)

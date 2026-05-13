@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 
-import { findIncomingReferences, findSymbolCandidates } from '../../codeindex/src/search/index.js'
+import { findIncomingReferences, findSymbolCandidates } from '../../codeindex/src/impact.js'
 import { ensureSchema } from '../../codeindex/src/storage/schema.js'
 
 describe('symbol resolution and impact', () => {

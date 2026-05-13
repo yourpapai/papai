@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeListWatchersTool } from '../../src/tools/list-watchers.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -34,7 +35,7 @@ describe('List Watchers Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
-    if (!isWatcherList(result)) throw new Error('Invalid result')
+    assert(isWatcherList(result))
     expect(result).toEqual([
       { id: 'user-1', login: 'alice', name: 'Alice Smith' },
       { id: 'user-2', login: 'bob', name: 'Bob Jones' },

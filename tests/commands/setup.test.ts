@@ -162,6 +162,11 @@ describe('/setup command', () => {
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(true)
   })
 
+  const getConfigWithExistingApiKey = (_contextId: string, key: string): string | null => {
+    const values: Record<string, string> = { kaneo_apikey: 'existing-key' }
+    return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
+  }
+
   test('subsequent allowlisted group setup skips provisioning and starts the wizard', async () => {
     process.env['TASK_PROVIDER'] = 'kaneo'
     addAuthorizedGroup('group-1', 'admin-1')
@@ -177,7 +182,7 @@ describe('/setup command', () => {
         return Promise.resolve({ status: 'failed', error: 'should not be called' })
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
-      getConfig: (_contextId: string, key: string) => (key === 'kaneo_apikey' ? 'existing-key' : null),
+      getConfig: getConfigWithExistingApiKey,
       getKaneoWorkspace: () => 'existing-workspace',
     }
 

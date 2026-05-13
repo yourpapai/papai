@@ -20,12 +20,9 @@ describe('extractSymbolsFromSource', () => {
 
     const tree = parsed.parser.parse(source)
     expect(tree).not.toBeNull()
-    if (tree === null) {
-      throw new Error('Expected parser to produce a tree')
-    }
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/db/drizzle.ts',
       moduleKey: 'src/db/drizzle',
       maxStoredBodyLines: 120,
@@ -60,11 +57,10 @@ describe('extractSymbolsFromSource', () => {
 
     const tree = parsed.parser.parse(source)
     expect(tree).not.toBeNull()
-    if (tree === null) throw new Error('Expected parser to produce a tree')
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/db/drizzle.ts',
       moduleKey: 'src/db/drizzle',
       maxStoredBodyLines: 120,
@@ -91,11 +87,10 @@ describe('extractSymbolsFromSource', () => {
 
     const tree = parsed.parser.parse(source)
     expect(tree).not.toBeNull()
-    if (tree === null) throw new Error('Expected parser to produce a tree')
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/db/drizzle.ts',
       moduleKey: 'src/db/drizzle',
       maxStoredBodyLines: 120,
@@ -117,11 +112,10 @@ describe('extractSymbolsFromSource', () => {
 
     const tree = parsed.parser.parse(source)
     expect(tree).not.toBeNull()
-    if (tree === null) throw new Error('Expected parser to produce a tree')
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/constants.ts',
       moduleKey: 'src/constants',
       maxStoredBodyLines: 10,

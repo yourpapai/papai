@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ChatCapability, CommandHandler } from '../../src/chat/types.js'
 import { registerConfigCommand, renderConfigForTarget } from '../../src/commands/config.js'
@@ -40,7 +41,8 @@ describe('/config Command', () => {
     test('shows unset placeholder for unconfigured keys', async () => {
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
-      const output = buttonCalls[0] ?? ''
+      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      const output = buttonCalls[0]
       expect(output.length).toBeGreaterThan(0)
       const lines = output.split('\n').filter((line) => line.trim().length > 0)
       expect(lines.length).toBeGreaterThan(0)
@@ -97,14 +99,16 @@ describe('/config Command', () => {
       await renderConfigForTarget(reply, USER_ID, false)
       expect(buttonCalls).toHaveLength(0)
       expect(textCalls).toHaveLength(1)
-      const output = textCalls[0] ?? ''
+      assert(textCalls[0] !== undefined, 'expected textCalls[0] to be defined')
+      const output = textCalls[0]
       expect(output).toContain('****1234')
     })
 
     test('includes note that interactive editing is unavailable', async () => {
       const { reply, textCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, false)
-      const output = textCalls[0] ?? ''
+      assert(textCalls[0] !== undefined, 'expected textCalls[0] to be defined')
+      const output = textCalls[0]
       expect(output).toContain('not available')
     })
   })

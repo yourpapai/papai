@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { clearIdentityMapping, setIdentityMapping } from '../../src/identity/mapping.js'
 import type { TaskProvider } from '../../src/providers/types.js'
@@ -38,7 +39,7 @@ describe('Remove Watcher Tool', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    if (!isTaskUserResult(result)) throw new Error('Invalid result')
+    assert(isTaskUserResult(result), 'Invalid result')
     expect(result).toEqual({ taskId: 'task-1', userId: 'user-2' })
     expect(removeWatcher).toHaveBeenCalledWith('task-1', 'user-2')
   })
@@ -86,7 +87,7 @@ describe('Remove Watcher Tool', () => {
         { toolCallId: '1', messages: [] },
       )
 
-      if (!isTaskUserResult(result)) throw new Error('Invalid result')
+      assert(isTaskUserResult(result), 'Invalid result')
       expect(result).toEqual({ taskId: 'task-123', userId: 'resolved-user-789' })
       expect(removeWatcher).toHaveBeenCalledWith('task-123', 'resolved-user-789')
     })
@@ -116,7 +117,7 @@ describe('Remove Watcher Tool', () => {
         { toolCallId: '1', messages: [] },
       )
 
-      if (!isTaskUserResult(result)) throw new Error('Invalid result')
+      assert(isTaskUserResult(result), 'Invalid result')
       expect(result).toEqual({ taskId: 'task-123', userId: 'other-user' })
       expect(removeWatcher).toHaveBeenCalledWith('task-123', 'other-user')
     })
@@ -133,7 +134,7 @@ describe('Remove Watcher Tool', () => {
         { toolCallId: '1', messages: [] },
       )
 
-      if (!isTaskUserResult(result)) throw new Error('Invalid result')
+      assert(isTaskUserResult(result), 'Invalid result')
       expect(result).toEqual({ taskId: 'task-123', userId: 'jsmith' })
       expect(removeWatcher).toHaveBeenCalledWith('task-123', 'jsmith')
     })

@@ -58,13 +58,37 @@ if [ "$STAGED_MODE" = true ]; then
   checks=("lint" "typecheck" "format:check")
   failed=0
 
+  # Filter out files matching .oxlintignore patterns (oxlint ignores --ignore-path
+  # when explicit file paths are passed, so we apply the patterns ourselves).
+  filtered_lintable_files=()
+  if [ ${#lintable_files[@]} -gt 0 ] && [ -f .oxlintignore ]; then
+    for file in "${lintable_files[@]}"; do
+      keep=true
+      while IFS= read -r pattern; do
+        # Skip blank lines and comments
+        [ -z "$pattern" ] && continue
+        case "$pattern" in
+          \#*) continue ;;
+        esac
+        case "$file" in
+          ${pattern}*) keep=false; break ;;
+        esac
+      done < .oxlintignore
+      if $keep; then
+        filtered_lintable_files+=("$file")
+      fi
+    done
+  else
+    filtered_lintable_files=("${lintable_files[@]+${lintable_files[@]}}")
+  fi
+
   # Run lint only on staged files oxlint actually supports
   (
     exit_code=0
-    if [ ${#lintable_files[@]} -eq 0 ]; then
+    if [ ${#filtered_lintable_files[@]} -eq 0 ]; then
       printf '%s\n' 'ℹ No lintable staged files for oxlint' >"$TMPDIR/lint.out"
     else
-      bunx oxlint --config .oxlintrc.json "${lintable_files[@]}" >"$TMPDIR/lint.out" 2>&1 || exit_code=$?
+      bunx oxlint --config .oxlintrc.json "${filtered_lintable_files[@]}" >"$TMPDIR/lint.out" 2>&1 || exit_code=$?
     fi
     echo "$exit_code" >"$TMPDIR/lint.exit"
   ) &

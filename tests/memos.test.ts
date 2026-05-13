@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { _userCaches } from '../src/cache.js'
 import {
@@ -181,9 +182,15 @@ describe('updateMemoEmbedding and loadEmbeddingsForUser', () => {
     const loaded = loadEmbeddingsForUser('user1')
     expect(loaded.length).toBe(1)
     expect(loaded[0]?.id).toBe(memo.id)
-    expect(loaded[0]?.embedding.length).toBe(4)
-    expect(Math.abs((loaded[0]?.embedding[0] ?? 0) - 0.1)).toBeLessThan(0.001)
-    expect(Math.abs((loaded[0]?.embedding[3] ?? 0) - 0.4)).toBeLessThan(0.001)
+    assert(loaded[0] !== undefined)
+    const { embedding } = loaded[0]
+    expect(embedding.length).toBe(4)
+    const first = embedding[0]
+    const last = embedding[3]
+    assert(first !== undefined)
+    assert(last !== undefined)
+    expect(Math.abs(first - 0.1)).toBeLessThan(0.001)
+    expect(Math.abs(last - 0.4)).toBeLessThan(0.001)
   })
 
   test('only loads active memos with embeddings', () => {

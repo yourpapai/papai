@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -121,6 +122,19 @@ function makeCommentResponse(...args: [] | [overrides: Record<string, unknown>])
   }
 }
 
+function makePaginatedFetchHandler(
+  pages: Record<string, unknown[]>,
+): (url: string, init: RequestInit) => Promise<Response> {
+  return (url) => {
+    const requestUrl = new URL(url)
+    const skip = requestUrl.searchParams.get('$skip') ?? ''
+    const page = pages[skip] ?? []
+    return Promise.resolve(
+      new Response(JSON.stringify(page), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+  }
+}
+
 // --- Tests ---
 
 beforeEach(() => {
@@ -188,9 +202,8 @@ describe('addYouTrackComment', () => {
       expect.unreachable('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (error instanceof YouTrackClassifiedError) {
-        expect(error.appError.code).toBe('auth-failed')
-      }
+      assert(error instanceof YouTrackClassifiedError)
+      expect(error.appError.code).toBe('auth-failed')
     }
   })
 })
@@ -257,26 +270,7 @@ describe('getYouTrackComments', () => {
     )
     const secondPage = [makeCommentResponse({ id: 'comment-141', text: 'Comment 141' })]
 
-    installFetchMock((url) => {
-      const requestUrl = new URL(url)
-      const skip = requestUrl.searchParams.get('$skip')
-
-      if (skip === '40') {
-        return Promise.resolve(
-          new Response(JSON.stringify(firstPage), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-
-      if (skip === '140') {
-        return Promise.resolve(
-          new Response(JSON.stringify(secondPage), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    installFetchMock(makePaginatedFetchHandler({ '40': firstPage, '140': secondPage }))
 
     const comments = await getYouTrackComments(config, 'TEST-1', { offset: 40 })
 
@@ -478,9 +472,8 @@ describe('removeYouTrackComment', () => {
       expect.unreachable('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (error instanceof YouTrackClassifiedError) {
-        expect(error.appError.code).toBe('auth-failed')
-      }
+      assert(error instanceof YouTrackClassifiedError)
+      expect(error.appError.code).toBe('auth-failed')
     }
   })
 })

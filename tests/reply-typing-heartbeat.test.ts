@@ -10,6 +10,35 @@ function wait(ms: number): Promise<void> {
   })
 }
 
+/** Returns a typing fn that rejects once, then records calls normally. */
+function makeTypingWithOneInitialError(typingCalls: number[]): () => Promise<void> {
+  const queue: Array<() => Promise<void>> = [(): Promise<void> => Promise.reject(new Error('Typing failed'))]
+  return (): Promise<void> => {
+    const next = queue.shift()
+    return next === undefined
+      ? Promise.resolve().then(() => {
+          typingCalls.push(Date.now())
+        })
+      : next()
+  }
+}
+
+/** Returns a typing fn that rejects for the first two calls, then records calls normally. */
+function makeTypingWithTwoInitialErrors(typingCalls: number[]): () => Promise<void> {
+  const queue: Array<() => Promise<void>> = [
+    (): Promise<void> => Promise.reject(new Error('Typing failed')),
+    (): Promise<void> => Promise.reject(new Error('Typing failed')),
+  ]
+  return (): Promise<void> => {
+    const next = queue.shift()
+    return next === undefined
+      ? Promise.resolve().then(() => {
+          typingCalls.push(Date.now())
+        })
+      : next()
+  }
+}
+
 function createReply(typingCalls: number[], textCalls: string[]): ReplyFn {
   return {
     text: (content: string): Promise<void> => {
@@ -78,7 +107,6 @@ describe('reply typing heartbeat', () => {
   test('handles initial typing error gracefully and continues execution', async () => {
     const typingCalls: number[] = []
     const textCalls: string[] = []
-    let shouldThrow = true
     const reply: ReplyFn = {
       text: (content: string): Promise<void> => {
         textCalls.push(content)
@@ -89,14 +117,7 @@ describe('reply typing heartbeat', () => {
         return Promise.resolve()
       },
       // Cast to handle both sync and async typing signatures
-      typing: ((): unknown => {
-        if (shouldThrow) {
-          shouldThrow = false
-          return Promise.reject(new Error('Typing failed'))
-        }
-        typingCalls.push(Date.now())
-        return Promise.resolve()
-      }) as () => void,
+      typing: makeTypingWithOneInitialError(typingCalls) as () => void,
       buttons: (): Promise<void> => Promise.resolve(),
     }
 
@@ -117,7 +138,6 @@ describe('reply typing heartbeat', () => {
   test('handles recurring typing errors gracefully', async () => {
     const typingCalls: number[] = []
     const textCalls: string[] = []
-    let callCount = 0
     const reply: ReplyFn = {
       text: (content: string): Promise<void> => {
         textCalls.push(content)
@@ -128,14 +148,7 @@ describe('reply typing heartbeat', () => {
         return Promise.resolve()
       },
       // Cast to handle both sync and async typing signatures
-      typing: ((): unknown => {
-        callCount++
-        if (callCount <= 2) {
-          return Promise.reject(new Error('Typing failed'))
-        }
-        typingCalls.push(Date.now())
-        return Promise.resolve()
-      }) as () => void,
+      typing: makeTypingWithTwoInitialErrors(typingCalls) as () => void,
       buttons: (): Promise<void> => Promise.resolve(),
     }
 

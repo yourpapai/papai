@@ -116,7 +116,7 @@ describe('dashboard-smoke', () => {
       const body = await res.text()
 
       // Should be an IIFE (starts with `(` or `!`)
-      expect(body.startsWith('(') || body.startsWith('!')).toBe(true)
+      expect(body).toMatch(/^[(!]/)
 
       // Should not have ES module import/export statements that would fail in browser
       expect(body).not.toMatch(/^import /m)

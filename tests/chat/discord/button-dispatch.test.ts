@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
@@ -6,6 +7,11 @@ import type { CommandHandler } from '../../../src/chat/types.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { addUser } from '../../../src/users.js'
 import { createMockReply, mockLogger, setupTestDb } from '../../utils/test-helpers.js'
+
+const stringCommandMatch = (commandMatch: string | RegExpMatchArray | null | undefined): string => {
+  assert(typeof commandMatch === 'string')
+  return commandMatch
+}
 
 type MockInteractionOverrides = Partial<
   Readonly<{
@@ -382,7 +388,7 @@ describe('routeButtonFallback', () => {
 
       let receivedMatch = ''
       const mockCommandWithArgs: CommandHandler = (msg): Promise<void> => {
-        receivedMatch = typeof msg.commandMatch === 'string' ? msg.commandMatch : ''
+        receivedMatch = stringCommandMatch(msg.commandMatch)
         return Promise.resolve()
       }
 
@@ -405,7 +411,7 @@ describe('routeButtonFallback', () => {
 
       let receivedMatch = 'non-empty'
       const mockCommandNoArgs: CommandHandler = (msg): Promise<void> => {
-        receivedMatch = typeof msg.commandMatch === 'string' ? msg.commandMatch : ''
+        receivedMatch = stringCommandMatch(msg.commandMatch)
         return Promise.resolve()
       }
 
@@ -450,7 +456,7 @@ describe('routeButtonFallback', () => {
       let commandWasCalled = false
       const mockCommand: CommandHandler = (msg): Promise<void> => {
         commandWasCalled = true
-        receivedMatch = typeof msg.commandMatch === 'string' ? msg.commandMatch : ''
+        receivedMatch = stringCommandMatch(msg.commandMatch)
         return Promise.resolve()
       }
 

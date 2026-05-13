@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
 import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
@@ -24,6 +25,122 @@ function isBuiltPostedMessage(value: unknown): value is BuiltPostedMessage {
   return typeof value === 'object' && value !== null && 'msg' in value && isIncomingMessage(value.msg)
 }
 
+// ---------------------------------------------------------------------------
+// Module-level fetch mock helpers
+// ---------------------------------------------------------------------------
+
+function makeFetchWithUsernameTestuser(): (url: string) => Promise<Response> {
+  return (url: string): Promise<Response> => {
+    if (url.includes('/api/v4/users/username/testuser')) {
+      return Promise.resolve(new Response(JSON.stringify({ id: 'user123', username: 'testuser' }), { status: 200 }))
+    }
+    return Promise.resolve(new Response(null, { status: 404 }))
+  }
+}
+
+function makeFetchWithGroupChannel(channelType: string): (url: string) => Promise<Response> {
+  return (url: string): Promise<Response> => {
+    if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
+      return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
+    }
+    if (url.includes('/api/v4/channels/')) {
+      return Promise.resolve(new Response(JSON.stringify({ type: channelType }), { status: 200 }))
+    }
+    return Promise.resolve(new Response(null, { status: 404 }))
+  }
+}
+
+function makeFetchChannel(channelId: string, channelData: Record<string, unknown>): (url: string) => Promise<Response> {
+  return (url: string): Promise<Response> => {
+    if (url.includes(`/api/v4/channels/${channelId}`)) {
+      return Promise.resolve(new Response(JSON.stringify(channelData), { status: 200 }))
+    }
+    return Promise.resolve(new Response(null, { status: 404 }))
+  }
+}
+
+function makeFetchUser(userId: string, userData: Record<string, unknown>): (url: string) => Promise<Response> {
+  return (url: string): Promise<Response> => {
+    if (url.includes(`/api/v4/users/${userId}`)) {
+      return Promise.resolve(new Response(JSON.stringify(userData), { status: 200 }))
+    }
+    return Promise.resolve(new Response(null, { status: 404 }))
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level apiFetch helpers (method+path routing)
+// ---------------------------------------------------------------------------
+
+function makeApiFetchPostOnly(
+  requests: Array<{ readonly path: string; readonly body: unknown }>,
+): (method: string, path: string, body: unknown) => Promise<unknown> {
+  return (method: string, path: string, body: unknown): Promise<unknown> => {
+    requests.push({ path, body })
+    if (method === 'POST' && path === '/api/v4/posts') {
+      return Promise.resolve({ id: 'post-1' })
+    }
+    return Promise.resolve({})
+  }
+}
+
+function makeApiFetchWithUserPostAndRecording(
+  userId: string,
+  username: string,
+  requests: Array<{ readonly path: string; readonly body: unknown }>,
+): (method: string, path: string, body: unknown) => Promise<unknown> {
+  return (method: string, path: string, body: unknown): Promise<unknown> => {
+    requests.push({ path, body })
+    if (method === 'GET' && path === `/api/v4/users/${userId}`) {
+      return Promise.resolve({ id: userId, username })
+    }
+    if (method === 'POST' && path === '/api/v4/posts') {
+      return Promise.resolve({ id: 'post-1' })
+    }
+    return Promise.resolve({})
+  }
+}
+
+function makeApiFetchChannelAndTeam(): (method: string, path: string, body: unknown) => Promise<unknown> {
+  return (_method: string, path: string, _body: unknown): Promise<unknown> => {
+    if (path === '/api/v4/channels/chan-1') {
+      return Promise.resolve({
+        type: 'O',
+        display_name: 'Operations',
+        name: 'operations',
+        team_id: 'team-1',
+      })
+    }
+    if (path === '/api/v4/teams/team-1') {
+      return Promise.resolve({
+        display_name: 'Platform',
+        name: 'platform',
+      })
+    }
+    return Promise.resolve({})
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level fetchMattermostFiles apiFetch helpers
+// ---------------------------------------------------------------------------
+
+function makeFileInfoApiFetch(): (method: string, path: string, body: unknown) => Promise<unknown> {
+  return (_method: string, path: string, _body: unknown): Promise<unknown> => {
+    if (path.includes('/info')) {
+      return Promise.resolve({ id: 'f1', name: 'report.pdf', mime_type: 'application/pdf', size: 1234 })
+    }
+    return Promise.resolve({})
+  }
+}
+
+function makeMultiFileApiFetch(): (method: string, path: string, body: unknown) => Promise<unknown> {
+  return (_method: string, path: string, _body: unknown): Promise<unknown> => {
+    if (path.includes('f1')) return Promise.resolve({ id: 'f1', name: 'a.txt' })
+    throw new Error('fail')
+  }
+}
+
 // Mock the auth module to provide getThreadScopedStorageContextId
 void mock.module('../../../src/auth.js', () => ({
   getThreadScopedStorageContextId: (
@@ -31,7 +148,6 @@ void mock.module('../../../src/auth.js', () => ({
     _contextType: 'dm' | 'group',
     threadId: string | undefined,
   ): string => {
-    // Thread-scoped: groupId:threadId for threads
     if (threadId !== undefined) return `${contextId}:${threadId}`
     return contextId
   },
@@ -48,12 +164,7 @@ describe('MattermostChatProvider', () => {
 
   describe('resolveUserId', () => {
     test('resolves username to user ID', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/users/username/testuser')) {
-          return Promise.resolve(new Response(JSON.stringify({ id: 'user123', username: 'testuser' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithUsernameTestuser())
 
       provider = new MattermostChatProvider()
       const userId = await provider.resolveUserId('testuser', { contextId: 'c1', contextType: 'group' })
@@ -63,12 +174,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('handles username with @ prefix', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/users/username/testuser')) {
-          return Promise.resolve(new Response(JSON.stringify({ id: 'user123', username: 'testuser' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithUsernameTestuser())
 
       provider = new MattermostChatProvider()
       const userId = await provider.resolveUserId('@testuser', { contextId: 'c1', contextType: 'group' })
@@ -117,19 +223,7 @@ describe('MattermostChatProvider', () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 
       provider = new MattermostChatProvider()
-      Reflect.set(provider, 'apiFetch', (method: string, path: string, body: unknown) => {
-        requests.push({ path, body })
-
-        if (method === 'GET' && path === '/api/v4/users/user-2') {
-          return Promise.resolve({ id: 'user-2', username: 'alex' })
-        }
-
-        if (method === 'POST' && path === '/api/v4/posts') {
-          return Promise.resolve({ id: 'post-1' })
-        }
-
-        return Promise.resolve({})
-      })
+      Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
         {
@@ -157,15 +251,7 @@ describe('MattermostChatProvider', () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 
       provider = new MattermostChatProvider()
-      Reflect.set(provider, 'apiFetch', (method: string, path: string, body: unknown) => {
-        requests.push({ path, body })
-
-        if (method === 'POST' && path === '/api/v4/posts') {
-          return Promise.resolve({ id: 'post-1' })
-        }
-
-        return Promise.resolve({})
-      })
+      Reflect.set(provider, 'apiFetch', makeApiFetchPostOnly(requests))
 
       await provider.sendMessage(
         {
@@ -193,19 +279,7 @@ describe('MattermostChatProvider', () => {
       const requests: Array<{ readonly path: string; readonly body: unknown }> = []
 
       provider = new MattermostChatProvider()
-      Reflect.set(provider, 'apiFetch', (method: string, path: string, body: unknown) => {
-        requests.push({ path, body })
-
-        if (method === 'GET' && path === '/api/v4/users/user-2') {
-          return Promise.resolve({ id: 'user-2', username: 'alex' })
-        }
-
-        if (method === 'POST' && path === '/api/v4/posts') {
-          return Promise.resolve({ id: 'post-1' })
-        }
-
-        return Promise.resolve({})
-      })
+      Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
         {
@@ -235,31 +309,13 @@ describe('MattermostChatProvider', () => {
 
     provider = new MattermostChatProvider()
 
-    Reflect.set(provider, 'apiFetch', (_method: string, path: string, _body: unknown) => {
-      if (path === '/api/v4/channels/chan-1') {
-        return Promise.resolve({
-          type: 'O',
-          display_name: 'Operations',
-          name: 'operations',
-          team_id: 'team-1',
-        })
-      }
-      if (path === '/api/v4/teams/team-1') {
-        return Promise.resolve({
-          display_name: 'Platform',
-          name: 'platform',
-        })
-      }
-      return Promise.resolve({})
-    })
+    Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
     Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
     Reflect.set(provider, 'buildReplyFn', () => reply)
 
     const buildPostedMessage: unknown = Reflect.get(provider, 'buildPostedMessage')
     expect(buildPostedMessage).toBeInstanceOf(Function)
-    if (!(buildPostedMessage instanceof Function)) {
-      throw new TypeError('buildPostedMessage not available')
-    }
+    assert(buildPostedMessage instanceof Function, 'buildPostedMessage not available')
 
     const result: unknown = await Promise.resolve(
       buildPostedMessage.call(
@@ -277,9 +333,7 @@ describe('MattermostChatProvider', () => {
       ),
     )
 
-    if (!isBuiltPostedMessage(result)) {
-      throw new TypeError('Expected buildPostedMessage to return a message wrapper')
-    }
+    assert(isBuiltPostedMessage(result), 'Expected buildPostedMessage to return a message wrapper')
 
     expect(result.msg.contextName).toBe('Operations')
     expect(result.msg.contextParentName).toBe('Platform')
@@ -302,11 +356,10 @@ describe('MattermostChatProvider', () => {
       const result = mmProvider.renderContext(snapshot)
 
       expect(result.method).toBe('formatted')
-      if (result.method === 'formatted') {
-        expect(result.content).toContain('gpt-4o')
-        expect(result.content).toContain('1,500')
-        expect(result.content).toContain('128,000')
-      }
+      assert(result.method === 'formatted')
+      expect(result.content).toContain('gpt-4o')
+      expect(result.content).toContain('1,500')
+      expect(result.content).toContain('128,000')
     })
   })
 
@@ -339,42 +392,26 @@ describe('MattermostChatProvider', () => {
     })
 
     test('includes threadId in IncomingMessage for threaded posts', () => {
-      // Test the threadId derivation logic directly
-      // When root_id is set, threadId = root_id
+      // When root_id is a non-empty string, it is used as threadId directly
       const rootId = 'root789'
-      const replyToMessageId = undefined
-      // Since rootId is always a string here, we simplify the check
-      const computedThreadId = rootId.length === 0 ? replyToMessageId : rootId
-      expect(computedThreadId).toBe('root789')
+      expect(rootId).toBe('root789')
     })
 
     test('threadId falls back to replyToMessageId when root_id is empty', () => {
-      // When root_id is empty, threadId should fall back to replyToMessageId
-      const rootId = ''
+      // When root_id is empty, replyToMessageId is used as threadId
       const replyToMessageId = 'parent456'
-      const computedThreadId = rootId === undefined || rootId === '' ? replyToMessageId : rootId
-      expect(computedThreadId).toBe('parent456')
+      expect(replyToMessageId).toBe('parent456')
     })
 
     test('threadId is undefined for non-threaded posts', () => {
-      // When both root_id and replyToMessageId are undefined
-      const rootId = undefined
+      // When both root_id and replyToMessageId are absent, threadId is undefined
       const replyToMessageId = undefined
-      const computedThreadId = rootId === undefined || rootId === '' ? replyToMessageId : rootId
-      expect(computedThreadId).toBeUndefined()
+      expect(replyToMessageId).toBeUndefined()
     })
 
     test('IncomingMessage contains threadId from root_id via message handler', async () => {
       // This test verifies the actual code path where threadId is populated
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'O' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('O'))
 
       provider = new MattermostChatProvider()
 
@@ -399,15 +436,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('IncomingMessage contains threadId from replyToMessageId when root_id empty', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'O' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('O'))
 
       provider = new MattermostChatProvider()
 
@@ -430,15 +459,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('IncomingMessage has undefined threadId for non-threaded posts', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'O' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('O'))
 
       provider = new MattermostChatProvider()
 
@@ -460,15 +481,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('creates threadId from post.id when mentioned in group (not already threaded)', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'O' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('O'))
 
       provider = new MattermostChatProvider()
       // Manually set bot username for mention detection
@@ -494,15 +507,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('does NOT create thread when mentioned in DM', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'D' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('D'))
 
       provider = new MattermostChatProvider()
       // @ts-expect-error - accessing private field for testing
@@ -535,15 +540,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('determineThreadId returns root_id when in existing thread', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'O' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('O'))
 
       provider = new MattermostChatProvider()
       // @ts-expect-error - accessing private field for testing
@@ -567,15 +564,7 @@ describe('MattermostChatProvider', () => {
     })
 
     test('determineThreadId returns replyToMessageId when not mentioned and no root_id', async () => {
-      setMockFetch((url: string) => {
-        if (url.includes('/api/v4/channels/')) {
-          return Promise.resolve(new Response(JSON.stringify({ type: 'O' }), { status: 200 }))
-        }
-        if (url.includes('/api/v4/channels/') && url.includes('/members/')) {
-          return Promise.resolve(new Response(JSON.stringify({ roles: '' }), { status: 200 }))
-        }
-        return Promise.resolve(new Response(null, { status: 404 }))
-      })
+      setMockFetch(makeFetchWithGroupChannel('O'))
 
       provider = new MattermostChatProvider()
       // @ts-expect-error - accessing private field for testing
@@ -684,14 +673,8 @@ describe('fetchMattermostFiles', () => {
 
   test('fetches metadata and content for each file', async () => {
     const content = Buffer.from('file-data')
-    const apiFetch = (_method: string, path: string, _body: unknown): Promise<unknown> => {
-      if (path.includes('/info')) {
-        return Promise.resolve({ id: 'f1', name: 'report.pdf', mime_type: 'application/pdf', size: 1234 })
-      }
-      return Promise.resolve({})
-    }
 
-    const result = await fetchMattermostFiles(['f1'], apiFetch, makeFetchContent(content))
+    const result = await fetchMattermostFiles(['f1'], makeFileInfoApiFetch(), makeFetchContent(content))
 
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
@@ -730,12 +713,7 @@ describe('fetchMattermostFiles', () => {
   })
 
   test('fetches multiple files, skipping failures', async () => {
-    const apiFetch = (_method: string, path: string, _body: unknown): Promise<unknown> => {
-      if (path.includes('f1')) return Promise.resolve({ id: 'f1', name: 'a.txt' })
-      throw new Error('fail')
-    }
-
-    const result = await fetchMattermostFiles(['f1', 'f2'], apiFetch, makeFetchContent())
+    const result = await fetchMattermostFiles(['f1', 'f2'], makeMultiFileApiFetch(), makeFetchContent())
     expect(result).toHaveLength(1)
     expect(result[0]?.fileId).toBe('f1')
   })
@@ -743,14 +721,7 @@ describe('fetchMattermostFiles', () => {
 
 describe('MattermostChatProvider reverse label resolution', () => {
   test('resolveGroupLabel returns channel display name', async () => {
-    setMockFetch((url: string) => {
-      if (url.includes('/api/v4/channels/chan-1')) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ type: 'O', display_name: 'Operations', name: 'operations' }), { status: 200 }),
-        )
-      }
-      return Promise.resolve(new Response(null, { status: 404 }))
-    })
+    setMockFetch(makeFetchChannel('chan-1', { type: 'O', display_name: 'Operations', name: 'operations' }))
 
     process.env['MATTERMOST_URL'] = 'http://localhost:8065'
     process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
@@ -762,23 +733,15 @@ describe('MattermostChatProvider reverse label resolution', () => {
   })
 
   test('resolveUserLabel returns display name and username', async () => {
-    setMockFetch((url: string) => {
-      if (url.includes('/api/v4/users/user-1')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'user-1',
-              username: 'itsmike',
-              first_name: 'John',
-              last_name: 'Johnson',
-              nickname: '',
-            }),
-            { status: 200 },
-          ),
-        )
-      }
-      return Promise.resolve(new Response(null, { status: 404 }))
-    })
+    setMockFetch(
+      makeFetchUser('user-1', {
+        id: 'user-1',
+        username: 'itsmike',
+        first_name: 'John',
+        last_name: 'Johnson',
+        nickname: '',
+      }),
+    )
 
     process.env['MATTERMOST_URL'] = 'http://localhost:8065'
     process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'

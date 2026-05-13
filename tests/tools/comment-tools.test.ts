@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeAddCommentTool } from '../../src/tools/add-comment.js'
 import { makeGetCommentsTool } from '../../src/tools/get-comments.js'
@@ -17,6 +18,17 @@ function isAddResult(val: unknown): val is { id: string; body: string; createdAt
     typeof val.body === 'string' &&
     'createdAt' in val &&
     typeof val.createdAt === 'string'
+  )
+}
+
+function isUpdateResult(val: unknown): val is { id: string; body: string } {
+  return (
+    val !== null &&
+    typeof val === 'object' &&
+    'id' in val &&
+    typeof val.id === 'string' &&
+    'body' in val &&
+    typeof val.body === 'string'
   )
 }
 
@@ -48,12 +60,12 @@ describe('Comment Tools', () => {
       const provider = createMockProvider({ addComment: addCommentMock })
 
       const tool = makeAddCommentTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', comment: 'New comment' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isAddResult(result)) throw new Error('Invalid result')
+      assert(isAddResult(result))
 
       expect(result.id).toBe('comment-1')
       expect(result.body).toBe('New comment')
@@ -66,9 +78,9 @@ describe('Comment Tools', () => {
       })
 
       const tool = makeAddCommentTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1', comment: '' }, { toolCallId: '1', messages: [] })
-      if (!isAddResult(result)) throw new Error('Invalid result')
+      assert(isAddResult(result))
 
       expect(result.body).toBe('')
     })
@@ -82,12 +94,12 @@ describe('Comment Tools', () => {
       })
 
       const tool = makeAddCommentTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', comment: longComment },
         { toolCallId: '1', messages: [] },
       )
-      if (!isAddResult(result)) throw new Error('Invalid result')
+      assert(isAddResult(result))
 
       expect(result.body).toBe(longComment)
     })
@@ -147,9 +159,9 @@ describe('Comment Tools', () => {
       })
 
       const tool = makeGetCommentsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result))
 
       expect(result).toHaveLength(2)
     })
@@ -184,9 +196,9 @@ describe('Comment Tools', () => {
       })
 
       const tool = makeGetCommentsTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result))
 
       expect(result).toHaveLength(1)
     })
@@ -230,21 +242,12 @@ describe('Comment Tools', () => {
       const provider = createMockProvider({ updateComment: updateCommentMock })
 
       const tool = makeUpdateCommentTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', activityId: 'comment-1', comment: 'Updated comment' },
         { toolCallId: '1', messages: [] },
       )
-      if (
-        result === null ||
-        typeof result !== 'object' ||
-        !('id' in result) ||
-        typeof result.id !== 'string' ||
-        !('body' in result) ||
-        typeof result.body !== 'string'
-      ) {
-        throw new Error('Invalid result')
-      }
+      assert(isUpdateResult(result))
 
       expect(result.id).toBe('comment-1')
       expect(result.body).toBe('Updated comment')
@@ -310,12 +313,12 @@ describe('Comment Tools', () => {
       const provider = createMockProvider({ removeComment: removeCommentMock })
 
       const tool = makeRemoveCommentTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', commentId: 'comment-1' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isSuccessResult(result)) throw new Error('Invalid result')
+      assert(isSuccessResult(result))
 
       expect(result.id).toBe('comment-1')
       expect(removeCommentMock).toHaveBeenCalledWith({

@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { _userCaches } from '../src/cache.js'
 import { saveInstruction, listInstructions, deleteInstruction } from '../src/instructions.js'
@@ -16,27 +17,21 @@ describe('saveInstruction', () => {
 
   test('stores instruction and returns it', () => {
     const result = saveInstruction('ctx-1', 'Always reply in Spanish')
-    expect(result.status).toBe('saved')
-    if (result.status === 'saved') {
-      expect(result.instruction.text).toBe('Always reply in Spanish')
-      expect(result.instruction.id).toBeDefined()
-    }
+    assert(result.status === 'saved')
+    expect(result.instruction.text).toBe('Always reply in Spanish')
+    expect(result.instruction.id).toBeDefined()
   })
 
   test('normalizes whitespace and trims text', () => {
     const result = saveInstruction('ctx-1', '  Always  reply   in  Spanish  ')
-    expect(result.status).toBe('saved')
-    if (result.status === 'saved') {
-      expect(result.instruction.text).toBe('Always reply in Spanish')
-    }
+    assert(result.status === 'saved')
+    expect(result.instruction.text).toBe('Always reply in Spanish')
   })
 
   test('collapses newlines and tabs into single spaces', () => {
     const result = saveInstruction('ctx-1', 'Always reply\n\nin\tSpanish')
-    expect(result.status).toBe('saved')
-    if (result.status === 'saved') {
-      expect(result.instruction.text).toBe('Always reply in Spanish')
-    }
+    assert(result.status === 'saved')
+    expect(result.instruction.text).toBe('Always reply in Spanish')
   })
 
   test('rejects empty string', () => {
@@ -113,7 +108,7 @@ describe('deleteInstruction', () => {
 
   test('removes instruction by id', () => {
     const r = saveInstruction('ctx-1', 'Always reply in Spanish')
-    if (r.status !== 'saved') throw new Error('expected saved')
+    assert(r.status === 'saved')
     deleteInstruction('ctx-1', r.instruction.id)
     expect(listInstructions('ctx-1')).toHaveLength(0)
   })
@@ -125,7 +120,7 @@ describe('deleteInstruction', () => {
 
   test('returns deleted for known id', () => {
     const r = saveInstruction('ctx-1', 'Always reply in Spanish')
-    if (r.status !== 'saved') throw new Error('expected saved')
+    assert(r.status === 'saved')
     const result = deleteInstruction('ctx-1', r.instruction.id)
     expect(result.status).toBe('deleted')
   })

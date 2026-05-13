@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, it } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { LanguageModel, ModelMessage } from 'ai'
 
@@ -37,7 +38,7 @@ describe('makeLookupGroupHistoryTool', () => {
     const { makeLookupGroupHistoryTool } = await import('../../src/tools/lookup-group-history.js')
 
     const tool = makeLookupGroupHistoryTool(undefined, 'group123')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const input: LookupGroupHistoryInput = { queries: ['test'] }
     const result: unknown = await tool.execute(input, { toolCallId: '1', messages: [] })
     expect(result).toBe('Unable to search: missing user or context information.')
@@ -47,7 +48,7 @@ describe('makeLookupGroupHistoryTool', () => {
     const { makeLookupGroupHistoryTool } = await import('../../src/tools/lookup-group-history.js')
 
     const tool = makeLookupGroupHistoryTool('user123', undefined)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const input: LookupGroupHistoryInput = { queries: ['test'] }
     const result: unknown = await tool.execute(input, { toolCallId: '1', messages: [] })
     expect(result).toBe('Unable to search: missing user or context information.')

@@ -2,6 +2,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { chunkForDiscord } from '../../../src/chat/discord/format-chunking.js'
 
+const countFenceMarkers = (chunk: string): number => {
+  const matches = chunk.match(/```/g)
+  return matches === null || matches === undefined ? 0 : matches.length
+}
+
+const chunkStartsWithLanguageFence = (chunk: string): boolean =>
+  chunk.startsWith('```typescript') || chunk.includes('\n```typescript')
+
 describe('chunkForDiscord', () => {
   test('returns a single chunk for input shorter than max', () => {
     const result = chunkForDiscord('short text', 2000)
@@ -35,8 +43,7 @@ describe('chunkForDiscord', () => {
     const codeBlock = '```\n' + 'code line\n'.repeat(300) + '```'
     const chunks = chunkForDiscord(codeBlock, 2000)
     for (const chunk of chunks) {
-      const openCount = (chunk.match(/```/g) ?? []).length
-      expect(openCount % 2).toBe(0)
+      expect(countFenceMarkers(chunk) % 2).toBe(0)
     }
     expect(chunks.every((c) => c.length <= 2000)).toBe(true)
   })
@@ -79,13 +86,11 @@ describe('chunkForDiscord', () => {
 
     const chunks = chunkForDiscord(input, 500)
 
-    // All chunks except first should reopen with language tag
-    for (let i = 1; i < chunks.length; i++) {
-      const chunk = chunks[i]!
-      // Continuation chunks should start with ```typescript, not just ```
-      if (chunk.includes('```')) {
-        expect(chunk.startsWith('```typescript') || chunk.includes('\n```typescript')).toBe(true)
-      }
+    // All continuation chunks that contain fences should reopen with language tag
+    const continuationChunksWithFences = chunks.slice(1).filter((chunk) => chunk.includes('```'))
+    expect(continuationChunksWithFences.length).toBeGreaterThan(0)
+    for (const chunk of continuationChunksWithFences) {
+      expect(chunkStartsWithLanguageFence(chunk)).toBe(true)
     }
   })
 })

@@ -73,9 +73,7 @@ describe('providerError advanced constructors', () => {
     const error = providerError.unknown(originalError)
     expect(error.type).toBe('provider')
     expect(error.code).toBe('unknown')
-    if (error.code === 'unknown') {
-      expect(error.originalError).toBe(originalError)
-    }
+    expect(error).toHaveProperty('originalError', originalError)
   })
 })
 
@@ -150,9 +148,7 @@ describe('systemError constructors', () => {
     const error = systemError.unexpected(originalError)
     expect(error.type).toBe('system')
     expect(error.code).toBe('unexpected')
-    if (error.code === 'unexpected') {
-      expect(error.originalError).toBe(originalError)
-    }
+    expect(error).toHaveProperty('originalError', originalError)
   })
 })
 

@@ -1,6 +1,5 @@
 import type { ModelMessage } from 'ai'
 
-import { getCachedTools } from '../cache.js'
 import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/types.js'
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
@@ -8,10 +7,8 @@ import { loadHistory } from '../history.js'
 import { buildInstructionsBlock } from '../instructions.js'
 import { logger } from '../logger.js'
 import { loadFacts, loadSummary } from '../memory.js'
-import { buildProviderForUser } from '../providers/factory.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
-import { makeTools } from '../tools/index.js'
 import {
   collectContext,
   type ContextCollectorDeps,
@@ -19,27 +16,52 @@ import {
   prepareDefaultCountTokens,
   resolveEncodingName,
 } from './context-collector.js'
+import {
+  buildDirectToolCatalogPages,
+  buildInvocationToolSet,
+  resolveActiveToolDefinitions,
+  resolveContextToolSurface,
+  safeBuildProvider,
+  type BuildLiveToolSet,
+  type ResolvedContextToolSurface,
+} from './context-tool-resolution.js'
 
 const log = logger.child({ scope: 'commands:context' })
 
 export interface ContextCommandDeps {
   collectContext: (contextId: string, collectorDeps: ContextCollectorDeps) => ContextSnapshot
+  buildProvider: (contextId: string) => TaskProvider | null
+  buildLiveToolSet: BuildLiveToolSet
+  resolveActiveToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
+  buildToolCatalogPages: (resolvedToolSurface: ResolvedContextToolSurface) => readonly string[]
+  resolveToolSurface: (
+    storageContextId: string,
+    actorUserId: string,
+    contextType: 'dm' | 'group',
+    provider: TaskProvider | null,
+    buildLiveToolSet: BuildLiveToolSet,
+  ) => ResolvedContextToolSurface
 }
 
 const defaultDeps: ContextCommandDeps = {
   collectContext,
+  buildProvider: safeBuildProvider,
+  buildLiveToolSet: buildInvocationToolSet,
+  resolveActiveToolDefinitions,
+  buildToolCatalogPages: buildDirectToolCatalogPages,
+  resolveToolSurface: resolveContextToolSurface,
 }
-
-function safeBuildProvider(contextId: string): TaskProvider | null {
-  try {
-    return buildProviderForUser(contextId, false)
-  } catch (error) {
-    log.warn(
-      { contextId, error: error instanceof Error ? error.message : String(error) },
-      'Provider unavailable while building context view',
-    )
-    return null
-  }
+function resolveModelName(modelName: string | null | undefined): string {
+  if (modelName !== undefined && modelName !== null) return modelName
+  return 'unknown'
+}
+function resolveEncoding(encoding: 'o200k_base' | 'cl100k_base' | null | undefined): 'o200k_base' | 'cl100k_base' {
+  if (encoding !== undefined && encoding !== null) return encoding
+  return 'cl100k_base'
+}
+function resolveRegisterDeps(rest: readonly [ContextCommandDeps] | readonly []): ContextCommandDeps {
+  if (rest[0] !== undefined) return { ...defaultDeps, ...rest[0] }
+  return defaultDeps
 }
 
 function buildMemoryMessageText(contextId: string, history: readonly ModelMessage[]): string | null {
@@ -47,47 +69,38 @@ function buildMemoryMessageText(contextId: string, history: readonly ModelMessag
   return memoryMsg === null ? null : memoryMsg.content
 }
 
-async function buildCollectorDeps(contextId: string, provider: TaskProvider | null): Promise<ContextCollectorDeps> {
-  const modelName = getConfig(contextId, 'main_model')
-  const encoding = resolveEncodingName(modelName ?? 'unknown')
+async function buildCollectorDeps(
+  storageContextId: string,
+  provider: TaskProvider | null,
+  resolvedToolSurface: ResolvedContextToolSurface,
+  deps: ContextCommandDeps,
+): Promise<ContextCollectorDeps> {
+  const modelName = getConfig(storageContextId, 'main_model')
+  const resolvedModelName = resolveModelName(modelName)
+  const encoding = resolveEncodingName(resolvedModelName)
+  const resolvedEncoding = resolveEncoding(encoding)
+  const providerName = provider === null ? 'none' : provider.name
 
-  // Preload tokenizer for the encoding
-  await prepareDefaultCountTokens(encoding ?? 'cl100k_base')
+  await prepareDefaultCountTokens(resolvedEncoding)
 
   return {
     getMainModel: () => modelName,
     buildSystemPrompt: () =>
-      provider === null ? buildInstructionsBlock(contextId) : buildSystemPromptImpl(provider, contextId),
-    buildInstructionsBlock: () => buildInstructionsBlock(contextId),
+      provider === null ? buildInstructionsBlock(storageContextId) : buildSystemPromptImpl(provider, storageContextId),
+    buildInstructionsBlock: () => buildInstructionsBlock(storageContextId),
     getProviderAddendum: () => (provider === null ? '' : provider.getPromptAddendum()),
-    getHistory: () => loadHistory(contextId),
-    getMemoryMessage: () => buildMemoryMessageText(contextId, loadHistory(contextId)),
-    getSummary: () => loadSummary(contextId),
-    getFacts: () => loadFacts(contextId),
-    getActiveToolDefinitions: (): Record<string, unknown> => {
-      const cached = getCachedTools(contextId)
-      if (cached !== undefined && cached !== null && typeof cached === 'object') {
-        return Object.fromEntries(Object.entries(cached).map(([key, value]) => [key, value as unknown]))
-      }
-      if (provider === null) return {}
-      const tools = makeTools(provider, {
-        storageContextId: contextId,
-        chatUserId: contextId,
-        mode: 'normal',
-        contextType: 'dm',
-      })
-      return Object.fromEntries(Object.entries(tools).map(([key, value]) => [key, value as unknown]))
-    },
-    getProviderName: () => provider?.name ?? 'none',
-    countTokens: (text: string): number => defaultCountTokens(text, encoding ?? 'cl100k_base'),
+    getHistory: () => loadHistory(storageContextId),
+    getMemoryMessage: () => buildMemoryMessageText(storageContextId, loadHistory(storageContextId)),
+    getSummary: () => loadSummary(storageContextId),
+    getFacts: () => loadFacts(storageContextId),
+    getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
+    getProviderName: () => providerName,
+    countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
 }
 
 function renderFallback(rendered: ContextRendered & { method: 'embed' }): string {
-  const lines: string[] = []
-  lines.push(rendered.embed.title)
-  lines.push('')
-  lines.push(rendered.embed.description)
+  const lines: string[] = [rendered.embed.title, '', rendered.embed.description]
   if (rendered.embed.fields !== undefined) {
     lines.push('')
     for (const field of rendered.embed.fields) {
@@ -118,10 +131,14 @@ async function sendContextResponse(
   }
 }
 
-async function buildContextSnapshot(contextId: string, deps: ContextCommandDeps): Promise<ContextSnapshot> {
-  const provider = safeBuildProvider(contextId)
-  const collectorDeps = await buildCollectorDeps(contextId, provider)
-  return deps.collectContext(contextId, collectorDeps)
+async function buildContextSnapshot(
+  storageContextId: string,
+  provider: TaskProvider | null,
+  resolvedToolSurface: ResolvedContextToolSurface,
+  deps: ContextCommandDeps,
+): Promise<ContextSnapshot> {
+  const collectorDeps = await buildCollectorDeps(storageContextId, provider, resolvedToolSurface, deps)
+  return deps.collectContext(storageContextId, collectorDeps)
 }
 
 function logContextExecuted(userId: string, contextId: string, snapshot: ContextSnapshot, method: string): void {
@@ -147,9 +164,17 @@ async function handleContextCommand(
 ): Promise<void> {
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
+  const provider = deps.buildProvider(auth.storageContextId)
+  const resolvedToolSurface = deps.resolveToolSurface(
+    auth.storageContextId,
+    msg.user.id,
+    msg.contextType,
+    provider,
+    deps.buildLiveToolSet,
+  )
   let snapshot: ContextSnapshot
   try {
-    snapshot = await buildContextSnapshot(auth.storageContextId, deps)
+    snapshot = await buildContextSnapshot(auth.storageContextId, provider, resolvedToolSurface, deps)
   } catch (error) {
     log.warn(
       {
@@ -165,12 +190,20 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
+  const toolCatalogPages = deps.buildToolCatalogPages(resolvedToolSurface)
+  await toolCatalogPages.reduce<Promise<void>>(
+    (pending, page) => pending.then(() => reply.formatted(page)),
+    Promise.resolve(),
+  )
   logContextExecuted(msg.user.id, auth.storageContextId, snapshot, rendered.method)
 }
 
-export function registerContextCommand(chat: ChatProvider, deps: ContextCommandDeps = defaultDeps): void {
+export function registerContextCommand(chat: ChatProvider): void
+export function registerContextCommand(chat: ChatProvider, deps: ContextCommandDeps): void
+export function registerContextCommand(chat: ChatProvider, ...rest: readonly [ContextCommandDeps] | readonly []): void {
+  const resolvedDeps = resolveRegisterDeps(rest)
   chat.registerCommand('context', async (msg, reply, auth) => {
     if (!auth.allowed) return
-    await handleContextCommand(msg, reply, auth, chat, deps)
+    await handleContextCommand(msg, reply, auth, chat, resolvedDeps)
   })
 }

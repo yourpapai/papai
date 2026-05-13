@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeRemoveCommentReactionTool } from '../../src/tools/remove-comment-reaction.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -39,7 +40,7 @@ describe('Remove Comment Reaction Tool', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    if (!isReactionResult(result)) throw new Error('Invalid result')
+    assert(isReactionResult(result), 'Invalid result')
     expect(result.id).toBe('reaction-1')
     expect(removeCommentReaction).toHaveBeenCalledWith('task-1', 'comment-1', 'reaction-1')
   })

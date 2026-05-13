@@ -16,11 +16,12 @@ import type {
   ReplyOptions,
   ResolveUserContext,
 } from '../types.js'
+import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
-import { extractFilesFromContext, type TelegramFileFetcher } from './file-helpers.js'
+import { extractFileCandidatesFromContext, extractFilesFromContext, type TelegramFileFetcher } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
-import { resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
+import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -47,6 +48,7 @@ import {
 export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
+let telegramFileFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
 
 export class TelegramChatProvider implements ChatProvider {
   readonly name = 'telegram'
@@ -100,8 +102,15 @@ export class TelegramChatProvider implements ChatProvider {
         const isAdmin = await this.checkAdminStatus(ctx)
         const msg = await this.extractMessage(ctx, isAdmin)
         if (msg === null) return
-        const files = await this.fetchFilesFromContext(ctx)
-        if (files.length > 0) msg.files = files
+
+        if (msg.contextType === 'group') {
+          const candidates = extractFileCandidatesFromContext(ctx)
+          if (candidates.length > 0) msg.fileCandidates = candidates
+        } else {
+          const files = await this.fetchFilesFromContext(ctx)
+          if (files.length > 0) msg.files = files
+        }
+
         const reply = this.buildReplyFn(ctx, msg.threadId, false)
         await handler(msg, reply)
       },
@@ -157,21 +166,7 @@ export class TelegramChatProvider implements ChatProvider {
     return resolveTelegramUserLabel((chatId, uid) => this.bot.api.getChatMember(chatId, uid), userId, context)
   }
   async setCommands(adminUserId: string): Promise<void> {
-    const userCmds = [
-      { command: 'help', description: 'Show available commands' },
-      { command: 'setup', description: 'Interactive configuration wizard' },
-      { command: 'config', description: 'View current configuration' },
-      { command: 'clear', description: 'Clear conversation history and memory' },
-      { command: 'context', description: 'Show current LLM context usage' },
-    ]
-    const adminCmds = [
-      ...userCmds,
-      { command: 'user', description: 'Manage users — /user add|remove <id|@username>' },
-      { command: 'users', description: 'List authorized users' },
-    ]
-    await this.bot.api.setMyCommands(userCmds, { scope: { type: 'all_private_chats' } })
-    await this.bot.api.setMyCommands(adminCmds, { scope: { type: 'chat', chat_id: parseInt(adminUserId, 10) } })
-    log.info({ adminUserId }, 'Telegram command menu registered')
+    await registerTelegramCommands(this.bot, adminUserId)
   }
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderTelegramContext(snapshot)
@@ -190,9 +185,11 @@ export class TelegramChatProvider implements ChatProvider {
     const from = ctx.from
     const chat = ctx.chat
     const username = from === undefined ? null : getTelegramUsername(from.username)
+    const displayLabel =
+      from === undefined ? undefined : getTelegramDisplayLabel(from.first_name, from.last_name, username)
     const contextName = contextType === 'group' && chat !== undefined && 'title' in chat ? chat.title : undefined
     return {
-      user: { id: String(id), username, isAdmin },
+      user: { id: String(id), username, displayLabel, isAdmin },
       contextId,
       contextType,
       contextName,
@@ -273,12 +270,9 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const envToken = process.env['TELEGRAM_BOT_TOKEN']
-    let token = ''
-    if (envToken !== undefined) {
-      token = envToken
-    }
+    const token = process.env['TELEGRAM_BOT_TOKEN'] ?? ''
     const fetcher: TelegramFileFetcher = async (fileId: string) => {
+      telegramFileFetcher = fetcher
       try {
         const fileInfo = await this.bot.api.getFile(fileId)
         if (fileInfo.file_path === undefined) return null
@@ -297,4 +291,8 @@ export class TelegramChatProvider implements ChatProvider {
     }
     return extractFilesFromContext(ctx, fetcher)
   }
+}
+
+export function getTelegramFileFetcher(): ((fileId: string) => Promise<Buffer | null>) | undefined {
+  return telegramFileFetcher
 }

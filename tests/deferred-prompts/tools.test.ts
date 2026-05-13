@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ToolSet } from 'ai'
 
@@ -53,6 +54,13 @@ function extractPrompts(result: unknown): unknown[] {
   return prompts
 }
 
+function extractFireAt(result: unknown): unknown {
+  if (typeof result !== 'object' || result === null || !('fireAt' in result)) {
+    throw new Error('Expected result with fireAt property')
+  }
+  return (result as Record<string, unknown>)['fireAt']
+}
+
 beforeEach(() => {
   mockLogger()
 })
@@ -82,7 +90,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with schedule (returns type scheduled)', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute({ prompt: 'Remind me', schedule: { fire_at: futureFireAt() } }, toolCtx)
     expect(result).toHaveProperty('status', 'created')
     expect(result).toHaveProperty('type', 'scheduled')
@@ -92,7 +100,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with rrule schedule', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute(
       { prompt: 'Daily', schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } } },
       toolCtx,
@@ -104,7 +112,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with condition (returns type alert)', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'Urgent',
@@ -120,7 +128,7 @@ describe('create_deferred_prompt', () => {
 
   test('rejects both schedule and condition', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'X',
@@ -134,14 +142,14 @@ describe('create_deferred_prompt', () => {
 
   test('rejects neither schedule nor condition', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute({ prompt: 'X' }, toolCtx)
     expect(result).toHaveProperty('error')
   })
 
   test('rejects past fire_at', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute(
       { prompt: 'X', schedule: { fire_at: { date: '2020-01-01', time: '00:00' } } },
       toolCtx,
@@ -151,7 +159,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with weekly rrule schedule and stores correct rrule string', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'Weekly',
@@ -166,7 +174,7 @@ describe('create_deferred_prompt', () => {
 
   test('rejects empty schedule object', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute({ prompt: 'X', schedule: {} }, toolCtx)
     expect(result).toHaveProperty('error')
   })
@@ -174,7 +182,7 @@ describe('create_deferred_prompt', () => {
   test('converts structured fire_at from local time to UTC', async () => {
     setConfig(USER_ID, 'timezone', 'Asia/Karachi')
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
 
     // Use a date far in the future to avoid "must be future" check
     const result: unknown = await t.execute(
@@ -187,8 +195,7 @@ describe('create_deferred_prompt', () => {
     // The stored fireAt should be 12:00 UTC (17:00 - 5h offset)
     // But returned fireAt is converted back to local (17:00)
     expect(result).toHaveProperty('fireAt')
-    if (typeof result !== 'object' || result === null || !('fireAt' in result)) throw new Error('Expected fireAt')
-    expect(String(result.fireAt)).toContain('17:00:00')
+    expect(String(extractFireAt(result))).toContain('17:00:00')
   })
 })
 
@@ -202,7 +209,8 @@ describe('list_deferred_prompts', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const list = tools['list_deferred_prompts']!
-    if (!create.execute || !list.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(list.execute)
     await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     await create.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
     expect(extractPrompts(await list.execute({}, toolCtx))).toHaveLength(2)
@@ -212,7 +220,8 @@ describe('list_deferred_prompts', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const list = tools['list_deferred_prompts']!
-    if (!create.execute || !list.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(list.execute)
     await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     await create.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
     expect(extractPrompts(await list.execute({ type: 'scheduled' }, toolCtx))).toHaveLength(1)
@@ -230,7 +239,8 @@ describe('get_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    if (!create.execute || !get.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(get.execute)
     const created: unknown = await create.execute(
       { prompt: 'Fetch me', schedule: { fire_at: futureFireAt() } },
       toolCtx,
@@ -242,7 +252,7 @@ describe('get_deferred_prompt', () => {
 
   test('returns error for non-existent ID', async () => {
     const get = getTools()['get_deferred_prompt']!
-    if (!get.execute) throw new Error('Tool execute is undefined')
+    assert(get.execute)
     expect(await get.execute({ id: 'non-existent' }, toolCtx)).toHaveProperty('error')
   })
 })
@@ -257,7 +267,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    if (!create.execute || !update.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(update.execute)
     const created: unknown = await create.execute(
       { prompt: 'Original', schedule: { fire_at: futureFireAt() } },
       toolCtx,
@@ -271,7 +282,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    if (!create.execute || !update.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(update.execute)
     const created: unknown = await create.execute(
       { prompt: 'Original', condition: { field: 'task.status', op: 'eq', value: 'done' } },
       toolCtx,
@@ -285,7 +297,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    if (!create.execute || !update.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(update.execute)
     const created: unknown = await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const result: unknown = await update.execute(
       { id: extractId(created), condition: { field: 'task.status', op: 'eq', value: 'done' } },
@@ -298,7 +311,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    if (!create.execute || !update.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(update.execute)
     const created: unknown = await create.execute(
       { prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } },
       toolCtx,
@@ -312,7 +326,7 @@ describe('update_deferred_prompt', () => {
 
   test('returns error for non-existent ID', async () => {
     const update = getTools()['update_deferred_prompt']!
-    if (!update.execute) throw new Error('Tool execute is undefined')
+    assert(update.execute)
     expect(await update.execute({ id: 'missing', prompt: 'X' }, toolCtx)).toHaveProperty('error')
   })
 
@@ -320,7 +334,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    if (!create.execute || !update.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(update.execute)
     const created: unknown = await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const result: unknown = await update.execute(
       { id: extractId(created), schedule: { fire_at: { date: '2020-01-01', time: '00:00' } } },
@@ -341,7 +356,9 @@ describe('cancel_deferred_prompt', () => {
     const create = tools['create_deferred_prompt']!
     const cancel = tools['cancel_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    if (!create.execute || !cancel.execute || !get.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(cancel.execute)
+    assert(get.execute)
     const created: unknown = await create.execute(
       { prompt: 'Cancel me', schedule: { fire_at: futureFireAt() } },
       toolCtx,
@@ -355,7 +372,7 @@ describe('cancel_deferred_prompt', () => {
 
   test('returns error for non-existent ID', async () => {
     const cancel = getTools()['cancel_deferred_prompt']!
-    if (!cancel.execute) throw new Error('Tool execute is undefined')
+    assert(cancel.execute)
     expect(await cancel.execute({ id: 'non-existent' }, toolCtx)).toHaveProperty('error')
   })
 })
@@ -368,7 +385,7 @@ describe('execution metadata', () => {
 
   test('creates with execution metadata', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'Drink water',
@@ -382,7 +399,7 @@ describe('execution metadata', () => {
 
   test('creates without execution metadata (backward compat)', async () => {
     const t = getTools()['create_deferred_prompt']!
-    if (!t.execute) throw new Error('Tool execute is undefined')
+    assert(t.execute)
     const result: unknown = await t.execute({ prompt: 'Remind me', schedule: { fire_at: futureFireAt() } }, toolCtx)
     expect(result).toHaveProperty('status', 'created')
   })
@@ -391,7 +408,8 @@ describe('execution metadata', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    if (!create.execute || !get.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(get.execute)
 
     const created: unknown = await create.execute(
       {
@@ -413,7 +431,8 @@ describe('execution metadata', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    if (!create.execute || !get.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(get.execute)
 
     const created: unknown = await create.execute(
       {
@@ -433,7 +452,8 @@ describe('execution metadata', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    if (!create.execute || !get.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(get.execute)
 
     const created: unknown = await create.execute({ prompt: 'No exec', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const id = extractId(created)
@@ -447,7 +467,9 @@ describe('execution metadata', () => {
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    if (!create.execute || !update.execute || !get.execute) throw new Error('Tool execute is undefined')
+    assert(create.execute)
+    assert(update.execute)
+    assert(get.execute)
 
     const created: unknown = await create.execute({ prompt: 'Test', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const id = extractId(created)
@@ -472,7 +494,7 @@ describe('delivery classification persistence', () => {
 
   test('group scheduled prompt persists personal audience and mention target chosen at creation', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, '-1001:42', 'group')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute)
 
     const result: unknown = await tool.execute(
       {
@@ -500,7 +522,7 @@ describe('delivery classification persistence', () => {
 
   test('group alert persists shared audience and no mention targets chosen at creation', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute)
 
     const result: unknown = await tool.execute(
       {
@@ -528,7 +550,7 @@ describe('delivery classification persistence', () => {
 
   test('group shared delivery drops stale mention targets chosen by the model', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute)
 
     const result: unknown = await tool.execute(
       {

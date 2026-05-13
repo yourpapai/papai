@@ -398,6 +398,10 @@ describe('createScheduler', () => {
     })
   })
 
+  const throwOnFirstAttempt = (attempts: number): void => {
+    if (attempts < 2) throw new RetryableError('Temporary failure')
+  }
+
   describe('retry logic', () => {
     test('should retry on RetryableError', async () => {
       const scheduler = createScheduler()
@@ -406,9 +410,7 @@ describe('createScheduler', () => {
       scheduler.register('test-task', {
         handler: (): void => {
           attempts++
-          if (attempts < 2) {
-            throw new RetryableError('Temporary failure')
-          }
+          throwOnFirstAttempt(attempts)
         },
         interval: 1000,
         options: { retries: 3 },

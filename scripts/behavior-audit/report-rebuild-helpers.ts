@@ -6,29 +6,35 @@ import { consolidatedArtifactPathForFeatureKey, evaluatedArtifactPathForFeatureK
 import { PROJECT_ROOT } from './config.js'
 import type { EvaluatedFeatureRecord } from './evaluated-store.js'
 import type { ExtractedBehaviorRecord } from './extracted-store.js'
-import type { ConsolidatedManifest, IncrementalManifest } from './incremental.js'
+import type { ConsolidatedManifest } from './incremental.js'
 import type { DomainSummary } from './report-index-helpers.js'
 import type { ConsolidatedBehavior, StoryEvaluation } from './report-writer.js'
 
-export type BehaviorMarkdownEntry = Pick<ExtractedBehaviorRecord, 'fullPath' | 'behavior' | 'context' | 'keywords'>
+export interface TrustMetrics {
+  readonly totalExtracted: number
+  readonly fullyGrounded: number
+  readonly unsupportedContext: number
+  readonly inferredContext: number
+  readonly novelKeywords: number
+  readonly belowConfidenceThreshold: number
+  readonly verificationFailed: number
+  readonly withoutFreshCodeindex: number
+  readonly fallbackFileSearch: number
+}
 
-const ExtractedBehaviorRecordSchema = z
-  .object({
-    behaviorId: z.string(),
-    testKey: z.string(),
-    testFile: z.string(),
-    domain: z.string(),
-    testName: z.string(),
-    fullPath: z.string(),
-    behavior: z.string(),
-    context: z.string(),
-    keywords: z.array(z.string()).readonly(),
-    extractedAt: z.string(),
-  })
-  .strict()
-  .readonly()
-
-const ExtractedBehaviorRecordArraySchema = z.array(ExtractedBehaviorRecordSchema).readonly()
+export function collectTrustMetrics(extractedRecords: readonly ExtractedBehaviorRecord[]): TrustMetrics {
+  return {
+    totalExtracted: extractedRecords.length,
+    fullyGrounded: extractedRecords.filter((r) => r.confidence.overall === 'high' && r.trustFlags.length === 0).length,
+    unsupportedContext: extractedRecords.filter((r) => r.trustFlags.includes('unsupported-context-claim')).length,
+    inferredContext: extractedRecords.filter((r) => r.trustFlags.includes('extractor-used-inference')).length,
+    novelKeywords: extractedRecords.filter((r) => r.trustFlags.includes('novel-keyword')).length,
+    belowConfidenceThreshold: extractedRecords.filter((r) => r.confidence.overall === 'low').length,
+    verificationFailed: extractedRecords.filter((r) => r.trustFlags.includes('verification-failed')).length,
+    withoutFreshCodeindex: extractedRecords.filter((r) => r.provenance.codeindex.indexStatus !== 'fresh').length,
+    fallbackFileSearch: extractedRecords.filter((r) => !r.provenance.codeindex.enabled).length,
+  }
+}
 
 const PersonaScoreSchema = z
   .object({
@@ -84,17 +90,6 @@ function incrementCount(map: Map<string, number>, key: string): void {
   map.set(key, (map.get(key) ?? 0) + 1)
 }
 
-function collectExtractedArtifactPaths(manifest: IncrementalManifest): ReadonlyMap<string, string> {
-  const artifactPaths = new Map<string, string>()
-  for (const entry of Object.values(manifest.tests)) {
-    const artifactPath = entry.extractedArtifactPath
-    if (artifactPath !== null && artifactPath !== undefined) {
-      artifactPaths.set(entry.testFile, artifactPath)
-    }
-  }
-  return artifactPaths
-}
-
 function collectFeatureArtifactPaths(
   consolidatedManifest: ConsolidatedManifest,
 ): ReadonlyMap<
@@ -123,7 +118,11 @@ function collectFeatureArtifactPaths(
   return artifactPaths
 }
 
-export function buildSummary(domain: string, evals: readonly StoryEvaluation[]): DomainSummary {
+export function buildSummary(
+  domain: string,
+  evals: readonly StoryEvaluation[],
+  extractedRecords?: readonly ExtractedBehaviorRecord[],
+): DomainSummary {
   const avg = (fn: (e: StoryEvaluation) => number): number => evals.reduce((s, e) => s + fn(e), 0) / evals.length
   const pAvg = (p: 'maria' | 'dani' | 'viktor'): number => avg((e) => (e[p].discover + e[p].use + e[p].retain) / 3)
   const personaScores: ReadonlyArray<readonly [string, number]> = [
@@ -139,6 +138,7 @@ export function buildSummary(domain: string, evals: readonly StoryEvaluation[]):
     avgUse: avg((e) => (e.maria.use + e.dani.use + e.viktor.use) / 3),
     avgRetain: avg((e) => (e.maria.retain + e.dani.retain + e.viktor.retain) / 3),
     worstPersona: `${worst[0]} (${worst[1].toFixed(1)})`,
+    ...(extractedRecords !== undefined && { trustMetrics: collectTrustMetrics(extractedRecords) }),
   }
 }
 
@@ -176,19 +176,6 @@ export function collectStoryEvaluations(input: {
   }
 
   return { evaluationsByDomain, flawFreq, improvementFreq }
-}
-
-export async function loadExtractedArtifacts(
-  manifest: IncrementalManifest,
-): Promise<Readonly<Record<string, readonly BehaviorMarkdownEntry[]>>> {
-  const loaded = await Promise.all(
-    [...collectExtractedArtifactPaths(manifest).entries()].map(
-      async ([testFile, artifactPath]) =>
-        [testFile, (await readArtifactFile(artifactPath, ExtractedBehaviorRecordArraySchema)) ?? []] as const,
-    ),
-  )
-
-  return Object.fromEntries(loaded)
 }
 
 export async function loadConsolidatedArtifacts(

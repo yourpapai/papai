@@ -7,6 +7,165 @@ import type { TaskStatusDeps } from '../../../src/providers/kaneo/task-status.js
 import { createMockColumn, createMockTask, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { TaskResource } from './test-resources.js'
 
+function parseRequestBody(options: RequestInit): unknown {
+  return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
+}
+
+function makeAddRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
+  let callCount = 0
+  return (_url: string, _options: RequestInit): Promise<Response> => {
+    callCount += 1
+    if (callCount === 1) {
+      // First call: get related task
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'task-2',
+            title: 'Related Task',
+            description: '',
+            number: 2,
+            status: 'todo',
+            priority: 'medium',
+            projectId: 'proj-1',
+            position: 0,
+            userId: null,
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        ),
+      )
+    }
+    if (callCount === 2) {
+      // Second call: get source task
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'task-1',
+            title: 'Task 1',
+            description: '',
+            number: 1,
+            status: 'todo',
+            priority: 'medium',
+            projectId: 'proj-1',
+            position: 0,
+            userId: null,
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        ),
+      )
+    }
+    // Third call: update description with relation
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'task-1',
+          title: 'Task 1',
+          description: '---\nblocks: task-2\n---',
+          number: 1,
+          status: 'todo',
+          priority: 'medium',
+          projectId: 'proj-1',
+          position: 0,
+          userId: null,
+          createdAt: new Date().toISOString(),
+        }),
+        { status: 200 },
+      ),
+    )
+  }
+}
+
+function makeRemoveRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
+  let callCount = 0
+  return (_url: string, _options: RequestInit): Promise<Response> => {
+    callCount += 1
+    if (callCount === 1) {
+      // First call: get task with relation
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'task-1',
+            title: 'Task 1',
+            description: '---\nblocks: task-2\n---',
+            number: 1,
+            status: 'todo',
+            priority: 'medium',
+            projectId: 'proj-1',
+            position: 0,
+            userId: null,
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        ),
+      )
+    }
+    // Second call: update description without relation
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'task-1',
+          title: 'Task 1',
+          description: '',
+          number: 1,
+          status: 'todo',
+          priority: 'medium',
+          projectId: 'proj-1',
+          position: 0,
+          userId: null,
+          createdAt: new Date().toISOString(),
+        }),
+        { status: 200 },
+      ),
+    )
+  }
+}
+
+function makeUpdateRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
+  let callCount = 0
+  return (_url: string, _options: RequestInit): Promise<Response> => {
+    callCount += 1
+    if (callCount === 1) {
+      // First call: get task with existing relation
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'task-1',
+            title: 'Task 1',
+            description: '---\nblocks: task-2\n---',
+            number: 1,
+            status: 'todo',
+            priority: 'medium',
+            projectId: 'proj-1',
+            position: 0,
+            userId: null,
+            createdAt: new Date().toISOString(),
+          }),
+          { status: 200 },
+        ),
+      )
+    }
+    // Second call: update description with new relation type
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'task-1',
+          title: 'Task 1',
+          description: '---\nduplicate: task-2\n---',
+          number: 1,
+          status: 'todo',
+          priority: 'medium',
+          projectId: 'proj-1',
+          position: 0,
+          userId: null,
+          createdAt: new Date().toISOString(),
+        }),
+        { status: 200 },
+      ),
+    )
+  }
+}
+
 describe('TaskResource', () => {
   const mockConfig: KaneoConfig = {
     apiKey: 'test-key',
@@ -64,7 +223,7 @@ describe('TaskResource', () => {
     test('includes optional fields in request', async () => {
       let requestBody: unknown
       setMockFetch((_url: string, options: RequestInit) => {
-        requestBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+        requestBody = parseRequestBody(options)
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -105,7 +264,7 @@ describe('TaskResource', () => {
     test('applies default priority when not provided', async () => {
       let requestBody: unknown
       setMockFetch((_url: string, options: RequestInit) => {
-        requestBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+        requestBody = parseRequestBody(options)
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -134,7 +293,7 @@ describe('TaskResource', () => {
     test('applies default status when not provided', async () => {
       let requestBody: unknown
       setMockFetch((_url: string, options: RequestInit) => {
-        requestBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+        requestBody = parseRequestBody(options)
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -603,68 +762,7 @@ describe('TaskResource', () => {
 
   describe('addRelation', () => {
     test('adds relation between tasks', async () => {
-      let callCount = 0
-      setMockFetch(() => {
-        callCount++
-        // First call: get related task
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'task-2',
-                title: 'Related Task',
-                description: '',
-                number: 2,
-                status: 'todo',
-                priority: 'medium',
-                projectId: 'proj-1',
-                position: 0,
-                userId: null,
-                createdAt: new Date().toISOString(),
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-        // Second call: get source task
-        if (callCount === 2) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'task-1',
-                title: 'Task 1',
-                description: '',
-                number: 1,
-                status: 'todo',
-                priority: 'medium',
-                projectId: 'proj-1',
-                position: 0,
-                userId: null,
-                createdAt: new Date().toISOString(),
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-        // Third call: update description with relation
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '---\nblocks: task-2\n---',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(makeAddRelationFetchHandler())
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.addRelation('task-1', 'task-2', 'blocks')
@@ -677,48 +775,7 @@ describe('TaskResource', () => {
 
   describe('removeRelation', () => {
     test('removes relation between tasks', async () => {
-      let callCount = 0
-      setMockFetch(() => {
-        callCount++
-        // First call: get task with relation
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'task-1',
-                title: 'Task 1',
-                description: '---\nblocks: task-2\n---',
-                number: 1,
-                status: 'todo',
-                priority: 'medium',
-                projectId: 'proj-1',
-                position: 0,
-                userId: null,
-                createdAt: new Date().toISOString(),
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-        // Second call: update description without relation
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(makeRemoveRelationFetchHandler())
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.removeRelation('task-1', 'task-2')
@@ -757,48 +814,7 @@ describe('TaskResource', () => {
 
   describe('updateRelation', () => {
     test('updates relation type', async () => {
-      let callCount = 0
-      setMockFetch(() => {
-        callCount++
-        // First call: get task with existing relation
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: 'task-1',
-                title: 'Task 1',
-                description: '---\nblocks: task-2\n---',
-                number: 1,
-                status: 'todo',
-                priority: 'medium',
-                projectId: 'proj-1',
-                position: 0,
-                userId: null,
-                createdAt: new Date().toISOString(),
-              }),
-              { status: 200 },
-            ),
-          )
-        }
-        // Second call: update description with new relation type
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '---\nduplicate: task-2\n---',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(makeUpdateRelationFetchHandler())
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.updateRelation('task-1', 'task-2', 'duplicate')

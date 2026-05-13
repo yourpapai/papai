@@ -4,6 +4,90 @@ import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { ProjectResource } from './test-resources.js'
 
+// ---------------------------------------------------------------------------
+// Helpers defined outside test blocks
+// ---------------------------------------------------------------------------
+
+function parseBody(body: unknown): unknown {
+  return typeof body === 'string' ? JSON.parse(body) : undefined
+}
+
+/** Captures request body only when the method matches; always returns a fixed project response. */
+function makeCaptureOnMethodFetch(
+  method: string,
+  captured: { value: unknown },
+  responseBody: object,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (_url: string, options: RequestInit): Promise<Response> => {
+    if (options.method === method) {
+      captured.value = parseBody(options.body)
+    }
+    return Promise.resolve(new Response(JSON.stringify(responseBody), { status: 200 }))
+  }
+}
+
+/** Captures body on every call; always returns a fixed project response. */
+function makeCaptureAlwaysFetch(
+  captured: { value: unknown },
+  responseBody: object,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (_url: string, options: RequestInit): Promise<Response> => {
+    captured.value = parseBody(options.body)
+    return Promise.resolve(new Response(JSON.stringify(responseBody), { status: 200 }))
+  }
+}
+
+/**
+ * Tracks call count; captures url/body on the non-POST (PUT/PATCH) call.
+ * Returns the provided response body on every call.
+ */
+function makeCountingNonPostFetch(
+  callCounter: { count: number },
+  lastCapture: { url: string | undefined; body: unknown },
+  responseBody: object,
+): (url: string, options: RequestInit) => Promise<Response> {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    callCounter.count++
+    recordIfNotPost(url, options, lastCapture)
+    return Promise.resolve(new Response(JSON.stringify(responseBody), { status: 200 }))
+  }
+}
+
+function recordIfNotPost(
+  url: string,
+  options: RequestInit,
+  lastCapture: { url: string | undefined; body: unknown },
+): void {
+  const isPost = options.method === 'POST'
+  if (!isPost) {
+    lastCapture.url = url
+    lastCapture.body = parseBody(options.body)
+  }
+}
+
+/**
+ * Counts calls and captures body on PUT; returns a fixed response on every call.
+ */
+function makeCountingCapturePutFetch(
+  callCounter: { count: number },
+  captured: { value: unknown },
+  responseBody: object,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (_url: string, options: RequestInit): Promise<Response> => {
+    callCounter.count++
+    captureIfPut(options, captured)
+    return Promise.resolve(new Response(JSON.stringify(responseBody), { status: 200 }))
+  }
+}
+
+function captureIfPut(options: RequestInit, captured: { value: unknown }): void {
+  if (options.method === 'PUT') {
+    captured.value = parseBody(options.body)
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 describe('ProjectResource', () => {
   const mockConfig: KaneoConfig = {
     apiKey: 'test-key',
@@ -46,22 +130,8 @@ describe('ProjectResource', () => {
     })
 
     test('auto-generates slug from name', async () => {
-      let capturedBody: unknown
-      setMockFetch((_url, options) => {
-        if (options.method === 'POST') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'My Project',
-              slug: 'my-project',
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const captured = { value: undefined as unknown }
+      setMockFetch(makeCaptureOnMethodFetch('POST', captured, { id: 'proj-1', name: 'My Project', slug: 'my-project' }))
 
       const resource = new ProjectResource(mockConfig)
       await resource.create({
@@ -69,26 +139,18 @@ describe('ProjectResource', () => {
         name: 'My Project',
       })
 
-      expect(capturedBody).toMatchObject({ slug: 'my-project' })
+      expect(captured.value).toMatchObject({ slug: 'my-project' })
     })
 
     test('generates slug with special characters', async () => {
-      let capturedBody: unknown
-      setMockFetch((_url, options) => {
-        if (options.method === 'POST') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'My Project @ Test!',
-              slug: 'my-project-test',
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const captured = { value: undefined as unknown }
+      setMockFetch(
+        makeCaptureOnMethodFetch('POST', captured, {
+          id: 'proj-1',
+          name: 'My Project @ Test!',
+          slug: 'my-project-test',
+        }),
+      )
 
       const resource = new ProjectResource(mockConfig)
       await resource.create({
@@ -96,24 +158,12 @@ describe('ProjectResource', () => {
         name: 'My Project @ Test!',
       })
 
-      expect(capturedBody).toMatchObject({ slug: 'my-project-test' })
+      expect(captured.value).toMatchObject({ slug: 'my-project-test' })
     })
 
     test('includes workspaceId and empty icon in request', async () => {
-      let capturedBody: unknown
-      setMockFetch((_url, options) => {
-        capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'Test',
-              slug: 'test',
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const captured = { value: undefined as unknown }
+      setMockFetch(makeCaptureAlwaysFetch(captured, { id: 'proj-1', name: 'Test', slug: 'test' }))
 
       const resource = new ProjectResource(mockConfig)
       await resource.create({
@@ -121,7 +171,7 @@ describe('ProjectResource', () => {
         name: 'Test',
       })
 
-      expect(capturedBody).toMatchObject({
+      expect(captured.value).toMatchObject({
         name: 'Test',
         workspaceId: 'ws-1',
         icon: '',
@@ -129,28 +179,16 @@ describe('ProjectResource', () => {
     })
 
     test('updates description in separate call', async () => {
-      let callCount = 0
-      let lastUrl: string | undefined
-      let lastBody: unknown
+      const callCounter = { count: 0 }
+      const lastCapture = { url: undefined as string | undefined, body: undefined as unknown }
 
-      setMockFetch((url, options) => {
-        callCount++
-        if (options.method !== 'POST') {
-          lastUrl = url
-          lastBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'Test Project',
-              slug: 'test-project',
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        makeCountingNonPostFetch(callCounter, lastCapture, {
+          id: 'proj-1',
+          name: 'Test Project',
+          slug: 'test-project',
+        }),
+      )
 
       const resource = new ProjectResource(mockConfig)
       await resource.create({
@@ -159,9 +197,9 @@ describe('ProjectResource', () => {
         description: 'Project description',
       })
 
-      expect(callCount).toBe(2)
-      expect(lastUrl).toContain('/project/proj-1')
-      expect(lastBody).toMatchObject({
+      expect(callCounter.count).toBe(2)
+      expect(lastCapture.url).toContain('/project/proj-1')
+      expect(lastCapture.body).toMatchObject({
         name: 'Test Project',
         icon: '',
         slug: 'test-project',
@@ -263,33 +301,24 @@ describe('ProjectResource', () => {
 
   describe('update', () => {
     test('updates only name', async () => {
-      let capturedBody: unknown
-      let callCount = 0
-      setMockFetch((_url, options) => {
-        callCount++
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'Updated Name',
-              slug: 'old-slug',
-              icon: 'Layout',
-              description: 'Old description',
-              isPublic: false,
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const captured = { value: undefined as unknown }
+      const callCounter = { count: 0 }
+      const responseBody = {
+        id: 'proj-1',
+        name: 'Updated Name',
+        slug: 'old-slug',
+        icon: 'Layout',
+        description: 'Old description',
+        isPublic: false,
+      }
+
+      setMockFetch(makeCountingCapturePutFetch(callCounter, captured, responseBody))
 
       const resource = new ProjectResource(mockConfig)
       const result = await resource.update('proj-1', 'ws-1', { name: 'Updated Name' })
 
-      expect(callCount).toBe(2)
-      expect(capturedBody).toMatchObject({
+      expect(callCounter.count).toBe(2)
+      expect(captured.value).toMatchObject({
         name: 'Updated Name',
         slug: 'old-slug',
         icon: 'Layout',
@@ -300,30 +329,22 @@ describe('ProjectResource', () => {
     })
 
     test('updates only description', async () => {
-      let capturedBody: unknown
-      setMockFetch((_url, options) => {
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'Test',
-              slug: 'test',
-              icon: '',
-              description: 'New description',
-              isPublic: false,
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const captured = { value: undefined as unknown }
+      setMockFetch(
+        makeCaptureOnMethodFetch('PUT', captured, {
+          id: 'proj-1',
+          name: 'Test',
+          slug: 'test',
+          icon: '',
+          description: 'New description',
+          isPublic: false,
+        }),
+      )
 
       const resource = new ProjectResource(mockConfig)
       await resource.update('proj-1', 'ws-1', { description: 'New description' })
 
-      expect(capturedBody).toMatchObject({
+      expect(captured.value).toMatchObject({
         name: 'Test',
         slug: 'test',
         icon: '',
@@ -333,30 +354,22 @@ describe('ProjectResource', () => {
     })
 
     test('updates both name and description', async () => {
-      let capturedBody: unknown
-      setMockFetch((_url, options) => {
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'proj-1',
-              name: 'New Name',
-              slug: 'test',
-              icon: '',
-              description: 'New description',
-              isPublic: false,
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      const captured = { value: undefined as unknown }
+      setMockFetch(
+        makeCaptureOnMethodFetch('PUT', captured, {
+          id: 'proj-1',
+          name: 'New Name',
+          slug: 'test',
+          icon: '',
+          description: 'New description',
+          isPublic: false,
+        }),
+      )
 
       const resource = new ProjectResource(mockConfig)
       await resource.update('proj-1', 'ws-1', { name: 'New Name', description: 'New description' })
 
-      expect(capturedBody).toMatchObject({
+      expect(captured.value).toMatchObject({
         name: 'New Name',
         description: 'New description',
       })

@@ -1,43 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { clearIdentityMapping, getIdentityMapping, setIdentityMapping } from '../../src/identity/mapping.js'
-import type { TaskProvider } from '../../src/providers/types.js'
 import { makeClearMyIdentityTool } from '../../src/tools/clear-my-identity.js'
-import { localDatetimeToUtc, utcToLocal } from '../../src/utils/datetime.js'
+import { createMinimalTaskProviderStub } from '../utils/factories.js'
 import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
-
-const mockProvider: TaskProvider = {
-  name: 'mock',
-  capabilities: new Set(),
-  configRequirements: [],
-  preferredUserIdentifier: 'id',
-  buildTaskUrl: () => '',
-  buildProjectUrl: () => '',
-  classifyError: (e) => {
-    throw e
-  },
-  getPromptAddendum: () => '',
-  normalizeDueDateInput: (dueDate, timezone) =>
-    dueDate === undefined ? undefined : localDatetimeToUtc(dueDate.date, dueDate.time, timezone),
-  formatDueDateOutput: (dueDate, timezone) =>
-    dueDate === undefined || dueDate === null ? dueDate : utcToLocal(dueDate, timezone),
-  normalizeListTaskParams: (params) => ({ ...params }),
-  createTask(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  getTask(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  updateTask(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  listTasks(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  searchTasks(): Promise<never> {
-    throw new Error('not implemented')
-  },
-}
 
 describe('clear_my_identity tool', () => {
   const testUserId = 'test-user-clear-123'
@@ -59,12 +25,12 @@ describe('clear_my_identity tool', () => {
   })
 
   test('returns tool with correct structure', () => {
-    const tool = makeClearMyIdentityTool(mockProvider, testUserId)
+    const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
     expect(tool.description).toContain('identity')
   })
 
   test('should clear identity mapping', async () => {
-    const tool = makeClearMyIdentityTool(mockProvider, testUserId)
+    const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
     const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('status', 'success')
@@ -77,7 +43,7 @@ describe('clear_my_identity tool', () => {
     // Clear any existing mapping first
     clearIdentityMapping(testUserId, 'mock')
 
-    const tool = makeClearMyIdentityTool(mockProvider, testUserId)
+    const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
     const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('status', 'info')
@@ -98,7 +64,7 @@ describe('clear_my_identity tool', () => {
     })
 
     // Clear first user's identity
-    const tool = makeClearMyIdentityTool(mockProvider, testUserId)
+    const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId)
     await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
 
     // First user's identity should be cleared
@@ -134,7 +100,7 @@ describe('clear_my_identity tool', () => {
       getDrizzleDb: mockGetDrizzleDb,
     }
 
-    const tool = makeClearMyIdentityTool(mockProvider, testUserId, deps)
+    const tool = makeClearMyIdentityTool(createMinimalTaskProviderStub(), testUserId, deps)
     const result: unknown = await getToolExecutor(tool)({}, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('status', 'success')

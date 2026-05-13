@@ -1,9 +1,17 @@
-import { behaviorMarkdownPathForTestFile, extractedArtifactPathForTestFile } from './artifact-paths.js'
+import { extractedArtifactPathForTestFile } from './artifact-paths.js'
+import { getDomain } from './domain-map.js'
+import type {
+  EvidenceRef,
+  ExtractionConfidence,
+  ExtractionProvenance,
+  ExtractionVerification,
+  KeywordEvidence,
+  TrustFlag,
+} from './extract-trust-types.js'
 import type { ExtractedBehaviorRecord } from './extracted-store.js'
 import { readExtractedFile, writeExtractedFile } from './extracted-store.js'
 import { markFileDone } from './progress.js'
 import type { Progress } from './progress.js'
-import { writeBehaviorFile } from './report-writer.js'
 import type { TestCase } from './test-parser.js'
 
 export function getSelectedTests(
@@ -77,7 +85,7 @@ export async function writeValidBehaviorsForFile(
   testFilePath: string,
   selectedTests: readonly TestCase[],
   results: readonly ({ readonly record: ExtractedBehaviorRecord } | null)[],
-): Promise<void> {
+): Promise<string | null> {
   const valid = collectValidBehaviors(results)
   const existing = (await readExtractedFile(testFilePath)) ?? []
   const selectedTestKeySet = getSelectedTestKeySet(testFilePath, selectedTests)
@@ -88,18 +96,11 @@ export async function writeValidBehaviorsForFile(
     ...valid,
   ]
   if (merged.length === 0) {
-    await Promise.all([
-      deleteFileIfPresent(behaviorMarkdownPathForTestFile(testFilePath)),
-      deleteFileIfPresent(extractedArtifactPathForTestFile(testFilePath)),
-    ])
-    return
+    await deleteFileIfPresent(extractedArtifactPathForTestFile(testFilePath))
+    return null
   }
   await writeExtractedFile(testFilePath, merged)
-  await writeBehaviorFile(
-    testFilePath,
-    [...merged].toSorted((a, b) => a.fullPath.localeCompare(b.fullPath)),
-  )
-  console.log(`  → wrote ${valid.length} behaviors`)
+  return `wrote ${valid.length} behaviors`
 }
 
 export function reconcileSelectedTestsAfterPersist(
@@ -144,5 +145,41 @@ export function markFileDoneWhenSelectedTestsPersisted(
   const allSelectedTestsPersisted = [...selectedTestKeySet].every((testKey) => completedTests[testKey] === 'done')
   if (allSelectedTestsPersisted) {
     markFileDone(progress, testFilePath)
+  }
+}
+
+export function buildBehaviorRecord(
+  testCase: TestCase,
+  testFilePath: string,
+  testKey: string,
+  extractedBehavior: string,
+  extractedContext: string,
+  keywords: readonly string[],
+  behaviorEvidence: readonly EvidenceRef[],
+  contextEvidence: readonly EvidenceRef[],
+  keywordEvidence: readonly KeywordEvidence[],
+  confidence: ExtractionConfidence,
+  trustFlags: readonly TrustFlag[],
+  provenance: ExtractionProvenance,
+  verification: ExtractionVerification,
+): ExtractedBehaviorRecord {
+  return {
+    behaviorId: testKey,
+    testKey,
+    testFile: testFilePath,
+    domain: getDomain(testFilePath),
+    testName: testCase.name,
+    fullPath: testCase.fullPath,
+    behavior: extractedBehavior,
+    context: extractedContext,
+    keywords,
+    extractedAt: new Date().toISOString(),
+    behaviorEvidence,
+    contextEvidence,
+    keywordEvidence,
+    confidence,
+    trustFlags,
+    provenance,
+    verification,
   }
 }

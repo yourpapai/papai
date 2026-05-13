@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -60,6 +61,38 @@ const TaskWithProjectIdSchema = MinimalTaskSchema.extend({
   projectId: z.string().optional(),
 })
 
+// ---------------------------------------------------------------------------
+// Fetch router helpers (defined outside all test/describe blocks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Routes GET /column/* to a single-column list response; all other URLs
+ * return the given task payload. Used by TaskResource tests that call
+ * both the column endpoint and the task endpoint.
+ */
+function makeColumnOrTaskRouter(columnPayload: object[], taskPayload: object): (url: string) => Promise<Response> {
+  return (url) => {
+    if (url.includes('/column/')) {
+      return Promise.resolve(new Response(JSON.stringify(columnPayload), { status: 200 }))
+    }
+    return Promise.resolve(new Response(JSON.stringify(taskPayload), { status: 200 }))
+  }
+}
+
+/**
+ * Routes PUT requests to an empty-object response; all other methods
+ * return the given list payload. Matches the Kaneo CommentResource.update
+ * behaviour where PUT returns {} and the follow-up GET returns the list.
+ */
+function makePutOrGetRouter(listPayload: object[]): (_url: string, options: RequestInit) => Promise<Response> {
+  return (_url, options) => {
+    if (options.method === 'PUT') {
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    }
+    return Promise.resolve(new Response(JSON.stringify(listPayload), { status: 200 }))
+  }
+}
+
 describe('Schema Validation', () => {
   const mockConfig: KaneoConfig = {
     apiKey: 'test-key',
@@ -98,13 +131,12 @@ describe('Schema Validation', () => {
     test('MinimalTaskSchema validates correct task structure', () => {
       const result = MinimalTaskSchema.safeParse(validTaskResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.id).toBe('task-1')
-        expect(result.data.title).toBe('Test Task')
-        expect(result.data.number).toBe(42)
-        expect(result.data.status).toBe('todo')
-        expect(result.data.priority).toBe('medium')
-      }
+      assert(result.success)
+      expect(result.data.id).toBe('task-1')
+      expect(result.data.title).toBe('Test Task')
+      expect(result.data.number).toBe(42)
+      expect(result.data.status).toBe('todo')
+      expect(result.data.priority).toBe('medium')
     })
 
     test('MinimalTaskSchema fails on missing required fields', () => {
@@ -127,14 +159,13 @@ describe('Schema Validation', () => {
     test('KaneoTaskResponseSchema validates full task structure', () => {
       const result = KaneoTaskResponseSchema.safeParse(validTaskFullResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.id).toBe('task-1')
-        expect(result.data.description).toBe('Task description')
-        expect(result.data.createdAt).toBe('2026-03-01T00:00:00Z')
-        expect(result.data.dueDate).toBeNull()
-        expect(result.data.projectId).toBe('proj-1')
-        expect(result.data.userId).toBeNull()
-      }
+      assert(result.success)
+      expect(result.data.id).toBe('task-1')
+      expect(result.data.description).toBe('Task description')
+      expect(result.data.createdAt).toBe('2026-03-01T00:00:00Z')
+      expect(result.data.dueDate).toBeNull()
+      expect(result.data.projectId).toBe('proj-1')
+      expect(result.data.userId).toBeNull()
     })
 
     test('TaskWithProjectIdSchema validates projectId field', () => {
@@ -148,14 +179,12 @@ describe('Schema Validation', () => {
 
     describe('TaskResource.create', () => {
       test('validates response schema on create', async () => {
-        setMockFetch((url: string) => {
-          if (url.includes('/column/')) {
-            return Promise.resolve(
-              new Response(JSON.stringify([createMockColumn({ id: 'col-1', name: 'To Do' })]), { status: 200 }),
-            )
-          }
-          return Promise.resolve(new Response(JSON.stringify(createMockTask(validTaskFullResponse)), { status: 200 }))
-        })
+        setMockFetch(
+          makeColumnOrTaskRouter(
+            [createMockColumn({ id: 'col-1', name: 'To Do' })],
+            createMockTask(validTaskFullResponse),
+          ),
+        )
 
         const resource = new TaskResource(mockConfig)
         const result = await resource.create({
@@ -191,14 +220,12 @@ describe('Schema Validation', () => {
 
     describe('TaskResource.get', () => {
       test('validates response schema on get', async () => {
-        setMockFetch((url: string) => {
-          if (url.includes('/column/')) {
-            return Promise.resolve(
-              new Response(JSON.stringify([createMockColumn({ id: 'col-1', name: 'To Do' })]), { status: 200 }),
-            )
-          }
-          return Promise.resolve(new Response(JSON.stringify(createMockTask(validTaskFullResponse)), { status: 200 }))
-        })
+        setMockFetch(
+          makeColumnOrTaskRouter(
+            [createMockColumn({ id: 'col-1', name: 'To Do' })],
+            createMockTask(validTaskFullResponse),
+          ),
+        )
 
         const resource = new TaskResource(mockConfig)
         const result = await resource.get('task-1')
@@ -246,37 +273,27 @@ describe('Schema Validation', () => {
         const result = await resource.list('proj-1')
 
         expect(Array.isArray(result)).toBe(true)
-        if (result.length > 0) {
-          expect(result[0]).toHaveProperty('id')
-          expect(result[0]).toHaveProperty('title')
-          expect(result[0]).toHaveProperty('number')
-          expect(result[0]).toHaveProperty('status')
-          expect(result[0]).toHaveProperty('priority')
-          expect(result[0]).toHaveProperty('dueDate')
-        }
+        assert(result.length > 0)
+        expect(result[0]).toHaveProperty('id')
+        expect(result[0]).toHaveProperty('title')
+        expect(result[0]).toHaveProperty('number')
+        expect(result[0]).toHaveProperty('status')
+        expect(result[0]).toHaveProperty('priority')
+        expect(result[0]).toHaveProperty('dueDate')
       })
     })
 
     describe('TaskResource.update', () => {
       test('validates response schema on update', async () => {
-        setMockFetch((url: string) => {
-          if (url.includes('/column/')) {
-            return Promise.resolve(
-              new Response(JSON.stringify([createMockColumn({ id: 'col-1', name: 'To Do' })]), { status: 200 }),
-            )
-          }
-          return Promise.resolve(
-            new Response(
-              JSON.stringify(
-                createMockTask({
-                  ...validTaskResponse,
-                  projectId: 'proj-1',
-                }),
-              ),
-              { status: 200 },
-            ),
-          )
-        })
+        setMockFetch(
+          makeColumnOrTaskRouter(
+            [createMockColumn({ id: 'col-1', name: 'To Do' })],
+            createMockTask({
+              ...validTaskResponse,
+              projectId: 'proj-1',
+            }),
+          ),
+        )
 
         const resource = new TaskResource(mockConfig)
         const result = await resource.update('task-1', { title: 'Updated' })
@@ -309,21 +326,19 @@ describe('Schema Validation', () => {
     test('KaneoProjectSchema validates correct project structure', () => {
       const result = KaneoProjectSchema.safeParse(validProjectResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.id).toBe('proj-1')
-        expect(result.data.name).toBe('Test Project')
-        expect(result.data.slug).toBe('test-project')
-      }
+      assert(result.success)
+      expect(result.data.id).toBe('proj-1')
+      expect(result.data.name).toBe('Test Project')
+      expect(result.data.slug).toBe('test-project')
     })
 
     test('KaneoProjectFullSchema validates full project structure', () => {
       const result = KaneoProjectFullSchema.safeParse(validProjectFullResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.icon).toBeNull()
-        expect(result.data.description).toBeNull()
-        expect(result.data.isPublic).toBe(false)
-      }
+      assert(result.success)
+      expect(result.data.icon).toBeNull()
+      expect(result.data.description).toBeNull()
+      expect(result.data.isPublic).toBe(false)
     })
 
     test('KaneoProjectSchema fails on missing required fields', () => {
@@ -364,11 +379,10 @@ describe('Schema Validation', () => {
         const result = await resource.list('ws-1')
 
         expect(Array.isArray(result)).toBe(true)
-        if (result.length > 0) {
-          expect(result[0]).toHaveProperty('id')
-          expect(result[0]).toHaveProperty('name')
-          expect(result[0]).toHaveProperty('slug')
-        }
+        assert(result.length > 0)
+        expect(result[0]).toHaveProperty('id')
+        expect(result[0]).toHaveProperty('name')
+        expect(result[0]).toHaveProperty('slug')
       })
     })
 
@@ -398,11 +412,10 @@ describe('Schema Validation', () => {
     test('KaneoLabelSchema validates correct label structure', () => {
       const result = KaneoLabelSchema.safeParse(validLabelResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.id).toBe('label-1')
-        expect(result.data.name).toBe('Bug')
-        expect(result.data.color).toBe('#ff0000')
-      }
+      assert(result.success)
+      expect(result.data.id).toBe('label-1')
+      expect(result.data.name).toBe('Bug')
+      expect(result.data.color).toBe('#ff0000')
     })
 
     test('KaneoLabelSchema fails on missing required fields', () => {
@@ -453,11 +466,10 @@ describe('Schema Validation', () => {
         const result = await resource.list('ws-1')
 
         expect(Array.isArray(result)).toBe(true)
-        if (result.length > 0) {
-          expect(result[0]).toHaveProperty('id')
-          expect(result[0]).toHaveProperty('name')
-          expect(result[0]).toHaveProperty('color')
-        }
+        assert(result.length > 0)
+        expect(result[0]).toHaveProperty('id')
+        expect(result[0]).toHaveProperty('name')
+        expect(result[0]).toHaveProperty('color')
       })
     })
 
@@ -495,18 +507,18 @@ describe('Schema Validation', () => {
     test('ActivityItemSchema validates correct activity structure', () => {
       const result = ActivityItemSchema.safeParse(validActivityResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.id).toBe('act-1')
-        expect(result.data.content).toBe('Test comment')
-      }
+      assert(result.success)
+      expect(result.data.id).toBe('act-1')
+      expect(result.data.content).toBe('Test comment')
     })
 
     test('KaneoActivityWithTypeSchema validates activity array', () => {
       const result = KaneoActivityWithTypeSchema.safeParse([validActivityWithTypeResponse])
       expect(result.success).toBe(true)
-      if (result.success && result.data.length > 0 && result.data[0] !== undefined) {
-        expect(result.data[0].type).toBe('comment')
-      }
+      assert(result.success)
+      assert(result.data.length > 0)
+      assert(result.data[0] !== undefined)
+      expect(result.data[0].type).toBe('comment')
     })
 
     test('ActivityItemSchema fails on missing required fields', () => {
@@ -528,25 +540,17 @@ describe('Schema Validation', () => {
         const result = await resource.list('task-1')
 
         expect(Array.isArray(result)).toBe(true)
-        if (result.length > 0) {
-          expect(result[0]).toHaveProperty('id')
-          expect(result[0]).toHaveProperty('comment')
-          expect(result[0]).toHaveProperty('createdAt')
-        }
+        assert(result.length > 0)
+        expect(result[0]).toHaveProperty('id')
+        expect(result[0]).toHaveProperty('comment')
+        expect(result[0]).toHaveProperty('createdAt')
       })
     })
 
     describe('CommentResource.update', () => {
       test('validates response schema on update', async () => {
         // PUT returns {} (Kaneo bug), then GET returns array — differentiate by method
-        setMockFetch((_url: string, options: RequestInit) => {
-          if (options.method === 'PUT') {
-            return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-          }
-          return Promise.resolve(
-            new Response(JSON.stringify([createMockActivity(validActivityResponse)]), { status: 200 }),
-          )
-        })
+        setMockFetch(makePutOrGetRouter([createMockActivity(validActivityResponse)]))
 
         const resource = new CommentResource(mockConfig)
         const result = await resource.update('task-1', 'act-1', 'Updated')
@@ -570,12 +574,11 @@ describe('Schema Validation', () => {
     test('KaneoColumnSchema validates correct column structure', () => {
       const result = KaneoColumnSchema.safeParse(validColumnResponse)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.data.id).toBe('col-1')
-        expect(result.data.name).toBe('To Do')
-        expect(result.data.color).toBeNull()
-        expect(result.data.isFinal).toBe(false)
-      }
+      assert(result.success)
+      expect(result.data.id).toBe('col-1')
+      expect(result.data.name).toBe('To Do')
+      expect(result.data.color).toBeNull()
+      expect(result.data.isFinal).toBe(false)
     })
 
     test('KaneoColumnSchema fails on missing required fields', () => {
@@ -593,12 +596,11 @@ describe('Schema Validation', () => {
         const result = await resource.list('proj-1')
 
         expect(Array.isArray(result)).toBe(true)
-        if (result.length > 0) {
-          expect(result[0]).toHaveProperty('id')
-          expect(result[0]).toHaveProperty('name')
-          expect(result[0]).toHaveProperty('color')
-          expect(result[0]).toHaveProperty('isFinal')
-        }
+        assert(result.length > 0)
+        expect(result[0]).toHaveProperty('id')
+        expect(result[0]).toHaveProperty('name')
+        expect(result[0]).toHaveProperty('color')
+        expect(result[0]).toHaveProperty('isFinal')
       })
     })
   })
@@ -614,13 +616,12 @@ describe('Schema Validation', () => {
       }
       const result = MinimalTaskSchema.safeParse(task)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(typeof result.data.id).toBe('string')
-        expect(typeof result.data.title).toBe('string')
-        expect(typeof result.data.number).toBe('number')
-        expect(typeof result.data.status).toBe('string')
-        expect(typeof result.data.priority).toBe('string')
-      }
+      assert(result.success)
+      expect(typeof result.data.id).toBe('string')
+      expect(typeof result.data.title).toBe('string')
+      expect(typeof result.data.number).toBe('number')
+      expect(typeof result.data.status).toBe('string')
+      expect(typeof result.data.priority).toBe('string')
     })
 
     test('Project schema fields have correct types', () => {
@@ -631,11 +632,10 @@ describe('Schema Validation', () => {
       })
       const result = KaneoProjectSchema.safeParse(project)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(typeof result.data.id).toBe('string')
-        expect(typeof result.data.name).toBe('string')
-        expect(typeof result.data.slug).toBe('string')
-      }
+      assert(result.success)
+      expect(typeof result.data.id).toBe('string')
+      expect(typeof result.data.name).toBe('string')
+      expect(typeof result.data.slug).toBe('string')
     })
 
     test('Label schema fields have correct types', () => {
@@ -646,11 +646,10 @@ describe('Schema Validation', () => {
       })
       const result = KaneoLabelSchema.safeParse(label)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(typeof result.data.id).toBe('string')
-        expect(typeof result.data.name).toBe('string')
-        expect(typeof result.data.color).toBe('string')
-      }
+      assert(result.success)
+      expect(typeof result.data.id).toBe('string')
+      expect(typeof result.data.name).toBe('string')
+      expect(typeof result.data.color).toBe('string')
     })
 
     test('Activity schema fields have correct types', () => {
@@ -662,10 +661,9 @@ describe('Schema Validation', () => {
       })
       const result = ActivityItemSchema.safeParse(activity)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(typeof result.data.id).toBe('string')
-        expect(typeof result.data.content).toBe('string')
-      }
+      assert(result.success)
+      expect(typeof result.data.id).toBe('string')
+      expect(typeof result.data.content).toBe('string')
     })
 
     test('Column schema fields have correct types', () => {
@@ -678,11 +676,10 @@ describe('Schema Validation', () => {
       }
       const result = KaneoColumnSchema.safeParse(column)
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(typeof result.data.id).toBe('string')
-        expect(typeof result.data.name).toBe('string')
-        expect(typeof result.data.isFinal).toBe('boolean')
-      }
+      assert(result.success)
+      expect(typeof result.data.id).toBe('string')
+      expect(typeof result.data.name).toBe('string')
+      expect(typeof result.data.isFinal).toBe('boolean')
     })
   })
 

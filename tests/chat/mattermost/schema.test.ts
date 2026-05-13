@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { MattermostPostSchema } from '../../../src/chat/mattermost/schema.js'
 describe('MattermostPostSchema', () => {
@@ -12,10 +13,9 @@ describe('MattermostPostSchema', () => {
 
     const result = MattermostPostSchema.safeParse(post)
     expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.root_id).toBeUndefined()
-      expect(result.data.parent_id).toBeUndefined()
-    }
+    assert(result.success)
+    expect(result.data.root_id).toBeUndefined()
+    expect(result.data.parent_id).toBeUndefined()
   })
 
   test('should parse reply post with root_id and parent_id', () => {
@@ -31,10 +31,9 @@ describe('MattermostPostSchema', () => {
 
     const result = MattermostPostSchema.safeParse(post)
     expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.root_id).toBe('root123')
-      expect(result.data.parent_id).toBe('parent456')
-    }
+    assert(result.success)
+    expect(result.data.root_id).toBe('root123')
+    expect(result.data.parent_id).toBe('parent456')
   })
 
   test('should parse post with only root_id (thread reply)', () => {
@@ -48,9 +47,8 @@ describe('MattermostPostSchema', () => {
 
     const result = MattermostPostSchema.safeParse(post)
     expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.root_id).toBe('root123')
-      expect(result.data.parent_id).toBeUndefined()
-    }
+    assert(result.success)
+    expect(result.data.root_id).toBe('root123')
+    expect(result.data.parent_id).toBeUndefined()
   })
 })

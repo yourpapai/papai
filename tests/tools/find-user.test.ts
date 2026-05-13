@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeFindUserTool } from '../../src/tools/find-user.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -31,7 +32,7 @@ describe('Find User Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)({ query: 'ali', limit: 2 }, { toolCallId: '1', messages: [] })
 
-    if (!isUserArray(result)) throw new Error('Invalid result')
+    assert(isUserArray(result), 'Invalid result')
     expect(result).toHaveLength(2)
     expect(listUsers).toHaveBeenCalledWith('ali', 2)
   })

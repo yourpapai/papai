@@ -357,13 +357,16 @@ describe('Admin Commands', () => {
       addUser('user-a', ADMIN_ID)
       addUser('user-b', ADMIN_ID)
       const sentMessages: string[] = []
-      const { mockChat, handlers } = createMockChatWithHandler((userId) => {
-        if (userId === 'user-a') {
-          return Promise.reject(new Error('User blocked bot'))
-        }
-        sentMessages.push(userId)
+      const succeed = (id: string): Promise<void> => {
+        sentMessages.push(id)
         return Promise.resolve()
-      })
+      }
+      const perUserSend = new Map<string, (userId: string) => Promise<void>>([
+        ['user-a', (_id: string): Promise<void> => Promise.reject(new Error('User blocked bot'))],
+        [ADMIN_ID, succeed],
+        ['user-b', succeed],
+      ])
+      const { mockChat, handlers } = createMockChatWithHandler((userId) => perUserSend.get(userId)!(userId))
       registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()

@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getConfig, setConfig } from '../../src/config.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
@@ -13,6 +14,14 @@ function hasDueDate(val: unknown): val is { dueDate: string } {
     'dueDate' in val &&
     typeof (val as Record<string, unknown>)['dueDate'] === 'string'
   )
+}
+
+function hasMessage(val: unknown): val is { message: string } {
+  return typeof val === 'object' && val !== null && 'message' in val
+}
+
+function captureParams(params: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> | undefined {
+  return params === undefined ? undefined : { ...params }
 }
 
 describe('list_tasks identity resolution', () => {
@@ -75,7 +84,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider({ listTasks })
     const tool = makeListTasksTool(provider, testUserId)
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     await tool.execute({ projectId: 'proj-1', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
     expect(listTasks).toHaveBeenCalledTimes(1)
@@ -109,7 +118,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider({ listTasks })
     const tool = makeListTasksTool(provider, testUserId)
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     await tool.execute({ projectId: 'proj-1', assigneeId: 'ME' }, { toolCallId: '1', messages: [] })
 
     expect(listTasks).toHaveBeenCalledTimes(1)
@@ -120,7 +129,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider()
     const tool = makeListTasksTool(provider, 'no-mapping-user')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', assigneeId: 'me' },
       { toolCallId: '1', messages: [] },
@@ -128,9 +137,8 @@ describe('list_tasks identity resolution', () => {
 
     expect(result).toHaveProperty('status', 'identity_required')
     expect(result).toHaveProperty('message')
-    if (typeof result === 'object' && result !== null && 'message' in result) {
-      expect(result.message).toContain("don't know who you are")
-    }
+    assert(hasMessage(result))
+    expect(result.message).toContain("don't know who you are")
   })
 
   test('should return identity_required when identity was previously unmatched', async () => {
@@ -148,7 +156,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider()
     const tool = makeListTasksTool(provider, 'unmatched-user')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     const result: unknown = await tool.execute(
       { projectId: 'proj-1', assigneeId: 'me' },
       { toolCallId: '1', messages: [] },
@@ -156,9 +164,8 @@ describe('list_tasks identity resolution', () => {
 
     expect(result).toHaveProperty('status', 'identity_required')
     expect(result).toHaveProperty('message')
-    if (typeof result === 'object' && result !== null && 'message' in result) {
-      expect(result.message).toContain("couldn't automatically match")
-    }
+    assert(hasMessage(result))
+    expect(result.message).toContain("couldn't automatically match")
   })
 
   test('should pass through non-me assigneeId unchanged', async () => {
@@ -178,7 +185,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider({ listTasks })
     const tool = makeListTasksTool(provider, testUserId)
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     await tool.execute({ projectId: 'proj-1', assigneeId: 'other-user' }, { toolCallId: '1', messages: [] })
 
     expect(capturedAssigneeId).toBe('other-user')
@@ -187,7 +194,7 @@ describe('list_tasks identity resolution', () => {
   test('should normalize YouTrack due date filters to date-only', async () => {
     let capturedParams: Record<string, unknown> | undefined
     const listTasks = mock((_projectId: string, params?: Readonly<Record<string, unknown>>) => {
-      capturedParams = params === undefined ? undefined : { ...params }
+      capturedParams = captureParams(params)
       return Promise.resolve([])
     })
 
@@ -205,7 +212,7 @@ describe('list_tasks identity resolution', () => {
   test('should preserve non-YouTrack due date filters', async () => {
     let capturedParams: Record<string, unknown> | undefined
     const listTasks = mock((_projectId: string, params?: Readonly<Record<string, unknown>>) => {
-      capturedParams = params === undefined ? undefined : { ...params }
+      capturedParams = captureParams(params)
       return Promise.resolve([])
     })
 
@@ -237,7 +244,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider({ listTasks })
     const tool = makeListTasksTool(provider, testUserId)
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
     expect(capturedParams?.assigneeId).toBeUndefined()
@@ -270,7 +277,7 @@ describe('list_tasks identity resolution', () => {
     const provider = createMockProvider({ listTasks, preferredUserIdentifier: 'login' })
     const tool = makeListTasksTool(provider, testUserId)
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute !== undefined)
     await tool.execute({ projectId: 'proj-1', assigneeId: 'me' }, { toolCallId: '1', messages: [] })
 
     expect(listTasks).toHaveBeenCalledTimes(1)
@@ -300,11 +307,11 @@ describe('list_tasks identity resolution', () => {
       const provider = createMockProvider({ listTasks })
       const tool = makeListTasksTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute !== undefined)
       const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
-      if (!Array.isArray(result)) throw new Error('Expected array')
-      if (!hasDueDate(result[0])) throw new Error('Expected task with dueDate')
+      assert(Array.isArray(result))
+      assert(hasDueDate(result[0]))
       expect(result[0].dueDate).toContain('13:00')
     })
 
@@ -327,11 +334,11 @@ describe('list_tasks identity resolution', () => {
       const provider = createMockProvider({ listTasks })
       const tool = makeListTasksTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute !== undefined)
       const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
-      if (!Array.isArray(result)) throw new Error('Expected array')
-      if (!hasDueDate(result[0])) throw new Error('Expected task with dueDate')
+      assert(Array.isArray(result))
+      assert(hasDueDate(result[0]))
       expect(result[0].dueDate).toContain('12:00')
     })
 
@@ -355,11 +362,11 @@ describe('list_tasks identity resolution', () => {
       const provider = createMockYouTrackProvider({ listTasks })
       const tool = makeListTasksTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute !== undefined)
       const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
-      if (!Array.isArray(result)) throw new Error('Expected array')
-      if (!hasDueDate(result[0])) throw new Error('Expected task with dueDate')
+      assert(Array.isArray(result))
+      assert(hasDueDate(result[0]))
       expect(result[0].dueDate).toBe('2026-03-25')
     })
   })

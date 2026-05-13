@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { _userCaches } from '../../src/cache.js'
 import { saveInstruction } from '../../src/instructions.js'
@@ -66,7 +67,7 @@ describe('list_instructions tool', () => {
 describe('delete_instruction tool', () => {
   test('returns deleted confirmation', async () => {
     const r = saveInstruction('ctx-1', 'Always reply in Spanish')
-    if (r.status !== 'saved') throw new Error('expected saved')
+    assert(r.status === 'saved', 'expected saved')
     const tool = makeDeleteInstructionTool('ctx-1')
     const result = await exec(tool, { id: r.instruction.id })
     expect(result).toHaveProperty('status', 'deleted')

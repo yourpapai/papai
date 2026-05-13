@@ -113,8 +113,11 @@ describe('E2E: User Workflows', () => {
       testClient.trackTask(task.id)
     }
 
-    for (const [index, task] of tasks.entries()) {
-      await updateTask({ config: kaneoConfig, taskId: task.id, priority: index < 3 ? 'high' : 'medium' })
+    for (const task of tasks.slice(0, 3)) {
+      await updateTask({ config: kaneoConfig, taskId: task.id, priority: 'high' })
+    }
+    for (const task of tasks.slice(3)) {
+      await updateTask({ config: kaneoConfig, taskId: task.id, priority: 'medium' })
     }
 
     const projectTasks = await pollForTasks(() => listTasks({ config: kaneoConfig, projectId }), 5)

@@ -17,17 +17,15 @@ describe('extractReferenceCandidates', () => {
 
     const tree = parsed.parser.parse(source)
     expect(tree).not.toBeNull()
-    if (tree === null) {
-      throw new Error('Expected parser to produce a tree')
-    }
-    const references = extractReferenceCandidates({
+
+    const result = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/run-task.ts',
       moduleKey: 'src/run-task',
     })
 
-    expect(references.moduleExports).toEqual([
+    expect(result.moduleExports).toEqual([
       {
         exportName: 'publicHelper',
         exportKind: 'reexport',
@@ -41,17 +39,15 @@ describe('extractReferenceCandidates', () => {
         targetModuleSpecifier: null,
       },
     ])
-    expect(
-      references.references.some(
-        (reference) =>
-          reference.edgeType === 'imports' &&
-          reference.targetName === 'helper' &&
-          reference.targetModuleSpecifier === './helper.js',
-      ),
-    ).toBe(true)
-    expect(
-      references.references.some((reference) => reference.edgeType === 'calls' && reference.targetName === 'helper'),
-    ).toBe(true)
+
+    const importHelper = result.references.filter((ref) => ref.edgeType === 'imports').at(0)
+    expect(importHelper).toBeDefined()
+    expect(importHelper!.targetName).toBe('helper')
+    expect(importHelper!.targetModuleSpecifier).toBe('./helper.js')
+
+    const callHelper = result.references.filter((ref) => ref.edgeType === 'calls').at(0)
+    expect(callHelper).toBeDefined()
+    expect(callHelper!.targetName).toBe('helper')
   })
 
   test('aliased named import uses alias as targetName and original as targetExportName', async () => {
@@ -65,25 +61,24 @@ describe('extractReferenceCandidates', () => {
     ].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
-    const { references } = extractReferenceCandidates({
+    const result = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/run-task.ts',
       moduleKey: 'src/run-task',
     })
 
-    expect(
-      references.some(
-        (r) =>
-          r.edgeType === 'imports' &&
-          r.targetName === 'localHelper' &&
-          r.targetExportName === 'helper' &&
-          r.targetModuleSpecifier === './helper.js',
-      ),
-    ).toBe(true)
-    expect(references.some((r) => r.edgeType === 'calls' && r.targetName === 'localHelper')).toBe(true)
+    const importRef = result.references.filter((ref) => ref.edgeType === 'imports').at(0)
+    expect(importRef).toBeDefined()
+    expect(importRef!.targetName).toBe('localHelper')
+    expect(importRef!.targetExportName).toBe('helper')
+    expect(importRef!.targetModuleSpecifier).toBe('./helper.js')
+
+    const callRef = result.references.filter((ref) => ref.edgeType === 'calls').at(0)
+    expect(callRef).toBeDefined()
+    expect(callRef!.targetName).toBe('localHelper')
   })
 
   test('export default function records exportName "default" and exportKind "default"', async () => {
@@ -92,11 +87,11 @@ describe('extractReferenceCandidates', () => {
     const source = 'export default function helper() { return 1 }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { moduleExports } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/helper.ts',
       moduleKey: 'src/helper',
     })
@@ -117,11 +112,11 @@ describe('extractReferenceCandidates', () => {
     const source = 'export default function() { return 1 }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { moduleExports } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/handler.ts',
       moduleKey: 'src/handler',
     })
@@ -144,24 +139,20 @@ describe('extractReferenceCandidates', () => {
     )
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/run-task.ts',
       moduleKey: 'src/run-task',
     })
 
-    expect(
-      references.some(
-        (r) =>
-          r.edgeType === 'imports' &&
-          r.targetName === 'helper' &&
-          r.targetExportName === 'default' &&
-          r.targetModuleSpecifier === './helper.js',
-      ),
-    ).toBe(true)
+    const importRef = references.filter((ref) => ref.edgeType === 'imports').at(0)
+    expect(importRef).toBeDefined()
+    expect(importRef!.targetName).toBe('helper')
+    expect(importRef!.targetExportName).toBe('default')
+    expect(importRef!.targetModuleSpecifier).toBe('./helper.js')
   })
 
   test('export class, abstract class, const, interface, type, and enum emit module export candidates', async () => {
@@ -177,11 +168,11 @@ describe('extractReferenceCandidates', () => {
     ].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { moduleExports } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/types.ts',
       moduleKey: 'src/types',
     })
@@ -201,11 +192,11 @@ describe('extractReferenceCandidates', () => {
     const parsed = await loader.createParserForExtension('.ts')
 
     const tree = parsed.parser.parse('export default class Handler {}')
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { moduleExports } = extractReferenceCandidates({
       source: 'export default class Handler {}',
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/handler.ts',
       moduleKey: 'src/handler',
     })
@@ -220,11 +211,11 @@ describe('extractReferenceCandidates', () => {
     const parsed = await loader.createParserForExtension('.ts')
 
     const tree = parsed.parser.parse('export default class {}')
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { moduleExports } = extractReferenceCandidates({
       source: 'export default class {}',
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/handler.ts',
       moduleKey: 'src/handler',
     })
@@ -247,18 +238,19 @@ describe('extractReferenceCandidates', () => {
     ].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/service.ts',
       moduleKey: 'src/service',
     })
 
-    const callRef = references.find((r) => r.edgeType === 'calls' && r.targetName === 'helper')
+    const callRef = references.filter((ref) => ref.edgeType === 'calls').at(0)
     expect(callRef).toBeDefined()
-    expect(callRef?.sourceQualifiedName).toBe('src/service#Service>run')
+    expect(callRef!.targetName).toBe('helper')
+    expect(callRef!.sourceQualifiedName).toBe('src/service#Service>run')
   })
 
   test('calls inside abstract class methods are attributed to the member qualified name', async () => {
@@ -274,18 +266,19 @@ describe('extractReferenceCandidates', () => {
     ].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/base.ts',
       moduleKey: 'src/base',
     })
 
-    const callRef = references.find((r) => r.edgeType === 'calls' && r.targetName === 'helper')
+    const callRef = references.filter((ref) => ref.edgeType === 'calls').at(0)
     expect(callRef).toBeDefined()
-    expect(callRef?.sourceQualifiedName).toBe('src/base#Base>process')
+    expect(callRef!.targetName).toBe('helper')
+    expect(callRef!.sourceQualifiedName).toBe('src/base#Base>process')
   })
 
   test('calls inside anonymous default-exported class methods are attributed to the member qualified name', async () => {
@@ -301,18 +294,19 @@ describe('extractReferenceCandidates', () => {
     ].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/test.ts',
       moduleKey: 'src/test',
     })
 
-    const callRef = references.find((r) => r.edgeType === 'calls' && r.targetName === 'helper')
+    const callRef = references.filter((ref) => ref.edgeType === 'calls').at(0)
     expect(callRef).toBeDefined()
-    expect(callRef?.sourceQualifiedName).toBe('src/test#default>run')
+    expect(callRef!.targetName).toBe('helper')
+    expect(callRef!.sourceQualifiedName).toBe('src/test#default>run')
   })
 
   test('calls inside arrow-function const are attributed to the owning symbol', async () => {
@@ -321,18 +315,19 @@ describe('extractReferenceCandidates', () => {
     const source = ['export const run = () => {', '  return helper()', '}', 'function helper() { return 1 }'].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/run.ts',
       moduleKey: 'src/run',
     })
 
-    const callRef = references.find((r) => r.edgeType === 'calls' && r.targetName === 'helper')
+    const callRef = references.filter((ref) => ref.edgeType === 'calls').at(0)
     expect(callRef).toBeDefined()
-    expect(callRef?.sourceQualifiedName).toBe('src/run#run')
+    expect(callRef!.targetName).toBe('helper')
+    expect(callRef!.sourceQualifiedName).toBe('src/run#run')
   })
 
   test('calls inside function-expression const are attributed to the owning symbol', async () => {
@@ -343,18 +338,19 @@ describe('extractReferenceCandidates', () => {
     )
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/run.ts',
       moduleKey: 'src/run',
     })
 
-    const callRef = references.find((r) => r.edgeType === 'calls' && r.targetName === 'helper')
+    const callRef = references.filter((ref) => ref.edgeType === 'calls').at(0)
     expect(callRef).toBeDefined()
-    expect(callRef?.sourceQualifiedName).toBe('src/run#run')
+    expect(callRef!.targetName).toBe('helper')
+    expect(callRef!.sourceQualifiedName).toBe('src/run#run')
   })
 
   test('calls inside named function-expression const are attributed to the owning symbol', async () => {
@@ -368,18 +364,19 @@ describe('extractReferenceCandidates', () => {
     ].join('\n')
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const { references } = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/run.ts',
       moduleKey: 'src/run',
     })
 
-    const callRef = references.find((r) => r.edgeType === 'calls' && r.targetName === 'helper')
+    const callRef = references.filter((ref) => ref.edgeType === 'calls').at(0)
     expect(callRef).toBeDefined()
-    expect(callRef?.sourceQualifiedName).toBe('src/run#run')
+    expect(callRef!.targetName).toBe('helper')
+    expect(callRef!.sourceQualifiedName).toBe('src/run#run')
   })
 
   test('re-export without a matching import records a reference to the source module', async () => {
@@ -389,25 +386,19 @@ describe('extractReferenceCandidates', () => {
 
     const tree = parsed.parser.parse(source)
     expect(tree).not.toBeNull()
-    if (tree === null) {
-      throw new Error('Expected parser to produce a tree')
-    }
+
     const result = extractReferenceCandidates({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/index.ts',
       moduleKey: 'src/index',
     })
 
-    expect(
-      result.references.some(
-        (r) => r.edgeType === 'reexports' && r.targetName === 'foo' && r.targetModuleSpecifier === './foo.js',
-      ),
-    ).toBe(true)
-    expect(
-      result.references.some(
-        (r) => r.edgeType === 'reexports' && r.targetName === 'bar' && r.targetModuleSpecifier === './bar.js',
-      ),
-    ).toBe(true)
+    const reexports = result.references.filter((ref) => ref.edgeType === 'reexports')
+    expect(reexports).toHaveLength(2)
+    expect(reexports[0]!.targetName).toBe('foo')
+    expect(reexports[0]!.targetModuleSpecifier).toBe('./foo.js')
+    expect(reexports[1]!.targetName).toBe('bar')
+    expect(reexports[1]!.targetModuleSpecifier).toBe('./bar.js')
   })
 })

@@ -12,7 +12,6 @@ const behaviorAuditEnvKeys = [
   'BEHAVIOR_AUDIT_PROJECT_ROOT',
   'BEHAVIOR_AUDIT_REPORTS_DIR',
   'BEHAVIOR_AUDIT_AUDIT_BEHAVIOR_DIR',
-  'BEHAVIOR_AUDIT_BEHAVIORS_DIR',
   'BEHAVIOR_AUDIT_EXTRACTED_DIR',
   'BEHAVIOR_AUDIT_CLASSIFIED_DIR',
   'BEHAVIOR_AUDIT_CONSOLIDATED_DIR',
@@ -28,6 +27,15 @@ const behaviorAuditEnvKeys = [
   'BEHAVIOR_AUDIT_MAX_RETRIES',
   'BEHAVIOR_AUDIT_MAX_STEPS',
   'BEHAVIOR_AUDIT_EXCLUDED_PREFIXES',
+  'BEHAVIOR_AUDIT_EMBEDDING_MODEL',
+  'BEHAVIOR_AUDIT_EMBEDDING_BASE_URL',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_THRESHOLD',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_MIN_CLUSTER_SIZE',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_DRY_RUN',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_EMBED_BATCH_SIZE',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_MAX_CLUSTER_SIZE',
+  'BEHAVIOR_AUDIT_CONSOLIDATION_GAP_THRESHOLD',
 ] as const
 const originalBehaviorAuditEnv = new Map(behaviorAuditEnvKeys.map((key) => [key, process.env[key]]))
 
@@ -47,9 +55,6 @@ function clearBehaviorAuditEnvKey(key: (typeof behaviorAuditEnvKeys)[number]): v
       return
     case 'BEHAVIOR_AUDIT_AUDIT_BEHAVIOR_DIR':
       delete process.env['BEHAVIOR_AUDIT_AUDIT_BEHAVIOR_DIR']
-      return
-    case 'BEHAVIOR_AUDIT_BEHAVIORS_DIR':
-      delete process.env['BEHAVIOR_AUDIT_BEHAVIORS_DIR']
       return
     case 'BEHAVIOR_AUDIT_EXTRACTED_DIR':
       delete process.env['BEHAVIOR_AUDIT_EXTRACTED_DIR']
@@ -95,73 +100,42 @@ function clearBehaviorAuditEnvKey(key: (typeof behaviorAuditEnvKeys)[number]): v
       return
     case 'BEHAVIOR_AUDIT_EXCLUDED_PREFIXES':
       delete process.env['BEHAVIOR_AUDIT_EXCLUDED_PREFIXES']
+      return
+    case 'BEHAVIOR_AUDIT_EMBEDDING_MODEL':
+      delete process.env['BEHAVIOR_AUDIT_EMBEDDING_MODEL']
+      return
+    case 'BEHAVIOR_AUDIT_EMBEDDING_BASE_URL':
+      delete process.env['BEHAVIOR_AUDIT_EMBEDDING_BASE_URL']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_THRESHOLD':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_THRESHOLD']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_MIN_CLUSTER_SIZE':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_MIN_CLUSTER_SIZE']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_DRY_RUN':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_DRY_RUN']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_EMBED_BATCH_SIZE':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_EMBED_BATCH_SIZE']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_MAX_CLUSTER_SIZE':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_MAX_CLUSTER_SIZE']
+      return
+    case 'BEHAVIOR_AUDIT_CONSOLIDATION_GAP_THRESHOLD':
+      delete process.env['BEHAVIOR_AUDIT_CONSOLIDATION_GAP_THRESHOLD']
   }
 }
 
-export const originalProcessExit = process.exit.bind(process)
 export const originalOpenAiApiKey = process.env['OPENAI_API_KEY']
 
 export function makeTempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'behavior-audit-integration-'))
   tempDirs.push(dir)
   return dir
-}
-
-export async function runCommand(command: string[], cwd: string): Promise<string> {
-  const proc = Bun.spawn(command, {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const stdout = await new Response(proc.stdout).text()
-  const stderr = await new Response(proc.stderr).text()
-  const exitCode = await proc.exited
-  if (exitCode !== 0) {
-    const errorMessage = stderr.trim()
-    throw new Error(errorMessage.length > 0 ? errorMessage : `Command failed: ${command.join(' ')}`)
-  }
-  return stdout.trim()
-}
-
-export async function initializeGitRepo(root: string): Promise<void> {
-  await runCommand(['git', 'init', '-q'], root)
-  await runCommand(
-    [
-      'git',
-      '-c',
-      'user.name=Test User',
-      '-c',
-      'user.email=test@example.com',
-      '-c',
-      'commit.gpgsign=false',
-      'commit',
-      '--allow-empty',
-      '-m',
-      'init',
-      '-q',
-    ],
-    root,
-  )
-}
-
-export async function commitAll(root: string, message: string): Promise<void> {
-  await runCommand(['git', 'add', '.'], root)
-  await runCommand(
-    [
-      'git',
-      '-c',
-      'user.name=Test User',
-      '-c',
-      'user.email=test@example.com',
-      '-c',
-      'commit.gpgsign=false',
-      'commit',
-      '-m',
-      message,
-      '-q',
-    ],
-    root,
-  )
 }
 
 export function restoreOpenAiApiKey(): void {
@@ -178,7 +152,6 @@ export function applyBehaviorAuditEnv(config: BehaviorAuditTestConfig): void {
   process.env['BEHAVIOR_AUDIT_PROJECT_ROOT'] = config.PROJECT_ROOT
   process.env['BEHAVIOR_AUDIT_REPORTS_DIR'] = config.REPORTS_DIR
   process.env['BEHAVIOR_AUDIT_AUDIT_BEHAVIOR_DIR'] = config.AUDIT_BEHAVIOR_DIR
-  process.env['BEHAVIOR_AUDIT_BEHAVIORS_DIR'] = config.BEHAVIORS_DIR
   process.env['BEHAVIOR_AUDIT_EXTRACTED_DIR'] = config.EXTRACTED_DIR
   process.env['BEHAVIOR_AUDIT_CLASSIFIED_DIR'] = config.CLASSIFIED_DIR
   process.env['BEHAVIOR_AUDIT_CONSOLIDATED_DIR'] = config.CONSOLIDATED_DIR
@@ -194,6 +167,15 @@ export function applyBehaviorAuditEnv(config: BehaviorAuditTestConfig): void {
   process.env['BEHAVIOR_AUDIT_MAX_RETRIES'] = String(config.MAX_RETRIES)
   process.env['BEHAVIOR_AUDIT_MAX_STEPS'] = String(config.MAX_STEPS)
   process.env['BEHAVIOR_AUDIT_EXCLUDED_PREFIXES'] = config.EXCLUDED_PREFIXES.join('\n')
+  process.env['BEHAVIOR_AUDIT_EMBEDDING_MODEL'] = config.EMBEDDING_MODEL
+  process.env['BEHAVIOR_AUDIT_EMBEDDING_BASE_URL'] = config.EMBEDDING_BASE_URL
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_THRESHOLD'] = String(config.CONSOLIDATION_THRESHOLD)
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_MIN_CLUSTER_SIZE'] = String(config.CONSOLIDATION_MIN_CLUSTER_SIZE)
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_LINKAGE'] = config.CONSOLIDATION_LINKAGE
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_MAX_CLUSTER_SIZE'] = String(config.CONSOLIDATION_MAX_CLUSTER_SIZE)
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_GAP_THRESHOLD'] = String(config.CONSOLIDATION_GAP_THRESHOLD)
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_DRY_RUN'] = config.CONSOLIDATION_DRY_RUN ? '1' : '0'
+  process.env['BEHAVIOR_AUDIT_CONSOLIDATION_EMBED_BATCH_SIZE'] = String(config.CONSOLIDATION_EMBED_BATCH_SIZE)
 }
 
 export function restoreBehaviorAuditEnv(): void {
@@ -213,11 +195,4 @@ export function cleanupTempDirs(): void {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
   }
-}
-
-export function resolveExitCode(code: number | undefined): number {
-  if (code === undefined) {
-    return 0
-  }
-  return code
 }

@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "directTools": false,
+    "idleTimeout": 10
+  },
+  "mcpServers": {
+    "codeindex": {
+      "command": "bun",
+      "args": ["run", "codeindex/src/cli.ts", "mcp"],
+      "cwd": ".",
+      "lifecycle": "lazy",
+      "directTools": true
+    }
+  }
+}

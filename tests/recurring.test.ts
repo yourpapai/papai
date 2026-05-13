@@ -263,7 +263,7 @@ describe('recurring tasks', () => {
         title: 'Missed Test',
         triggerType: 'cron',
         rrule: 'FREQ=MINUTELY',
-        dtstartUtc: '2026-04-20T00:00:00Z',
+        dtstartUtc: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
       })
       pauseRecurringTask(task.id)
       // Set nextRun to 5 minutes ago so there are missed occurrences

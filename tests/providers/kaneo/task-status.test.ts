@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getUserMessage } from '../../../src/errors.js'
 import { KaneoClassifiedError } from '../../../src/providers/kaneo/classify-error.js'
@@ -57,9 +58,8 @@ describe('validateStatus', () => {
         thrownError = error
       }
       expect(thrownError).toBeInstanceOf(KaneoClassifiedError)
-      if (thrownError instanceof KaneoClassifiedError) {
-        expect(thrownError.appError.code).toBe('status-not-found')
-      }
+      assert(thrownError instanceof KaneoClassifiedError)
+      expect(thrownError.appError.code).toBe('status-not-found')
     })
 
     test('error includes invalid status name', async () => {
@@ -70,9 +70,8 @@ describe('validateStatus', () => {
         thrownError = error
       }
       expect(thrownError).toBeInstanceOf(Error)
-      if (thrownError instanceof Error) {
-        expect(thrownError.message).toContain('InvalidStatus')
-      }
+      assert(thrownError instanceof Error)
+      expect(thrownError.message).toContain('InvalidStatus')
     })
 
     test('error includes available statuses in payload', async () => {
@@ -83,15 +82,14 @@ describe('validateStatus', () => {
         thrownError = error
       }
       expect(thrownError).toBeInstanceOf(KaneoClassifiedError)
-      if (thrownError instanceof KaneoClassifiedError) {
-        const appError = thrownError.appError
-        expect(appError.code).toBe('status-not-found')
-        const message = getUserMessage(appError)
-        expect(message).toContain('NonExistent')
-        expect(message).toContain('To Do')
-        expect(message).toContain('In Progress')
-        expect(message).toContain('Done')
-      }
+      assert(thrownError instanceof KaneoClassifiedError)
+      const appError = thrownError.appError
+      expect(appError.code).toBe('status-not-found')
+      const message = getUserMessage(appError)
+      expect(message).toContain('NonExistent')
+      expect(message).toContain('To Do')
+      expect(message).toContain('In Progress')
+      expect(message).toContain('Done')
     })
   })
 
@@ -118,13 +116,12 @@ describe('validateStatus', () => {
         thrownError = error
       }
       expect(thrownError).toBeInstanceOf(KaneoClassifiedError)
-      if (thrownError instanceof KaneoClassifiedError) {
-        const message = getUserMessage(thrownError.appError)
-        expect(message).toContain('Review')
-        expect(message).toContain('To Do')
-        expect(message).toContain('In Progress')
-        expect(message).toContain('Done')
-      }
+      assert(thrownError instanceof KaneoClassifiedError)
+      const message = getUserMessage(thrownError.appError)
+      expect(message).toContain('Review')
+      expect(message).toContain('To Do')
+      expect(message).toContain('In Progress')
+      expect(message).toContain('Done')
     })
   })
 })

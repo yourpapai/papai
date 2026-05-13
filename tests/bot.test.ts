@@ -1,7 +1,9 @@
 import { describe, expect, mock, test, beforeEach, afterEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
 
+import { listActiveAttachments } from '../src/attachments/index.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from '../src/auth.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
@@ -19,9 +21,8 @@ import type {
 } from '../src/chat/types.js'
 import { getConfig, setConfig } from '../src/config.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
-import { groupAdminObservations, knownGroupContexts } from '../src/db/schema.js'
+import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
-import { getIncomingFiles } from '../src/file-relay.js'
 import { listManageableGroups } from '../src/group-settings/access.js'
 import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src/group-settings/state.js'
 import { addGroupMember } from '../src/groups.js'
@@ -77,6 +78,20 @@ void mock.module('../src/message-queue/index.js', () => ({
   },
   flushOnShutdown: (): Promise<void> => Promise.resolve(),
 }))
+
+// ---------------------------------------------------------------------------
+// Listener helpers defined outside test blocks to avoid no-conditional-in-test
+// ---------------------------------------------------------------------------
+
+function makeRepliedEventListener(repliedEvents: DebugEvent[]): (event: DebugEvent) => void {
+  return (event: DebugEvent): void => {
+    if (event.type === 'message:replied') {
+      repliedEvents.push(event)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 describe('Authorization Logic', () => {
   beforeEach(async () => {
@@ -465,11 +480,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = (event: DebugEvent): void => {
-        if (event.type === 'message:replied') {
-          repliedEvents.push(event)
-        }
-      }
+      const listener = makeRepliedEventListener(repliedEvents)
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
@@ -529,18 +540,14 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = (event: DebugEvent): void => {
-        if (event.type === 'message:replied') {
-          repliedEvents.push(event)
-        }
-      }
+      const listener = makeRepliedEventListener(repliedEvents)
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
       setupBot(replyingChat, ADMIN_ID, {
         processMessage: async (reply: ReplyFn): Promise<void> => {
-          const replaceText = reply.replaceText
-          if (replaceText !== undefined) await replaceText('queued replacement')
+          assert.ok(reply.replaceText !== undefined)
+          await reply.replaceText('queued replacement')
         },
       })
 
@@ -567,18 +574,14 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = (event: DebugEvent): void => {
-        if (event.type === 'message:replied') {
-          repliedEvents.push(event)
-        }
-      }
+      const listener = makeRepliedEventListener(repliedEvents)
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
       setupBot(replyingChat, ADMIN_ID, {
         processMessage: async (reply: ReplyFn): Promise<void> => {
-          const replaceButtons = reply.replaceButtons
-          if (replaceButtons !== undefined) await replaceButtons('queued replacement buttons', { buttons: [] })
+          assert.ok(reply.replaceButtons !== undefined)
+          await reply.replaceButtons('queued replacement buttons', { buttons: [] })
         },
       })
 
@@ -605,11 +608,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       setupUserConfig('auth-user')
 
       const repliedEvents: DebugEvent[] = []
-      const listener = (event: DebugEvent): void => {
-        if (event.type === 'message:replied') {
-          repliedEvents.push(event)
-        }
-      }
+      const listener = makeRepliedEventListener(repliedEvents)
       subscribe(listener)
 
       const { provider: failingChat, getMessageHandler: getFailingHandler } = createMockChatForBot()
@@ -686,18 +685,68 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(groupMessage, reply)
 
     const db = getDrizzleDb()
-    const knownGroup = db.select().from(knownGroupContexts).where(eq(knownGroupContexts.contextId, 'group-ops')).get()
+    const knownGroup = db
+      .select()
+      .from(knownGroupContexts)
+      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, 'group-ops')))
+      .get()
     const adminObservation = db
       .select()
       .from(groupAdminObservations)
-      .where(and(eq(groupAdminObservations.contextId, 'group-ops'), eq(groupAdminObservations.userId, 'group-admin')))
+      .where(
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, 'group-ops'),
+          eq(groupAdminObservations.userId, 'group-admin'),
+        ),
+      )
       .get()
 
     expect(knownGroup).toBeDefined()
     expect(adminObservation).toBeDefined()
-    expect(knownGroup && knownGroup.displayName).toBe('Operations')
-    expect(knownGroup && knownGroup.parentName).toBe('Platform')
-    expect(adminObservation && adminObservation.isAdmin).toBe(true)
+    assert.ok(knownGroup !== undefined)
+    assert.ok(adminObservation !== undefined)
+    expect(knownGroup.displayName).toBe('Operations')
+    expect(knownGroup.parentName).toBe('Platform')
+    expect(adminObservation.isAdmin).toBe(true)
+  })
+
+  test('records group user display observations before normal message handling', async () => {
+    addUser('group-admin', ADMIN_ID)
+    addAuthorizedGroup('group-ops', ADMIN_ID)
+    setupUserConfig('group-admin')
+
+    const messageHandler = getMessageHandler()
+    expect(messageHandler).not.toBeNull()
+
+    const groupMessage = createGroupMessage('group-admin', '@bot status', true, 'group-ops')
+    groupMessage.contextName = 'Operations'
+    groupMessage.contextParentName = 'Platform'
+    groupMessage.user = {
+      ...groupMessage.user,
+      username: 'itsmike',
+      displayLabel: 'John Johnson (@itsmike)',
+    }
+
+    const { reply } = createMockReply()
+    await messageHandler!(groupMessage, reply)
+
+    const observation = getDrizzleDb()
+      .select()
+      .from(groupUserObservations)
+      .where(
+        and(
+          eq(groupUserObservations.provider, 'mock'),
+          eq(groupUserObservations.contextId, 'group-ops'),
+          eq(groupUserObservations.userId, 'group-admin'),
+        ),
+      )
+      .get()
+
+    expect(observation).toBeDefined()
+    assert.ok(observation !== undefined)
+    expect(observation.displayLabel).toBe('John Johnson (@itsmike)')
+    expect(observation.username).toBe('itsmike')
   })
 
   test('does not surface unauthorized mentioned group admin as manageable', async () => {
@@ -829,9 +878,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     const contextHandler = commandHandlers.get('context')
     expect(contextHandler).toBeDefined()
-    if (contextHandler === undefined) {
-      throw new TypeError('Expected context command to be registered')
-    }
+    assert.ok(contextHandler !== undefined, 'Expected context command to be registered')
 
     const { reply, textCalls } = createMockReply()
     await contextHandler(createDmMessage('context-user', '/context'), reply, createAuth('context-user'))
@@ -1009,11 +1056,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     setupUserConfig('group-admin')
 
     const repliedEvents: DebugEvent[] = []
-    const listener = (event: DebugEvent): void => {
-      if (event.type === 'message:replied') {
-        repliedEvents.push(event)
-      }
-    }
+    const listener = makeRepliedEventListener(repliedEvents)
     subscribe(listener)
 
     try {
@@ -1044,11 +1087,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('emits message:replied for unauthorized mention denial path', async () => {
     const repliedEvents: DebugEvent[] = []
-    const listener = (event: DebugEvent): void => {
-      if (event.type === 'message:replied') {
-        repliedEvents.push(event)
-      }
-    }
+    const listener = makeRepliedEventListener(repliedEvents)
     subscribe(listener)
 
     try {
@@ -1180,12 +1219,20 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(groupMessage, reply)
 
     const db = getDrizzleDb()
-    const knownGroup = db.select().from(knownGroupContexts).where(eq(knownGroupContexts.contextId, 'group-noise')).get()
+    const knownGroup = db
+      .select()
+      .from(knownGroupContexts)
+      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, 'group-noise')))
+      .get()
     const adminObservation = db
       .select()
       .from(groupAdminObservations)
       .where(
-        and(eq(groupAdminObservations.contextId, 'group-noise'), eq(groupAdminObservations.userId, 'group-member')),
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, 'group-noise'),
+          eq(groupAdminObservations.userId, 'group-member'),
+        ),
       )
       .get()
 
@@ -1475,23 +1522,22 @@ describe('Demo Mode — wizard bypass (setupBot)', () => {
   })
 })
 
-describe('File relay integration (setupBot)', () => {
+describe('Attachment workspace integration (setupBot)', () => {
   const RELAY_ADMIN = 'relay-admin'
   let capturedStorageId: string | null = null
-  let filesAtProcessingTime: readonly IncomingFile[] = []
+  let attachmentIdsAtProcessingTime: readonly string[] = []
   let getMessageHandler: () => ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null
 
   beforeEach(async () => {
     capturedStorageId = null
-    filesAtProcessingTime = []
+    attachmentIdsAtProcessingTime = []
     mockLogger()
     await setupTestDb()
 
     const botDeps: BotDeps = {
       processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {
         capturedStorageId = storageContextId
-        // Capture files at processing time (before they're cleared in finally block)
-        filesAtProcessingTime = getIncomingFiles(storageContextId)
+        attachmentIdsAtProcessingTime = listActiveAttachments(storageContextId).map((ref) => ref.attachmentId)
         return Promise.resolve()
       },
     }
@@ -1501,7 +1547,7 @@ describe('File relay integration (setupBot)', () => {
     setupBot(mockChat, RELAY_ADMIN, botDeps)
   })
 
-  test('stores files in relay keyed by storageContextId for authorized user', async () => {
+  test('persists incoming files into the workspace for an authorized user', async () => {
     addUser('relay-user', RELAY_ADMIN)
     setupUserConfig('relay-user')
     const noOverrides: Partial<IncomingFile> | undefined = undefined
@@ -1512,34 +1558,29 @@ describe('File relay integration (setupBot)', () => {
     await getMessageHandler()!(msg, reply)
 
     expect(capturedStorageId).toBe('relay-user')
-    // Files are cleared after processing, so check what was captured during processing
-    expect(filesAtProcessingTime).toHaveLength(1)
-    expect(filesAtProcessingTime[0] && filesAtProcessingTime[0].fileId).toBe('f1')
+    expect(attachmentIdsAtProcessingTime).toHaveLength(1)
+    expect(attachmentIdsAtProcessingTime[0]?.startsWith('att_')).toBe(true)
   })
 
-  test('clears relay when message has no files', async () => {
+  test('does not persist anything when an authorized message has no files', async () => {
     addUser('relay-user2', RELAY_ADMIN)
     setupUserConfig('relay-user2')
-    // Pre-populate relay
-    const { storeIncomingFiles } = await import('../src/file-relay.js')
-    const noOverrides: Partial<IncomingFile> | undefined = undefined
-    storeIncomingFiles('relay-user2', [makeFile(noOverrides)])
 
     const msg: IncomingMessage = { ...createDmMessage('relay-user2') }
     const { reply } = createMockReply()
     await getMessageHandler()!(msg, reply)
 
-    expect(getIncomingFiles('relay-user2')).toEqual([])
+    expect(listActiveAttachments('relay-user2')).toEqual([])
   })
 
-  test('does not store files for unauthorized user', async () => {
+  test('does not persist files for an unauthorized user', async () => {
     const file = makeFile({ fileId: 'secret' })
     const msg: IncomingMessage = { ...createDmMessage('unauth-user'), files: [file] }
     const { reply } = createMockReply()
 
     await getMessageHandler()!(msg, reply)
 
-    expect(getIncomingFiles('unauth-user')).toEqual([])
+    expect(listActiveAttachments('unauth-user')).toEqual([])
   })
 })
 

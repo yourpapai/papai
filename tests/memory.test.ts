@@ -19,6 +19,12 @@ import { extractFacts } from './helpers/extract-facts.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { flushMicrotasks, mockLogger, setupTestDb } from './utils/test-helpers.js'
 
+const makeMessages = (count: number): Array<{ role: 'user' | 'assistant'; content: string }> =>
+  Array.from({ length: count }, (_, i) => ({
+    role: i % 2 === 0 ? ('user' as const) : ('assistant' as const),
+    content: `Message ${i}`,
+  }))
+
 describe('memory', () => {
   // Mock getDrizzleDb to return our test database
   let testDb: Awaited<ReturnType<typeof setupTestDb>>
@@ -61,7 +67,8 @@ describe('memory', () => {
       saveSummary('1', 'Test summary')
       await flushMicrotasks()
       const row = testDb.select().from(schema.memorySummary).where(eq(schema.memorySummary.userId, '1')).get()
-      expect(row?.summary).toBe('Test summary')
+      expect(row).toBeDefined()
+      expect(row!.summary).toBe('Test summary')
     })
 
     test('calls INSERT OR REPLACE', async () => {
@@ -359,12 +366,6 @@ describe('memory', () => {
   describe('trimWithMemoryModel', () => {
     const mockModel: LanguageModel = 'test-model'
 
-    const makeMessages = (count: number): Array<{ role: 'user' | 'assistant'; content: string }> =>
-      Array.from({ length: count }, (_, i) => ({
-        role: i % 2 === 0 ? ('user' as const) : ('assistant' as const),
-        content: `Message ${i}`,
-      }))
-
     test('returns trimmed messages and summary', async () => {
       const history = makeMessages(5)
       generateTextImpl = (): Promise<GenerateTextResult> =>
@@ -562,6 +563,15 @@ describe('memory', () => {
       expect(facts[0]!.identifier).toBe('#42')
       expect(facts[0]!.title).toBe('New task')
       expect(facts[0]!.url).toBe('')
+    })
+
+    test('ignores legacy papai_tool results', () => {
+      const facts = extractFactsFromSdkResults(
+        [{ toolName: 'papai_tool', input: { tool: 'create_task', args: '{"title":"New task"}' } }],
+        [{ toolName: 'papai_tool', output: { id: 'task-1', title: 'New task', number: 42 } }],
+      )
+
+      expect(facts).toHaveLength(0)
     })
 
     test('extracts fact from get_task result', () => {

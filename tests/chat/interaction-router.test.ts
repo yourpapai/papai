@@ -50,6 +50,29 @@ const captureReplyText = (replies: string[]): ReplyFn['text'] => {
   }
 }
 
+function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'): void {
+  upsertKnownGroupContext({
+    contextId: 'group-9',
+    provider: 'telegram',
+    displayName: 'Operations',
+    parentName: 'Platform',
+  })
+  upsertGroupAdminObservation({
+    provider: 'telegram',
+    contextId: 'group-9',
+    userId,
+    username: interaction.user.username,
+    isAdmin: true,
+  })
+  addAuthorizedGroup('group-9', 'admin-1')
+  createGroupSettingsSession({
+    userId,
+    command,
+    stage: 'active',
+    targetContextId: 'group-9',
+  })
+}
+
 describe('routeInteraction', () => {
   beforeEach(async () => {
     mockLogger()
@@ -182,25 +205,7 @@ describe('routeInteraction', () => {
   })
 
   test('uses the active group target for cfg callbacks received in DM', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'config',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
     createEditorSession({
       userId: interaction.user.id,
       storageContextId: 'group-9',
@@ -225,25 +230,7 @@ describe('routeInteraction', () => {
   })
 
   test('clears stale active DM-selected group target when cfg callback access is lost', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'config',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
@@ -267,25 +254,7 @@ describe('routeInteraction', () => {
   })
 
   test('clears stale active DM-selected group target when cfg callback allowlist access is lost', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'config',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
     expect(removeAuthorizedGroup('group-9')).toBe(true)
 
@@ -307,25 +276,7 @@ describe('routeInteraction', () => {
   })
 
   test('blocks encoded cfg callback target when admin access is removed', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'config',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
@@ -352,25 +303,7 @@ describe('routeInteraction', () => {
   })
 
   test('allows encoded personal cfg callback target in DM', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'config',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
@@ -428,25 +361,7 @@ describe('routeInteraction', () => {
   })
 
   test('saves edited config into the selected group context instead of the DM user context', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'config',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
     createEditorSession({
       userId: interaction.user.id,
       storageContextId: 'group-9',
@@ -471,6 +386,7 @@ describe('routeInteraction', () => {
     setConfig('group-9', 'kaneo_apikey', 'test-kaneo-key')
     setKaneoWorkspace('group-9', 'workspace-9')
     upsertGroupAdminObservation({
+      provider: 'telegram',
       contextId: 'group-9',
       userId: interaction.user.id,
       username: interaction.user.username,
@@ -497,25 +413,7 @@ describe('routeInteraction', () => {
   })
 
   test('blocks encoded wizard callback target when admin access is removed', async () => {
-    upsertKnownGroupContext({
-      contextId: 'group-9',
-      provider: 'telegram',
-      displayName: 'Operations',
-      parentName: 'Platform',
-    })
-    upsertGroupAdminObservation({
-      contextId: 'group-9',
-      userId: interaction.user.id,
-      username: interaction.user.username,
-      isAdmin: true,
-    })
-    addAuthorizedGroup('group-9', 'admin-1')
-    createGroupSettingsSession({
-      userId: interaction.user.id,
-      command: 'setup',
-      stage: 'active',
-      targetContextId: 'group-9',
-    })
+    setupAuthorizedGroupForUser(interaction.user.id, 'setup')
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
