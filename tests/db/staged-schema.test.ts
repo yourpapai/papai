@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { stagedFiles } from '../../src/db/staged-schema.js'
@@ -22,6 +22,198 @@ describe('stagedFiles schema', () => {
     expect(stagedFiles.platformFileId).toBeDefined()
     expect(stagedFiles.status).toBeDefined()
     expect(stagedFiles.expiresAt).toBeDefined()
+  })
+
+  it('rejects inserting NULL into NOT NULL columns', () => {
+    const db = getDrizzleDb()
+    const now = new Date().toISOString()
+    const expires = new Date(Date.now() + 86400000).toISOString()
+    expect(() =>
+      db.run(sql`
+        insert into staged_files (
+          staged_id,
+          context_id,
+          sender_id,
+          filename,
+          platform_file_id,
+          source_provider,
+          created_at,
+          expires_at
+        ) values (
+          ${'stg_n1'},
+          null,
+          ${'user-1'},
+          ${'doc.txt'},
+          ${'tg_1'},
+          ${'telegram'},
+          ${now},
+          ${expires}
+        )
+      `),
+    ).toThrow()
+    expect(() =>
+      db.run(sql`
+        insert into staged_files (
+          staged_id,
+          context_id,
+          sender_id,
+          filename,
+          platform_file_id,
+          source_provider,
+          created_at,
+          expires_at
+        ) values (
+          ${'stg_n2'},
+          ${'ctx-test'},
+          null,
+          ${'doc.txt'},
+          ${'tg_1'},
+          ${'telegram'},
+          ${now},
+          ${expires}
+        )
+      `),
+    ).toThrow()
+    expect(() =>
+      db.run(sql`
+        insert into staged_files (
+          staged_id,
+          context_id,
+          sender_id,
+          filename,
+          platform_file_id,
+          source_provider,
+          created_at,
+          expires_at
+        ) values (
+          ${'stg_n3'},
+          ${'ctx-test'},
+          ${'user-1'},
+          null,
+          ${'tg_1'},
+          ${'telegram'},
+          ${now},
+          ${expires}
+        )
+      `),
+    ).toThrow()
+    expect(() =>
+      db.run(sql`
+        insert into staged_files (
+          staged_id,
+          context_id,
+          sender_id,
+          filename,
+          platform_file_id,
+          source_provider,
+          created_at,
+          expires_at
+        ) values (
+          ${'stg_n4'},
+          ${'ctx-test'},
+          ${'user-1'},
+          ${'doc.txt'},
+          null,
+          ${'telegram'},
+          ${now},
+          ${expires}
+        )
+      `),
+    ).toThrow()
+    expect(() =>
+      db.run(sql`
+        insert into staged_files (
+          staged_id,
+          context_id,
+          sender_id,
+          filename,
+          platform_file_id,
+          source_provider,
+          created_at,
+          expires_at
+        ) values (
+          ${'stg_n5'},
+          ${'ctx-test'},
+          ${'user-1'},
+          ${'doc.txt'},
+          ${'tg_1'},
+          null,
+          ${now},
+          ${expires}
+        )
+      `),
+    ).toThrow()
+  })
+
+  it('rejects duplicate staged_id', () => {
+    const db = getDrizzleDb()
+    const now = new Date().toISOString()
+    const expires = new Date(Date.now() + 86400000).toISOString()
+
+    db.insert(stagedFiles)
+      .values({
+        stagedId: 'stg_dup',
+        contextId: 'ctx-1',
+        senderId: 'user-1',
+        filename: 'a.pdf',
+        platformFileId: 'tg_a',
+        sourceProvider: 'telegram',
+        createdAt: now,
+        expiresAt: expires,
+      })
+      .run()
+
+    expect(() =>
+      db
+        .insert(stagedFiles)
+        .values({
+          stagedId: 'stg_dup',
+          contextId: 'ctx-2',
+          senderId: 'user-2',
+          filename: 'b.pdf',
+          platformFileId: 'tg_b',
+          sourceProvider: 'telegram',
+          createdAt: now,
+          expiresAt: expires,
+        })
+        .run(),
+    ).toThrow()
+  })
+
+  it('upserts on duplicate platform_file_id + context_id pair', () => {
+    const db = getDrizzleDb()
+    const now = new Date().toISOString()
+    const expires = new Date(Date.now() + 86400000).toISOString()
+
+    db.insert(stagedFiles)
+      .values({
+        stagedId: 'stg_first',
+        contextId: 'ctx-shared',
+        senderId: 'user-1',
+        filename: 'first.pdf',
+        platformFileId: 'tg_shared',
+        sourceProvider: 'telegram',
+        createdAt: now,
+        expiresAt: expires,
+      })
+      .run()
+
+    // Inserting same platformFileId + contextId should fail without upsert
+    expect(() =>
+      db
+        .insert(stagedFiles)
+        .values({
+          stagedId: 'stg_second',
+          contextId: 'ctx-shared',
+          senderId: 'user-2',
+          filename: 'second.pdf',
+          platformFileId: 'tg_shared',
+          sourceProvider: 'telegram',
+          createdAt: now,
+          expiresAt: expires,
+        })
+        .run(),
+    ).toThrow()
   })
 
   it('round-trips a staged file row', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { ContextType, ToolMode, MakeToolsOptions } from '../../src/tools/types.js'
+import type { ContextType } from '../../src/chat/types.js'
+import type { ToolMode, MakeToolsOptions } from '../../src/tools/types.js'
 
 describe('types', () => {
   it('should export ToolMode type', () => {

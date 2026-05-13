@@ -5,12 +5,15 @@
 
 import { purgeExpiredStagedFiles } from './attachments/staged.js'
 import { cleanupExpiredCaches } from './cache.js'
+import { logger } from './logger.js'
 import { sweepExpiredMessages } from './message-cache/cache.js'
 import { cleanupExpiredMessages } from './message-cache/persistence.js'
 import { cleanupExpiredQueues } from './message-queue/index.js'
 import { createScheduler } from './utils/scheduler.js'
 import type { ErrorEvent, FatalErrorEvent } from './utils/scheduler.types.js'
 import { cleanupExpiredWizardSessions } from './wizard/state.js'
+
+const log = logger.child({ scope: 'scheduler-instance' })
 
 // Create singleton scheduler
 export const scheduler = createScheduler({
@@ -65,10 +68,13 @@ scheduler.register('staged-files-purge', {
 // Event hooks
 scheduler.on('error', ({ name, error, attempt }: ErrorEvent) => {
   // Errors are logged by scheduler, add any additional alerting here
-  console.error(`Task ${name} failed (attempt ${attempt}):`, error)
+  log.error({ taskName: name, attempt, error: error instanceof Error ? error.message : String(error) }, 'Task failed')
 })
 
 scheduler.on('fatalError', ({ name, error }: FatalErrorEvent) => {
   // Task failed permanently - could alert on-call here
-  console.error(`Task ${name} failed permanently:`, error)
+  log.error(
+    { taskName: name, error: error instanceof Error ? error.message : String(error) },
+    'Task failed permanently',
+  )
 })

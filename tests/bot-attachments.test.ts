@@ -162,4 +162,64 @@ describe('bot-attachments', () => {
       expect(staged[0]!.filename).toBe('good.jpg')
     })
   })
+
+  describe('resolveMessageAttachments', () => {
+    test('ingests DM files when present', async () => {
+      const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
+      const chat = createMockChat()
+      const msg: IncomingMessage = {
+        ...createDmMessage('dm-user'),
+        files: [makeFile()],
+      }
+
+      const result = await resolveMessageAttachments(chat, msg, 'dm-user')
+      expect(result.newAttachmentIds).toHaveLength(1)
+    })
+
+    test('returns empty newAttachmentIds for DM without files', async () => {
+      const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
+      const chat = createMockChat()
+      const msg = createDmMessage('dm-user')
+
+      const result = await resolveMessageAttachments(chat, msg, 'dm-user')
+      expect(result.newAttachmentIds).toHaveLength(0)
+    })
+
+    test('returns active attachments for group context', async () => {
+      // Seed an attachment in the workspace for the group context
+      const { ingestDmAttachments, resolveMessageAttachments } = await import('../src/bot-attachments.js')
+      const chat = createMockChat()
+      const dmMsg: IncomingMessage = {
+        ...createDmMessage('group-user'),
+        files: [makeFile({ filename: 'existing.pdf' })],
+      }
+      await ingestDmAttachments({ chat, msg: dmMsg, storageContextId: 'group-1', files: dmMsg.files! })
+
+      const groupMsg = createGroupMessage('group-user', 'hello')
+      const result = await resolveMessageAttachments(chat, groupMsg, 'group-1')
+      expect(result.newAttachmentIds).toHaveLength(0)
+      expect(result.activeAttachments).toHaveLength(1)
+      expect(result.activeAttachments[0]!.filename).toBe('existing.pdf')
+    })
+
+    test('returns empty arrays when S3 is not configured', async () => {
+      const { resolveMessageAttachments } = await import('../src/bot-attachments.js')
+
+      // Temporarily clear S3 env vars
+      const saved = { ...process.env }
+      delete process.env['S3_BUCKET']
+      delete process.env['S3_ACCESS_KEY_ID']
+      delete process.env['S3_SECRET_ACCESS_KEY']
+
+      try {
+        const chat = createMockChat()
+        const msg = createDmMessage('dm-user')
+        const result = await resolveMessageAttachments(chat, msg, 'dm-user')
+        expect(result.newAttachmentIds).toHaveLength(0)
+        expect(result.activeAttachments).toHaveLength(0)
+      } finally {
+        Object.assign(process.env, saved)
+      }
+    })
+  })
 })

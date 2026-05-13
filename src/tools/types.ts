@@ -1,6 +1,7 @@
-export type ToolMode = 'normal' | 'proactive'
+import type { ContextType } from '../chat/types.js'
+export type { ContextType } from '../chat/types.js'
 
-export type ContextType = 'dm' | 'group'
+export type ToolMode = 'normal' | 'proactive'
 
 /**
  * Options for makeTools function.

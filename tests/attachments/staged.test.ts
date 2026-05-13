@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   findStagedFilesByMessageId,
   purgeExpiredStagedFiles,
+  resolveStagedFile,
   searchStagedFiles,
   stageFileMetadata,
 } from '../../src/attachments/staged.js'
@@ -292,8 +293,153 @@ describe('staged file cache', () => {
     })
   })
 
+  describe('resolveStagedFile', () => {
+    test('returns not_found for unknown stagedId', async () => {
+      const result = await resolveStagedFile('stg_nonexistent', 'ctx-1', () => Promise.resolve(null))
+      expect(result).toMatchObject({ status: 'not_found' })
+    })
+
+    test('returns not_found when stagedId exists in a different context', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'ctx-a',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_ctx_a',
+        sourceProvider: 'telegram',
+      })
+
+      const result = await resolveStagedFile(staged.stagedId, 'ctx-b', () => Promise.resolve(null))
+      expect(result).toMatchObject({
+        status: 'not_found',
+        message: expect.stringContaining('ctx-b') as unknown,
+      })
+    })
+
+    test('returns already_resolved when file was previously resolved', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_resolved',
+        sourceProvider: 'telegram',
+      })
+
+      // First resolve succeeds
+      const first = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))
+      expect(first).toMatchObject({ status: 'available', filename: 'report.pdf', contextId: 'ctx-1' })
+      expect((first as Record<string, unknown>)['attachmentId']).toMatch(/^att_[0-9a-f-]+$/)
+
+      // Second resolve returns already_resolved
+      const second = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))
+      expect(second).toMatchObject({ status: 'already_resolved' })
+      expect((second as Record<string, unknown>)['attachmentId']).toBe(
+        (first as Record<string, unknown>)['attachmentId'],
+      )
+    })
+
+    test('returns download_failed when downloadFn returns null', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'missing.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_missing',
+        sourceProvider: 'telegram',
+      })
+
+      const result = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(null))
+      expect(result).toMatchObject({
+        status: 'download_failed',
+        message: expect.stringContaining('Unable to fetch') as unknown,
+      })
+    })
+
+    test('returns download_failed for previously failed status', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'failed.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_failed',
+        sourceProvider: 'telegram',
+      })
+
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles: sf } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb().update(sf).set({ status: 'failed' }).where(eq(sf.stagedId, staged.stagedId)).run()
+
+      const result = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))
+      expect(result).toMatchObject({
+        status: 'download_failed',
+        message: expect.stringContaining('re-send') as unknown,
+      })
+    })
+
+    test('returns staged_file_expired when expiresAt is in the past', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'expired.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_expired',
+        sourceProvider: 'telegram',
+      })
+
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles: sf } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb()
+        .update(sf)
+        .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
+        .where(eq(sf.stagedId, staged.stagedId))
+        .run()
+
+      const result = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))
+      expect(result).toMatchObject({
+        status: 'staged_file_expired',
+        message: expect.stringContaining('expired') as unknown,
+      })
+    })
+
+    test('propagates exceptions thrown by downloadFn', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'boom.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_boom',
+        sourceProvider: 'telegram',
+      })
+
+      await expect(
+        resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.reject(new Error('network timeout'))),
+      ).rejects.toThrow('network timeout')
+    })
+  })
+
   describe('purgeExpiredStagedFiles', () => {
-    test('removes entries past their expires_at', async () => {
+    test('removes entries with status=expired', async () => {
       await stageFileMetadata({
         contextId: 'ctx-1',
         messageId: 'msg-1',
@@ -313,6 +459,36 @@ describe('staged file cache', () => {
       getDrizzleDb().update(sf).set({ status: 'expired' }).where(eq(sf.platformFileId, 'tg_old')).run()
 
       expect(() => purgeExpiredStagedFiles()).not.toThrow()
+    })
+
+    test('removes entries past their expires_at time', async () => {
+      await stageFileMetadata({
+        contextId: 'ctx-1',
+        messageId: 'msg-1',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'timedout.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+        platformFileId: 'tg_timedout',
+        sourceProvider: 'telegram',
+      })
+
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles: sf } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+
+      // Set expires_at to the past without changing status
+      getDrizzleDb()
+        .update(sf)
+        .set({ expiresAt: new Date(Date.now() - 3600_000).toISOString() })
+        .where(eq(sf.platformFileId, 'tg_timedout'))
+        .run()
+
+      purgeExpiredStagedFiles()
+
+      const remaining = getDrizzleDb().select().from(sf).where(eq(sf.platformFileId, 'tg_timedout')).get()
+      expect(remaining).toBeUndefined()
     })
   })
 })

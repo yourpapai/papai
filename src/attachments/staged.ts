@@ -8,24 +8,17 @@ import { logger } from '../logger.js'
 import { saveAttachment } from './store.js'
 import type {
   AttachmentRef,
-  AttachmentSourceProvider,
   StageFileParams,
   StagedFileDownloadFn,
   StagedFileRef,
   StagedFileStatus,
   StagedResolutionError,
 } from './types.js'
+import { toSourceProvider } from './types.js'
 
 const log = logger.child({ scope: 'attachments:staged' })
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
-
-const SOURCE_BY_VALUE: Readonly<Record<string, AttachmentSourceProvider>> = {
-  telegram: 'telegram',
-  mattermost: 'mattermost',
-  discord: 'discord',
-  unknown: 'unknown',
-}
 
 const STAGED_STATUS_BY_VALUE: Readonly<Record<string, StagedFileStatus>> = {
   staged: 'staged',
@@ -34,7 +27,6 @@ const STAGED_STATUS_BY_VALUE: Readonly<Record<string, StagedFileStatus>> = {
   expired: 'expired',
 }
 
-const toSourceProvider = (value: string): AttachmentSourceProvider => SOURCE_BY_VALUE[value] ?? 'unknown'
 const toStagedStatus = (value: string): StagedFileStatus => STAGED_STATUS_BY_VALUE[value] ?? 'expired'
 
 type StagedRow = typeof stagedFiles.$inferSelect

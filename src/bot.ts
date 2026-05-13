@@ -1,6 +1,6 @@
-import type { StagedFileDownloadFn } from './attachments/types.js'
+import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
-import { resolveMessageAttachments, stageGroupFileCandidates, toSourceProvider } from './bot-attachments.js'
+import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { maybeInterceptWizard } from './bot-settings.js'

@@ -2,6 +2,15 @@ export type AttachmentStatus = 'available' | 'tool_only' | 'rejected' | 'unavail
 
 export type AttachmentSourceProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
 
+export const SOURCE_PROVIDER_BY_NAME: Readonly<Record<string, AttachmentSourceProvider>> = {
+  telegram: 'telegram',
+  mattermost: 'mattermost',
+  discord: 'discord',
+  unknown: 'unknown',
+}
+
+export const toSourceProvider = (name: string): AttachmentSourceProvider => SOURCE_PROVIDER_BY_NAME[name] ?? 'unknown'
+
 export type AttachmentRef = {
   attachmentId: string
   contextId: string

@@ -4,17 +4,9 @@ import {
   persistIncomingAttachments,
   stageFileMetadata,
 } from './attachments/index.js'
-import type { AttachmentRef, AttachmentSourceProvider } from './attachments/types.js'
+import { toSourceProvider, type AttachmentRef, type AttachmentSourceProvider } from './attachments/types.js'
 import type { ChatProvider, IncomingFile, IncomingFileCandidate, IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
-
-const SOURCE_BY_NAME: Readonly<Record<string, AttachmentSourceProvider>> = {
-  telegram: 'telegram',
-  mattermost: 'mattermost',
-  discord: 'discord',
-}
-
-export const toSourceProvider = (name: string): AttachmentSourceProvider => SOURCE_BY_NAME[name] ?? 'unknown'
 
 const log = logger.child({ scope: 'bot-attachments' })
 
