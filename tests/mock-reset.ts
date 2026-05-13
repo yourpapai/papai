@@ -35,6 +35,9 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
 beforeEach(() => {
   _resetDrizzleDb()
   _setBlobStore(_createInMemoryBlobStore())
+  process.env['S3_BUCKET'] = 'test-bucket'
+  process.env['S3_ACCESS_KEY_ID'] = 'test-key'
+  process.env['S3_SECRET_ACCESS_KEY'] = 'test-secret'
   for (const [path, exports] of originals) {
     void mock.module(path, () => ({ ...exports }))
   }
@@ -42,4 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore()
+  delete process.env['S3_BUCKET']
+  delete process.env['S3_ACCESS_KEY_ID']
+  delete process.env['S3_SECRET_ACCESS_KEY']
 })

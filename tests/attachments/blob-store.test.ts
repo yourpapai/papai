@@ -4,6 +4,7 @@ import {
   buildBlobKey,
   _createInMemoryBlobStore,
   getBlobStore,
+  isS3Configured,
   _resetBlobStore,
   _setBlobStore,
 } from '../../src/attachments/blob-store.js'
@@ -17,6 +18,9 @@ describe('blob-store DI', () => {
   afterEach(() => {
     _resetBlobStore()
     delete process.env['S3_PREFIX']
+    delete process.env['S3_BUCKET']
+    delete process.env['S3_ACCESS_KEY_ID']
+    delete process.env['S3_SECRET_ACCESS_KEY']
   })
 
   test('round-trips bytes through the in-memory store and supports delete', async () => {
@@ -55,5 +59,49 @@ describe('blob-store DI', () => {
 
     process.env['S3_PREFIX'] = 'envname/'
     expect(buildBlobKey('ctx-1', 'att_1')).toBe('envname/ctx-1/att_1')
+  })
+
+  describe('isS3Configured', () => {
+    test('returns false when no S3 env vars are set', () => {
+      delete process.env['S3_BUCKET']
+      delete process.env['S3_ACCESS_KEY_ID']
+      delete process.env['S3_SECRET_ACCESS_KEY']
+      expect(isS3Configured()).toBe(false)
+    })
+
+    test('returns false when S3_BUCKET is missing', () => {
+      delete process.env['S3_BUCKET']
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+      expect(isS3Configured()).toBe(false)
+    })
+
+    test('returns false when S3_ACCESS_KEY_ID is missing', () => {
+      process.env['S3_BUCKET'] = 'my-bucket'
+      delete process.env['S3_ACCESS_KEY_ID']
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+      expect(isS3Configured()).toBe(false)
+    })
+
+    test('returns false when S3_SECRET_ACCESS_KEY is missing', () => {
+      process.env['S3_BUCKET'] = 'my-bucket'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      delete process.env['S3_SECRET_ACCESS_KEY']
+      expect(isS3Configured()).toBe(false)
+    })
+
+    test('returns false when S3 env vars are empty strings', () => {
+      process.env['S3_BUCKET'] = ''
+      process.env['S3_ACCESS_KEY_ID'] = ''
+      process.env['S3_SECRET_ACCESS_KEY'] = ''
+      expect(isS3Configured()).toBe(false)
+    })
+
+    test('returns true when all required S3 env vars are set', () => {
+      process.env['S3_BUCKET'] = 'my-bucket'
+      process.env['S3_ACCESS_KEY_ID'] = 'key'
+      process.env['S3_SECRET_ACCESS_KEY'] = 'secret'
+      expect(isS3Configured()).toBe(true)
+    })
   })
 })

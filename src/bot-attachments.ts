@@ -1,6 +1,12 @@
-import { listActiveAttachments, persistIncomingAttachments, stageFileMetadata } from './attachments/index.js'
+import {
+  isS3Configured,
+  listActiveAttachments,
+  persistIncomingAttachments,
+  stageFileMetadata,
+} from './attachments/index.js'
 import type { AttachmentRef, AttachmentSourceProvider } from './attachments/types.js'
 import type { ChatProvider, IncomingFile, IncomingFileCandidate, IncomingMessage } from './chat/types.js'
+import { logger } from './logger.js'
 
 const SOURCE_BY_NAME: Readonly<Record<string, AttachmentSourceProvider>> = {
   telegram: 'telegram',
@@ -9,6 +15,8 @@ const SOURCE_BY_NAME: Readonly<Record<string, AttachmentSourceProvider>> = {
 }
 
 export const toSourceProvider = (name: string): AttachmentSourceProvider => SOURCE_BY_NAME[name] ?? 'unknown'
+
+const log = logger.child({ scope: 'bot-attachments' })
 
 export type IngestDmAttachmentsParams = {
   chat: ChatProvider
@@ -28,7 +36,54 @@ export type StageGroupCandidatesParams = {
   sourceProvider: AttachmentSourceProvider
 }
 
+export type StageGroupCandidatesDeps = {
+  stageFileMetadataFn: (
+    params: import('./attachments/types.js').StageFileParams,
+  ) => import('./attachments/types.js').StagedFileRef
+}
+
+const defaultStageGroupCandidatesDeps: StageGroupCandidatesDeps = {
+  stageFileMetadataFn: stageFileMetadata,
+}
+
+export function stageGroupFileCandidates(
+  params: StageGroupCandidatesParams,
+  deps: StageGroupCandidatesDeps = defaultStageGroupCandidatesDeps,
+): void {
+  if (!isS3Configured()) return
+  const candidates: readonly IncomingFileCandidate[] = params.msg.fileCandidates ?? []
+  for (const candidate of candidates) {
+    try {
+      deps.stageFileMetadataFn({
+        contextId: params.storageContextId,
+        messageId: params.msg.messageId ?? null,
+        senderId: params.msg.user.id,
+        senderUsername: params.msg.user.username ?? null,
+        filename: candidate.filename,
+        mimeType: candidate.mimeType ?? null,
+        size: candidate.size ?? null,
+        platformFileId: candidate.fileId,
+        sourceProvider: params.sourceProvider,
+      })
+    } catch (error: unknown) {
+      log.warn(
+        {
+          contextId: params.storageContextId,
+          messageId: params.msg.messageId,
+          filename: candidate.filename,
+          fileId: candidate.fileId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to stage group file candidate',
+      )
+    }
+  }
+}
+
 export async function ingestDmAttachments(params: IngestDmAttachmentsParams): Promise<IngestAttachmentsResult> {
+  if (!isS3Configured()) {
+    return { newAttachmentIds: [], activeAttachments: [] }
+  }
   const persistParams: Parameters<typeof persistIncomingAttachments>[0] = {
     contextId: params.storageContextId,
     sourceProvider: toSourceProvider(params.chat.name),
@@ -40,23 +95,6 @@ export async function ingestDmAttachments(params: IngestDmAttachmentsParams): Pr
   return {
     newAttachmentIds: newRefs.map((ref) => ref.attachmentId),
     activeAttachments,
-  }
-}
-
-export function stageGroupFileCandidates(params: StageGroupCandidatesParams): void {
-  const candidates: readonly IncomingFileCandidate[] = params.msg.fileCandidates ?? []
-  for (const candidate of candidates) {
-    stageFileMetadata({
-      contextId: params.storageContextId,
-      messageId: params.msg.messageId ?? null,
-      senderId: params.msg.user.id,
-      senderUsername: params.msg.user.username ?? null,
-      filename: candidate.filename,
-      mimeType: candidate.mimeType ?? null,
-      size: candidate.size ?? null,
-      platformFileId: candidate.fileId,
-      sourceProvider: params.sourceProvider,
-    })
   }
 }
 
@@ -72,5 +110,5 @@ export async function resolveMessageAttachments(
       return result
     }
   }
-  return { newAttachmentIds: [], activeAttachments: listActiveAttachments(storageContextId) }
+  return { newAttachmentIds: [], activeAttachments: isS3Configured() ? listActiveAttachments(storageContextId) : [] }
 }

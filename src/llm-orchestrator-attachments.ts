@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai'
 
 import {
   buildHistoryAttachmentLines,
+  isS3Configured,
   listActiveAttachments,
   loadAttachmentRecord,
   selectAttachmentsForTurn,
@@ -44,6 +45,13 @@ export const buildUserTurnMessages = async (
   text: string,
   newAttachmentIds: readonly string[],
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
+  const textOnly = (): { modelMessage: ModelMessage; historyMessage: ModelMessage } => ({
+    modelMessage: { role: 'user', content: text } as ModelMessage,
+    historyMessage: { role: 'user', content: text } as ModelMessage,
+  })
+
+  if (!isS3Configured()) return textOnly()
+
   const activeAttachments = listActiveAttachments(contextId)
   const selected = selectAttachmentsForTurn({ text, newAttachmentIds, activeAttachments })
 

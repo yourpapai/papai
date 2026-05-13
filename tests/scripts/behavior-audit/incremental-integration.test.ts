@@ -245,6 +245,9 @@ describe('behavior-audit incremental manifest', () => {
     mkdirSync(testsDir, { recursive: true })
     writeFileSync(path.join(testsDir, 'sample.test.ts'), "test('sample', () => {})\n")
 
+    void mock.module('../../../scripts/behavior-audit/entrypoint-helpers.js', () => ({
+      requireOpenAiApiKey: (): void => {},
+    }))
     // This suite intentionally keeps narrow module mocks because it is verifying
     // entrypoint startup behavior that happens during delayed module import.
     void mock.module('../../../scripts/behavior-audit/config.js', () => ({

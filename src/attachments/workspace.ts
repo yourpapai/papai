@@ -36,6 +36,10 @@ export function listActiveAttachments(contextId: string): AttachmentRef[] {
     })
 }
 
+/**
+ * Remove all attachments and their blobs for a context.
+ * @internal — used directly by workspace tests and internal cleanup code.
+ */
 export async function clearAttachmentWorkspace(contextId: string): Promise<void> {
   const rows = getDrizzleDb()
     .select({ blobKey: attachments.blobKey })

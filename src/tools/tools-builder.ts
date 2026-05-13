@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai'
 
+import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import {
   makeCancelDeferredPromptTool,
@@ -137,9 +138,8 @@ function maybeAddStatusTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('statuses.delete')) tools['delete_status'] = makeDeleteStatusTool(provider)
   if (provider.capabilities.has('statuses.reorder')) tools['reorder_statuses'] = makeReorderStatusesTool(provider)
 }
-
 function addAttachmentTools(tools: ToolSet, provider: TaskProvider, contextId: string | undefined): void {
-  if (contextId === undefined) return
+  if (contextId === undefined || !isS3Configured()) return
   if (provider.capabilities.has('attachments.list')) tools['list_attachments'] = makeListAttachmentsTool(provider)
   if (provider.capabilities.has('attachments.upload'))
     tools['upload_attachment'] = makeUploadAttachmentTool(provider, contextId)
@@ -271,7 +271,7 @@ export function buildTools(
   if (provider.capabilities.has('tasks.delete')) tools['delete_task'] = makeDeleteTaskTool(provider)
   maybeAddCollaborationTaskTools(tools, provider, chatUserId)
   addAttachmentTools(tools, provider, contextId)
-  if (contextId !== undefined) {
+  if (contextId !== undefined && isS3Configured()) {
     tools['search_staged_files'] = makeSearchStagedFilesTool(contextId)
     if (stagedDownloadFn !== undefined)
       tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn)

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { _createInMemoryBlobStore, _resetBlobStore, _setBlobStore } from '../src/attachments/blob-store.js'
 import { listActiveAttachments } from '../src/attachments/index.js'
 import { findStagedFilesByMessageId } from '../src/attachments/staged.js'
+import type { StagedFileRef, StageFileParams } from '../src/attachments/types.js'
 import type { IncomingFile, IncomingFileCandidate, IncomingMessage } from '../src/chat/types.js'
 import { mockLogger, setupTestDb, createMockChat, createDmMessage, createGroupMessage } from './utils/test-helpers.js'
 
@@ -122,6 +123,43 @@ describe('bot-attachments', () => {
 
       const staged = findStagedFilesByMessageId('group-1', 'msg-multi')
       expect(staged).toHaveLength(2)
+    })
+
+    test('continues staging remaining candidates when one throws', async () => {
+      const { stageGroupFileCandidates } = await import('../src/bot-attachments.js')
+      const { stageFileMetadata: realStageFileMetadata } = await import('../src/attachments/staged.js')
+
+      const behaviors: Array<(params: StageFileParams) => StagedFileRef> = [
+        () => {
+          throw new Error('Simulated DB error')
+        },
+        (params) => realStageFileMetadata(params),
+      ]
+      let callIdx = 0
+      const mockFn = (params: StageFileParams): StagedFileRef => behaviors[callIdx++]!(params)
+
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', 'hello'),
+        messageId: 'msg-partial',
+        fileCandidates: [
+          makeCandidate({ fileId: 'f-bad', filename: 'bad.pdf' }),
+          makeCandidate({ fileId: 'f-good', filename: 'good.jpg' }),
+        ],
+      }
+
+      stageGroupFileCandidates(
+        {
+          storageContextId: 'group-1',
+          msg,
+          sourceProvider: 'telegram',
+        },
+        { stageFileMetadataFn: mockFn },
+      )
+
+      const staged = findStagedFilesByMessageId('group-1', 'msg-partial')
+      expect(staged).toHaveLength(1)
+      expect(staged[0]!.platformFileId).toBe('f-good')
+      expect(staged[0]!.filename).toBe('good.jpg')
     })
   })
 })

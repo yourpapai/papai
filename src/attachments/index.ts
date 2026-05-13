@@ -26,6 +26,7 @@ export {
   buildBlobKey,
   createS3BlobStore,
   getBlobStore,
+  isS3Configured,
   type BlobStore,
   type InMemoryBlobStore,
 } from './blob-store.js'

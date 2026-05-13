@@ -1,3 +1,4 @@
+import { isS3Configured } from './attachments/index.js'
 import { buildAttachmentManifest } from './attachments/resolver.js'
 import { findStagedFilesByMessageId } from './attachments/staged.js'
 import type { AttachmentRef } from './attachments/types.js'
@@ -124,10 +125,10 @@ export function buildPromptWithReplyContext(
     context.push(...buildReplyContextLines(msg))
   }
 
-  const manifest = buildAttachmentManifest(attachments)
+  const manifest = isS3Configured() ? buildAttachmentManifest(attachments) : null
   if (manifest !== null) context.push(manifest)
 
-  if (msg.replyToMessageId !== undefined && storageContextId !== undefined) {
+  if (isS3Configured() && msg.replyToMessageId !== undefined && storageContextId !== undefined) {
     const stagedForReply = findStagedFilesByMessageId(storageContextId, msg.replyToMessageId)
     if (stagedForReply.length > 0) {
       const stagedLines = stagedForReply.map(

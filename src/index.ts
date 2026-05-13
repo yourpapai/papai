@@ -1,4 +1,5 @@
 import { announceNewVersion } from './announcements.js'
+import { isS3Configured } from './attachments/index.js'
 import { createStagedDownloader, setStagedDownloader } from './attachments/staged-download.js'
 import { setupBot } from './bot.js'
 import { createChatProvider } from './chat/registry.js'
@@ -68,6 +69,7 @@ log.info(
     adminUserConfigured: Boolean(adminUserId),
     chatProvider: process.env['CHAT_PROVIDER'],
     taskProvider: TASK_PROVIDER,
+    s3Storage: isS3Configured(),
   },
   'Starting papai...',
 )

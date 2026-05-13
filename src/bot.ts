@@ -1,5 +1,6 @@
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates, toSourceProvider } from './bot-attachments.js'
+import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
@@ -17,11 +18,6 @@ import {
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
 import { emit } from './debug/event-bus.js'
-import {
-  upsertGroupAdminObservation,
-  upsertGroupUserObservation,
-  upsertKnownGroupContext,
-} from './group-settings/registry.js'
 import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -186,36 +182,29 @@ async function handleMessage(
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
   )
 }
-function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void {
-  if (msg.contextType !== 'group' || shouldIgnoreGroupMessage(msg)) return
-  let displayName = msg.contextId
-  if (msg.contextName !== undefined) displayName = msg.contextName
-  let parentName: string | null = null
-  if (msg.contextParentName !== undefined) parentName = msg.contextParentName
-  upsertKnownGroupContext({ contextId: msg.contextId, provider: chat.name, displayName, parentName })
-  upsertGroupAdminObservation({
-    provider: chat.name,
-    contextId: msg.contextId,
-    userId: msg.user.id,
-    username: msg.user.username,
-    isAdmin: msg.user.isAdmin,
-  })
-  if (msg.user.displayLabel !== undefined && msg.user.displayLabel !== '') {
-    upsertGroupUserObservation({
-      provider: chat.name,
-      contextId: msg.contextId,
-      userId: msg.user.id,
-      username: msg.user.username,
-      displayLabel: msg.user.displayLabel,
-    })
-  }
-}
 function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationResult): boolean {
   if (!auth.allowed) return false
   if (msg.contextType !== 'group') return true
   if (msg.commandMatch !== undefined) return true
   return msg.isMentioned
 }
+function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
+  if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return
+  try {
+    stageGroupFileCandidates({ storageContextId, msg, sourceProvider: toSourceProvider(chat.name) })
+  } catch (error: unknown) {
+    log.warn(
+      {
+        storageContextId,
+        messageId: msg.messageId,
+        candidateCount: msg.fileCandidates.length,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to stage group file candidates',
+    )
+  }
+}
+
 async function onIncomingMessage(
   chat: ChatProvider,
   msg: IncomingMessage,
@@ -245,20 +234,12 @@ async function onIncomingMessage(
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
     return
   }
-  const willQueue = willQueueAuthorizedMessage(msg, auth)
-  if (msg.contextType === 'group' && msg.fileCandidates !== undefined && msg.fileCandidates.length > 0) {
-    stageGroupFileCandidates({
-      storageContextId: auth.storageContextId,
-      msg,
-      sourceProvider: toSourceProvider(chat.name),
-    })
-  }
+  tryStageGroupCandidates(chat, msg, auth.storageContextId)
   await handleMessage(chat, msg, tracked.reply, auth, deps)
-  if (!willQueue) emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
+  if (!willQueueAuthorizedMessage(msg, auth))
+    emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }
-type InteractionHandler = NonNullable<ChatProvider['onInteraction']>
-type IncomingInteractionHandler = Parameters<InteractionHandler>[0]
-type IncomingInteraction = Parameters<IncomingInteractionHandler>[0]
+type IncomingInteraction = Parameters<Parameters<NonNullable<ChatProvider['onInteraction']>>[0]>[0]
 async function routeIncomingInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<void> {
   try {
     const auth = checkAuthorizationExtended(

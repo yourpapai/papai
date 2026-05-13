@@ -44,6 +44,10 @@ export function _createInMemoryBlobStore(): InMemoryBlobStore {
   }
 }
 
+const REQUIRED_S3_VARS = ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const
+
+export const isS3Configured = (): boolean => REQUIRED_S3_VARS.every((name) => (process.env[name]?.trim() ?? '') !== '')
+
 const requireEnv = (name: string): string => {
   const value = process.env[name]
   if (value === undefined || value === '') {
