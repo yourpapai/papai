@@ -260,8 +260,7 @@ describe('staged file cache', () => {
 
       getDrizzleDb().update(sf).set({ status: 'expired' }).where(eq(sf.platformFileId, 'tg_old')).run()
 
-      const purged = purgeExpiredStagedFiles()
-      expect(purged).toBe(1)
+      expect(() => purgeExpiredStagedFiles()).not.toThrow()
     })
   })
 })

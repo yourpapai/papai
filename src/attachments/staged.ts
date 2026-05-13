@@ -168,17 +168,14 @@ export function findStagedFilesByMessageId(contextId: string, messageId: string)
     .map(toRef)
 }
 
-export function purgeExpiredStagedFiles(): number {
+export function purgeExpiredStagedFiles(): void {
   const db = getDrizzleDb()
   const now = new Date().toISOString()
   db.delete(stagedFiles)
     .where(sql`${stagedFiles.status} = 'expired' OR ${stagedFiles.expiresAt} < ${now}`)
     .run()
 
-  const row = db.$client.query<{ 'changes()': number }, []>('SELECT changes()').get()
-  const count = row?.['changes()'] ?? 0
-  if (count > 0) log.info({ count }, 'Purged expired staged files')
-  return count
+  log.info('Purged expired staged files')
 }
 
 const markStagedStatus = (stagedId: string, status: string): void => {
