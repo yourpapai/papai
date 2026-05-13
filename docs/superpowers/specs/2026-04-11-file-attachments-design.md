@@ -1,6 +1,7 @@
 # File Attachments Design: Shared Attachment Pipeline
 
 **Date:** 2026-04-11  
+**Updated:** 2026-04-25 — switched the blob backend from on-disk storage to S3-compatible object storage (Bun's built-in `Bun.S3Client`). The runtime now requires an S3-compatible bucket; persistence semantics, history-safety, and the `AttachmentRef`/`StoredAttachment` shape are unchanged.  
 **Status:** Approved  
 **Scope:** Platform-agnostic attachment ingestion, durable attachment persistence, LLM-visible files, tool-visible files, and migration away from transient current-turn relay state
 
@@ -27,11 +28,11 @@ The result is an awkward split: chat adapters own file bytes, the prompt builder
 
 ## Non-Goals
 
-- Introducing external object storage or CDN delivery in this phase.
 - Building a rich attachment-management UI in the first pass.
 - Automatically re-sending every stored attachment to the model on every turn.
 - Backfilling old history rows into the new attachment workspace.
 - Requiring Discord implementation in the first pass; Discord is a compatibility target, not a delivery requirement.
+- Implementing CDN delivery, signed-URL handoff, multipart uploads, server-side encryption keys, or lifecycle policies. The first pass uses straight `PutObject`/`GetObject`/`DeleteObject` semantics against an S3-compatible bucket.
 
 ## Current State
 
@@ -64,15 +65,17 @@ src/
 │   ├── ingest.ts
 │   ├── store.ts
 │   ├── workspace.ts
-│   └── resolver.ts
+│   ├── resolver.ts
+│   └── blob-store.ts
 ```
 
 | Component                 | Responsibility                                                                                                            |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `AttachmentIngestService` | Accept raw incoming files from chat adapters, normalize metadata, persist content, and return stable attachment refs.     |
-| `AttachmentStore`         | Own metadata persistence and blob reads/writes.                                                                           |
+| `AttachmentStore`         | Own metadata persistence and coordinate blob reads/writes through `BlobStore`.                                            |
 | `AttachmentWorkspace`     | Track stored attachments and the active attachment set for each conversation context.                                     |
 | `AttachmentResolver`      | Convert attachment refs into LLM parts, tool inputs, or text placeholders depending on runtime support and failure state. |
+| `BlobStore`               | Thin abstraction over the S3-compatible bucket. Runtime: `Bun.S3Client`-backed. Tests: in-memory implementation.          |
 
 This is the key boundary shift:
 
@@ -100,7 +103,7 @@ type StoredAttachment = AttachmentRef & {
   sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown'
   sourceFileId?: string
   checksum: string
-  blobPath: string
+  blobKey: string // object key inside the configured S3 bucket
   createdAt: string
   clearedAt?: string
   lastUsedAt?: string
@@ -127,19 +130,79 @@ This preserves the user expectation of "keep the files around until I clear them
 
 ### 4. Persistence Model
 
-Persist attachment metadata in SQLite and persist binary content in a blob store on disk.
+Persist attachment metadata in SQLite and persist binary content in an S3-compatible object store.
 
-| Storage layer        | Contents                                                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| SQLite               | `attachmentId`, `contextId`, provider/source metadata, filename, mime type, size, checksum, timestamps, status, active/cleared state |
-| Blob store           | Raw attachment bytes addressed by attachment ID; checksum is stored for integrity checks and future dedupe work                      |
-| Conversation history | Text placeholders and attachment refs only, never raw bytes                                                                          |
+| Storage layer        | Contents                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SQLite               | `attachmentId`, `contextId`, provider/source metadata, filename, mime type, size, checksum, timestamps, status, active/cleared state             |
+| S3-compatible bucket | Raw attachment bytes addressed by stable object key (derived from attachment ID); checksum is stored for integrity checks and future dedupe work |
+| Conversation history | Text placeholders and attachment refs only, never raw bytes                                                                                      |
 
 This keeps history and trim logic safe:
 
 - No `Uint8Array` or base64 payloads in conversation JSON
 - No binary blobs in trim prompts
 - No need to serialize `ImagePart` or `FilePart` back into history storage
+
+#### 4.1. Why S3-Compatible Storage
+
+The bot already runs on Bun, and Bun ships with a first-party `Bun.S3Client` API. Using S3-compatible storage instead of local disk gives us:
+
+- **Operational portability** — the bot can run in stateless containers without a persistent volume; attachments survive restarts and redeploys.
+- **Provider flexibility** — the same code works against AWS S3, Cloudflare R2, MinIO, Backblaze B2, Garage, SeaweedFS, and any other endpoint that speaks the S3 API.
+- **No new dependencies** — Bun's built-in client avoids pulling in the multi-megabyte AWS SDK.
+- **Forward path** — the same bucket can later host signed-URL delivery, lifecycle expiration, and dedupe-by-checksum without another data migration.
+
+#### 4.2. Object Layout
+
+Object keys live under an optional configurable prefix and are derived from the stable papai attachment ID:
+
+```text
+<S3_PREFIX?>/<contextId>/<attachmentId>
+```
+
+- The `contextId` segment is informational only — `attachmentId` is globally unique by itself, but grouping by context keeps debugging readable and makes future per-context bucket policies straightforward.
+- All bytes are written with the original `mimeType` (when known) as the `Content-Type` header, and a `Content-Length` matching the `size` column.
+- Object keys are computed from the attachment ID alone, never from filenames, so ingestion is safe against path-traversal-style filenames.
+
+#### 4.3. Blob Store Abstraction
+
+The attachment subsystem talks to an internal `BlobStore` interface, not to `Bun.S3Client` directly:
+
+```typescript
+interface BlobStore {
+  put(key: string, content: Buffer, contentType?: string): Promise<void>
+  get(key: string): Promise<Buffer>
+  delete(key: string): Promise<void>
+  deleteMany(keys: readonly string[]): Promise<void>
+}
+```
+
+The runtime implementation wraps `Bun.S3Client`. Tests inject an in-memory implementation through DI. This keeps the unit test loop fast and avoids requiring a running MinIO during `bun test`.
+
+#### 4.4. Configuration
+
+The runtime reads S3 credentials from environment variables and treats them like any other piece of infrastructure config:
+
+| Variable               | Purpose                                                             | Required |
+| ---------------------- | ------------------------------------------------------------------- | -------- |
+| `S3_BUCKET`            | Bucket name where attachment objects live                           | yes      |
+| `S3_ENDPOINT`          | Endpoint URL (omit for AWS, set for R2/MinIO/B2/etc.)               | no       |
+| `S3_REGION`            | Region — required by AWS, optional for most S3-compatible providers | no       |
+| `S3_ACCESS_KEY_ID`     | Access key                                                          | yes      |
+| `S3_SECRET_ACCESS_KEY` | Secret key                                                          | yes      |
+| `S3_PREFIX`            | Optional key prefix so multiple environments can share a bucket     | no       |
+| `S3_FORCE_PATH_STYLE`  | `'true'` for MinIO and other path-style providers                   | no       |
+
+`S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` are validated at startup; the runtime fails fast if any are missing. `bun start:debug` documents the expected variables. Credentials never enter the SQLite database.
+
+#### 4.5. Failure Semantics
+
+S3 outages must not silently swallow attachments. The store treats backend errors as first-class failures:
+
+- A failed `PUT` during ingest marks the attachment `unavailable` in SQLite and surfaces a per-file failure in the manifest, instead of pretending the file is fine.
+- A `404 NoSuchKey` on later read returns an explicit "missing blob" error to the caller — the workspace metadata is the source of truth for "should this file exist", and a missing object signals data loss for that file only.
+- `DELETE` failures during `/clear` are logged and surfaced; SQLite cleanup still proceeds so the user is not stuck with phantom workspace state, but the operator gets a warning to investigate orphaned objects.
 
 ### 5. Intake and Queue Flow
 
@@ -264,13 +327,14 @@ This keeps the architecture consistent with the existing provider-capability mig
 
 Attachment failure handling is **per file**, not all-or-nothing per message.
 
-| Scenario                          | Behavior                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------- |
-| Download failure                  | Mark the attachment `unavailable`, continue with text and remaining attachments |
-| File too large                    | Mark the attachment `rejected`, surface the reason in the manifest              |
-| Persistence failure               | Surface metadata-only failure state and continue the turn                       |
-| Unsupported model attachment type | Downgrade to `tool_only` placeholder behavior                                   |
-| Missing blob on later use         | Return explicit error for that attachment, do not fail unrelated attachments    |
+| Scenario                          | Behavior                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Download failure                  | Mark the attachment `unavailable`, continue with text and remaining attachments                   |
+| File too large                    | Mark the attachment `rejected`, surface the reason in the manifest                                |
+| S3 PUT failure during ingest      | Mark the attachment `unavailable`, surface metadata-only failure state and continue the turn      |
+| S3 GET 404 on later read          | Return an explicit "missing blob" error for that attachment, do not fail unrelated attachments    |
+| S3 DELETE failure during `/clear` | Log + warn the operator, but still drop SQLite metadata so the user is not stuck on phantom state |
+| Unsupported model attachment type | Downgrade to `tool_only` placeholder behavior                                                     |
 
 This keeps the system honest and resilient without hiding failures behind silent fallbacks.
 

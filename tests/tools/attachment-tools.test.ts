@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { persistIncomingAttachments } from '../../src/attachments/index.js'
 import type { IncomingFile } from '../../src/chat/types.js'
-import { clearIncomingFiles, storeIncomingFiles } from '../../src/file-relay.js'
-import {
-  makeListAttachmentsTool,
-  makeRemoveAttachmentTool,
-  makeUploadAttachmentTool,
-} from '../../src/tools/attachment-tools.js'
-import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
+import { makeListAttachmentsTool } from '../../src/tools/list-attachments.js'
+import { makeRemoveAttachmentTool } from '../../src/tools/remove-attachment.js'
+import { makeUploadAttachmentTool } from '../../src/tools/upload-attachment.js'
+import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 const CTX = 'ctx-attach-test'
@@ -25,10 +23,10 @@ function makeIncomingFile(overrides: Partial<IncomingFile> = {}): IncomingFile {
 }
 
 describe('Attachment Tools', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
     mock.restore()
-    clearIncomingFiles(CTX)
+    await setupTestDb()
   })
 
   describe('makeListAttachmentsTool', () => {
@@ -79,40 +77,36 @@ describe('Attachment Tools', () => {
       expect(t.description).toContain('Upload a file attachment')
     })
 
-    test('schema requires taskId and fileId', () => {
+    test('schema requires taskId and attachmentId', () => {
       const provider = createMockProvider()
       const t = makeUploadAttachmentTool(provider, CTX)
       expect(schemaValidates(t, {})).toBe(false)
       expect(schemaValidates(t, { taskId: 'task-1' })).toBe(false)
-      expect(schemaValidates(t, { fileId: 'file-1' })).toBe(false)
-      expect(schemaValidates(t, { taskId: 'task-1', fileId: 'file-1' })).toBe(true)
+      expect(schemaValidates(t, { attachmentId: 'att_1' })).toBe(false)
+      expect(schemaValidates(t, { taskId: 'task-1', attachmentId: 'att_1' })).toBe(true)
     })
 
-    test('returns no_files status when relay is empty', async () => {
+    test('returns attachment_not_found when the attachmentId is missing from the workspace', async () => {
       const provider = createMockProvider()
       const execute = getToolExecutor(makeUploadAttachmentTool(provider, CTX))
-      const result = await execute({ taskId: 'task-1', fileId: 'file-1' })
-      expect(result).toMatchObject({ status: 'no_files' })
+      const result = await execute({ taskId: 'task-1', attachmentId: 'att_missing' })
+      expect(result).toMatchObject({ status: 'attachment_not_found' })
     })
 
-    test('returns file_not_found status when fileId not in relay', async () => {
-      storeIncomingFiles(CTX, [makeIncomingFile({ fileId: 'file-other' })])
-      const provider = createMockProvider()
-      const execute = getToolExecutor(makeUploadAttachmentTool(provider, CTX))
-      const result = await execute({ taskId: 'task-1', fileId: 'file-missing' })
-      expect(result).toMatchObject({ status: 'file_not_found', availableFileIds: ['file-other'] })
-    })
-
-    test('uploads file when found in relay', async () => {
-      const file = makeIncomingFile({ fileId: 'file-1', filename: 'photo.jpg', mimeType: 'image/jpeg' })
-      storeIncomingFiles(CTX, [file])
+    test('uploads file when attachmentId is found in the workspace', async () => {
+      const file = makeIncomingFile({ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg' })
+      const refs = await persistIncomingAttachments({
+        contextId: CTX,
+        sourceProvider: 'telegram',
+        files: [file],
+      })
 
       const attachment = { id: 'att-99', name: 'photo.jpg', url: 'https://example.com/photo.jpg' }
       const uploadAttachment = mock(() => Promise.resolve(attachment))
       const provider = createMockProvider({ uploadAttachment })
 
       const execute = getToolExecutor(makeUploadAttachmentTool(provider, CTX))
-      const result: unknown = await execute({ taskId: 'task-1', fileId: 'file-1' })
+      const result: unknown = await execute({ taskId: 'task-1', attachmentId: refs[0]!.attachmentId })
 
       expect(result).toEqual(attachment)
       expect(uploadAttachment).toHaveBeenCalledWith('task-1', {
@@ -123,15 +117,22 @@ describe('Attachment Tools', () => {
     })
 
     test('uploads file without mimeType when not present', async () => {
-      const file = makeIncomingFile({ fileId: 'file-1', filename: 'data.csv', mimeType: undefined })
-      storeIncomingFiles(CTX, [file])
+      const file = makeIncomingFile({ fileId: 'platform-1', filename: 'data.csv', mimeType: undefined })
+      const refs = await persistIncomingAttachments({
+        contextId: CTX,
+        sourceProvider: 'telegram',
+        files: [file],
+      })
 
       const uploadAttachment = mock(() =>
         Promise.resolve({ id: 'att-1', name: 'data.csv', url: 'https://example.com/data.csv' }),
       )
       const provider = createMockProvider({ uploadAttachment })
 
-      await getToolExecutor(makeUploadAttachmentTool(provider, CTX))({ taskId: 't1', fileId: 'file-1' })
+      await getToolExecutor(makeUploadAttachmentTool(provider, CTX))({
+        taskId: 't1',
+        attachmentId: refs[0]!.attachmentId,
+      })
 
       expect(uploadAttachment).toHaveBeenCalledWith('t1', {
         name: 'data.csv',
@@ -141,12 +142,16 @@ describe('Attachment Tools', () => {
     })
 
     test('propagates provider upload errors', async () => {
-      storeIncomingFiles(CTX, [makeIncomingFile()])
+      const refs = await persistIncomingAttachments({
+        contextId: CTX,
+        sourceProvider: 'telegram',
+        files: [makeIncomingFile()],
+      })
       const provider = createMockProvider({
         uploadAttachment: mock(() => Promise.reject(new Error('upload failed'))),
       })
       const execute = getToolExecutor(makeUploadAttachmentTool(provider, CTX))
-      await expect(execute({ taskId: 'task-1', fileId: 'file-1' })).rejects.toThrow('upload failed')
+      await expect(execute({ taskId: 'task-1', attachmentId: refs[0]!.attachmentId })).rejects.toThrow('upload failed')
     })
   })
 

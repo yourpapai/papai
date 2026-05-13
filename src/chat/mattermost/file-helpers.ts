@@ -1,6 +1,6 @@
 import { logger } from '../../logger.js'
 import { cacheMessage } from '../../message-cache/index.js'
-import type { IncomingFile } from '../types.js'
+import type { IncomingFile, IncomingFileCandidate } from '../types.js'
 import {
   FileUploadSchema,
   MattermostFileInfoSchema,
@@ -94,6 +94,40 @@ export async function fetchMattermostFiles(
   )
 
   return files.filter((file): file is IncomingFile => file !== null)
+}
+
+export async function fetchMattermostFileCandidates(
+  fileIds: string[],
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+): Promise<IncomingFileCandidate[]> {
+  const candidates = await Promise.all(
+    fileIds.map(async (fileId): Promise<IncomingFileCandidate | null> => {
+      try {
+        const infoData = await apiFetch('GET', `/api/v4/files/${fileId}/info`, undefined)
+        const parsed = MattermostFileInfoSchema.safeParse(infoData)
+        if (!parsed.success) return null
+        return { fileId, filename: parsed.data.name, mimeType: parsed.data.mime_type, size: parsed.data.size }
+      } catch {
+        return null
+      }
+    }),
+  )
+  return candidates.filter((c): c is IncomingFileCandidate => c !== null)
+}
+
+export async function resolveMattermostPostFiles(
+  fileIds: string[] | undefined,
+  isGroup: boolean,
+  apiFetch: (method: string, path: string, body: unknown) => Promise<unknown>,
+  fetchContent: (fileId: string) => Promise<Buffer | null>,
+): Promise<{ files?: IncomingFile[]; fileCandidates?: IncomingFileCandidate[] }> {
+  if (fileIds === undefined || fileIds.length === 0) return {}
+  if (isGroup) {
+    const candidates = await fetchMattermostFileCandidates(fileIds, apiFetch)
+    return candidates.length > 0 ? { fileCandidates: candidates } : {}
+  }
+  const files = await fetchMattermostFiles(fileIds, apiFetch, fetchContent)
+  return files.length > 0 ? { files } : {}
 }
 
 export function cacheIncomingPost(

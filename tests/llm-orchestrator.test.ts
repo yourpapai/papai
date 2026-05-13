@@ -21,6 +21,14 @@ const realProvisionMod = await import('../src/providers/kaneo/provision.js')
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const getToolNames = (tools: GenerateTextArgs['tools']): string[] => (tools === undefined ? [] : Object.keys(tools))
 
+const extractPartType = (part: unknown): string => {
+  if (!isRecord(part)) return ''
+  const partType = part['type']
+  return typeof partType === 'string' ? partType : ''
+}
+
+const toMessagesArray = (messages: unknown): unknown[] => (Array.isArray(messages) ? messages : [])
+
 /** Returns true when a reply text mentions both the task/project ID and "not found". */
 const mentionsNotFound =
   (id: string) =>
@@ -1003,6 +1011,89 @@ describe('processMessage', () => {
       // User B speaks again - should use cached tools
       await processMessage(replyB, GROUP_CTX, USER_B, null, 'hello again B', 'group')
       expect(toolBuildCount).toBe(2)
+    })
+
+    test('sends image parts to multimodal models but stores placeholder text in history', async () => {
+      const { persistIncomingAttachments } = await import('../src/attachments/index.js')
+      const attachmentCtx = 'attachment-ctx-multimodal'
+      seedConfigForContext(attachmentCtx)
+      setCachedConfig(attachmentCtx, 'main_model', 'gpt-4o')
+
+      const refs = await persistIncomingAttachments({
+        contextId: attachmentCtx,
+        sourceProvider: 'telegram',
+        files: [{ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg', content: Buffer.from('img') }],
+      })
+
+      let capturedMessages: unknown[] = []
+      generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
+        capturedMessages = toMessagesArray(args.messages)
+        return defaultGenerateTextResult()
+      }
+
+      const { reply } = createMockReply()
+      await processMessage(
+        reply,
+        attachmentCtx,
+        'user-1',
+        null,
+        `What is in ${refs[0]!.attachmentId}?`,
+        'dm',
+        undefined,
+        undefined,
+        refs.map((ref) => ref.attachmentId),
+      )
+
+      const lastMsg = capturedMessages.at(-1)
+      assert(isRecord(lastMsg), 'Expected last message to be an object')
+      const content = lastMsg['content']
+      assert(Array.isArray(content), 'Expected content to be an array of parts')
+      const partTypes = content.map(extractPartType)
+      expect(partTypes).toContain('image')
+      expect(partTypes).toContain('text')
+
+      const persisted = getCachedHistory(attachmentCtx)[0]
+      expect(persisted).toBeDefined()
+      expect(typeof persisted!.content).toBe('string')
+      expect(persisted!.content).toContain('[User attached')
+    })
+
+    test('falls back to plain-text user content for non-multimodal models', async () => {
+      const { persistIncomingAttachments } = await import('../src/attachments/index.js')
+      const ctx = 'attachment-ctx-textmodel'
+      seedConfigForContext(ctx)
+      setCachedConfig(ctx, 'main_model', 'llama-3.1-instruct')
+
+      const refs = await persistIncomingAttachments({
+        contextId: ctx,
+        sourceProvider: 'telegram',
+        files: [{ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg', content: Buffer.from('img') }],
+      })
+
+      let capturedMessages: unknown[] = []
+      generateTextImpl = (args: GenerateTextArgs): Promise<GenerateTextResult> => {
+        capturedMessages = toMessagesArray(args.messages)
+        return defaultGenerateTextResult()
+      }
+
+      const { reply } = createMockReply()
+      await processMessage(
+        reply,
+        ctx,
+        'user-1',
+        null,
+        'Tell me about the file',
+        'dm',
+        undefined,
+        undefined,
+        refs.map((ref) => ref.attachmentId),
+      )
+
+      const lastMsg = capturedMessages.at(-1)
+      assert(isRecord(lastMsg), 'Expected last message to be an object')
+      const content = lastMsg['content']
+      assert(typeof content === 'string', 'Expected content to be a string for non-multimodal model')
+      expect(content).toContain('[User attached')
     })
 
     test('DM tools are cached per-context without user suffix', async () => {

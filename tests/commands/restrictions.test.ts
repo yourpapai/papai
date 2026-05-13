@@ -72,7 +72,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      expect(firstCall(textCalls)).toBe('Conversation history and memory cleared.')
+      expect(firstCall(textCalls)).toBe('Conversation history, memory, and facts cleared.')
     })
 
     test('allowed for regular user in DM', async () => {
@@ -87,7 +87,7 @@ describe('command context restrictions', () => {
       const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      expect(firstCall(textCalls)).toBe('Conversation history and memory cleared.')
+      expect(firstCall(textCalls)).toBe('Conversation history, memory, and facts cleared.')
     })
   })
 

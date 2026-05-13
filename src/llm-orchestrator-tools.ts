@@ -1,5 +1,6 @@
 import type { ModelMessage, ToolSet } from 'ai'
 
+import type { StagedFileDownloadFn } from './attachments/types.js'
 import { getCachedTools, setCachedTools } from './cache.js'
 import { buildMessagesWithMemory } from './conversation.js'
 import { resolveTimezone } from './llm-orchestrator-config.js'
@@ -20,6 +21,7 @@ const getOrCreateTools = (
   username: string | null,
   provider: TaskProvider,
   contextType: 'dm' | 'group' | undefined,
+  stagedDownloadFn: StagedFileDownloadFn | undefined,
 ): ToolSet => {
   let cacheKey = contextId
   if (contextType === 'group') {
@@ -40,6 +42,7 @@ const getOrCreateTools = (
     chatUserId,
     username,
     contextType,
+    stagedDownloadFn,
   }
   const tools = makeTools(provider, toolOptions)
   setCachedTools(cacheKey, tools)
@@ -55,8 +58,9 @@ export const prepareLlmInvocation = (
   provider: TaskProvider,
   history: readonly ModelMessage[],
   userText: string,
+  stagedDownloadFn: StagedFileDownloadFn | undefined,
 ): { routingResult: ReturnType<typeof routeToolsForMessage>; validatedMessages: ModelMessage[] } => {
-  const fullTools = getOrCreateTools(contextId, chatUserId, username, provider, contextType)
+  const fullTools = getOrCreateTools(contextId, chatUserId, username, provider, contextType, stagedDownloadFn)
   const routingResult = routeToolsForMessage(userText, fullTools)
   log.debug(
     {

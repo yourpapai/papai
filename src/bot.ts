@@ -1,9 +1,12 @@
+import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
+import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import type { AuthorizationResult, ChatProvider, IncomingFile, IncomingMessage, ReplyFn } from './chat/types.js'
+import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
   registerClearCommand,
@@ -16,13 +19,7 @@ import {
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
 import { emit } from './debug/event-bus.js'
-import { clearIncomingFiles, storeIncomingFiles } from './file-relay.js'
-import {
-  upsertGroupAdminObservation,
-  upsertGroupUserObservation,
-  upsertKnownGroupContext,
-} from './group-settings/registry.js'
-import { processMessage as defaultProcessMessage } from './llm-orchestrator.js'
+import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
@@ -30,17 +27,11 @@ import { buildPromptWithReplyContext } from './reply-context.js'
 import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
-type ProcessMessageFn = (
-  reply: ReplyFn,
-  contextId: string,
-  chatUserId: string,
-  username: string | null,
-  userText: string,
-  contextType: 'dm' | 'group',
-  configContextId: string | undefined,
-) => Promise<void>
+
+type ProcessMessageFn = typeof defaultProcessMessage
 export interface BotDeps {
   processMessage: ProcessMessageFn
+  stagedDownloadFn?: StagedFileDownloadFn
 }
 const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage }
 const log = logger.child({ scope: 'bot' })
@@ -146,8 +137,6 @@ async function autoStartWizardIfNeeded(userId: string, storageContextId: string,
 async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
   const start = Date.now()
   const tracked = trackReplyUsage(coalescedItem.reply, true)
-  if (coalescedItem.files.length > 0) storeIncomingFiles(coalescedItem.storageContextId, coalescedItem.files)
-  else clearIncomingFiles(coalescedItem.storageContextId)
   try {
     await deps.processMessage(
       tracked.reply,
@@ -157,9 +146,10 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.text,
       coalescedItem.contextType,
       coalescedItem.configContextId,
+      { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
+      coalescedItem.newAttachmentIds,
     )
   } finally {
-    clearIncomingFiles(coalescedItem.storageContextId)
     emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)
   }
 }
@@ -169,6 +159,7 @@ function shouldIgnoreGroupMessage(msg: IncomingMessage): boolean {
   return !msg.isMentioned
 }
 async function handleMessage(
+  chat: ChatProvider,
   msg: IncomingMessage,
   reply: ReplyFn,
   auth: AuthorizationResult,
@@ -179,45 +170,20 @@ async function handleMessage(
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
-  let files: readonly IncomingFile[] = []
-  if (msg.files !== undefined) files = msg.files
+  const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
   enqueueMessage(
     {
-      text: buildPromptWithReplyContext(msg),
+      text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
       userId: msg.user.id,
       username: msg.user.username,
       storageContextId: auth.storageContextId,
       configContextId: auth.configContextId,
       contextType: msg.contextType,
-      files,
+      newAttachmentIds,
     },
     reply,
     (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
   )
-}
-function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void {
-  if (msg.contextType !== 'group' || shouldIgnoreGroupMessage(msg)) return
-  let displayName = msg.contextId
-  if (msg.contextName !== undefined) displayName = msg.contextName
-  let parentName: string | null = null
-  if (msg.contextParentName !== undefined) parentName = msg.contextParentName
-  upsertKnownGroupContext({ contextId: msg.contextId, provider: chat.name, displayName, parentName })
-  upsertGroupAdminObservation({
-    provider: chat.name,
-    contextId: msg.contextId,
-    userId: msg.user.id,
-    username: msg.user.username,
-    isAdmin: msg.user.isAdmin,
-  })
-  if (msg.user.displayLabel !== undefined && msg.user.displayLabel !== '') {
-    upsertGroupUserObservation({
-      provider: chat.name,
-      contextId: msg.contextId,
-      userId: msg.user.id,
-      username: msg.user.username,
-      displayLabel: msg.user.displayLabel,
-    })
-  }
 }
 function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationResult): boolean {
   if (!auth.allowed) return false
@@ -225,6 +191,23 @@ function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationRes
   if (msg.commandMatch !== undefined) return true
   return msg.isMentioned
 }
+function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
+  if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return
+  try {
+    stageGroupFileCandidates({ storageContextId, msg, sourceProvider: toSourceProvider(chat.name) })
+  } catch (error: unknown) {
+    log.warn(
+      {
+        storageContextId,
+        messageId: msg.messageId,
+        candidateCount: msg.fileCandidates.length,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to stage group file candidates',
+    )
+  }
+}
+
 async function onIncomingMessage(
   chat: ChatProvider,
   msg: IncomingMessage,
@@ -254,13 +237,12 @@ async function onIncomingMessage(
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
     return
   }
-  const willQueue = willQueueAuthorizedMessage(msg, auth)
-  await handleMessage(msg, tracked.reply, auth, deps)
-  if (!willQueue) emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
+  tryStageGroupCandidates(chat, msg, auth.storageContextId)
+  await handleMessage(chat, msg, tracked.reply, auth, deps)
+  if (!willQueueAuthorizedMessage(msg, auth))
+    emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }
-type InteractionHandler = NonNullable<ChatProvider['onInteraction']>
-type IncomingInteractionHandler = Parameters<InteractionHandler>[0]
-type IncomingInteraction = Parameters<IncomingInteractionHandler>[0]
+type IncomingInteraction = Parameters<Parameters<NonNullable<ChatProvider['onInteraction']>>[0]>[0]
 async function routeIncomingInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<void> {
   try {
     const auth = checkAuthorizationExtended(

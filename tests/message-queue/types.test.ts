@@ -10,7 +10,7 @@ describe('QueueItem interface', () => {
       username: 'alice',
       storageContextId: '456',
       contextType: 'dm',
-      files: [],
+      newAttachmentIds: [],
     }
     expect(item.text).toBe('Hello')
     expect(item.storageContextId).toBe('456')
@@ -33,7 +33,7 @@ describe('CoalescedItem interface', () => {
       username: 'alice',
       storageContextId: '456',
       contextType: 'dm',
-      files: [],
+      newAttachmentIds: [],
       reply: mockReply,
     }
     expect(item.text).toBe('Hello')

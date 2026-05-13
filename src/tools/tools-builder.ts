@@ -1,5 +1,8 @@
 import type { ToolSet } from 'ai'
 
+import { isS3Configured } from '../attachments/index.js'
+import type { StagedFileDownloadFn } from '../attachments/types.js'
+import type { ContextType } from '../chat/types.js'
 import {
   makeCancelDeferredPromptTool,
   makeCreateDeferredPromptTool,
@@ -68,7 +71,8 @@ import { makeSearchMemosTool } from './search-memos.js'
 import { makeSetMyIdentityTool } from './set-my-identity.js'
 import { makeSetVisibilityTool } from './set-visibility.js'
 import { makeSkipRecurringTaskTool } from './skip-recurring-task.js'
-import type { ContextType, ToolMode } from './types.js'
+import { makeResolveStagedFileTool, makeSearchStagedFilesTool } from './staged-tools.js'
+import type { ToolMode } from './types.js'
 import { makeUpdateCommentTool } from './update-comment.js'
 import { makeUpdateProjectTool } from './update-project.js'
 import { makeUpdateSprintTool } from './update-sprint.js'
@@ -76,6 +80,7 @@ import { makeUpdateStatusTool } from './update-status.js'
 import { makeUpdateTaskRelationTool } from './update-task-relation.js'
 import { makeUpdateWorkTool } from './update-work.js'
 import { makeWebFetchTool } from './web-fetch.js'
+import { makeDeleteFileTool, makeListFilesTool } from './workspace-files.js'
 
 function maybeAddProjectTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('projects.read') && provider.getProject !== undefined)
@@ -134,20 +139,15 @@ function maybeAddStatusTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('statuses.delete')) tools['delete_status'] = makeDeleteStatusTool(provider)
   if (provider.capabilities.has('statuses.reorder')) tools['reorder_statuses'] = makeReorderStatusesTool(provider)
 }
-
-function maybeAddAttachmentTools(tools: ToolSet, provider: TaskProvider, contextId: string | undefined): void {
-  if (contextId === undefined) return
-  if (provider.capabilities.has('attachments.list')) {
-    tools['list_attachments'] = makeListAttachmentsTool(provider)
-  }
-  if (provider.capabilities.has('attachments.upload')) {
+function addAttachmentTools(tools: ToolSet, provider: TaskProvider, contextId: string | undefined): void {
+  if (contextId === undefined || !isS3Configured()) return
+  if (provider.capabilities.has('attachments.list')) tools['list_attachments'] = makeListAttachmentsTool(provider)
+  if (provider.capabilities.has('attachments.upload'))
     tools['upload_attachment'] = makeUploadAttachmentTool(provider, contextId)
-  }
-  if (provider.capabilities.has('attachments.delete')) {
-    tools['remove_attachment'] = makeRemoveAttachmentTool(provider)
-  }
+  if (provider.capabilities.has('attachments.delete')) tools['remove_attachment'] = makeRemoveAttachmentTool(provider)
+  tools['list_files'] = makeListFilesTool(contextId)
+  tools['delete_file'] = makeDeleteFileTool(contextId)
 }
-
 function maybeAddWorkItemTools(tools: ToolSet, provider: TaskProvider): void {
   if (provider.capabilities.has('workItems.list')) tools['list_work'] = makeListWorkTool(provider)
   if (provider.capabilities.has('workItems.create')) tools['log_work'] = makeLogWorkTool(provider)
@@ -208,12 +208,10 @@ function addInstructionTools(tools: ToolSet, contextId: string | undefined): voi
   tools['list_instructions'] = makeListInstructionsTool(contextId)
   tools['delete_instruction'] = makeDeleteInstructionTool(contextId)
 }
-
 function addWebFetchTool(tools: ToolSet, storageContextId: string | undefined, actorUserId: string | undefined): void {
   if (storageContextId === undefined) return
   tools['web_fetch'] = makeWebFetchTool(storageContextId, actorUserId)
 }
-
 function addMemoTools(tools: ToolSet, provider: TaskProvider, userId: string | undefined): void {
   if (userId === undefined) return
   tools['save_memo'] = makeSaveMemoTool(userId)
@@ -222,7 +220,6 @@ function addMemoTools(tools: ToolSet, provider: TaskProvider, userId: string | u
   tools['archive_memos'] = makeArchiveMemosTool(userId)
   tools['promote_memo'] = makePromoteMemoTool(provider, userId)
 }
-
 function addRecurringTools(tools: ToolSet, userId: string | undefined): void {
   if (userId === undefined) return
   tools['create_recurring_task'] = makeCreateRecurringTaskTool(userId)
@@ -233,7 +230,6 @@ function addRecurringTools(tools: ToolSet, userId: string | undefined): void {
   tools['skip_recurring_task'] = makeSkipRecurringTaskTool()
   tools['delete_recurring_task'] = makeDeleteRecurringTaskTool()
 }
-
 function addLookupGroupHistoryTool(tools: ToolSet, userId: string | undefined, contextId: string | undefined): void {
   if (userId === undefined || contextId === undefined) return
   if (!contextId.includes(':')) return
@@ -260,6 +256,7 @@ export function buildTools(
   mode: ToolMode,
   contextType?: ContextType,
   username?: string | null,
+  stagedDownloadFn?: StagedFileDownloadFn,
 ): ToolSet {
   const tools = makeCoreTools(provider, chatUserId, contextId)
   maybeAddProjectTools(tools, provider)
@@ -269,7 +266,12 @@ export function buildTools(
   maybeAddStatusTools(tools, provider)
   if (provider.capabilities.has('tasks.delete')) tools['delete_task'] = makeDeleteTaskTool(provider)
   maybeAddCollaborationTaskTools(tools, provider, chatUserId)
-  maybeAddAttachmentTools(tools, provider, contextId)
+  addAttachmentTools(tools, provider, contextId)
+  if (contextId !== undefined && isS3Configured()) {
+    tools['search_staged_files'] = makeSearchStagedFilesTool(contextId)
+    if (stagedDownloadFn !== undefined)
+      tools['resolve_staged_file'] = makeResolveStagedFileTool(contextId, stagedDownloadFn)
+  }
   maybeAddWorkItemTools(tools, provider)
   maybeAddPhaseFiveSprintTools(tools, provider)
   maybeAddPhaseFiveQueryTools(tools, provider, mode)

@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import {
+  attachments,
   groupAdminObservations,
   knownGroupContexts,
   userIdentityMappings,
@@ -140,5 +141,53 @@ describe('web fetch schema', () => {
 
     const rows = db.select().from(webRateLimit).where(eq(webRateLimit.actorId, 'actor-1')).all()
     expect(rows).toHaveLength(2)
+  })
+})
+
+describe('attachments schema', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  it('exposes the attachments table through Drizzle', () => {
+    const db = getDrizzleDb()
+    expect(db).toBeDefined()
+    expect(attachments.attachmentId).toBeDefined()
+    expect(attachments.contextId).toBeDefined()
+    expect(attachments.blobKey).toBeDefined()
+    expect(attachments.isActive).toBeDefined()
+    expect(attachments.checksum).toBeDefined()
+  })
+
+  it('round-trips an attachment row including the blob_key', () => {
+    const db = getDrizzleDb()
+    db.insert(attachments)
+      .values({
+        attachmentId: 'att_test',
+        contextId: 'ctx-test',
+        sourceProvider: 'telegram',
+        sourceMessageId: 'm-1',
+        sourceFileId: 'tg-1',
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        size: 4,
+        checksum: 'beef',
+        blobKey: 'ctx-test/att_test',
+        status: 'available',
+        isActive: 1,
+        createdAt: '2026-04-25T00:00:00Z',
+      })
+      .run()
+
+    const row = db
+      .select()
+      .from(attachments)
+      .where(and(eq(attachments.contextId, 'ctx-test'), eq(attachments.attachmentId, 'att_test')))
+      .get()
+
+    expect(row).toBeDefined()
+    expect(row!.blobKey).toBe('ctx-test/att_test')
+    expect(row!.status).toBe('available')
   })
 })

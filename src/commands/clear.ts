@@ -6,36 +6,36 @@ import { listUsers } from '../users.js'
 
 const log = logger.child({ scope: 'commands:clear' })
 
+function clearContext(contextId: string): void {
+  clearHistory(contextId)
+  clearSummary(contextId)
+  clearFacts(contextId)
+}
+
 async function clearSelf(msg: { user: { id: string } }, reply: ReplyFn, auth: AuthorizationResult): Promise<boolean> {
-  clearHistory(auth.storageContextId)
-  clearSummary(auth.storageContextId)
-  clearFacts(auth.storageContextId)
+  clearContext(auth.storageContextId)
   log.info(
     { userId: msg.user.id, storageContextId: auth.storageContextId },
-    '/clear command executed — all memory tiers cleared',
+    '/clear command executed — conversation history, memory, and facts cleared',
   )
-  await reply.text('Conversation history and memory cleared.')
+  await reply.text('Conversation history, memory, and facts cleared.')
   return true
 }
 
 async function clearAll(msg: { user: { id: string } }, reply: ReplyFn): Promise<boolean> {
   const users = listUsers()
   for (const user of users) {
-    clearHistory(user.platform_user_id)
-    clearSummary(user.platform_user_id)
-    clearFacts(user.platform_user_id)
+    clearContext(user.platform_user_id)
   }
   log.info({ userId: msg.user.id, clearedCount: users.length }, '/clear all executed')
-  await reply.text(`Cleared history and memory for all ${users.length} users.`)
+  await reply.text(`Cleared history, memory, and facts for all ${users.length} users.`)
   return true
 }
 
 async function clearUser(msg: { user: { id: string } }, reply: ReplyFn, targetId: string): Promise<boolean> {
-  clearHistory(targetId)
-  clearSummary(targetId)
-  clearFacts(targetId)
+  clearContext(targetId)
   log.info({ userId: msg.user.id, targetId }, '/clear <user_id> executed')
-  await reply.text(`Cleared history and memory for user ${targetId}.`)
+  await reply.text(`Cleared history, memory, and facts for user ${targetId}.`)
   return true
 }
 

@@ -1,6 +1,7 @@
 import type { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { generateText, stepCountIs, ModelMessage, ToolSet } from 'ai'
 
+import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ReplyFn } from './chat/types.js'
 import type { TaskProvider } from './providers/types.js'
 
@@ -11,6 +12,7 @@ export interface LlmOrchestratorDeps {
   buildProviderForUser: (userId: string) => TaskProvider
   getKaneoWorkspace: (userId: string) => string | null
   maybeProvisionKaneo: (reply: ReplyFn, contextId: string, username: string | null) => Promise<void>
+  stagedDownloadFn?: StagedFileDownloadFn
 }
 
 type TokenUsage = { inputTokens: number | undefined; outputTokens: number | undefined }

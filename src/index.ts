@@ -1,4 +1,6 @@
 import { announceNewVersion } from './announcements.js'
+import { isS3Configured } from './attachments/index.js'
+import { createStagedDownloader } from './attachments/staged-download.js'
 import { setupBot } from './bot.js'
 import { createChatProvider } from './chat/registry.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
@@ -67,13 +69,38 @@ log.info(
     adminUserConfigured: Boolean(adminUserId),
     chatProvider: process.env['CHAT_PROVIDER'],
     taskProvider: TASK_PROVIDER,
+    s3Storage: isS3Configured(),
   },
   'Starting papai...',
 )
 
-setupBot(chatProvider, adminUserId)
-
 await chatProvider.start()
+
+const createStagedDownloadFn = async (
+  chat: typeof chatProvider,
+): Promise<import('./attachments/types.js').StagedFileDownloadFn | null> => {
+  if (chat.name === 'telegram') {
+    const { getTelegramFileFetcher } = await import('./chat/telegram/index.js')
+    const fetcher = getTelegramFileFetcher()
+    if (fetcher !== undefined) {
+      return createStagedDownloader({ telegramFetcher: fetcher, mattermostFetcher: () => Promise.resolve(null) })
+    }
+  } else if (chat.name === 'mattermost') {
+    const { getMattermostFileFetcher } = await import('./chat/mattermost/index.js')
+    const fetcher = getMattermostFileFetcher()
+    if (fetcher !== undefined) {
+      return createStagedDownloader({ telegramFetcher: () => Promise.resolve(null), mattermostFetcher: fetcher })
+    }
+  }
+  return null
+}
+
+const stagedDownloadFn = await createStagedDownloadFn(chatProvider)
+
+setupBot(chatProvider, adminUserId, {
+  processMessage: (...args) => import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args)),
+  stagedDownloadFn: stagedDownloadFn ?? undefined,
+})
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 

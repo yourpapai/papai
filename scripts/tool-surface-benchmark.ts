@@ -273,7 +273,7 @@ const main = async (): Promise<void> => {
 if (process.argv[1] === import.meta.filename) {
   try {
     await main()
-  } catch (error) {
+  } catch {
     console.error('Benchmark run failed.')
     process.exitCode = 1
   }

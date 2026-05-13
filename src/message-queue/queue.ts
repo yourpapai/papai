@@ -1,4 +1,4 @@
-import type { ReplyFn, IncomingFile } from '../chat/types.js'
+import type { ReplyFn } from '../chat/types.js'
 import { logger } from '../logger.js'
 import type { QueueItem, CoalescedItem } from './types.js'
 
@@ -90,36 +90,39 @@ export class MessageQueue {
     }
   }
 
-  private flush(): CoalescedItem | null {
-    if (this.messages.length === 0) {
-      return null
-    }
-
-    const fileCount = this.messages.reduce((count, msg) => count + msg.item.files.length, 0)
-    log.debug({ storageContextId: this.storageContextId, itemCount: this.messages.length, fileCount }, 'Flushing queue')
-
-    const firstMessage = this.messages[0]!
-
-    const isThread = firstMessage.item.contextType === 'group' && this.storageContextId.includes(':')
-    const isDm = firstMessage.item.contextType === 'dm'
-
+  private collectMessageContent(isThread: boolean): {
+    texts: string[]
+    attachmentIds: string[]
+  } {
     const texts: string[] = []
-    const allFiles: IncomingFile[] = []
-    const lastMessage = this.messages.at(-1)
-    if (lastMessage === undefined) {
-      return null
-    }
-    const reply = lastMessage.reply
-
+    const attachmentIds: string[] = []
     for (const msg of this.messages) {
       if (isThread && msg.item.username !== null) {
         texts.push(`[@${msg.item.username}]: ${msg.item.text}`)
       } else {
         texts.push(msg.item.text)
       }
-      allFiles.push(...msg.item.files)
+      attachmentIds.push(...msg.item.newAttachmentIds)
     }
+    return { texts, attachmentIds }
+  }
 
+  private flush(): CoalescedItem | null {
+    if (this.messages.length === 0) return null
+
+    const attachmentCount = this.messages.reduce((count, msg) => count + msg.item.newAttachmentIds.length, 0)
+    log.debug(
+      { storageContextId: this.storageContextId, itemCount: this.messages.length, attachmentCount },
+      'Flushing queue',
+    )
+
+    const firstMessage = this.messages[0]!
+    const lastMessage = this.messages.at(-1)
+    if (lastMessage === undefined) return null
+
+    const isThread = firstMessage.item.contextType === 'group' && this.storageContextId.includes(':')
+    const isDm = firstMessage.item.contextType === 'dm'
+    const { texts, attachmentIds } = this.collectMessageContent(isThread)
     const text = isDm ? texts.join('\n\n') : texts.join('\n')
 
     const result: CoalescedItem = {
@@ -129,8 +132,8 @@ export class MessageQueue {
       storageContextId: this.storageContextId,
       configContextId: lastMessage.item.configContextId,
       contextType: lastMessage.item.contextType,
-      files: allFiles,
-      reply,
+      newAttachmentIds: attachmentIds,
+      reply: lastMessage.reply,
     }
 
     this.messages = []

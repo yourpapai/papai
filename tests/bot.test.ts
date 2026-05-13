@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
 
+import { listActiveAttachments } from '../src/attachments/index.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from '../src/auth.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
@@ -22,7 +23,6 @@ import { getConfig, setConfig } from '../src/config.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
-import { getIncomingFiles } from '../src/file-relay.js'
 import { listManageableGroups } from '../src/group-settings/access.js'
 import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src/group-settings/state.js'
 import { addGroupMember } from '../src/groups.js'
@@ -1522,23 +1522,22 @@ describe('Demo Mode — wizard bypass (setupBot)', () => {
   })
 })
 
-describe('File relay integration (setupBot)', () => {
+describe('Attachment workspace integration (setupBot)', () => {
   const RELAY_ADMIN = 'relay-admin'
   let capturedStorageId: string | null = null
-  let filesAtProcessingTime: readonly IncomingFile[] = []
+  let attachmentIdsAtProcessingTime: readonly string[] = []
   let getMessageHandler: () => ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null
 
   beforeEach(async () => {
     capturedStorageId = null
-    filesAtProcessingTime = []
+    attachmentIdsAtProcessingTime = []
     mockLogger()
     await setupTestDb()
 
     const botDeps: BotDeps = {
       processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {
         capturedStorageId = storageContextId
-        // Capture files at processing time (before they're cleared in finally block)
-        filesAtProcessingTime = getIncomingFiles(storageContextId)
+        attachmentIdsAtProcessingTime = listActiveAttachments(storageContextId).map((ref) => ref.attachmentId)
         return Promise.resolve()
       },
     }
@@ -1548,7 +1547,7 @@ describe('File relay integration (setupBot)', () => {
     setupBot(mockChat, RELAY_ADMIN, botDeps)
   })
 
-  test('stores files in relay keyed by storageContextId for authorized user', async () => {
+  test('persists incoming files into the workspace for an authorized user', async () => {
     addUser('relay-user', RELAY_ADMIN)
     setupUserConfig('relay-user')
     const noOverrides: Partial<IncomingFile> | undefined = undefined
@@ -1559,35 +1558,29 @@ describe('File relay integration (setupBot)', () => {
     await getMessageHandler()!(msg, reply)
 
     expect(capturedStorageId).toBe('relay-user')
-    // Files are cleared after processing, so check what was captured during processing
-    expect(filesAtProcessingTime).toHaveLength(1)
-    assert.ok(filesAtProcessingTime[0] !== undefined)
-    expect(filesAtProcessingTime[0].fileId).toBe('f1')
+    expect(attachmentIdsAtProcessingTime).toHaveLength(1)
+    expect(attachmentIdsAtProcessingTime[0]?.startsWith('att_')).toBe(true)
   })
 
-  test('clears relay when message has no files', async () => {
+  test('does not persist anything when an authorized message has no files', async () => {
     addUser('relay-user2', RELAY_ADMIN)
     setupUserConfig('relay-user2')
-    // Pre-populate relay
-    const { storeIncomingFiles } = await import('../src/file-relay.js')
-    const noOverrides: Partial<IncomingFile> | undefined = undefined
-    storeIncomingFiles('relay-user2', [makeFile(noOverrides)])
 
     const msg: IncomingMessage = { ...createDmMessage('relay-user2') }
     const { reply } = createMockReply()
     await getMessageHandler()!(msg, reply)
 
-    expect(getIncomingFiles('relay-user2')).toEqual([])
+    expect(listActiveAttachments('relay-user2')).toEqual([])
   })
 
-  test('does not store files for unauthorized user', async () => {
+  test('does not persist files for an unauthorized user', async () => {
     const file = makeFile({ fileId: 'secret' })
     const msg: IncomingMessage = { ...createDmMessage('unauth-user'), files: [file] }
     const { reply } = createMockReply()
 
     await getMessageHandler()!(msg, reply)
 
-    expect(getIncomingFiles('unauth-user')).toEqual([])
+    expect(listActiveAttachments('unauth-user')).toEqual([])
   })
 })
 

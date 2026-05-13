@@ -3,11 +3,13 @@ import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
+import { getConfig } from './config.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { emit } from './debug/event-bus.js'
 import { appendHistory, saveHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
+import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredConfig, getLlmConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
 import { emitLlmError, handleOrchestratorMessageError, handleToolCallFinish } from './llm-orchestrator-support.js'
@@ -21,7 +23,6 @@ import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
 import type { TaskProvider } from './providers/types.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
 import { buildSystemPrompt } from './system-prompt.js'
-import { routeToolsForMessage } from './tools/tool-router.js'
 import { getKaneoWorkspace } from './users.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
@@ -36,6 +37,7 @@ const defaultDeps: LlmOrchestratorDeps = {
   getKaneoWorkspace,
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
+export { defaultDeps }
 
 const persistFactsFromResults = (contextId: string, result: unknown): void => {
   const toolCalls = extractFactToolCalls(result)
@@ -150,7 +152,7 @@ const ensureRequiredConfig = async (
 }
 
 const buildToolRoutingTelemetry = (
-  routingResult: ReturnType<typeof routeToolsForMessage>,
+  routingResult: ReturnType<typeof prepareLlmInvocation>['routingResult'],
 ): InvokeModelArgs['toolRouting'] => ({
   intent: routingResult.decision.intent,
   confidence: routingResult.decision.confidence,
@@ -164,8 +166,8 @@ const callLlm = async (
   contextId: string,
   chatUserId: string,
   username: string | null,
-  userText: string,
   history: readonly ModelMessage[],
+  userText: string,
   contextType: 'dm' | 'group',
   deps: LlmOrchestratorDeps,
   configContextId: string | undefined,
@@ -188,6 +190,7 @@ const callLlm = async (
     provider,
     history,
     userText,
+    deps.stagedDownloadFn,
   )
   const result = await invokeModelWithTyping(reply, {
     contextId,
@@ -206,41 +209,48 @@ const callLlm = async (
   return result
 }
 
-type ProcessMessageArgs =
-  | [ReplyFn, string, string, string | null, string, 'dm' | 'group']
-  | [ReplyFn, string, string, string | null, string, 'dm' | 'group', string | undefined]
-  | [
-      ReplyFn,
-      string,
-      string,
-      string | null,
-      string,
-      'dm' | 'group',
-      string | undefined,
-      LlmOrchestratorDeps | undefined,
-    ]
+const resolveModelName = (contextId: string, configContextId: string | undefined): string => {
+  const cfgId = resolveConfigId(contextId, configContextId)
+  return getConfig(cfgId, 'main_model') ?? ''
+}
 
-export const processMessage = async (...args: ProcessMessageArgs): Promise<void> => {
-  const [reply, contextId, chatUserId, username, userText, contextType, configContextId, deps] = args
-  let resolvedDeps = defaultDeps
-  if (deps !== undefined) {
-    resolvedDeps = deps
-  }
-  log.debug({ contextId, configContextId, chatUserId, userText }, 'processMessage called')
+export const processMessage = async (
+  reply: ReplyFn,
+  contextId: string,
+  chatUserId: string,
+  username: string | null,
+  userText: string,
+  contextType: 'dm' | 'group',
+  configContextId?: string,
+  deps: LlmOrchestratorDeps = defaultDeps,
+  newAttachmentIds: readonly string[] = [],
+): Promise<void> => {
+  const resolvedDeps = deps
+  const resolvedNewAttachmentIds = newAttachmentIds
+  log.debug(
+    { contextId, configContextId, chatUserId, userText, newAttachmentIds: resolvedNewAttachmentIds },
+    'processMessage called',
+  )
   log.info({ contextId, chatUserId, messageLength: userText.length }, 'Message received from user')
 
   const baseHistory = getCachedHistory(contextId)
-  const newMessage: ModelMessage = { role: 'user', content: userText }
-  const history = [...baseHistory, newMessage]
-  appendHistory(contextId, [newMessage])
+  const modelName = resolveModelName(contextId, configContextId)
+  const { modelMessage, historyMessage } = await buildUserTurnMessages(
+    contextId,
+    modelName,
+    userText,
+    resolvedNewAttachmentIds,
+  )
+  const history = [...baseHistory, historyMessage]
+  appendHistory(contextId, [historyMessage])
   try {
     const result = await callLlm(
       reply,
       contextId,
       chatUserId,
       username,
+      [...baseHistory, modelMessage],
       userText,
-      history,
       contextType,
       resolvedDeps,
       configContextId,

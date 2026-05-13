@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { IncomingFile, ReplyFn } from '../../src/chat/types.js'
+import type { ReplyFn } from '../../src/chat/types.js'
 import type { CoalescedItem } from '../../src/message-queue/types.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
@@ -77,7 +77,7 @@ describe('MessageQueue Integration', () => {
         username: 'alice',
         storageContextId,
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       },
       mockReply,
       handler,
@@ -90,7 +90,7 @@ describe('MessageQueue Integration', () => {
         username: 'alice',
         storageContextId,
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       },
       mockReply,
       handler,
@@ -102,10 +102,10 @@ describe('MessageQueue Integration', () => {
     expect(processed[0]).toBe('Message 1\n\nMessage 2')
   })
 
-  test('should accumulate files from multiple messages', async () => {
+  test('should accumulate newAttachmentIds from multiple messages', async () => {
     const { enqueueMessage } = await loadMessageQueueModule()
     const storageContextId = `ctx1-${crypto.randomUUID()}`
-    const fileResults: IncomingFile[] = []
+    const collectedIds: string[] = []
     const mockReply: ReplyFn = {
       text: async (): Promise<void> => {},
       formatted: async (): Promise<void> => {},
@@ -115,12 +115,9 @@ describe('MessageQueue Integration', () => {
     }
 
     const handler = async (coalesced: CoalescedItem): Promise<void> => {
-      fileResults.push(...coalesced.files)
+      collectedIds.push(...coalesced.newAttachmentIds)
       await Promise.resolve()
     }
-
-    const file1: IncomingFile = { fileId: '1', filename: 'a.jpg', content: Buffer.from('a') }
-    const file2: IncomingFile = { fileId: '2', filename: 'b.jpg', content: Buffer.from('b') }
 
     enqueueMessage(
       {
@@ -129,7 +126,7 @@ describe('MessageQueue Integration', () => {
         username: 'alice',
         storageContextId,
         contextType: 'dm',
-        files: [file1],
+        newAttachmentIds: ['att_a'],
       },
       mockReply,
       handler,
@@ -142,17 +139,15 @@ describe('MessageQueue Integration', () => {
         username: 'alice',
         storageContextId,
         contextType: 'dm',
-        files: [file2],
+        newAttachmentIds: ['att_b'],
       },
       mockReply,
       handler,
     )
 
-    await waitFor(() => fileResults.length === 2)
+    await waitFor(() => collectedIds.length === 2)
 
-    expect(fileResults.length).toBe(2)
-    expect(fileResults[0]?.filename).toBe('a.jpg')
-    expect(fileResults[1]?.filename).toBe('b.jpg')
+    expect(collectedIds).toEqual(['att_a', 'att_b'])
   })
 
   test('should flush on shutdown', async () => {
@@ -179,7 +174,7 @@ describe('MessageQueue Integration', () => {
         username: 'alice',
         storageContextId,
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       },
       mockReply,
       handler,
@@ -231,7 +226,7 @@ describe('MessageQueue Integration', () => {
         username: 'alice',
         storageContextId: firstContextId,
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       },
       mockReply1,
       handler1,
@@ -244,7 +239,7 @@ describe('MessageQueue Integration', () => {
         username: 'bob',
         storageContextId: secondContextId,
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       },
       mockReply2,
       handler2,
@@ -284,25 +279,53 @@ describe('MessageQueue Integration', () => {
     }
 
     enqueueMessage(
-      { text: 'A1', userId: 'u1', username: 'a', storageContextId: firstContextId, contextType: 'dm', files: [] },
+      {
+        text: 'A1',
+        userId: 'u1',
+        username: 'a',
+        storageContextId: firstContextId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler1,
     )
 
     enqueueMessage(
-      { text: 'B1', userId: 'u2', username: 'b', storageContextId: secondContextId, contextType: 'dm', files: [] },
+      {
+        text: 'B1',
+        userId: 'u2',
+        username: 'b',
+        storageContextId: secondContextId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler2,
     )
 
     enqueueMessage(
-      { text: 'A2', userId: 'u1', username: 'a', storageContextId: firstContextId, contextType: 'dm', files: [] },
+      {
+        text: 'A2',
+        userId: 'u1',
+        username: 'a',
+        storageContextId: firstContextId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler1,
     )
 
     enqueueMessage(
-      { text: 'B2', userId: 'u2', username: 'b', storageContextId: secondContextId, contextType: 'dm', files: [] },
+      {
+        text: 'B2',
+        userId: 'u2',
+        username: 'b',
+        storageContextId: secondContextId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler2,
     )
@@ -337,19 +360,40 @@ describe('MessageQueue Integration', () => {
     }
 
     enqueueMessage(
-      { text: 'Msg1', userId: 'u1', username: 'a', storageContextId: contextAId, contextType: 'dm', files: [] },
+      {
+        text: 'Msg1',
+        userId: 'u1',
+        username: 'a',
+        storageContextId: contextAId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler,
     )
 
     enqueueMessage(
-      { text: 'Msg2', userId: 'u2', username: 'b', storageContextId: contextBId, contextType: 'dm', files: [] },
+      {
+        text: 'Msg2',
+        userId: 'u2',
+        username: 'b',
+        storageContextId: contextBId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler,
     )
 
     enqueueMessage(
-      { text: 'Msg3', userId: 'u3', username: 'c', storageContextId: contextCId, contextType: 'dm', files: [] },
+      {
+        text: 'Msg3',
+        userId: 'u3',
+        username: 'c',
+        storageContextId: contextCId,
+        contextType: 'dm',
+        newAttachmentIds: [],
+      },
       createMockReply(),
       handler,
     )

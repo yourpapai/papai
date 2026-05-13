@@ -4,9 +4,11 @@
 
 **Goal:** Build a shared attachment pipeline so incoming chat files persist until `/clear`, can be uploaded by tools via stable attachment IDs, and can be sent to multimodal models without polluting conversation history.
 
-**Architecture:** Add a new `src/attachments/` subsystem that becomes the durable source of truth for attachments. Chat adapters keep producing raw `IncomingFile` payloads, bot intake persists them into SQLite metadata plus on-disk blobs and queues stable IDs, prompt/LLM layers use attachment refs plus resolver-controlled hydration, and `/clear` clears attachment state together with history and memory.
+**Architecture:** Add a new `src/attachments/` subsystem that becomes the durable source of truth for attachments. Chat adapters keep producing raw `IncomingFile` payloads, bot intake persists them into SQLite metadata plus an S3-compatible bucket and queues stable IDs, prompt/LLM layers use attachment refs plus resolver-controlled hydration, and `/clear` clears attachment state together with history and memory.
 
-**Tech Stack:** TypeScript, Bun, Bun SQLite + Drizzle, Vercel AI SDK v6, existing message queue, existing chat provider capabilities, existing command/test helpers
+**Tech Stack:** TypeScript, Bun, Bun SQLite + Drizzle, Bun's built-in `S3Client` for S3-compatible object storage, Vercel AI SDK v6, existing message queue, existing chat provider capabilities, existing command/test helpers
+
+**S3 configuration (env vars):** `S3_BUCKET` (required), `S3_ACCESS_KEY_ID` (required), `S3_SECRET_ACCESS_KEY` (required), `S3_ENDPOINT` (required for non-AWS providers like MinIO/R2/B2), `S3_REGION` (optional), `S3_PREFIX` (optional), `S3_FORCE_PATH_STYLE` (`'true'` for MinIO).
 
 ---
 
@@ -21,17 +23,18 @@ src/
 ├── attachments/
 │   ├── index.ts                 # Public exports for attachment APIs
 │   ├── types.ts                 # AttachmentRef, StoredAttachment, status/input types
-│   ├── store.ts                 # SQLite metadata + blob persistence
-│   ├── workspace.ts             # Active attachment queries and clear behavior
+│   ├── blob-store.ts            # S3-compatible BlobStore interface + Bun.S3Client backend + DI hooks
+│   ├── store.ts                 # SQLite metadata + delegating blob persistence via BlobStore
+│   ├── workspace.ts             # Active attachment queries and clear behavior (deletes from S3)
 │   ├── ingest.ts                # Convert IncomingFile[] into persisted AttachmentRef[]
 │   └── resolver.ts              # Manifest building, model fallback, history placeholders
 ├── bot.ts                       # Persist attachments before queueing; queue stable IDs
 ├── commands/clear.ts            # Clear attachment workspace with history + memory
 ├── db/
 │   ├── schema.ts                # attachments table schema
-│   ├── index.ts                 # Register migration019 + migration020 in runtime order
+│   ├── index.ts                 # Register migration028 in runtime order
 │   └── migrations/
-│       └── 020_attachment_workspace.ts
+│       └── 028_attachment_workspace.ts
 ├── llm-orchestrator.ts          # Accept structured turn input and hydrate multipart content
 ├── llm-orchestrator-types.ts    # ProcessMessageInput type
 ├── message-queue/
@@ -39,20 +42,20 @@ src/
 │   └── queue.ts                 # Coalesce stable attachment IDs
 ├── reply-context.ts             # Render attachment manifest using papai attachment IDs
 ├── tools/upload-attachment.ts   # Resolve workspace attachmentId instead of transient fileId
-├── chat/discord/metadata.ts     # Stop advertising files.receive until ingress exists
 └── file-relay.ts                # Delete after upload_attachment stops using it
 
 tests/
 ├── attachments/
-│   ├── store.test.ts            # Durable store behavior and blob IO
-│   ├── workspace.test.ts        # Persist/list/clear active attachment behavior
+│   ├── blob-store.test.ts       # In-memory BlobStore behavior and DI
+│   ├── store.test.ts            # Durable store behavior with injected in-memory blob store
+│   ├── workspace.test.ts        # Persist/list/clear active attachment behavior, S3 deletion
 │   └── resolver.test.ts         # Manifest building and model/tool fallback
 ├── bot.test.ts                  # Bot intake persists attachments and forwards IDs
 ├── commands/
 │   └── clear.test.ts            # /clear clears attachment workspace
 ├── db/
 │   ├── migrations/
-│   │   └── 020_attachment_workspace.test.ts
+│   │   └── 028_attachment_workspace.test.ts
 │   └── schema.test.ts           # attachments table is exposed through Drizzle schema
 ├── llm-orchestrator.test.ts     # Multipart model input + history placeholder behavior
 ├── message-queue/
@@ -60,13 +63,11 @@ tests/
 │   ├── queue.test.ts
 │   └── index.integration.test.ts
 ├── reply-context.test.ts        # Manifest prompt text uses attachmentId refs
-├── tools/
-│   └── attachment-tools.test.ts # upload_attachment uses workspace attachment IDs
-└── chat/
-    ├── discord/metadata.test.ts # files.receive removed until Discord ingress exists
-    ├── telegram/index.test.ts   # Existing ingress guardrail, no new source changes expected
-    └── mattermost/index.test.ts # Existing ingress guardrail, no new source changes expected
+└── tools/
+    └── attachment-tools.test.ts # upload_attachment uses workspace attachment IDs
 ```
+
+> **Note on Discord:** an earlier draft of this plan included a Task 8 that removed `files.receive` from Discord capabilities. That capability is already absent from `src/chat/discord/metadata.ts`, so the original Task 8 has been dropped — the plan ends at Task 7.
 
 **Testing note:** new mirrored `tests/attachments/*.test.ts`, existing `tests/message-queue/*.test.ts`, and `tests/commands/clear.test.ts` must be run explicitly with `bun test <path>` because the default `bun test` script does not include those directories today.
 
@@ -76,21 +77,22 @@ tests/
 
 **Files:**
 
-- Create: `src/db/migrations/020_attachment_workspace.ts`
+- Create: `src/db/migrations/028_attachment_workspace.ts`
 - Modify: `src/db/index.ts`
 - Modify: `src/db/schema.ts`
-- Modify: `tests/utils/test-helpers.ts`
-- Test: `tests/db/migrations/020_attachment_workspace.test.ts`
+- Test: `tests/db/migrations/028_attachment_workspace.test.ts`
 - Test: `tests/db/schema.test.ts`
+
+> Note: migration 020 already exists (`020_group_settings_registry`); the latest applied migration is 027 (`027_scheduled_prompt_timezone`). The new migration is therefore 028. `tests/utils/test-helpers.ts` re-exports `MIGRATIONS` from `src/db/index.ts`, so adding the migration to the runtime list automatically wires it into the test DB — no edit to `test-helpers.ts` is required.
 
 - [ ] **Step 1: Write the failing migration and schema tests**
 
 ```typescript
-// tests/db/migrations/020_attachment_workspace.test.ts
+// tests/db/migrations/028_attachment_workspace.test.ts
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { migration020AttachmentWorkspace } from '../../../src/db/migrations/020_attachment_workspace.js'
+import { migration028AttachmentWorkspace } from '../../../src/db/migrations/028_attachment_workspace.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 const getNames = (db: Database, type: 'table' | 'index'): string[] =>
@@ -99,7 +101,7 @@ const getNames = (db: Database, type: 'table' | 'index'): string[] =>
     .all(type)
     .map((row) => row.name)
 
-describe('migration020AttachmentWorkspace', () => {
+describe('migration028AttachmentWorkspace', () => {
   let db: Database
 
   beforeEach(() => {
@@ -112,7 +114,7 @@ describe('migration020AttachmentWorkspace', () => {
   })
 
   test('creates attachments table and active-state indexes', () => {
-    migration020AttachmentWorkspace.up(db)
+    migration028AttachmentWorkspace.up(db)
 
     expect(getNames(db, 'table')).toContain('attachments')
     expect(getNames(db, 'index')).toContain('idx_attachments_context_active')
@@ -145,19 +147,21 @@ describe('attachments schema', () => {
 
 - [ ] **Step 2: Run the DB tests to verify they fail**
 
-Run: `bun test tests/db/migrations/020_attachment_workspace.test.ts tests/db/schema.test.ts`
-Expected: FAIL with `Cannot find module '../../../src/db/migrations/020_attachment_workspace.js'` and/or missing `attachments` export from `src/db/schema.ts`
+Run: `bun test tests/db/migrations/028_attachment_workspace.test.ts tests/db/schema.test.ts`
+Expected: FAIL with `Cannot find module '../../../src/db/migrations/028_attachment_workspace.js'` and/or missing `attachments` export from `src/db/schema.ts`
 
-- [ ] **Step 3: Add migration020, register it in runtime/test migrations, and expose the schema**
+- [ ] **Step 3: Add migration028, register it in the runtime migrations array, and expose the schema**
+
+The `attachments` row stores an S3 object key (`blob_key`), not a filesystem path. Bytes themselves live in the configured S3-compatible bucket (see `src/attachments/blob-store.ts` in Task 2).
 
 ```typescript
-// src/db/migrations/020_attachment_workspace.ts
+// src/db/migrations/028_attachment_workspace.ts
 import type { Database } from 'bun:sqlite'
 
 import type { Migration } from '../migrate.js'
 
-export const migration020AttachmentWorkspace: Migration = {
-  id: '020_attachment_workspace',
+export const migration028AttachmentWorkspace: Migration = {
+  id: '028_attachment_workspace',
   up(db: Database): void {
     db.run(`
       CREATE TABLE attachments (
@@ -170,7 +174,7 @@ export const migration020AttachmentWorkspace: Migration = {
         mime_type         TEXT,
         size              INTEGER,
         checksum          TEXT NOT NULL,
-        blob_path         TEXT NOT NULL,
+        blob_key          TEXT NOT NULL,
         status            TEXT NOT NULL,
         is_active         INTEGER NOT NULL DEFAULT 1,
         created_at        TEXT NOT NULL,
@@ -183,32 +187,14 @@ export const migration020AttachmentWorkspace: Migration = {
   },
 }
 
-// src/db/index.ts
-import { migration019UserIdentityMappings } from './migrations/019_user_identity_mappings.js'
-import { migration020AttachmentWorkspace } from './migrations/020_attachment_workspace.js'
-
-const MIGRATIONS = [
-  migration001Initial,
-  migration002ConversationHistory,
-  migration003MultiuserSupport,
-  migration004KaneoWorkspace,
-  migration005RenameConfigKeys,
-  migration006VersionAnnouncements,
-  migration007PlatformUserId,
-  migration008GroupMembers,
-  migration009RecurringTasks,
-  migration010RecurringTaskOccurrences,
-  migration011ProactiveAlerts,
-  migration012UserInstructions,
-  migration013DeferredPrompts,
-  migration014BackgroundEvents,
-  migration015DropBackgroundEvents,
-  migration016ExecutionMetadata,
-  migration017MessageMetadata,
-  migration018Memos,
-  migration019UserIdentityMappings,
-  migration020AttachmentWorkspace,
-] as const
+// src/db/index.ts — append to imports + MIGRATIONS list
+import { migration028AttachmentWorkspace } from './migrations/028_attachment_workspace.js'
+// ...
+export const MIGRATIONS: readonly Migration[] = [
+  // ...existing 001..027 entries
+  migration027ScheduledPromptTimezone,
+  migration028AttachmentWorkspace,
+]
 
 // src/db/schema.ts
 export const attachments = sqliteTable(
@@ -223,7 +209,7 @@ export const attachments = sqliteTable(
     mimeType: text('mime_type'),
     size: integer('size'),
     checksum: text('checksum').notNull(),
-    blobPath: text('blob_path').notNull(),
+    blobKey: text('blob_key').notNull(),
     status: text('status').notNull(),
     isActive: integer('is_active').notNull().default(1),
     createdAt: text('created_at').notNull(),
@@ -237,87 +223,96 @@ export const attachments = sqliteTable(
 )
 
 export type AttachmentRow = typeof attachments.$inferSelect
-
-// tests/utils/test-helpers.ts
-import { migration020AttachmentWorkspace } from '../../src/db/migrations/020_attachment_workspace.js'
-
-const ALL_MIGRATIONS: readonly Migration[] = [
-  migration001Initial,
-  migration002ConversationHistory,
-  migration003MultiuserSupport,
-  migration004KaneoWorkspace,
-  migration005RenameConfigKeys,
-  migration006VersionAnnouncements,
-  migration007PlatformUserId,
-  migration008GroupMembers,
-  migration009RecurringTasks,
-  migration010RecurringTaskOccurrences,
-  migration011ProactiveAlerts,
-  migration012UserInstructions,
-  migration013DeferredPrompts,
-  migration014BackgroundEvents,
-  migration015DropBackgroundEvents,
-  migration016ExecutionMetadata,
-  migration017MessageMetadata,
-  migration018Memos,
-  migration019UserIdentityMappings,
-  migration020AttachmentWorkspace,
-]
 ```
 
 - [ ] **Step 4: Run the DB tests to verify they pass**
 
-Run: `bun test tests/db/migrations/020_attachment_workspace.test.ts tests/db/schema.test.ts`
+Run: `bun test tests/db/migrations/028_attachment_workspace.test.ts tests/db/schema.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/db/migrations/020_attachment_workspace.ts src/db/index.ts src/db/schema.ts tests/db/migrations/020_attachment_workspace.test.ts tests/db/schema.test.ts tests/utils/test-helpers.ts
-git commit -m "feat(attachments): add attachment workspace schema" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git add src/db/migrations/028_attachment_workspace.ts src/db/index.ts src/db/schema.ts tests/db/migrations/028_attachment_workspace.test.ts tests/db/schema.test.ts
+git commit -m "feat(attachments): add attachment workspace schema"
 ```
 
 ---
 
-### Task 2: Implement the durable attachment store
+### Task 2: Implement the BlobStore abstraction and the durable attachment store
 
 **Files:**
 
 - Create: `src/attachments/types.ts`
+- Create: `src/attachments/blob-store.ts`
 - Create: `src/attachments/store.ts`
 - Create: `src/attachments/index.ts`
+- Test: `tests/attachments/blob-store.test.ts`
 - Test: `tests/attachments/store.test.ts`
 
-- [ ] **Step 1: Write the failing store test**
+- [ ] **Step 1: Write the failing blob-store and store tests**
 
 ```typescript
-// tests/attachments/store.test.ts
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
+// tests/attachments/blob-store.test.ts
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import {
+  createInMemoryBlobStore,
+  getBlobStore,
+  resetBlobStore,
+  setBlobStore,
+} from '../../src/attachments/blob-store.js'
+import { mockLogger } from '../utils/test-helpers.js'
+
+describe('blob-store DI', () => {
+  beforeEach(() => {
+    mockLogger()
+  })
+
+  afterEach(() => {
+    resetBlobStore()
+  })
+
+  test('round-trips bytes through the in-memory store and supports delete', async () => {
+    const store = createInMemoryBlobStore()
+    setBlobStore(store)
+
+    await getBlobStore().put('ctx/key-1', Buffer.from('hello'), 'text/plain')
+    expect((await getBlobStore().get('ctx/key-1')).toString('utf8')).toBe('hello')
+
+    await getBlobStore().delete('ctx/key-1')
+    await expect(getBlobStore().get('ctx/key-1')).rejects.toThrow()
+  })
+})
+
+// tests/attachments/store.test.ts
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+
+import {
+  createInMemoryBlobStore,
+  resetBlobStore,
+  setBlobStore,
+  type InMemoryBlobStore,
+} from '../../src/attachments/blob-store.js'
 import { loadAttachmentRecord, saveAttachment } from '../../src/attachments/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('attachment store', () => {
-  let attachmentsDir: string
+  let blobs: InMemoryBlobStore
 
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    attachmentsDir = mkdtempSync(join(tmpdir(), 'papai-attachments-'))
-    process.env['ATTACHMENTS_DIR'] = attachmentsDir
+    blobs = createInMemoryBlobStore()
+    setBlobStore(blobs)
   })
 
   afterEach(() => {
-    rmSync(attachmentsDir, { recursive: true, force: true })
-    delete process.env['ATTACHMENTS_DIR']
+    resetBlobStore()
   })
 
-  test('persists metadata in SQLite and bytes in the blob directory', () => {
-    const ref = saveAttachment({
+  test('persists metadata in SQLite and bytes in the configured blob store', async () => {
+    const ref = await saveAttachment({
       contextId: 'ctx-store',
       sourceProvider: 'telegram',
       sourceMessageId: 'm-1',
@@ -329,26 +324,28 @@ describe('attachment store', () => {
       content: Buffer.from('data'),
     })
 
-    const record = loadAttachmentRecord('ctx-store', ref.attachmentId)
+    const record = await loadAttachmentRecord('ctx-store', ref.attachmentId)
 
     expect(record).not.toBeNull()
     expect(record?.filename).toBe('report.pdf')
     expect(record?.content.toString('utf8')).toBe('data')
-    expect(existsSync(record?.blobPath ?? '')).toBe(true)
+    expect(blobs.has(record?.blobKey ?? '')).toBe(true)
   })
 })
 ```
 
-- [ ] **Step 2: Run the store test to verify it fails**
+- [ ] **Step 2: Run the store and blob-store tests to verify they fail**
 
-Run: `bun test tests/attachments/store.test.ts`
-Expected: FAIL with `Cannot find module '../../src/attachments/store.js'`
+Run: `bun test tests/attachments/blob-store.test.ts tests/attachments/store.test.ts`
+Expected: FAIL with `Cannot find module '../../src/attachments/blob-store.js'` and/or `Cannot find module '../../src/attachments/store.js'`
 
-- [ ] **Step 3: Create attachment types, the store implementation, and re-exports**
+- [ ] **Step 3: Create attachment types, the BlobStore abstraction (with Bun.S3Client backend + in-memory test impl), and the metadata-aware store**
 
 ```typescript
 // src/attachments/types.ts
 export type AttachmentStatus = 'available' | 'tool_only' | 'rejected' | 'unavailable'
+
+export type AttachmentSourceProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
 
 export type AttachmentRef = {
   attachmentId: string
@@ -360,11 +357,11 @@ export type AttachmentRef = {
 }
 
 export type StoredAttachment = AttachmentRef & {
-  sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown'
+  sourceProvider: AttachmentSourceProvider
   sourceMessageId?: string
   sourceFileId?: string
   checksum: string
-  blobPath: string
+  blobKey: string
   createdAt: string
   clearedAt?: string | null
   lastUsedAt?: string | null
@@ -373,7 +370,7 @@ export type StoredAttachment = AttachmentRef & {
 
 export type SaveAttachmentInput = {
   contextId: string
-  sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown'
+  sourceProvider: AttachmentSourceProvider
   sourceMessageId?: string
   sourceFileId?: string
   filename: string
@@ -383,35 +380,153 @@ export type SaveAttachmentInput = {
   content: Buffer
 }
 
+// src/attachments/blob-store.ts
+import { S3Client } from 'bun'
+
+import { logger } from '../logger.js'
+
+const log = logger.child({ scope: 'attachments:blob-store' })
+
+export interface BlobStore {
+  put(key: string, content: Buffer, contentType?: string): Promise<void>
+  get(key: string): Promise<Buffer>
+  delete(key: string): Promise<void>
+  deleteMany(keys: readonly string[]): Promise<void>
+}
+
+/** Test-only in-memory implementation. */
+export interface InMemoryBlobStore extends BlobStore {
+  has(key: string): boolean
+  size(): number
+}
+
+export function createInMemoryBlobStore(): InMemoryBlobStore {
+  const map = new Map<string, Buffer>()
+  return {
+    async put(key, content) {
+      map.set(key, Buffer.from(content))
+    },
+    async get(key) {
+      const value = map.get(key)
+      if (value === undefined) throw new Error(`InMemoryBlobStore: key not found: ${key}`)
+      return Buffer.from(value)
+    },
+    async delete(key) {
+      map.delete(key)
+    },
+    async deleteMany(keys) {
+      for (const key of keys) map.delete(key)
+    },
+    has: (key) => map.has(key),
+    size: () => map.size,
+  }
+}
+
+const requireEnv = (name: string): string => {
+  const value = process.env[name]
+  if (value === undefined || value === '') {
+    throw new Error(`Missing required S3 env var: ${name}`)
+  }
+  return value
+}
+
+const buildS3Client = (): S3Client => {
+  const bucket = requireEnv('S3_BUCKET')
+  const accessKeyId = requireEnv('S3_ACCESS_KEY_ID')
+  const secretAccessKey = requireEnv('S3_SECRET_ACCESS_KEY')
+  const endpoint = process.env['S3_ENDPOINT']
+  const region = process.env['S3_REGION']
+  const virtualHostedStyle = process.env['S3_FORCE_PATH_STYLE'] !== 'true'
+  return new S3Client({
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    endpoint,
+    region,
+    virtualHostedStyle,
+  })
+}
+
+export function createS3BlobStore(): BlobStore {
+  const client = buildS3Client()
+  return {
+    async put(key, content, contentType) {
+      const file = client.file(key)
+      await file.write(content, contentType !== undefined ? { type: contentType } : undefined)
+    },
+    async get(key) {
+      const file = client.file(key)
+      const arrayBuffer = await file.arrayBuffer()
+      return Buffer.from(arrayBuffer)
+    },
+    async delete(key) {
+      try {
+        await client.file(key).delete()
+      } catch (error) {
+        log.warn(
+          { key, error: error instanceof Error ? error.message : String(error) },
+          'Blob delete failed, continuing',
+        )
+      }
+    },
+    async deleteMany(keys) {
+      for (const key of keys) {
+        try {
+          await client.file(key).delete()
+        } catch (error) {
+          log.warn(
+            { key, error: error instanceof Error ? error.message : String(error) },
+            'Blob delete failed, continuing',
+          )
+        }
+      }
+    },
+  }
+}
+
+let active: BlobStore | null = null
+
+export function getBlobStore(): BlobStore {
+  if (active === null) active = createS3BlobStore()
+  return active
+}
+
+/** Test/DI hook: install a custom blob store. */
+export function setBlobStore(store: BlobStore): void {
+  active = store
+}
+
+/** Test/DI hook: clear the cached blob store and force re-creation on next access. */
+export function resetBlobStore(): void {
+  active = null
+}
+
+export function buildBlobKey(contextId: string, attachmentId: string): string {
+  const prefix = process.env['S3_PREFIX'] ?? ''
+  const head = prefix === '' ? '' : `${prefix.replace(/\/+$/, '')}/`
+  return `${head}${contextId}/${attachmentId}`
+}
+
 // src/attachments/store.ts
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import { eq, and } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { attachments } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { buildBlobKey, getBlobStore } from './blob-store.js'
 import type { AttachmentRef, SaveAttachmentInput, StoredAttachment } from './types.js'
 
 const log = logger.child({ scope: 'attachments:store' })
 
-const getAttachmentsDir = (): string => process.env['ATTACHMENTS_DIR'] ?? 'papai-attachments'
-
-const ensureAttachmentsDir = (): string => {
-  const dir = getAttachmentsDir()
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  return dir
-}
-
-export function saveAttachment(input: SaveAttachmentInput): AttachmentRef {
+export async function saveAttachment(input: SaveAttachmentInput): Promise<AttachmentRef> {
   const attachmentId = `att_${randomUUID()}`
   const createdAt = new Date().toISOString()
   const checksum = createHash('sha256').update(input.content).digest('hex')
-  const blobPath = join(ensureAttachmentsDir(), attachmentId)
+  const blobKey = buildBlobKey(input.contextId, attachmentId)
 
-  writeFileSync(blobPath, input.content)
+  await getBlobStore().put(blobKey, input.content, input.mimeType)
 
   getDrizzleDb()
     .insert(attachments)
@@ -425,7 +540,7 @@ export function saveAttachment(input: SaveAttachmentInput): AttachmentRef {
       mimeType: input.mimeType,
       size: input.size,
       checksum,
-      blobPath,
+      blobKey,
       status: input.status,
       isActive: 1,
       createdAt,
@@ -434,7 +549,7 @@ export function saveAttachment(input: SaveAttachmentInput): AttachmentRef {
     })
     .run()
 
-  log.info({ attachmentId, contextId: input.contextId, filename: input.filename }, 'Attachment stored')
+  log.info({ attachmentId, contextId: input.contextId, filename: input.filename, blobKey }, 'Attachment stored')
 
   return {
     attachmentId,
@@ -446,7 +561,7 @@ export function saveAttachment(input: SaveAttachmentInput): AttachmentRef {
   }
 }
 
-export function loadAttachmentRecord(contextId: string, attachmentId: string): StoredAttachment | null {
+export async function loadAttachmentRecord(contextId: string, attachmentId: string): Promise<StoredAttachment | null> {
   const row = getDrizzleDb()
     .select()
     .from(attachments)
@@ -454,6 +569,8 @@ export function loadAttachmentRecord(contextId: string, attachmentId: string): S
     .get()
 
   if (row === undefined || row.clearedAt !== null) return null
+
+  const content = await getBlobStore().get(row.blobKey)
 
   return {
     attachmentId: row.attachmentId,
@@ -466,29 +583,44 @@ export function loadAttachmentRecord(contextId: string, attachmentId: string): S
     sourceMessageId: row.sourceMessageId ?? undefined,
     sourceFileId: row.sourceFileId ?? undefined,
     checksum: row.checksum,
-    blobPath: row.blobPath,
+    blobKey: row.blobKey,
     createdAt: row.createdAt,
     clearedAt: row.clearedAt,
     lastUsedAt: row.lastUsedAt,
-    content: Buffer.from(readFileSync(row.blobPath)),
+    content,
   }
 }
 
 // src/attachments/index.ts
-export type { AttachmentRef, AttachmentStatus, SaveAttachmentInput, StoredAttachment } from './types.js'
+export type {
+  AttachmentRef,
+  AttachmentStatus,
+  AttachmentSourceProvider,
+  SaveAttachmentInput,
+  StoredAttachment,
+} from './types.js'
 export { loadAttachmentRecord, saveAttachment } from './store.js'
+export {
+  createInMemoryBlobStore,
+  createS3BlobStore,
+  getBlobStore,
+  resetBlobStore,
+  setBlobStore,
+  type BlobStore,
+  type InMemoryBlobStore,
+} from './blob-store.js'
 ```
 
-- [ ] **Step 4: Run the store test to verify it passes**
+- [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test tests/attachments/store.test.ts`
+Run: `bun test tests/attachments/blob-store.test.ts tests/attachments/store.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/attachments/types.ts src/attachments/store.ts src/attachments/index.ts tests/attachments/store.test.ts
-git commit -m "feat(attachments): add durable attachment store" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git add src/attachments/types.ts src/attachments/blob-store.ts src/attachments/store.ts src/attachments/index.ts tests/attachments/blob-store.test.ts tests/attachments/store.test.ts
+git commit -m "feat(attachments): add S3-backed blob store and durable attachment store"
 ```
 
 ---
@@ -506,33 +638,34 @@ git commit -m "feat(attachments): add durable attachment store" -m "Co-authored-
 
 ```typescript
 // tests/attachments/workspace.test.ts
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import {
+  createInMemoryBlobStore,
+  resetBlobStore,
+  setBlobStore,
+  type InMemoryBlobStore,
+} from '../../src/attachments/blob-store.js'
 import { persistIncomingAttachments } from '../../src/attachments/ingest.js'
 import { clearAttachmentWorkspace, listActiveAttachments } from '../../src/attachments/workspace.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('attachment workspace', () => {
-  let attachmentsDir: string
+  let blobs: InMemoryBlobStore
 
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    attachmentsDir = mkdtempSync(join(tmpdir(), 'papai-attachments-'))
-    process.env['ATTACHMENTS_DIR'] = attachmentsDir
+    blobs = createInMemoryBlobStore()
+    setBlobStore(blobs)
   })
 
   afterEach(() => {
-    rmSync(attachmentsDir, { recursive: true, force: true })
-    delete process.env['ATTACHMENTS_DIR']
+    resetBlobStore()
   })
 
-  test('persists incoming files, lists them as active, and clears them by context', () => {
-    const refs = persistIncomingAttachments({
+  test('persists incoming files, lists them as active, and clears them by context', async () => {
+    const refs = await persistIncomingAttachments({
       contextId: 'ctx-workspace',
       sourceProvider: 'mattermost',
       sourceMessageId: 'm-42',
@@ -550,11 +683,12 @@ describe('attachment workspace', () => {
     expect(refs).toHaveLength(1)
     expect(refs[0]?.attachmentId.startsWith('att_')).toBe(true)
     expect(listActiveAttachments('ctx-workspace')).toHaveLength(1)
+    expect(blobs.size()).toBe(1)
 
-    clearAttachmentWorkspace('ctx-workspace')
+    await clearAttachmentWorkspace('ctx-workspace')
 
     expect(listActiveAttachments('ctx-workspace')).toEqual([])
-    expect(existsSync(join(attachmentsDir, refs[0]!.attachmentId))).toBe(false)
+    expect(blobs.size()).toBe(0)
   })
 })
 ```
@@ -564,17 +698,16 @@ describe('attachment workspace', () => {
 Run: `bun test tests/attachments/workspace.test.ts`
 Expected: FAIL with `Cannot find module '../../src/attachments/workspace.js'` and/or `Cannot find module '../../src/attachments/ingest.js'`
 
-- [ ] **Step 3: Add workspace and ingest helpers**
+- [ ] **Step 3: Add workspace and ingest helpers (delete blobs through `BlobStore`)**
 
 ```typescript
 // src/attachments/workspace.ts
-import { existsSync, rmSync } from 'node:fs'
-
 import { and, eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { attachments } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { getBlobStore } from './blob-store.js'
 import type { AttachmentRef } from './types.js'
 
 const log = logger.child({ scope: 'attachments:workspace' })
@@ -596,15 +729,15 @@ export function listActiveAttachments(contextId: string): AttachmentRef[] {
     }))
 }
 
-export function clearAttachmentWorkspace(contextId: string): void {
+export async function clearAttachmentWorkspace(contextId: string): Promise<void> {
   const rows = getDrizzleDb()
-    .select({ blobPath: attachments.blobPath })
+    .select({ blobKey: attachments.blobKey })
     .from(attachments)
     .where(eq(attachments.contextId, contextId))
     .all()
 
-  for (const row of rows) {
-    if (existsSync(row.blobPath)) rmSync(row.blobPath, { force: true })
+  if (rows.length > 0) {
+    await getBlobStore().deleteMany(rows.map((row) => row.blobKey))
   }
 
   getDrizzleDb().delete(attachments).where(eq(attachments.contextId, contextId)).run()
@@ -613,31 +746,35 @@ export function clearAttachmentWorkspace(contextId: string): void {
 
 // src/attachments/ingest.ts
 import type { IncomingFile } from '../chat/types.js'
-import type { AttachmentRef } from './types.js'
 import { saveAttachment } from './store.js'
+import type { AttachmentRef, AttachmentSourceProvider } from './types.js'
 
-export function persistIncomingAttachments(params: {
+export async function persistIncomingAttachments(params: {
   contextId: string
-  sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown'
+  sourceProvider: AttachmentSourceProvider
   sourceMessageId?: string
   files: readonly IncomingFile[]
-}): AttachmentRef[] {
-  return params.files.map((file) =>
-    saveAttachment({
-      contextId: params.contextId,
-      sourceProvider: params.sourceProvider,
-      sourceMessageId: params.sourceMessageId,
-      sourceFileId: file.fileId,
-      filename: file.filename,
-      mimeType: file.mimeType,
-      size: file.size,
-      status: 'available',
-      content: file.content,
-    }),
-  )
+}): Promise<AttachmentRef[]> {
+  const refs: AttachmentRef[] = []
+  for (const file of params.files) {
+    refs.push(
+      await saveAttachment({
+        contextId: params.contextId,
+        sourceProvider: params.sourceProvider,
+        sourceMessageId: params.sourceMessageId,
+        sourceFileId: file.fileId,
+        filename: file.filename,
+        mimeType: file.mimeType,
+        size: file.size,
+        status: 'available',
+        content: file.content,
+      }),
+    )
+  }
+  return refs
 }
 
-// src/attachments/index.ts
+// src/attachments/index.ts (extend)
 export { persistIncomingAttachments } from './ingest.js'
 export { clearAttachmentWorkspace, listActiveAttachments } from './workspace.js'
 ```
@@ -651,7 +788,7 @@ Expected: PASS
 
 ```bash
 git add src/attachments/workspace.ts src/attachments/ingest.ts src/attachments/index.ts tests/attachments/workspace.test.ts
-git commit -m "feat(attachments): add workspace ingest and clear helpers" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git commit -m "feat(attachments): add workspace ingest and clear helpers"
 ```
 
 ---
@@ -970,63 +1107,44 @@ const result: CoalescedItem = {
   reply,
 }
 
-// src/bot.ts
+// src/bot.ts (relevant excerpt — preserve all surrounding existing wiring)
 import { listActiveAttachments, persistIncomingAttachments } from './attachments/index.js'
-import type { ProcessMessageInput } from './llm-orchestrator-types.js'
 
-export interface BotDeps {
-  processMessage: (
-    reply: ReplyFn,
-    contextId: string,
-    username: string | null,
-    input: ProcessMessageInput,
-  ) => Promise<void>
-}
-
+// handleMessage already exists; persist attachments before enqueueing
 async function handleMessage(
-  chat: ChatProvider,
   msg: IncomingMessage,
   reply: ReplyFn,
   auth: AuthorizationResult,
   deps: BotDeps,
 ): Promise<void> {
   if (!auth.allowed) {
-    if (msg.isMentioned) {
-      await reply.text(
-        "You're not authorized to use this bot in this group. Ask a group admin to add you with `/group adduser @{username}`",
-      )
-    }
+    if (msg.isMentioned) await replyToUnauthorized(reply, auth)
     return
   }
+  if (shouldIgnoreGroupMessage(msg)) return
 
-  const newAttachmentRefs = persistIncomingAttachments({
+  const newAttachmentRefs = await persistIncomingAttachments({
     contextId: auth.storageContextId,
-    sourceProvider: chat.name,
+    sourceProvider: 'unknown', // TODO: thread chat.name through if available
     sourceMessageId: msg.messageId,
     files: msg.files ?? [],
   })
-
   const activeAttachments = listActiveAttachments(auth.storageContextId)
 
-  const queueItem = {
-    text: buildPromptWithReplyContext(msg, activeAttachments),
-    userId: msg.user.id,
-    username: msg.user.username,
-    storageContextId: auth.storageContextId,
-    contextType: msg.contextType,
-    newAttachmentIds: newAttachmentRefs.map((ref) => ref.attachmentId),
-  }
-
-  enqueueMessage(queueItem, reply, async (coalescedItem) => {
-    await deps.processMessage(coalescedItem.reply, coalescedItem.storageContextId, coalescedItem.username, {
-      text: coalescedItem.text,
-      newAttachmentIds: coalescedItem.newAttachmentIds,
-    })
-  })
+  enqueueMessage(
+    {
+      text: buildPromptWithReplyContext(msg, activeAttachments),
+      userId: msg.user.id,
+      username: msg.user.username,
+      storageContextId: auth.storageContextId,
+      configContextId: auth.configContextId,
+      contextType: msg.contextType,
+      newAttachmentIds: newAttachmentRefs.map((ref) => ref.attachmentId),
+    },
+    reply,
+    (coalescedItem): Promise<void> => processCoalescedMessage(coalescedItem, deps),
+  )
 }
-
-// update call site
-await handleMessage(chat, msg, reply, auth, deps)
 ```
 
 - [ ] **Step 4: Run the queue/bot tests to verify they pass**
@@ -1148,7 +1266,7 @@ async function executeUpload(
   taskId: string,
   attachmentId: string,
 ): Promise<unknown> {
-  const record = loadAttachmentRecord(contextId, attachmentId)
+  const record = await loadAttachmentRecord(contextId, attachmentId)
 
   if (record === null) {
     return {
@@ -1179,7 +1297,7 @@ async function clearSelf(msg: { user: { id: string } }, reply: ReplyFn, auth: Au
   clearHistory(auth.storageContextId)
   clearSummary(auth.storageContextId)
   clearFacts(auth.storageContextId)
-  clearAttachmentWorkspace(auth.storageContextId)
+  await clearAttachmentWorkspace(auth.storageContextId)
   await reply.text('Conversation history, memory, and attachments cleared.')
   return true
 }
@@ -1190,7 +1308,7 @@ async function clearAll(msg: { user: { id: string } }, reply: ReplyFn): Promise<
     clearHistory(user.platform_user_id)
     clearSummary(user.platform_user_id)
     clearFacts(user.platform_user_id)
-    clearAttachmentWorkspace(user.platform_user_id)
+    await clearAttachmentWorkspace(user.platform_user_id)
   }
   await reply.text(`Cleared history, memory, and attachments for all ${users.length} users.`)
   return true
@@ -1200,7 +1318,7 @@ async function clearUser(msg: { user: { id: string } }, reply: ReplyFn, targetId
   clearHistory(targetId)
   clearSummary(targetId)
   clearFacts(targetId)
-  clearAttachmentWorkspace(targetId)
+  await clearAttachmentWorkspace(targetId)
   await reply.text(`Cleared history, memory, and attachments for user ${targetId}.`)
   return true
 }
@@ -1287,11 +1405,11 @@ import {
 } from './attachments/index.js'
 import type { ProcessMessageInput } from './llm-orchestrator-types.js'
 
-const buildUserTurnMessages = (
+const buildUserTurnMessages = async (
   contextId: string,
   modelName: string,
   input: ProcessMessageInput,
-): { modelMessage: ModelMessage; historyMessage: ModelMessage } => {
+): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
   const activeAttachments = listActiveAttachments(contextId)
   const selected = selectAttachmentsForTurn({
     text: input.text,
@@ -1315,7 +1433,7 @@ const buildUserTurnMessages = (
   > = []
 
   for (const attachment of selected) {
-    const record = loadAttachmentRecord(contextId, attachment.attachmentId)
+    const record = await loadAttachmentRecord(contextId, attachment.attachmentId)
     if (record === null) continue
 
     if ((record.mimeType ?? '').startsWith('image/')) {
@@ -1342,7 +1460,7 @@ export const processMessage = async (
 ): Promise<void> => {
   const baseHistory = getCachedHistory(contextId)
   const mainModel = getConfig(contextId, 'main_model') ?? ''
-  const { modelMessage, historyMessage } = buildUserTurnMessages(contextId, mainModel, input)
+  const { modelMessage, historyMessage } = await buildUserTurnMessages(contextId, mainModel, input)
   const history = [...baseHistory, historyMessage]
   appendHistory(contextId, [historyMessage])
 
@@ -1369,54 +1487,18 @@ Expected: PASS
 
 ```bash
 git add src/llm-orchestrator.ts src/llm-orchestrator-types.ts tests/llm-orchestrator.test.ts
-git commit -m "feat(llm): add multimodal attachment input" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git commit -m "feat(llm): add multimodal attachment input"
 ```
 
 ---
 
-### Task 8: Make Discord capability metadata truthful and run full verification
+### Final verification
 
-**Files:**
-
-- Modify: `src/chat/discord/metadata.ts`
-- Modify: `tests/chat/discord/metadata.test.ts`
-
-- [ ] **Step 1: Write the failing Discord metadata test**
-
-```typescript
-// tests/chat/discord/metadata.test.ts
-test('does not advertise files.receive until Discord maps inbound attachments', () => {
-  expect(discordCapabilities.has('files.receive')).toBe(false)
-  expect(discordCapabilities.has('messages.files')).toBe(true)
-})
-```
-
-- [ ] **Step 2: Run the Discord metadata test to verify it fails**
-
-Run: `bun test tests/chat/discord/metadata.test.ts`
-Expected: FAIL because `discordCapabilities` still contains `files.receive`
-
-- [ ] **Step 3: Remove the false-positive capability from Discord metadata**
-
-```typescript
-// src/chat/discord/metadata.ts
-export const discordCapabilities: ReadonlySet<ChatCapability> = new Set<ChatCapability>([
-  'interactions.callbacks',
-  'messages.buttons',
-  'messages.files',
-  'messages.reply-context',
-  'users.resolve',
-])
-```
-
-- [ ] **Step 4: Run final verification**
-
-Run: `bun run check:full && bun test tests/attachments tests/message-queue tests/commands/clear.test.ts tests/chat/discord/metadata.test.ts tests/chat/telegram/index.test.ts tests/chat/mattermost/index.test.ts`
-Expected: PASS for repo checks, new attachment tests, queue tests, `/clear`, Discord metadata, and existing Telegram/Mattermost ingress guardrails
-
-- [ ] **Step 5: Commit**
+After Task 7 is committed, run the full repo check plus the targeted attachment / queue / clear suites:
 
 ```bash
-git add src/chat/discord/metadata.ts tests/chat/discord/metadata.test.ts
-git commit -m "chore(attachments): align discord capability metadata" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+bun run check:full \
+  && bun test tests/attachments tests/message-queue tests/commands/clear.test.ts tests/chat/telegram/index.test.ts tests/chat/mattermost/index.test.ts
 ```
+
+Expected: PASS for repo checks, new attachment tests, queue tests, `/clear`, and existing Telegram/Mattermost ingress guardrails. (Discord ingress is intentionally untouched — the provider already does not advertise `files.receive`.)
