@@ -4,6 +4,8 @@ import { cacheMessage } from '../../src/message-cache/cache.js'
 import { buildReplyChain } from '../../src/message-cache/index.js'
 import { clearMessageCache, mockLogger, mockMessageCache } from '../utils/test-helpers.js'
 
+const replyToId = (i: number): string | undefined => (i > 0 ? String(i - 1) : undefined)
+
 describe('Message Cache Integration', () => {
   beforeEach(() => {
     mockLogger()
@@ -53,7 +55,7 @@ describe('Message Cache Integration', () => {
         contextId: 'chat-1',
         authorId: 'user-1',
         text: `Message ${i}`,
-        replyToMessageId: i > 0 ? String(i - 1) : undefined,
+        replyToMessageId: replyToId(i),
         timestamp: Date.now(),
       })
     }

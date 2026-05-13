@@ -10,11 +10,11 @@ describe('extractSymbolsFromSource', () => {
     const source = 'export function helper() { return 1 }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/helper.ts',
       moduleKey: 'src/helper',
       maxStoredBodyLines: 10,
@@ -35,11 +35,11 @@ describe('extractSymbolsFromSource', () => {
     const source = 'export default function helper() { return 1 }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/helper.ts',
       moduleKey: 'src/helper',
       maxStoredBodyLines: 10,
@@ -60,11 +60,11 @@ describe('extractSymbolsFromSource', () => {
     const source = 'export abstract class Base { abstract run(): void }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/base.ts',
       moduleKey: 'src/base',
       maxStoredBodyLines: 10,
@@ -85,11 +85,11 @@ describe('extractSymbolsFromSource', () => {
     const source = 'export enum Direction { Up, Down }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/direction.ts',
       moduleKey: 'src/direction',
       maxStoredBodyLines: 10,
@@ -110,11 +110,11 @@ describe('extractSymbolsFromSource', () => {
     const source = 'export default function() { return 1 }'
 
     const tree = parsed.parser.parse(source)
-    if (tree === null) throw new Error('Expected parser to produce a tree')
+    expect(tree).not.toBeNull()
 
     const symbols = extractSymbolsFromSource({
       source,
-      tree,
+      tree: tree!,
       relativeFilePath: 'src/handler.ts',
       moduleKey: 'src/handler',
       maxStoredBodyLines: 10,

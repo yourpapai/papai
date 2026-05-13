@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -117,6 +118,482 @@ const getFetchMethodAt = (index: number): string => {
   const parsed = FetchCallSchema.safeParse(call)
   if (!parsed.success) return ''
   return parsed.data[1].method ?? ''
+}
+
+// --- Module-level multi-step mock helpers ---
+
+const jsonOk = (data: unknown): Promise<Response> =>
+  Promise.resolve(new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+const jsonError = (status: number, data: unknown): Promise<Response> =>
+  Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }))
+
+/** project=1, customFields=2, issue=3, followup=4 */
+const mockCreateWithFollowup = (issueResponse: unknown, followupResponse: Response): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (callCount === 2) return jsonOk([])
+    if (callCount === 3) return jsonOk(issueResponse)
+    return Promise.resolve(followupResponse)
+  })
+}
+
+/** project=1, customFields=2, issue-creation=3 fails with 400 */
+const mockCreateWithBadRequest = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (callCount === 2) return jsonOk([])
+    return jsonError(400, { error: 'Bad request' })
+  })
+}
+
+/** project=1, customFields=2, issue-creation=3 fails with 401 */
+const mockCreateWithAuthError = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    if (callCount === 2) return jsonOk([])
+    return jsonError(401, { error: 'Unauthorized' })
+  })
+}
+
+/** project shortName lookup=1, customFields=2, issue creation=3 */
+const mockCreateWithShortName = (
+  projectResponse: unknown,
+  customFieldsResponse: unknown,
+  issueResponse: unknown,
+): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(projectResponse)
+    if (callCount === 2) return jsonOk(customFieldsResponse)
+    return jsonOk(issueResponse)
+  })
+}
+
+/** project=1, customFields (Date required)=rest */
+const mockCreateWithRequiredDateField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([
+      {
+        id: '82-12',
+        $type: 'DateProjectCustomField',
+        field: { id: '58-4', name: 'Due Date', $type: 'CustomField' },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+    ])
+  })
+}
+
+/** project=1, customFields (malformed dueDate)=rest */
+const mockCreateWithMalformedDueDate = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([])
+  })
+}
+
+/** project=1, customFields (unhandled required fields)=rest */
+const mockCreateWithUnhandledRequiredFields = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([
+      {
+        id: '82-10',
+        $type: 'EnumProjectCustomField',
+        field: { id: '58-2', name: 'Type', $type: 'CustomField' },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+      {
+        id: '82-11',
+        $type: 'SimpleProjectCustomField',
+        field: { id: '58-3', name: 'Priority', $type: 'CustomField' },
+        canBeEmpty: true,
+        isPublic: true,
+      },
+    ])
+  })
+}
+
+/** project=1, customFields (dedicated required fields)=rest */
+const mockCreateWithDedicatedRequiredFields = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([
+      {
+        id: '82-17',
+        $type: 'StateProjectCustomField',
+        field: { id: '58-9', name: 'State', $type: 'CustomField' },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+      {
+        id: '82-18',
+        $type: 'SingleEnumProjectCustomField',
+        field: { id: '58-10', name: 'Priority', $type: 'CustomField' },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+      {
+        id: '82-19',
+        $type: 'SingleUserProjectCustomField',
+        field: { id: '58-11', name: 'Assignee', $type: 'CustomField' },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+    ])
+  })
+}
+
+/** project=1, customFields (unsupported EnumProjectCustomField)=rest */
+const mockCreateWithUnsupportedEnumField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([
+      {
+        id: '82-14',
+        $type: 'EnumProjectCustomField',
+        field: {
+          id: '58-6',
+          name: 'Type',
+          $type: 'CustomField',
+          fieldType: { id: 'enum[1]', presentation: 'enum[1]' },
+        },
+        canBeEmpty: true,
+        isPublic: true,
+      },
+    ])
+  })
+}
+
+/** project=1, customFields (unknown field, empty list)=rest */
+const mockCreateWithUnknownField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([])
+  })
+}
+
+/** project=1, customFields (unsupported required EnumProjectCustomField)=rest */
+const mockCreateWithRequiredUnsupportedField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([
+      {
+        id: '82-15',
+        $type: 'EnumProjectCustomField',
+        field: {
+          id: '58-7',
+          name: 'Type',
+          $type: 'CustomField',
+          fieldType: { id: 'enum[1]', presentation: 'enum[1]' },
+        },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+    ])
+  })
+}
+
+/** project=1, customFields (non-string simple required field)=rest */
+const mockCreateWithNonStringSimpleField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ id: '0-1', shortName: 'TEST' })
+    return jsonOk([
+      {
+        id: '82-16',
+        $type: 'SimpleProjectCustomField',
+        field: {
+          id: '58-8',
+          name: 'Story points',
+          $type: 'CustomField',
+          fieldType: { id: 'integer', presentation: 'integer' },
+        },
+        canBeEmpty: false,
+        isPublic: true,
+      },
+    ])
+  })
+}
+
+/** getYouTrackTask: issue=1, dueDateCustomFields=2+ */
+const mockGetTaskWithDueDateEnrichment = (issueResponse: unknown, dueDateCustomFieldsResponse: unknown = []): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(issueResponse)
+    return jsonOk(dueDateCustomFieldsResponse)
+  })
+}
+
+/** getYouTrackTask: issue=1, enrichment fetch fails=2 */
+const mockGetTaskWithFailedEnrichment = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(makeIssueResponse())
+    return jsonError(500, { error: 'custom field lookup failed' })
+  })
+}
+
+/** getYouTrackTask: issue=1, page1 (100 fields)=2, page2 (dueDateField)=3 */
+const mockGetTaskWithPaginatedCustomFields = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(makeIssueResponse())
+    if (callCount === 2) {
+      return jsonOk(
+        Array.from({ length: 100 }, (_, index) => ({
+          name: `Field ${index + 1}`,
+          value: { text: `value-${index + 1}` },
+        })),
+      )
+    }
+    return jsonOk([{ name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') }])
+  })
+}
+
+/** updateYouTrackTask: issue=1, customFields (simple+text)=2, updated issue=3 */
+const mockUpdateWithCustomFields = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) {
+      return jsonOk(makeIssueResponse({ project: { id: '0-1', shortName: 'TEST' } }))
+    }
+    if (callCount === 2) {
+      return jsonOk([
+        {
+          id: 'pcf-1',
+          $type: 'SimpleProjectCustomField',
+          field: { name: 'Environment', fieldType: { id: 'string', presentation: 'string' } },
+          canBeEmpty: true,
+        },
+        {
+          id: 'pcf-2',
+          $type: 'TextProjectCustomField',
+          field: { name: 'Steps', fieldType: { id: 'text', presentation: 'text' } },
+          canBeEmpty: true,
+        },
+      ])
+    }
+    return jsonOk(makeIssueResponse())
+  })
+}
+
+/** updateYouTrackTask: current issue lookup (unknown field)=1, custom fields=2 */
+const mockUpdateWithUnknownField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
+    return jsonOk([])
+  })
+}
+
+/** updateYouTrackTask: current issue lookup (unsupported field)=1, custom fields=2 */
+const mockUpdateWithUnsupportedField = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
+    return jsonOk([
+      {
+        id: 'pcf-3',
+        $type: 'EnumProjectCustomField',
+        field: { name: 'Type', fieldType: { id: 'enum[1]', presentation: 'enum[1]' } },
+        canBeEmpty: true,
+      },
+    ])
+  })
+}
+
+/** updateYouTrackTask dedicated field rejection: current issue lookup=1, custom fields=2 */
+const mockUpdateDedicatedFieldLookup = (fieldName: string): void => {
+  const fieldTypeMap: Record<string, { $type: string; fieldType: { id: string; presentation: string } }> = {
+    Assignee: {
+      $type: 'UserProjectCustomField',
+      fieldType: { id: 'user[1]', presentation: 'user[1]' },
+    },
+    'Due Date': {
+      $type: 'DateProjectCustomField',
+      fieldType: { id: 'date', presentation: 'date' },
+    },
+    State: {
+      $type: 'SimpleProjectCustomField',
+      fieldType: { id: 'string', presentation: 'string' },
+    },
+    Priority: {
+      $type: 'SimpleProjectCustomField',
+      fieldType: { id: 'string', presentation: 'string' },
+    },
+  }
+  const fieldMeta = fieldTypeMap[fieldName] ?? {
+    $type: 'SimpleProjectCustomField',
+    fieldType: { id: 'string', presentation: 'string' },
+  }
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk({ project: { id: '0-1' } })
+    return jsonOk([
+      {
+        id: `pcf-${fieldName}`,
+        $type: fieldMeta.$type,
+        field: { name: fieldName, fieldType: fieldMeta.fieldType },
+        canBeEmpty: true,
+      },
+    ])
+  })
+}
+
+/** updateYouTrackTask: update with dueDate=1 (returns issue), enrichment=2 */
+const mockUpdateWithDueDateEnrichment = (dueDateEnrichmentResponse: Response): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(makeIssueResponse())
+    return Promise.resolve(dueDateEnrichmentResponse)
+  })
+}
+
+/** updateYouTrackTask: update with dueDate=1 (returns issue), enrichment fails=2 */
+const mockUpdateWithFailedEnrichment = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(makeIssueResponse())
+    return jsonError(500, { error: 'custom field lookup failed' })
+  })
+}
+
+/** updateYouTrackTask: customFields for destination project=1, updated issue=2 */
+const mockUpdateValidateDestinationProject = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) {
+      return jsonOk([
+        {
+          id: 'pcf-2',
+          $type: 'SimpleProjectCustomField',
+          field: { name: 'Environment', fieldType: { id: 'string', presentation: 'string' } },
+          canBeEmpty: true,
+        },
+      ])
+    }
+    return jsonOk(makeIssueResponse({ project: { id: '0-2', shortName: 'DEST' } }))
+  })
+}
+
+/** listYouTrackTasks: project=1, issues=2 */
+const mockListWithProject = (projectResponse: unknown, issuesResponse: unknown): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(projectResponse)
+    return jsonOk(issuesResponse)
+  })
+}
+
+/** listYouTrackTasks: project=1, issues with dueDate=2, empty=3 */
+const mockListWithDueDateInline = (projectResponse: unknown, issuesResponse: unknown): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(projectResponse)
+    if (callCount === 2) return jsonOk(issuesResponse)
+    return jsonOk([])
+  })
+}
+
+/** listYouTrackTasks autopaginate: project=1, pages 2-3 (100 items each)=2-3, last page (50 items)=4 */
+const mockListWithAutoPagination = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) {
+      return jsonOk({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' })
+    }
+    if (callCount === 2 || callCount === 3) {
+      const pageIndex = callCount - 2
+      const items = Array.from({ length: 100 }, (_, i) =>
+        makeIssueListResponse({
+          id: `2-${i + pageIndex * 100}`,
+          idReadable: `DEMO-${i + pageIndex * 100 + 1}`,
+          summary: `Task ${i + pageIndex * 100 + 1}`,
+        }),
+      )
+      return jsonOk(items)
+    }
+    if (callCount === 4) {
+      const items = Array.from({ length: 50 }, (_, i) =>
+        makeIssueListResponse({
+          id: `2-${i + 200}`,
+          idReadable: `DEMO-${i + 201}`,
+          summary: `Task ${i + 201}`,
+        }),
+      )
+      return jsonOk(items)
+    }
+    return jsonOk([])
+  })
+}
+
+/** listYouTrackTasks maxPages: project=1, always returns 100 items */
+const mockListWithMaxPages = (): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) {
+      return jsonOk({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' })
+    }
+    const pageIndex = callCount - 2
+    const items = Array.from({ length: 100 }, (_, i) =>
+      makeIssueListResponse({
+        id: `2-${i + pageIndex * 100}`,
+        idReadable: `DEMO-${i + pageIndex * 100 + 1}`,
+        summary: `Task ${i + pageIndex * 100 + 1}`,
+      }),
+    )
+    return jsonOk(items)
+  })
+}
+
+/** searchYouTrackTasks with projectId: project=1, issues=2 */
+const mockSearchWithProject = (projectResponse: unknown, issuesResponse: unknown): void => {
+  let callCount = 0
+  installFetchMock(() => {
+    callCount++
+    if (callCount === 1) return jsonOk(projectResponse)
+    return jsonOk(issuesResponse)
+  })
 }
 
 // --- Fixtures ---
@@ -262,41 +739,10 @@ describe('createYouTrackTask', () => {
   })
 
   test('returns dueDate after create using follow-up custom fields fetch', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(JSON.stringify([]), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 3) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse()), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify([{ name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') }]), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockCreateWithFollowup(
+      makeIssueResponse(),
+      await jsonOk([{ name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') }]),
+    )
 
     const task = await createYouTrackTask(config, {
       projectId: '0-1',
@@ -308,41 +754,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('preserves create dueDate when enrichment fetch fails', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(JSON.stringify([]), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 3) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse()), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify({ error: 'custom field lookup failed' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockCreateWithFollowup(makeIssueResponse(), await jsonError(500, { error: 'custom field lookup failed' }))
 
     const task = await createYouTrackTask(config, {
       projectId: '0-1',
@@ -372,32 +784,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('throws workflow validation error when due date is required but omitted', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: '82-12',
-              $type: 'DateProjectCustomField',
-              field: { id: '58-4', name: 'Due Date', $type: 'CustomField' },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithRequiredDateField()
 
     await expect(createYouTrackTask(config, { projectId: 'TEST', title: 'Test task' })).rejects.toMatchObject({
       appError: {
@@ -408,21 +795,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('rejects malformed due date before sending create request', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockCreateWithMalformedDueDate()
 
     await expect(
       createYouTrackTask(config, { projectId: '0-1', title: 'Test task', dueDate: 'not-a-date' }),
@@ -430,7 +803,7 @@ describe('createYouTrackTask', () => {
       appError: { code: 'validation-failed', field: 'dueDate' },
     })
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('does not send customFields when none provided', async () => {
@@ -456,33 +829,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('throws YouTrackClassifiedError on API error', async () => {
-    // For error tests, project lookup and custom fields succeed, but issue creation fails
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        // Project lookup succeeds
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        // Custom fields lookup succeeds
-        return Promise.resolve(
-          new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-      // Issue creation fails
-      return Promise.resolve(
-        new Response(JSON.stringify({ error: 'Bad request' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockCreateWithBadRequest()
 
     await expect(createYouTrackTask(config, { projectId: '0-1', title: 'Test task' })).rejects.toBeInstanceOf(
       YouTrackClassifiedError,
@@ -490,39 +837,13 @@ describe('createYouTrackTask', () => {
   })
 
   test('throws YouTrackClassifiedError on auth error', async () => {
-    // For error tests, project lookup and custom fields succeed, but issue creation fails with 401
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        // Project lookup succeeds
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-      // Issue creation fails with auth error
-      return Promise.resolve(
-        new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockCreateWithAuthError()
 
     try {
       await createYouTrackTask(config, { projectId: '0-1', title: 'Test task' })
       expect.unreachable('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) throw error
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('auth-failed')
     }
   })
@@ -531,33 +852,11 @@ describe('createYouTrackTask', () => {
     // First call: get project by shortName to resolve internal ID
     // Second call: fetch project custom fields using the resolved internal ID
     // Third call: create issue with internal ID
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        // Project lookup by shortName returns internal ID
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'AUDIT', name: 'Audit Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-      // Issue creation response
-      return Promise.resolve(
-        new Response(
-          JSON.stringify(
-            makeIssueResponse({ id: '2-1', idReadable: 'AUDIT-1', project: { id: '0-1', shortName: 'AUDIT' } }),
-          ),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithShortName(
+      { id: '0-1', shortName: 'AUDIT', name: 'Audit Project' },
+      [],
+      makeIssueResponse({ id: '2-1', idReadable: 'AUDIT-1', project: { id: '0-1', shortName: 'AUDIT' } }),
+    )
 
     // Pass shortName "AUDIT" instead of internal ID
     const task = await createYouTrackTask(config, {
@@ -570,16 +869,14 @@ describe('createYouTrackTask', () => {
 
     // Verify first call was to resolve project
     const firstParsed = FetchCallSchema.safeParse(fetchMock.mock.calls[0])
-    expect(firstParsed.success).toBe(true)
-    if (!firstParsed.success) return
+    assert(firstParsed.success)
     const firstUrl = new URL(firstParsed.data[0])
     expect(firstUrl.pathname).toBe('/api/admin/projects/AUDIT')
     expect(firstParsed.data[1].method).toBe('GET')
 
     // Verify second call fetched custom fields with the resolved internal ID
     const secondParsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(secondParsed.success).toBe(true)
-    if (!secondParsed.success) return
+    assert(secondParsed.success)
     const secondUrl = new URL(secondParsed.data[0])
     expect(secondUrl.pathname).toBe('/api/admin/projects/0-1/customFields')
     expect(secondUrl.searchParams.get('fields')).toContain('fieldType(id,presentation)')
@@ -587,108 +884,34 @@ describe('createYouTrackTask', () => {
 
     // Verify third call created issue with internal ID
     const thirdParsed = FetchCallSchema.safeParse(fetchMock.mock.calls[2])
-    expect(thirdParsed.success).toBe(true)
-    if (!thirdParsed.success) return
+    assert(thirdParsed.success)
     const thirdUrl = new URL(thirdParsed.data[0])
     expect(thirdUrl.pathname).toBe('/api/issues')
     expect(thirdParsed.data[1].method).toBe('POST')
 
-    const responseBody: string = thirdParsed.data[1].body ?? '{}'
-    const parsedBody: unknown = JSON.parse(responseBody)
+    const { body: thirdBody } = thirdParsed.data[1]
+    assert(thirdBody !== undefined)
+    const parsedBody: unknown = JSON.parse(thirdBody)
     expect(parsedBody).toMatchObject({ project: { id: '0-1' } })
   })
 
   test('throws workflow validation error when project has unhandled required custom fields', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: '82-10',
-              $type: 'EnumProjectCustomField',
-              field: { id: '58-2', name: 'Type', $type: 'CustomField' },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-            {
-              id: '82-11',
-              $type: 'SimpleProjectCustomField',
-              field: { id: '58-3', name: 'Priority', $type: 'CustomField' },
-              canBeEmpty: true,
-              isPublic: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithUnhandledRequiredFields()
 
     try {
       await createYouTrackTask(config, { projectId: 'TEST', title: 'Test task' })
       expect.unreachable('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) throw error
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('workflow-validation-failed')
-      if (error.appError.code === 'workflow-validation-failed') {
-        expect(error.appError.requiredFields).toEqual([{ name: 'Type' }])
-      }
+      assert(error.appError.code === 'workflow-validation-failed')
+      expect(error.appError.requiredFields).toEqual([{ name: 'Type' }])
       expect(error.message).toContain('Type')
     }
   })
 
   test('treats omitted dedicated required fields as unhandled workflow requirements', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: '82-17',
-              $type: 'StateProjectCustomField',
-              field: { id: '58-9', name: 'State', $type: 'CustomField' },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-            {
-              id: '82-18',
-              $type: 'SingleEnumProjectCustomField',
-              field: { id: '58-10', name: 'Priority', $type: 'CustomField' },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-            {
-              id: '82-19',
-              $type: 'SingleUserProjectCustomField',
-              field: { id: '58-11', name: 'Assignee', $type: 'CustomField' },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithDedicatedRequiredFields()
 
     await expect(createYouTrackTask(config, { projectId: 'TEST', title: 'Test task' })).rejects.toMatchObject({
       appError: {
@@ -697,7 +920,7 @@ describe('createYouTrackTask', () => {
       },
     })
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('allows required custom fields when they are explicitly provided', async () => {
@@ -795,38 +1018,7 @@ describe('createYouTrackTask', () => {
   })
 
   test('rejects explicitly supplied unsupported custom field types', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: '82-14',
-              $type: 'EnumProjectCustomField',
-              field: {
-                id: '58-6',
-                name: 'Type',
-                $type: 'CustomField',
-                fieldType: { id: 'enum[1]', presentation: 'enum[1]' },
-              },
-              canBeEmpty: true,
-              isPublic: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithUnsupportedEnumField()
 
     await expect(
       createYouTrackTask(config, {
@@ -841,26 +1033,11 @@ describe('createYouTrackTask', () => {
       },
     })
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('rejects unknown custom field names instead of ignoring them', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockCreateWithUnknownField()
 
     try {
       await createYouTrackTask(config, {
@@ -870,50 +1047,18 @@ describe('createYouTrackTask', () => {
       })
       throw new Error('Expected createYouTrackTask to reject')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) return
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('validation-failed')
-      if (error.appError.code !== 'validation-failed') return
+      assert(error.appError.code === 'validation-failed')
       expect(error.appError.field).toBe('customFields')
       expect(error.appError.reason).toContain('Unknown field')
     }
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('rejects supplied required custom field when its project type is unsupported', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: '82-15',
-              $type: 'EnumProjectCustomField',
-              field: {
-                id: '58-7',
-                name: 'Type',
-                $type: 'CustomField',
-                fieldType: { id: 'enum[1]', presentation: 'enum[1]' },
-              },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithRequiredUnsupportedField()
 
     try {
       await createYouTrackTask(config, {
@@ -923,50 +1068,18 @@ describe('createYouTrackTask', () => {
       })
       throw new Error('Expected createYouTrackTask to reject')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) return
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('validation-failed')
-      if (error.appError.code !== 'validation-failed') return
+      assert(error.appError.code === 'validation-failed')
       expect(error.appError.field).toBe('customFields')
       expect(error.appError.reason).toContain('Type')
     }
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('rejects supplied required simple project custom field when it is non-string', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '0-1', shortName: 'TEST' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: '82-16',
-              $type: 'SimpleProjectCustomField',
-              field: {
-                id: '58-8',
-                name: 'Story points',
-                $type: 'CustomField',
-                fieldType: { id: 'integer', presentation: 'integer' },
-              },
-              canBeEmpty: false,
-              isPublic: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockCreateWithNonStringSimpleField()
 
     try {
       await createYouTrackTask(config, {
@@ -976,15 +1089,14 @@ describe('createYouTrackTask', () => {
       })
       throw new Error('Expected createYouTrackTask to reject')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) return
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('validation-failed')
-      if (error.appError.code !== 'validation-failed') return
+      assert(error.appError.code === 'validation-failed')
       expect(error.appError.field).toBe('customFields')
       expect(error.appError.reason).toContain('Story points')
     }
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 })
 
@@ -997,27 +1109,8 @@ describe('getYouTrackTask', () => {
     restoreFetch()
   })
 
-  const mockGetTaskResponse = (issueResponse: unknown, dueDateCustomFieldsResponse: unknown = []): void => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify(issueResponse), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify(dueDateCustomFieldsResponse), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
-  }
-
   test('retrieves task by id', async () => {
-    mockGetTaskResponse(makeIssueResponse())
+    mockGetTaskWithDueDateEnrichment(makeIssueResponse())
 
     const task = await getYouTrackTask(config, 'TEST-1')
 
@@ -1028,21 +1121,20 @@ describe('getYouTrackTask', () => {
   })
 
   test('uses GET method with task id in path', async () => {
-    mockGetTaskResponse(makeIssueResponse())
+    mockGetTaskWithDueDateEnrichment(makeIssueResponse())
 
     await getYouTrackTask(config, 'TEST-1')
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[0])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
 
     const url = new URL(parsed.data[0])
     expect(url.pathname).toBe('/api/issues/TEST-1')
-    expect(parsed.data[1].method ?? 'GET').toBe('GET')
+    expect(parsed.data[1].method).toBe('GET')
   })
 
   test('maps labels from tags', async () => {
-    mockGetTaskResponse(
+    mockGetTaskWithDueDateEnrichment(
       makeIssueResponse({
         tags: [
           { id: 'tag-1', name: 'bug', color: { id: 'c-1', background: '#ff0000' } },
@@ -1060,7 +1152,7 @@ describe('getYouTrackTask', () => {
   })
 
   test('maps relations from links', async () => {
-    mockGetTaskResponse(
+    mockGetTaskWithDueDateEnrichment(
       makeIssueResponse({
         links: [
           {
@@ -1079,7 +1171,7 @@ describe('getYouTrackTask', () => {
   })
 
   test('maps due date custom field to normalized dueDate', async () => {
-    mockGetTaskResponse(
+    mockGetTaskWithDueDateEnrichment(
       makeIssueResponse({
         customFields: [
           {
@@ -1098,8 +1190,7 @@ describe('getYouTrackTask', () => {
     expect(task.dueDate).toBe('2026-03-25')
 
     const dueDateFetch = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(dueDateFetch.success).toBe(true)
-    if (!dueDateFetch.success) return
+    assert(dueDateFetch.success)
 
     const dueDateUrl = new URL(dueDateFetch.data[0])
     expect(dueDateUrl.pathname).toBe('/api/issues/TEST-1/customFields')
@@ -1107,25 +1198,7 @@ describe('getYouTrackTask', () => {
   })
 
   test('degrades gracefully when get dueDate enrichment fetch fails', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse()), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify({ error: 'custom field lookup failed' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockGetTaskWithFailedEnrichment()
 
     const task = await getYouTrackTask(config, 'TEST-1')
 
@@ -1134,7 +1207,7 @@ describe('getYouTrackTask', () => {
   })
 
   test('preserves existing dueDate when enrichment payload omits the field', async () => {
-    mockGetTaskResponse(
+    mockGetTaskWithDueDateEnrichment(
       makeIssueResponse({
         customFields: [
           {
@@ -1155,7 +1228,7 @@ describe('getYouTrackTask', () => {
   })
 
   test('reads due date from mixed-type custom field responses', async () => {
-    mockGetTaskResponse(makeIssueResponse(), [
+    mockGetTaskWithDueDateEnrichment(makeIssueResponse(), [
       { name: 'Priority', value: { name: 'Normal' } },
       { name: 'Assignee', value: { login: 'alice' } },
       { name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
@@ -1167,47 +1240,14 @@ describe('getYouTrackTask', () => {
   })
 
   test('paginates custom field fetch until due date is found', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse()), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify(
-              Array.from({ length: 100 }, (_, index) => ({
-                name: `Field ${index + 1}`,
-                value: { text: `value-${index + 1}` },
-              })),
-            ),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify([{ name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') }]), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockGetTaskWithPaginatedCustomFields()
 
     const task = await getYouTrackTask(config, 'TEST-1')
 
     expect(task.dueDate).toBe('2026-03-25')
 
     const secondPageFetch = FetchCallSchema.safeParse(fetchMock.mock.calls[2])
-    expect(secondPageFetch.success).toBe(true)
-    if (!secondPageFetch.success) return
+    assert(secondPageFetch.success)
 
     const secondPageUrl = new URL(secondPageFetch.data[0])
     expect(secondPageUrl.pathname).toBe('/api/issues/TEST-1/customFields')
@@ -1245,8 +1285,7 @@ describe('getYouTrackTask', () => {
       await getYouTrackTask(config, 'NONEXISTENT')
       expect.unreachable('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) throw error
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('task-not-found')
     }
   })
@@ -1322,45 +1361,7 @@ describe('updateYouTrackTask', () => {
   })
 
   test('sends simple and text custom fields on update', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse({ project: { id: '0-1', shortName: 'TEST' } })), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: 'pcf-1',
-                $type: 'SimpleProjectCustomField',
-                field: { name: 'Environment', fieldType: { id: 'string', presentation: 'string' } },
-                canBeEmpty: true,
-              },
-              {
-                id: 'pcf-2',
-                $type: 'TextProjectCustomField',
-                field: { name: 'Steps', fieldType: { id: 'text', presentation: 'text' } },
-                canBeEmpty: true,
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify(makeIssueResponse()), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockUpdateWithCustomFields()
 
     await updateYouTrackTask(config, 'TEST-1', {
       customFields: [
@@ -1382,22 +1383,7 @@ describe('updateYouTrackTask', () => {
   })
 
   test('rejects unknown custom field names on update before sending the write request', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ project: { id: '0-1' } }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockUpdateWithUnknownField()
 
     await expect(
       updateYouTrackTask(config, 'TEST-1', {
@@ -1410,36 +1396,11 @@ describe('updateYouTrackTask', () => {
       },
     })
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('rejects unsupported project custom field types on update before sending the write request', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ project: { id: '0-1' } }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            {
-              id: 'pcf-3',
-              $type: 'EnumProjectCustomField',
-              field: { name: 'Type', fieldType: { id: 'enum[1]', presentation: 'enum[1]' } },
-              canBeEmpty: true,
-            },
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockUpdateWithUnsupportedField()
 
     await expect(
       updateYouTrackTask(config, 'TEST-1', {
@@ -1452,52 +1413,14 @@ describe('updateYouTrackTask', () => {
       },
     })
 
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('rejects writes to dedicated fields through customFields on update', async () => {
     const dedicatedFields = ['State', 'Priority', 'Assignee', 'Due Date'] as const
 
     for (const fieldName of dedicatedFields) {
-      let callCount = 0
-      installFetchMock(() => {
-        callCount++
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ project: { id: '0-1' } }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          )
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: `pcf-${fieldName}`,
-                $type:
-                  fieldName === 'Assignee'
-                    ? 'UserProjectCustomField'
-                    : fieldName === 'Due Date'
-                      ? 'DateProjectCustomField'
-                      : 'SimpleProjectCustomField',
-                field: {
-                  name: fieldName,
-                  fieldType:
-                    fieldName === 'Due Date'
-                      ? { id: 'date', presentation: 'date' }
-                      : fieldName === 'Assignee'
-                        ? { id: 'user[1]', presentation: 'user[1]' }
-                        : { id: 'string', presentation: 'string' },
-                },
-                canBeEmpty: true,
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      })
+      mockUpdateDedicatedFieldLookup(fieldName)
 
       await expect(
         updateYouTrackTask(config, 'TEST-1', {
@@ -1510,37 +1433,12 @@ describe('updateYouTrackTask', () => {
         },
       })
 
-      expect(callCount).toBe(2)
+      expect(fetchMock.mock.calls).toHaveLength(2)
     }
   })
 
   test('validates custom fields against the destination project when moving an issue', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: 'pcf-2',
-                $type: 'SimpleProjectCustomField',
-                field: { name: 'Environment', fieldType: { id: 'string', presentation: 'string' } },
-                canBeEmpty: true,
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify(makeIssueResponse({ project: { id: '0-2', shortName: 'DEST' } })), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockUpdateValidateDestinationProject()
 
     await updateYouTrackTask(config, 'TEST-1', {
       projectId: '0-2',
@@ -1560,25 +1458,7 @@ describe('updateYouTrackTask', () => {
   })
 
   test('returns dueDate after update using follow-up custom fields fetch', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse()), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify([{ name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') }]), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockUpdateWithDueDateEnrichment(await jsonOk([{ name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') }]))
 
     const task = await updateYouTrackTask(config, 'TEST-1', {
       dueDate: '2026-03-25',
@@ -1588,25 +1468,7 @@ describe('updateYouTrackTask', () => {
   })
 
   test('preserves update dueDate when enrichment fetch fails', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify(makeIssueResponse()), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify({ error: 'custom field lookup failed' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-    })
+    mockUpdateWithFailedEnrichment()
 
     const task = await updateYouTrackTask(config, 'TEST-1', {
       dueDate: '2026-03-25T23:45:00+02:00',
@@ -1682,29 +1544,10 @@ describe('listYouTrackTasks', () => {
   })
 
   test('returns mapped list items', async () => {
-    // First call: get project shortName
-    // Second call: list issues
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'TEST', name: 'Test Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(
-          JSON.stringify([
-            makeIssueListResponse(),
-            makeIssueListResponse({ id: '2-2', idReadable: 'TEST-2', summary: 'Second task' }),
-          ]),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'TEST', name: 'Test Project' }, [
+      makeIssueListResponse(),
+      makeIssueListResponse({ id: '2-2', idReadable: 'TEST-2', summary: 'Second task' }),
+    ])
 
     const items = await listYouTrackTasks(config, '39-883')
 
@@ -1719,28 +1562,13 @@ describe('listYouTrackTasks', () => {
   })
 
   test('fetches project shortName and uses it in query', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883')
 
     // Get the second call (issues search)
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.pathname).toBe('/api/issues')
@@ -1750,21 +1578,7 @@ describe('listYouTrackTasks', () => {
   })
 
   test('returns empty array when no issues', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'EMPTY', name: 'Empty Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'EMPTY', name: 'Empty Project' }, [])
 
     const items = await listYouTrackTasks(config, '39-883')
 
@@ -1772,104 +1586,60 @@ describe('listYouTrackTasks', () => {
   })
 
   test('maps due date on list results when provided inline', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: '2-1',
-                idReadable: 'DEMO-1',
-                numberInProject: 1,
-                summary: 'Task with due date',
-                resolved: null,
-                created: 1718400000000,
-                project: { id: '39-883', shortName: 'DEMO' },
-                customFields: [
-                  { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
-                  { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
-                ],
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithDueDateInline({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [
+      {
+        id: '2-1',
+        idReadable: 'DEMO-1',
+        numberInProject: 1,
+        summary: 'Task with due date',
+        resolved: null,
+        created: 1718400000000,
+        project: { id: '39-883', shortName: 'DEMO' },
+        customFields: [
+          { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
+          { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
+        ],
+      },
+    ])
 
     const items = await listYouTrackTasks(config, '39-883')
 
     expect(items).toHaveLength(1)
     expect(items[0]).toHaveProperty('dueDate', '2026-03-25')
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
   })
 
   test('requests only selected custom fields inline for list results', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      if (callCount === 2) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: '2-1',
-                idReadable: 'DEMO-1',
-                numberInProject: 1,
-                summary: 'Task one',
-                resolved: null,
-                created: 1718400000000,
-                project: { id: '39-883', shortName: 'DEMO' },
-                customFields: [
-                  { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
-                  {
-                    $type: 'SingleEnumIssueCustomField',
-                    name: 'Priority',
-                    value: { $type: 'EnumBundleElement', name: 'Normal' },
-                  },
-                  { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
-                ],
-              },
-              {
-                id: '2-2',
-                idReadable: 'DEMO-2',
-                numberInProject: 2,
-                summary: 'Task two',
-                resolved: null,
-                created: 1718400000000,
-                project: { id: '39-883', shortName: 'DEMO' },
-                customFields: [{ $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } }],
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithDueDateInline({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [
+      {
+        id: '2-1',
+        idReadable: 'DEMO-1',
+        numberInProject: 1,
+        summary: 'Task one',
+        resolved: null,
+        created: 1718400000000,
+        project: { id: '39-883', shortName: 'DEMO' },
+        customFields: [
+          { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
+          {
+            $type: 'SingleEnumIssueCustomField',
+            name: 'Priority',
+            value: { $type: 'EnumBundleElement', name: 'Normal' },
+          },
+          { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
+        ],
+      },
+      {
+        id: '2-2',
+        idReadable: 'DEMO-2',
+        numberInProject: 2,
+        summary: 'Task two',
+        resolved: null,
+        created: 1718400000000,
+        project: { id: '39-883', shortName: 'DEMO' },
+        customFields: [{ $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } }],
+      },
+    ])
 
     const items = await listYouTrackTasks(config, '39-883')
 
@@ -1877,11 +1647,10 @@ describe('listYouTrackTasks', () => {
     expect(items[0]).toHaveProperty('dueDate', '2026-03-25')
     expect(items[1]).toHaveProperty('dueDate', undefined)
     expect(items[0]).toHaveProperty('priority', 'Normal')
-    expect(callCount).toBe(2)
+    expect(fetchMock.mock.calls).toHaveLength(2)
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
 
     const [url] = parsed.data
     const urlObj = new URL(url)
@@ -1895,223 +1664,102 @@ describe('listYouTrackTasks', () => {
       await listYouTrackTasks(config, 'proj-1')
       expect.unreachable('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) throw error
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('auth-failed')
     }
   })
 
   test('includes status filter in query when provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { status: 'In Progress' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} State: {In Progress}')
   })
 
   test('includes priority filter in query when provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { priority: 'high' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} Priority: {high}')
   })
 
   test('includes assignee filter in query when provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { assigneeId: 'john.doe' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} Assignee: {john.doe}')
   })
 
   test('includes due date range filters in query when provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { dueAfter: '2024-01-01', dueBefore: '2024-12-31' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} Due date: >2024-01-01 Due date: <2024-12-31')
   })
 
   test('uses exclusive dueAfter filter when only lower bound is provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { dueAfter: '2024-01-01' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} Due date: >2024-01-01')
   })
 
   test('uses exclusive dueBefore filter when only upper bound is provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { dueBefore: '2024-12-31' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} Due date: <2024-12-31')
   })
 
   test('uses limit parameter for $top', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { limit: 25 })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('$top')).toBe('25')
   })
 
   test('uses page parameter with limit for pagination', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { limit: 25, page: 3 })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('$top')).toBe('25')
@@ -2119,48 +1767,19 @@ describe('listYouTrackTasks', () => {
   })
 
   test('includes sort parameters in query when provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', { sortBy: 'priority', sortOrder: 'desc' })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {DEMO} sort by: priority desc')
   })
 
   test('combines multiple filters in query', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithProject({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }, [])
 
     await listYouTrackTasks(config, '39-883', {
       status: 'Open',
@@ -2170,8 +1789,7 @@ describe('listYouTrackTasks', () => {
     })
 
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe(
@@ -2181,48 +1799,7 @@ describe('listYouTrackTasks', () => {
   })
 
   test('automatically paginates to fetch all tasks when more than 100 exist', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      // First call: get project shortName
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      // Pages 1-3: return 100 items each (simulating large project)
-      if (callCount === 2 || callCount === 3) {
-        const items = Array.from({ length: 100 }, (_, i) =>
-          makeIssueListResponse({
-            id: `2-${i + (callCount - 2) * 100}`,
-            idReadable: `DEMO-${i + (callCount - 2) * 100 + 1}`,
-            summary: `Task ${i + (callCount - 2) * 100 + 1}`,
-          }),
-        )
-        return Promise.resolve(
-          new Response(JSON.stringify(items), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-      // Page 4: return 50 items (last page)
-      if (callCount === 4) {
-        const items = Array.from({ length: 50 }, (_, i) =>
-          makeIssueListResponse({
-            id: `2-${i + 200}`,
-            idReadable: `DEMO-${i + 201}`,
-            summary: `Task ${i + 201}`,
-          }),
-        )
-        return Promise.resolve(
-          new Response(JSON.stringify(items), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithAutoPagination()
 
     const items = await listYouTrackTasks(config, '39-883')
 
@@ -2233,40 +1810,18 @@ describe('listYouTrackTasks', () => {
     expect(items[199]!.id).toBe('DEMO-200')
     expect(items[249]!.id).toBe('DEMO-250')
     // 1 project + 3 list pages
-    expect(callCount).toBe(4)
+    expect(fetchMock.mock.calls).toHaveLength(4)
   })
 
   test('respects maxPages limit to prevent excessive API calls', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'DEMO', name: 'Demo Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      // Always return full pages to simulate infinite data
-      const items = Array.from({ length: 100 }, (_, i) =>
-        makeIssueListResponse({
-          id: `2-${i + (callCount - 2) * 100}`,
-          idReadable: `DEMO-${i + (callCount - 2) * 100 + 1}`,
-          summary: `Task ${i + (callCount - 2) * 100 + 1}`,
-        }),
-      )
-      return Promise.resolve(
-        new Response(JSON.stringify(items), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockListWithMaxPages()
 
     const items = await listYouTrackTasks(config, '39-883')
 
     // Should stop at maxPages (10 pages = 1000 items)
     expect(items).toHaveLength(1000)
     // 1 project + 10 list pages
-    expect(callCount).toBe(11)
+    expect(fetchMock.mock.calls).toHaveLength(11)
   })
 })
 
@@ -2294,28 +1849,13 @@ describe('searchYouTrackTasks', () => {
   })
 
   test('prepends project filter when projectId is provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'MY-PROJ', name: 'My Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockSearchWithProject({ id: '39-883', shortName: 'MY-PROJ', name: 'My Project' }, [])
 
     await searchYouTrackTasks(config, { query: 'bug', projectId: '39-883' })
 
     // Get the second call (issues search)
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     expect(urlObj.searchParams.get('query')).toBe('project: {MY-PROJ} bug')
@@ -2374,8 +1914,7 @@ describe('searchYouTrackTasks', () => {
       await searchYouTrackTasks(config, { query: 'test' })
       expect.unreachable('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) throw error
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('rate-limited')
     }
   })
@@ -2398,28 +1937,13 @@ describe('searchYouTrackTasks', () => {
   })
 
   test('prepends both assignee and project filters when both are provided', async () => {
-    let callCount = 0
-    installFetchMock(() => {
-      callCount++
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: '39-883', shortName: 'MY-PROJ', name: 'My Project' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-    })
+    mockSearchWithProject({ id: '39-883', shortName: 'MY-PROJ', name: 'My Project' }, [])
 
     await searchYouTrackTasks(config, { query: 'bug', projectId: '39-883', assigneeId: 'john.doe' })
 
     // Get the second call (issues search)
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) return
+    assert(parsed.success)
     const [url] = parsed.data
     const urlObj = new URL(url)
     // Assignee filter comes first (prepended last), then project filter
@@ -2461,8 +1985,7 @@ describe('deleteYouTrackTask', () => {
       await deleteYouTrackTask(config, 'NONEXISTENT')
       expect.unreachable('Should have thrown')
     } catch (error) {
-      expect(error).toBeInstanceOf(YouTrackClassifiedError)
-      if (!(error instanceof YouTrackClassifiedError)) throw error
+      assert(error instanceof YouTrackClassifiedError)
       expect(error.appError.code).toBe('task-not-found')
     }
   })

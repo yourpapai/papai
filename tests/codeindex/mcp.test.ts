@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createCodeindexServer } from '../../codeindex/src/mcp/server.js'
+import { createCodeindexServer } from '../../codeindex/src/mcp.js'
 
 describe('createCodeindexServer', () => {
   test('registers the Tier 1 MCP tools', () => {
@@ -19,7 +19,6 @@ describe('createCodeindexServer', () => {
           elapsedMs: 0,
         }),
     })
-
     expect(server).toBeDefined()
   })
 })

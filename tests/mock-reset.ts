@@ -16,6 +16,7 @@ import * as _ai from 'ai'
 
 // Capture real module exports BEFORE any test file loads.
 // Spread into plain objects to snapshot current values.
+import { _createInMemoryBlobStore, _setBlobStore } from '../src/attachments/blob-store.js'
 import * as _interactionRouter from '../src/chat/interaction-router.js'
 import { _resetDrizzleDb } from '../src/db/drizzle.js'
 import * as _logger from '../src/logger.js'
@@ -33,6 +34,10 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
 
 beforeEach(() => {
   _resetDrizzleDb()
+  _setBlobStore(_createInMemoryBlobStore())
+  process.env['S3_BUCKET'] = 'test-bucket'
+  process.env['S3_ACCESS_KEY_ID'] = 'test-key'
+  process.env['S3_SECRET_ACCESS_KEY'] = 'test-secret'
   for (const [path, exports] of originals) {
     void mock.module(path, () => ({ ...exports }))
   }
@@ -40,4 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore()
+  delete process.env['S3_BUCKET']
+  delete process.env['S3_ACCESS_KEY_ID']
+  delete process.env['S3_SECRET_ACCESS_KEY']
 })

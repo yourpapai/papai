@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { createTrackedLoggerMock, type LogCall, type TrackedLoggerMock } from './utils/logger-mock.js'
 import { setupTestDb } from './utils/test-helpers.js'
@@ -55,9 +56,8 @@ describe('authorized groups', () => {
     const groups = listAuthorizedGroups()
     const [firstGroup, secondGroup] = groups
 
-    if (firstGroup === undefined || secondGroup === undefined) {
-      throw new Error('expected two authorized groups')
-    }
+    assert(firstGroup !== undefined, 'expected firstGroup to be defined')
+    assert(secondGroup !== undefined, 'expected secondGroup to be defined')
 
     expect(groups).toHaveLength(2)
     expect(firstGroup.group_id).toBe('group-2')
@@ -80,9 +80,7 @@ describe('authorized groups', () => {
     const groups = listAuthorizedGroups()
     const [firstGroup] = groups
 
-    if (firstGroup === undefined) {
-      throw new Error('expected one authorized group')
-    }
+    assert(firstGroup !== undefined, 'expected one authorized group')
 
     expect(groups).toHaveLength(1)
     expect(firstGroup.group_id).toBe('group-1')

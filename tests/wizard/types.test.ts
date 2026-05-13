@@ -7,6 +7,11 @@ import { describe, expect, test } from 'bun:test'
 import type { ConfigKey } from '../../src/types/config.js'
 import type { WizardSession, WizardData, WizardStep, WizardProcessResult } from '../../src/wizard/types.js'
 
+function validateApiKey(value: string): Promise<string | null> {
+  if (value.startsWith('sk-')) return Promise.resolve(null)
+  return Promise.resolve('Invalid API key format')
+}
+
 describe('Wizard Types', () => {
   test('WizardSession interface structure', () => {
     const session: WizardSession = {
@@ -47,9 +52,7 @@ describe('Wizard Types', () => {
       id: 'step-1',
       key: 'llm_apikey',
       prompt: 'Please enter your LLM API key:',
-      validate: (value: string) => {
-        return Promise.resolve(value.startsWith('sk-') ? null : 'Invalid API key format')
-      },
+      validate: validateApiKey,
       isOptional: false,
     }
 

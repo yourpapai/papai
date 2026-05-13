@@ -30,6 +30,16 @@ const parseExportNames = (value: string): readonly string[] => {
   return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string') ? parsed : []
 }
 
+const buildSnippet = (bodyText: string, signatureText: string, qualifiedName: string): string => {
+  if (bodyText !== '') {
+    return bodyText.split('\n').slice(0, 3).join('\n')
+  }
+  if (signatureText !== '') {
+    return signatureText
+  }
+  return qualifiedName
+}
+
 const mapExactRow = (
   row: {
     symbol_key: string
@@ -42,6 +52,8 @@ const mapExactRow = (
     end_line: number
     export_names: string
     matched_export_name: string | null
+    signature_text: string
+    body_text: string
   },
   query: string,
 ): SearchResult => ({
@@ -63,7 +75,7 @@ const mapExactRow = (
           ? 'exact local_name'
           : 'exact file_path',
   confidence: 'exact',
-  snippet: row.qualified_name,
+  snippet: buildSnippet(row.body_text, row.signature_text, row.qualified_name),
 })
 
 const loadExactResults = (db: Database, query: string, limit: number): readonly SearchResult[] =>
@@ -80,11 +92,14 @@ const loadExactResults = (db: Database, query: string, limit: number): readonly 
         end_line: number
         export_names: string
         matched_export_name: string | null
+        signature_text: string
+        body_text: string
       },
       [string, string, string, string, string, number]
     >(
       `SELECT symbols.symbol_key, symbols.qualified_name, symbols.local_name, symbols.kind, symbols.scope_tier,
             symbols.file_path, symbols.start_line, symbols.end_line, symbols.export_names,
+            symbols.signature_text, symbols.body_text,
             module_exports.export_name AS matched_export_name
      FROM symbols
      LEFT JOIN module_exports ON module_exports.symbol_id = symbols.id AND module_exports.export_name = ?

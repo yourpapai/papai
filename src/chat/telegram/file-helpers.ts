@@ -1,5 +1,5 @@
 import { logger } from '../../logger.js'
-import type { IncomingFile } from '../types.js'
+import type { IncomingFile, IncomingFileCandidate } from '../types.js'
 
 const log = logger.child({ scope: 'chat:telegram:files' })
 
@@ -101,4 +101,8 @@ export async function extractFilesFromContext(
     }),
   )
   return settled.filter((f): f is IncomingFile => f !== null)
+}
+
+export function extractFileCandidatesFromContext(ctx: ExtractFilesInput): IncomingFileCandidate[] {
+  return buildFileCandidates(ctx.message)
 }

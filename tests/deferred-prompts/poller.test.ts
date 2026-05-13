@@ -264,17 +264,13 @@ describe('pollScheduledOnce — error handling', () => {
     setupUserConfig(userId)
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(userId, 'one-time task', { fireAt: pastTime })
-    let sendCount = 0
 
-    chat = {
-      ...chat,
-      sendMessage: (_target: DeferredDeliveryTarget, text: string): Promise<void> => {
-        sendCount += 1
-        if (sendCount === 1) return Promise.reject(new Error('delivery failed'))
-        sentMessages.push({ target: _target, text })
-        return Promise.resolve()
-      },
-    }
+    const failOnceThenRecord = mock((_target: DeferredDeliveryTarget, text: string): Promise<void> => {
+      sentMessages.push({ target: _target, text })
+      return Promise.resolve()
+    })
+    failOnceThenRecord.mockImplementationOnce(() => Promise.reject(new Error('delivery failed')))
+    chat = { ...chat, sendMessage: failOnceThenRecord }
 
     await pollScheduledOnce(chat, () => createMockProvider())
 
@@ -381,17 +377,12 @@ describe('pollAlertsOnce', () => {
 
   test('does not update alert trigger time when delivery fails', async () => {
     const created = createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
-    let sendCount = 0
-
-    chat = {
-      ...chat,
-      sendMessage: (_target: DeferredDeliveryTarget, text: string): Promise<void> => {
-        sendCount += 1
-        if (sendCount === 1) return Promise.reject(new Error('delivery failed'))
-        sentMessages.push({ target: _target, text })
-        return Promise.resolve()
-      },
-    }
+    const failOnceThenRecord = mock((_target: DeferredDeliveryTarget, text: string): Promise<void> => {
+      sentMessages.push({ target: _target, text })
+      return Promise.resolve()
+    })
+    failOnceThenRecord.mockImplementationOnce(() => Promise.reject(new Error('delivery failed')))
+    chat = { ...chat, sendMessage: failOnceThenRecord }
 
     const provider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),

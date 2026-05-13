@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { setConfig } from '../../src/config.js'
 import { buildScheduleUpdates } from '../../src/deferred-prompts/schedule-update-helpers.js'
@@ -19,7 +20,7 @@ describe('buildScheduleUpdates — fire_at only', () => {
       fire_at: { date: '2099-01-01', time: '09:00' },
     })
     expect(result).not.toHaveProperty('error')
-    if ('error' in result) throw new Error(result.error)
+    assert(!('error' in result))
     expect(result.fireAt).toBeDefined()
     expect(result.rrule).toBeNull()
     expect(result.dtstartUtc).toBeNull()
@@ -54,7 +55,7 @@ describe('buildScheduleUpdates — rrule', () => {
       rrule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'UTC' },
     })
     expect(result).not.toHaveProperty('error')
-    if ('error' in result) throw new Error(result.error)
+    assert(!('error' in result))
     expect(result.rrule).toBe('FREQ=DAILY;BYHOUR=10;BYMINUTE=0')
     expect(result.dtstartUtc).toBeDefined()
     expect(result.fireAt).toBeDefined()

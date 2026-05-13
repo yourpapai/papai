@@ -57,14 +57,45 @@ describe('progress logging', () => {
     const runState = await createRunState(config, planPath)
     const ledger = await createIssueLedger(runState.runDir)
     const messages: string[] = []
-    let reviewerCallCount = 0
-    let fixerCallCount = 0
 
     const log: ProgressLog = {
       log: (message) => {
         messages.push(message)
       },
     }
+
+    const reviewerReplies = [
+      JSON.stringify({
+        round: 1,
+        issues: [
+          {
+            title: 'Missing error handling',
+            severity: 'high',
+            summary: 'Errors are swallowed.',
+            whyItMatters: 'Silent failures.',
+            evidence: 'src/foo.ts line 10',
+            file: 'src/foo.ts',
+            lineStart: 10,
+            lineEnd: 20,
+            suggestedFix: 'Add try/catch.',
+            confidence: 0.9,
+          },
+        ],
+      }),
+      JSON.stringify({ round: 2, issues: [] }),
+    ]
+    let reviewerReplyIndex = 0
+    const fixerReplies = [
+      JSON.stringify({
+        verdict: 'valid',
+        fixability: 'auto',
+        reasoning: 'Confirmed.',
+        targetFiles: ['src/foo.ts'],
+        needsPlanning: false,
+      }),
+      'Fixed.',
+    ]
+    let fixerReplyIndex = 0
 
     const result = await runReviewLoop({
       config,
@@ -74,49 +105,17 @@ describe('progress logging', () => {
       reviewer: {
         availableCommands: [],
         promptText: () => {
-          reviewerCallCount += 1
-          return Promise.resolve({
-            text:
-              reviewerCallCount === 1
-                ? JSON.stringify({
-                    round: 1,
-                    issues: [
-                      {
-                        title: 'Missing error handling',
-                        severity: 'high',
-                        summary: 'Errors are swallowed.',
-                        whyItMatters: 'Silent failures.',
-                        evidence: 'src/foo.ts line 10',
-                        file: 'src/foo.ts',
-                        lineStart: 10,
-                        lineEnd: 20,
-                        suggestedFix: 'Add try/catch.',
-                        confidence: 0.9,
-                      },
-                    ],
-                  })
-                : JSON.stringify({ round: 2, issues: [] }),
-            stopReason: 'end_turn',
-          })
+          const reply = reviewerReplies[reviewerReplyIndex++]
+          expect(reply).toBeDefined()
+          return Promise.resolve({ text: reply!, stopReason: 'end_turn' })
         },
       },
       fixer: {
         availableCommands: [],
         promptText: () => {
-          fixerCallCount += 1
-          return Promise.resolve({
-            text:
-              fixerCallCount === 1
-                ? JSON.stringify({
-                    verdict: 'valid',
-                    fixability: 'auto',
-                    reasoning: 'Confirmed.',
-                    targetFiles: ['src/foo.ts'],
-                    needsPlanning: false,
-                  })
-                : 'Fixed.',
-            stopReason: 'end_turn',
-          })
+          const reply = fixerReplies[fixerReplyIndex++]
+          expect(reply).toBeDefined()
+          return Promise.resolve({ text: reply!, stopReason: 'end_turn' })
         },
       },
     })

@@ -1,9 +1,15 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { UpdateRecurringTaskDeps } from '../../src/tools/update-recurring-task.js'
 import { makeUpdateRecurringTaskTool } from '../../src/tools/update-recurring-task.js'
 import type { RecurringTaskRecord } from '../../src/types/recurring.js'
 import { mockLogger, schemaValidates } from '../utils/test-helpers.js'
+
+function getToolExecute(tool: ReturnType<typeof makeUpdateRecurringTaskTool>): NonNullable<typeof tool.execute> {
+  assert(tool.execute, 'Tool execute is undefined')
+  return tool.execute
+}
 
 const toolCtx = { toolCallId: '1', messages: [] as never[] }
 
@@ -64,9 +70,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute(
+    await execute(
       {
         recurringTaskId: 'rec-1',
         schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'America/New_York' },
@@ -84,9 +90,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     getRecurringTaskResult = null
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    const result: unknown = await tool.execute({ recurringTaskId: 'rec-missing', title: 'new' }, toolCtx)
+    const result: unknown = await execute({ recurringTaskId: 'rec-missing', title: 'new' }, toolCtx)
 
     expect(result).toHaveProperty('error', 'Recurring task not found')
     expect(getRecurringTaskCalls).toEqual(['rec-missing'])
@@ -101,9 +107,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute(
+    await execute(
       {
         recurringTaskId: 'rec-1',
         schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
@@ -118,9 +124,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
 
   test('calls getRecurringTask with the correct id before updating', async () => {
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute({ recurringTaskId: 'rec-42', title: 'x' }, toolCtx)
+    await execute({ recurringTaskId: 'rec-42', title: 'x' }, toolCtx)
 
     expect(getRecurringTaskCalls).toEqual(['rec-42'])
   })
@@ -133,9 +139,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute(
+    await execute(
       {
         recurringTaskId: 'rec-1',
         schedule: {
@@ -161,9 +167,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute(
+    await execute(
       {
         recurringTaskId: 'rec-1',
         schedule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'UTC' },
@@ -182,9 +188,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute(
+    await execute(
       {
         recurringTaskId: 'rec-1',
         schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
@@ -203,9 +209,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute(
+    await execute(
       {
         recurringTaskId: 'rec-1',
         schedule: { freq: 'DAILY', timezone: 'UTC' },
@@ -218,9 +224,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
 
   test('does not include triggerType in updates when no schedule is provided', async () => {
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute({ recurringTaskId: 'rec-1', title: 'renamed' }, toolCtx)
+    await execute({ recurringTaskId: 'rec-1', title: 'renamed' }, toolCtx)
 
     expect(updateRecurringTaskCalls[0]?.updates).not.toHaveProperty('triggerType')
   })
@@ -229,9 +235,9 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     getRecurringTaskResult = makeRecord({ triggerType: 'cron' })
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    const execute = getToolExecute(tool)
 
-    await tool.execute({ recurringTaskId: 'rec-1', triggerType: 'on_complete' }, toolCtx)
+    await execute({ recurringTaskId: 'rec-1', triggerType: 'on_complete' }, toolCtx)
 
     const call = updateRecurringTaskCalls[0]
     expect(call?.updates['triggerType']).toBe('on_complete')

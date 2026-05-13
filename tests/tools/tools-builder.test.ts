@@ -1,13 +1,19 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
+import { persistIncomingAttachments } from '../../src/attachments/index.js'
 import type { IncomingFile } from '../../src/chat/types.js'
-import { clearIncomingFiles, storeIncomingFiles } from '../../src/file-relay.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { makeTools } from '../../src/tools/index.js'
 import { buildTools } from '../../src/tools/tools-builder.js'
-import { getToolExecutor } from '../utils/test-helpers.js'
+import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 describe('buildTools', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   it('should include core tools', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
@@ -308,37 +314,37 @@ describe('buildTools', () => {
       const chatUserId = 'alice-user-id'
       const contextId = 'group-123:thread-456'
       const file: IncomingFile = {
-        fileId: 'file-1',
+        fileId: 'platform-file-1',
         filename: 'screenshot.png',
         mimeType: 'image/png',
         size: 1024,
         content: Buffer.from('fake-png'),
       }
 
-      storeIncomingFiles(contextId, [file])
+      const refs = await persistIncomingAttachments({
+        contextId,
+        sourceProvider: 'telegram',
+        files: [file],
+      })
 
-      try {
-        const uploadAttachment = mock(() =>
-          Promise.resolve({ id: 'att-1', name: 'screenshot.png', url: 'https://example.com/att-1' }),
-        )
-        const provider = createMockProvider({
-          capabilities: new Set(['attachments.upload']),
-          uploadAttachment,
-        } as Partial<TaskProvider>)
+      const uploadAttachment = mock(() =>
+        Promise.resolve({ id: 'att-1', name: 'screenshot.png', url: 'https://example.com/att-1' }),
+      )
+      const provider = createMockProvider({
+        capabilities: new Set(['attachments.upload']),
+        uploadAttachment,
+      } as Partial<TaskProvider>)
 
-        const tools = buildTools(provider, chatUserId, contextId, 'normal', 'group')
-        const execute = getToolExecutor(tools['upload_attachment'])
-        const result = await execute({ taskId: 'task-1', fileId: 'file-1' })
+      const tools = buildTools(provider, chatUserId, contextId, 'normal', 'group')
+      const execute = getToolExecutor(tools['upload_attachment'])
+      const result = await execute({ taskId: 'task-1', attachmentId: refs[0]!.attachmentId })
 
-        expect(result).toEqual({ id: 'att-1', name: 'screenshot.png', url: 'https://example.com/att-1' })
-        expect(uploadAttachment).toHaveBeenCalledWith('task-1', {
-          name: 'screenshot.png',
-          content: file.content,
-          mimeType: 'image/png',
-        })
-      } finally {
-        clearIncomingFiles(contextId)
-      }
+      expect(result).toEqual({ id: 'att-1', name: 'screenshot.png', url: 'https://example.com/att-1' })
+      expect(uploadAttachment).toHaveBeenCalledWith('task-1', {
+        name: 'screenshot.png',
+        content: file.content,
+        mimeType: 'image/png',
+      })
     })
   })
 
@@ -378,5 +384,34 @@ describe('buildTools', () => {
       expect(tools['set_my_identity']).toBeUndefined()
       expect(tools['clear_my_identity']).toBeUndefined()
     })
+  })
+})
+
+describe('makeTools direct integration', () => {
+  it('exposes direct tools by default', () => {
+    const provider = createMockProvider()
+
+    const tools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+
+    expect(tools).toHaveProperty('create_task')
+    expect(tools).not.toHaveProperty('papai_tool')
+  })
+
+  it('keeps internal context gating available through direct tool exposure', () => {
+    const provider = createMockProvider({
+      identityResolver: {
+        searchUsers: () => Promise.resolve([]),
+      },
+    })
+
+    const dmTools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const groupTools = makeTools(provider, {
+      storageContextId: 'group-123',
+      chatUserId: 'user-123',
+      contextType: 'group',
+    })
+
+    expect(dmTools).not.toHaveProperty('set_my_identity')
+    expect(groupTools).toHaveProperty('set_my_identity')
   })
 })

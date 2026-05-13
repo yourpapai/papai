@@ -25,11 +25,15 @@ const parseExportNames = (value: string): readonly string[] => {
 // FTS5 MATCH treats ", (, ), *, ^ as syntax; Bun's SQLite also rejects / and #
 // as query tokens, so strip them all so raw symbol/path inputs like
 // getDrizzleDb() or src/db/drizzle#name never cause parse errors.
-const sanitizeFtsQuery = (query: string): string =>
-  query
+const sanitizeFtsQuery = (query: string): string => {
+  const tokens = query
     .replace(/["()^*/#]/g, ' ')
     .trim()
-    .replace(/\s+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+  if (tokens.length <= 1) return tokens.join(' ')
+  return tokens.join(' OR ')
+}
 
 const loadFtsResults = (db: Database, query: string, limit: number): readonly SearchResult[] => {
   const safe = sanitizeFtsQuery(query)

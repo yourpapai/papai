@@ -128,7 +128,7 @@ export const recurringTaskOccurrences = sqliteTable(
 export type RecurringTask = typeof recurringTasks.$inferSelect
 export type RecurringTaskOccurrence = typeof recurringTaskOccurrences.$inferSelect
 export { scheduledPrompts, alertPrompts, taskSnapshots } from './deferred-schema.js'
-export type { ScheduledPromptRow, AlertPromptRow, TaskSnapshotRow } from './deferred-schema.js'
+export type { ScheduledPromptRow, AlertPromptRow } from './deferred-schema.js'
 export const userInstructions = sqliteTable(
   'user_instructions',
   {
@@ -220,18 +220,22 @@ export const userIdentityMappings = sqliteTable(
 export const knownGroupContexts = sqliteTable(
   'known_group_contexts',
   {
-    contextId: text('context_id').primaryKey(),
     provider: text('provider').notNull(),
+    contextId: text('context_id').notNull(),
     displayName: text('display_name').notNull(),
     parentName: text('parent_name'),
     firstSeenAt: text('first_seen_at').notNull(),
     lastSeenAt: text('last_seen_at').notNull(),
   },
-  (table) => [index('idx_known_group_contexts_provider').on(table.provider)],
+  (table) => [
+    primaryKey({ columns: [table.provider, table.contextId] }),
+    index('idx_known_group_contexts_provider').on(table.provider),
+  ],
 )
 export const groupAdminObservations = sqliteTable(
   'group_admin_observations',
   {
+    provider: text('provider').notNull(),
     contextId: text('context_id').notNull(),
     userId: text('user_id').notNull(),
     username: text('username'),
@@ -239,10 +243,52 @@ export const groupAdminObservations = sqliteTable(
     lastSeenAt: text('last_seen_at').notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.contextId, table.userId] }),
-    index('idx_group_admin_observations_user_admin').on(table.userId, table.isAdmin),
+    primaryKey({ columns: [table.provider, table.contextId, table.userId] }),
+    index('idx_group_admin_observations_user_admin').on(table.provider, table.userId, table.isAdmin),
+  ],
+)
+export const groupUserObservations = sqliteTable(
+  'group_user_observations',
+  {
+    provider: text('provider').notNull(),
+    contextId: text('context_id').notNull(),
+    userId: text('user_id').notNull(),
+    username: text('username'),
+    displayLabel: text('display_label').notNull(),
+    lastSeenAt: text('last_seen_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.provider, table.contextId, table.userId] }),
+    index('idx_group_user_observations_provider_user').on(table.provider, table.userId),
   ],
 )
 export { webCache, webRateLimit } from './web-schema.js'
+export const attachments = sqliteTable(
+  'attachments',
+  {
+    attachmentId: text('attachment_id').primaryKey(),
+    contextId: text('context_id').notNull(),
+    sourceProvider: text('source_provider').notNull(),
+    sourceMessageId: text('source_message_id'),
+    sourceFileId: text('source_file_id'),
+    filename: text('filename').notNull(),
+    mimeType: text('mime_type'),
+    size: integer('size'),
+    checksum: text('checksum').notNull(),
+    blobKey: text('blob_key').notNull(),
+    status: text('status').notNull(),
+    isActive: integer('is_active').notNull().default(1),
+    createdAt: text('created_at').notNull(),
+    clearedAt: text('cleared_at'),
+    lastUsedAt: text('last_used_at'),
+  },
+  (table) => [
+    index('idx_attachments_context_active').on(table.contextId, table.isActive, table.createdAt),
+    index('idx_attachments_context_checksum').on(table.contextId, table.checksum),
+  ],
+)
+export type AttachmentRow = typeof attachments.$inferSelect
+export { stagedFiles } from './staged-schema.js'
+export type { StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
 export type { PluginAdminStateRow, PluginContextStateRow, PluginKvRow, PluginRuntimeEventRow } from './plugin-schema.js'

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { createDiscordReplyFn, type SendableChannel } from '../../../src/chat/discord/reply-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
@@ -11,6 +12,29 @@ type SendArg = Partial<{
 }>
 
 type EditArg = Partial<{ content: string; components: unknown[] }>
+
+function getContent(arg: SendArg | EditArg): string {
+  return arg.content ?? ''
+}
+
+function assertHasReply(send: SendArg | undefined): asserts send is SendArg & { reply: NonNullable<SendArg['reply']> } {
+  assert(send !== undefined, 'Expected a send to exist')
+  assert(send.reply !== undefined, 'Expected a reply reference on the send')
+}
+
+function assertComponents(
+  send: SendArg | undefined,
+): asserts send is SendArg & { components: NonNullable<SendArg['components']> } {
+  assert(send !== undefined, 'Expected a send to exist')
+  assert(send.components !== undefined, 'Expected button components to be sent')
+}
+
+function assertEmbeds(
+  payload: SendArg | undefined,
+): asserts payload is SendArg & { embeds: NonNullable<SendArg['embeds']> } {
+  assert(payload !== undefined, 'Expected a payload to exist')
+  assert(payload.embeds !== undefined, 'Expected embeds on the payload')
+}
 
 describe('createDiscordReplyFn', () => {
   beforeEach(() => {
@@ -51,9 +75,7 @@ describe('createDiscordReplyFn', () => {
     await reply.text('yo')
     const firstSend = sends[0]
     expect(firstSend).toBeDefined()
-    if (firstSend === undefined || firstSend.reply === undefined) {
-      throw new TypeError('Expected a reply reference on the first send')
-    }
+    assertHasReply(firstSend)
     expect(firstSend.reply.messageReference).toBe('parent-1')
     expect(firstSend.reply.failIfNotExists).toBe(false)
   })
@@ -64,11 +86,7 @@ describe('createDiscordReplyFn', () => {
     await reply.formatted('x'.repeat(4500))
     expect(sends.length).toBeGreaterThanOrEqual(3)
     for (const s of sends) {
-      let content = ''
-      if (s.content !== undefined) {
-        content = s.content
-      }
-      expect(content.length).toBeLessThanOrEqual(2000)
+      expect(getContent(s).length).toBeLessThanOrEqual(2000)
     }
   })
 
@@ -104,11 +122,7 @@ describe('createDiscordReplyFn', () => {
       return Promise.resolve({
         id: msgId,
         edit: (editArg: EditArg): Promise<void> => {
-          let content = ''
-          if (editArg.content !== undefined) {
-            content = editArg.content
-          }
-          edits.push({ id: msgId, content })
+          edits.push({ id: msgId, content: getContent(editArg) })
           return Promise.resolve()
         },
       })
@@ -145,12 +159,8 @@ describe('createDiscordReplyFn', () => {
     expect(sends).toHaveLength(1)
     expect(sends[0]!.content).toBe('choose')
     expect(Array.isArray(sends[0]!.components)).toBe(true)
-    const firstComponents = sends[0]!.components
-    expect(firstComponents).toBeDefined()
-    if (firstComponents === undefined) {
-      throw new TypeError('Expected button components to be sent')
-    }
-    expect(firstComponents.length).toBe(1)
+    assertComponents(sends[0])
+    expect(sends[0].components.length).toBe(1)
   })
 
   test('replaceButtons() edits the interaction-origin message instead of sending a new one', async () => {
@@ -177,12 +187,8 @@ describe('createDiscordReplyFn', () => {
     expect(edits).toHaveLength(1)
     expect(edits[0]!.content).toBe('Choose again')
     expect(Array.isArray(edits[0]!.components)).toBe(true)
-    const firstEditComponents = edits[0]!.components
-    expect(firstEditComponents).toBeDefined()
-    if (firstEditComponents === undefined) {
-      throw new TypeError('Expected replacement button components')
-    }
-    expect(firstEditComponents.length).toBe(1)
+    assertComponents(edits[0])
+    expect(edits[0].components.length).toBe(1)
   })
 
   test('replaceText() clears components on the interaction-origin message', async () => {
@@ -228,12 +234,8 @@ describe('createDiscordReplyFn', () => {
     expect(sends).toHaveLength(1)
     expect(sends[0]!.content).toBe('Fallback buttons')
     expect(Array.isArray(sends[0]!.components)).toBe(true)
-    const fallbackComponents = sends[0]!.components
-    expect(fallbackComponents).toBeDefined()
-    if (fallbackComponents === undefined) {
-      throw new TypeError('Expected fallback button components')
-    }
-    expect(fallbackComponents.length).toBe(1)
+    assertComponents(sends[0])
+    expect(sends[0].components.length).toBe(1)
   })
 
   test('embed() sends an embed via channel.send', async () => {
@@ -253,11 +255,9 @@ describe('createDiscordReplyFn', () => {
     const payload = sends[0]
     expect(typeof payload).toBe('object')
     expect(payload).not.toBeNull()
-    if (typeof payload === 'object' && payload !== null) {
-      const embeds = payload.embeds
-      expect(Array.isArray(embeds)).toBe(true)
-      expect(embeds).toHaveLength(1)
-    }
+    assertEmbeds(payload)
+    expect(Array.isArray(payload.embeds)).toBe(true)
+    expect(payload.embeds).toHaveLength(1)
   })
 
   test('embed() handles embeds without optional fields', async () => {
@@ -272,10 +272,8 @@ describe('createDiscordReplyFn', () => {
     const payload = sends[0]
     expect(typeof payload).toBe('object')
     expect(payload).not.toBeNull()
-    if (typeof payload === 'object' && payload !== null) {
-      const embeds = payload.embeds
-      expect(Array.isArray(embeds)).toBe(true)
-      expect(embeds).toHaveLength(1)
-    }
+    assertEmbeds(payload)
+    expect(Array.isArray(payload.embeds)).toBe(true)
+    expect(payload.embeds).toHaveLength(1)
   })
 })

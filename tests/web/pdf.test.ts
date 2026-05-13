@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getDocumentProxy } from 'unpdf'
 
@@ -64,10 +65,8 @@ describe('extractPdfText', () => {
       data: Parameters<PdfDeps['extractText']>[0],
       options?: { mergePages?: boolean },
     ): Promise<{ totalPages: number; text: string[] } | { totalPages: number; text: string }> {
-      if (options?.mergePages === true) {
-        return extractTextSpy(data, { mergePages: true })
-      }
-      return Promise.resolve({ text: ['Page one', 'Page two'], totalPages: 2 })
+      assert(options?.mergePages === true)
+      return extractTextSpy(data, { mergePages: true })
     }
 
     const deps: PdfDeps = {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getUserMessage, systemError, webFetchError } from '../../src/errors.js'
 import type { RateLimitResult, SafeFetchResponse, WebFetchResult } from '../../src/web/types.js'
@@ -145,11 +146,9 @@ describe('fetchAndExtract', () => {
       }),
     )
 
-    let nowCallCount = 0
-    const now = (): number => {
-      nowCallCount += 1
-      return nowCallCount === 1 ? 1_000 : 2_000
-    }
+    const nowSequence: [number, number] = [1_000, 2_000]
+    let nowCallIndex = 0
+    const now = (): number => nowSequence[nowCallIndex++]!
 
     const result = await runFetchAndExtract(
       {
@@ -326,9 +325,7 @@ describe('fetchAndExtract', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(Error)
       expectAppError(error, getUserMessage(webFetchError.rateLimited()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error), 'Expected error with appError')
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'rate-limited',
@@ -381,9 +378,7 @@ describe('fetchAndExtract', () => {
     } catch (error) {
       expect(consumeWebFetchQuota).not.toHaveBeenCalled()
       expectAppError(error, getUserMessage(webFetchError.invalidUrl()))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error), 'Expected error with appError')
       expect(error).toMatchObject({
         type: 'web-fetch',
         code: 'invalid-url',
@@ -496,9 +491,7 @@ describe('fetchAndExtract', () => {
       throw new Error('Expected fetchAndExtract to reject')
     } catch (error) {
       expectAppError(error, getUserMessage(systemError.unexpected(new Error('llm exploded'))))
-      if (!hasAppError(error)) {
-        throw new Error('Expected error with appError', { cause: error })
-      }
+      assert(hasAppError(error), 'Expected error with appError')
       expect(error).toMatchObject({
         type: 'system',
         code: 'unexpected',

@@ -1,8 +1,10 @@
-FROM oven/bun:1-alpine@sha256:32f1fcccb1523960b254c4f80973bee1a910d60be000a45c20c9129a1efcffee AS base
+FROM oven/bun:1-alpine@sha256:a108a3f67197646f1f975ff70237a45034d313d255051cd54e98c64737c1d204 AS base
 WORKDIR /app
 
 FROM base AS deps
 COPY package.json bun.lock ./
+COPY codeindex/package.json ./codeindex/
+COPY review-loop/package.json ./review-loop/
 RUN bun install --frozen-lockfile --production
 
 FROM base AS build

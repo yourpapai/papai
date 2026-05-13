@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -44,6 +45,14 @@ function isTaskArray(val: unknown): val is Array<{ title: string }> {
   return Array.isArray(val) && val.every((item) => item !== null && typeof item === 'object' && 'title' in item)
 }
 
+function resolveStatus(status: string | undefined): string {
+  return status ?? 'todo'
+}
+
+function resolveTitle(title: string | undefined): string {
+  return title ?? 'Test'
+}
+
 function getInputFieldDescription(schema: unknown, fieldName: string): string | undefined {
   if (!(schema instanceof z.ZodType)) return undefined
   const jsonSchema = z.toJSONSchema(schema)
@@ -85,12 +94,12 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test Task', projectId: 'proj-1' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTask(result)) throw new Error('Invalid result')
+      assert(isTask(result))
 
       expect(result.id).toBe('task-1')
       expect(result.title).toBe('Test Task')
@@ -110,14 +119,14 @@ describe('Task Tools', () => {
           Promise.resolve({
             id: 'task-1',
             title: params.title,
-            status: params.status ?? 'todo',
+            status: resolveStatus(params.status),
             url: 'https://test.com/task/1',
           }),
       )
       const provider = createMockProvider({ createTask })
 
       const tool = makeCreateTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute(
         {
           title: 'Test Task',
@@ -131,7 +140,7 @@ describe('Task Tools', () => {
 
       expect(createTask).toHaveBeenCalledTimes(1)
       const call = createTask.mock.calls[0]
-      if (!call) throw new Error('Expected call')
+      assert(call)
       const params = call[0] as Record<string, unknown>
       expect(params['title']).toBe('Test Task')
       expect(params['description']).toBe('Task description')
@@ -172,7 +181,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25', time: '17:00' } },
         { toolCallId: '1', messages: [] },
@@ -192,7 +201,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ title: 'No date', projectId: 'p1' }, { toolCallId: '1', messages: [] })
 
       expect(capturedDueDate).toBeUndefined()
@@ -208,7 +217,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25' } },
         { toolCallId: '1', messages: [] },
@@ -240,7 +249,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25', time: '23:45' } },
         { toolCallId: '1', messages: [] },
@@ -264,7 +273,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeCreateTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { title: 'Test', projectId: 'p1', dueDate: { date: '2026-03-25', time: '17:00' } },
         { toolCallId: '1', messages: [] },
@@ -295,12 +304,12 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', status: 'done' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTask(result)) throw new Error('Invalid result')
+      assert(isTask(result))
 
       expect(result.id).toBe('task-1')
       expect(result.status).toBe('done')
@@ -319,15 +328,15 @@ describe('Task Tools', () => {
         ) =>
           Promise.resolve({
             id: 'task-1',
-            title: params.title ?? 'Test',
-            status: params.status ?? 'todo',
+            title: resolveTitle(params.title),
+            status: resolveStatus(params.status),
             url: 'https://test.com/task/1',
           }),
       )
       const provider = createMockProvider({ updateTask })
 
       const tool = makeUpdateTaskTool(provider, undefined, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', title: 'New Title', priority: 'high', dueDate: { date: '2026-12-31' } },
         { toolCallId: '1', messages: [] },
@@ -335,7 +344,7 @@ describe('Task Tools', () => {
 
       expect(updateTask).toHaveBeenCalledTimes(1)
       const call = updateTask.mock.calls[0]
-      if (!call) throw new Error('Expected call')
+      assert(call)
       expect(call[0]).toBe('task-1')
       const params = call[1] as Record<string, unknown>
       expect(params['title']).toBe('New Title')
@@ -354,7 +363,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider, undefined, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25' } },
         { toolCallId: '1', messages: [] },
@@ -383,7 +392,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider, undefined, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '23:45' } },
         { toolCallId: '1', messages: [] },
@@ -431,7 +440,7 @@ describe('Task Tools', () => {
       const hookSpy = mock(() => Promise.resolve())
 
       const tool = makeUpdateTaskTool(provider, hookSpy)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ taskId: 'task-1', status: 'done' }, { toolCallId: '1', messages: [] })
 
       expect(hookSpy).toHaveBeenCalledTimes(1)
@@ -470,7 +479,7 @@ describe('Task Tools', () => {
       const hookSpy = mock(() => Promise.resolve())
 
       const tool = makeUpdateTaskTool(provider, hookSpy)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       // Only changing title, not status — but task.status is always defined on the response
       await tool.execute({ taskId: 'task-1', title: 'New Title' }, { toolCallId: '1', messages: [] })
 
@@ -491,12 +500,12 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', status: 'done' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTask(result)) throw new Error('Invalid result')
+      assert(isTask(result))
       expect(result.status).toBe('done')
     })
 
@@ -510,7 +519,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider, undefined, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '17:00' } },
         { toolCallId: '1', messages: [] },
@@ -534,7 +543,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeUpdateTaskTool(provider, undefined, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', dueDate: { date: '2026-03-25', time: '17:00' } },
         { toolCallId: '1', messages: [] },
@@ -568,9 +577,9 @@ describe('Task Tools', () => {
       })
 
       const tool = makeGetTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskWithRelations(result)) throw new Error('Invalid result')
+      assert(isTaskWithRelations(result))
 
       expect(result.id).toBe('task-1')
       expect(result.title).toBe('Test Task')
@@ -592,9 +601,9 @@ describe('Task Tools', () => {
       })
 
       const tool = makeGetTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskWithRelations(result)) throw new Error('Invalid result')
+      assert(isTaskWithRelations(result))
 
       expect(result.relations).toEqual([])
     })
@@ -634,7 +643,7 @@ describe('Task Tools', () => {
       })
 
       const tool = makeGetTaskTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
       // Asia/Karachi is UTC+5: 12:00 UTC → 17:00 local
@@ -675,9 +684,9 @@ describe('Task Tools', () => {
       })
 
       const tool = makeListTasksTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskArray(result)) throw new Error('Invalid result')
+      assert(isTaskArray(result))
 
       expect(result).toHaveLength(2)
       expect(result[0]?.title).toBe('Task 1')
@@ -690,9 +699,9 @@ describe('Task Tools', () => {
       })
 
       const tool = makeListTasksTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ projectId: 'empty-proj' }, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result))
 
       expect(result).toHaveLength(0)
     })
@@ -729,10 +738,10 @@ describe('Task Tools', () => {
       })
 
       const tool = makeListTasksTool(provider, 'user-1')
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ projectId: 'p1' }, { toolCallId: '1', messages: [] })
 
-      if (!Array.isArray(result)) throw new Error('Expected array')
+      assert(Array.isArray(result))
       expect(result[0]).toHaveProperty('dueDate', '2026-03-25T17:00:00')
       expect(result[1]).toHaveProperty('dueDate', undefined)
     })
@@ -770,9 +779,9 @@ describe('Task Tools', () => {
       })
 
       const tool = makeSearchTasksTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ query: 'bug' }, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result))
 
       expect(result).toHaveLength(2)
     })
@@ -782,12 +791,12 @@ describe('Task Tools', () => {
       const provider = createMockProvider({ searchTasks })
 
       const tool = makeSearchTasksTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ query: 'test' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       const call = searchTasks.mock.calls[0]
-      if (!call) throw new Error('Expected call')
+      assert(call)
       const params = call[0] as Record<string, unknown>
       expect(params['query']).toBe('test')
     })
@@ -797,12 +806,12 @@ describe('Task Tools', () => {
       const provider = createMockProvider({ searchTasks })
 
       const tool = makeSearchTasksTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ query: 'test', projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
       expect(searchTasks).toHaveBeenCalledTimes(1)
       const call = searchTasks.mock.calls[0]
-      if (!call) throw new Error('Expected call')
+      assert(call)
       const params = call[0] as Record<string, unknown>
       expect(params['query']).toBe('test')
       expect(params['projectId']).toBe('proj-1')
@@ -814,9 +823,9 @@ describe('Task Tools', () => {
       })
 
       const tool = makeSearchTasksTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ query: 'nonexistent' }, { toolCallId: '1', messages: [] })
-      if (!Array.isArray(result)) throw new Error('Invalid result')
+      assert(Array.isArray(result))
 
       expect(result).toEqual([])
     })
@@ -834,7 +843,7 @@ describe('Task Tools', () => {
       const provider = createMockProvider({ deleteTask })
 
       const tool = makeDeleteTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       await tool.execute({ taskId: 'task-1', confidence: 0.9 }, { toolCallId: '1', messages: [] })
 
       expect(deleteTask).toHaveBeenCalledTimes(1)
@@ -844,7 +853,7 @@ describe('Task Tools', () => {
     test('returns confirmation_required when confidence is low', async () => {
       const provider = createMockProvider()
       const tool = makeDeleteTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', confidence: 0.5 },
         { toolCallId: '1', messages: [] },
@@ -856,7 +865,7 @@ describe('Task Tools', () => {
     test('returns confirmation_required without sufficient confidence (confidence: 0)', async () => {
       const provider = createMockProvider()
       const tool = makeDeleteTaskTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute)
       const result: unknown = await tool.execute({ taskId: 'task-1', confidence: 0 }, { toolCallId: '1', messages: [] })
 
       expect(result).toMatchObject({ status: 'confirmation_required' })

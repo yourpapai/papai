@@ -3,6 +3,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
 import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
@@ -287,9 +288,7 @@ describe('TelegramChatProvider', () => {
       const provider = new TelegramChatProvider()
       const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
       expect(extractMessage).toBeInstanceOf(Function)
-      if (typeof extractMessage !== 'function') {
-        throw new TypeError('extractMessage not available')
-      }
+      assert(typeof extractMessage === 'function', 'extractMessage not available')
 
       const result: unknown = await Promise.resolve(
         extractMessage.call(
@@ -303,9 +302,7 @@ describe('TelegramChatProvider', () => {
         ),
       )
 
-      if (!isIncomingMessage(result)) {
-        throw new TypeError('Expected extractMessage to return an IncomingMessage')
-      }
+      assert(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
 
       expect(result.contextName).toBe('Operations')
       delete process.env['TELEGRAM_BOT_TOKEN']
@@ -352,9 +349,7 @@ describe('TelegramChatProvider', () => {
       const buildReplyFn: unknown = Reflect.get(provider, 'buildReplyFn')
 
       expect(buildReplyFn).toBeInstanceOf(Function)
-      if (typeof buildReplyFn !== 'function') {
-        throw new TypeError('buildReplyFn not available')
-      }
+      assert(typeof buildReplyFn === 'function', 'buildReplyFn not available')
 
       const reply: unknown = buildReplyFn.call(provider, {
         chat: { id: 99, type: 'supergroup' },
@@ -365,9 +360,7 @@ describe('TelegramChatProvider', () => {
       })
 
       expect(isReplyFn(reply)).toBe(true)
-      if (!isReplyFn(reply)) {
-        throw new Error('Expected buildReplyFn to return a ReplyFn')
-      }
+      assert(isReplyFn(reply), 'Expected buildReplyFn to return a ReplyFn')
 
       expect(reply.replaceText).toBeUndefined()
       expect(reply.replaceButtons).toBeUndefined()
@@ -381,9 +374,7 @@ describe('TelegramChatProvider', () => {
       const calls: string[] = []
       const dispatchCallbackQuery: unknown = Reflect.get(provider, 'dispatchCallbackQuery')
       expect(dispatchCallbackQuery).toBeInstanceOf(Function)
-      if (typeof dispatchCallbackQuery !== 'function') {
-        throw new TypeError('dispatchCallbackQuery not available')
-      }
+      assert(typeof dispatchCallbackQuery === 'function', 'dispatchCallbackQuery not available')
 
       await Promise.resolve(
         dispatchCallbackQuery.call(provider, {
@@ -405,9 +396,7 @@ describe('TelegramChatProvider', () => {
       const captured: Array<string | undefined> = []
       const dispatchCallbackQuery: unknown = Reflect.get(provider, 'dispatchCallbackQuery')
       expect(dispatchCallbackQuery).toBeInstanceOf(Function)
-      if (typeof dispatchCallbackQuery !== 'function') {
-        throw new TypeError('dispatchCallbackQuery not available')
-      }
+      assert(typeof dispatchCallbackQuery === 'function', 'dispatchCallbackQuery not available')
 
       Reflect.set(provider, 'buildReplyFn', (_ctx: object, threadId: string | undefined): ReplyFn => {
         captured.push(threadId)
@@ -446,18 +435,14 @@ describe('TelegramChatProvider', () => {
       const editCalls: EditMessageCall[] = []
 
       expect(dispatchCallbackQuery).toBeInstanceOf(Function)
-      if (typeof dispatchCallbackQuery !== 'function') {
-        throw new TypeError('dispatchCallbackQuery not available')
-      }
+      assert(typeof dispatchCallbackQuery === 'function', 'dispatchCallbackQuery not available')
 
       Reflect.set(provider, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(false))
       provider.onInteraction(async (_interaction, reply) => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
-
-        if (reply.replaceText === undefined || reply.replaceButtons === undefined) {
-          throw new TypeError('Expected replacement helpers to be available')
-        }
+        assert(reply.replaceText !== undefined, 'Expected replacement helpers to be available')
+        assert(reply.replaceButtons !== undefined, 'Expected replacement helpers to be available')
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -488,18 +473,16 @@ describe('TelegramChatProvider', () => {
       expect(editCalls).toHaveLength(2)
       expect(editCalls[0]).toBeDefined()
       expect(editCalls[1]).toBeDefined()
-      if (editCalls[0] === undefined || editCalls[1] === undefined) {
-        throw new TypeError('Expected replacement edit calls to be captured')
-      }
+      assert(editCalls[0] !== undefined, 'Expected replacement edit calls to be captured')
+      assert(editCalls[1] !== undefined, 'Expected replacement edit calls to be captured')
       expect(editCalls[0][0]).toBe('Updated menu')
       expect(editCalls[1][0]).toBe('Choose next')
       const firstOptions = editCalls[0][1]
       const secondOptions = editCalls[1][1]
       expect(firstOptions).toBeDefined()
       expect(secondOptions).toBeDefined()
-      if (firstOptions === undefined || secondOptions === undefined) {
-        throw new TypeError('Expected replacement edit options to be captured')
-      }
+      assert(firstOptions !== undefined, 'Expected replacement edit options to be captured')
+      assert(secondOptions !== undefined, 'Expected replacement edit options to be captured')
       expect(firstOptions.reply_markup).toBeDefined()
       expect(secondOptions.reply_markup).toBeDefined()
 
@@ -702,9 +685,7 @@ describe('extractFilesFromContext', () => {
     const result = await extractFilesFromContext(ctx, makeDefaultFileFetcher())
     expect(result).toHaveLength(1)
     const first = result[0]
-    if (first === undefined) {
-      throw new TypeError('Expected extracted photo')
-    }
+    assert(first !== undefined, 'Expected extracted photo')
     expect(first.fileId).toBe('photo-large')
     expect(first.filename).toBe('photo.jpg')
     expect(first.mimeType).toBe('image/jpeg')
@@ -723,9 +704,7 @@ describe('extractFilesFromContext', () => {
     }
     const result = await extractFilesFromContext(ctx, makeDefaultFileFetcher())
     const first = result[0]
-    if (first === undefined) {
-      throw new TypeError('Expected extracted audio file')
-    }
+    assert(first !== undefined, 'Expected extracted audio file')
     expect(first.fileId).toBe('audio-1')
     expect(first.filename).toBe('song.mp3')
     expect(first.mimeType).toBe('audio/mpeg')
@@ -735,9 +714,7 @@ describe('extractFilesFromContext', () => {
     const ctx = { message: { audio: { file_id: 'audio-1', file_size: 2048 } } }
     const result = await extractFilesFromContext(ctx, makeDefaultFileFetcher())
     const first = result[0]
-    if (first === undefined) {
-      throw new TypeError('Expected extracted fallback audio file')
-    }
+    assert(first !== undefined, 'Expected extracted fallback audio file')
     expect(first.filename).toBe('audio')
   })
 
@@ -754,9 +731,7 @@ describe('extractFilesFromContext', () => {
     }
     const result = await extractFilesFromContext(ctx, makeDefaultFileFetcher())
     const first = result[0]
-    if (first === undefined) {
-      throw new TypeError('Expected extracted video file')
-    }
+    assert(first !== undefined, 'Expected extracted video file')
     expect(first.fileId).toBe('vid-1')
     expect(first.filename).toBe('clip.mp4')
   })
@@ -765,9 +740,7 @@ describe('extractFilesFromContext', () => {
     const ctx = { message: { voice: { file_id: 'voice-1', file_size: 512 } } }
     const result = await extractFilesFromContext(ctx, makeDefaultFileFetcher())
     const first = result[0]
-    if (first === undefined) {
-      throw new TypeError('Expected extracted voice note')
-    }
+    assert(first !== undefined, 'Expected extracted voice note')
     expect(first.filename).toBe('voice.ogg')
     expect(first.mimeType).toBe('audio/ogg')
   })
@@ -790,9 +763,7 @@ describe('extractFilesFromContext', () => {
     }
     const result = await extractFilesFromContext(ctx, makeDefaultFileFetcher())
     const first = result[0]
-    if (first === undefined) {
-      throw new TypeError('Expected extracted document')
-    }
+    assert(first !== undefined, 'Expected extracted document')
     expect(first.filename).toBe('document')
   })
 })

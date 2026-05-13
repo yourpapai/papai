@@ -1,3 +1,5 @@
+import type { TrustMetrics } from './report-rebuild-helpers.js'
+
 export interface DomainSummary {
   readonly domain: string
   readonly count: number
@@ -5,6 +7,7 @@ export interface DomainSummary {
   readonly avgUse: number
   readonly avgRetain: number
   readonly worstPersona: string
+  readonly trustMetrics?: TrustMetrics
 }
 
 export interface FailedItem {

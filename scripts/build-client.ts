@@ -3,7 +3,7 @@ import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '..')
 const CLIENT_DIR = path.join(ROOT, 'client', 'debug')
-const PUBLIC_DIR = path.join(ROOT, 'public')
+export const PUBLIC_DIR = path.join(ROOT, 'public')
 
 async function build(): Promise<void> {
   // Ensure output directory exists

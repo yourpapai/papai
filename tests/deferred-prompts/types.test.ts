@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import {
   alertConditionSchema,
@@ -290,9 +291,8 @@ describe('scheduleSchema', () => {
   test('rejects both fire_at and rrule simultaneously', () => {
     const result = scheduleSchema.safeParse({ fire_at: validFireAt, rrule: validRrule })
     expect(result.success).toBe(false)
-    if (!result.success) {
-      const paths = result.error.issues.map((i) => i.path.join('.'))
-      expect(paths).toContain('rrule')
-    }
+    assert(!result.success, 'expected parse to fail')
+    const paths = result.error.issues.map((i) => i.path.join('.'))
+    expect(paths).toContain('rrule')
   })
 })

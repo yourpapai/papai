@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert'
 
 import { setConfig } from '../../src/config.js'
 import { executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
@@ -21,7 +22,9 @@ describe('executeCreate — rrule timezone', () => {
     })
 
     expect(result).not.toHaveProperty('error')
-    if (typeof result !== 'object' || result === null || !('fireAt' in result)) throw new Error('Expected fireAt')
+    assert(typeof result === 'object')
+    assert(result !== null)
+    assert('fireAt' in result)
     // Returned fireAt is converted back to local time; must be 09:xx
     expect(result.fireAt).toContain('09:')
   })
@@ -33,7 +36,9 @@ describe('executeCreate — rrule timezone', () => {
       schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
     })
     expect(result).not.toHaveProperty('error')
-    if (typeof result !== 'object' || result === null || !('fireAt' in result)) throw new Error('Expected fireAt')
+    assert(typeof result === 'object')
+    assert(result !== null)
+    assert('fireAt' in result)
     expect(result.fireAt).toContain('09:')
   })
 })
@@ -55,7 +60,9 @@ describe('executeUpdate — rrule timezone', () => {
       schedule: { rrule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'Asia/Karachi' } },
     })
     expect(updated).not.toHaveProperty('error')
-    if (typeof updated !== 'object' || updated === null || !('rrule' in updated)) throw new Error('Expected rrule')
+    assert(typeof updated === 'object')
+    assert(updated !== null)
+    assert('rrule' in updated)
     expect(String(updated.rrule)).toBe('FREQ=DAILY;BYHOUR=10;BYMINUTE=0')
   })
 
@@ -68,7 +75,7 @@ describe('executeUpdate — rrule timezone', () => {
     })
     const { prompts: before } = executeList(USER_ID, { type: 'scheduled' })
     const existing = before[0]!
-    if (existing.type !== 'scheduled') throw new Error('Expected scheduled prompt')
+    assert(existing.type === 'scheduled')
     const originalFireAt = existing.fireAt
 
     const updated = executeUpdate(USER_ID, {
@@ -76,7 +83,9 @@ describe('executeUpdate — rrule timezone', () => {
       schedule: { rrule: { freq: 'DAILY', byHour: [22], byMinute: [0], timezone: 'UTC' } },
     })
     expect(updated).not.toHaveProperty('error')
-    if (typeof updated !== 'object' || updated === null || !('fireAt' in updated)) throw new Error('Expected fireAt')
+    assert(typeof updated === 'object')
+    assert(updated !== null)
+    assert('fireAt' in updated)
     // fireAt must change to reflect the new rule immediately (not remain at the old 09:xx value)
     expect(updated.fireAt).not.toBe(originalFireAt)
     expect(updated.fireAt).toContain('T22:')
@@ -91,7 +100,7 @@ describe('executeUpdate — rrule timezone', () => {
     const { prompts } = executeList(USER_ID, { type: 'scheduled' })
     expect(prompts).toHaveLength(1)
     const prompt = prompts[0]!
-    if (prompt.type !== 'scheduled') throw new Error('Expected scheduled')
+    assert(prompt.type === 'scheduled')
     expect(prompt.dtstartUtc).toMatch(/T00:00:00\.000Z$/)
   })
 
@@ -104,7 +113,7 @@ describe('executeUpdate — rrule timezone', () => {
     })
     const { prompts: before } = executeList(USER_ID, { type: 'scheduled' })
     const existing = before[0]!
-    if (existing.type !== 'scheduled') throw new Error('Expected scheduled prompt')
+    assert(existing.type === 'scheduled')
     const originalDtstartUtc = existing.dtstartUtc
 
     executeUpdate(USER_ID, {
@@ -113,7 +122,7 @@ describe('executeUpdate — rrule timezone', () => {
     })
     const { prompts: after } = executeList(USER_ID, { type: 'scheduled' })
     const afterFirst = after[0]!
-    if (afterFirst.type !== 'scheduled') throw new Error('Expected scheduled prompt')
+    assert(afterFirst.type === 'scheduled')
     // dtstartUtc must equal the original series anchor, not the edit timestamp
     expect(afterFirst.dtstartUtc).toBe(originalDtstartUtc)
   })

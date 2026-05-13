@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeAddVoteTool } from '../../src/tools/add-vote.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -25,7 +26,7 @@ describe('Add Vote Tool', () => {
 
     const result: unknown = await getToolExecutor(tool)({ taskId: 'task-1' }, { toolCallId: '1', messages: [] })
 
-    if (!isTaskResult(result)) throw new Error('Invalid result')
+    assert(isTaskResult(result), 'Invalid result')
     expect(result.taskId).toBe('task-1')
     expect(addVote).toHaveBeenCalledWith('task-1')
   })

@@ -33,8 +33,8 @@ const getProviderGuidance = (error: ProviderError): string => {
     case 'workflow-validation-failed': {
       const fields = error.requiredFields.map((field) => field.name)
       return fields.length === 0
-        ? `The project workflow requires additional fields or constraints before this request can succeed. Ask the user for the missing project-specific values or choose a different supported input path.`
-        : `The project workflow requires fields: ${fields.join(', ')}. Ask the user for the missing project-specific values and only retry with supported inputs.`
+        ? `The project workflow requires additional fields or constraints before this request can succeed. Ask the user for the missing values and retry with the customFields parameter on create_task or update_task.`
+        : `The project workflow requires fields: ${fields.join(', ')}. Ask the user for the missing values and retry using the customFields parameter on create_task or update_task to supply them.`
     }
     case 'unsupported-operation':
       return `This provider does not support "${error.operation}". Pick a different tool or explain the limitation.`

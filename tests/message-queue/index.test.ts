@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ReplyFn } from '../../src/chat/types.js'
 import type { QueueItem } from '../../src/message-queue/types.js'
@@ -40,7 +41,7 @@ describe('enqueueMessage', () => {
       username: 'alice',
       storageContextId: `ctx1-${crypto.randomUUID()}`,
       contextType: 'dm',
-      files: [],
+      newAttachmentIds: [],
     }
     const mockReply: ReplyFn = {
       text: async () => {},
@@ -63,9 +64,7 @@ describe('flushOnShutdown', () => {
 
   test('should respect timeout even when handlers hang', async () => {
     const module: unknown = await import(`../../src/message-queue/index.js?hang-test=${crypto.randomUUID()}`)
-    if (!isMessageQueueModule(module)) {
-      throw new Error('Invalid module')
-    }
+    assert(isMessageQueueModule(module), 'Invalid module')
     const { enqueueMessage, flushOnShutdown } = module
 
     const mockReply: ReplyFn = {
@@ -88,7 +87,7 @@ describe('flushOnShutdown', () => {
       username: 'alice',
       storageContextId: `hang-test-ctx-${crypto.randomUUID()}`,
       contextType: 'dm',
-      files: [],
+      newAttachmentIds: [],
     }
 
     enqueueMessage(item, mockReply, hangingHandler)

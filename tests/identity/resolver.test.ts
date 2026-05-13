@@ -1,10 +1,38 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getIdentityMapping, setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
 import { resolveMeReference, attemptAutoLink } from '../../src/identity/resolver.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { localDatetimeToUtc, utcToLocal } from '../../src/utils/datetime.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+const knownUsers: Record<string, { id: string; login: string; name: string }> = {
+  jsmith: { id: 'user-123', login: 'jsmith', name: 'John Smith' },
+  JDOE: { id: 'user-456', login: 'jdoe', name: 'Jane Doe' },
+}
+
+type UserRecord = { id: string; login: string; name: string }
+
+function searchUsersDefault(query: string): Promise<UserRecord[]> {
+  const match = knownUsers[query]
+  return match === undefined ? Promise.resolve([]) : Promise.resolve([match])
+}
+
+function searchUsersEmailLogin(query: string): Promise<UserRecord[]> {
+  const emailMap: Record<string, UserRecord> = {
+    jsmith: { id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' },
+  }
+  const match = emailMap[query]
+  return match === undefined ? Promise.resolve([]) : Promise.resolve([match])
+}
+
+function searchUsersEmailLoginExact(query: string): Promise<UserRecord[]> {
+  const emailSet = new Set(['jsmith', 'jsmith@example.com'])
+  return emailSet.has(query)
+    ? Promise.resolve([{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }])
+    : Promise.resolve([])
+}
 
 // Mock provider with identity resolver
 const mockProvider: TaskProvider = {
@@ -13,15 +41,7 @@ const mockProvider: TaskProvider = {
   configRequirements: [],
   preferredUserIdentifier: 'id',
   identityResolver: {
-    searchUsers: (query: string) => {
-      if (query === 'jsmith') {
-        return Promise.resolve([{ id: 'user-123', login: 'jsmith', name: 'John Smith' }])
-      }
-      if (query === 'JDOE') {
-        return Promise.resolve([{ id: 'user-456', login: 'jdoe', name: 'Jane Doe' }])
-      }
-      return Promise.resolve([])
-    },
+    searchUsers: searchUsersDefault,
   },
   buildTaskUrl: () => '',
   buildProjectUrl: () => '',
@@ -79,11 +99,10 @@ describe('resolveMeReference', () => {
 
     const result = await resolveMeReference(testContextId, mockProvider)
     expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.login).toBe('jsmith')
-      expect(result.identity.userId).toBe('user-123')
-      expect(result.identity.displayName).toBe('John Smith')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.login).toBe('jsmith')
+    expect(result.identity.userId).toBe('user-123')
+    expect(result.identity.displayName).toBe('John Smith')
   })
 
   it('should return unmatched when mapping is marked unmatched', async () => {
@@ -116,9 +135,8 @@ describe('resolveMeReference', () => {
 
     const result = await resolveMeReference(testContextId, mockProvider)
     expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.displayName).toBe('')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.displayName).toBe('')
   })
 })
 
@@ -134,11 +152,10 @@ describe('attemptAutoLink', () => {
   it('should auto-link when exact match found', async () => {
     const result = await attemptAutoLink(testContextId, 'jsmith', mockProvider)
     expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.login).toBe('jsmith')
-      expect(result.identity.userId).toBe('user-123')
-      expect(result.identity.displayName).toBe('John Smith')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.login).toBe('jsmith')
+    expect(result.identity.userId).toBe('user-123')
+    expect(result.identity.displayName).toBe('John Smith')
 
     const mapping = getIdentityMapping(testContextId, 'mock')
     expect(mapping?.providerUserLogin).toBe('jsmith')
@@ -149,9 +166,8 @@ describe('attemptAutoLink', () => {
   it('should auto-link with case-insensitive match', async () => {
     const result = await attemptAutoLink(testContextId, 'JDOE', mockProvider)
     expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.login).toBe('jdoe')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.login).toBe('jdoe')
   })
 
   it('should return unmatched when no exact match found', async () => {
@@ -179,9 +195,8 @@ describe('attemptAutoLink', () => {
 
     const result = await attemptAutoLink(testContextId, 'jsmith', providerWithFailingResolver)
     expect(result.type).toBe('not_found')
-    if (result.type === 'not_found') {
-      expect(result.message).toContain('Unable to search')
-    }
+    assert(result.type === 'not_found')
+    expect(result.message).toContain('Unable to search')
   })
 
   it('should return unmatched on subsequent resolveMeReference after auto-link miss', async () => {
@@ -198,22 +213,14 @@ describe('attemptAutoLink', () => {
     // Provider where login is email (like Kaneo)
     const emailLoginProvider: TaskProvider = {
       ...mockProvider,
-      identityResolver: {
-        searchUsers: (query: string) => {
-          if (query === 'jsmith') {
-            return Promise.resolve([{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }])
-          }
-          return Promise.resolve([])
-        },
-      },
+      identityResolver: { searchUsers: searchUsersEmailLogin },
     } as TaskProvider
 
     const result = await attemptAutoLink(testContextId, 'jsmith', emailLoginProvider)
     expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.login).toBe('jsmith@example.com')
-      expect(result.identity.userId).toBe('user-123')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.login).toBe('jsmith@example.com')
+    expect(result.identity.userId).toBe('user-123')
 
     const mapping = getIdentityMapping(testContextId, 'mock')
     expect(mapping?.providerUserLogin).toBe('jsmith@example.com')
@@ -223,20 +230,12 @@ describe('attemptAutoLink', () => {
     // Provider where login is email (like Kaneo)
     const emailLoginProvider: TaskProvider = {
       ...mockProvider,
-      identityResolver: {
-        searchUsers: (query: string) => {
-          if (query === 'jsmith' || query === 'jsmith@example.com') {
-            return Promise.resolve([{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }])
-          }
-          return Promise.resolve([])
-        },
-      },
+      identityResolver: { searchUsers: searchUsersEmailLoginExact },
     } as TaskProvider
 
     const result = await attemptAutoLink(testContextId, 'jsmith@example.com', emailLoginProvider)
     expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.login).toBe('jsmith@example.com')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.login).toBe('jsmith@example.com')
   })
 })

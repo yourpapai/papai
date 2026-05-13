@@ -1,4 +1,4 @@
-import type { SearchResult } from '../types.js'
+import type { RankedSearchResult, SearchResult } from '../types.js'
 
 const scopeScore = (scopeTier: SearchResult['scopeTier']): number => {
   switch (scopeTier) {
@@ -28,10 +28,10 @@ const matchScore = (matchReason: string): number => {
   return 0
 }
 
-export const rerankSearchResults = (results: readonly SearchResult[]): readonly SearchResult[] =>
-  [...results].sort(
-    (left, right) =>
-      matchScore(right.matchReason) +
-      scopeScore(right.scopeTier) -
-      (matchScore(left.matchReason) + scopeScore(left.scopeTier)),
-  )
+export const scoreSearchResult = (result: Readonly<SearchResult>): number =>
+  scopeScore(result.scopeTier) + matchScore(result.matchReason)
+
+export const rerankSearchResults = (results: readonly SearchResult[]): readonly RankedSearchResult[] =>
+  [...results]
+    .map((result) => ({ ...result, rankScore: scoreSearchResult(result) }))
+    .sort((left, right) => right.rankScore - left.rankScore)

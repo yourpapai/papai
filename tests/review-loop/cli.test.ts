@@ -1,24 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { closeClients, parseCliArgs } from '../../review-loop/src/cli.js'
+import { closeClients, parseCliArgs, runCli } from '../../review-loop/src/cli.js'
 import { loadReviewLoopConfig } from '../../review-loop/src/config.js'
+import { cleanupTempDirs, createReviewLoopConfigFixture, makeTempDir } from './test-helpers.js'
 
-const tempDirs: string[] = []
-
-const makeTempDir = (): string => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'review-loop-cli-'))
-  tempDirs.push(dir)
-  return dir
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
+afterEach(cleanupTempDirs)
 
 describe('review-loop CLI bootstrap', () => {
   test('parseCliArgs requires --plan and returns resume-run when provided', () => {
@@ -42,7 +30,7 @@ describe('review-loop CLI bootstrap', () => {
   })
 
   test('loadReviewLoopConfig resolves relative config paths from config and repo roots', async () => {
-    const dir = makeTempDir()
+    const dir = makeTempDir('review-loop-cli-')
     const configDir = path.join(dir, 'config')
     const repoDir = path.join(dir, 'repo')
     const configPath = path.join(configDir, 'review-loop.config.json')
@@ -52,23 +40,7 @@ describe('review-loop CLI bootstrap', () => {
       configPath,
       JSON.stringify(
         {
-          repoRoot: '../repo',
-          workDir: '.review-loop',
-          maxRounds: 5,
-          maxNoProgressRounds: 2,
-          reviewer: {
-            command: '/usr/local/bin/claude-acp-adapter',
-            args: [],
-            invocationPrefix: '/review-code',
-            requireInvocationPrefix: false,
-          },
-          fixer: {
-            command: 'opencode',
-            args: ['acp'],
-            verifyInvocationPrefix: '/verify-issue',
-            fixInvocationPrefix: null,
-            requireVerifyInvocation: false,
-          },
+          ...createReviewLoopConfigFixture('../repo', { workDir: '.review-loop' }),
         },
         null,
         2,
@@ -85,7 +57,7 @@ describe('review-loop CLI bootstrap', () => {
   })
 
   test('loadReviewLoopConfig resolves --repo overrides from the caller cwd', async () => {
-    const dir = makeTempDir()
+    const dir = makeTempDir('review-loop-cli-')
     const configDir = path.join(dir, 'config')
     const configPath = path.join(configDir, 'review-loop.config.json')
     const previousCwd = process.cwd()
@@ -95,23 +67,7 @@ describe('review-loop CLI bootstrap', () => {
       configPath,
       JSON.stringify(
         {
-          repoRoot: '../repo',
-          workDir: '.review-loop',
-          maxRounds: 5,
-          maxNoProgressRounds: 2,
-          reviewer: {
-            command: '/usr/local/bin/claude-acp-adapter',
-            args: [],
-            invocationPrefix: '/review-code',
-            requireInvocationPrefix: false,
-          },
-          fixer: {
-            command: 'opencode',
-            args: ['acp'],
-            verifyInvocationPrefix: '/verify-issue',
-            fixInvocationPrefix: null,
-            requireVerifyInvocation: false,
-          },
+          ...createReviewLoopConfigFixture('../repo', { workDir: '.review-loop' }),
         },
         null,
         2,
@@ -160,5 +116,86 @@ describe('review-loop CLI bootstrap', () => {
     })
     expect(reviewerClosed).toBe(true)
     expect(fixerClosed).toBe(true)
+  })
+
+  test('runCli waits for delayed required command advertisements before starting the loop', async () => {
+    const dir = makeTempDir('review-loop-cli-')
+    const reviewerScenarioPath = path.join(dir, 'reviewer.json')
+    const fixerScenarioPath = path.join(dir, 'fixer.json')
+    const configPath = path.join(dir, 'config.json')
+    const planPath = path.join(dir, 'plan.md')
+
+    writeFileSync(planPath, '# Implementation plan\n')
+    writeFileSync(
+      reviewerScenarioPath,
+      JSON.stringify(
+        {
+          availableCommands: [{ name: 'review-code', description: 'Review code' }],
+          availableCommandsUpdateDelayMs: 25,
+          promptReplies: [
+            {
+              text: '{"round":1,"issues":[]}',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    )
+    writeFileSync(
+      fixerScenarioPath,
+      JSON.stringify(
+        {
+          availableCommands: [{ name: 'verify-issue', description: 'Verify issue' }],
+          availableCommandsUpdateDelayMs: 25,
+          promptReplies: [
+            {
+              text: '{"verdict":"invalid","fixability":"manual","reasoning":"False positive.","targetFiles":["src/message-queue/queue.ts"],"needsPlanning":false}',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    )
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          repoRoot: process.cwd(),
+          workDir: path.join(dir, '.review-loop'),
+          maxRounds: 1,
+          maxNoProgressRounds: 1,
+          reviewer: {
+            command: 'bun',
+            args: ['tests/review-loop/fake-agent.ts'],
+            env: { ACP_SCENARIO_FILE: reviewerScenarioPath },
+            sessionConfig: {},
+            invocationPrefix: '/review-code',
+            requireInvocationPrefix: true,
+          },
+          fixer: {
+            command: 'bun',
+            args: ['tests/review-loop/fake-agent.ts'],
+            env: { ACP_SCENARIO_FILE: fixerScenarioPath },
+            sessionConfig: {},
+            verifyInvocationPrefix: '/verify-issue',
+            fixInvocationPrefix: '/fix-issue',
+            requireVerifyInvocation: true,
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    await runCli(['--config', configPath, '--plan', planPath])
+
+    const runRoot = path.join(dir, '.review-loop', 'runs')
+    const runId = readdirSync(runRoot)[0]
+    expect(runId).toBeDefined()
+    const summary = readFileSync(path.join(runRoot, runId!, 'summary.txt'), 'utf8')
+
+    expect(summary).toContain('Done reason: clean')
   })
 })

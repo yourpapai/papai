@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeAddTaskLabelTool } from '../../src/tools/add-task-label.js'
 import { makeRemoveTaskLabelTool } from '../../src/tools/remove-task-label.js'
@@ -14,6 +15,16 @@ function isTaskLabel(val: unknown): val is { taskId: string; labelId: string } {
     'labelId' in val &&
     typeof val.labelId === 'string'
   )
+}
+
+function assertTaskLabel(val: unknown): asserts val is { taskId: string; labelId: string } {
+  assert(isTaskLabel(val), 'expected a valid task label result')
+}
+
+function assertToolExecute<T extends { execute?: unknown }>(
+  tool: T,
+): asserts tool is T & { execute: NonNullable<T['execute']> } {
+  assert(tool.execute !== undefined, 'Tool execute is undefined')
 }
 
 describe('Task Label Tools', () => {
@@ -40,12 +51,12 @@ describe('Task Label Tools', () => {
       })
 
       const tool = makeAddTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'label-1' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTaskLabel(result)) throw new Error('Invalid result')
+      assertTaskLabel(result)
 
       expect(result.taskId).toBe('task-1')
       expect(result.labelId).toBe('label-1')
@@ -56,7 +67,7 @@ describe('Task Label Tools', () => {
       const provider = createMockProvider({ addTaskLabel })
 
       const tool = makeAddTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       await tool.execute({ taskId: 'task-1', labelId: 'label-1' }, { toolCallId: '1', messages: [] })
 
       expect(addTaskLabel).toHaveBeenCalledTimes(1)
@@ -69,7 +80,7 @@ describe('Task Label Tools', () => {
       const provider = createMockProvider({ listLabels, addTaskLabel })
 
       const tool = makeAddTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       await tool.execute({ taskId: 'task-1', labelName: 'blocked' }, { toolCallId: '1', messages: [] })
 
       expect(listLabels).toHaveBeenCalledTimes(1)
@@ -169,12 +180,12 @@ describe('Task Label Tools', () => {
       const provider = createMockProvider({ addTaskLabel })
 
       const tool = makeAddTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'label-1' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTaskLabel(result)) throw new Error('Invalid result')
+      assertTaskLabel(result)
 
       expect(result.taskId).toBe('task-1')
       expect(result.labelId).toBe('label-1')
@@ -195,12 +206,12 @@ describe('Task Label Tools', () => {
       })
 
       const tool = makeRemoveTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       const result: unknown = await tool.execute(
         { taskId: 'task-1', labelId: 'label-1' },
         { toolCallId: '1', messages: [] },
       )
-      if (!isTaskLabel(result)) throw new Error('Invalid result')
+      assertTaskLabel(result)
 
       expect(result.taskId).toBe('task-1')
       expect(result.labelId).toBe('label-1')
@@ -211,7 +222,7 @@ describe('Task Label Tools', () => {
       const provider = createMockProvider({ removeTaskLabel })
 
       const tool = makeRemoveTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       await tool.execute({ taskId: 'task-1', labelId: 'label-1' }, { toolCallId: '1', messages: [] })
 
       expect(removeTaskLabel).toHaveBeenCalledTimes(1)
@@ -224,7 +235,7 @@ describe('Task Label Tools', () => {
       const provider = createMockProvider({ listLabels, removeTaskLabel })
 
       const tool = makeRemoveTaskLabelTool(provider)
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assertToolExecute(tool)
       await tool.execute({ taskId: 'task-1', labelName: 'blocked' }, { toolCallId: '1', messages: [] })
 
       expect(listLabels).toHaveBeenCalledTimes(1)

@@ -4,6 +4,38 @@ import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
 import { createMockActivity, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { CommentResource } from './test-resources.js'
 
+type ActivityOverrides = Exclude<Parameters<typeof createMockActivity>[0], undefined>
+
+function parseRequestBody(options: RequestInit): unknown {
+  return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
+}
+
+function makeAddCommentFetchHandler(
+  onPost: (body: unknown) => void,
+  activityOverrides: ActivityOverrides,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (_url: string, options: RequestInit): Promise<Response> => {
+    if (options.method === 'POST') {
+      onPost(parseRequestBody(options))
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    }
+    return Promise.resolve(new Response(JSON.stringify([createMockActivity(activityOverrides)]), { status: 200 }))
+  }
+}
+
+function makeUpdateCommentFetchHandler(
+  onPut: (body: unknown) => void,
+  activityOverrides: ActivityOverrides,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (_url: string, options: RequestInit): Promise<Response> => {
+    if (options.method === 'PUT') {
+      onPut(parseRequestBody(options))
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    }
+    return Promise.resolve(new Response(JSON.stringify([createMockActivity(activityOverrides)]), { status: 200 }))
+  }
+}
+
 describe('CommentResource', () => {
   const mockConfig: KaneoConfig = {
     apiKey: 'test-key',
@@ -25,27 +57,14 @@ describe('CommentResource', () => {
       // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
       // Code does POST then GET /activity/:taskId to retrieve the actual created comment.
       let capturedBody: unknown
-      setMockFetch((_url: string, options: RequestInit) => {
-        if (options.method === 'POST') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-        }
-        // GET /activity/:taskId — return array with the created comment
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              createMockActivity({
-                id: 'comment-1',
-                taskId: 'task-1',
-                type: 'comment',
-                userId: 'user-1',
-                content: 'New comment',
-              }),
-            ]),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        makeAddCommentFetchHandler(
+          (body) => {
+            capturedBody = body
+          },
+          { id: 'comment-1', taskId: 'task-1', type: 'comment', userId: 'user-1', content: 'New comment' },
+        ),
+      )
 
       const resource = new CommentResource(mockConfig)
       const result = await resource.add('task-1', 'New comment')
@@ -60,25 +79,15 @@ describe('CommentResource', () => {
     })
 
     test('handles empty comment', async () => {
-      setMockFetch((_url: string, options: RequestInit) => {
-        if (options.method === 'POST') {
-          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              createMockActivity({
-                id: 'comment-2',
-                taskId: 'task-1',
-                type: 'comment',
-                userId: 'user-1',
-                content: '',
-              }),
-            ]),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        makeAddCommentFetchHandler(() => {}, {
+          id: 'comment-2',
+          taskId: 'task-1',
+          type: 'comment',
+          userId: 'user-1',
+          content: '',
+        }),
+      )
 
       const resource = new CommentResource(mockConfig)
       const result = await resource.add('task-1', '')
@@ -90,25 +99,15 @@ describe('CommentResource', () => {
 
     test('handles long comment', async () => {
       const longComment = 'a'.repeat(1000)
-      setMockFetch((_url: string, options: RequestInit) => {
-        if (options.method === 'POST') {
-          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              createMockActivity({
-                id: 'comment-3',
-                taskId: 'task-1',
-                type: 'comment',
-                userId: 'user-1',
-                content: longComment,
-              }),
-            ]),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        makeAddCommentFetchHandler(() => {}, {
+          id: 'comment-3',
+          taskId: 'task-1',
+          type: 'comment',
+          userId: 'user-1',
+          content: longComment,
+        }),
+      )
 
       const resource = new CommentResource(mockConfig)
       const result = await resource.add('task-1', longComment)
@@ -264,26 +263,14 @@ describe('CommentResource', () => {
       // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/update-comment.ts
       // Code does PUT then GET /activity/:taskId to retrieve the actual updated comment.
       let capturedBody: unknown
-      setMockFetch((_url: string, options: RequestInit) => {
-        if (options.method === 'PUT') {
-          capturedBody = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
-          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-        }
-        // GET /activity/:taskId — return array with the updated comment
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              createMockActivity({
-                id: 'comment-1',
-                taskId: 'task-1',
-                type: 'comment',
-                content: 'Updated',
-              }),
-            ]),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        makeUpdateCommentFetchHandler(
+          (body) => {
+            capturedBody = body
+          },
+          { id: 'comment-1', taskId: 'task-1', type: 'comment', content: 'Updated' },
+        ),
+      )
 
       const resource = new CommentResource(mockConfig)
       const result = await resource.update('task-1', 'comment-1', 'Updated')

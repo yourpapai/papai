@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { CompletionHookDeps } from '../../src/tools/completion-hook.js'
 import { completionHook } from '../../src/tools/completion-hook.js'
@@ -82,7 +83,7 @@ describe('completionHook', () => {
 
     expect(createTask).toHaveBeenCalledTimes(1)
     const calls = createTask.mock.calls
-    if (calls.length === 0) throw new Error('Expected createTask to be called')
+    assert(calls.length > 0, 'Expected createTask to be called')
     const firstArg: unknown = calls[0]
     expect(firstArg).toMatchObject([
       {

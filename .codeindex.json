@@ -1,0 +1,11 @@
+{
+  "roots": ["src", "client"],
+  "exclude": ["node_modules", "dist", ".git", "coverage", "**/*.test.*", "**/*.spec.*"],
+  "languages": ["ts", "tsx", "js", "jsx"],
+  "dbPath": ".codeindex/index.db",
+  "indexLocals": true,
+  "indexVariables": true,
+  "includeDocComments": true,
+  "maxStoredBodyLines": 120,
+  "tsconfigPaths": ["tsconfig.json"]
+}

@@ -13,7 +13,7 @@ export function normalizeKeywordSlug(slug: string): string {
     .replaceAll(/^-+|-+$/g, '')
 }
 
-const KeywordVocabularyEntrySchema = z.object({
+export const KeywordVocabularyEntryCoreSchema = z.object({
   slug: z
     .string()
     .trim()
@@ -21,6 +21,9 @@ const KeywordVocabularyEntrySchema = z.object({
     .transform((slug) => normalizeKeywordSlug(slug))
     .refine((slug) => slug.length > 0, 'Keyword slug cannot be empty after normalization'),
   description: z.string(),
+})
+
+const KeywordVocabularyEntrySchema = KeywordVocabularyEntryCoreSchema.extend({
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -40,14 +43,14 @@ function normalizeKeywordVocabularyEntryGroup(
     (latest, entry) => (entry.updatedAt > latest ? entry.updatedAt : latest),
     entries[0].updatedAt,
   )
-  const mostRecentlyUpdatedEntry = entries.reduce(
-    (latest, entry) => (entry.updatedAt > latest.updatedAt ? entry : latest),
+  const longestDescriptionEntry = entries.reduce(
+    (longest, entry) => (entry.description.length >= longest.description.length ? entry : longest),
     entries[0],
   )
 
   return {
     slug: entries[0].slug,
-    description: mostRecentlyUpdatedEntry.description,
+    description: longestDescriptionEntry.description,
     createdAt: earliestCreatedAt,
     updatedAt: latestUpdatedAt,
   }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
@@ -11,6 +12,37 @@ import { startGroupSettingsSelection } from '../../../src/group-settings/selecto
 import { setKaneoWorkspace } from '../../../src/users.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
+
+type ReadyListener = (arg: { user: { id: string; username: string } }) => void
+type GenericListener = (...args: unknown[]) => void
+
+function makeOnceReadyRouter(readyListeners: ReadyListener[]): (event: string, listener: GenericListener) => void {
+  return (event: string, listener: GenericListener): void => {
+    if (event === 'ready') readyListeners.push(listener as ReadyListener)
+  }
+}
+
+function makeOnMessageCreateRouter(
+  messageListeners: GenericListener[],
+): (event: string, listener: GenericListener) => void {
+  return (event: string, listener: GenericListener): void => {
+    if (event === 'messageCreate') messageListeners.push(listener)
+  }
+}
+
+function makeOnErrorRouter(errorListeners: GenericListener[]): (event: string, listener: GenericListener) => void {
+  return (event: string, listener: GenericListener): void => {
+    if (event === 'error') errorListeners.push(listener)
+  }
+}
+
+function makeOnInteractionCreateRouter(
+  interactionListeners: GenericListener[],
+): (event: string, listener: GenericListener) => void {
+  return (event: string, listener: GenericListener): void => {
+    if (event === 'interactionCreate') interactionListeners.push(listener)
+  }
+}
 
 describe('DiscordChatProvider', () => {
   const originalToken = process.env['DISCORD_BOT_TOKEN']
@@ -349,14 +381,12 @@ describe('DiscordChatProvider', () => {
 
       const result = provider.renderContext(snapshot)
 
-      expect(result.method).toBe('embed')
-      if (result.method === 'embed') {
-        expect(result.embed.title).toBe('Context · gpt-4o')
-        expect(result.embed.description).toContain('🟦')
-        expect(result.embed.footer).toContain('1,500')
-        expect(result.embed.footer).toContain('128,000')
-        expect(result.embed.color).toBe(0x2ecc71)
-      }
+      assert(result.method === 'embed')
+      expect(result.embed.title).toBe('Context · gpt-4o')
+      expect(result.embed.description).toContain('🟦')
+      expect(result.embed.footer).toContain('1,500')
+      expect(result.embed.footer).toContain('128,000')
+      expect(result.embed.color).toBe(0x2ecc71)
     })
   })
 
@@ -377,15 +407,13 @@ describe('DiscordChatProvider', () => {
     test('resolves when ClientReady fires after login', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: null,
-        on: (_event: string, _listener: (...args: unknown[]) => void): void => undefined,
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: (_event: string, _listener: GenericListener): void => undefined,
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -403,17 +431,15 @@ describe('DiscordChatProvider', () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
       const registeredEvents: string[] = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: null,
-        on: (event: string, _listener: (...args: unknown[]) => void): void => {
+        on: (event: string, _listener: GenericListener): void => {
           registeredEvents.push(event)
         },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -433,18 +459,14 @@ describe('DiscordChatProvider', () => {
     test('dispatches incoming DM message via messageCreate listener', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
-      const messageListeners: Array<(...args: unknown[]) => void> = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const messageListeners: GenericListener[] = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: { id: 'bot-42', username: 'testbot' },
-        on: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'messageCreate') messageListeners.push(listener)
-        },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: makeOnMessageCreateRouter(messageListeners),
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -492,18 +514,14 @@ describe('DiscordChatProvider', () => {
     test('error listener fires without throwing', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
-      const errorListeners: Array<(...args: unknown[]) => void> = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const errorListeners: GenericListener[] = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: null,
-        on: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'error') errorListeners.push(listener)
-        },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: makeOnErrorRouter(errorListeners),
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -523,18 +541,14 @@ describe('DiscordChatProvider', () => {
     test('non-button interactionCreate is silently ignored', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
-      const interactionListeners: Array<(...args: unknown[]) => void> = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const interactionListeners: GenericListener[] = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: null,
-        on: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'interactionCreate') interactionListeners.push(listener)
-        },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: makeOnInteractionCreateRouter(interactionListeners),
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -564,18 +578,14 @@ describe('DiscordChatProvider', () => {
       // Authorize the user
       addUser('u5', 'admin-id', 'eve')
 
-      const interactionListeners: Array<(...args: unknown[]) => void> = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const interactionListeners: GenericListener[] = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: { id: 'bot-42', username: 'testbot' },
-        on: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'interactionCreate') interactionListeners.push(listener)
-        },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: makeOnInteractionCreateRouter(interactionListeners),
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -672,9 +682,8 @@ describe('DiscordChatProvider', () => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
 
-        if (reply.replaceText === undefined || reply.replaceButtons === undefined) {
-          throw new TypeError('Expected replacement helpers to be available')
-        }
+        assert(reply.replaceText !== undefined)
+        assert(reply.replaceButtons !== undefined)
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -714,10 +723,7 @@ describe('DiscordChatProvider', () => {
       expect(edits[1]!.content).toBe('Choose next')
       expect(Array.isArray(edits[1]!.components)).toBe(true)
       const secondEditComponents = edits[1]!.components
-      expect(secondEditComponents).toBeDefined()
-      if (secondEditComponents === undefined) {
-        throw new TypeError('Expected replacement button components')
-      }
+      assert(secondEditComponents !== undefined)
       expect(secondEditComponents.length).toBe(1)
     })
 
@@ -732,9 +738,8 @@ describe('DiscordChatProvider', () => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
 
-        if (reply.replaceText === undefined || reply.replaceButtons === undefined) {
-          throw new TypeError('Expected replacement helpers to be available')
-        }
+        assert(reply.replaceText !== undefined)
+        assert(reply.replaceButtons !== undefined)
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -774,10 +779,7 @@ describe('DiscordChatProvider', () => {
       expect(sends[1]!.content).toBe('Choose next')
       expect(Array.isArray(sends[1]!.components)).toBe(true)
       const secondSendComponents = sends[1]!.components
-      expect(secondSendComponents).toBeDefined()
-      if (secondSendComponents === undefined) {
-        throw new TypeError('Expected fallback button components')
-      }
+      assert(secondSendComponents !== undefined)
       expect(secondSendComponents.length).toBe(1)
     })
 
@@ -979,6 +981,7 @@ describe('DiscordChatProvider', () => {
       })
       addAuthorizedGroup('group-1', 'admin-id')
       upsertGroupAdminObservation({
+        provider: 'discord',
         contextId: 'group-1',
         userId: 'user-1',
         username: 'alice',
@@ -1006,10 +1009,8 @@ describe('DiscordChatProvider', () => {
 
       await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
 
-      expect(sends[0]).toBeDefined()
-      if (sends[0] === undefined || sends[0].content === undefined) {
-        throw new TypeError('Expected a config prompt message')
-      }
+      assert(sends[0] !== undefined)
+      assert(sends[0].content !== undefined)
       expect(sends[0].content).toContain('Choose a group to configure.')
     })
 
@@ -1025,6 +1026,7 @@ describe('DiscordChatProvider', () => {
         parentName: 'Platform',
       })
       upsertGroupAdminObservation({
+        provider: 'discord',
         contextId: 'group-1',
         userId: 'user-1',
         username: 'alice',
@@ -1071,10 +1073,8 @@ describe('DiscordChatProvider', () => {
 
       await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
 
-      expect(sends[0]).toBeDefined()
-      if (sends[0] === undefined || sends[0].content === undefined) {
-        throw new TypeError('Expected a setup prompt message')
-      }
+      assert(sends[0] !== undefined)
+      assert(sends[0].content !== undefined)
       expect(sends[0].content).toContain('Welcome to papai configuration wizard!')
     })
 
@@ -1117,18 +1117,14 @@ describe('DiscordChatProvider', () => {
     test('messageCreate listener catches and does not rethrow when dispatchMessage rejects', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
-      const messageListeners: Array<(...args: unknown[]) => void> = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const messageListeners: GenericListener[] = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: { id: 'bot-42', username: 'testbot' },
-        on: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'messageCreate') messageListeners.push(listener)
-        },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: makeOnMessageCreateRouter(messageListeners),
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 
@@ -1261,18 +1257,14 @@ describe('DiscordChatProvider', () => {
     test('interactionCreate listener catches and does not rethrow when handleButtonInteraction rejects', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
 
-      const interactionListeners: Array<(...args: unknown[]) => void> = []
-      const readyListeners: Array<(arg: { user: { id: string; username: string } }) => void> = []
+      const interactionListeners: GenericListener[] = []
+      const readyListeners: ReadyListener[] = []
 
       const fakeClient = {
         destroy: (): Promise<void> => Promise.resolve(),
         user: { id: 'bot-42', username: 'testbot' },
-        on: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'interactionCreate') interactionListeners.push(listener)
-        },
-        once: (event: string, listener: (...args: unknown[]) => void): void => {
-          if (event === 'ready') readyListeners.push(listener as (typeof readyListeners)[0])
-        },
+        on: makeOnInteractionCreateRouter(interactionListeners),
+        once: makeOnceReadyRouter(readyListeners),
         login: (_token: string): Promise<string> => Promise.resolve('fake-token-123'),
       }
 

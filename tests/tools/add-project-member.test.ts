@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeAddProjectMemberTool } from '../../src/tools/add-project-member.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -35,7 +36,7 @@ describe('Add Project Member Tool', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    if (!isProjectUserResult(result)) throw new Error('Invalid result')
+    assert(isProjectUserResult(result), 'Invalid result')
     expect(result).toEqual({ projectId: 'project-1', userId: 'user-1' })
     expect(addProjectMember).toHaveBeenCalledWith('project-1', 'user-1')
   })

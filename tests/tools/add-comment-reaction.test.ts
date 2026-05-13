@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { makeAddCommentReactionTool } from '../../src/tools/add-comment-reaction.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
@@ -37,7 +38,7 @@ describe('Add Comment Reaction Tool', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    if (!isReaction(result)) throw new Error('Invalid result')
+    assert(isReaction(result))
     expect(result.reaction).toBe('thumbs_up')
     expect(addCommentReaction).toHaveBeenCalledWith('task-1', 'comment-1', 'thumbs_up')
   })

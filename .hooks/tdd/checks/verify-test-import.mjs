@@ -29,6 +29,11 @@ export function verifyTestImport(ctx) {
     const testAbsPath = path.resolve(cwd, filePath)
     const implAbsPath = path.resolve(cwd, implRelPath)
 
+    // Skip the check when the corresponding implementation file does not exist.
+    // This covers tests that cover multiple implementation modules by convention
+    // (e.g. tests/tools/work-item-tools.test.ts tests list-work, log-work, etc.).
+    if (!fs.existsSync(implAbsPath)) return null
+
     if (!testFileImportsImpl(testAbsPath, implAbsPath)) {
       const testDir = path.dirname(testAbsPath)
       const expectedImport = path

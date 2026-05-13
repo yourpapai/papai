@@ -2,8 +2,9 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { Output, stepCountIs } from 'ai'
 import { z } from 'zod'
 
-import { verboseGenerateText } from './agent-helpers.js'
+import { fetchWithoutTimeout, verboseGenerateText } from './agent-helpers.js'
 import { BASE_URL, MAX_RETRIES, MAX_STEPS, MODEL, PHASE3_TIMEOUT_MS, RETRY_BACKOFF_MS } from './config.js'
+import { addAgentUsage, type AgentResult, type AgentUsage } from './phase-stats.js'
 import { makeAuditTools } from './tools.js'
 
 function getEnvOrFallback(name: string, fallback: string): string {
@@ -17,6 +18,7 @@ const provider = createOpenAICompatible({
   name: 'behavior-audit-eval',
   apiKey,
   baseURL: BASE_URL,
+  fetch: fetchWithoutTimeout,
   supportsStructuredOutputs: true,
 })
 const model = provider(MODEL)
@@ -62,7 +64,11 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
-async function evaluateSingle(prompt: string, attempt: number): Promise<EvalResult | null> {
+async function evaluateSingle(
+  prompt: string,
+  attempt: number,
+): Promise<{ data: EvalResult | null; usage: AgentUsage }> {
+  const usage: AgentUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0, toolNames: [] }
   const timeout = attempt > 0 ? PHASE3_TIMEOUT_MS * 2 : PHASE3_TIMEOUT_MS
   const tools = makeAuditTools()
   const start = Date.now()
@@ -71,39 +77,54 @@ async function evaluateSingle(prompt: string, attempt: number): Promise<EvalResu
       model,
       system: SYSTEM_PROMPT,
       prompt,
+      maxOutputTokens: 16384,
       tools,
       output: Output.object({ schema: EvalResultSchema }),
       stopWhen: stepCountIs(MAX_STEPS + 1),
       abortSignal: AbortSignal.timeout(timeout),
     })
+    usage.inputTokens = result.totalUsage.inputTokens ?? 0
+    usage.outputTokens = result.totalUsage.outputTokens ?? 0
+    for (const step of result.steps) {
+      for (const tc of step.toolCalls) {
+        usage.toolCalls += 1
+        usage.toolNames.push(tc.toolName)
+      }
+    }
     const elapsed = ((Date.now() - start) / 1000).toFixed(1)
     if (result.output === null) {
       console.log(`✗ null output (${elapsed}s)`)
-      return null
+      return { data: null, usage }
     }
     const parsed = EvalResultSchema.safeParse(result.output)
     if (!parsed.success) {
       console.log(`✗ parse error (${elapsed}s)`)
-      return null
+      return { data: null, usage }
     }
-    console.log(`✓ (${elapsed}s)`)
-    return parsed.data
+    return { data: parsed.data, usage }
   } catch (error) {
     const elapsed = ((Date.now() - start) / 1000).toFixed(1)
     console.log(`✗ ${error instanceof Error ? error.message : String(error)} (${elapsed}s)`)
-    return null
+    return { data: null, usage }
   }
 }
 
-function retryWithBackoff(prompt: string, attempt: number, maxAttempts: number): Promise<EvalResult | null> {
+function retryWithBackoff(
+  prompt: string,
+  attempt: number,
+  maxAttempts: number,
+  accumulatedUsage: AgentUsage,
+): Promise<AgentResult<EvalResult> | null> {
   if (attempt >= maxAttempts) return Promise.resolve(null)
-  return evaluateSingle(prompt, attempt).then((result) => {
-    if (result !== null) return result
+  return evaluateSingle(prompt, attempt).then(({ data, usage }) => {
+    const combined = addAgentUsage(accumulatedUsage, usage)
+    if (data !== null) return { result: data, usage: combined }
     const backoff = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]!
-    return sleep(backoff).then(() => retryWithBackoff(prompt, attempt + 1, maxAttempts))
+    return sleep(backoff).then(() => retryWithBackoff(prompt, attempt + 1, maxAttempts, combined))
   })
 }
 
-export function evaluateWithRetry(prompt: string): Promise<EvalResult | null> {
-  return retryWithBackoff(prompt, 0, MAX_RETRIES)
+export function evaluateWithRetry(prompt: string): Promise<AgentResult<EvalResult> | null> {
+  const emptyUsage: AgentUsage = { inputTokens: 0, outputTokens: 0, toolCalls: 0, toolNames: [] }
+  return retryWithBackoff(prompt, 0, MAX_RETRIES, emptyUsage)
 }

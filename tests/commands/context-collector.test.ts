@@ -1,7 +1,9 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
 
+import type { ContextSection } from '../../src/chat/types.js'
 import type { ContextCollectorDeps } from '../../src/commands/context-collector.js'
 import {
   collectContext,
@@ -12,20 +14,33 @@ import {
 } from '../../src/commands/context-collector.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
-const makeDeps = (overrides: Partial<ContextCollectorDeps> = {}): ContextCollectorDeps => ({
-  getMainModel: (): string | null => 'gpt-4o',
-  buildSystemPrompt: (): string => 'BASE PROMPT BODY',
-  buildInstructionsBlock: (): string => '',
-  getProviderAddendum: (): string => '',
-  getHistory: (): readonly ModelMessage[] => [],
-  getMemoryMessage: (): string | null => null,
-  getSummary: (): string | null => null,
-  getFacts: (): readonly { identifier: string; title: string; url: string; last_seen: string }[] => [],
-  getActiveToolDefinitions: (): Record<string, unknown> => ({}),
-  getProviderName: (): string => 'kaneo',
-  countTokens: (text: string): number => Math.ceil(text.length / 4),
-  ...overrides,
-})
+function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextCollectorDeps {
+  return {
+    getMainModel: (): string | null => 'gpt-4o',
+    buildSystemPrompt: (): string => 'BASE PROMPT BODY',
+    buildInstructionsBlock: (): string => '',
+    getProviderAddendum: (): string => '',
+    getHistory: (): readonly ModelMessage[] => [],
+    getMemoryMessage: (): string | null => null,
+    getSummary: (): string | null => null,
+    getFacts: (): readonly { identifier: string; title: string; url: string; last_seen: string }[] => [],
+    getActiveToolDefinitions: (): Record<string, unknown> => ({}),
+    getProviderName: (): string => 'kaneo',
+    countTokens: (text: string): number => Math.ceil(text.length / 4),
+    ...resolveCollectorOverrides(overrides),
+  }
+}
+
+function resolveCollectorOverrides(overrides: Partial<ContextCollectorDeps> | null): Partial<ContextCollectorDeps> {
+  if (overrides === null) return {}
+  return overrides
+}
+
+function requireSection(sections: readonly ContextSection[], label: ContextSection['label']): ContextSection {
+  const section = sections.find((entry) => entry.label === label)
+  assert.ok(section !== undefined)
+  return section
+}
 
 describe('collectContext', () => {
   beforeEach(() => {
@@ -51,7 +66,7 @@ describe('collectContext', () => {
   })
 
   test('produces sections in the expected order with the expected labels', () => {
-    const snapshot = collectContext('user1', makeDeps())
+    const snapshot = collectContext('user1', makeDeps(null))
     expect(snapshot.sections.map((s) => s.label)).toEqual([
       'System prompt',
       'Memory context',
@@ -70,10 +85,12 @@ describe('collectContext', () => {
       getMemoryMessage: () => 'Memory block',
     })
     const snapshot = collectContext('user1', deps)
-    const memory = snapshot.sections.find((s) => s.label === 'Memory context')
-    expect(memory).toBeDefined()
-    expect(memory?.children?.map((c) => c.label)).toEqual(['Summary', 'Known entities'])
-    expect(memory?.children?.[1]?.detail).toBe('2 facts')
+    const memory = requireSection(snapshot.sections, 'Memory context')
+    assert.ok(memory.children !== undefined)
+    expect(memory.children.map((c) => c.label)).toEqual(['Summary', 'Known entities'])
+    const knownEntities = memory.children[1]
+    assert.ok(knownEntities !== undefined)
+    expect(knownEntities.detail).toBe('2 facts')
   })
 
   test('system prompt section has Base / Custom / Addendum children when non-empty', () => {
@@ -82,9 +99,9 @@ describe('collectContext', () => {
       getProviderAddendum: () => 'kaneo addendum',
     })
     const snapshot = collectContext('user1', deps)
-    const sysPrompt = snapshot.sections.find((s) => s.label === 'System prompt')
-    expect(sysPrompt).toBeDefined()
-    const labels = sysPrompt?.children?.map((c) => c.label) ?? []
+    const sysPrompt = requireSection(snapshot.sections, 'System prompt')
+    assert.ok(sysPrompt.children !== undefined)
+    const labels = sysPrompt.children.map((c) => c.label)
     expect(labels).toContain('Base instructions')
     expect(labels).toContain('Custom instructions')
     expect(labels).toContain('Provider addendum')
@@ -99,9 +116,8 @@ describe('collectContext', () => {
       ],
     })
     const snapshot = collectContext('user1', deps)
-    const convo = snapshot.sections.find((s) => s.label === 'Conversation history')
-    expect(convo).toBeDefined()
-    expect(convo?.detail).toBe('3 messages')
+    const convo = requireSection(snapshot.sections, 'Conversation history')
+    expect(convo.detail).toBe('3 messages')
   })
 
   test('Tools detail shows count and provider name', () => {
@@ -110,9 +126,8 @@ describe('collectContext', () => {
       getProviderName: () => 'kaneo',
     })
     const snapshot = collectContext('user1', deps)
-    const tools = snapshot.sections.find((s) => s.label === 'Tools')
-    expect(tools).toBeDefined()
-    expect(tools?.detail).toBe('3 active, gated by kaneo')
+    const tools = requireSection(snapshot.sections, 'Tools')
+    expect(tools.detail).toBe('3 active, gated by kaneo')
   })
 
   test('returns maxTokens=null for unknown model', () => {
@@ -139,9 +154,9 @@ describe('collectContext', () => {
   })
 
   test('handles completely empty state', () => {
-    const snapshot = collectContext('user1', makeDeps())
-    expect(snapshot.sections.find((s) => s.label === 'Memory context')?.tokens).toBe(0)
-    expect(snapshot.sections.find((s) => s.label === 'Conversation history')?.tokens).toBe(0)
+    const snapshot = collectContext('user1', makeDeps(null))
+    expect(requireSection(snapshot.sections, 'Memory context').tokens).toBe(0)
+    expect(requireSection(snapshot.sections, 'Conversation history').tokens).toBe(0)
   })
 })
 
@@ -231,5 +246,31 @@ describe('prepareDefaultCountTokens', () => {
     await prepareDefaultCountTokens('o200k_base')
     const n = defaultCountTokens('test', 'o200k_base')
     expect(n).toBeGreaterThan(0)
+  })
+})
+
+describe('encoding-sensitive collection', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await prepareDefaultCountTokens('cl100k_base')
+    await prepareDefaultCountTokens('o200k_base')
+  })
+
+  test('o200k_base models keep o200k_base token counting', () => {
+    const sample = 'お誕生日おめでとう'
+    const o200kTokens = defaultCountTokens(sample, 'o200k_base')
+    const cl100kTokens = defaultCountTokens(sample, 'cl100k_base')
+    const snapshot = collectContext(
+      'user1',
+      makeDeps({
+        getMainModel: () => 'gpt-4o',
+        buildSystemPrompt: () => sample,
+        countTokens: (text: string): number => defaultCountTokens(text, 'o200k_base'),
+      }),
+    )
+    const systemPrompt = requireSection(snapshot.sections, 'System prompt')
+
+    expect(systemPrompt.tokens).toBe(o200kTokens)
+    expect(systemPrompt.tokens).not.toBe(cl100kTokens)
   })
 })

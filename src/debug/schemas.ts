@@ -115,6 +115,12 @@ export const LlmTraceSchema = z.object({
   finishReason: z.string().optional(),
   messageCount: z.number().optional(),
   toolCount: z.number().optional(),
+  exposedToolCount: z.number().optional(),
+  fullToolCount: z.number().optional(),
+  toolSchemaBytes: z.number().optional(),
+  routingIntent: z.string().optional(),
+  routingConfidence: z.number().optional(),
+  routingReason: z.string().optional(),
   generatedText: z.string().optional(),
   stepsDetail: z.array(StepDetailSchema).optional(),
 })

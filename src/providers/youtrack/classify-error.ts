@@ -93,6 +93,22 @@ function extractRequiredFields(body: YouTrackErrorBody | undefined, message: str
     }
   }
 
+  if (names.size === 0) {
+    const allCandidates = [body?.error_description, message]
+    for (const candidate of allCandidates) {
+      if (candidate === undefined) continue
+      for (const match of candidate.matchAll(
+        /["\u201C\u201D\u00AB\u00BB]([^"\u201C\u201D\u00AB\u00BB]+)["\u201C\u201D\u00AB\u00BB]/g,
+      )) {
+        const fieldName = match[1]
+        if (fieldName === undefined) continue
+        const normalized = normalizeFieldName(fieldName)
+        if (normalized !== null) names.add(normalized)
+      }
+      if (names.size > 0) break
+    }
+  }
+
   return Array.from(names, (name) => ({ name }))
 }
 

@@ -1,51 +1,50 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { getIdentityMapping, clearIdentityMapping, setIdentityMapping } from '../../src/identity/mapping.js'
-import type { TaskProvider } from '../../src/providers/types.js'
 import { makeSetMyIdentityTool } from '../../src/tools/set-my-identity.js'
-import { localDatetimeToUtc, utcToLocal } from '../../src/utils/datetime.js'
+import { createMinimalTaskProviderStub } from '../utils/factories.js'
 import { mockLogger, setupTestDb, getToolExecutor } from '../utils/test-helpers.js'
 
-const mockProvider: TaskProvider = {
-  name: 'mock',
-  capabilities: new Set(),
-  configRequirements: [],
-  preferredUserIdentifier: 'id',
-  identityResolver: {
-    searchUsers: mock((query: string) => {
-      if (query === 'jsmith') {
-        return Promise.resolve([{ id: 'user-123', login: 'jsmith', name: 'John Smith' }])
-      }
-      return Promise.resolve([])
-    }),
-  },
-  buildTaskUrl: () => '',
-  buildProjectUrl: () => '',
-  classifyError: (e) => {
-    throw e
-  },
-  getPromptAddendum: () => '',
-  normalizeDueDateInput: (dueDate, timezone) =>
-    dueDate === undefined ? undefined : localDatetimeToUtc(dueDate.date, dueDate.time, timezone),
-  formatDueDateOutput: (dueDate, timezone) =>
-    dueDate === undefined || dueDate === null ? dueDate : utcToLocal(dueDate, timezone),
-  normalizeListTaskParams: (params) => ({ ...params }),
-  createTask(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  getTask(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  updateTask(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  listTasks(): Promise<never> {
-    throw new Error('not implemented')
-  },
-  searchTasks(): Promise<never> {
-    throw new Error('not implemented')
-  },
+function searchUsersJsmith(query: string): Promise<{ id: string; login: string; name: string }[]> {
+  const results = new Map([['jsmith', [{ id: 'user-123', login: 'jsmith', name: 'John Smith' }]]])
+  return Promise.resolve(results.get(query) ?? [])
 }
+
+function searchUsersBobsmith(query: string): Promise<{ id: string; login: string; name: string }[]> {
+  const results = new Map([['bobsmith', [{ id: 'user-789', login: 'bobsmith', name: 'Bob Smith' }]]])
+  return Promise.resolve(results.get(query) ?? [])
+}
+
+const bobProvider = createMinimalTaskProviderStub({
+  identityResolver: {
+    searchUsers: mock(searchUsersBobsmith),
+  },
+})
+
+function searchUsersJsmithEmail(query: string): Promise<{ id: string; login: string; name: string }[]> {
+  const results = new Map([['jsmith', [{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }]]])
+  return Promise.resolve(results.get(query) ?? [])
+}
+
+const kaneoLikeProvider = createMinimalTaskProviderStub({
+  identityResolver: {
+    searchUsers: mock(searchUsersJsmithEmail),
+  },
+})
+
+function searchUsersJsmithOrEmail(query: string): Promise<{ id: string; login: string; name: string }[]> {
+  const results = new Map([
+    ['jsmith', [{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }]],
+    ['jsmith@example.com', [{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }]],
+  ])
+  return Promise.resolve(results.get(query) ?? [])
+}
+
+const kaneoLikeProviderWithEmail = createMinimalTaskProviderStub({
+  identityResolver: {
+    searchUsers: mock(searchUsersJsmithOrEmail),
+  },
+})
 
 describe('set_my_identity tool', () => {
   const testUserId = 'test-user-tool-123'
@@ -57,12 +56,26 @@ describe('set_my_identity tool', () => {
   })
 
   test('returns tool with correct structure', () => {
-    const tool = makeSetMyIdentityTool(mockProvider, testUserId)
+    const tool = makeSetMyIdentityTool(
+      createMinimalTaskProviderStub({
+        identityResolver: {
+          searchUsers: mock(searchUsersJsmith),
+        },
+      }),
+      testUserId,
+    )
     expect(tool.description).toContain('identity')
   })
 
   test('should create identity mapping when user found', async () => {
-    const tool = makeSetMyIdentityTool(mockProvider, testUserId)
+    const tool = makeSetMyIdentityTool(
+      createMinimalTaskProviderStub({
+        identityResolver: {
+          searchUsers: mock(searchUsersJsmith),
+        },
+      }),
+      testUserId,
+    )
     const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('status', 'success')
@@ -71,17 +84,23 @@ describe('set_my_identity tool', () => {
   })
 
   test('should return error when user not found', async () => {
-    const tool = makeSetMyIdentityTool(mockProvider, testUserId)
+    const tool = makeSetMyIdentityTool(
+      createMinimalTaskProviderStub({
+        identityResolver: {
+          searchUsers: mock(searchUsersJsmith),
+        },
+      }),
+      testUserId,
+    )
     const result: unknown = await getToolExecutor(tool)({ claim: "I'm nonexistent" }, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('status', 'error')
   })
 
   test('should return error when provider has no identity resolver', async () => {
-    const providerWithoutResolver = {
-      ...mockProvider,
+    const providerWithoutResolver = createMinimalTaskProviderStub({
       identityResolver: undefined,
-    }
+    })
 
     const tool = makeSetMyIdentityTool(providerWithoutResolver, testUserId)
     const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
@@ -90,7 +109,14 @@ describe('set_my_identity tool', () => {
   })
 
   test('should return error when claim cannot be parsed', async () => {
-    const tool = makeSetMyIdentityTool(mockProvider, testUserId)
+    const tool = makeSetMyIdentityTool(
+      createMinimalTaskProviderStub({
+        identityResolver: {
+          searchUsers: mock(searchUsersJsmith),
+        },
+      }),
+      testUserId,
+    )
     const result: unknown = await getToolExecutor(tool)(
       { claim: 'just some random text' },
       { toolCallId: '1', messages: [] },
@@ -101,7 +127,14 @@ describe('set_my_identity tool', () => {
 
   test('should isolate identities by chatUserId in group contexts', async () => {
     // Alice sets her identity using her chatUserId
-    const aliceTool = makeSetMyIdentityTool(mockProvider, 'user-alice')
+    const aliceTool = makeSetMyIdentityTool(
+      createMinimalTaskProviderStub({
+        identityResolver: {
+          searchUsers: mock(searchUsersJsmith),
+        },
+      }),
+      'user-alice',
+    )
     await getToolExecutor(aliceTool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
 
     // Verify Alice's identity is stored under her chatUserId
@@ -113,18 +146,6 @@ describe('set_my_identity tool', () => {
     expect(groupMapping).toBeNull()
 
     // Bob sets his identity using his chatUserId
-    const bobProvider = {
-      ...mockProvider,
-      identityResolver: {
-        searchUsers: mock((query: string) => {
-          if (query === 'bobsmith') {
-            return Promise.resolve([{ id: 'user-789', login: 'bobsmith', name: 'Bob Smith' }])
-          }
-          return Promise.resolve([])
-        }),
-      },
-    }
-
     const bobTool = makeSetMyIdentityTool(bobProvider, 'user-bob')
     await getToolExecutor(bobTool)({ claim: "I'm bobsmith" }, { toolCallId: '2', messages: [] })
 
@@ -138,19 +159,6 @@ describe('set_my_identity tool', () => {
   })
 
   test('should match user when login is email and claim is username prefix', async () => {
-    // Simulate Kaneo provider where login is email
-    const kaneoLikeProvider: TaskProvider = {
-      ...mockProvider,
-      identityResolver: {
-        searchUsers: mock((query: string) => {
-          if (query === 'jsmith') {
-            return Promise.resolve([{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }])
-          }
-          return Promise.resolve([])
-        }),
-      },
-    } as TaskProvider
-
     const tool = makeSetMyIdentityTool(kaneoLikeProvider, testUserId)
     const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
 
@@ -160,21 +168,8 @@ describe('set_my_identity tool', () => {
   })
 
   test('should match user with exact email claim when login is email', async () => {
-    // Simulate Kaneo provider where login is email
-    const kaneoLikeProvider: TaskProvider = {
-      ...mockProvider,
-      identityResolver: {
-        searchUsers: mock((query: string) => {
-          // Search matches both local part and full email
-          if (query === 'jsmith' || query === 'jsmith@example.com') {
-            return Promise.resolve([{ id: 'user-123', login: 'jsmith@example.com', name: 'John Smith' }])
-          }
-          return Promise.resolve([])
-        }),
-      },
-    } as TaskProvider
-
-    const tool = makeSetMyIdentityTool(kaneoLikeProvider, testUserId)
+    // Simulate Kaneo provider where login is email; search matches both local part and full email
+    const tool = makeSetMyIdentityTool(kaneoLikeProviderWithEmail, testUserId)
     const result: unknown = await getToolExecutor(tool)(
       { claim: "I'm jsmith@example.com" },
       { toolCallId: '1', messages: [] },
@@ -202,7 +197,15 @@ describe('set_my_identity tool', () => {
       getDrizzleDb,
     }
 
-    const tool = makeSetMyIdentityTool(mockProvider, testUserId, deps)
+    const tool = makeSetMyIdentityTool(
+      createMinimalTaskProviderStub({
+        identityResolver: {
+          searchUsers: mock(searchUsersJsmith),
+        },
+      }),
+      testUserId,
+      deps,
+    )
     const result: unknown = await getToolExecutor(tool)({ claim: "I'm jsmith" }, { toolCallId: '1', messages: [] })
 
     expect(result).toHaveProperty('status', 'success')

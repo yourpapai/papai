@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { KaneoProvider } from '../../../src/providers/kaneo/index.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
@@ -56,11 +57,8 @@ describe('KaneoProvider', () => {
 
       const result = await provider.createStatus('proj-1', { name: 'Done', isFinal: true })
 
-      if ('status' in result) {
-        expect.unreachable('Should not require confirmation')
-      } else {
-        expect(result.name).toBe('Done')
-      }
+      assert(!('status' in result), 'Should not require confirmation')
+      expect(result.name).toBe('Done')
     })
   })
 
@@ -76,11 +74,8 @@ describe('KaneoProvider', () => {
 
       const result = await provider.updateStatus('proj-1', 'col-1', { name: 'Updated' })
 
-      if ('status' in result) {
-        expect.unreachable('Should not require confirmation')
-      } else {
-        expect(result.name).toBe('Updated')
-      }
+      assert(!('status' in result), 'Should not require confirmation')
+      expect(result.name).toBe('Updated')
     })
   })
 
@@ -90,11 +85,8 @@ describe('KaneoProvider', () => {
 
       const result = await provider.deleteStatus('proj-1', 'col-1')
 
-      if ('status' in result) {
-        expect.unreachable('Should not require confirmation')
-      } else {
-        expect(result.id).toBe('col-1')
-      }
+      assert(!('status' in result), 'Should not require confirmation')
+      expect(result.id).toBe('col-1')
     })
   })
 
@@ -150,10 +142,7 @@ describe('KaneoProvider', () => {
 
       await provider.searchTasks(params)
 
-      expect(requestUrl).toBeDefined()
-      if (requestUrl === undefined) {
-        throw new Error('Expected Kaneo provider search request URL')
-      }
+      assert(requestUrl !== undefined, 'Expected Kaneo provider search request URL')
       expect(requestUrl.pathname).toBe('/api/search')
       expect(requestUrl.searchParams.get('offset')).toBe('40')
     })

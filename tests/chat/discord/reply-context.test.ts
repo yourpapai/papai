@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { buildDiscordReplyContext, type DiscordReplyMessageLike } from '../../../src/chat/discord/reply-context.js'
 import { mockLogger, mockMessageCache } from '../../utils/test-helpers.js'
 
+const fetchKnownParent = (
+  id: unknown,
+): Promise<{ id: string; author: { id: string; username: string }; content: string }> =>
+  id === 'parent-1'
+    ? Promise.resolve({ id: 'parent-1', author: { id: 'user-9', username: 'bob' }, content: 'the parent text' })
+    : Promise.reject(new Error('404'))
+
 describe('buildDiscordReplyContext', () => {
   beforeEach(() => {
     mockLogger()
@@ -23,16 +30,7 @@ describe('buildDiscordReplyContext', () => {
       reference: { messageId: 'parent-1' },
       channel: {
         id: 'chan-1',
-        messages: {
-          fetch: (id) =>
-            id === 'parent-1'
-              ? Promise.resolve({
-                  id: 'parent-1',
-                  author: { id: 'user-9', username: 'bob' },
-                  content: 'the parent text',
-                })
-              : Promise.reject(new Error('404')),
-        },
+        messages: { fetch: fetchKnownParent },
       },
     }
     const result = await buildDiscordReplyContext(msg, 'chan-1')

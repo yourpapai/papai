@@ -28,3 +28,12 @@ The repo TDD resolver treats `codeindex/src/**` as gateable implementation code 
 
 - `web-tree-sitter` bootstraps the parser runtime.
 - The workspace currently loads grammar wasm files from `tree-sitter-javascript` and `tree-sitter-typescript`, which ship `.wasm` artifacts compatible with the current runtime.
+
+## Search Semantics
+
+- `code_symbol` is exact-first: returns exact local-name, qualified-name, and export-name matches before falling back to broader FTS search.
+- `code_search` is the exploratory entrypoint and returns a mix of exact and FTS hits ranked by scope tier and match quality.
+- Search results include a `rankScore` field reflecting the structural ranking (scope tier + match type).
+- Exact-match previews come from stored source text (`body_text` / `signature_text`), not just `qualifiedName`.
+- MCP tool responses include `structuredContent` alongside text so hosts can consume results without reparsing JSON.
+- Empty `code_search` results include a `guidance` string suggesting next steps.

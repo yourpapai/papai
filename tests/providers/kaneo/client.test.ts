@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -7,6 +8,23 @@ import { KaneoApiError, KaneoValidationError } from '../../../src/providers/kane
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { restoreFetch, setMockFetch, createMockTask } from '../../utils/test-helpers.js'
 import { EmptyResponseSchema } from './test-resources.js'
+
+// Helpers defined outside test blocks to satisfy no-conditional-in-test
+function headersFromOptions(options: RequestInit): Record<string, string> {
+  const headers = options.headers
+  if (headers === undefined || headers === null) return {}
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries())
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers)
+  }
+  return Object.fromEntries(Object.entries(headers))
+}
+
+function methodFromOptions(options: RequestInit): string {
+  return options.method ?? ''
+}
 
 describe('kaneoFetch', () => {
   const mockConfig = { apiKey: 'test-key', baseUrl: 'https://api.test.com' }
@@ -22,7 +40,7 @@ describe('kaneoFetch', () => {
   test('makes GET request with correct headers', async () => {
     let capturedHeaders: Record<string, string> = {}
     setMockFetch((_url, options) => {
-      capturedHeaders = Object.fromEntries(Object.entries(options.headers ?? {}))
+      capturedHeaders = headersFromOptions(options)
       return Promise.resolve(
         new Response(JSON.stringify(createMockTask({ id: '1', number: 1 })), {
           status: 200,
@@ -56,11 +74,9 @@ describe('kaneoFetch', () => {
     try {
       await kaneoFetch(mockConfig, 'GET', '/tasks', undefined, {}, KaneoTaskResponseSchema)
     } catch (error) {
-      expect(error).toBeInstanceOf(KaneoApiError)
-      if (error instanceof KaneoApiError) {
-        expect(error.statusCode).toBe(500)
-        expect(error.message).toContain('500')
-      }
+      assert(error instanceof KaneoApiError)
+      expect(error.statusCode).toBe(500)
+      expect(error.message).toContain('500')
     }
   })
 
@@ -127,7 +143,7 @@ describe('kaneoFetch', () => {
 
     let capturedHeaders: Record<string, string> = {}
     setMockFetch((_url, options) => {
-      capturedHeaders = Object.fromEntries(Object.entries(options.headers ?? {}))
+      capturedHeaders = headersFromOptions(options)
       return Promise.resolve(
         new Response(JSON.stringify(createMockTask({ id: '1', number: 1 })), {
           status: 200,
@@ -144,7 +160,7 @@ describe('kaneoFetch', () => {
   test('POST request sends Content-Type: application/json', async () => {
     let capturedHeaders: Record<string, string> = {}
     setMockFetch((_url, options) => {
-      capturedHeaders = Object.fromEntries(Object.entries(options.headers ?? {}))
+      capturedHeaders = headersFromOptions(options)
       return Promise.resolve(new Response(JSON.stringify(createMockTask({ id: '1', number: 1 })), { status: 200 }))
     })
 
@@ -157,8 +173,8 @@ describe('kaneoFetch', () => {
     let capturedMethod = ''
     let capturedHeaders: Record<string, string> = {}
     setMockFetch((_url, options) => {
-      capturedMethod = options.method ?? ''
-      capturedHeaders = Object.fromEntries(Object.entries(options.headers ?? {}))
+      capturedMethod = methodFromOptions(options)
+      capturedHeaders = headersFromOptions(options)
       return Promise.resolve(new Response(JSON.stringify(createMockTask({ id: '1', number: 1 })), { status: 200 }))
     })
 
@@ -173,8 +189,8 @@ describe('kaneoFetch', () => {
     let capturedMethod = ''
     let capturedHeaders: Record<string, string> = {}
     setMockFetch((_url, options) => {
-      capturedMethod = options.method ?? ''
-      capturedHeaders = Object.fromEntries(Object.entries(options.headers ?? {}))
+      capturedMethod = methodFromOptions(options)
+      capturedHeaders = headersFromOptions(options)
       return Promise.resolve(new Response(JSON.stringify(createMockTask({ id: '1', number: 1 })), { status: 200 }))
     })
 
@@ -191,11 +207,9 @@ describe('kaneoFetch', () => {
     try {
       await kaneoFetch(mockConfig, 'GET', '/tasks/1', undefined, {}, KaneoTaskResponseSchema)
     } catch (error) {
-      expect(error).toBeInstanceOf(KaneoApiError)
-      if (error instanceof KaneoApiError) {
-        expect(error.statusCode).toBe(404)
-        expect(error.responseBody).toEqual({ error: 'Not found' })
-      }
+      assert(error instanceof KaneoApiError)
+      expect(error.statusCode).toBe(404)
+      expect(error.responseBody).toEqual({ error: 'Not found' })
     }
   })
 

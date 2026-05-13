@@ -1,15 +1,47 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test'
+import assert from 'node:assert/strict'
 
-import type { IncomingFile, ReplyFn } from '../../src/chat/types.js'
+import type { ReplyFn } from '../../src/chat/types.js'
 import { MessageQueue } from '../../src/message-queue/queue.js'
 import type { CoalescedItem, QueueItem } from '../../src/message-queue/types.js'
 import { mockLogger } from '../utils/logger-mock.js'
 
-const createMockFile = (fileId: string): IncomingFile => ({
-  fileId,
-  filename: 'test.txt',
-  content: Buffer.from('test'),
-})
+/**
+ * Creates a handler that records execution order and blocks item 'A' until
+ * the returned unblock function is called. Used to test sequential execution.
+ */
+function makeBlockingHandlerA(order: string[]): {
+  handler: (item: CoalescedItem) => Promise<void>
+  unblock: () => void
+} {
+  let unblock: () => void = () => {}
+  const blocker = new Promise<void>((resolve) => {
+    unblock = resolve
+  })
+  const handler = async (item: CoalescedItem): Promise<void> => {
+    order.push(`start:${item.text}`)
+    if (item.text === 'A') {
+      await blocker
+    }
+    order.push(`end:${item.text}`)
+  }
+  return { handler, unblock }
+}
+
+/**
+ * Creates a handler that records execution order and throws for item 'A'.
+ * Used to test that the queue stays functional after a handler error.
+ */
+function makeThrowingHandlerA(order: string[]): (item: CoalescedItem) => Promise<void> {
+  return async (item: CoalescedItem): Promise<void> => {
+    order.push(`start:${item.text}`)
+    if (item.text === 'A') {
+      throw new Error('handler error')
+    }
+    order.push(`end:${item.text}`)
+    await Promise.resolve()
+  }
+}
 
 function createReplyFn(typingSpy: ReturnType<typeof mock>): ReplyFn {
   return {
@@ -43,7 +75,7 @@ describe('MessageQueue', () => {
         username: 'alice',
         storageContextId: 'user123',
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       }
       queue.enqueue(item, mockReply)
       expect(queue.getBufferedCount()).toBe(1)
@@ -56,7 +88,7 @@ describe('MessageQueue', () => {
         username: 'alice',
         storageContextId: 'user123',
         contextType: 'dm',
-        files: [],
+        newAttachmentIds: [],
       }
       queue.enqueue(item, mockReply)
       expect(typingSpy).toHaveBeenCalledTimes(0)
@@ -70,7 +102,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -81,7 +113,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -101,7 +133,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         reply1,
       )
@@ -112,16 +144,14 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         reply2,
       )
 
       const flushed = queue.forceFlush()
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       // Reply should be from the last message, not the first
       expect(flushed.reply).toBe(reply2)
     })
@@ -134,7 +164,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -145,16 +175,14 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
 
       const flushed = queue.forceFlush()
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       expect(flushed.text).toBe('First message\n\nSecond message')
       expect(flushed.userId).toBe('user123')
       expect(flushed.username).toBe('alice')
@@ -174,7 +202,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         reply1,
       )
@@ -185,16 +213,14 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         reply2,
       )
 
       const flushed = queue.forceFlush()
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       expect(flushed.text).toBe('First\nSecond')
     })
 
@@ -209,23 +235,18 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123:thread456',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
 
       const flushed = queue.forceFlush()
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       expect(flushed.text).toBe('[@alice]: Hello from thread')
     })
 
-    it('should accumulate files from all messages', () => {
-      const file1 = createMockFile('file1')
-      const file2 = createMockFile('file2')
-
+    it('should accumulate newAttachmentIds from all messages', () => {
       queue.enqueue(
         {
           text: 'First',
@@ -233,7 +254,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [file1],
+          newAttachmentIds: ['att_1'],
         },
         mockReply,
       )
@@ -244,19 +265,15 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [file2],
+          newAttachmentIds: ['att_2', 'att_3'],
         },
         mockReply,
       )
 
       const flushed = queue.forceFlush()
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
-      expect(flushed.files).toHaveLength(2)
-      expect(flushed.files[0]!.fileId).toBe('file1')
-      expect(flushed.files[1]!.fileId).toBe('file2')
+      assert(flushed !== null)
+      expect(flushed.newAttachmentIds).toEqual(['att_1', 'att_2', 'att_3'])
     })
   })
 
@@ -274,7 +291,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -291,7 +308,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -322,7 +339,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -352,7 +369,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -386,17 +403,7 @@ describe('MessageQueue', () => {
   describe('sequential execution', () => {
     it('should not start next handler until current one completes', async () => {
       const order: string[] = []
-      let unblockA!: () => void
-
-      const handler = async (item: CoalescedItem): Promise<void> => {
-        order.push(`start:${item.text}`)
-        if (item.text === 'A') {
-          await new Promise<void>((resolve) => {
-            unblockA = resolve
-          })
-        }
-        order.push(`end:${item.text}`)
-      }
+      const { handler, unblock: unblockA } = makeBlockingHandlerA(order)
 
       queue.setHandler(handler)
 
@@ -407,7 +414,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -426,7 +433,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -453,15 +460,7 @@ describe('MessageQueue', () => {
 
     it('should remain functional after a handler throws', async () => {
       const order: string[] = []
-
-      const handler = async (item: CoalescedItem): Promise<void> => {
-        order.push(`start:${item.text}`)
-        if (item.text === 'A') {
-          throw new Error('handler error')
-        }
-        order.push(`end:${item.text}`)
-        await Promise.resolve()
-      }
+      const handler = makeThrowingHandlerA(order)
 
       queue.setHandler(handler)
 
@@ -472,7 +471,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -488,7 +487,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'user123',
           contextType: 'dm',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -515,7 +514,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -529,15 +528,13 @@ describe('MessageQueue', () => {
           username: 'bob',
           storageContextId: 'group123',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
 
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       expect(flushed.text).toBe('Hello from alice')
       expect(queue.getBufferedCount()).toBe(1)
     })
@@ -553,7 +550,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -565,7 +562,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -586,7 +583,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123:thread456',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -598,16 +595,14 @@ describe('MessageQueue', () => {
           username: 'bob',
           storageContextId: 'group123:thread456',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
 
       // Different user in thread triggers flush (same as main group chat)
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       expect(flushed.text).toBe('[@alice]: First')
       expect(flushed.userId).toBe('user1')
       expect(flushed.username).toBe('alice')
@@ -625,7 +620,7 @@ describe('MessageQueue', () => {
           username: 'alice',
           storageContextId: 'group123:thread456',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
@@ -637,16 +632,14 @@ describe('MessageQueue', () => {
           username: 'bob',
           storageContextId: 'group123:thread456',
           contextType: 'group',
-          files: [],
+          newAttachmentIds: [],
         },
         mockReply,
       )
 
       const flushed = queue.forceFlush()
       expect(flushed).not.toBeNull()
-      if (flushed === null) {
-        throw new Error('Expected flushed to not be null')
-      }
+      assert(flushed !== null)
       // userId and username should be from the LAST message (user2/bob)
       // not from the first message (user1/alice)
       expect(flushed.userId).toBe('user2')

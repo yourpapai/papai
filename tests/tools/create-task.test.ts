@@ -1,4 +1,5 @@
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getConfig, setConfig } from '../../src/config.js'
 import { setIdentityMapping, clearIdentityMapping } from '../../src/identity/mapping.js'
@@ -32,18 +33,14 @@ describe('create_task identity resolution', () => {
     })
 
     const result = await resolveMeReference('test-user-456', createMockProvider())
-    expect(result.type).toBe('found')
-    if (result.type === 'found') {
-      expect(result.identity.userId).toBe('resolved-user-789')
-    }
+    assert(result.type === 'found')
+    expect(result.identity.userId).toBe('resolved-user-789')
   })
 
   test('should return not_found when no identity mapping exists', async () => {
     const result = await resolveMeReference('unknown-user', createMockProvider())
-    expect(result.type).toBe('not_found')
-    if (result.type === 'not_found') {
-      expect(result.message).toContain("don't know who you are")
-    }
+    assert(result.type === 'not_found')
+    expect(result.message).toContain("don't know who you are")
   })
 
   test('should return unmatched when identity was previously unmatched', async () => {
@@ -62,10 +59,8 @@ describe('create_task identity resolution', () => {
     clearIdentityMapping('unmatched-user', 'mock')
 
     const result = await resolveMeReference('unmatched-user', createMockProvider())
-    expect(result.type).toBe('unmatched')
-    if (result.type === 'unmatched') {
-      expect(result.message).toContain("couldn't automatically match")
-    }
+    assert(result.type === 'unmatched')
+    expect(result.message).toContain("couldn't automatically match")
   })
 
   test('create_task tool should resolve "me" assignee to provider user ID', async () => {
@@ -94,7 +89,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute({ title: 'Test Task', projectId: 'proj-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
 
     expect(createTask).toHaveBeenCalledTimes(1)
@@ -127,7 +122,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute({ title: 'Test Task', projectId: 'proj-1', assignee: 'ME' }, { toolCallId: '1', messages: [] })
 
     expect(capturedAssignee).toBe('resolved-user-789')
@@ -137,17 +132,14 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider()
     const tool = makeCreateTaskTool(provider, 'no-mapping-user')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', assignee: 'me' },
       { toolCallId: '1', messages: [] },
     )
 
     expect(result).toHaveProperty('status', 'identity_required')
-    expect(result).toHaveProperty('message')
-    if (typeof result === 'object' && result !== null && 'message' in result) {
-      expect(result.message).toContain("don't know who you are")
-    }
+    expect(result).toHaveProperty('message', expect.stringContaining("don't know who you are"))
   })
 
   test('create_task tool should pass through non-me assignee unchanged', async () => {
@@ -165,7 +157,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockYouTrackProvider({ createTask, supportsCustomFields: true })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', assignee: 'other-user' },
       { toolCallId: '1', messages: [] },
@@ -189,7 +181,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute({ title: 'Test Task', projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
 
     expect(capturedAssignee).toBeUndefined()
@@ -221,7 +213,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask, preferredUserIdentifier: 'login' })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute({ title: 'Test Task', projectId: 'proj-1', assignee: 'me' }, { toolCallId: '1', messages: [] })
 
     expect(createTask).toHaveBeenCalledTimes(1)
@@ -236,7 +228,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await expect(
       tool.execute({ title: 'Test Task', projectId: 'proj-1' }, { toolCallId: '1', messages: [] }),
     ).rejects.toThrow('Database connection failed')
@@ -270,7 +262,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask, name: 'youtrack', supportsCustomFields: true })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     await tool.execute(
       {
         title: 'Test Task',
@@ -302,7 +294,7 @@ describe('create_task identity resolution', () => {
     })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
 
     await expect(
       tool.execute(
@@ -336,7 +328,7 @@ describe('create_task identity resolution', () => {
     })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
 
     await tool.execute(
       {
@@ -365,7 +357,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockProvider({ createTask })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2026-03-25', time: '17:00' } },
       { toolCallId: '1', messages: [] },
@@ -390,7 +382,7 @@ describe('create_task identity resolution', () => {
     const provider = createMockYouTrackProvider({ createTask })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
-    if (!tool.execute) throw new Error('Tool execute is undefined')
+    assert(tool.execute, 'Tool execute is undefined')
     const result: unknown = await tool.execute(
       { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2026-03-25' } },
       { toolCallId: '1', messages: [] },
@@ -424,7 +416,7 @@ describe('create_task identity resolution', () => {
       // Pass storageContextId as third parameter
       const tool = makeCreateTaskTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
         { toolCallId: '1', messages: [] },
@@ -454,7 +446,7 @@ describe('create_task identity resolution', () => {
       const provider = createMockProvider({ createTask })
       const tool = makeCreateTaskTool(provider, chatUserId, storageContextId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
         { toolCallId: '1', messages: [] },
@@ -484,7 +476,7 @@ describe('create_task identity resolution', () => {
       // In DMs, both IDs are the same
       const tool = makeCreateTaskTool(provider, userId, userId)
 
-      if (!tool.execute) throw new Error('Tool execute is undefined')
+      assert(tool.execute, 'Tool execute is undefined')
       await tool.execute(
         { title: 'Test Task', projectId: 'proj-1', dueDate: { date: '2024-06-15', time: '14:00' } },
         { toolCallId: '1', messages: [] },

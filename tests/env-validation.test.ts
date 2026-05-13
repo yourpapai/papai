@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { validateChatProviderEnv } from '../src/env-validation.js'
 
@@ -23,13 +24,13 @@ describe('validateChatProviderEnv', () => {
 
   test('rejects discord when DISCORD_BOT_TOKEN is missing', () => {
     const result = validateChatProviderEnv('discord', {})
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.missing).toContain('DISCORD_BOT_TOKEN')
+    assert(!result.ok)
+    expect(result.missing).toContain('DISCORD_BOT_TOKEN')
   })
 
   test('rejects unknown provider', () => {
     const result = validateChatProviderEnv('unknown', {})
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toContain('CHAT_PROVIDER must be')
+    assert(!result.ok)
+    expect(result.reason).toContain('CHAT_PROVIDER must be')
   })
 })

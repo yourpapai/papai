@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
@@ -6,15 +7,13 @@ import { YouTrackApiError } from '../../../src/providers/youtrack/client.js'
 import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
 import { YouTrackProvider } from '../../../src/providers/youtrack/index.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
-import { clearBundleCache } from './test-helpers.js'
+import { createUniqueYouTrackConfig } from './fetch-mock-utils.js'
 
 // Store reference to current fetch mock for call inspection
 let fetchMock: ReturnType<typeof mock<(url: string, init: RequestInit) => Promise<Response>>> | undefined
+let config: YouTrackConfig
 
-const createConfig = (): YouTrackConfig => ({
-  baseUrl: 'https://test.youtrack.cloud',
-  token: 'test-token',
-})
+const createConfig = (): YouTrackConfig => createUniqueYouTrackConfig()
 
 const installFetchMock = (handler: () => Promise<Response>): void => {
   const mocked = mock<(url: string, init: RequestInit) => Promise<Response>>(handler)
@@ -113,13 +112,77 @@ const parseCustomFields = (value: unknown): unknown[] => {
   return parsed.data.customFields
 }
 
+/** Finds the index of the first fetch call whose URL includes '/api/issues'. */
+const findIssuesCreateCallIndex = (calls: unknown[]): number =>
+  calls.findIndex((call) => {
+    const parsed = FetchCallSchema.safeParse(call)
+    if (!parsed.success) return false
+    return parsed.data[0].includes('/api/issues')
+  })
+
+/** Mock handler: returns a project on the first call, issues list on subsequent calls. */
+const makeListTasksHandler = (): (() => Promise<Response>) => {
+  let callCount = 0
+  return (): Promise<Response> => {
+    callCount++
+    if (callCount === 1) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: '0-1', shortName: 'TEST', name: 'Test Project' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+    return Promise.resolve(
+      new Response(
+        JSON.stringify([
+          {
+            id: '2-1',
+            idReadable: 'TEST-1',
+            summary: 'First',
+            project: { id: '0-1', shortName: 'TEST' },
+            customFields: [],
+          },
+          {
+            id: '2-2',
+            idReadable: 'TEST-2',
+            summary: 'Second',
+            project: { id: '0-1', shortName: 'TEST' },
+            customFields: [],
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+  }
+}
+
+/** Mock handler: returns a project on the first call, empty search results on subsequent calls. */
+const makeSearchTasksHandler = (): (() => Promise<Response>) => {
+  let callCount = 0
+  return (): Promise<Response> => {
+    callCount++
+    if (callCount === 1) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: '0-1', shortName: 'PROJ', name: 'Project' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+  }
+}
+
 describe('YouTrackProvider', () => {
   let provider: YouTrackProvider
 
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
-    provider = new YouTrackProvider(createConfig())
+    config = createConfig()
+    provider = new YouTrackProvider(config)
     fetchMock = undefined
   })
 
@@ -250,7 +313,7 @@ describe('YouTrackProvider', () => {
       expect(task.title).toBe('New task')
       expect(task.description).toBe('A description')
       expect(task.priority).toBe('Normal')
-      expect(task.url).toBe('https://test.youtrack.cloud/issue/TEST-1')
+      expect(task.url).toBe(`${config.baseUrl}/issue/TEST-1`)
     })
 
     test('sends custom fields for priority and status', async () => {
@@ -285,19 +348,16 @@ describe('YouTrackProvider', () => {
       })
 
       // Get the third call (issue creation - first two are GET project and GET custom fields)
-      const calls = fetchMock?.mock.calls ?? []
-      const createCallIndex = calls.findIndex((call) => {
-        const parsed = FetchCallSchema.safeParse(call)
-        return parsed.success && parsed.data[0].includes('/api/issues')
-      })
+      assert(fetchMock !== undefined)
+      const calls = fetchMock.mock.calls
+      const createCallIndex = findIssuesCreateCallIndex(calls)
       expect(createCallIndex).toBeGreaterThanOrEqual(0)
       const createCall = calls[createCallIndex]
       const parsed = FetchCallSchema.safeParse(createCall)
       expect(parsed.success).toBe(true)
-      if (!parsed.success) return
+      assert(parsed.success)
 
-      const [, init] = parsed.data
-      const rawBody: unknown = init.body === undefined ? undefined : JSON.parse(init.body)
+      const rawBody: unknown = getFetchBodyAt(createCallIndex)
       const customFields = parseCustomFields(rawBody)
       expect(customFields).toEqual([
         { name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: 'Critical' } },
@@ -365,39 +425,7 @@ describe('YouTrackProvider', () => {
     test('queries issues by project shortName', async () => {
       // First call: get project to obtain shortName
       // Second call: list issues using shortName
-      let callCount = 0
-      installFetchMock(() => {
-        callCount++
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ id: '0-1', shortName: 'TEST', name: 'Test Project' }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          )
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify([
-              {
-                id: '2-1',
-                idReadable: 'TEST-1',
-                summary: 'First',
-                project: { id: '0-1', shortName: 'TEST' },
-                customFields: [],
-              },
-              {
-                id: '2-2',
-                idReadable: 'TEST-2',
-                summary: 'Second',
-                project: { id: '0-1', shortName: 'TEST' },
-                customFields: [],
-              },
-            ]),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        )
-      })
+      installFetchMock(makeListTasksHandler())
 
       const tasks = await provider.listTasks('0-1')
 
@@ -430,29 +458,15 @@ describe('YouTrackProvider', () => {
     test('fetches project shortName and includes in query', async () => {
       // First call: get project to obtain shortName
       // Second call: search issues using shortName
-      let callCount = 0
-      installFetchMock(() => {
-        callCount++
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ id: '0-1', shortName: 'PROJ', name: 'Project' }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          )
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-        )
-      })
+      installFetchMock(makeSearchTasksHandler())
 
       await provider.searchTasks({ query: 'test', projectId: '0-1' })
 
       // Get the second call (issues search)
-      expect(fetchMock).toBeDefined()
-      const parsed = FetchCallSchema.safeParse(fetchMock!.mock.calls[1])
+      assert(fetchMock !== undefined)
+      const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])
       expect(parsed.success).toBe(true)
-      if (!parsed.success) return
+      assert(parsed.success)
       const [url] = parsed.data
       const urlObj = new URL(url)
       expect(urlObj.searchParams.get('query')).toBe('project: {PROJ} test')
@@ -771,11 +785,11 @@ describe('YouTrackProvider', () => {
 
   describe('URL builders', () => {
     test('buildTaskUrl returns correct URL', () => {
-      expect(provider.buildTaskUrl('TEST-1')).toBe('https://test.youtrack.cloud/issue/TEST-1')
+      expect(provider.buildTaskUrl('TEST-1')).toBe(`${config.baseUrl}/issue/TEST-1`)
     })
 
     test('buildProjectUrl returns correct URL', () => {
-      expect(provider.buildProjectUrl('proj-1')).toBe('https://test.youtrack.cloud/projects/proj-1')
+      expect(provider.buildProjectUrl('proj-1')).toBe(`${config.baseUrl}/projects/proj-1`)
     })
   })
 
@@ -887,12 +901,9 @@ describe('YouTrackProvider', () => {
 
       const result = await provider.createStatus('proj-1', { name: 'Ready' })
 
-      if ('status' in result) {
-        expect.unreachable('Should not require confirmation')
-      } else {
-        expect(result.id).toBe('57-2')
-        expect(result.name).toBe('Ready')
-      }
+      assert(!('status' in result), 'Should not require confirmation')
+      expect(result.id).toBe('57-2')
+      expect(result.name).toBe('Ready')
     })
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
@@ -904,9 +915,8 @@ describe('YouTrackProvider', () => {
       const result = await provider.createStatus('proj-1', { name: 'New' })
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
-      if ('message' in result) {
-        expect(result.message).toContain('shared')
-      }
+      assert('message' in result)
+      expect(result.message).toContain('shared')
     })
   })
 
@@ -920,12 +930,9 @@ describe('YouTrackProvider', () => {
 
       const result = await provider.updateStatus('proj-1', '57-1', { name: 'Updated', isFinal: true })
 
-      if ('status' in result) {
-        expect.unreachable('Should not require confirmation')
-      } else {
-        expect(result.id).toBe('57-1')
-        expect(result.name).toBe('Updated')
-      }
+      assert(!('status' in result), 'Should not require confirmation')
+      expect(result.id).toBe('57-1')
+      expect(result.name).toBe('Updated')
     })
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
@@ -937,9 +944,8 @@ describe('YouTrackProvider', () => {
       const result = await provider.updateStatus('proj-1', '57-1', { name: 'X' })
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
-      if ('message' in result) {
-        expect(result.message).toContain('shared')
-      }
+      assert('message' in result)
+      expect(result.message).toContain('shared')
     })
   })
 
@@ -953,11 +959,8 @@ describe('YouTrackProvider', () => {
 
       const result = await provider.deleteStatus('proj-1', '57-1')
 
-      if ('status' in result) {
-        expect.unreachable('Should not require confirmation')
-      } else {
-        expect(result).toEqual({ id: '57-1' })
-      }
+      assert(!('status' in result), 'Should not require confirmation')
+      expect(result).toEqual({ id: '57-1' })
     })
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
@@ -969,9 +972,8 @@ describe('YouTrackProvider', () => {
       const result = await provider.deleteStatus('proj-1', '57-1')
 
       expect(result).toMatchObject({ status: 'confirmation_required' })
-      if ('message' in result) {
-        expect(result.message).toContain('shared')
-      }
+      assert('message' in result)
+      expect(result.message).toContain('shared')
     })
   })
 
@@ -1002,9 +1004,7 @@ describe('YouTrackProvider', () => {
 
       expect(result).toBeDefined()
       expect(result).toMatchObject({ status: 'confirmation_required' })
-      if (result && 'message' in result) {
-        expect(result.message).toContain('shared')
-      }
+      expect(JSON.stringify(result)).toContain('shared')
     })
   })
 

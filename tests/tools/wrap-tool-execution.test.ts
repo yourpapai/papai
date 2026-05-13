@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { wrapToolExecution } from '../../src/tools/wrap-tool-execution.js'
 
@@ -78,14 +79,12 @@ describe('wrapToolExecution', () => {
 
     const result = await wrapped({}, { toolCallId: 'call-1', messages: [] })
 
-    // Use type guard to validate and narrow the result type
-    expect(isToolErrorResult(result)).toBe(true)
-    if (isToolErrorResult(result)) {
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Something went wrong')
-      expect(result.toolName).toBe('test_tool')
-      expect(result.toolCallId).toBe('call-1')
-      expect(typeof result.timestamp).toBe('string')
-    }
+    // Use assert to validate and narrow the result type
+    assert(isToolErrorResult(result), 'expected a ToolErrorResult')
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Something went wrong')
+    expect(result.toolName).toBe('test_tool')
+    expect(result.toolCallId).toBe('call-1')
+    expect(typeof result.timestamp).toBe('string')
   })
 })

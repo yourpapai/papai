@@ -4,7 +4,7 @@ import type { Migration } from '../migrate.js'
 
 function createWebCacheTable(db: Database): void {
   db.run(`
-    CREATE TABLE web_cache (
+    CREATE TABLE IF NOT EXISTS web_cache (
       url_hash     TEXT PRIMARY KEY,
       url          TEXT NOT NULL,
       final_url    TEXT NOT NULL,
@@ -17,12 +17,12 @@ function createWebCacheTable(db: Database): void {
       expires_at   INTEGER NOT NULL
     )
   `)
-  db.run(`CREATE INDEX idx_web_cache_expires ON web_cache(expires_at)`)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_web_cache_expires ON web_cache(expires_at)`)
 }
 
 function createWebRateLimitTable(db: Database): void {
   db.run(`
-    CREATE TABLE web_rate_limit (
+    CREATE TABLE IF NOT EXISTS web_rate_limit (
       actor_id     TEXT NOT NULL,
       window_start INTEGER NOT NULL,
       count        INTEGER NOT NULL,

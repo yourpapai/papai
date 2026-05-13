@@ -143,7 +143,7 @@ flowchart TD
     User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| CP
     CP -->|IncomingMessage / IncomingInteraction| Bot[bot.ts]
     Bot -->|intercepts setup/config/group-selector flows| Intercept[Wizard + Config Editor + Group Settings]
-    Bot -->|queued prompt + reply context + files| Queue[Message Queue + File Relay]
+    Bot -->|queued prompt + reply context + attachment ids| Queue[Message Queue + Attachment Workspace]
     Queue --> LLM[LLM Orchestrator]
     LLM --> Tools[Capability-gated Tool Registry]
     Tools --> Providers[Task Providers]
@@ -155,20 +155,20 @@ flowchart TD
 
 ### Component Overview
 
-| Path                             | Responsibility                                                                      |
-| -------------------------------- | ----------------------------------------------------------------------------------- |
-| `src/index.ts`                   | Entry point, env validation, startup, scheduler and optional debug server wiring    |
-| `src/bot.ts`                     | Platform-agnostic message handling, interception, queueing, and interaction routing |
-| `src/chat/`                      | Telegram, Mattermost, and Discord adapters plus capability metadata                 |
-| `src/llm-orchestrator.ts`        | LLM tool-calling orchestration                                                      |
-| `src/tools/`                     | Context-aware, capability-gated tool assembly                                       |
-| `src/providers/`                 | Kaneo and YouTrack provider adapters                                                |
-| `src/identity/`                  | Chat-to-provider identity mapping and “me” resolution                               |
-| `src/file-relay.ts`              | Turn-scoped incoming file relay for attachment tools                                |
-| `src/message-queue/`             | Message coalescing and orderly LLM dispatch                                         |
-| `src/group-settings/`            | DM-driven selection of personal vs group configuration targets                      |
-| `src/web/`                       | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`    |
-| `src/debug/` and `client/debug/` | Optional local debug server and dashboard UI                                        |
+| Path                             | Responsibility                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/index.ts`                   | Entry point, env validation, startup, scheduler and optional debug server wiring           |
+| `src/bot.ts`                     | Platform-agnostic message handling, interception, queueing, and interaction routing        |
+| `src/chat/`                      | Telegram, Mattermost, and Discord adapters plus capability metadata                        |
+| `src/llm-orchestrator.ts`        | LLM tool-calling orchestration                                                             |
+| `src/tools/`                     | Context-aware, capability-gated tool assembly                                              |
+| `src/providers/`                 | Kaneo and YouTrack provider adapters                                                       |
+| `src/identity/`                  | Chat-to-provider identity mapping and “me” resolution                                      |
+| `src/attachments/`               | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
+| `src/message-queue/`             | Message coalescing and orderly LLM dispatch                                                |
+| `src/group-settings/`            | DM-driven selection of personal vs group configuration targets                             |
+| `src/web/`                       | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
+| `src/debug/` and `client/debug/` | Optional local debug server and dashboard UI                                               |
 
 ---
 
@@ -253,6 +253,23 @@ Runtime setup still requires a per-user `youtrack_token`, configured through the
 | `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)       |
 | `DEBUG_PORT`     | Debug server bind port (default `9100`)            |
 | `DEBUG_TOKEN`    | Optional bearer token required for debug endpoints |
+
+</details>
+
+<details>
+<summary><b>File Attachments (S3-compatible Object Storage)</b></summary>
+
+Required when the bot needs to receive, persist, or attach files to tasks.
+
+| Variable               | Required | Description                                                           |
+| ---------------------- | -------- | --------------------------------------------------------------------- |
+| `S3_BUCKET`            | Yes      | S3 bucket name where attachment objects are stored                    |
+| `S3_ACCESS_KEY_ID`     | Yes      | Access key for the S3-compatible service                              |
+| `S3_SECRET_ACCESS_KEY` | Yes      | Secret key for the S3-compatible service                              |
+| `S3_ENDPOINT`          | No\*     | Endpoint URL. Required for non-AWS providers such as MinIO, R2, or B2 |
+| `S3_REGION`            | No       | AWS region (e.g. `us-east-1`)                                         |
+| `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
+| `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
 
 </details>
 

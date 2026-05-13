@@ -218,9 +218,9 @@ describe('Work Item Tools', () => {
         confidence: 0.5,
       })
       expect(result).toMatchObject({ status: 'confirmation_required' })
-      if (typeof result === 'object' && result !== null && 'message' in result) {
-        expect(result.message).toContain('2h on 2024-01-15')
-      }
+      expect(result).toMatchObject({
+        message: 'Remove work item "2h on 2024-01-15"? This action is irreversible — please confirm.',
+      })
     })
 
     test('propagates provider errors', async () => {

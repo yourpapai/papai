@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
-import { z } from 'zod'
-
 import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
 import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
 import {
@@ -10,54 +8,22 @@ import {
   uploadYouTrackAttachment,
 } from '../../../../src/providers/youtrack/operations/attachments.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
+import {
+  type FetchMockFn,
+  defaultConfig,
+  getLastFetchMethod,
+  getLastFetchUrl,
+  installFetchMock,
+  mockFetchError,
+  mockFetchNoContent,
+  mockFetchResponse,
+} from '../fetch-mock-utils.js'
 
 mockLogger()
 
-let fetchMock: ReturnType<typeof mock<(url: string, init: RequestInit) => Promise<Response>>>
+const fetchMock: { current?: FetchMockFn } = {}
 
-const config: YouTrackConfig = {
-  baseUrl: 'https://test.youtrack.cloud',
-  token: 'test-token',
-}
-
-const installFetchMock = (handler: () => Promise<Response>): void => {
-  const m = mock<(url: string, init: RequestInit) => Promise<Response>>(handler)
-  fetchMock = m
-  setMockFetch((url: string, init: RequestInit) => m(url, init))
-}
-
-const mockFetchResponse = (data: unknown, status = 200): void => {
-  installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })),
-  )
-}
-
-const mockFetchNoContent = (): void => {
-  installFetchMock(() => Promise.resolve(new Response(null, { status: 204 })))
-}
-
-const mockFetchError = (status: number, body: unknown = { error: 'Something went wrong' }): void => {
-  installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })),
-  )
-}
-
-const FetchCallSchema = z.tuple([
-  z.string(),
-  z.looseObject({ method: z.string().optional(), body: z.unknown().optional() }),
-])
-
-const getLastFetchUrl = (): URL => {
-  const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[0])
-  if (!parsed.success) return new URL('https://empty')
-  return new URL(parsed.data[0])
-}
-
-const getLastFetchMethod = (): string => {
-  const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[0])
-  if (!parsed.success) return ''
-  return parsed.data[1].method ?? ''
-}
+const config: YouTrackConfig = defaultConfig
 
 const makeAttachmentResponse = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: '0-10',
@@ -73,13 +39,14 @@ const makeAttachmentResponse = (overrides: Record<string, unknown> = {}): Record
 
 afterEach(() => {
   restoreFetch()
+  fetchMock.current = undefined
 })
 
 // --- listYouTrackAttachments ---
 
 describe('listYouTrackAttachments', () => {
   test('returns mapped attachments from API', async () => {
-    mockFetchResponse([makeAttachmentResponse()])
+    mockFetchResponse(fetchMock, [makeAttachmentResponse()])
     const result = await listYouTrackAttachments(config, 'PROJ-1')
     expect(result).toHaveLength(1)
     const att = result[0]
@@ -94,26 +61,26 @@ describe('listYouTrackAttachments', () => {
   })
 
   test('returns empty array when no attachments', async () => {
-    mockFetchResponse([])
+    mockFetchResponse(fetchMock, [])
     const result = await listYouTrackAttachments(config, 'PROJ-1')
     expect(result).toHaveLength(0)
   })
 
   test('calls correct endpoint', async () => {
-    mockFetchResponse([])
+    mockFetchResponse(fetchMock, [])
     await listYouTrackAttachments(config, 'PROJ-42')
-    const url = getLastFetchUrl()
+    const url = getLastFetchUrl(fetchMock.current)
     expect(url.pathname).toBe('/api/issues/PROJ-42/attachments')
-    expect(getLastFetchMethod()).toBe('GET')
+    expect(getLastFetchMethod(fetchMock.current)).toBe('GET')
   })
 
   test('throws classified error on 404', async () => {
-    mockFetchError(404)
+    mockFetchError(fetchMock, 404)
     await expect(listYouTrackAttachments(config, 'PROJ-99')).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 
   test('throws classified error on 401', async () => {
-    mockFetchError(401)
+    mockFetchError(fetchMock, 401)
     await expect(listYouTrackAttachments(config, 'PROJ-1')).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 })
@@ -122,7 +89,9 @@ describe('listYouTrackAttachments', () => {
 
 describe('uploadYouTrackAttachment', () => {
   test('uploads file and returns mapped attachment', async () => {
-    mockFetchResponse([makeAttachmentResponse({ id: '0-20', name: 'report.pdf', mimeType: 'application/pdf' })])
+    mockFetchResponse(fetchMock, [
+      makeAttachmentResponse({ id: '0-20', name: 'report.pdf', mimeType: 'application/pdf' }),
+    ])
     const file = {
       name: 'report.pdf',
       content: new Uint8Array([1, 2, 3]),
@@ -135,17 +104,17 @@ describe('uploadYouTrackAttachment', () => {
   })
 
   test('calls correct endpoint with POST', async () => {
-    mockFetchResponse([makeAttachmentResponse()])
+    mockFetchResponse(fetchMock, [makeAttachmentResponse()])
     const file = { name: 'file.txt', content: new Uint8Array([72, 101, 108, 108, 111]) }
     await uploadYouTrackAttachment(config, 'PROJ-5', file)
-    const url = getLastFetchUrl()
+    const url = getLastFetchUrl(fetchMock.current)
     expect(url.pathname).toBe('/api/issues/PROJ-5/attachments')
-    expect(getLastFetchMethod()).toBe('POST')
+    expect(getLastFetchMethod(fetchMock.current)).toBe('POST')
   })
 
   test('sends multipart form data', async () => {
     let capturedRequest: RequestInit | undefined
-    installFetchMock(() => {
+    installFetchMock(fetchMock, () => {
       return Promise.resolve(
         new Response(JSON.stringify([makeAttachmentResponse()]), {
           status: 200,
@@ -171,13 +140,13 @@ describe('uploadYouTrackAttachment', () => {
   })
 
   test('throws classified error on 401', async () => {
-    mockFetchError(401)
+    mockFetchError(fetchMock, 401)
     const file = { name: 'f.txt', content: new Uint8Array([]) }
     await expect(uploadYouTrackAttachment(config, 'PROJ-1', file)).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 
   test('throws classified error on 400', async () => {
-    mockFetchError(400, { error: 'Bad Request' })
+    mockFetchError(fetchMock, 400, { error: 'Bad Request' })
     const file = { name: 'f.txt', content: new Uint8Array([]) }
     await expect(uploadYouTrackAttachment(config, 'PROJ-1', file)).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
@@ -187,26 +156,26 @@ describe('uploadYouTrackAttachment', () => {
 
 describe('deleteYouTrackAttachment', () => {
   test('returns the deleted attachment id', async () => {
-    mockFetchNoContent()
+    mockFetchNoContent(fetchMock)
     const result = await deleteYouTrackAttachment(config, 'PROJ-1', '0-10')
     expect(result.id).toBe('0-10')
   })
 
   test('calls correct endpoint with DELETE', async () => {
-    mockFetchNoContent()
+    mockFetchNoContent(fetchMock)
     await deleteYouTrackAttachment(config, 'PROJ-3', '0-99')
-    const url = getLastFetchUrl()
+    const url = getLastFetchUrl(fetchMock.current)
     expect(url.pathname).toBe('/api/issues/PROJ-3/attachments/0-99')
-    expect(getLastFetchMethod()).toBe('DELETE')
+    expect(getLastFetchMethod(fetchMock.current)).toBe('DELETE')
   })
 
   test('throws classified error on 404', async () => {
-    mockFetchError(404)
+    mockFetchError(fetchMock, 404)
     await expect(deleteYouTrackAttachment(config, 'PROJ-1', '0-999')).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 
   test('throws classified error on 403', async () => {
-    mockFetchError(403)
+    mockFetchError(fetchMock, 403)
     await expect(deleteYouTrackAttachment(config, 'PROJ-1', '0-1')).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 })

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import type { Task, TaskListItem, TaskRelation } from '../../src/providers/types.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
@@ -30,6 +31,149 @@ interface TaskWithRelations {
   relations: Array<TaskRelation>
 }
 
+function extractErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+const TASK_FIXTURES: Record<string, Task> = {
+  'task-1-blocked': {
+    id: 'task-1',
+    title: 'Blocked task',
+    status: 'todo',
+    relations: [{ type: 'blocked_by', taskId: 'task-99' }],
+    url: 'https://test.com/task/1',
+  },
+  'task-2-regular': {
+    id: 'task-2',
+    title: 'Regular task',
+    status: 'in-progress',
+    relations: [],
+    url: 'https://test.com/task/2',
+  },
+  'task-3-blocked': {
+    id: 'task-3',
+    title: 'Another blocked task',
+    status: 'todo',
+    relations: [
+      { type: 'blocked_by', taskId: 'task-98' },
+      { type: 'related', taskId: 'task-97' },
+    ],
+    url: 'https://test.com/task/3',
+  },
+  'task-1-blocking': {
+    id: 'task-1',
+    title: 'Blocking task',
+    status: 'in-progress',
+    relations: [{ type: 'blocks', taskId: 'task-99' }],
+    url: 'https://test.com/task/1',
+  },
+  'task-2-empty': {
+    id: 'task-2',
+    title: 'Regular task',
+    status: 'todo',
+    relations: [],
+    url: 'https://test.com/task/2',
+  },
+}
+
+function makeGetTaskByIdMap(map: Record<string, Task>): (taskId: string) => Promise<Task> {
+  return (taskId: string): Promise<Task> => {
+    const task = map[taskId]
+    if (task !== undefined) return Promise.resolve(task)
+    return Promise.reject(new Error('Task not found'))
+  }
+}
+
+function hasRelationType(relationType: string): (t: TaskWithRelations) => boolean {
+  return (t: TaskWithRelations): boolean => t.relations.some((r) => r.type === relationType)
+}
+
+async function collectTasksByRelationType(
+  tasks: Array<TaskListItem>,
+  getTaskExecute: (args: { taskId: string }, opts: { toolCallId: string; messages: [] }) => Promise<unknown>,
+  relationType: string,
+): Promise<Array<TaskWithRelations>> {
+  const result: Array<TaskWithRelations> = []
+  for (const task of tasks) {
+    const details: unknown = await getTaskExecute({ taskId: task.id }, { toolCallId: '1', messages: [] })
+    assert(isTaskWithRelations(details), 'Invalid result')
+    if (hasRelationType(relationType)(details)) {
+      result.push(details)
+    }
+  }
+  return result
+}
+
+function isHighPriorityDueInWindow(startOfWeek: Date, endOfWeek: Date): (t: TaskListItem) => boolean {
+  return (t: TaskListItem): boolean => {
+    if (t.priority !== 'high') return false
+    if (t.dueDate === null || t.dueDate === undefined) return false
+    const dueDate = new Date(t.dueDate)
+    return dueDate >= startOfWeek && dueDate <= endOfWeek
+  }
+}
+
+function isHighOrUrgentPriorityDueInWindow(startOfWeek: Date, endOfWeek: Date): (t: TaskListItem) => boolean {
+  return (t: TaskListItem): boolean => {
+    if (t.priority !== 'high' && t.priority !== 'urgent') return false
+    if (t.dueDate === null || t.dueDate === undefined) return false
+    const dueDate = new Date(t.dueDate)
+    return dueDate >= startOfWeek && dueDate <= endOfWeek
+  }
+}
+
+const MULTI_PROJECT_TASKS: Record<string, Array<TaskListItem>> = {
+  'proj-1': [
+    {
+      id: 'task-1',
+      title: 'Backend high priority',
+      status: 'todo',
+      priority: 'high',
+      dueDate: '2026-03-25T12:00:00Z',
+      url: 'https://test.com/task/1',
+    },
+  ],
+  'proj-2': [
+    {
+      id: 'task-2',
+      title: 'Frontend high priority',
+      status: 'todo',
+      priority: 'high',
+      dueDate: '2026-03-26T12:00:00Z',
+      url: 'https://test.com/task/2',
+    },
+  ],
+}
+
+function listTasksByProjectId(projectId: string): Promise<Array<TaskListItem>> {
+  return Promise.resolve(MULTI_PROJECT_TASKS[projectId] ?? [])
+}
+
+function makeUpdateTaskMockAlwaysTodo(taskId: string, params: { status?: string }): Promise<Task> {
+  return Promise.resolve({
+    id: taskId,
+    title: 'Task',
+    status: params.status ?? 'todo',
+    url: 'https://test.com/task/1',
+  })
+}
+
+function makeUpdateTaskMockWithPartialFailure(
+  failTaskId: string,
+): (taskId: string, params: { status?: string }) => Promise<Task> {
+  return (taskId: string, params: { status?: string }): Promise<Task> => {
+    if (taskId === failTaskId) {
+      return Promise.reject(new Error('Permission denied'))
+    }
+    return Promise.resolve({
+      id: taskId,
+      title: 'Task',
+      status: params.status ?? 'todo',
+      url: 'https://test.com/task/1',
+    })
+  }
+}
+
 describe('Task Scenarios', () => {
   beforeEach(() => {
     mockLogger()
@@ -46,57 +190,24 @@ describe('Task Scenarios', () => {
             { id: 'task-3', title: 'Another blocked task', status: 'todo', url: 'https://test.com/task/3' },
           ]),
         ),
-        getTask: mock((taskId: string): Promise<Task> => {
-          if (taskId === 'task-1') {
-            return Promise.resolve({
-              id: 'task-1',
-              title: 'Blocked task',
-              status: 'todo',
-              relations: [{ type: 'blocked_by', taskId: 'task-99' }],
-              url: 'https://test.com/task/1',
-            })
-          }
-          if (taskId === 'task-2') {
-            return Promise.resolve({
-              id: 'task-2',
-              title: 'Regular task',
-              status: 'in-progress',
-              relations: [],
-              url: 'https://test.com/task/2',
-            })
-          }
-          if (taskId === 'task-3') {
-            return Promise.resolve({
-              id: 'task-3',
-              title: 'Another blocked task',
-              status: 'todo',
-              relations: [
-                { type: 'blocked_by', taskId: 'task-98' },
-                { type: 'related', taskId: 'task-97' },
-              ],
-              url: 'https://test.com/task/3',
-            })
-          }
-          return Promise.reject(new Error('Task not found'))
-        }),
+        getTask: mock(
+          makeGetTaskByIdMap({
+            'task-1': TASK_FIXTURES['task-1-blocked']!,
+            'task-2': TASK_FIXTURES['task-2-regular']!,
+            'task-3': TASK_FIXTURES['task-3-blocked']!,
+          }),
+        ),
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
       const getTool = makeGetTaskTool(provider)
-      if (!getTool.execute) throw new Error('Tool execute is undefined')
+      assert(getTool.execute, 'Tool execute is undefined')
 
-      const blockedTasks: Array<TaskWithRelations> = []
-      for (const task of tasksResult) {
-        const details: unknown = await getTool.execute({ taskId: task.id }, { toolCallId: '1', messages: [] })
-        if (!isTaskWithRelations(details)) throw new Error('Invalid result')
-        if (details.relations.some((r) => r.type === 'blocked_by')) {
-          blockedTasks.push(details)
-        }
-      }
+      const blockedTasks = await collectTasksByRelationType(tasksResult, getTool.execute, 'blocked_by')
 
       expect(blockedTasks).toHaveLength(2)
       expect(blockedTasks[0]?.id).toBe('task-1')
@@ -121,21 +232,14 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
       const getTool = makeGetTaskTool(provider)
-      if (!getTool.execute) throw new Error('Tool execute is undefined')
+      assert(getTool.execute, 'Tool execute is undefined')
 
-      const blockedTasks: Array<TaskWithRelations> = []
-      for (const task of tasksResult) {
-        const details: unknown = await getTool.execute({ taskId: task.id }, { toolCallId: '1', messages: [] })
-        if (!isTaskWithRelations(details)) throw new Error('Invalid result')
-        if (details.relations.some((r) => r.type === 'blocked_by')) {
-          blockedTasks.push(details)
-        }
-      }
+      const blockedTasks = await collectTasksByRelationType(tasksResult, getTool.execute, 'blocked_by')
 
       expect(blockedTasks).toHaveLength(0)
     })
@@ -148,45 +252,23 @@ describe('Task Scenarios', () => {
             { id: 'task-2', title: 'Regular task', status: 'todo', url: 'https://test.com/task/2' },
           ]),
         ),
-        getTask: mock((taskId: string): Promise<Task> => {
-          if (taskId === 'task-1') {
-            return Promise.resolve({
-              id: 'task-1',
-              title: 'Blocking task',
-              status: 'in-progress',
-              relations: [{ type: 'blocks', taskId: 'task-99' }],
-              url: 'https://test.com/task/1',
-            })
-          }
-          if (taskId === 'task-2') {
-            return Promise.resolve({
-              id: 'task-2',
-              title: 'Regular task',
-              status: 'todo',
-              relations: [],
-              url: 'https://test.com/task/2',
-            })
-          }
-          return Promise.reject(new Error('Task not found'))
-        }),
+        getTask: mock(
+          makeGetTaskByIdMap({
+            'task-1': TASK_FIXTURES['task-1-blocking']!,
+            'task-2': TASK_FIXTURES['task-2-empty']!,
+          }),
+        ),
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
       const getTool = makeGetTaskTool(provider)
-      if (!getTool.execute) throw new Error('Tool execute is undefined')
+      assert(getTool.execute, 'Tool execute is undefined')
 
-      const blockingTasks: Array<TaskWithRelations> = []
-      for (const task of tasksResult) {
-        const details: unknown = await getTool.execute({ taskId: task.id }, { toolCallId: '1', messages: [] })
-        if (!isTaskWithRelations(details)) throw new Error('Invalid result')
-        if (details.relations.some((r) => r.type === 'blocks')) {
-          blockingTasks.push(details)
-        }
-      }
+      const blockingTasks = await collectTasksByRelationType(tasksResult, getTool.execute, 'blocks')
 
       expect(blockingTasks).toHaveLength(1)
       expect(blockingTasks[0]?.id).toBe('task-1')
@@ -195,14 +277,7 @@ describe('Task Scenarios', () => {
 
   describe('Bulk move to todo', () => {
     test('moves multiple in-progress tasks to todo', async () => {
-      const updateTask = mock((_taskId: string, _params: { status?: string }) =>
-        Promise.resolve({
-          id: _taskId,
-          title: 'Task',
-          status: _params.status ?? 'todo',
-          url: 'https://test.com/task/1',
-        }),
-      )
+      const updateTask = mock(makeUpdateTaskMockAlwaysTodo)
 
       const provider = createMockProvider({
         listTasks: mock(() =>
@@ -216,14 +291,14 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
       const inProgressTasks = tasksResult.filter((t) => t.status === 'in-progress')
 
       const updateTool = makeUpdateTaskTool(provider)
-      if (!updateTool.execute) throw new Error('Tool execute is undefined')
+      assert(updateTool.execute, 'Tool execute is undefined')
 
       for (const task of inProgressTasks) {
         await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [] })
@@ -236,14 +311,7 @@ describe('Task Scenarios', () => {
     })
 
     test('only moves tasks matching filter criteria', async () => {
-      const updateTask = mock((_taskId: string, _params: { status?: string }) =>
-        Promise.resolve({
-          id: _taskId,
-          title: 'Task',
-          status: _params.status ?? 'todo',
-          url: 'https://test.com/task/1',
-        }),
-      )
+      const updateTask = mock(makeUpdateTaskMockAlwaysTodo)
 
       const provider = createMockProvider({
         listTasks: mock(() =>
@@ -257,14 +325,14 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
       const inProgressTasks = tasksResult.filter((t) => t.status === 'in-progress')
 
       const updateTool = makeUpdateTaskTool(provider)
-      if (!updateTool.execute) throw new Error('Tool execute is undefined')
+      assert(updateTool.execute, 'Tool execute is undefined')
 
       for (const task of inProgressTasks) {
         await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [] })
@@ -274,17 +342,7 @@ describe('Task Scenarios', () => {
     })
 
     test('handles partial failures in bulk operation', async () => {
-      const updateTask = mock((taskId: string, _params: { status?: string }) => {
-        if (taskId === 'task-2') {
-          return Promise.reject(new Error('Permission denied'))
-        }
-        return Promise.resolve({
-          id: taskId,
-          title: 'Task',
-          status: _params.status ?? 'todo',
-          url: 'https://test.com/task/1',
-        })
-      })
+      const updateTask = mock(makeUpdateTaskMockWithPartialFailure('task-2'))
 
       const provider = createMockProvider({
         listTasks: mock(() =>
@@ -298,19 +356,19 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
       const updateTool = makeUpdateTaskTool(provider)
-      if (!updateTool.execute) throw new Error('Tool execute is undefined')
+      assert(updateTool.execute, 'Tool execute is undefined')
 
       const errors: Array<{ taskId: string; error: string }> = []
       for (const task of tasksResult) {
         try {
           await updateTool.execute({ taskId: task.id, status: 'todo' }, { toolCallId: '1', messages: [] })
         } catch (error) {
-          errors.push({ taskId: task.id, error: error instanceof Error ? error.message : String(error) })
+          errors.push({ taskId: task.id, error: extractErrorMessage(error) })
         }
       }
 
@@ -363,16 +421,11 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
-      const highPriorityThisWeek = tasksResult.filter((t: TaskListItem) => {
-        if (t.priority !== 'high') return false
-        if (t.dueDate === null || t.dueDate === undefined) return false
-        const dueDate = new Date(t.dueDate)
-        return dueDate >= startOfWeek && dueDate <= endOfWeek
-      })
+      const highPriorityThisWeek = tasksResult.filter(isHighPriorityDueInWindow(startOfWeek, endOfWeek))
 
       expect(highPriorityThisWeek).toHaveLength(1)
       expect(highPriorityThisWeek[0]?.id).toBe('task-1')
@@ -406,16 +459,11 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
-      const highPriorityThisWeek = tasksResult.filter((t: TaskListItem) => {
-        if (t.priority !== 'high' && t.priority !== 'urgent') return false
-        if (t.dueDate === null || t.dueDate === undefined) return false
-        const dueDate = new Date(t.dueDate)
-        return dueDate >= startOfWeek && dueDate <= endOfWeek
-      })
+      const highPriorityThisWeek = tasksResult.filter(isHighOrUrgentPriorityDueInWindow(startOfWeek, endOfWeek))
 
       expect(highPriorityThisWeek).toHaveLength(2)
     })
@@ -448,16 +496,11 @@ describe('Task Scenarios', () => {
       })
 
       const listTool = makeListTasksTool(provider)
-      if (!listTool.execute) throw new Error('Tool execute is undefined')
+      assert(listTool.execute, 'Tool execute is undefined')
       const tasksResult: unknown = await listTool.execute({ projectId: 'proj-1' }, { toolCallId: '1', messages: [] })
-      if (!isTaskList(tasksResult)) throw new Error('Invalid result')
+      assert(isTaskList(tasksResult), 'Invalid result')
 
-      const highPriorityThisWeek = tasksResult.filter((t: TaskListItem) => {
-        if (t.priority !== 'high' && t.priority !== 'urgent') return false
-        if (t.dueDate === null || t.dueDate === undefined) return false
-        const dueDate = new Date(t.dueDate)
-        return dueDate >= startOfWeek && dueDate <= endOfWeek
-      })
+      const highPriorityThisWeek = tasksResult.filter(isHighOrUrgentPriorityDueInWindow(startOfWeek, endOfWeek))
 
       expect(highPriorityThisWeek).toHaveLength(0)
     })
@@ -473,45 +516,14 @@ describe('Task Scenarios', () => {
         ]),
       )
 
-      const listTasks = mock((projectId: string) => {
-        if (projectId === 'proj-1') {
-          return Promise.resolve([
-            {
-              id: 'task-1',
-              title: 'Backend high priority',
-              status: 'todo',
-              priority: 'high',
-              dueDate: '2026-03-25T12:00:00Z',
-              url: 'https://test.com/task/1',
-            },
-          ])
-        }
-        if (projectId === 'proj-2') {
-          return Promise.resolve([
-            {
-              id: 'task-2',
-              title: 'Frontend high priority',
-              status: 'todo',
-              priority: 'high',
-              dueDate: '2026-03-26T12:00:00Z',
-              url: 'https://test.com/task/2',
-            },
-          ])
-        }
-        return Promise.resolve([])
-      })
+      const listTasks = mock(listTasksByProjectId)
 
       const projects = await listProjects()
       const allHighPriorityTasks: TaskListItem[] = []
 
       for (const project of projects) {
         const tasks = await listTasks(project.id)
-        const projectHighPriority = tasks.filter((t: TaskListItem) => {
-          if (t.priority !== 'high' && t.priority !== 'urgent') return false
-          if (t.dueDate === null || t.dueDate === undefined) return false
-          const dueDate = new Date(t.dueDate)
-          return dueDate >= startOfWeek && dueDate <= endOfWeek
-        })
+        const projectHighPriority = tasks.filter(isHighOrUrgentPriorityDueInWindow(startOfWeek, endOfWeek))
         allHighPriorityTasks.push(...projectHighPriority)
       }
 

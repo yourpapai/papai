@@ -3,6 +3,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { InlineKeyboard } from 'grammy'
 
@@ -171,17 +172,13 @@ describe('replacement reply helpers', () => {
 
     expect(capturedText).toBe(formatted.text)
     expect(capturedOptions).toBeDefined()
-    if (capturedOptions === undefined) {
-      throw new TypeError('Expected replacement options to be captured')
-    }
+    assert(capturedOptions !== undefined)
     expect(capturedOptions.entities).toEqual(formatted.entities)
     expect(capturedOptions.reply_markup).toBeInstanceOf(InlineKeyboard)
 
     const replyMarkup = capturedOptions.reply_markup
     expect(replyMarkup).toBeDefined()
-    if (replyMarkup === undefined) {
-      throw new TypeError('Expected replacement keyboard to be captured')
-    }
+    assert(replyMarkup !== undefined)
     const inlineKeyboard = replyMarkup.inline_keyboard
 
     expect(inlineKeyboard.flat()).toEqual([
@@ -210,16 +207,12 @@ describe('replacement reply helpers', () => {
 
     expect(capturedText).toBe(formatted.text)
     expect(capturedOptions).toBeDefined()
-    if (capturedOptions === undefined) {
-      throw new TypeError('Expected replacement options to be captured')
-    }
+    assert(capturedOptions !== undefined)
     expect(capturedOptions.entities).toEqual(formatted.entities)
     expect(capturedOptions.reply_markup).toBeInstanceOf(InlineKeyboard)
     const replyMarkup = capturedOptions.reply_markup
     expect(replyMarkup).toBeDefined()
-    if (replyMarkup === undefined) {
-      throw new TypeError('Expected replacement keyboard to be captured')
-    }
+    assert(replyMarkup !== undefined)
     expect(replyMarkup.inline_keyboard).toEqual([])
   })
 })

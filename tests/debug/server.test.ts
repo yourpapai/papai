@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -33,6 +34,38 @@ function ensurePublicBuilt(): void {
   if (proc.exitCode !== 0) {
     throw new Error(`Build failed: ${proc.stderr.toString()}`)
   }
+}
+
+/** Narrow a parsed JSON body to an array, throwing if it is not one. */
+function assertArray(value: unknown): unknown[] {
+  assert(Array.isArray(value), 'expected array')
+  return value
+}
+
+/**
+ * Narrow a log entry to an object that has the given key; return the value at
+ * that key so callers never need to use index-signature dot access.
+ */
+function assertLogEntryKey(entry: unknown, key: string): unknown {
+  assert(typeof entry === 'object' && entry !== null, 'expected log entry to be an object')
+  assert(key in entry, `expected log entry to have key "${key}"`)
+  return Reflect.get(entry, key)
+}
+
+/**
+ * Find the level value registered for logBufferStream inside logMultistream.
+ * Returns `undefined` if the stream is not present.
+ */
+function findBufferStreamLevel(multistream: unknown, target: unknown): unknown {
+  assert(typeof multistream === 'object' && multistream !== null, 'expected multistream to be an object')
+  const streams = assertArray(Reflect.get(multistream, 'streams'))
+  for (const entry of streams) {
+    assert(typeof entry === 'object' && entry !== null, 'expected stream entry to be an object')
+    if (Reflect.get(entry, 'stream') === target) {
+      return Reflect.get(entry, 'level')
+    }
+  }
+  return undefined
 }
 
 /**
@@ -129,58 +162,44 @@ describe('debug-server', () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/logs`)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
-    const body: unknown = JSON.parse(await res.text())
-    expect(Array.isArray(body)).toBe(true)
-    if (!Array.isArray(body)) return
-    const entries: unknown[] = body
+    const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
   })
 
   test('GET /logs supports level filter', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/logs?level=50`)
     expect(res.status).toBe(200)
-    const body: unknown = JSON.parse(await res.text())
-    if (!Array.isArray(body)) throw new Error('expected array')
-    const entries: unknown[] = body
+    const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
     for (const entry of entries) {
-      if (typeof entry !== 'object' || entry === null || !('level' in entry)) throw new Error('expected log entry')
-      expect(entry.level).toBeGreaterThanOrEqual(50)
+      expect(assertLogEntryKey(entry, 'level')).toBeGreaterThanOrEqual(50)
     }
   })
 
   test('GET /logs supports scope filter', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/logs?scope=debug-server`)
     expect(res.status).toBe(200)
-    const body: unknown = JSON.parse(await res.text())
-    if (!Array.isArray(body)) throw new Error('expected array')
-    const entries: unknown[] = body
+    const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
     for (const entry of entries) {
-      if (typeof entry !== 'object' || entry === null || !('scope' in entry)) throw new Error('expected log entry')
-      expect(entry.scope).toBe('debug-server')
+      expect(assertLogEntryKey(entry, 'scope')).toBe('debug-server')
     }
   })
 
   test('GET /logs supports text search', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/logs?q=Debug%20server`)
     expect(res.status).toBe(200)
-    const body: unknown = JSON.parse(await res.text())
-    if (!Array.isArray(body)) throw new Error('expected array')
-    const entries: unknown[] = body
+    const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
     for (const entry of entries) {
-      if (typeof entry !== 'object' || entry === null || !('msg' in entry)) throw new Error('expected log entry')
-      expect(String(entry.msg).toLowerCase()).toContain('debug server')
+      expect(String(assertLogEntryKey(entry, 'msg')).toLowerCase()).toContain('debug server')
     }
   })
 
   test('GET /logs supports limit', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/logs?limit=1`)
     expect(res.status).toBe(200)
-    const body: unknown = JSON.parse(await res.text())
-    if (!Array.isArray(body)) throw new Error('expected array')
-    const entries: unknown[] = body
+    const entries = assertArray(JSON.parse(await res.text()))
     expect(entries).toHaveLength(1)
   })
 
@@ -196,16 +215,7 @@ describe('debug-server', () => {
   })
 
   test('buffer stream is registered with level matching LOG_LEVEL', () => {
-    const streams: unknown = Reflect.get(logMultistream, 'streams')
-    if (!Array.isArray(streams)) throw new Error('expected logMultistream.streams to be an array')
-    let foundLevel: unknown
-    for (const entry of streams) {
-      if (typeof entry !== 'object' || entry === null) continue
-      if (Reflect.get(entry, 'stream') === logBufferStream) {
-        foundLevel = Reflect.get(entry, 'level')
-        break
-      }
-    }
+    const foundLevel = findBufferStreamLevel(logMultistream, logBufferStream)
     expect(foundLevel).toBeDefined()
     // Use the captured log level from when the server started, not current env
     // (other tests may have modified LOG_LEVEL after server start)

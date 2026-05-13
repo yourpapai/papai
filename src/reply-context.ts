@@ -1,3 +1,7 @@
+import { isS3Configured } from './attachments/index.js'
+import { buildAttachmentManifest } from './attachments/resolver.js'
+import { findStagedFilesByMessageId } from './attachments/staged.js'
+import type { AttachmentRef } from './attachments/types.js'
 import type { IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
 import { buildReplyChain, getCachedMessage } from './message-cache/index.js'
@@ -36,16 +40,19 @@ export function buildReplyContextChain(
 }
 
 /**
- * Builds a prompt string with reply context and file metadata prepended.
+ * Builds a prompt string with reply context and an attachment manifest prepended.
  *
  * ReplyContext is already fully populated by platform providers:
  * - Telegram: reply_to_message fields + message cache chain
  * - Mattermost: cached parent or API fetch + message cache chain
+ *
+ * The attachment manifest is built from the active attachment workspace by
+ * the bot before queueing (see `src/bot.ts`). Raw `IncomingFile` payloads no
+ * longer drive prompt rendering; they are persisted into the workspace and
+ * surfaced as stable `AttachmentRef`s.
  */
-function hasContextData(msg: IncomingMessage): boolean {
-  const hasReplyContext = msg.replyContext !== undefined
-  const hasFiles = msg.files !== undefined && msg.files.length > 0
-  return hasReplyContext || hasFiles
+function hasContextData(msg: IncomingMessage, attachments: readonly AttachmentRef[]): boolean {
+  return msg.replyContext !== undefined || attachments.length > 0
 }
 
 function logReplyContextDebug(msg: IncomingMessage): void {
@@ -91,20 +98,6 @@ function buildReplyContextLines(msg: IncomingMessage): string[] {
   return lines
 }
 
-function buildFileContextLine(msg: IncomingMessage): string | null {
-  if (msg.files === undefined || msg.files.length === 0) return null
-  const fileList = msg.files
-    .map((f) => {
-      const meta: string[] = []
-      if (f.mimeType !== undefined) meta.push(f.mimeType)
-      if (f.size !== undefined) meta.push(`${f.size} bytes`)
-      const fileLabel = meta.length > 0 ? `${f.filename} (${meta.join(', ')})` : f.filename
-      return `fileId=${f.fileId}: ${fileLabel}`
-    })
-    .join('; ')
-  return `[Attached files available for upload_attachment (use fileId): ${fileList}]`
-}
-
 function logPromptBuilt(contextLength: number, finalPrompt: string, originalText: string): void {
   log.debug(
     {
@@ -116,8 +109,12 @@ function logPromptBuilt(contextLength: number, finalPrompt: string, originalText
   )
 }
 
-export function buildPromptWithReplyContext(msg: IncomingMessage): string {
-  if (!hasContextData(msg)) {
+export function buildPromptWithReplyContext(
+  msg: IncomingMessage,
+  attachments: readonly AttachmentRef[] = [],
+  storageContextId?: string,
+): string {
+  if (!hasContextData(msg, attachments) && storageContextId === undefined) {
     return msg.text
   }
 
@@ -128,9 +125,17 @@ export function buildPromptWithReplyContext(msg: IncomingMessage): string {
     context.push(...buildReplyContextLines(msg))
   }
 
-  const fileLine = buildFileContextLine(msg)
-  if (fileLine !== null) {
-    context.push(fileLine)
+  const manifest = isS3Configured() ? buildAttachmentManifest(attachments) : null
+  if (manifest !== null) context.push(manifest)
+
+  if (isS3Configured() && msg.replyToMessageId !== undefined && storageContextId !== undefined) {
+    const stagedForReply = findStagedFilesByMessageId(storageContextId, msg.replyToMessageId)
+    if (stagedForReply.length > 0) {
+      const stagedLines = stagedForReply.map(
+        (sf) => `[Staged file available: ${sf.stagedId} "${sf.filename}" from ${sf.senderUsername ?? 'unknown user'}]`,
+      )
+      context.push(...stagedLines)
+    }
   }
 
   if (context.length === 0) {

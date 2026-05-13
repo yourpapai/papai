@@ -1,6 +1,7 @@
-export type ToolMode = 'normal' | 'proactive'
+import type { ContextType } from '../chat/types.js'
+export type { ContextType } from '../chat/types.js'
 
-export type ContextType = 'dm' | 'group'
+export type ToolMode = 'normal' | 'proactive'
 
 /**
  * Options for makeTools function.
@@ -39,4 +40,5 @@ export type MakeToolsOptions = {
    * in specific contexts (e.g., identity tools are only available in groups).
    */
   contextType?: ContextType
+  stagedDownloadFn?: import('../attachments/types.js').StagedFileDownloadFn
 }
