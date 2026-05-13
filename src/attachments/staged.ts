@@ -120,7 +120,7 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
 
 export function searchStagedFiles(contextId: string, query: string, limit: number = 10): StagedFileRef[] {
   const db = getDrizzleDb()
-  const escaped = query.replace(/[%_]/g, '\\$&')
+  const escaped = query.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&')
   const pattern = `%${escaped}%`
 
   return db
