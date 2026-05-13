@@ -5,6 +5,202 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - 2026-05-13
+
+### Added
+
+- **attachments:** Add attachment workspace schema and migration 028
+- **attachments:** Add S3-backed blob store and durable attachment store
+- **attachments:** Add workspace ingest and clear helpers
+- **attachments:** Add resolver and prompt manifest
+- **llm:** Add multimodal attachment input
+- **behavior-audit:** Add embedding cache module
+- **behavior-audit:** Add EMBEDDING_CACHE_PATH config
+- **behavior-audit:** Use embedding cache in Phase 1b
+- **behavior-audit:** Use embedding cache in tune-embedding script
+- **skills:** Add syncing-plan-with-code skill
+- **behavior-audit:** Add average and complete linkage similarity helpers
+- **behavior-audit:** Add buildClustersAdvanced with average and complete linkage
+- **behavior-audit:** Add subdivideOversizedClusters for iterative threshold increase
+- **behavior-audit:** Add gap threshold to buildClustersAdvanced
+- **behavior-audit:** Add linkage, maxClusterSize, gapThreshold config
+- **behavior-audit:** Wire linkage, maxClusterSize, gapThreshold into tune-embedding CLI
+- **behavior-audit:** Wire new clustering params into consolidation pipeline
+- Instrument embedding clustering profiles
+- Expose clustering profile output
+- Add tool schema formatting
+- Add tool metadata extraction
+- Add papai tool proxy modes
+- Expose papai tools through single proxy
+- Add Pi project scaffold, extensions, and tooling config
+- Add compact-tools pi extension
+- Add cached group user observations
+- Record observed group user labels
+- Add telegram group display resolver
+- Use cached telegram labels in group commands
+- Add staged_files migration, schema, and tests
+- Add staged file types and IncomingFileCandidate for metadata-only group files
+- Add staged file cache module (stage, search, resolve, purge)
+- Add staged download factory with platform-specific delegation
+- Stage group files before auth gate, use thread-scoped context IDs for lookups
+- Telegram adapter produces file candidates for groups (no eager download)
+- Mattermost adapter produces file candidates for groups (no eager download)
+- Add search_staged_files and resolve_staged_file LLM tools
+- Wire platform-specific staged downloader through orchestrator to tools
+- Register hourly staged files purge background job
+- Make S3 storage optional — disable file capabilities when S3 env vars are missing
+- **attachments:** Add S3 docs, workspace-files tool, and update /clear command
+- **behavior-audit:** Add average and complete linkage similarity helpers
+- Add tool surface benchmark scenarios
+- Add tool surface benchmark runner
+- Add architecture inventory tooling
+- Surface live tool definitions in context output
+
+### Changed
+
+- **bot:** Persist incoming files into the workspace and queue stable IDs
+- **attachments:** Replace file-relay with workspace lookups
+- Add trust-aware behavior audit extraction
+- **behavior-audit:** Add pre-normalized clustering with Float64Array dot product
+- **behavior-audit:** Add condensed distance helpers for advanced clustering
+- **behavior-audit:** Limit advanced clustering helper visibility
+- **behavior-audit:** Replace non-single linkage clustering with nearest-neighbor chain
+- **plan-adr-workflow:** Extract AI helpers and add remaining-work doc generation
+- Remove OpenCode instruction files, add Pi workflow to CLAUDE.md
+- Replace sorted nearest-neighbor scans
+- Remove string blocked-pair keys
+- Reuse active cluster snapshots
+
+### Documentation
+
+- **attachments:** Switch design to S3-compatible blob storage
+- **attachments:** Update plan to use S3-compatible storage and migration 028
+- **attachments:** Reformat plan/design after lint pass
+- Add single proxy tool design
+- Add single proxy tool implementation plan
+- Record clustering profile evidence
+- Add clustering acceleration plan
+- Add telegram group label resolution design spec
+- Update remediation and clustering plans
+- Add tool surface benchmark design
+- Update tool surface benchmark plan status
+- Mark tool introspection cleanup plan complete
+
+### Fixed
+
+- **behavior-audit:** Update EMBEDDING_MODEL default in config test
+- **behavior-audit:** Clamp recluster threshold ceiling
+- **behavior-audit:** Keep scanning after rejected gap merge
+- **behavior-audit:** Preserve gap-aware reclustering in tune-embedding
+- **behavior-audit:** Isolate tune-embedding wiring regression
+- **behavior-audit:** Invalidate phase1b on clustering config changes
+- **behavior-audit:** Migrate legacy v5 phase1b progress
+- **behavior-audit:** Persist phase1b clustering settings
+- **behavior-audit:** Invalidate phase1b when embedding identity changes
+- **behavior-audit:** Include embedding base url in phase1b identity
+- **behavior-audit:** Include embedding provider identity in cache validation
+- **behavior-audit:** Enforce pairwise gap checks for single linkage
+- Accumulate clustering timings
+- Wire tune clustering profile flags
+- Separate tune profiling samples
+- Avoid duplicate tune profile runs
+- Persist clustering profile runs incrementally
+- Validate profile runner flag values
+- Report unknown profile flags correctly
+- Satisfy strict schema formatter lint
+- Handle unrepresentable tool schemas
+- Accept schema-like formatter inputs
+- Satisfy strict tool metadata lint
+- Refine papai tool proxy search
+- Validate tool proxy benchmark scenarios
+- Harden tool proxy benchmark validation
+- Reject empty benchmark default models
+- Honor empty benchmark model env
+- Let benchmark CLI models override env
+- Validate proxied tool arguments
+- Execute proxied tools with parsed args
+- Preserve proxied tool behavior
+- Persist facts from multi-step tool calls
+- Exclude pi extension from project typecheck and lint
+- Stop trimming bash tool output in compact-tools extension
+- Add 1-char left padding to all interaction containers
+- Move compact-tools extension to .pi/extensions for auto-discovery
+- Remove project-local compact-tools, fix codeindex-reindex bun import
+- Preserve nearest-cluster NaN ordering
+- Preserve nearest-cluster sort barriers
+- Handle infinite nearest distances
+- Preserve Bun nearest sort semantics for non-finite distances
+- Keep infinite nearest distances on fast path
+- Restore active snapshot profiling counters
+- Scope cached group observations by provider
+- **attachments:** Drop unreliable changes() and $client usage in purgeExpiredStagedFiles
+- **attachments:** Handle missing staged_files table in purgeExpiredStagedFiles
+- **tools:** Strengthen resolve_staged_file type guard and clean up lint
+- **attachments:** Eliminate staged downloader singleton, atomic upserts, Discord docs
+- Clean routing branch lint and scope drift
+- Verify tool surface benchmark
+- Align context tool catalog with degraded tool state
+- Prefer live context tool catalogs
+- Tighten context catalog fallback behavior
+- Fall back to cached context tools
+- Keep degraded context tools cache-only
+- Align context summary tool wiring
+- Align context tool snapshot state
+- Clean up context tool resolution seams
+- Avoid context tool rebuild fallback
+- Align context tool surface resolution
+- Isolate youtrack bundle cache tests
+- Narrow behavior audit exports
+- Trim helper barrel exports
+- Finish behavior-audit task 3 cleanup
+- Align advanced clustering test imports
+- Wait for review-loop command advertisements
+- Update YouTrack tools integration test for direct tool surface
+- Default behavior audit linkage to complete
+- **codeindex:** Reuse parser runtime initialization
+
+### Miscellaneous
+
+- **attachments:** Underscore-prefix the test-only blob-store DI hooks
+- Remove local opencode TPS meter integration
+- Add clustering profile runner
+- Commit all current changes
+- Add tool proxy benchmark
+- Bump opencode plugin version, format compact-tools spec
+- Format telegram group label plan
+- Format telegram group label plan
+- Configure knip for behavior audit entrypoints
+- Format knip config
+- Satisfy registry lint rules
+- Align knip with production tool surfaces
+- Simplify knip workspace config
+
+### Testing
+
+- **behavior-audit:** Cover complete linkage conservatism
+- **behavior-audit:** Cover gapThreshold wiring in tune-embedding
+- **behavior-audit:** Cover provider-matched embedding cache reuse
+- Add clustering profiling primitives
+- Cover clustering profile defaults
+- Update makeTools proxy expectations
+- Add Pi extension tests for codeindex-reindex and tdd-enforcement
+- Update youtrack tools integration for proxy tool
+- Cover telegram resolver live user precedence
+- **attachments:** Lock down staged file resolution edge cases
+- Isolate context command cache state
+- Pin hyphenated context tool ordering
+
+### Merge
+
+- Origin/master into copilot/research-tools-pollution-reduction
+
+### Plan
+
+- Compact tools extension implementation
+
+### Spec
+
+- Compact tools extension design
 ## [5.2.0] - 2026-04-28
 
 ### Added
