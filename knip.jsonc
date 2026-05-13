@@ -53,6 +53,7 @@
   "ignoreIssues": {
     "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
     "scripts/behavior-audit/phase-stats.ts": ["exports"],
+    "src/attachments/workspace.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],

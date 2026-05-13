@@ -152,6 +152,20 @@ Optional but important runtime flags include:
 
 The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
 
+### File Attachments (S3-compatible Object Storage)
+
+Required when the bot needs to receive, persist, or attach files to tasks.
+
+| Variable               | Required | Description                                                           |
+| ---------------------- | -------- | --------------------------------------------------------------------- |
+| `S3_BUCKET`            | Yes      | S3 bucket name where attachment objects are stored                    |
+| `S3_ACCESS_KEY_ID`     | Yes      | Access key for the S3-compatible service                              |
+| `S3_SECRET_ACCESS_KEY` | Yes      | Secret key for the S3-compatible service                              |
+| `S3_ENDPOINT`          | No\*     | Endpoint URL. Required for non-AWS providers such as MinIO, R2, or B2 |
+| `S3_REGION`            | No       | AWS region (e.g. `us-east-1`)                                         |
+| `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
+| `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
+
 Common runtime config keys:
 
 - `llm_apikey`
@@ -192,7 +206,7 @@ Optional: debug server + dashboard client
 - `src/chat/interaction-router.ts` — config-editor, group-selector, and wizard callback routing
 - `src/config.ts` — per-user config store
 - `src/conversation.ts` / `src/history.ts` / `src/memory.ts` — history, summary, and fact management
-- `src/file-relay.ts` — turn-scoped incoming file storage for attachment tools
+- `src/attachments/` — durable attachment workspace: ingest, S3 blob store, metadata, manifest, and resolver
 - `src/message-queue/` — message coalescing and orderly orchestrator dispatch
 - `src/group-settings/` — DM selection of personal vs group settings target
 - `src/identity/` — chat-to-provider identity mapping and “me” resolution

@@ -13,7 +13,7 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
-describe('/clear command — attachment workspace integration', () => {
+describe('/clear command — history and memory only', () => {
   let mockChat: ChatProvider
   let commandHandlers: Map<string, CommandHandler>
   const adminUserId = 'admin-clear'
@@ -31,7 +31,7 @@ describe('/clear command — attachment workspace integration', () => {
     registerClearCommand(mockChat, checkAuthorization, adminUserId)
   })
 
-  test('clears the attachment workspace alongside history and memory', async () => {
+  test('clears history and memory but leaves attachments in workspace', async () => {
     addUser('clear-user', adminUserId)
     await persistIncomingAttachments({
       contextId: 'clear-user',
@@ -50,11 +50,12 @@ describe('/clear command — attachment workspace integration', () => {
     const { reply, textCalls } = createMockReply()
     await handler!(msg, reply, auth)
 
-    expect(listActiveAttachments('clear-user')).toEqual([])
-    expect(textCalls[0]).toContain('attachments')
+    // Attachments must remain in the workspace
+    expect(listActiveAttachments('clear-user')).toHaveLength(1)
+    expect(textCalls[0]).toContain('memory')
   })
 
-  test('clears workspace for a target user when admin runs /clear <user_id>', async () => {
+  test('clears history for a target user but leaves attachments', async () => {
     addUser('victim-user', adminUserId)
     await persistIncomingAttachments({
       contextId: 'victim-user',
@@ -71,7 +72,8 @@ describe('/clear command — attachment workspace integration', () => {
     const { reply, textCalls } = createMockReply()
     await handler!(adminMsg, reply, auth)
 
-    expect(listActiveAttachments('victim-user')).toEqual([])
-    expect(textCalls[0]).toContain('attachments')
+    // Attachments must remain in the workspace
+    expect(listActiveAttachments('victim-user')).toHaveLength(1)
+    expect(textCalls[0]).toContain('history')
   })
 })
