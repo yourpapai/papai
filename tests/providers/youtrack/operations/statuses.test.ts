@@ -16,7 +16,8 @@ import { mockLogger, restoreFetch } from '../../../utils/test-helpers.js'
 import {
   FetchCallSchema,
   type FetchMockFn,
-  defaultConfig,
+  createUniqueProjectId,
+  createUniqueYouTrackConfig,
   getLastFetchBody,
   getLastFetchMethod,
   getLastFetchUrl,
@@ -24,11 +25,11 @@ import {
   mockFetchError,
   mockFetchSequence,
 } from '../fetch-mock-utils.js'
-import { clearBundleCache } from '../test-helpers.js'
 
 const fetchMock: { current?: FetchMockFn } = {}
 
-const config: YouTrackConfig = defaultConfig
+let config: YouTrackConfig
+let projectId: string
 
 const makeStateValue = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: '57-1',
@@ -128,7 +129,8 @@ const installNoPriorityStateFieldMock = (): void => {
 describe('listYouTrackStatuses', () => {
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
+    config = createUniqueYouTrackConfig()
+    projectId = createUniqueProjectId()
   })
 
   afterEach(() => {
@@ -142,7 +144,7 @@ describe('listYouTrackStatuses', () => {
       { data: [makeStateValue(), makeStateValue({ id: '57-2', name: 'In Progress', ordinal: 1 })] },
     ])
 
-    const statuses = await listYouTrackStatuses(config, 'proj-1')
+    const statuses = await listYouTrackStatuses(config, projectId)
 
     expect(statuses).toHaveLength(2)
     expect(statuses[0]!.id).toBe('57-1')
@@ -158,7 +160,7 @@ describe('listYouTrackStatuses', () => {
       { data: [makeStateValue({ isResolved: true })] },
     ])
 
-    const statuses = await listYouTrackStatuses(config, 'proj-1')
+    const statuses = await listYouTrackStatuses(config, projectId)
 
     expect(statuses[0]!.isFinal).toBe(true)
   })
@@ -170,7 +172,7 @@ describe('listYouTrackStatuses', () => {
       { data: [makeStateValue({ isResolved: false })] },
     ])
 
-    const statuses = await listYouTrackStatuses(config, 'proj-1')
+    const statuses = await listYouTrackStatuses(config, projectId)
 
     expect(statuses[0]!.isFinal).toBe(false)
   })
@@ -182,7 +184,7 @@ describe('listYouTrackStatuses', () => {
       { data: [makeStateValue()] },
     ])
 
-    await listYouTrackStatuses(config, 'proj-1')
+    await listYouTrackStatuses(config, projectId)
 
     const calls = fetchMock.current?.mock.calls
     expect(calls?.length).toBe(3)
@@ -190,7 +192,7 @@ describe('listYouTrackStatuses', () => {
     const firstCall = getFetchCall(0)
     expect(firstCall).not.toBeNull()
     const firstUrl = new URL(firstCall![0])
-    expect(firstUrl.pathname).toBe('/api/admin/projects/proj-1/customFields')
+    expect(firstUrl.pathname).toBe(`/api/admin/projects/${projectId}/customFields`)
 
     const secondCall = getFetchCall(1)
     expect(secondCall).not.toBeNull()
@@ -206,7 +208,7 @@ describe('listYouTrackStatuses', () => {
   test('returns empty array when no states', async () => {
     mockFetchSequence(fetchMock, [{ data: [makeCustomField()] }, { data: makeBundleInfo() }, { data: [] }])
 
-    const statuses = await listYouTrackStatuses(config, 'proj-1')
+    const statuses = await listYouTrackStatuses(config, projectId)
 
     expect(statuses).toEqual([])
   })
@@ -218,7 +220,7 @@ describe('listYouTrackStatuses', () => {
       { status: 401, data: { error: 'Unauthorized' } },
     ])
 
-    await expect(listYouTrackStatuses(config, 'proj-1')).rejects.toBeInstanceOf(YouTrackClassifiedError)
+    await expect(listYouTrackStatuses(config, projectId)).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 
   test('throws classified error on 404', async () => {
@@ -228,14 +230,15 @@ describe('listYouTrackStatuses', () => {
       { status: 404, data: { error: 'Bundle not found' } },
     ])
 
-    await expect(listYouTrackStatuses(config, 'proj-1')).rejects.toBeInstanceOf(YouTrackClassifiedError)
+    await expect(listYouTrackStatuses(config, projectId)).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 })
 
 describe('createYouTrackStatus', () => {
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
+    config = createUniqueYouTrackConfig()
+    projectId = createUniqueProjectId()
   })
 
   afterEach(() => {
@@ -249,7 +252,7 @@ describe('createYouTrackStatus', () => {
       { data: makeStateValue({ id: '57-100', name: 'Ready', ordinal: 2 }) },
     ])
 
-    const result = await createYouTrackStatus(config, 'proj-1', { name: 'Ready' })
+    const result = await createYouTrackStatus(config, projectId, { name: 'Ready' })
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result.id).toBe('57-100')
@@ -263,7 +266,7 @@ describe('createYouTrackStatus', () => {
       { data: makeStateValue() },
     ])
 
-    await createYouTrackStatus(config, 'proj-1', { name: 'New State' })
+    await createYouTrackStatus(config, projectId, { name: 'New State' })
 
     const body = getLastFetchBody(fetchMock.current)
     expect(body['name']).toBe('New State')
@@ -276,7 +279,7 @@ describe('createYouTrackStatus', () => {
       { data: makeStateValue({ isResolved: true }) },
     ])
 
-    const result = await createYouTrackStatus(config, 'proj-1', { name: 'Done', isFinal: true })
+    const result = await createYouTrackStatus(config, projectId, { name: 'Done', isFinal: true })
 
     const body = getLastFetchBody(fetchMock.current)
     expect(body['isResolved']).toBe(true)
@@ -291,7 +294,7 @@ describe('createYouTrackStatus', () => {
       { data: makeStateValue({ isResolved: false }) },
     ])
 
-    const result = await createYouTrackStatus(config, 'proj-1', { name: 'Open', isFinal: false })
+    const result = await createYouTrackStatus(config, projectId, { name: 'Open', isFinal: false })
 
     const body = getLastFetchBody(fetchMock.current)
     expect(body['isResolved']).toBe(false)
@@ -306,7 +309,7 @@ describe('createYouTrackStatus', () => {
       { data: makeStateValue() },
     ])
 
-    await createYouTrackStatus(config, 'proj-1', { name: 'Test' })
+    await createYouTrackStatus(config, projectId, { name: 'Test' })
 
     expect(getLastFetchMethod(fetchMock.current)).toBe('POST')
   })
@@ -314,10 +317,10 @@ describe('createYouTrackStatus', () => {
   test('requires confirmation for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
     ])
 
-    const result = await createYouTrackStatus(config, 'proj-1', { name: 'New' }, false)
+    const result = await createYouTrackStatus(config, projectId, { name: 'New' }, false)
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(String(extractResultMessage(result))).toContain('shared')
@@ -326,11 +329,11 @@ describe('createYouTrackStatus', () => {
   test('proceeds when confirm=true for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
       { data: makeStateValue() },
     ])
 
-    const result = await createYouTrackStatus(config, 'proj-1', { name: 'New' }, true)
+    const result = await createYouTrackStatus(config, projectId, { name: 'New' }, true)
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result.id).toBe('57-1')
@@ -343,7 +346,7 @@ describe('createYouTrackStatus', () => {
       { data: makeStateValue() },
     ])
 
-    const result = await createYouTrackStatus(config, 'proj-1', { name: 'New' })
+    const result = await createYouTrackStatus(config, projectId, { name: 'New' })
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result.id).toBe('57-1')
@@ -352,7 +355,7 @@ describe('createYouTrackStatus', () => {
   test('throws classified error on API failure', async () => {
     mockFetchError(fetchMock, 401)
 
-    await expect(createYouTrackStatus(config, 'proj-1', { name: 'Test' })).rejects.toBeInstanceOf(
+    await expect(createYouTrackStatus(config, projectId, { name: 'Test' })).rejects.toBeInstanceOf(
       YouTrackClassifiedError,
     )
   })
@@ -360,7 +363,7 @@ describe('createYouTrackStatus', () => {
   test('throws not-found error when state bundle is missing', async () => {
     installNoPriorityStateFieldMock()
 
-    const error = await createYouTrackStatus(config, 'proj-1', { name: 'Test' }).catch((e: unknown) => e)
+    const error = await createYouTrackStatus(config, projectId, { name: 'Test' }).catch((e: unknown) => e)
     assert(error instanceof YouTrackClassifiedError)
     expect(error.appError.code).toBe('not-found')
   })
@@ -369,7 +372,8 @@ describe('createYouTrackStatus', () => {
 describe('updateYouTrackStatus', () => {
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
+    config = createUniqueYouTrackConfig()
+    projectId = createUniqueProjectId()
   })
 
   afterEach(() => {
@@ -383,7 +387,7 @@ describe('updateYouTrackStatus', () => {
       { data: makeStateValue({ name: 'Updated Name' }) },
     ])
 
-    const result = await updateYouTrackStatus(config, 'proj-1', '57-1', { name: 'Updated Name' })
+    const result = await updateYouTrackStatus(config, projectId, '57-1', { name: 'Updated Name' })
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result.name).toBe('Updated Name')
@@ -396,7 +400,7 @@ describe('updateYouTrackStatus', () => {
       { data: makeStateValue({ isResolved: true }) },
     ])
 
-    const result = await updateYouTrackStatus(config, 'proj-1', '57-1', { isFinal: true })
+    const result = await updateYouTrackStatus(config, projectId, '57-1', { isFinal: true })
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result.isFinal).toBe(true)
@@ -411,7 +415,7 @@ describe('updateYouTrackStatus', () => {
       { data: makeStateValue() },
     ])
 
-    await updateYouTrackStatus(config, 'proj-1', '57-1', { name: 'New' })
+    await updateYouTrackStatus(config, projectId, '57-1', { name: 'New' })
 
     const body = getLastFetchBody(fetchMock.current)
     expect(body['name']).toBe('New')
@@ -425,7 +429,7 @@ describe('updateYouTrackStatus', () => {
       { data: makeStateValue() },
     ])
 
-    await updateYouTrackStatus(config, 'proj-1', '57-1', { name: 'X' })
+    await updateYouTrackStatus(config, projectId, '57-1', { name: 'X' })
 
     const url = getLastFetchUrl(fetchMock.current)
     expect(url.pathname).toBe('/api/admin/customFieldSettings/bundles/state/bundle-123/values/57-1')
@@ -435,10 +439,10 @@ describe('updateYouTrackStatus', () => {
   test('requires confirmation for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
     ])
 
-    const result = await updateYouTrackStatus(config, 'proj-1', '57-1', { name: 'X' }, false)
+    const result = await updateYouTrackStatus(config, projectId, '57-1', { name: 'X' }, false)
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(String(extractResultMessage(result))).toContain('shared')
@@ -447,11 +451,11 @@ describe('updateYouTrackStatus', () => {
   test('proceeds when confirm=true for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
       { data: makeStateValue() },
     ])
 
-    const result = await updateYouTrackStatus(config, 'proj-1', '57-1', { name: 'X' }, true)
+    const result = await updateYouTrackStatus(config, projectId, '57-1', { name: 'X' }, true)
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result.id).toBe('57-1')
@@ -460,7 +464,7 @@ describe('updateYouTrackStatus', () => {
   test('throws classified error on 404', async () => {
     mockFetchError(fetchMock, 404, { error: 'State not found' })
 
-    await expect(updateYouTrackStatus(config, 'proj-1', '57-999', { name: 'X' })).rejects.toBeInstanceOf(
+    await expect(updateYouTrackStatus(config, projectId, '57-999', { name: 'X' })).rejects.toBeInstanceOf(
       YouTrackClassifiedError,
     )
   })
@@ -468,7 +472,7 @@ describe('updateYouTrackStatus', () => {
   test('throws not-found error when state bundle is missing', async () => {
     installNoPriorityStateFieldMock()
 
-    const error = await updateYouTrackStatus(config, 'proj-1', '57-1', { name: 'Test' }).catch((e: unknown) => e)
+    const error = await updateYouTrackStatus(config, projectId, '57-1', { name: 'Test' }).catch((e: unknown) => e)
     assert(error instanceof YouTrackClassifiedError)
     expect(error.appError.code).toBe('not-found')
   })
@@ -477,7 +481,8 @@ describe('updateYouTrackStatus', () => {
 describe('deleteYouTrackStatus', () => {
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
+    config = createUniqueYouTrackConfig()
+    projectId = createUniqueProjectId()
   })
 
   afterEach(() => {
@@ -487,7 +492,7 @@ describe('deleteYouTrackStatus', () => {
   test('deletes state from bundle', async () => {
     mockFetchSequence(fetchMock, [{ data: [makeCustomField()] }, { data: makeBundleInfo() }, { data: {} }])
 
-    const result = await deleteYouTrackStatus(config, 'proj-1', '57-1')
+    const result = await deleteYouTrackStatus(config, projectId, '57-1')
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result).toEqual({ id: '57-1' })
@@ -496,7 +501,7 @@ describe('deleteYouTrackStatus', () => {
   test('uses DELETE method', async () => {
     mockFetchSequence(fetchMock, [{ data: [makeCustomField()] }, { data: makeBundleInfo() }, { data: {} }])
 
-    await deleteYouTrackStatus(config, 'proj-1', '57-1')
+    await deleteYouTrackStatus(config, projectId, '57-1')
 
     const url = getLastFetchUrl(fetchMock.current)
     expect(url.pathname).toBe('/api/admin/customFieldSettings/bundles/state/bundle-123/values/57-1')
@@ -506,10 +511,10 @@ describe('deleteYouTrackStatus', () => {
   test('requires confirmation for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
     ])
 
-    const result = await deleteYouTrackStatus(config, 'proj-1', '57-1', false)
+    const result = await deleteYouTrackStatus(config, projectId, '57-1', false)
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(String(extractResultMessage(result))).toContain('shared')
@@ -518,11 +523,11 @@ describe('deleteYouTrackStatus', () => {
   test('proceeds when confirm=true for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
       { data: {} },
     ])
 
-    const result = await deleteYouTrackStatus(config, 'proj-1', '57-1', true)
+    const result = await deleteYouTrackStatus(config, projectId, '57-1', true)
 
     assert(!('status' in result), 'Should not require confirmation')
     expect(result).toEqual({ id: '57-1' })
@@ -531,13 +536,13 @@ describe('deleteYouTrackStatus', () => {
   test('throws classified error on 404', async () => {
     mockFetchError(fetchMock, 404, { error: 'State not found' })
 
-    await expect(deleteYouTrackStatus(config, 'proj-1', '57-999')).rejects.toBeInstanceOf(YouTrackClassifiedError)
+    await expect(deleteYouTrackStatus(config, projectId, '57-999')).rejects.toBeInstanceOf(YouTrackClassifiedError)
   })
 
   test('throws not-found error when state bundle is missing', async () => {
     installNoPriorityStateFieldMock()
 
-    const error = await deleteYouTrackStatus(config, 'proj-1', '57-1').catch((e: unknown) => e)
+    const error = await deleteYouTrackStatus(config, projectId, '57-1').catch((e: unknown) => e)
     assert(error instanceof YouTrackClassifiedError)
     expect(error.appError.code).toBe('not-found')
   })
@@ -546,7 +551,8 @@ describe('deleteYouTrackStatus', () => {
 describe('reorderYouTrackStatuses', () => {
   beforeEach(() => {
     mockLogger()
-    clearBundleCache()
+    config = createUniqueYouTrackConfig()
+    projectId = createUniqueProjectId()
   })
 
   afterEach(() => {
@@ -561,7 +567,7 @@ describe('reorderYouTrackStatuses', () => {
       { data: makeStateValue({ id: '57-2', ordinal: 1 }) },
     ])
 
-    await reorderYouTrackStatuses(config, 'proj-1', [
+    await reorderYouTrackStatuses(config, projectId, [
       { id: '57-1', position: 0 },
       { id: '57-2', position: 1 },
     ])
@@ -589,7 +595,7 @@ describe('reorderYouTrackStatuses', () => {
       { data: makeStateValue() },
     ])
 
-    await reorderYouTrackStatuses(config, 'proj-1', [
+    await reorderYouTrackStatuses(config, projectId, [
       { id: '57-1', position: 5 },
       { id: '57-2', position: 10 },
     ])
@@ -601,12 +607,12 @@ describe('reorderYouTrackStatuses', () => {
   test('requires confirmation for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
     ])
 
     const result = await reorderYouTrackStatuses(
       config,
-      'proj-1',
+      projectId,
       [
         { id: '57-1', position: 0 },
         { id: '57-2', position: 1 },
@@ -621,14 +627,14 @@ describe('reorderYouTrackStatuses', () => {
   test('proceeds when confirm=true for shared bundles', async () => {
     mockFetchSequence(fetchMock, [
       { data: [makeCustomField()] },
-      { data: makeBundleInfo({ aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } }) },
+      { data: makeBundleInfo({ aggregated: { project: [{ id: projectId }, { id: 'proj-2' }] } }) },
       { data: makeStateValue() },
       { data: makeStateValue() },
     ])
 
     await reorderYouTrackStatuses(
       config,
-      'proj-1',
+      projectId,
       [
         { id: '57-1', position: 0 },
         { id: '57-2', position: 1 },
@@ -646,7 +652,7 @@ describe('reorderYouTrackStatuses', () => {
       { data: makeStateValue() },
     ])
 
-    const result = await reorderYouTrackStatuses(config, 'proj-1', [{ id: '57-1', position: 0 }])
+    const result = await reorderYouTrackStatuses(config, projectId, [{ id: '57-1', position: 0 }])
 
     expect(result).toBeUndefined()
   })
@@ -658,7 +664,7 @@ describe('reorderYouTrackStatuses', () => {
       { status: 401, data: { error: 'Unauthorized' } },
     ])
 
-    await expect(reorderYouTrackStatuses(config, 'proj-1', [{ id: '57-1', position: 0 }])).rejects.toBeInstanceOf(
+    await expect(reorderYouTrackStatuses(config, projectId, [{ id: '57-1', position: 0 }])).rejects.toBeInstanceOf(
       YouTrackClassifiedError,
     )
   })
@@ -666,7 +672,7 @@ describe('reorderYouTrackStatuses', () => {
   test('throws error with details when some reorders fail', async () => {
     installFetchMock(fetchMock, makePartialFailureReorderHandler())
 
-    const promise = reorderYouTrackStatuses(config, 'proj-1', [
+    const promise = reorderYouTrackStatuses(config, projectId, [
       { id: '57-1', position: 0 },
       { id: '57-2', position: 1 },
     ])

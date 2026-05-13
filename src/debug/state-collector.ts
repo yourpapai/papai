@@ -20,6 +20,16 @@ export const stats = {
 
 const LLM_TRACE_CAPACITY = 65535
 
+type LlmTraceToolCall = {
+  toolName: string
+  durationMs: number
+  success: boolean
+  toolCallId: string | undefined
+  args: unknown
+  result: unknown
+  error: string | undefined
+}
+
 type LlmTrace = {
   timestamp: number
   userId: string
@@ -27,36 +37,21 @@ type LlmTrace = {
   steps: number
   totalTokens: { inputTokens: number; outputTokens: number }
   duration: number
-  toolCalls: Array<{
-    toolName: string
-    durationMs: number
-    success: boolean
-    toolCallId?: string
-    args?: unknown
-    result?: unknown
-    error?: string
-  }>
-  error?: string
-  // Additional fields
-  responseId?: string
-  actualModel?: string
-  finishReason?: string
-  messageCount?: number
-  toolCount?: number
-  generatedText?: string
-  stepsDetail?: Array<{
-    stepNumber: number
-    text?: string
-    finishReason?: string
-    toolCalls?: Array<{
-      toolName: string
-      toolCallId: string
-      args: unknown
-      result?: unknown
-      error?: string
-    }>
-    usage?: { inputTokens: number; outputTokens: number }
-  }>
+  toolCalls: Array<LlmTraceToolCall>
+  error: string | undefined
+  responseId: string | undefined
+  actualModel: string | undefined
+  finishReason: string | undefined
+  messageCount: number | undefined
+  toolCount: number | undefined
+  exposedToolCount: number | undefined
+  fullToolCount: number | undefined
+  toolSchemaBytes: number | undefined
+  routingIntent: string | undefined
+  routingConfidence: number | undefined
+  routingReason: string | undefined
+  generatedText: string | undefined
+  stepsDetail: ReturnType<typeof parseStepsDetail>
 }
 
 export const recentLlm: LlmTrace[] = []
@@ -65,15 +60,7 @@ type PendingLlmTrace = {
   startTimestamp: number
   userId: string
   model: string
-  toolCalls: Array<{
-    toolName: string
-    durationMs: number
-    success: boolean
-    toolCallId?: string
-    args?: unknown
-    result?: unknown
-    error?: string
-  }>
+  toolCalls: Array<LlmTraceToolCall>
 }
 
 export const pendingTraces = new Map<string, PendingLlmTrace>()
@@ -149,21 +136,39 @@ function handleLlmStart(event: DebugEvent, userId: string): void {
   })
 }
 
+function buildTraceToolCall(event: DebugEvent): LlmTraceToolCall {
+  return {
+    toolName: str(event.data['toolName']),
+    durationMs: num(event.data['durationMs']),
+    success: bool(event.data['success']),
+    toolCallId: str(event.data['toolCallId']),
+    args: event.data['args'],
+    result: event.data['result'],
+    error: str(event.data['error']),
+  }
+}
+
 function handleLlmToolResult(event: DebugEvent, userId: string): void {
   const pending = pendingTraces.get(userId)
   if (pending !== undefined) {
-    pending.toolCalls.push({
-      toolName: str(event.data['toolName']),
-      durationMs: num(event.data['durationMs']),
-      success: bool(event.data['success']),
-      toolCallId: str(event.data['toolCallId']),
-      args: event.data['args'],
-      result: event.data['result'],
-      error: str(event.data['error']),
-    })
+    pending.toolCalls.push(buildTraceToolCall(event))
   }
   stats.totalToolCalls++
   scheduleStatsBroadcast()
+}
+
+function getPendingModel(pending: PendingLlmTrace | undefined, event: DebugEvent): string {
+  if (pending === undefined) {
+    return str(event.data['model'])
+  }
+  return pending.model
+}
+
+function getPendingToolCalls(pending: PendingLlmTrace | undefined): Array<LlmTraceToolCall> {
+  if (pending === undefined) {
+    return []
+  }
+  return pending.toolCalls
 }
 
 function handleLlmEnd(event: DebugEvent, userId: string): void {
@@ -173,16 +178,23 @@ function handleLlmEnd(event: DebugEvent, userId: string): void {
   const trace: LlmTrace = {
     timestamp: event.timestamp,
     userId,
-    model: pending?.model ?? str(event.data['model']),
+    model: getPendingModel(pending, event),
     steps: num(event.data['steps']),
     totalTokens: tokenUsage(event.data['tokenUsage']),
     duration: num(event.data['totalDuration']),
-    toolCalls: pending?.toolCalls ?? [],
+    toolCalls: getPendingToolCalls(pending),
+    error: undefined,
     responseId: str(event.data['responseId']),
     actualModel: str(event.data['actualModel']),
     finishReason: str(event.data['finishReason']),
     messageCount: num(event.data['messageCount']),
     toolCount: num(event.data['toolCount']),
+    exposedToolCount: num(event.data['exposedToolCount']),
+    fullToolCount: num(event.data['fullToolCount']),
+    toolSchemaBytes: num(event.data['toolSchemaBytes']),
+    routingIntent: str(event.data['routingIntent']),
+    routingConfidence: num(event.data['routingConfidence']),
+    routingReason: str(event.data['routingReason']),
     generatedText: str(event.data['generatedText']),
     stepsDetail: parseStepsDetail(event.data['stepsDetail']),
   }
@@ -196,15 +208,29 @@ function handleLlmEnd(event: DebugEvent, userId: string): void {
 function handleLlmError(event: DebugEvent, userId: string): void {
   const pending = pendingTraces.get(userId)
   pendingTraces.delete(userId)
+  const duration = pending === undefined ? 0 : event.timestamp - pending.startTimestamp
   const trace: LlmTrace = {
     timestamp: event.timestamp,
     userId,
-    model: pending?.model ?? str(event.data['model']),
+    model: getPendingModel(pending, event),
     steps: 0,
     totalTokens: { inputTokens: 0, outputTokens: 0 },
-    duration: pending === undefined ? 0 : event.timestamp - pending.startTimestamp,
-    toolCalls: pending?.toolCalls ?? [],
+    duration,
+    toolCalls: getPendingToolCalls(pending),
     error: str(event.data['error']),
+    responseId: undefined,
+    actualModel: undefined,
+    finishReason: undefined,
+    messageCount: undefined,
+    toolCount: undefined,
+    exposedToolCount: undefined,
+    fullToolCount: undefined,
+    toolSchemaBytes: undefined,
+    routingIntent: undefined,
+    routingConfidence: undefined,
+    routingReason: undefined,
+    generatedText: undefined,
+    stepsDetail: undefined,
   }
   pushTrace(trace)
   broadcastTrace(trace, event.timestamp)

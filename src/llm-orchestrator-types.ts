@@ -39,12 +39,21 @@ export type StepInput = Partial<{
   usage: TokenUsage
 }>
 
+type ToolRoutingInfo = {
+  intent: string
+  confidence: number
+  reason: string
+  fullToolCount: number
+  exposedToolCount: number
+}
+
 export type InvokeModelArgs = {
   contextId: string
   mainModel: string
   model: ReturnType<ReturnType<typeof createOpenAICompatible>>
   provider: TaskProvider
   tools: ToolSet
+  toolRouting: ToolRoutingInfo | undefined
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
 }

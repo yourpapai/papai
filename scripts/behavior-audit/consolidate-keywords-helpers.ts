@@ -1,22 +1,7 @@
 import type { KeywordVocabularyEntry } from './keyword-vocabulary.js'
 
 // Clustering helpers are implemented in the extracted clustering module.
-export {
-  averageLinkageSimilarity,
-  buildClusters,
-  buildClustersNormalized,
-  buildUnionFind,
-  completeLinkageSimilarity,
-  cosineSimilarity,
-  dotProduct,
-  find,
-  findWeakestInternalSimilarity,
-  mapToGlobalClusters,
-  toIndexedSubEmbeddings,
-  toNormalizedFloat64Arrays,
-  union,
-} from './consolidate-keywords-clustering.js'
-export type { LinkageMode, UnionFind } from './consolidate-keywords-clustering.js'
+export { toNormalizedFloat64Arrays } from './consolidate-keywords-clustering.js'
 export { buildClustersAdvanced, subdivideOversizedClusters } from './consolidate-keywords-advanced-clustering.js'
 
 export function electCanonical(cluster: readonly KeywordVocabularyEntry[]): KeywordVocabularyEntry {

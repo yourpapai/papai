@@ -10,8 +10,8 @@ import {
   reloadBehaviorAuditConfig,
 } from './config.js'
 import { embedSlugBatch } from './consolidate-keywords-agent.js'
+import type { LinkageMode } from './consolidate-keywords-clustering.js'
 import { buildClustersAdvanced, toNormalizedFloat64Arrays } from './consolidate-keywords-helpers.js'
-import type { LinkageMode } from './consolidate-keywords-helpers.js'
 import { getOrEmbed } from './embedding-cache.js'
 import type { ExtractedBehaviorRecord } from './extracted-store.js'
 import { normalizeKeywordSlug } from './keyword-vocabulary.js'

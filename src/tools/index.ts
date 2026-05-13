@@ -1,7 +1,6 @@
 import type { ToolSet } from 'ai'
 
 import type { TaskProvider } from '../providers/types.js'
-import { makeToolProxy } from './tool-proxy.js'
 import { buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
@@ -38,6 +37,5 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
   const stagedDownloadFn = options === undefined ? undefined : options.stagedDownloadFn
 
   const internalTools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
-  const wrappedInternalTools = wrapToolSet(internalTools)
-  return { papai_tool: makeToolProxy(wrappedInternalTools) }
+  return wrapToolSet(internalTools)
 }

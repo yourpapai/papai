@@ -72,9 +72,6 @@ type SdkToolCall = Readonly<{ toolName: string; input: unknown }>
 type SdkToolResult = Readonly<{ toolName: string; output: unknown }>
 type ExtractedFact = Omit<MemoryFact, 'last_seen'>
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 const valueOrEmpty = (value: string | undefined): string => {
   if (value === undefined) return ''
   return value
@@ -130,26 +127,8 @@ export function extractFactsFromSdkResults(
   toolCalls: SdkToolCall[],
   toolResults: SdkToolResult[],
 ): readonly ExtractedFact[] {
-  const proxiedToolNames = toolCalls.flatMap((call) => {
-    if (call.toolName !== 'papai_tool') return []
-    const toolName = isRecord(call.input) ? call.input['tool'] : undefined
-    return [typeof toolName === 'string' ? toolName : undefined]
-  })
-
-  const extracted = toolResults.reduce<{ readonly facts: readonly ExtractedFact[]; readonly proxiedIndex: number }>(
-    (state, result) => {
-      const isProxiedResult = result.toolName === 'papai_tool'
-      const proxiedToolName = proxiedToolNames[state.proxiedIndex]
-      const effectiveToolName = isProxiedResult && proxiedToolName !== undefined ? proxiedToolName : result.toolName
-      return {
-        facts: [...state.facts, ...extractFactsFromToolResult(effectiveToolName, result.output)],
-        proxiedIndex: state.proxiedIndex + (isProxiedResult ? 1 : 0),
-      }
-    },
-    { facts: [], proxiedIndex: 0 },
-  )
-
-  return extracted.facts
+  void toolCalls
+  return toolResults.flatMap((result) => extractFactsFromToolResult(result.toolName, result.output))
 }
 
 // --- Smart trimming with memory model ---

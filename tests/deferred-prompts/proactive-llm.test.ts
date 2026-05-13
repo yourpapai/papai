@@ -284,7 +284,9 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls[0]!.tools).toBeDefined()
       // Full mode with proactive delivery should exclude deferred prompt tools
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('create_deferred_prompt')
-      expect(generateTextCalls[0]!.tools).toHaveProperty('papai_tool')
+      expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
+      expect(generateTextCalls[0]!.tools).toHaveProperty('search_tasks')
+      expect(generateTextCalls[0]!.tools).not.toHaveProperty('papai_tool')
     })
 
     test('uses full system prompt', async () => {
@@ -406,7 +408,8 @@ describe('dispatchExecution', () => {
       )
 
       expect(generateTextCalls).toHaveLength(1)
-      expect(generateTextCalls[0]!.tools).toHaveProperty('papai_tool')
+      expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
+      expect(generateTextCalls[0]!.tools).not.toHaveProperty('papai_tool')
     })
   })
 })

@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { LinkageMode } from './consolidate-keywords-helpers.js'
+import type { LinkageMode } from './consolidate-keywords-clustering.js'
 
 const VALID_LINKAGES: readonly LinkageMode[] = ['single', 'average', 'complete']
 
@@ -46,7 +46,7 @@ const defaultTuneParams = (): TuneParams => ({
   threshold: 0.92,
   minClusterSize: 2,
   maxClusterSize: 0,
-  linkage: 'single',
+  linkage: 'complete',
   gapThreshold: 0,
   reembed: false,
   cacheDir: join(tmpdir(), 'tune-embed-cache'),
