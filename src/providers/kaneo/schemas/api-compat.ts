@@ -12,7 +12,7 @@
 
 import { z } from 'zod'
 
-import { ColumnSchema, ListTaskSchema } from './list-tasks.js'
+import { ColumnSchema } from './list-tasks.js'
 
 /**
  * All column endpoints return `icon` and `color` as absent (undefined) instead of null
@@ -29,36 +29,4 @@ import { ColumnSchema, ListTaskSchema } from './list-tasks.js'
 export const ColumnCompatSchema = ColumnSchema.extend({
   icon: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
-})
-
-/**
- * ListTasksResponseSchema embeds ColumnWithTasksSchema which extends the strict ColumnSchema.
- * Same upstream bug applies: icon/color are absent in column objects returned by GET /task/tasks/:projectId.
- */
-const ColumnWithTasksCompatSchema = ColumnCompatSchema.extend({
-  slug: z.string().optional(),
-  tasks: z.array(ListTaskSchema),
-})
-
-export const ListTasksResponseCompatSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    name: z.string(),
-    slug: z.string().optional(),
-    icon: z.string().nullable().optional(),
-    description: z.string().nullable().optional(),
-    isPublic: z.boolean().nullable().optional(),
-    workspaceId: z.string().optional(),
-    columns: z.array(ColumnWithTasksCompatSchema),
-    archivedTasks: z.array(ListTaskSchema),
-    plannedTasks: z.array(ListTaskSchema),
-  }),
-  pagination: z
-    .object({
-      total: z.number(),
-      page: z.number(),
-      pageSize: z.number(),
-      totalPages: z.number(),
-    })
-    .optional(),
 })

@@ -14,10 +14,27 @@ function parseBody(options: RequestInit): unknown {
   return JSON.parse(options.body)
 }
 
+function getRequestMethod(options: RequestInit): string {
+  return options.method ?? 'GET'
+}
+
 function parseBodyIfPut(options: RequestInit): unknown {
   if (options.method !== 'PUT') return undefined
   assert(typeof options.body === 'string')
   return JSON.parse(options.body)
+}
+
+function parseOptionalJsonBody(options: RequestInit): unknown {
+  return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
+}
+
+function createLabelRemoveFetchHandler(): () => Promise<Response> {
+  const responses = [
+    new Response(JSON.stringify({ id: 'label-1', name: 'bug', color: '#ff0000', taskId: 'task-1' }), { status: 200 }),
+    new Response(JSON.stringify({ success: true }), { status: 200 }),
+  ]
+
+  return () => Promise.resolve(responses.shift() ?? new Response(JSON.stringify({ success: true }), { status: 200 }))
 }
 
 describe('LabelResource', () => {
@@ -277,20 +294,7 @@ describe('LabelResource', () => {
 
   describe('remove', () => {
     test('removes label successfully', async () => {
-      let callCount = 0
-      setMockFetch(() => {
-        callCount += 1
-
-        if (callCount === 1) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ id: 'label-1', name: 'bug', color: '#ff0000', taskId: 'task-1' }), {
-              status: 200,
-            }),
-          )
-        }
-
-        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }))
-      })
+      setMockFetch(createLabelRemoveFetchHandler())
 
       const resource = new LabelResource(mockConfig)
       const result = await resource.remove('label-1')
@@ -328,8 +332,8 @@ describe('LabelResource', () => {
       setMockFetch((url, options) => {
         requests.push({
           url,
-          method: options.method ?? 'GET',
-          body: typeof options.body === 'string' ? JSON.parse(options.body) : undefined,
+          method: getRequestMethod(options),
+          body: parseOptionalJsonBody(options),
         })
 
         return Promise.resolve(
@@ -385,8 +389,8 @@ describe('LabelResource', () => {
       setMockFetch((url, options) => {
         requests.push({
           url,
-          method: options.method ?? 'GET',
-          body: typeof options.body === 'string' ? JSON.parse(options.body) : undefined,
+          method: getRequestMethod(options),
+          body: parseOptionalJsonBody(options),
         })
 
         return Promise.resolve(

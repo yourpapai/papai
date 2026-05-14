@@ -8,6 +8,10 @@ function parseRequestBody(options: RequestInit): unknown {
   return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
 }
 
+function getRequestMethod(options: RequestInit): string {
+  return options.method ?? 'GET'
+}
+
 describe('CommentResource', () => {
   const mockConfig: KaneoConfig = {
     apiKey: 'test-key',
@@ -30,7 +34,7 @@ describe('CommentResource', () => {
       setMockFetch((url, options) => {
         requests.push({
           url,
-          method: options.method ?? 'GET',
+          method: getRequestMethod(options),
           body: parseRequestBody(options),
         })
 
@@ -206,7 +210,7 @@ describe('CommentResource', () => {
       setMockFetch((url, options) => {
         requests.push({
           url,
-          method: options.method ?? 'GET',
+          method: getRequestMethod(options),
           body: parseRequestBody(options),
         })
 
@@ -256,7 +260,7 @@ describe('CommentResource', () => {
       setMockFetch((url, options) => {
         requests.push({
           url,
-          method: options.method ?? 'GET',
+          method: getRequestMethod(options),
           body: parseRequestBody(options),
         })
 

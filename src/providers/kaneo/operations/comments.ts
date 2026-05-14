@@ -23,7 +23,7 @@ export async function kaneoUpdateComment(
   const result = await updateComment({
     config,
     taskId: params.taskId,
-    commentId: params.commentId,
+    activityId: params.commentId,
     comment: params.body,
   })
   return mapComment(result)

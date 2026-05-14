@@ -90,7 +90,14 @@ export class CommentResource {
     this.log.debug({ commentId }, 'Removing comment')
 
     try {
-      const removed = await kaneoFetch(this.config, 'DELETE', `/comment/${commentId}`, undefined, undefined, UpdateCommentResponseSchema)
+      const removed = await kaneoFetch(
+        this.config,
+        'DELETE',
+        `/comment/${commentId}`,
+        undefined,
+        undefined,
+        UpdateCommentResponseSchema,
+      )
       this.log.info({ commentId }, 'Comment removed')
       return { id: removed.id, success: true }
     } catch (error) {

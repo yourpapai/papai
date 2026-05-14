@@ -98,77 +98,77 @@ describe('searchTasks', () => {
       requestUrl = new URL(url)
 
       return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              tasks: [
-                {
-                  id: 'task-1',
-                  projectId: 'proj-1',
-                  position: 1,
-                  title: 'Task 1',
-                  number: 1,
-                  status: 'todo',
-                  priority: 'medium',
-                  userId: 'user-other',
-                  description: null,
-                  createdAt: '2026-01-01T00:00:00.000Z',
-                },
-                {
-                  id: 'task-2',
-                  projectId: 'proj-1',
-                  position: 2,
-                  title: 'Task 2',
-                  number: 2,
-                  status: 'todo',
-                  priority: 'medium',
-                  userId: 'user-123',
-                  description: null,
-                  createdAt: '2026-01-02T00:00:00.000Z',
-                },
-                {
-                  id: 'task-3',
-                  projectId: 'proj-1',
-                  position: 3,
-                  title: 'Task 3',
-                  number: 3,
-                  status: 'doing',
-                  priority: 'high',
-                  userId: 'user-other',
-                  description: null,
-                  createdAt: '2026-01-03T00:00:00.000Z',
-                },
-                {
-                  id: 'task-4',
-                  projectId: 'proj-1',
-                  position: 4,
-                  title: 'Task 4',
-                  number: 4,
-                  status: 'done',
-                  priority: 'low',
-                  userId: 'user-123',
-                  description: null,
-                  createdAt: '2026-01-04T00:00:00.000Z',
-                },
-                {
-                  id: 'task-5',
-                  projectId: 'proj-1',
-                  position: 5,
-                  title: 'Task 5',
-                  number: 5,
-                  status: 'done',
-                  priority: 'low',
-                  userId: 'user-123',
-                  description: null,
-                  createdAt: '2026-01-05T00:00:00.000Z',
-                },
-              ],
-              projects: [],
-              workspaces: [],
-              comments: [],
-              activities: [],
-            }),
-            { status: 200 },
-          ),
+        new Response(
+          JSON.stringify({
+            tasks: [
+              {
+                id: 'task-1',
+                projectId: 'proj-1',
+                position: 1,
+                title: 'Task 1',
+                number: 1,
+                status: 'todo',
+                priority: 'medium',
+                userId: 'user-other',
+                description: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+              {
+                id: 'task-2',
+                projectId: 'proj-1',
+                position: 2,
+                title: 'Task 2',
+                number: 2,
+                status: 'todo',
+                priority: 'medium',
+                userId: 'user-123',
+                description: null,
+                createdAt: '2026-01-02T00:00:00.000Z',
+              },
+              {
+                id: 'task-3',
+                projectId: 'proj-1',
+                position: 3,
+                title: 'Task 3',
+                number: 3,
+                status: 'doing',
+                priority: 'high',
+                userId: 'user-other',
+                description: null,
+                createdAt: '2026-01-03T00:00:00.000Z',
+              },
+              {
+                id: 'task-4',
+                projectId: 'proj-1',
+                position: 4,
+                title: 'Task 4',
+                number: 4,
+                status: 'done',
+                priority: 'low',
+                userId: 'user-123',
+                description: null,
+                createdAt: '2026-01-04T00:00:00.000Z',
+              },
+              {
+                id: 'task-5',
+                projectId: 'proj-1',
+                position: 5,
+                title: 'Task 5',
+                number: 5,
+                status: 'done',
+                priority: 'low',
+                userId: 'user-123',
+                description: null,
+                createdAt: '2026-01-05T00:00:00.000Z',
+              },
+            ],
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
       )
     })
 
@@ -195,18 +195,18 @@ describe('searchTasks', () => {
       requestUrl = new URL(url)
 
       return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              tasks: [],
-              projects: [],
-              workspaces: [],
-              comments: [],
-              activities: [],
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+        new Response(
+          JSON.stringify({
+            tasks: [],
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      )
+    })
 
     const params: Parameters<typeof searchTasks>[0] & { offset: number } = {
       config: mockConfig,

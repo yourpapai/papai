@@ -1,9 +1,10 @@
+import { z } from 'zod'
+
 import { providerError } from '../../errors.js'
 import { logger } from '../../logger.js'
+import type { RelationType, TaskRelation } from '../types.js'
 import { classifyKaneoError, KaneoClassifiedError } from './classify-error.js'
 import { type KaneoConfig, kaneoFetch } from './client.js'
-import type { RelationType, TaskRelation } from '../types.js'
-import { z } from 'zod'
 
 const log = logger.child({ scope: 'kaneo:task-relations' })
 
@@ -52,7 +53,11 @@ const mapIncomingRelation = (taskId: string, relation: KaneoRelation): TaskRelat
     : { type: 'child', taskId: relation.sourceTaskId }
 }
 
-const findMatchingRelation = (taskId: string, relatedTaskId: string, relations: readonly KaneoRelation[]): KaneoRelation | undefined =>
+const findMatchingRelation = (
+  taskId: string,
+  relatedTaskId: string,
+  relations: readonly KaneoRelation[],
+): KaneoRelation | undefined =>
   relations.find((relation) => relation.sourceTaskId === taskId && relation.targetTaskId === relatedTaskId) ??
   relations.find((relation) => relation.sourceTaskId === relatedTaskId && relation.targetTaskId === taskId)
 
@@ -60,7 +65,14 @@ export async function getTaskRelations(config: KaneoConfig, taskId: string): Pro
   log.debug({ taskId }, 'Getting task relations')
 
   try {
-    const result = await kaneoFetch(config, 'GET', `/task-relation/${taskId}`, undefined, undefined, KaneoTaskRelationsResponseSchema)
+    const result = await kaneoFetch(
+      config,
+      'GET',
+      `/task-relation/${taskId}`,
+      undefined,
+      undefined,
+      KaneoTaskRelationsResponseSchema,
+    )
     const relations = result.map((relation) => mapIncomingRelation(taskId, relation))
     log.info({ taskId, relationCount: relations.length }, 'Task relations fetched')
     return relations
@@ -105,7 +117,14 @@ export async function removeTaskRelation(
   log.debug({ taskId, relatedTaskId }, 'Removing task relation')
 
   try {
-    const result = await kaneoFetch(config, 'GET', `/task-relation/${taskId}`, undefined, undefined, KaneoTaskRelationsResponseSchema)
+    const result = await kaneoFetch(
+      config,
+      'GET',
+      `/task-relation/${taskId}`,
+      undefined,
+      undefined,
+      KaneoTaskRelationsResponseSchema,
+    )
     const relation = findMatchingRelation(taskId, relatedTaskId, result)
     if (relation === undefined) {
       throw new KaneoClassifiedError(
@@ -134,7 +153,14 @@ export async function updateTaskRelation(
 
   try {
     const relationType = mapOutgoingRelationType(type)
-    const result = await kaneoFetch(config, 'GET', `/task-relation/${taskId}`, undefined, undefined, KaneoTaskRelationsResponseSchema)
+    const result = await kaneoFetch(
+      config,
+      'GET',
+      `/task-relation/${taskId}`,
+      undefined,
+      undefined,
+      KaneoTaskRelationsResponseSchema,
+    )
     const relation = findMatchingRelation(taskId, relatedTaskId, result)
     if (relation === undefined) {
       throw new KaneoClassifiedError(

@@ -24,7 +24,10 @@ export async function updateComment({
     log.info({ taskId, commentId: activityId }, 'Comment updated')
     return result
   } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error), commentId: activityId }, 'updateComment failed')
+    log.error(
+      { error: error instanceof Error ? error.message : String(error), commentId: activityId },
+      'updateComment failed',
+    )
     throw classifyKaneoError(error)
   }
 }

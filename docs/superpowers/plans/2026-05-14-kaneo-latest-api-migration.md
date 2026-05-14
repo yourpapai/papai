@@ -358,7 +358,14 @@ export const ListTasksResponseSchema = z.object({
 ```
 
 ```typescript
-const result = await kaneoFetch(this.config, 'GET', `/task/tasks/${projectId}`, undefined, query, ListTasksResponseSchema)
+const result = await kaneoFetch(
+  this.config,
+  'GET',
+  `/task/tasks/${projectId}`,
+  undefined,
+  query,
+  ListTasksResponseSchema,
+)
 
 const tasks = result.columns
   .flatMap((column) =>
@@ -577,7 +584,10 @@ export const TaskResultSchema = SearchTaskSchema.pick({
   priority: true,
   projectId: true,
 }).extend({
-  userId: z.string().nullable().transform((value) => value ?? ''),
+  userId: z
+    .string()
+    .nullable()
+    .transform((value) => value ?? ''),
 })
 
 export const KaneoSearchResponseSchema = GlobalSearchResponseSchema
@@ -1064,11 +1074,21 @@ const mapOutgoingRelationType = (type: RelationType): z.infer<typeof KaneoRelati
   if (type === 'blocks') return 'blocks'
   if (type === 'related') return 'related'
   if (type === 'parent' || type === 'child') return 'subtask'
-  throw new KaneoClassifiedError(`Kaneo does not document relation type: ${type}`, providerError.unsupportedOperation(`Kaneo relation type ${type}`))
+  throw new KaneoClassifiedError(
+    `Kaneo does not document relation type: ${type}`,
+    providerError.unsupportedOperation(`Kaneo relation type ${type}`),
+  )
 }
 
 const findRelation = async (config: KaneoConfig, taskId: string, relatedTaskId: string) => {
-  const response = await kaneoFetch(config, 'GET', `/task-relation/${taskId}`, undefined, undefined, KaneoTaskRelationsResponseSchema)
+  const response = await kaneoFetch(
+    config,
+    'GET',
+    `/task-relation/${taskId}`,
+    undefined,
+    undefined,
+    KaneoTaskRelationsResponseSchema,
+  )
   return response.relations.find((relation) => relation.targetTaskId === relatedTaskId)
 }
 ```
@@ -1186,7 +1206,11 @@ test('KaneoProvider does not expose labels.delete capability', () => {
 })
 
 test('throws error when removing unattached label', async () => {
-  const label = await createLabel({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId(), name: 'Unattached Remove' })
+  const label = await createLabel({
+    config: kaneoConfig,
+    workspaceId: testClient.getWorkspaceId(),
+    name: 'Unattached Remove',
+  })
   testClient.trackLabel(label.id)
 
   const promise = removeLabel({ config: kaneoConfig, labelId: label.id })
@@ -1346,14 +1370,14 @@ git commit -m "docs: add Kaneo latest API migration plan"
 
 ## Drift Log
 
-| Date       | Category               | Item                                                                                   | Decision                                                                                                 |
-| ---------- | ---------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 2026-05-14 | In-plan, partial       | Task 1 files in `src/providers/kaneo/task-resource.ts` and related tests              | Keep current runtime-safe list-envelope edits; finish doc-first `startDate` and published list contract |
-| 2026-05-14 | In-plan, partial       | Task 3 files in comment schemas/tests and `src/providers/kaneo/schemas/api-compat.ts` | Keep current activity drift compatibility only as transitional context; migrate mainline CRUD to `/comment` |
-| 2026-05-14 | In-plan, divergent     | Task 5 files in label resource/capabilities/tests                                      | Live Kaneo runtime and upstream controller still reject unattached label deletion with 400, so keep `labels.delete` hidden and preserve attached-label-only delete behavior |
-| 2026-05-14 | In-plan, divergent     | Task 1 list-task payload shape                                                         | User chose runtime-compatible `{ data, pagination }` envelope over stricter grouped top-level shape due Kaneo docs/runtime ambiguity |
-| 2026-05-14 | Out-of-plan, on-goal   | Shared `TaskProvider` signatures in `src/providers/types.ts` need `startDate`         | User approved extending Task 1 to align the public provider contract with the implemented Kaneo `startDate` support |
-| 2026-05-14 | Out-of-plan, on-goal   | Shared normalized `Task` output and Kaneo mappers need `startDate`                    | User approved extending Task 1 so provider outputs can round-trip the new `startDate` field |
-| 2026-05-14 | In-plan, divergent     | Task 2 search response shape                                                            | Live Kaneo `ghcr.io/usekaneo/kaneo:2.7.2` returns `/search` as `{ results, totalCount, searchQuery }`, so the provider now normalizes both runtime and grouped-doc envelopes |
-| 2026-05-14 | In-plan, stale anchors | Task 6 verification expectations for labels and search                                  | Updated Task 6 expectations to match verified runtime-first label behavior and dual-envelope search parsing |
-| 2026-05-14 | In-plan, stale anchors | Task 6 targeted E2E command                                                              | Updated the plan to use the preload-backed `tests/e2e/e2e.test.ts` entrypoint and `--test-name-pattern` filtering used by the repo harness |
+| Date       | Category               | Item                                                                                  | Decision                                                                                                                                                                     |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-14 | In-plan, partial       | Task 1 files in `src/providers/kaneo/task-resource.ts` and related tests              | Keep current runtime-safe list-envelope edits; finish doc-first `startDate` and published list contract                                                                      |
+| 2026-05-14 | In-plan, partial       | Task 3 files in comment schemas/tests and `src/providers/kaneo/schemas/api-compat.ts` | Keep current activity drift compatibility only as transitional context; migrate mainline CRUD to `/comment`                                                                  |
+| 2026-05-14 | In-plan, divergent     | Task 5 files in label resource/capabilities/tests                                     | Live Kaneo runtime and upstream controller still reject unattached label deletion with 400, so keep `labels.delete` hidden and preserve attached-label-only delete behavior  |
+| 2026-05-14 | In-plan, divergent     | Task 1 list-task payload shape                                                        | User chose runtime-compatible `{ data, pagination }` envelope over stricter grouped top-level shape due Kaneo docs/runtime ambiguity                                         |
+| 2026-05-14 | Out-of-plan, on-goal   | Shared `TaskProvider` signatures in `src/providers/types.ts` need `startDate`         | User approved extending Task 1 to align the public provider contract with the implemented Kaneo `startDate` support                                                          |
+| 2026-05-14 | Out-of-plan, on-goal   | Shared normalized `Task` output and Kaneo mappers need `startDate`                    | User approved extending Task 1 so provider outputs can round-trip the new `startDate` field                                                                                  |
+| 2026-05-14 | In-plan, divergent     | Task 2 search response shape                                                          | Live Kaneo `ghcr.io/usekaneo/kaneo:2.7.2` returns `/search` as `{ results, totalCount, searchQuery }`, so the provider now normalizes both runtime and grouped-doc envelopes |
+| 2026-05-14 | In-plan, stale anchors | Task 6 verification expectations for labels and search                                | Updated Task 6 expectations to match verified runtime-first label behavior and dual-envelope search parsing                                                                  |
+| 2026-05-14 | In-plan, stale anchors | Task 6 targeted E2E command                                                           | Updated the plan to use the preload-backed `tests/e2e/e2e.test.ts` entrypoint and `--test-name-pattern` filtering used by the repo harness                                   |

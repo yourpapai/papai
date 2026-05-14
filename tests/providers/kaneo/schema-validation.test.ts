@@ -3,16 +3,13 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import {
-  ColumnCompatSchema as KaneoColumnSchema,
-} from '../../../src/providers/kaneo/schemas/api-compat.js'
+import { ColumnCompatSchema as KaneoColumnSchema } from '../../../src/providers/kaneo/schemas/api-compat.js'
 import { CreateCommentResponseSchema } from '../../../src/providers/kaneo/schemas/create-comment.js'
 import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { TaskSchema as CreateTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
-import { ActivityItemSchema } from '../../../src/providers/kaneo/schemas/get-activities.js'
-import { GlobalSearchResponseSchema } from '../../../src/providers/kaneo/schemas/global-search.js'
 import { GetProjectResponseSchema as KaneoProjectFullSchema } from '../../../src/providers/kaneo/schemas/get-project.js'
+import { ActivityItemSchema, GlobalSearchResponseSchema } from '../../../src/providers/kaneo/schemas/global-search.js'
 import { ListTasksResponseSchema } from '../../../src/providers/kaneo/schemas/list-tasks.js'
 import {
   createMockActivity,
@@ -84,20 +81,6 @@ function makeColumnOrTaskRouter(columnPayload: object[], taskPayload: object): (
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     }
     return Promise.resolve(new Response(JSON.stringify(taskPayload), { status: 200 }))
-  }
-}
-
-/**
- * Routes PUT requests to an empty-object response; all other methods
- * return the given list payload. Matches the Kaneo CommentResource.update
- * behaviour where PUT returns {} and the follow-up GET returns the list.
- */
-function makePutOrGetRouter(listPayload: object[]): (_url: string, options: RequestInit) => Promise<Response> {
-  return (_url, options) => {
-    if (options.method === 'PUT') {
-      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-    }
-    return Promise.resolve(new Response(JSON.stringify(listPayload), { status: 200 }))
   }
 }
 

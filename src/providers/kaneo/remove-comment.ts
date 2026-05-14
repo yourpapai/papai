@@ -20,7 +20,10 @@ export async function removeComment({
     log.info({ commentId: activityId }, 'Comment removed')
     return result
   } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error), commentId: activityId }, 'removeComment failed')
+    log.error(
+      { error: error instanceof Error ? error.message : String(error), commentId: activityId },
+      'removeComment failed',
+    )
     throw classifyKaneoError(error)
   }
 }

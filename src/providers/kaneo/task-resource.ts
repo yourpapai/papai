@@ -2,10 +2,9 @@ import { z } from 'zod'
 
 import { logger } from '../../logger.js'
 import type { ListTasksParams } from '../types.js'
+import type { TaskRelation } from '../types.js'
 import { classifyKaneoError } from './classify-error.js'
 import { type KaneoConfig, kaneoFetch } from './client.js'
-import { getTaskRelations } from './task-relations.js'
-import type { TaskRelation } from '../types.js'
 import { buildListTasksQuery } from './list-tasks-query.js'
 import type { KaneoTaskListItem } from './list-tasks.js'
 import { TaskSchema as KaneoCreateTaskResponseSchema } from './schemas/create-task.js'
@@ -17,12 +16,11 @@ import {
   type RuntimeGlobalSearchResponse,
 } from './schemas/global-search.js'
 import { ListTasksResponseSchema } from './schemas/list-tasks.js'
+import { getTaskRelations } from './task-relations.js'
 import { type TaskStatusDeps, denormalizeStatus, validateStatus } from './task-status.js'
 import { performUpdate } from './task-update-helpers.js'
 
-const normalizeSearchResponse = (
-  result: GlobalSearchResponse | RuntimeGlobalSearchResponse,
-): GlobalSearchResponse => {
+const normalizeSearchResponse = (result: GlobalSearchResponse | RuntimeGlobalSearchResponse): GlobalSearchResponse => {
   if ('tasks' in result) {
     return result
   }

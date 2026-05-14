@@ -11,12 +11,16 @@ function parseRequestBody(options: RequestInit): unknown {
   return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
 }
 
+function getRequestMethod(options: RequestInit): string {
+  return options.method ?? 'GET'
+}
+
 function makeTaskRelationFetchHandler(
   requests: Array<{ url: string; method: string; body?: unknown }>,
   relationsResponse: unknown,
 ): (_url: string, options: RequestInit) => Promise<Response> {
   return (url: string, options: RequestInit): Promise<Response> => {
-    requests.push({ url, method: options.method ?? 'GET', body: parseRequestBody(options) })
+    requests.push({ url, method: getRequestMethod(options), body: parseRequestBody(options) })
 
     if (url.includes('/api/task-relation/task-1')) {
       return Promise.resolve(new Response(JSON.stringify(relationsResponse), { status: 200 }))
@@ -35,6 +39,18 @@ function makeTaskRelationFetchHandler(
       ),
     )
   }
+}
+
+function createTaskDetailsFetchHandler(
+  taskPayload: unknown,
+  relationsResponse: unknown,
+): (url: string) => Promise<Response> {
+  return (url) =>
+    Promise.resolve(
+      new Response(JSON.stringify(url.includes('/api/task-relation/task-1') ? relationsResponse : taskPayload), {
+        status: 200,
+      }),
+    )
 }
 
 describe('TaskResource', () => {
@@ -312,26 +328,20 @@ describe('TaskResource', () => {
 
   describe('get', () => {
     test('fetches task with details', async () => {
-      setMockFetch((url) => {
-        if (url.includes('/api/task-relation/task-1')) {
-          return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              ...createMockTask({
-                id: 'task-1',
-                title: 'Test',
-                number: 1,
-                description: 'Details',
-              }),
-              startDate: '2026-03-01T00:00:00.000Z',
+      setMockFetch(
+        createTaskDetailsFetchHandler(
+          {
+            ...createMockTask({
+              id: 'task-1',
+              title: 'Test',
+              number: 1,
+              description: 'Details',
             }),
-            { status: 200 },
-          ),
-        )
-      })
+            startDate: '2026-03-01T00:00:00.000Z',
+          },
+          [],
+        ),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.get('task-1')
@@ -365,45 +375,27 @@ describe('TaskResource', () => {
     })
 
     test('reads first-class task relations from /task-relation/{taskId}', async () => {
-      setMockFetch((url) => {
-        if (url.includes('/api/task-relation/task-1')) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify([
-                {
-                  id: 'rel-1',
-                  sourceTaskId: 'task-1',
-                  targetTaskId: 'task-2',
-                  relationType: 'blocks',
-                  createdAt: '2026-05-14T09:00:00.000Z',
-                },
-                {
-                  id: 'rel-2',
-                  sourceTaskId: 'task-3',
-                  targetTaskId: 'task-1',
-                  relationType: 'subtask',
-                  createdAt: '2026-05-14T09:00:00.000Z',
-                },
-              ]),
-              { status: 200 },
-            ),
-          )
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify(
-              createMockTask({
-                id: 'task-1',
-                title: 'Test',
-                number: 1,
-                description: 'Task details',
-              }),
-            ),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        createTaskDetailsFetchHandler(
+          createMockTask({ id: 'task-1', title: 'Test', number: 1, description: 'Task details' }),
+          [
+            {
+              id: 'rel-1',
+              sourceTaskId: 'task-1',
+              targetTaskId: 'task-2',
+              relationType: 'blocks',
+              createdAt: '2026-05-14T09:00:00.000Z',
+            },
+            {
+              id: 'rel-2',
+              sourceTaskId: 'task-3',
+              targetTaskId: 'task-1',
+              relationType: 'subtask',
+              createdAt: '2026-05-14T09:00:00.000Z',
+            },
+          ],
+        ),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.get('task-1')
@@ -415,25 +407,9 @@ describe('TaskResource', () => {
     })
 
     test('handles task with empty description', async () => {
-      setMockFetch((url) => {
-        if (url.includes('/api/task-relation/task-1')) {
-          return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify(
-              createMockTask({
-                id: 'task-1',
-                title: 'Test',
-                number: 1,
-                description: '',
-              }),
-            ),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        createTaskDetailsFetchHandler(createMockTask({ id: 'task-1', title: 'Test', number: 1, description: '' }), []),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.get('task-1')
@@ -850,10 +826,9 @@ describe('TaskResource', () => {
       setMockFetch((url: string) => {
         requestUrl = url
         return Promise.resolve(
-          new Response(
-            JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
+            status: 200,
+          }),
         )
       })
 
@@ -870,10 +845,9 @@ describe('TaskResource', () => {
     test('returns empty array when no matches', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(
-            JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
+            status: 200,
+          }),
         ),
       )
 
@@ -1020,10 +994,9 @@ describe('TaskResource', () => {
     test('search returns empty results for empty query string', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(
-            JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
+            status: 200,
+          }),
         ),
       )
 

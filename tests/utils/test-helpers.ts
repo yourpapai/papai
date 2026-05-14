@@ -678,7 +678,7 @@ import type { z } from 'zod'
 
 import type { CreateLabelResponseSchema } from '../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema } from '../../src/providers/kaneo/schemas/create-task.js'
-import type { ActivityItemSchema } from '../../src/providers/kaneo/schemas/get-activities.js'
+import { ActivityItemSchema } from '../../src/providers/kaneo/schemas/global-search.js'
 
 type CreateTaskResponse = z.infer<typeof TaskSchema>
 type CreateProjectResponse = {

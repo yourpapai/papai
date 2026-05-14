@@ -189,5 +189,4 @@ describe('E2E: Label Operations', () => {
     })
     await expect(promise).rejects.toThrow()
   })
-
 })

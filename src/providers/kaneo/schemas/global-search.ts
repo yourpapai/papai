@@ -13,6 +13,7 @@ const SearchActivityTypeEnum = z.enum([
   'title_changed',
   'description_changed',
   'create',
+  'created',
 ])
 
 export const SearchTaskSchema = z.object({
@@ -66,7 +67,20 @@ export const SearchCommentSchema = z.object({
   externalUrl: z.string().nullable(),
 })
 
-export const SearchActivitySchema = SearchCommentSchema
+export const ActivityItemSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  type: SearchActivityTypeEnum,
+  createdAt: SearchDateTimeSchema.or(z.object({})),
+  updatedAt: SearchDateTimeSchema.optional(),
+  userId: z.string().nullable(),
+  content: z.string().nullable(),
+  eventData: z.record(z.string(), z.unknown()).nullable().optional(),
+  externalUserName: z.string().nullable(),
+  externalUserAvatar: z.string().nullable(),
+  externalSource: z.string().nullable(),
+  externalUrl: z.string().nullable(),
+})
 
 export const RuntimeSearchResultSchema = z.object({
   id: z.string(),
@@ -93,7 +107,7 @@ export const GlobalSearchResponseSchema = z.object({
   projects: z.array(SearchProjectSchema),
   workspaces: z.array(SearchWorkspaceSchema),
   comments: z.array(SearchCommentSchema),
-  activities: z.array(SearchActivitySchema),
+  activities: z.array(ActivityItemSchema),
 })
 
 export const RuntimeGlobalSearchResponseSchema = z.object({
@@ -102,6 +116,5 @@ export const RuntimeGlobalSearchResponseSchema = z.object({
   searchQuery: z.string(),
 })
 
-export type SearchTask = z.infer<typeof SearchTaskSchema>
 export type GlobalSearchResponse = z.infer<typeof GlobalSearchResponseSchema>
 export type RuntimeGlobalSearchResponse = z.infer<typeof RuntimeGlobalSearchResponseSchema>

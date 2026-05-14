@@ -99,7 +99,9 @@ export async function kaneoSearchTasks(
     offset: params.offset,
   })
 
-  return mapGlobalSearchTaskResults(result, (task) => buildTaskUrl(config.baseUrl, workspaceId, task.projectId, task.id))
+  return mapGlobalSearchTaskResults(result, (task) =>
+    buildTaskUrl(config.baseUrl, workspaceId, task.projectId, task.id),
+  )
 }
 
 export async function kaneoDeleteTask(config: KaneoConfig, taskId: string): Promise<{ id: string }> {

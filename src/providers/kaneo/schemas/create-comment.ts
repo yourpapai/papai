@@ -16,5 +16,3 @@ export const CreateCommentResponseSchema = z.object({
 })
 
 export const CommentListResponseSchema = CreateCommentResponseSchema.array()
-
-export type CreateCommentResponse = z.infer<typeof CreateCommentResponseSchema>

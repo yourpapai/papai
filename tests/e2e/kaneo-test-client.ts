@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import { logger } from '../../src/logger.js'
 import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
 import { createProject } from '../../src/providers/kaneo/create-project.js'
@@ -8,6 +10,8 @@ import { getE2EConfigSync, type E2EConfig } from './global-setup.js'
 import { generateUniqueSuffix } from './test-helpers.js'
 
 const log = logger.child({ scope: 'e2e:client' })
+const WorkspaceLabelSchema = z.object({ id: z.string(), taskId: z.string().nullable() })
+const WorkspaceLabelListSchema = z.array(WorkspaceLabelSchema)
 
 export class KaneoTestClient {
   private readonly config: E2EConfig
@@ -95,9 +99,7 @@ export class KaneoTestClient {
       try {
         const labels = await fetch(`${this.kaneoConfig.baseUrl}/api/label/workspace/${this.config.workspaceId}`, {
           headers: { Authorization: `Bearer ${this.kaneoConfig.apiKey}` },
-        }).then(async (response) =>
-          response.ok ? ((await response.json()) as Array<{ id: string; taskId: string | null }>) : [],
-        )
+        }).then(async (response) => (response.ok ? WorkspaceLabelListSchema.parse(await response.json()) : []))
 
         const matchingLabel = labels.find((label) => label.id === labelId)
         if (matchingLabel?.taskId !== undefined && matchingLabel.taskId !== null) {

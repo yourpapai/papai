@@ -74,8 +74,8 @@ export const mapGlobalSearchTaskResults = (
   result: GlobalSearchResponse,
   buildUrl: (task: TaskSearchMappingInput) => string,
 ): TaskSearchResult[] =>
-  GlobalSearchResponseSchema.parse(result).tasks
-    .map((task) => {
+  GlobalSearchResponseSchema.parse(result)
+    .tasks.map((task) => {
       const priorityParsed = SearchTaskSchema.shape.priority.safeParse(task.priority)
 
       return {

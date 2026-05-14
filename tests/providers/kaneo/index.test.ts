@@ -1,8 +1,52 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { z } from 'zod'
+
 import { KaneoProvider } from '../../../src/providers/kaneo/index.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+
+const RequestBodySchema = z.record(z.string(), z.unknown())
+
+function parseOptionalRecordBody(options: RequestInit): Record<string, unknown> | undefined {
+  return typeof options.body === 'string' ? RequestBodySchema.parse(JSON.parse(options.body)) : undefined
+}
+
+function createCreateTaskFetchHandler(
+  setRequestBody: (body: Record<string, unknown> | undefined) => void,
+): (url: string, options: RequestInit) => Promise<Response> {
+  return (url, options) => {
+    if (url.includes('/column/')) {
+      return Promise.resolve(
+        new Response(JSON.stringify([{ id: 'to-do', name: 'To Do', icon: null, color: null, isFinal: false }]), {
+          status: 200,
+        }),
+      )
+    }
+
+    setRequestBody(parseOptionalRecordBody(options))
+
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'task-1',
+          projectId: 'proj-1',
+          position: 0,
+          number: 1,
+          userId: null,
+          title: 'Test Task',
+          description: '',
+          status: 'to-do',
+          priority: 'medium',
+          startDate: '2026-03-01T00:00:00.000Z',
+          dueDate: null,
+          createdAt: '2026-03-01T00:00:00.000Z',
+        }),
+        { status: 200 },
+      ),
+    )
+  }
+}
 
 describe('KaneoProvider', () => {
   const provider = new KaneoProvider(
@@ -203,38 +247,11 @@ describe('KaneoProvider', () => {
       let requestBody: Record<string, unknown> | undefined
       let createdTask: Awaited<ReturnType<KaneoProvider['createTask']>> | undefined
 
-      setMockFetch((url, options) => {
-        if (url.includes('/column/')) {
-          return Promise.resolve(
-            new Response(JSON.stringify([{ id: 'to-do', name: 'To Do', icon: null, color: null, isFinal: false }]), {
-              status: 200,
-            }),
-          )
-        }
-
-        requestBody =
-          typeof options.body === 'string' ? (JSON.parse(options.body) as Record<string, unknown>) : undefined
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              projectId: 'proj-1',
-              position: 0,
-              number: 1,
-              userId: null,
-              title: 'Test Task',
-              description: '',
-              status: 'to-do',
-              priority: 'medium',
-              startDate: '2026-03-01T00:00:00.000Z',
-              dueDate: null,
-              createdAt: '2026-03-01T00:00:00.000Z',
-            }),
-            { status: 200 },
-          ),
-        )
-      })
+      setMockFetch(
+        createCreateTaskFetchHandler((body) => {
+          requestBody = body
+        }),
+      )
 
       createdTask = await provider.createTask({
         projectId: 'proj-1',
