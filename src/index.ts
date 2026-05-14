@@ -1,9 +1,11 @@
 import { announceNewVersion } from './announcements.js'
 import { isS3Configured } from './attachments/index.js'
 import { createStagedDownloader } from './attachments/staged-download.js'
-import { setupBot } from './bot.js'
+import { setupBot, type BotDeps } from './bot.js'
+import { getMattermostFileFetcher } from './chat/mattermost/index.js'
 import { createChatProvider } from './chat/registry.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
+import { getTelegramFileFetcher } from './chat/telegram/index.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
@@ -19,7 +21,13 @@ const log = logger.child({ scope: 'main' })
 
 const REQUIRED_ENV_VARS = ['CHAT_PROVIDER', 'ADMIN_USER_ID', 'TASK_PROVIDER'] as const
 
-const missing = REQUIRED_ENV_VARS.filter((v) => (process.env[v]?.trim() ?? '') === '')
+const getEnvValue = (key: string): string => {
+  const value = process.env[key]
+  if (value === undefined) return ''
+  return value.trim()
+}
+
+const missing = REQUIRED_ENV_VARS.filter((v) => getEnvValue(v) === '')
 if (missing.length > 0) {
   log.error({ variables: missing }, 'Missing required environment variables')
   process.exit(1)
@@ -33,7 +41,7 @@ if (TASK_PROVIDER !== 'kaneo' && TASK_PROVIDER !== 'youtrack') {
 }
 
 if (TASK_PROVIDER === 'kaneo') {
-  const missingKaneo = ['KANEO_CLIENT_URL'].filter((v) => (process.env[v]?.trim() ?? '') === '')
+  const missingKaneo = ['KANEO_CLIENT_URL'].filter((v) => getEnvValue(v) === '')
   if (missingKaneo.length > 0) {
     log.error({ variables: missingKaneo }, 'Missing required Kaneo environment variables')
     process.exit(1)
@@ -41,7 +49,7 @@ if (TASK_PROVIDER === 'kaneo') {
 }
 
 if (TASK_PROVIDER === 'youtrack') {
-  const missingYouTrack = ['YOUTRACK_URL'].filter((v) => (process.env[v]?.trim() ?? '') === '')
+  const missingYouTrack = ['YOUTRACK_URL'].filter((v) => getEnvValue(v) === '')
   if (missingYouTrack.length > 0) {
     log.error({ variables: missingYouTrack }, 'Missing required YouTrack environment variables')
     process.exit(1)
@@ -74,33 +82,39 @@ log.info(
   'Starting papai...',
 )
 
-await chatProvider.start()
-
-const createStagedDownloadFn = async (
+const createStagedDownloadFn = (
   chat: typeof chatProvider,
-): Promise<import('./attachments/types.js').StagedFileDownloadFn | null> => {
+): import('./attachments/types.js').StagedFileDownloadFn | null => {
   if (chat.name === 'telegram') {
-    const { getTelegramFileFetcher } = await import('./chat/telegram/index.js')
-    const fetcher = getTelegramFileFetcher()
-    if (fetcher !== undefined) {
-      return createStagedDownloader({ telegramFetcher: fetcher, mattermostFetcher: () => Promise.resolve(null) })
-    }
-  } else if (chat.name === 'mattermost') {
-    const { getMattermostFileFetcher } = await import('./chat/mattermost/index.js')
-    const fetcher = getMattermostFileFetcher()
-    if (fetcher !== undefined) {
-      return createStagedDownloader({ telegramFetcher: () => Promise.resolve(null), mattermostFetcher: fetcher })
-    }
+    return createStagedDownloader({
+      telegramFetcher: (fileId) => {
+        const fetcher = getTelegramFileFetcher()
+        return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
+      },
+      mattermostFetcher: () => Promise.resolve(null),
+    })
+  }
+  if (chat.name === 'mattermost') {
+    return createStagedDownloader({
+      telegramFetcher: () => Promise.resolve(null),
+      mattermostFetcher: (fileId) => {
+        const fetcher = getMattermostFileFetcher()
+        return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
+      },
+    })
   }
   return null
 }
 
-const stagedDownloadFn = await createStagedDownloadFn(chatProvider)
+const processMessage: BotDeps['processMessage'] = (...args) =>
+  import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args))
 
-setupBot(chatProvider, adminUserId, {
-  processMessage: (...args) => import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args)),
-  stagedDownloadFn: stagedDownloadFn ?? undefined,
-})
+const stagedDownloadFn = createStagedDownloadFn(chatProvider)
+const botDeps: BotDeps = stagedDownloadFn === null ? { processMessage } : { processMessage, stagedDownloadFn }
+
+setupBot(chatProvider, adminUserId, botDeps)
+
+await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
@@ -129,7 +143,7 @@ const shutdown = (signal: string): void => {
       stopScheduler()
       scheduler.stopAll()
       stopPollers()
-      stopDebugServerFn?.()
+      if (stopDebugServerFn !== null) stopDebugServerFn()
       return chatProvider.stop()
     })
     .then(() => {
