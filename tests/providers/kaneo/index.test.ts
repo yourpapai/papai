@@ -126,9 +126,11 @@ describe('KaneoProvider', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              results: [],
-              totalCount: 0,
-              searchQuery: 'bug',
+              tasks: [],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
             }),
             { status: 200 },
           ),
@@ -145,6 +147,50 @@ describe('KaneoProvider', () => {
       assert(requestUrl !== undefined, 'Expected Kaneo provider search request URL')
       expect(requestUrl.pathname).toBe('/api/search')
       expect(requestUrl.searchParams.get('offset')).toBe('40')
+    })
+
+    test('returns flattened task results from the grouped search response', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              tasks: [
+                {
+                  id: 'task-2',
+                  projectId: 'proj-1',
+                  position: null,
+                  number: 2,
+                  userId: null,
+                  title: 'Search task',
+                  description: null,
+                  status: 'todo',
+                  priority: 'medium',
+                  createdAt: '2026-03-01T00:00:00.000Z',
+                },
+              ],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const result = await provider.searchTasks({ query: 'search' })
+
+      expect(result).toEqual([
+        {
+          id: 'task-2',
+          title: 'Search task',
+          number: 2,
+          status: 'todo',
+          priority: 'medium',
+          projectId: 'proj-1',
+          url: 'https://api.test.com/dashboard/workspace/workspace-1/project/proj-1/task/task-2',
+        },
+      ])
     })
   })
 

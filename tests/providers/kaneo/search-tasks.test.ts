@@ -5,7 +5,6 @@ import assert from 'node:assert/strict'
 import '../../../src/providers/kaneo/operations/tasks.js'
 import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
 import { searchTasks, TaskResultSchema } from '../../../src/providers/kaneo/search-tasks.js'
-import { createMockKaneoTaskSearchResponse } from '../../utils/factories.js'
 import { mockLogger, setMockFetch, restoreFetch } from '../../utils/test-helpers.js'
 
 describe('searchTasks', () => {
@@ -39,7 +38,43 @@ describe('searchTasks', () => {
 
   test('should filter by assigneeId when provided', async () => {
     setMockFetch(() =>
-      Promise.resolve(new Response(JSON.stringify(createMockKaneoTaskSearchResponse()), { status: 200 })),
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [
+              {
+                id: 'task-1',
+                projectId: 'proj-1',
+                position: 1,
+                number: 1,
+                userId: 'user-123',
+                title: 'Task 1',
+                description: null,
+                status: 'todo',
+                priority: 'medium',
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+              {
+                id: 'task-2',
+                projectId: 'proj-1',
+                position: 2,
+                number: 2,
+                userId: 'user-456',
+                title: 'Task 2',
+                description: null,
+                status: 'done',
+                priority: 'high',
+                createdAt: '2026-01-02T00:00:00.000Z',
+              },
+            ],
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      ),
     )
 
     const result = await searchTasks({
@@ -63,75 +98,77 @@ describe('searchTasks', () => {
       requestUrl = new URL(url)
 
       return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            results: [
-              {
-                id: 'task-1',
-                type: 'task',
-                title: 'Task 1',
-                taskNumber: 1,
-                status: 'todo',
-                priority: 'medium',
-                projectId: 'proj-1',
-                userId: 'user-other',
-                createdAt: new Date().toISOString(),
-                relevanceScore: 1,
-              },
-              {
-                id: 'task-2',
-                type: 'task',
-                title: 'Task 2',
-                taskNumber: 2,
-                status: 'todo',
-                priority: 'medium',
-                projectId: 'proj-1',
-                userId: 'user-123',
-                createdAt: new Date().toISOString(),
-                relevanceScore: 1,
-              },
-              {
-                id: 'task-3',
-                type: 'task',
-                title: 'Task 3',
-                taskNumber: 3,
-                status: 'doing',
-                priority: 'high',
-                projectId: 'proj-1',
-                userId: 'user-other',
-                createdAt: new Date().toISOString(),
-                relevanceScore: 1,
-              },
-              {
-                id: 'task-4',
-                type: 'task',
-                title: 'Task 4',
-                taskNumber: 4,
-                status: 'done',
-                priority: 'low',
-                projectId: 'proj-1',
-                userId: 'user-123',
-                createdAt: new Date().toISOString(),
-                relevanceScore: 1,
-              },
-              {
-                id: 'task-5',
-                type: 'task',
-                title: 'Task 5',
-                taskNumber: 5,
-                status: 'done',
-                priority: 'low',
-                projectId: 'proj-1',
-                userId: 'user-123',
-                createdAt: new Date().toISOString(),
-                relevanceScore: 1,
-              },
-            ],
-            totalCount: 5,
-            searchQuery: 'test',
-          }),
-          { status: 200 },
-        ),
+          new Response(
+            JSON.stringify({
+              tasks: [
+                {
+                  id: 'task-1',
+                  projectId: 'proj-1',
+                  position: 1,
+                  title: 'Task 1',
+                  number: 1,
+                  status: 'todo',
+                  priority: 'medium',
+                  userId: 'user-other',
+                  description: null,
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                },
+                {
+                  id: 'task-2',
+                  projectId: 'proj-1',
+                  position: 2,
+                  title: 'Task 2',
+                  number: 2,
+                  status: 'todo',
+                  priority: 'medium',
+                  userId: 'user-123',
+                  description: null,
+                  createdAt: '2026-01-02T00:00:00.000Z',
+                },
+                {
+                  id: 'task-3',
+                  projectId: 'proj-1',
+                  position: 3,
+                  title: 'Task 3',
+                  number: 3,
+                  status: 'doing',
+                  priority: 'high',
+                  userId: 'user-other',
+                  description: null,
+                  createdAt: '2026-01-03T00:00:00.000Z',
+                },
+                {
+                  id: 'task-4',
+                  projectId: 'proj-1',
+                  position: 4,
+                  title: 'Task 4',
+                  number: 4,
+                  status: 'done',
+                  priority: 'low',
+                  userId: 'user-123',
+                  description: null,
+                  createdAt: '2026-01-04T00:00:00.000Z',
+                },
+                {
+                  id: 'task-5',
+                  projectId: 'proj-1',
+                  position: 5,
+                  title: 'Task 5',
+                  number: 5,
+                  status: 'done',
+                  priority: 'low',
+                  userId: 'user-123',
+                  description: null,
+                  createdAt: '2026-01-05T00:00:00.000Z',
+                },
+              ],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            { status: 200 },
+          ),
       )
     })
 
@@ -158,16 +195,18 @@ describe('searchTasks', () => {
       requestUrl = new URL(url)
 
       return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            results: [],
-            totalCount: 0,
-            searchQuery: 'test',
-          }),
-          { status: 200 },
-        ),
-      )
-    })
+          new Response(
+            JSON.stringify({
+              tasks: [],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            { status: 200 },
+          ),
+        )
+      })
 
     const params: Parameters<typeof searchTasks>[0] & { offset: number } = {
       config: mockConfig,
@@ -181,5 +220,67 @@ describe('searchTasks', () => {
     assert(requestUrl !== undefined, 'Expected Kaneo search request URL')
     expect(requestUrl.pathname).toBe('/api/search')
     expect(requestUrl.searchParams.get('offset')).toBe('30')
+  })
+
+  test('should ignore non-task grouped search results and flatten task groups', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [
+              {
+                id: 'task-1',
+                projectId: 'proj-1',
+                position: null,
+                number: 7,
+                userId: null,
+                title: 'Grouped task',
+                description: 'Task result',
+                status: 'todo',
+                priority: 'urgent',
+                startDate: '2026-03-01T00:00:00.000Z',
+                dueDate: '2026-03-05T00:00:00.000Z',
+                createdAt: '2026-02-28T00:00:00.000Z',
+              },
+            ],
+            projects: [
+              {
+                id: 'proj-1',
+                workspaceId: 'ws-1',
+                slug: 'proj-1',
+                icon: null,
+                name: 'Project 1',
+                description: null,
+                createdAt: '2026-02-28T00:00:00.000Z',
+                isPublic: false,
+                archivedAt: null,
+              },
+            ],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await searchTasks({
+      config: mockConfig,
+      query: 'grouped',
+      workspaceId: 'ws-1',
+    })
+
+    expect(result).toEqual([
+      {
+        id: 'task-1',
+        title: 'Grouped task',
+        number: 7,
+        status: 'todo',
+        priority: 'urgent',
+        projectId: 'proj-1',
+        userId: '',
+      },
+    ])
   })
 })

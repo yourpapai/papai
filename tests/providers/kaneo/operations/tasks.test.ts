@@ -2,7 +2,6 @@ import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 
 import type { KaneoConfig } from '../../../../src/providers/kaneo/client.js'
 import { kaneoSearchTasks } from '../../../../src/providers/kaneo/operations/tasks.js'
-import { createMockKaneoTaskSearchResponse } from '../../../utils/factories.js'
 import { mockLogger, setMockFetch, restoreFetch } from '../../../utils/test-helpers.js'
 
 describe('kaneoSearchTasks', () => {
@@ -21,7 +20,43 @@ describe('kaneoSearchTasks', () => {
 
   test('should pass assigneeId parameter to search', async () => {
     setMockFetch(() =>
-      Promise.resolve(new Response(JSON.stringify(createMockKaneoTaskSearchResponse()), { status: 200 })),
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [
+              {
+                id: 'task-1',
+                projectId: 'proj-1',
+                position: 1,
+                number: 1,
+                userId: 'user-123',
+                title: 'Task 1',
+                description: null,
+                status: 'todo',
+                priority: 'medium',
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+              {
+                id: 'task-2',
+                projectId: 'proj-1',
+                position: 2,
+                number: 2,
+                userId: 'user-456',
+                title: 'Task 2',
+                description: null,
+                status: 'done',
+                priority: 'high',
+                createdAt: '2026-01-02T00:00:00.000Z',
+              },
+            ],
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      ),
     )
 
     const result = await kaneoSearchTasks(mockConfig, 'ws-1', {
@@ -38,22 +73,24 @@ describe('kaneoSearchTasks', () => {
       Promise.resolve(
         new Response(
           JSON.stringify({
-            results: [
+            tasks: [
               {
                 id: 'task-1',
-                type: 'task',
+                projectId: 'proj-1',
+                position: 1,
                 title: 'Task 1',
-                taskNumber: 1,
+                number: 1,
                 status: 'todo',
                 priority: 'medium',
-                projectId: 'proj-1',
                 userId: 'user-123',
-                createdAt: new Date().toISOString(),
-                relevanceScore: 1,
+                description: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
               },
             ],
-            totalCount: 1,
-            searchQuery: 'test',
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
           }),
           { status: 200 },
         ),

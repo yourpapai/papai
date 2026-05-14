@@ -209,22 +209,19 @@ export class TaskResource {
         ...(shouldPaginateLocally || params.offset === undefined ? {} : { offset: String(params.offset) }),
       }
       const result = await kaneoFetch(this.config, 'GET', '/search', undefined, queryParams, KaneoSearchResponseSchema)
-      // API returns a flat results array — filter to tasks only and remap taskNumber → number.
-      // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/search/controllers/global-search.ts
-      let tasks: TaskResult[] = result.results
-        .filter((r) => r.type === 'task')
-        .map((r) => {
-          const priorityParsed = TaskResultSchema.shape.priority.safeParse(r.priority)
-          return {
-            id: r.id,
-            title: r.title,
-            number: r.taskNumber ?? 0,
-            status: r.status ?? '',
-            priority: priorityParsed.success ? priorityParsed.data : 'no-priority',
-            projectId: r.projectId ?? '',
-            userId: r.userId ?? '',
-          }
-        })
+      let tasks: TaskResult[] = result.tasks.map((task) => {
+        const priorityParsed = TaskResultSchema.shape.priority.safeParse(task.priority)
+
+        return {
+          id: task.id,
+          title: task.title,
+          number: task.number ?? 0,
+          status: task.status,
+          priority: priorityParsed.success ? priorityParsed.data : 'no-priority',
+          projectId: task.projectId,
+          userId: task.userId ?? '',
+        }
+      })
       // Client-side filter by assignee since API doesn't support it
       if (params.assigneeId !== undefined) {
         tasks = tasks.filter((t) => t.userId === params.assigneeId)

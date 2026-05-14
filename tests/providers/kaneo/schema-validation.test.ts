@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import {
   ColumnCompatSchema as KaneoColumnSchema,
+  GlobalSearchResponseGroupedCompatSchema,
 } from '../../../src/providers/kaneo/schemas/api-compat.js'
 import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
@@ -753,6 +754,95 @@ describe('Schema Validation', () => {
         expect(result[0]).toHaveProperty('color')
         expect(result[0]).toHaveProperty('isFinal')
       })
+    })
+  })
+
+  describe('Search Schemas', () => {
+    test('GlobalSearchResponseGroupedCompatSchema validates the published grouped search response', () => {
+      const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
+        tasks: [
+          {
+            id: 'task-1',
+            projectId: 'proj-1',
+            position: null,
+            number: 1,
+            userId: null,
+            title: 'Task 1',
+            description: null,
+            status: 'todo',
+            priority: 'medium',
+            startDate: '2026-03-01T00:00:00.000Z',
+            dueDate: '2026-03-05T00:00:00.000Z',
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        projects: [
+          {
+            id: 'proj-1',
+            workspaceId: 'ws-1',
+            slug: 'proj-1',
+            icon: null,
+            name: 'Project 1',
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+            isPublic: false,
+            archivedAt: null,
+          },
+        ],
+        workspaces: [
+          {
+            id: 'ws-1',
+            name: 'Workspace 1',
+            slug: 'workspace-1',
+            logo: null,
+            metadata: null,
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        comments: [
+          {
+            id: 'comment-1',
+            taskId: 'task-1',
+            type: 'comment',
+            createdAt: '2026-02-28T00:00:00.000Z',
+            userId: null,
+            content: 'hello',
+            eventData: null,
+            externalUserName: null,
+            externalUserAvatar: null,
+            externalSource: null,
+            externalUrl: null,
+          },
+        ],
+        activities: [
+          {
+            id: 'activity-1',
+            taskId: 'task-1',
+            type: 'create',
+            createdAt: '2026-02-28T00:00:00.000Z',
+            userId: null,
+            content: null,
+            eventData: null,
+            externalUserName: null,
+            externalUserAvatar: null,
+            externalSource: null,
+            externalUrl: null,
+          },
+        ],
+      })
+
+      expect(result.success).toBe(true)
+    })
+
+    test('GlobalSearchResponseGroupedCompatSchema rejects the legacy flat search response', () => {
+      const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
+        results: [],
+        totalCount: 0,
+        searchQuery: 'bug',
+      })
+
+      expect(result.success).toBe(false)
     })
   })
 

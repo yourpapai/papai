@@ -13,6 +13,7 @@
 import { z } from 'zod'
 
 import { CreateCommentResponseSchema } from './create-comment.js'
+import { GlobalSearchResponseSchema } from './global-search.js'
 import { ColumnSchema, ListTaskSchema } from './list-tasks.js'
 import { UpdateCommentResponseSchema } from './update-comment.js'
 
@@ -71,37 +72,4 @@ export const ListTasksResponseCompatSchema = z.object({
   plannedTasks: z.array(ListTaskSchema),
 })
 
-/**
- * GET /search returns a flat { results, totalCount, searchQuery } structure, not the
- * per-type { tasks, projects, workspaces, comments, activities } structure in the docs.
- *
- * Root cause: documentation was never in sync with the implementation. The API merges
- * all result types into a single `results` array discriminated by a `type` field.
- * Note: task number is exposed as `taskNumber`, not `number`.
- * Upstream source: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/search/controllers/global-search.ts
- */
-const SearchResultItemSchema = z.object({
-  id: z.string(),
-  type: z.enum(['task', 'project', 'workspace', 'comment', 'activity']),
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  content: z.string().optional(),
-  projectId: z.string().optional(),
-  projectName: z.string().optional(),
-  projectSlug: z.string().optional(),
-  workspaceId: z.string().optional(),
-  workspaceName: z.string().optional(),
-  userId: z.string().optional(),
-  userName: z.string().optional(),
-  createdAt: z.unknown(),
-  relevanceScore: z.number(),
-  taskNumber: z.number().optional(),
-  priority: z.string().optional(),
-  status: z.string().optional(),
-})
-
-export const GlobalSearchResponseCompatSchema = z.object({
-  results: z.array(SearchResultItemSchema),
-  totalCount: z.number(),
-  searchQuery: z.string(),
-})
+export const GlobalSearchResponseGroupedCompatSchema = GlobalSearchResponseSchema

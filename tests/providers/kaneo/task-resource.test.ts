@@ -894,40 +894,40 @@ describe('TaskResource', () => {
 
   describe('search', () => {
     test('searches tasks by keyword', async () => {
-      // API returns flat { results, totalCount, searchQuery } — not per-type arrays.
-      // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/search/controllers/global-search.ts
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify({
-              results: [
+              tasks: [
                 {
                   id: 'task-1',
-                  type: 'task',
-                  title: 'Fix bug',
-                  description: null,
                   projectId: 'proj-1',
-                  taskNumber: 1,
+                  position: 1,
+                  userId: null,
+                  title: 'Fix bug',
+                  number: 1,
+                  description: null,
                   status: 'todo',
                   priority: 'high',
-                  relevanceScore: 3,
                   createdAt: '2026-01-01T00:00:00Z',
                 },
                 {
                   id: 'task-2',
-                  type: 'task',
-                  title: 'Bug report',
-                  description: null,
                   projectId: 'proj-1',
-                  taskNumber: 2,
+                  position: 2,
+                  userId: null,
+                  title: 'Bug report',
+                  number: 2,
+                  description: null,
                   status: 'done',
                   priority: 'medium',
-                  relevanceScore: 2,
                   createdAt: '2026-01-02T00:00:00Z',
                 },
               ],
-              totalCount: 2,
-              searchQuery: 'bug',
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
             }),
             { status: 200 },
           ),
@@ -947,7 +947,10 @@ describe('TaskResource', () => {
       setMockFetch((url: string) => {
         requestUrl = url
         return Promise.resolve(
-          new Response(JSON.stringify({ results: [], totalCount: 0, searchQuery: 'test' }), { status: 200 }),
+          new Response(
+            JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }),
+            { status: 200 },
+          ),
         )
       })
 
@@ -964,7 +967,10 @@ describe('TaskResource', () => {
     test('returns empty array when no matches', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ results: [], totalCount: 0, searchQuery: 'nonexistent' }), { status: 200 }),
+          new Response(
+            JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }),
+            { status: 200 },
+          ),
         ),
       )
 
@@ -974,6 +980,63 @@ describe('TaskResource', () => {
         workspaceId: 'ws-1',
       })
       expect(result).toEqual([])
+    })
+
+    test('flattens grouped task results and ignores non-task groups', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              tasks: [
+                {
+                  id: 'task-9',
+                  projectId: 'proj-1',
+                  position: null,
+                  number: 9,
+                  userId: null,
+                  title: 'Grouped result',
+                  description: null,
+                  status: 'done',
+                  priority: 'low',
+                  createdAt: '2026-01-09T00:00:00Z',
+                },
+              ],
+              projects: [
+                {
+                  id: 'proj-1',
+                  workspaceId: 'ws-1',
+                  slug: 'proj-1',
+                  icon: null,
+                  name: 'Project 1',
+                  description: null,
+                  createdAt: '2026-01-01T00:00:00Z',
+                  isPublic: false,
+                  archivedAt: null,
+                },
+              ],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      const result = await resource.search({ query: 'grouped', workspaceId: 'ws-1' })
+
+      expect(result).toEqual([
+        {
+          id: 'task-9',
+          title: 'Grouped result',
+          number: 9,
+          status: 'done',
+          priority: 'low',
+          projectId: 'proj-1',
+          userId: '',
+        },
+      ])
     })
   })
 
@@ -996,7 +1059,12 @@ describe('TaskResource', () => {
 
     test('search returns empty results for empty query string', async () => {
       setMockFetch(() =>
-        Promise.resolve(new Response(JSON.stringify({ results: [], totalCount: 0, searchQuery: '' }), { status: 200 })),
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }),
+            { status: 200 },
+          ),
+        ),
       )
 
       const resource = new TaskResource(mockConfig, statusDeps)
