@@ -808,7 +808,47 @@ describe('TaskResource', () => {
       })
     })
 
+    test('rejects invalid list task priority values', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                columns: [
+                  {
+                    id: 'to-do',
+                    name: 'To Do',
+                    isFinal: false,
+                    tasks: [
+                      {
+                        id: 'task-1',
+                        title: 'Task 1',
+                        number: 1,
+                        status: 'to-do',
+                        priority: 'critical',
+                        dueDate: null,
+                        createdAt: '2026-03-01T00:00:00Z',
+                      },
+                    ],
+                  },
+                ],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await expect(resource.list('proj-1')).rejects.toThrow()
+    })
+
     test('rejects top-level grouped task lists', async () => {
+      // Deliberate drift-log choice: papai follows the real runtime envelope here.
       setMockFetch(() =>
         Promise.resolve(
           new Response(

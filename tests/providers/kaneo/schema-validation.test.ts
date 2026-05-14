@@ -377,7 +377,35 @@ describe('Schema Validation', () => {
         expect(result.success).toBe(true)
       })
 
+      test('ListTasksResponseSchema rejects invalid task priority values', () => {
+        const result = ListTasksResponseSchema.safeParse({
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            columns: [
+              {
+                id: 'to-do',
+                name: 'To Do',
+                isFinal: false,
+                tasks: [
+                  {
+                    ...validTaskResponse,
+                    priority: 'critical',
+                    createdAt: '2026-03-01T00:00:00Z',
+                  },
+                ],
+              },
+            ],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
+        })
+
+        expect(result.success).toBe(false)
+      })
+
       test('ListTasksResponseSchema rejects top-level grouped task-list payloads', () => {
+        // Deliberate drift-log choice: papai follows the real runtime envelope here.
         const result = ListTasksResponseSchema.safeParse({
           id: 'proj-1',
           name: 'Test Project',

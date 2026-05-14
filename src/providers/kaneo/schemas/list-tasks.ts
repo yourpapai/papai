@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 const TaskDateTimeSchema = z.iso.datetime({ offset: true })
+const TaskPriorityEnum = z.enum(['no-priority', 'low', 'medium', 'high', 'urgent'])
 
 // Column schema
 export const ColumnSchema = z.object({
@@ -18,7 +19,7 @@ export const ListTaskSchema = z.object({
   title: z.string(),
   number: z.number(),
   status: z.string(),
-  priority: z.string(),
+  priority: TaskPriorityEnum,
   description: z.string().optional(),
   position: z.number().optional(),
   createdAt: TaskDateTimeSchema.optional(),
