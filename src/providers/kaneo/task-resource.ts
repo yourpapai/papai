@@ -10,7 +10,7 @@ import type { KaneoTaskListItem } from './list-tasks.js'
 import { TaskSchema as KaneoCreateTaskResponseSchema } from './schemas/create-task.js'
 import { TaskSchema as KaneoGetTaskResponseSchema } from './schemas/get-task.js'
 import { ListTasksResponseSchema } from './schemas/list-tasks.js'
-import { type TaskResult, KaneoSearchResponseSchema, TaskResultSchema } from './search-tasks.js'
+import { KaneoSearchResponseSchema } from './search-tasks.js'
 import { type TaskStatusDeps, denormalizeStatus, validateStatus } from './task-status.js'
 import { performUpdate } from './task-update-helpers.js'
 
@@ -196,7 +196,7 @@ export class TaskResource {
     assigneeId?: string
     limit?: number
     offset?: number
-  }): Promise<TaskResult[]> {
+  }): Promise<z.infer<typeof KaneoSearchResponseSchema>> {
     this.log.debug(params, 'Searching tasks')
     try {
       const shouldPaginateLocally = params.assigneeId !== undefined
@@ -209,28 +209,8 @@ export class TaskResource {
         ...(shouldPaginateLocally || params.offset === undefined ? {} : { offset: String(params.offset) }),
       }
       const result = await kaneoFetch(this.config, 'GET', '/search', undefined, queryParams, KaneoSearchResponseSchema)
-      let tasks: TaskResult[] = result.tasks.map((task) => {
-        const priorityParsed = TaskResultSchema.shape.priority.safeParse(task.priority)
-
-        return {
-          id: task.id,
-          title: task.title,
-          number: task.number ?? 0,
-          status: task.status,
-          priority: priorityParsed.success ? priorityParsed.data : 'no-priority',
-          projectId: task.projectId,
-          userId: task.userId ?? '',
-        }
-      })
-      // Client-side filter by assignee since API doesn't support it
-      if (params.assigneeId !== undefined) {
-        tasks = tasks.filter((t) => t.userId === params.assigneeId)
-        const offset = params.offset ?? 0
-        const limit = params.limit
-        tasks = limit === undefined ? tasks.slice(offset) : tasks.slice(offset, offset + limit)
-      }
-      this.log.info({ count: tasks.length, assigneeId: params.assigneeId }, 'Tasks searched')
-      return tasks
+      this.log.info({ taskCount: result.tasks.length, assigneeId: params.assigneeId }, 'Tasks searched')
+      return result
     } catch (error) {
       this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to search tasks')
       throw classifyKaneoError(error)

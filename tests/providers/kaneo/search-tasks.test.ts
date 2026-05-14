@@ -253,7 +253,7 @@ describe('searchTasks', () => {
                 description: null,
                 createdAt: '2026-02-28T00:00:00.000Z',
                 isPublic: false,
-                archivedAt: null,
+                archivedAt: '2026-03-02T00:00:00.000Z',
               },
             ],
             workspaces: [],
@@ -329,6 +329,66 @@ describe('searchTasks', () => {
         status: 'doing',
         priority: 'low',
         projectId: 'proj-1',
+        userId: '',
+      },
+    ])
+  })
+
+  test('should accept grouped search responses with archived project timestamps', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [
+              {
+                id: 'task-archived-project',
+                projectId: 'proj-archived',
+                position: null,
+                number: 10,
+                userId: null,
+                title: 'Archived project task',
+                description: null,
+                status: 'todo',
+                priority: 'medium',
+                createdAt: '2026-02-28T00:00:00.000Z',
+              },
+            ],
+            projects: [
+              {
+                id: 'proj-archived',
+                workspaceId: 'ws-1',
+                slug: 'proj-archived',
+                icon: null,
+                name: 'Archived Project',
+                description: null,
+                createdAt: '2026-02-28T00:00:00.000Z',
+                isPublic: false,
+                archivedAt: '2026-03-01T00:00:00.000Z',
+              },
+            ],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await searchTasks({
+      config: mockConfig,
+      query: 'archived project',
+      workspaceId: 'ws-1',
+    })
+
+    expect(result).toEqual([
+      {
+        id: 'task-archived-project',
+        title: 'Archived project task',
+        number: 10,
+        status: 'todo',
+        priority: 'medium',
+        projectId: 'proj-archived',
         userId: '',
       },
     ])

@@ -39,7 +39,7 @@ export const SearchProjectSchema = z.object({
   description: z.string().nullable(),
   createdAt: SearchDateTimeSchema,
   isPublic: z.boolean().nullable(),
-  archivedAt: z.null(),
+  archivedAt: SearchDateTimeSchema.nullable(),
 })
 
 export const SearchWorkspaceSchema = z.object({

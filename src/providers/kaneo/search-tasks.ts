@@ -4,8 +4,7 @@ import { logger } from '../../logger.js'
 import { classifyKaneoError } from './classify-error.js'
 import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
-import { GlobalSearchResponseGroupedCompatSchema } from './schemas/api-compat.js'
-import { SearchTaskSchema } from './schemas/global-search.js'
+import { GlobalSearchResponseSchema, SearchTaskSchema, type GlobalSearchResponse } from './schemas/global-search.js'
 
 const log = logger.child({ scope: 'kaneo:search-tasks' })
 
@@ -21,9 +20,41 @@ export const TaskResultSchema = SearchTaskSchema.pick({
   userId: z.string(),
 })
 
-export const KaneoSearchResponseSchema = GlobalSearchResponseGroupedCompatSchema
+export const KaneoSearchResponseSchema = GlobalSearchResponseSchema
 
 export type TaskResult = z.infer<typeof TaskResultSchema>
+
+export function flattenGroupedTaskSearchResults(result: GlobalSearchResponse): TaskResult[] {
+  return result.tasks.map((task) => {
+    const priorityParsed = TaskResultSchema.shape.priority.safeParse(task.priority)
+
+    return {
+      id: task.id,
+      title: task.title,
+      number: task.number ?? 0,
+      status: task.status,
+      priority: priorityParsed.success ? priorityParsed.data : 'no-priority',
+      projectId: task.projectId,
+      userId: task.userId ?? '',
+    }
+  })
+}
+
+function filterAndPaginateTaskSearchResults(
+  tasks: readonly TaskResult[],
+  assigneeId: string | undefined,
+  limit: number | undefined,
+  offset: number | undefined,
+): TaskResult[] {
+  if (assigneeId === undefined) {
+    return [...tasks]
+  }
+
+  const filteredTasks = tasks.filter((task) => task.userId === assigneeId)
+  const start = offset ?? 0
+
+  return limit === undefined ? filteredTasks.slice(start) : filteredTasks.slice(start, start + limit)
+}
 
 export async function searchTasks({
   config,
@@ -46,7 +77,13 @@ export async function searchTasks({
 
   try {
     const client = new KaneoClient(config)
-    const tasks = await client.tasks.search({ query, workspaceId, projectId, assigneeId, limit, offset })
+    const result = await client.tasks.search({ query, workspaceId, projectId, assigneeId, limit, offset })
+    const tasks = filterAndPaginateTaskSearchResults(
+      flattenGroupedTaskSearchResults(result),
+      assigneeId,
+      limit,
+      offset,
+    )
     log.info({ query, resultCount: tasks.length, assigneeId }, 'Tasks searched')
     return tasks
   } catch (error) {

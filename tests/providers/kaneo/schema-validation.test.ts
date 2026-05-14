@@ -5,12 +5,12 @@ import { z } from 'zod'
 
 import {
   ColumnCompatSchema as KaneoColumnSchema,
-  GlobalSearchResponseGroupedCompatSchema,
 } from '../../../src/providers/kaneo/schemas/api-compat.js'
 import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { TaskSchema as CreateTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { ActivityItemSchema } from '../../../src/providers/kaneo/schemas/get-activities.js'
+import { GlobalSearchResponseSchema } from '../../../src/providers/kaneo/schemas/global-search.js'
 import { GetProjectResponseSchema as KaneoProjectFullSchema } from '../../../src/providers/kaneo/schemas/get-project.js'
 import { ListTasksResponseSchema } from '../../../src/providers/kaneo/schemas/list-tasks.js'
 import {
@@ -758,8 +758,8 @@ describe('Schema Validation', () => {
   })
 
   describe('Search Schemas', () => {
-    test('GlobalSearchResponseGroupedCompatSchema validates the published grouped search response', () => {
-      const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
+    test('GlobalSearchResponseSchema validates the published grouped search response', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
         tasks: [
           {
             id: 'task-1',
@@ -835,8 +835,32 @@ describe('Schema Validation', () => {
       expect(result.success).toBe(true)
     })
 
-    test('GlobalSearchResponseGroupedCompatSchema accepts null grouped task dates', () => {
-      const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
+    test('GlobalSearchResponseSchema accepts archived project timestamps', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
+        tasks: [],
+        projects: [
+          {
+            id: 'proj-archived',
+            workspaceId: 'ws-1',
+            slug: 'proj-archived',
+            icon: null,
+            name: 'Archived Project',
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+            isPublic: false,
+            archivedAt: '2026-03-01T00:00:00.000Z',
+          },
+        ],
+        workspaces: [],
+        comments: [],
+        activities: [],
+      })
+
+      expect(result.success).toBe(true)
+    })
+
+    test('GlobalSearchResponseSchema accepts null grouped task dates', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
         tasks: [
           {
             id: 'task-null-dates',
@@ -862,8 +886,8 @@ describe('Schema Validation', () => {
       expect(result.success).toBe(true)
     })
 
-    test('GlobalSearchResponseGroupedCompatSchema rejects the legacy flat search response', () => {
-      const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
+    test('GlobalSearchResponseSchema rejects the legacy flat search response', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
         results: [],
         totalCount: 0,
         searchQuery: 'bug',

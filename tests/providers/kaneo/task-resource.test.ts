@@ -939,7 +939,7 @@ describe('TaskResource', () => {
         query: 'bug',
         workspaceId: 'ws-1',
       })
-      expect(result).toHaveLength(2)
+      expect(result.tasks).toHaveLength(2)
     })
 
     test('filters by projectId when provided', async () => {
@@ -979,10 +979,10 @@ describe('TaskResource', () => {
         query: 'nonexistent',
         workspaceId: 'ws-1',
       })
-      expect(result).toEqual([])
+      expect(result.tasks).toEqual([])
     })
 
-    test('flattens grouped task results and ignores non-task groups', async () => {
+    test('returns grouped task results and ignores non-task groups at this layer', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
@@ -1026,17 +1026,21 @@ describe('TaskResource', () => {
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.search({ query: 'grouped', workspaceId: 'ws-1' })
 
-      expect(result).toEqual([
+      expect(result.tasks).toEqual([
         {
           id: 'task-9',
-          title: 'Grouped result',
+          projectId: 'proj-1',
+          position: null,
           number: 9,
+          userId: null,
+          title: 'Grouped result',
+          description: null,
           status: 'done',
           priority: 'low',
-          projectId: 'proj-1',
-          userId: '',
+          createdAt: '2026-01-09T00:00:00Z',
         },
       ])
+      expect(result.projects).toHaveLength(1)
     })
   })
 
@@ -1069,7 +1073,7 @@ describe('TaskResource', () => {
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.search({ query: '', workspaceId: 'ws-1' })
-      expect(result).toEqual([])
+      expect(result.tasks).toEqual([])
     })
   })
 
