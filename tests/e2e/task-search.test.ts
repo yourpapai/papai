@@ -44,8 +44,8 @@ describe('E2E: Task Search and Filter', () => {
       projectId,
     })
 
-    expect(results.length).toBeGreaterThan(0)
-    const found = results.find((t) => t.id === task1.id)
+    expect(results.tasks.length).toBeGreaterThan(0)
+    const found = results.tasks.find((t) => t.id === task1.id)
     expect(found?.id).toBe(task1.id)
   })
 
@@ -64,8 +64,8 @@ describe('E2E: Task Search and Filter', () => {
       workspaceId,
     })
 
-    expect(results.length).toBeGreaterThan(0)
-    const found = results.find((t) => t.id === task.id)
+    expect(results.tasks.length).toBeGreaterThan(0)
+    const found = results.tasks.find((t) => t.id === task.id)
     expect(found?.id).toBe(task.id)
   })
 
@@ -77,7 +77,7 @@ describe('E2E: Task Search and Filter', () => {
       projectId,
     })
 
-    expect(results.length).toBe(0)
+    expect(results.tasks.length).toBe(0)
   })
 
   test('search with invalid workspace returns empty or throws', async () => {
@@ -89,7 +89,7 @@ describe('E2E: Task Search and Filter', () => {
         workspaceId: 'non-existent-workspace-id',
       })
       // If it doesn't throw, it should return empty results
-      expect(results.length).toBe(0)
+      expect(results.tasks.length).toBe(0)
     } catch (error) {
       // If it throws, that's also acceptable behavior
       expect(error).toBeDefined()

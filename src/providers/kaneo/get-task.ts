@@ -1,7 +1,7 @@
 import { logger } from '../../logger.js'
 import { classifyKaneoError } from './classify-error.js'
 import type { KaneoConfig } from './client.js'
-import type { TaskRelation } from './frontmatter.js'
+import type { TaskRelation } from '../types.js'
 import { KaneoClient } from './kaneo-client.js'
 
 const log = logger.child({ scope: 'kaneo:get-task' })

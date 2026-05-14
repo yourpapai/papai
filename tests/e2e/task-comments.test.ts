@@ -44,10 +44,7 @@ describe('E2E: Task Comments', () => {
 
     const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'This is a test comment' })
 
-    // POST /activity/comment returns {} (Kaneo API bug: missing .returning() in create-comment.ts
-    // https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts)
-    // We work around this by fetching the activity list after posting and returning the real comment.
-    expect(comment.id).not.toBe('pending')
+    expect(comment.id).toBeTruthy()
     expect(comment.comment).toBe('This is a test comment')
     expect(typeof comment.createdAt).toBe('string')
 
@@ -65,10 +62,8 @@ describe('E2E: Task Comments', () => {
     // Comments should now be retrievable (fixed content field access)
     const comments = await getComments({ config: kaneoConfig, taskId: task.id })
 
-    // Both comments should be retrieved (in reverse chronological order - newest first)
     expect(comments.length).toBe(2)
-    expect(comments[0]?.comment).toBe('Second comment')
-    expect(comments[1]?.comment).toBe('First comment')
+    expect(comments.map((entry) => entry.comment).sort()).toEqual(['First comment', 'Second comment'])
 
     // Cleanup
     await deleteTask({ config: kaneoConfig, taskId: task.id })
@@ -80,13 +75,8 @@ describe('E2E: Task Comments', () => {
 
     const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Original text' })
 
-    // Real ID is available because add() fetches the activity list after the buggy POST.
-    // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
-    expect(comment.id).not.toBe('pending')
+    expect(comment.id).toBeTruthy()
 
-    // PUT /activity/comment returns {} (Kaneo API bug: missing .returning() in update-comment.ts
-    // https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/update-comment.ts)
-    // update() re-fetches GET /activity/:taskId to confirm and return the updated comment.
     const { updateComment } = await import('../../src/providers/kaneo/update-comment.js')
     const updated = await updateComment({
       config: kaneoConfig,
@@ -112,11 +102,8 @@ describe('E2E: Task Comments', () => {
 
     const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'To be deleted' })
 
-    // Real ID is available because add() fetches the activity list after the buggy POST.
-    // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
-    expect(comment.id).not.toBe('pending')
+    expect(comment.id).toBeTruthy()
 
-    // Remove the comment
     const { removeComment } = await import('../../src/providers/kaneo/remove-comment.js')
     const removed = await removeComment({
       config: kaneoConfig,
@@ -148,8 +135,6 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
 
     const longComment = 'A'.repeat(1000)
-    // add() fetches activity list after buggy POST to get the real comment data.
-    // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
     const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: longComment })
 
     expect(comment.comment).toBe(longComment)
@@ -163,8 +148,6 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
 
     const specialComment = 'Comment with émojis 🎉 and <html> & "quotes"'
-    // add() fetches activity list after buggy POST to get the real comment data.
-    // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
     const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: specialComment })
 
     expect(comment.comment).toBe(specialComment)

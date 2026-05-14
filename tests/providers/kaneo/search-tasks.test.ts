@@ -84,8 +84,8 @@ describe('searchTasks', () => {
       assigneeId: 'user-123',
     })
 
-    expect(result).toHaveLength(1)
-    const [firstResult] = result
+    expect(result.tasks).toHaveLength(1)
+    const [firstResult] = result.tasks
     assert(firstResult !== undefined, 'Expected a filtered Kaneo search result')
     expect(firstResult.id).toBe('task-1')
     expect(firstResult.userId).toBe('user-123')
@@ -184,8 +184,8 @@ describe('searchTasks', () => {
     assert(requestUrl !== undefined, 'Expected Kaneo search request URL')
     expect(requestUrl.searchParams.get('offset')).toBeNull()
     expect(requestUrl.searchParams.get('limit')).toBeNull()
-    expect(result).toHaveLength(1)
-    expect(result[0]?.id).toBe('task-4')
+    expect(result.tasks).toHaveLength(1)
+    expect(result.tasks[0]?.id).toBe('task-4')
   })
 
   test('should pass offset through to the Kaneo search request without assignee filtering', async () => {
@@ -222,7 +222,7 @@ describe('searchTasks', () => {
     expect(requestUrl.searchParams.get('offset')).toBe('30')
   })
 
-  test('should ignore non-task grouped search results and flatten task groups', async () => {
+  test('should preserve grouped search payloads while filtering task results', async () => {
     setMockFetch(() =>
       Promise.resolve(
         new Response(
@@ -271,17 +271,40 @@ describe('searchTasks', () => {
       workspaceId: 'ws-1',
     })
 
-    expect(result).toEqual([
-      {
-        id: 'task-1',
-        title: 'Grouped task',
-        number: 7,
-        status: 'todo',
-        priority: 'urgent',
-        projectId: 'proj-1',
-        userId: '',
-      },
-    ])
+    expect(result).toEqual({
+      tasks: [
+        {
+          id: 'task-1',
+          projectId: 'proj-1',
+          position: null,
+          number: 7,
+          userId: null,
+          title: 'Grouped task',
+          description: 'Task result',
+          status: 'todo',
+          priority: 'urgent',
+          startDate: '2026-03-01T00:00:00.000Z',
+          dueDate: '2026-03-05T00:00:00.000Z',
+          createdAt: '2026-02-28T00:00:00.000Z',
+        },
+      ],
+      projects: [
+        {
+          id: 'proj-1',
+          workspaceId: 'ws-1',
+          slug: 'proj-1',
+          icon: null,
+          name: 'Project 1',
+          description: null,
+          createdAt: '2026-02-28T00:00:00.000Z',
+          isPublic: false,
+          archivedAt: '2026-03-02T00:00:00.000Z',
+        },
+      ],
+      workspaces: [],
+      comments: [],
+      activities: [],
+    })
   })
 
   test('should accept grouped task results with null dates', async () => {
@@ -321,15 +344,20 @@ describe('searchTasks', () => {
       workspaceId: 'ws-1',
     })
 
-    expect(result).toEqual([
+    expect(result.tasks).toEqual([
       {
         id: 'task-null-dates',
-        title: 'Null dates task',
+        projectId: 'proj-1',
+        position: null,
         number: 8,
+        userId: null,
+        title: 'Null dates task',
+        description: null,
         status: 'doing',
         priority: 'low',
-        projectId: 'proj-1',
-        userId: '',
+        startDate: null,
+        dueDate: null,
+        createdAt: '2026-02-28T00:00:00.000Z',
       },
     ])
   })
@@ -381,16 +409,37 @@ describe('searchTasks', () => {
       workspaceId: 'ws-1',
     })
 
-    expect(result).toEqual([
-      {
-        id: 'task-archived-project',
-        title: 'Archived project task',
-        number: 10,
-        status: 'todo',
-        priority: 'medium',
-        projectId: 'proj-archived',
-        userId: '',
-      },
-    ])
+    expect(result).toEqual({
+      tasks: [
+        {
+          id: 'task-archived-project',
+          projectId: 'proj-archived',
+          position: null,
+          number: 10,
+          userId: null,
+          title: 'Archived project task',
+          description: null,
+          status: 'todo',
+          priority: 'medium',
+          createdAt: '2026-02-28T00:00:00.000Z',
+        },
+      ],
+      projects: [
+        {
+          id: 'proj-archived',
+          workspaceId: 'ws-1',
+          slug: 'proj-archived',
+          icon: null,
+          name: 'Archived Project',
+          description: null,
+          createdAt: '2026-02-28T00:00:00.000Z',
+          isPublic: false,
+          archivedAt: '2026-03-01T00:00:00.000Z',
+        },
+      ],
+      workspaces: [],
+      comments: [],
+      activities: [],
+    })
   })
 })

@@ -26,6 +26,10 @@ describe('KaneoProvider', () => {
     test('has correct name', () => {
       expect(provider.name).toBe('kaneo')
     })
+
+    test('does not expose labels.delete capability', () => {
+      expect(provider.capabilities.has('labels.delete')).toBe(false)
+    })
   })
 
   describe('listStatuses', () => {

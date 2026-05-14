@@ -19,7 +19,6 @@ export const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapabil
   'labels.list',
   'labels.create',
   'labels.update',
-  'labels.delete',
   'labels.assign',
   // Statuses (full CRUD)
   'statuses.list',

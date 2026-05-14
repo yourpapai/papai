@@ -16,15 +16,15 @@ export async function updateComment({
   activityId: string
   comment: string
 }): Promise<{ id: string; comment: string; createdAt: string }> {
-  log.debug({ taskId, activityId, commentLength: comment.length }, 'updateComment called')
+  log.debug({ taskId, commentId: activityId, commentLength: comment.length }, 'updateComment called')
 
   try {
     const client = new KaneoClient(config)
     const result = await client.comments.update(taskId, activityId, comment)
-    log.info({ taskId, activityId }, 'Comment updated')
+    log.info({ taskId, commentId: activityId }, 'Comment updated')
     return result
   } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error), activityId }, 'updateComment failed')
+    log.error({ error: error instanceof Error ? error.message : String(error), commentId: activityId }, 'updateComment failed')
     throw classifyKaneoError(error)
   }
 }

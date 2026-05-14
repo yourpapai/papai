@@ -127,8 +127,8 @@ describe('E2E: Task Lifecycle', () => {
       projectId,
     })
 
-    expect(results.length).toBeGreaterThan(0)
-    const firstResult = results[0]!
+    expect(results.tasks.length).toBeGreaterThan(0)
+    const firstResult = results.tasks[0]!
     expect(firstResult.id).toBe(task.id)
   })
 

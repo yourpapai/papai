@@ -12,31 +12,7 @@
 
 import { z } from 'zod'
 
-import { CreateCommentResponseSchema } from './create-comment.js'
 import { ColumnSchema, ListTaskSchema } from './list-tasks.js'
-import { UpdateCommentResponseSchema } from './update-comment.js'
-
-/**
- * POST /activity/comment returns {} instead of the created activity record.
- *
- * Root cause: missing .returning() on the Drizzle ORM insert in create-comment.ts.
- * Upstream bug: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
- *
- * All fields are made optional via .partial() so validation does not throw on
- * the empty object. The caller must supply fallback values for any field it needs.
- */
-export const CreateCommentResponseCompatSchema = CreateCommentResponseSchema.partial()
-
-/**
- * PUT /activity/comment returns {} instead of the updated activity record.
- *
- * Root cause: missing .returning() on the Drizzle ORM update in update-comment.ts.
- * Upstream bug: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/update-comment.ts
- *
- * All fields are made optional via .partial() so validation does not throw on
- * the empty object. The caller must supply fallback values for any field it needs.
- */
-export const UpdateCommentResponseCompatSchema = UpdateCommentResponseSchema.partial()
 
 /**
  * All column endpoints return `icon` and `color` as absent (undefined) instead of null

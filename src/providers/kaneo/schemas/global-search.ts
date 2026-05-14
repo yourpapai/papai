@@ -68,6 +68,26 @@ export const SearchCommentSchema = z.object({
 
 export const SearchActivitySchema = SearchCommentSchema
 
+export const RuntimeSearchResultSchema = z.object({
+  id: z.string(),
+  type: z.enum(['task', 'project', 'workspace', 'comment', 'activity']),
+  title: z.string(),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  projectId: z.string().optional(),
+  projectName: z.string().optional(),
+  workspaceId: z.string().optional(),
+  workspaceName: z.string().optional(),
+  userId: z.string().optional(),
+  userName: z.string().optional(),
+  createdAt: SearchDateTimeSchema,
+  relevanceScore: z.number(),
+  taskNumber: z.number().optional(),
+  projectSlug: z.string().optional(),
+  priority: z.string().optional(),
+  status: z.string().optional(),
+})
+
 export const GlobalSearchResponseSchema = z.object({
   tasks: z.array(SearchTaskSchema),
   projects: z.array(SearchProjectSchema),
@@ -76,5 +96,12 @@ export const GlobalSearchResponseSchema = z.object({
   activities: z.array(SearchActivitySchema),
 })
 
+export const RuntimeGlobalSearchResponseSchema = z.object({
+  results: z.array(RuntimeSearchResultSchema),
+  totalCount: z.number(),
+  searchQuery: z.string(),
+})
+
 export type SearchTask = z.infer<typeof SearchTaskSchema>
 export type GlobalSearchResponse = z.infer<typeof GlobalSearchResponseSchema>
+export type RuntimeGlobalSearchResponse = z.infer<typeof RuntimeGlobalSearchResponseSchema>

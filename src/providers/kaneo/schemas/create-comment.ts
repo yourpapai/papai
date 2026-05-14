@@ -1,29 +1,20 @@
 import { z } from 'zod'
 
-// Enums
-const ActivityTypeEnum = z.enum([
-  'comment',
-  'task',
-  'status_changed',
-  'priority_changed',
-  'unassigned',
-  'assignee_changed',
-  'due_date_changed',
-  'title_changed',
-  'description_changed',
-  'create',
-])
+export const CommentUserSchema = z.object({
+  name: z.string(),
+  image: z.string().nullable(),
+})
 
-// Response schema
 export const CreateCommentResponseSchema = z.object({
   id: z.string(),
   taskId: z.string(),
-  type: ActivityTypeEnum,
-  createdAt: z.string().or(z.object({})),
-  userId: z.string().nullable(),
-  content: z.string().nullable(),
-  externalUserName: z.string().nullable(),
-  externalUserAvatar: z.string().nullable(),
-  externalSource: z.string().nullable(),
-  externalUrl: z.string().nullable(),
+  userId: z.string(),
+  content: z.string(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+  user: CommentUserSchema.optional(),
 })
+
+export const CommentListResponseSchema = CreateCommentResponseSchema.array()
+
+export type CreateCommentResponse = z.infer<typeof CreateCommentResponseSchema>

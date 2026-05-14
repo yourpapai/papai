@@ -101,8 +101,7 @@ describe('E2E: User Workflows', () => {
     await addTaskRelation({ config: kaneoConfig, taskId: childTask.id, relatedTaskId: parentTask.id, type: 'parent' })
 
     const childWithRel = await getTask({ config: kaneoConfig, taskId: childTask.id })
-    expect(childWithRel.description).toContain('parent:')
-    expect(childWithRel.description).toContain(parentTask.id)
+    expect(childWithRel.relations).toContainEqual({ type: 'parent', taskId: parentTask.id })
   })
 
   test('bulk operations workflow', async () => {

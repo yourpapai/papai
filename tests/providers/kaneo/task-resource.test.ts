@@ -11,153 +11,24 @@ function parseRequestBody(options: RequestInit): unknown {
   return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
 }
 
-function makeAddRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
-  let callCount = 0
-  return (_url: string, _options: RequestInit): Promise<Response> => {
-    callCount += 1
-    if (callCount === 1) {
-      // First call: get related task
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-2',
-            title: 'Related Task',
-            description: '',
-            number: 2,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    if (callCount === 2) {
-      // Second call: get source task
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-1',
-            title: 'Task 1',
-            description: '',
-            number: 1,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    // Third call: update description with relation
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          id: 'task-1',
-          title: 'Task 1',
-          description: '---\nblocks: task-2\n---',
-          number: 1,
-          status: 'todo',
-          priority: 'medium',
-          projectId: 'proj-1',
-          position: 0,
-          userId: null,
-          createdAt: new Date().toISOString(),
-        }),
-        { status: 200 },
-      ),
-    )
-  }
-}
+function makeTaskRelationFetchHandler(
+  requests: Array<{ url: string; method: string; body?: unknown }>,
+  relationsResponse: unknown,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    requests.push({ url, method: options.method ?? 'GET', body: parseRequestBody(options) })
 
-function makeRemoveRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
-  let callCount = 0
-  return (_url: string, _options: RequestInit): Promise<Response> => {
-    callCount += 1
-    if (callCount === 1) {
-      // First call: get task with relation
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-1',
-            title: 'Task 1',
-            description: '---\nblocks: task-2\n---',
-            number: 1,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
+    if (url.includes('/api/task-relation/task-1')) {
+      return Promise.resolve(new Response(JSON.stringify(relationsResponse), { status: 200 }))
     }
-    // Second call: update description without relation
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          id: 'task-1',
-          title: 'Task 1',
-          description: '',
-          number: 1,
-          status: 'todo',
-          priority: 'medium',
-          projectId: 'proj-1',
-          position: 0,
-          userId: null,
-          createdAt: new Date().toISOString(),
-        }),
-        { status: 200 },
-      ),
-    )
-  }
-}
 
-function makeUpdateRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
-  let callCount = 0
-  return (_url: string, _options: RequestInit): Promise<Response> => {
-    callCount += 1
-    if (callCount === 1) {
-      // First call: get task with existing relation
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-1',
-            title: 'Task 1',
-            description: '---\nblocks: task-2\n---',
-            number: 1,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    // Second call: update description with new relation type
     return Promise.resolve(
       new Response(
         JSON.stringify({
-          id: 'task-1',
-          title: 'Task 1',
-          description: '---\nduplicate: task-2\n---',
-          number: 1,
-          status: 'todo',
-          priority: 'medium',
-          projectId: 'proj-1',
-          position: 0,
-          userId: null,
+          id: 'rel-1',
+          sourceTaskId: 'task-1',
+          targetTaskId: 'task-2',
+          relationType: 'blocks',
           createdAt: new Date().toISOString(),
         }),
         { status: 200 },
@@ -441,24 +312,26 @@ describe('TaskResource', () => {
 
   describe('get', () => {
     test('fetches task with details', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
+      setMockFetch((url) => {
+        if (url.includes('/api/task-relation/task-1')) {
+          return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+        }
+
+        return Promise.resolve(
           new Response(
-            JSON.stringify(
-              {
-                ...createMockTask({
+            JSON.stringify({
+              ...createMockTask({
                 id: 'task-1',
                 title: 'Test',
                 number: 1,
                 description: 'Details',
-                }),
-                startDate: '2026-03-01T00:00:00.000Z',
-              },
-            ),
+              }),
+              startDate: '2026-03-01T00:00:00.000Z',
+            }),
             { status: 200 },
           ),
-        ),
-      )
+        )
+      })
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.get('task-1')
@@ -491,33 +364,63 @@ describe('TaskResource', () => {
       await expect(resource.get('task-1')).rejects.toThrow()
     })
 
-    test('parses relations from description frontmatter', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
+    test('reads first-class task relations from /task-relation/{taskId}', async () => {
+      setMockFetch((url) => {
+        if (url.includes('/api/task-relation/task-1')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                {
+                  id: 'rel-1',
+                  sourceTaskId: 'task-1',
+                  targetTaskId: 'task-2',
+                  relationType: 'blocks',
+                  createdAt: '2026-05-14T09:00:00.000Z',
+                },
+                {
+                  id: 'rel-2',
+                  sourceTaskId: 'task-3',
+                  targetTaskId: 'task-1',
+                  relationType: 'subtask',
+                  createdAt: '2026-05-14T09:00:00.000Z',
+                },
+              ]),
+              { status: 200 },
+            ),
+          )
+        }
+
+        return Promise.resolve(
           new Response(
             JSON.stringify(
               createMockTask({
                 id: 'task-1',
                 title: 'Test',
                 number: 1,
-                description: '---\nblocks: task-2\nrelated: task-3\n---\nTask details',
+                description: 'Task details',
               }),
             ),
             { status: 200 },
           ),
-        ),
-      )
+        )
+      })
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.get('task-1')
       expect(result.relations).toHaveLength(2)
       expect(result.relations[0]!.type).toBe('blocks')
       expect(result.relations[0]!.taskId).toBe('task-2')
+      expect(result.relations[1]!.type).toBe('child')
+      expect(result.relations[1]!.taskId).toBe('task-3')
     })
 
     test('handles task with empty description', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
+      setMockFetch((url) => {
+        if (url.includes('/api/task-relation/task-1')) {
+          return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+        }
+
+        return Promise.resolve(
           new Response(
             JSON.stringify(
               createMockTask({
@@ -529,8 +432,8 @@ describe('TaskResource', () => {
             ),
             { status: 200 },
           ),
-        ),
-      )
+        )
+      })
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.get('task-1')
@@ -1042,6 +945,59 @@ describe('TaskResource', () => {
       ])
       expect(result.projects).toHaveLength(1)
     })
+
+    test('accepts live Kaneo runtime search envelope with results array', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  id: 'task-live-1',
+                  type: 'task',
+                  title: 'Live result',
+                  projectId: 'proj-1',
+                  projectName: 'Project 1',
+                  projectSlug: 'project-1',
+                  workspaceId: 'ws-1',
+                  workspaceName: 'Workspace 1',
+                  createdAt: '2026-01-09T00:00:00.000Z',
+                  relevanceScore: 3,
+                  taskNumber: 9,
+                  priority: 'low',
+                  status: 'done',
+                },
+              ],
+              totalCount: 1,
+              searchQuery: 'live',
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      const result = await resource.search({ query: 'live', workspaceId: 'ws-1' })
+
+      expect(result.tasks).toEqual([
+        {
+          id: 'task-live-1',
+          projectId: 'proj-1',
+          position: null,
+          number: 9,
+          userId: null,
+          title: 'Live result',
+          description: null,
+          status: 'done',
+          priority: 'low',
+          createdAt: '2026-01-09T00:00:00.000Z',
+        },
+      ])
+      expect(result.projects).toEqual([])
+      expect(result.workspaces).toEqual([])
+      expect(result.comments).toEqual([])
+      expect(result.activities).toEqual([])
+    })
   })
 
   describe('get - error paths', () => {
@@ -1079,11 +1035,17 @@ describe('TaskResource', () => {
 
   describe('addRelation', () => {
     test('adds relation between tasks', async () => {
-      setMockFetch(makeAddRelationFetchHandler())
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(makeTaskRelationFetchHandler(requests, []))
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.addRelation('task-1', 'task-2', 'blocks')
 
+      expect(requests[0]).toMatchObject({
+        url: 'https://api.test.com/api/task-relation',
+        method: 'POST',
+        body: { sourceTaskId: 'task-1', targetTaskId: 'task-2', relationType: 'blocks' },
+      })
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
       expect(result.type).toBe('blocks')
@@ -1092,36 +1054,31 @@ describe('TaskResource', () => {
 
   describe('removeRelation', () => {
     test('removes relation between tasks', async () => {
-      setMockFetch(makeRemoveRelationFetchHandler())
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(
+        makeTaskRelationFetchHandler(requests, [
+          {
+            id: 'rel-1',
+            sourceTaskId: 'task-1',
+            targetTaskId: 'task-2',
+            relationType: 'blocks',
+            createdAt: '2026-05-14T09:00:00.000Z',
+          },
+        ]),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.removeRelation('task-1', 'task-2')
 
+      expect(requests.map((request) => request.method)).toEqual(['GET', 'DELETE'])
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
       expect(result.success).toBe(true)
     })
 
     test('throws error when relation not found', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        ),
-      )
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(makeTaskRelationFetchHandler(requests, []))
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const promise = resource.removeRelation('task-1', 'task-2')
@@ -1131,36 +1088,31 @@ describe('TaskResource', () => {
 
   describe('updateRelation', () => {
     test('updates relation type', async () => {
-      setMockFetch(makeUpdateRelationFetchHandler())
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(
+        makeTaskRelationFetchHandler(requests, [
+          {
+            id: 'rel-1',
+            sourceTaskId: 'task-1',
+            targetTaskId: 'task-2',
+            relationType: 'related',
+            createdAt: '2026-05-14T09:00:00.000Z',
+          },
+        ]),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
-      const result = await resource.updateRelation('task-1', 'task-2', 'duplicate')
+      const result = await resource.updateRelation('task-1', 'task-2', 'blocks')
 
+      expect(requests.map((request) => request.method)).toEqual(['GET', 'DELETE', 'POST'])
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
-      expect(result.type).toBe('duplicate')
+      expect(result.type).toBe('blocks')
     })
 
     test('throws error when relation not found', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        ),
-      )
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(makeTaskRelationFetchHandler(requests, []))
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const promise = resource.updateRelation('task-1', 'task-2', 'related')

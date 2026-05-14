@@ -91,12 +91,34 @@ describe('E2E: Label Operations', () => {
       name: 'To Remove',
     })
 
+    const task = await createTask({ config: kaneoConfig, projectId, title: 'Task for label deletion' })
+    testClient.trackTask(task.id)
+
+    await addTaskLabel({
+      config: kaneoConfig,
+      taskId: task.id,
+      labelId: label.id,
+      workspaceId: testClient.getWorkspaceId(),
+    })
+
     await removeLabel({ config: kaneoConfig, labelId: label.id })
 
     // Verify label is absent from list after removal
     const labels = await listLabels({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
     const found = labels.find((l) => l.id === label.id)
     expect(found).toBeUndefined()
+  })
+
+  test('throws error when removing unattached label', async () => {
+    const label = await createLabel({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+      name: 'Unattached Remove',
+    })
+    testClient.trackLabel(label.id)
+
+    const promise = removeLabel({ config: kaneoConfig, labelId: label.id })
+    await expect(promise).rejects.toThrow()
   })
 
   test('adds label to task and verifies via re-fetch', async () => {
@@ -167,4 +189,5 @@ describe('E2E: Label Operations', () => {
     })
     await expect(promise).rejects.toThrow()
   })
+
 })

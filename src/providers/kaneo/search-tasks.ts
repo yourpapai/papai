@@ -72,20 +72,20 @@ export async function searchTasks({
   assigneeId?: string
   limit?: number
   offset?: number
-}): Promise<TaskResult[]> {
+}): Promise<GlobalSearchResponse> {
   log.debug({ query, workspaceId, projectId, assigneeId, limit, offset }, 'searchTasks called')
 
   try {
     const client = new KaneoClient(config)
     const result = await client.tasks.search({ query, workspaceId, projectId, assigneeId, limit, offset })
-    const tasks = filterAndPaginateTaskSearchResults(
-      flattenGroupedTaskSearchResults(result),
-      assigneeId,
-      limit,
-      offset,
-    )
-    log.info({ query, resultCount: tasks.length, assigneeId }, 'Tasks searched')
-    return tasks
+    const filteredTasks = filterAndPaginateTaskSearchResults(flattenGroupedTaskSearchResults(result), assigneeId, limit, offset)
+    const filteredTaskIds = new Set(filteredTasks.map((task) => task.id))
+    const filteredResult = {
+      ...result,
+      tasks: result.tasks.filter((task) => filteredTaskIds.has(task.id)),
+    }
+    log.info({ query, resultCount: filteredResult.tasks.length, assigneeId }, 'Tasks searched')
+    return filteredResult
   } catch (error) {
     log.error({ error: error instanceof Error ? error.message : String(error), query }, 'searchTasks failed')
     throw classifyKaneoError(error)

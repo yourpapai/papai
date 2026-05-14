@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 
 import type { KaneoConfig } from '../../../../src/providers/kaneo/client.js'
 import { kaneoSearchTasks } from '../../../../src/providers/kaneo/operations/tasks.js'
+import { mapGlobalSearchTaskResults } from '../../../../src/providers/kaneo/mappers.js'
 import { mockLogger, setMockFetch, restoreFetch } from '../../../utils/test-helpers.js'
 
 describe('kaneoSearchTasks', () => {
@@ -103,5 +104,57 @@ describe('kaneoSearchTasks', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0]?.id).toBe('task-1')
+  })
+
+  test('mapGlobalSearchTaskResults flattens grouped Kaneo search tasks into shared task search results', () => {
+    const result = mapGlobalSearchTaskResults(
+      {
+        tasks: [
+          {
+            id: 'task-1',
+            projectId: 'proj-1',
+            position: null,
+            number: 12,
+            userId: null,
+            title: 'Grouped task',
+            description: null,
+            status: 'todo',
+            priority: 'high',
+            startDate: null,
+            dueDate: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        projects: [
+          {
+            id: 'proj-1',
+            workspaceId: 'ws-1',
+            slug: 'proj-1',
+            icon: null,
+            name: 'Project 1',
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+            isPublic: false,
+            archivedAt: null,
+          },
+        ],
+        workspaces: [],
+        comments: [],
+        activities: [],
+      },
+      () => 'https://api.test.com/workspace/ws-1/project/proj-1/task/task-1',
+    )
+
+    expect(result).toEqual([
+      {
+        id: 'task-1',
+        title: 'Grouped task',
+        number: 12,
+        status: 'todo',
+        priority: 'high',
+        projectId: 'proj-1',
+        url: 'https://api.test.com/workspace/ws-1/project/proj-1/task/task-1',
+      },
+    ])
   })
 })

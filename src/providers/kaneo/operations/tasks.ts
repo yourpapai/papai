@@ -4,7 +4,7 @@ import { createTask } from '../create-task.js'
 import { deleteTask } from '../delete-task.js'
 import { getTask } from '../get-task.js'
 import { listTasks } from '../list-tasks.js'
-import { mapCreateTaskResponse, mapTaskDetails, mapTaskListItem, mapTaskSearchResult } from '../mappers.js'
+import { mapCreateTaskResponse, mapGlobalSearchTaskResults, mapTaskDetails, mapTaskListItem } from '../mappers.js'
 import { searchTasks } from '../search-tasks.js'
 import { updateTask } from '../update-task.js'
 import { buildTaskUrl } from '../url-builder.js'
@@ -89,7 +89,7 @@ export async function kaneoSearchTasks(
   workspaceId: string,
   params: { query: string; projectId?: string; assigneeId?: string; limit?: number; offset?: number },
 ): Promise<TaskSearchResult[]> {
-  const results = await searchTasks({
+  const result = await searchTasks({
     config,
     query: params.query,
     workspaceId,
@@ -98,7 +98,8 @@ export async function kaneoSearchTasks(
     limit: params.limit,
     offset: params.offset,
   })
-  return results.map((t) => mapTaskSearchResult(t, buildTaskUrl(config.baseUrl, workspaceId, t.projectId ?? '', t.id)))
+
+  return mapGlobalSearchTaskResults(result, (task) => buildTaskUrl(config.baseUrl, workspaceId, task.projectId, task.id))
 }
 
 export async function kaneoDeleteTask(config: KaneoConfig, taskId: string): Promise<{ id: string }> {

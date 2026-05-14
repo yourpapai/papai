@@ -6,6 +6,7 @@ import { z } from 'zod'
 import {
   ColumnCompatSchema as KaneoColumnSchema,
 } from '../../../src/providers/kaneo/schemas/api-compat.js'
+import { CreateCommentResponseSchema } from '../../../src/providers/kaneo/schemas/create-comment.js'
 import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { TaskSchema as CreateTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
@@ -78,6 +79,9 @@ function makeColumnOrTaskRouter(columnPayload: object[], taskPayload: object): (
   return (url) => {
     if (url.includes('/column/')) {
       return Promise.resolve(new Response(JSON.stringify(columnPayload), { status: 200 }))
+    }
+    if (url.includes('/task-relation/')) {
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     }
     return Promise.resolve(new Response(JSON.stringify(taskPayload), { status: 200 }))
   }
@@ -673,6 +677,23 @@ describe('Schema Validation', () => {
       expect(result.data[0].type).toBe('comment')
     })
 
+    test('CreateCommentResponseSchema validates the published /comment payload', () => {
+      const result = CreateCommentResponseSchema.safeParse({
+        id: 'comment-1',
+        taskId: 'task-1',
+        userId: 'user-1',
+        content: 'Test comment',
+        createdAt: '2026-05-14T09:00:00.000Z',
+        updatedAt: '2026-05-14T09:00:00.000Z',
+        user: {
+          name: 'Test User',
+          image: null,
+        },
+      })
+
+      expect(result.success).toBe(true)
+    })
+
     test('ActivityItemSchema fails on missing required fields', () => {
       // Missing id, createdAt
       const invalidActivity = { content: 'Test' }
@@ -684,7 +705,23 @@ describe('Schema Validation', () => {
       test('validates array response schema', async () => {
         setMockFetch(() =>
           Promise.resolve(
-            new Response(JSON.stringify([createMockActivity(validActivityWithTypeResponse)]), { status: 200 }),
+            new Response(
+              JSON.stringify([
+                {
+                  id: 'comment-1',
+                  taskId: 'task-1',
+                  userId: 'user-1',
+                  content: 'Test comment',
+                  createdAt: '2026-05-14T09:00:00.000Z',
+                  updatedAt: '2026-05-14T09:00:00.000Z',
+                  user: {
+                    name: 'Test User',
+                    image: null,
+                  },
+                },
+              ]),
+              { status: 200 },
+            ),
           ),
         )
 
@@ -701,8 +738,25 @@ describe('Schema Validation', () => {
 
     describe('CommentResource.update', () => {
       test('validates response schema on update', async () => {
-        // PUT returns {} (Kaneo bug), then GET returns array — differentiate by method
-        setMockFetch(makePutOrGetRouter([createMockActivity(validActivityResponse)]))
+        setMockFetch(() =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'act-1',
+                taskId: 'task-1',
+                userId: 'user-1',
+                content: 'Updated',
+                createdAt: '2026-05-14T09:00:00.000Z',
+                updatedAt: '2026-05-14T10:00:00.000Z',
+                user: {
+                  name: 'Test User',
+                  image: null,
+                },
+              }),
+              { status: 200 },
+            ),
+          ),
+        )
 
         const resource = new CommentResource(mockConfig)
         const result = await resource.update('task-1', 'act-1', 'Updated')

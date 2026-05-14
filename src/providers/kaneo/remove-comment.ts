@@ -12,15 +12,15 @@ export async function removeComment({
   config: KaneoConfig
   activityId: string
 }): Promise<{ id: string; success: true }> {
-  log.debug({ activityId }, 'removeComment called')
+  log.debug({ commentId: activityId }, 'removeComment called')
 
   try {
     const client = new KaneoClient(config)
     const result = await client.comments.remove(activityId)
-    log.info({ activityId }, 'Comment removed')
+    log.info({ commentId: activityId }, 'Comment removed')
     return result
   } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error), activityId }, 'removeComment failed')
+    log.error({ error: error instanceof Error ? error.message : String(error), commentId: activityId }, 'removeComment failed')
     throw classifyKaneoError(error)
   }
 }

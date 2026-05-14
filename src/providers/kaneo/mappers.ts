@@ -2,7 +2,16 @@ import type { Column, Comment, Label, Project, Task, TaskListItem, TaskSearchRes
 import type { TaskDetails } from './get-task.js'
 import type { KaneoTaskListItem } from './list-tasks.js'
 import type { CreateTaskResponse } from './schemas/create-task.js'
-import type { TaskResult } from './search-tasks.js'
+import { GlobalSearchResponseSchema, SearchTaskSchema, type GlobalSearchResponse } from './schemas/global-search.js'
+
+type TaskSearchMappingInput = {
+  id: string
+  title: string
+  number: number | null
+  status: string
+  priority: string
+  projectId: string
+}
 
 /** Safely convert an unknown Kaneo date field to a string or null/undefined. */
 const toDateString = (value: unknown): string | null => {
@@ -61,8 +70,27 @@ export const mapTaskListItem = (t: KaneoTaskListItem, url: string): TaskListItem
   url,
 })
 
+export const mapGlobalSearchTaskResults = (
+  result: GlobalSearchResponse,
+  buildUrl: (task: TaskSearchMappingInput) => string,
+): TaskSearchResult[] =>
+  GlobalSearchResponseSchema.parse(result).tasks
+    .map((task) => {
+      const priorityParsed = SearchTaskSchema.shape.priority.safeParse(task.priority)
+
+      return {
+        id: task.id,
+        title: task.title,
+        number: task.number,
+        status: task.status,
+        priority: priorityParsed.success ? priorityParsed.data : 'no-priority',
+        projectId: task.projectId,
+      }
+    })
+    .map((task) => mapTaskSearchResult(task, buildUrl(task)))
+
 /** Map Kaneo search result to common TaskSearchResult type. */
-export const mapTaskSearchResult = (t: TaskResult, url: string): TaskSearchResult => ({
+export const mapTaskSearchResult = (t: TaskSearchMappingInput, url: string): TaskSearchResult => ({
   id: t.id,
   title: t.title,
   number: t.number ?? undefined,

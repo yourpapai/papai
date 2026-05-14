@@ -114,6 +114,16 @@ describe('buildTools', () => {
     expect(tools).toHaveProperty('remove_comment_reaction')
   })
 
+  it('should expose remove_label when labels.delete capability is present', () => {
+    const provider = createMockProvider({
+      capabilities: new Set(['labels.delete']),
+    } as Partial<TaskProvider>)
+
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+
+    expect(tools).toHaveProperty('remove_label')
+  })
+
   it('should conditionally add deferred prompt tools in normal mode', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')

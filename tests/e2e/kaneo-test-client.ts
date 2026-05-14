@@ -93,8 +93,17 @@ export class KaneoTestClient {
     // Remove all labels
     for (const labelId of this.createdLabelIds) {
       try {
-        await removeLabel({ config: this.kaneoConfig, labelId })
-        log.debug({ labelId }, 'Label removed during cleanup')
+        const labels = await fetch(`${this.kaneoConfig.baseUrl}/api/label/workspace/${this.config.workspaceId}`, {
+          headers: { Authorization: `Bearer ${this.kaneoConfig.apiKey}` },
+        }).then(async (response) =>
+          response.ok ? ((await response.json()) as Array<{ id: string; taskId: string | null }>) : [],
+        )
+
+        const matchingLabel = labels.find((label) => label.id === labelId)
+        if (matchingLabel?.taskId !== undefined && matchingLabel.taskId !== null) {
+          await removeLabel({ config: this.kaneoConfig, labelId })
+          log.debug({ labelId }, 'Label removed during cleanup')
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         log.warn({ labelId, error: message }, 'Failed to remove label during cleanup')

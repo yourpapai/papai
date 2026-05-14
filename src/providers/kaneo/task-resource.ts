@@ -4,15 +4,61 @@ import { logger } from '../../logger.js'
 import type { ListTasksParams } from '../types.js'
 import { classifyKaneoError } from './classify-error.js'
 import { type KaneoConfig, kaneoFetch } from './client.js'
-import { parseRelationsFromDescription, type TaskRelation } from './frontmatter.js'
+import { getTaskRelations } from './task-relations.js'
+import type { TaskRelation } from '../types.js'
 import { buildListTasksQuery } from './list-tasks-query.js'
 import type { KaneoTaskListItem } from './list-tasks.js'
 import { TaskSchema as KaneoCreateTaskResponseSchema } from './schemas/create-task.js'
 import { TaskSchema as KaneoGetTaskResponseSchema } from './schemas/get-task.js'
+import {
+  GlobalSearchResponseSchema,
+  RuntimeGlobalSearchResponseSchema,
+  type GlobalSearchResponse,
+  type RuntimeGlobalSearchResponse,
+} from './schemas/global-search.js'
 import { ListTasksResponseSchema } from './schemas/list-tasks.js'
-import { KaneoSearchResponseSchema } from './search-tasks.js'
 import { type TaskStatusDeps, denormalizeStatus, validateStatus } from './task-status.js'
 import { performUpdate } from './task-update-helpers.js'
+
+const normalizeSearchResponse = (
+  result: GlobalSearchResponse | RuntimeGlobalSearchResponse,
+): GlobalSearchResponse => {
+  if ('tasks' in result) {
+    return result
+  }
+
+  return {
+    tasks: result.results.flatMap((item) =>
+      item.type !== 'task' || item.projectId === undefined
+        ? []
+        : [
+            {
+              id: item.id,
+              projectId: item.projectId,
+              position: null,
+              number: item.taskNumber ?? null,
+              userId: item.userId ?? null,
+              title: item.title,
+              description: item.description ?? null,
+              status: item.status ?? 'to-do',
+              priority:
+                item.priority === 'low' ||
+                item.priority === 'medium' ||
+                item.priority === 'high' ||
+                item.priority === 'urgent' ||
+                item.priority === 'no-priority'
+                  ? item.priority
+                  : 'no-priority',
+              createdAt: item.createdAt,
+            },
+          ],
+    ),
+    projects: [],
+    workspaces: [],
+    comments: [],
+    activities: [],
+  }
+}
 
 export class TaskResource {
   private log = logger.child({ scope: 'kaneo:task-resource' })
@@ -129,9 +175,8 @@ export class TaskResource {
       )
       // Denormalize status from column ID to slug
       task.status = await denormalizeStatus(this.config, task.projectId, task.status, this.statusDeps)
-      const { relations } = parseRelationsFromDescription(task.description ?? '')
+      const relations = await getTaskRelations(this.config, taskId)
       this.log.info({ taskId, number: task.number, relationCount: relations.length }, 'Task fetched')
-      // Return raw description (with frontmatter) for tests to check relation markers
       return {
         ...task,
         number: task.number ?? 0,
@@ -196,7 +241,7 @@ export class TaskResource {
     assigneeId?: string
     limit?: number
     offset?: number
-  }): Promise<z.infer<typeof KaneoSearchResponseSchema>> {
+  }): Promise<GlobalSearchResponse> {
     this.log.debug(params, 'Searching tasks')
     try {
       const shouldPaginateLocally = params.assigneeId !== undefined
@@ -208,9 +253,17 @@ export class TaskResource {
         ...(shouldPaginateLocally || params.limit === undefined ? {} : { limit: String(params.limit) }),
         ...(shouldPaginateLocally || params.offset === undefined ? {} : { offset: String(params.offset) }),
       }
-      const result = await kaneoFetch(this.config, 'GET', '/search', undefined, queryParams, KaneoSearchResponseSchema)
-      this.log.info({ taskCount: result.tasks.length, assigneeId: params.assigneeId }, 'Tasks searched')
-      return result
+      const result = await kaneoFetch(
+        this.config,
+        'GET',
+        '/search',
+        undefined,
+        queryParams,
+        z.union([GlobalSearchResponseSchema, RuntimeGlobalSearchResponseSchema]),
+      )
+      const normalizedResult = normalizeSearchResponse(result)
+      this.log.info({ taskCount: normalizedResult.tasks.length, assigneeId: params.assigneeId }, 'Tasks searched')
+      return normalizedResult
     } catch (error) {
       this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to search tasks')
       throw classifyKaneoError(error)
