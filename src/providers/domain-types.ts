@@ -65,6 +65,7 @@ export type Task = {
   status?: string
   priority?: string
   assignee?: string | null
+  startDate?: string | null
   dueDate?: string | null
   createdAt?: string
   projectId?: string

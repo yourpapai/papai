@@ -151,6 +151,7 @@ describe('KaneoProvider', () => {
   describe('createTask', () => {
     test('passes startDate through the provider create path', async () => {
       let requestBody: Record<string, unknown> | undefined
+      let createdTask: Awaited<ReturnType<KaneoProvider['createTask']>> | undefined
 
       setMockFetch((url, options) => {
         if (url.includes('/column/')) {
@@ -185,13 +186,14 @@ describe('KaneoProvider', () => {
         )
       })
 
-      await provider.createTask({
+      createdTask = await provider.createTask({
         projectId: 'proj-1',
         title: 'Test Task',
         startDate: '2026-03-01T00:00:00.000Z',
       })
 
       expect(requestBody?.['startDate']).toBe('2026-03-01T00:00:00.000Z')
+      expect(createdTask.startDate).toBe('2026-03-01T00:00:00.000Z')
     })
   })
 

@@ -13,6 +13,7 @@ export interface TaskDetails {
   number: number
   status: string
   priority: string
+  startDate: string | null
   dueDate: string | null
   createdAt: string
   projectId: string
