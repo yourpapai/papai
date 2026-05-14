@@ -132,7 +132,7 @@ const isEntrypoint = (relativePath: string): boolean => {
     return true
   }
 
-  return ['src/index.ts', 'src/bot.ts', 'codeindex/src/cli.ts'].includes(relativePath)
+  return ['src/index.ts', 'src/bot.ts', 'scripts/codeindex-cli.ts'].includes(relativePath)
 }
 
 const inferEntrypoints = (piece: PieceRecord, assets: Readonly<RepositoryAssetMap>): readonly string[] =>

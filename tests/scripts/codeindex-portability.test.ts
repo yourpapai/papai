@@ -44,4 +44,17 @@ describe('codeindex portability wiring', () => {
     expect(verificationGuide).toContain('CODEINDEX_DIR')
     expect(verificationGuide).toContain('clone the sibling repo at ../codeindex')
   })
+
+  test('removes stale in-repo codeindex guidance from active repo files', () => {
+    const architectureInventory = readRepoFile('scripts/architecture-inventory-registry.ts')
+    const reviewLoopGuide = readRepoFile('review-loop/CLAUDE.md')
+    const verificationGuide = readRepoFile('docs/guides/codeindex-verification.md')
+
+    expect(architectureInventory).not.toContain("'codeindex/src/cli.ts'")
+    expect(architectureInventory).toContain("'scripts/codeindex-cli.ts'")
+
+    expect(reviewLoopGuide).not.toContain('codeindex/src/')
+    expect(verificationGuide).not.toContain('That Touch `codeindex/`')
+    expect(verificationGuide).toContain('Before Merging PRs That Touch `codeindex` Integration')
+  })
 })

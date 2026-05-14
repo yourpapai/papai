@@ -234,7 +234,7 @@ Expected: After ~600 ms, a `bun run scripts/codeindex-cli.ts reindex` process ap
 
 ## 8. Maintenance
 
-### Before Merging PRs That Touch `codeindex/`
+### Before Merging PRs That Touch `codeindex` Integration
 
 1. Run `bun run scripts/codeindex-cli.ts index` (full rebuild if schema changed)
 2. Run `bun run scripts/codeindex-cli.ts stats` — compare against baseline

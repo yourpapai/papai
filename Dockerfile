@@ -3,7 +3,6 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json bun.lock ./
-COPY codeindex/package.json ./codeindex/
 COPY review-loop/package.json ./review-loop/
 RUN bun install --frozen-lockfile --production
 
