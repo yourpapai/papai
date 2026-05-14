@@ -30,6 +30,7 @@ import { getWizardSteps } from './wizard/steps.js'
 
 type ProcessMessageFn = typeof defaultProcessMessage
 type EnqueueMessageFn = typeof enqueueMessage
+const initializedChats = new WeakSet<ChatProvider>()
 export interface BotDeps {
   processMessage: ProcessMessageFn
   stagedDownloadFn?: StagedFileDownloadFn
@@ -277,8 +278,10 @@ export function setupBot(chat: ChatProvider, adminUserId: string): void
 export function setupBot(chat: ChatProvider, adminUserId: string, depsInput: BotDeps): void
 export function setupBot(chat: ChatProvider, adminUserId: string, ...rest: [] | [BotDeps]): void {
   const deps = rest.length === 0 ? defaultBotDeps : rest[0]
+  if (initializedChats.has(chat)) return
   registerCommands(chat, adminUserId)
   chat.onMessage((msg, reply): Promise<void> => onIncomingMessage(chat, msg, reply, deps))
   if (chat.onInteraction !== undefined)
     chat.onInteraction((interaction, reply): Promise<void> => routeIncomingInteraction(interaction, reply))
+  initializedChats.add(chat)
 }

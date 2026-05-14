@@ -70,6 +70,7 @@ export class TelegramChatProvider implements ChatProvider {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }
     this.bot = new Bot(token)
+    this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
   registerCommand(name: string, handler: CommandHandler): void {
     this.bot.command(name, async (ctx) => {
@@ -135,7 +136,6 @@ export class TelegramChatProvider implements ChatProvider {
     await this.bot.api.sendMessage(chatId, `${mentionPrefix.text}${formatted.text}`, options)
   }
   start(): Promise<void> {
-    this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
     return new Promise<void>((resolve, reject) => {
       this.bot
         .start({

@@ -1324,6 +1324,52 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(provider.interactionHandler).not.toBeNull()
   })
 
+  test('setupBot registers commands and handlers only once per provider instance', () => {
+    const commandHandlers = new Map<string, CommandHandler>()
+    let messageRegistrationCount = 0
+    let interactionRegistrationCount = 0
+
+    const provider: ChatProvider = {
+      ...createMockChat({ commandHandlers }),
+      registerCommand(name: string, handler: CommandHandler): void {
+        if (commandHandlers.has(name)) {
+          throw new Error(`duplicate command registration: ${name}`)
+        }
+        commandHandlers.set(name, handler)
+      },
+      onMessage(_handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
+        messageRegistrationCount += 1
+        if (messageRegistrationCount > 1) {
+          throw new Error('duplicate message handler registration')
+        }
+      },
+      onInteraction(_handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
+        interactionRegistrationCount += 1
+        if (interactionRegistrationCount > 1) {
+          throw new Error('duplicate interaction handler registration')
+        }
+      },
+    }
+
+    setupBot(
+      provider,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    expect(() =>
+      setupBot(
+        provider,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: (): Promise<void> => Promise.resolve(),
+        }),
+      ),
+    ).not.toThrow()
+  })
+
   test('interaction handler replies with allowlist hint for non-allowlisted groups', async () => {
     const { provider: mockChat, getInteractionHandler } = createMockChatForBot()
     setupBot(
