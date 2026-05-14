@@ -7,8 +7,6 @@
     "scripts/build-client.ts!",
     "client/debug/index.ts!",
     "tests/providers/youtrack/test-helpers.ts!",
-    "codeindex/src/cli.ts!",
-    "tests/codeindex/**/*.test.ts!",
     "review-loop/src/cli.ts!",
     "tests/review-loop/**/*.test.ts!",
     "scripts/behavior-audit/index.ts!",
@@ -21,13 +19,7 @@
   ],
 
   // All source files (production only)
-  "project": [
-    "src/**/*.ts!",
-    "client/**/*.ts!",
-    "codeindex/src/**/*.ts!",
-    "review-loop/src/**/*.ts!",
-    "scripts/behavior-audit/**/*.ts!",
-  ],
+  "project": ["src/**/*.ts!", "client/**/*.ts!", "review-loop/src/**/*.ts!", "scripts/behavior-audit/**/*.ts!"],
 
   // All issue types treated as hard errors
   "rules": {
@@ -47,8 +39,8 @@
     "catalog": "error",
   },
 
-  // Ignore Stryker plugin (loaded at runtime, not imported)
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker"],
+  // Ignore Stryker plugin (loaded at runtime, not imported) and codeindex (linked via `bun link`)
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex"],
 
   "ignoreIssues": {
     "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
@@ -68,5 +60,5 @@
   "ignoreExportsUsedInFile": true,
 
   // Ignore migration files and generated/runtime-only code that knip should not analyze as files
-  "ignore": ["src/db/migrations/**", "codeindex/.codeindex/**", "codeindex/test-preload.ts"],
+  "ignore": ["src/db/migrations/**"],
 }

@@ -142,6 +142,14 @@ describe('index.ts - graceful shutdown', () => {
       scheduler: {
         startAll: (): void => undefined,
         stopAll: (): void => undefined,
+        hasTask: (): boolean => false,
+        register: (): void => undefined,
+        unregister: (): void => undefined,
+        start: (): void => undefined,
+        stop: (): void => undefined,
+        getTaskState: (): undefined => undefined,
+        on: (): void => undefined,
+        off: (): void => undefined,
       },
     }))
     void mock.module('../src/scheduler.js', () => ({

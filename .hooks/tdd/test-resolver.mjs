@@ -20,13 +20,12 @@ export function isTestFile(filePath) {
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under src/, client/, or codeindex/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
+  // Must be under src/, client/, or review-loop/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
-  const isCodeindex = rel.startsWith('codeindex/src/') || rel.startsWith('codeindex\\src\\')
   const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
-  if (!isSrc && !isClient && !isCodeindex && !isReviewLoop) return false
+  if (!isSrc && !isClient && !isReviewLoop) return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
   return true
@@ -43,13 +42,6 @@ export function suggestTestPath(implRelPath) {
     const ext = path.extname(implRelPath)
     const base = implRelPath.slice(0, -ext.length)
     return path.join('tests', `${base}.test${ext}`)
-  }
-  // codeindex/src/foo/bar.ts → tests/codeindex/foo/bar.test.ts (strip codeindex/src/ prefix)
-  if (implRelPath.startsWith('codeindex/src/') || implRelPath.startsWith('codeindex\\src\\')) {
-    const withoutCodeindexSrc = implRelPath.replace(/^codeindex[/\\]src[/\\]/, '')
-    const ext = path.extname(withoutCodeindexSrc)
-    const base = withoutCodeindexSrc.slice(0, -ext.length)
-    return path.join('tests', 'codeindex', `${base}.test${ext}`)
   }
   // review-loop/src/foo.ts → tests/review-loop/foo.test.ts
   if (implRelPath.startsWith('review-loop/src/') || implRelPath.startsWith('review-loop\\src\\')) {
@@ -81,18 +73,6 @@ export function findTestFile(implAbsPath, projectRoot) {
 
     for (const suffix of ['.test', '.spec']) {
       const candidate = path.join(projectRoot, 'tests', `${base}${suffix}${ext}`)
-      if (fs.existsSync(candidate)) return candidate
-    }
-  }
-
-  // codeindex/src/foo/bar.ts → tests/codeindex/foo/bar.test.ts
-  if (rel.startsWith('codeindex/src/') || rel.startsWith('codeindex\\src\\')) {
-    const withoutCodeindexSrc = rel.replace(/^codeindex[/\\]src[/\\]/, '')
-    const ext = path.extname(withoutCodeindexSrc)
-    const base = withoutCodeindexSrc.slice(0, -ext.length)
-
-    for (const suffix of ['.test', '.spec']) {
-      const candidate = path.join(projectRoot, 'tests', 'codeindex', `${base}${suffix}${ext}`)
       if (fs.existsSync(candidate)) return candidate
     }
   }
@@ -157,11 +137,6 @@ export function resolveImplPath(testRelPath) {
     if (dir === 'review-loop' || dir.startsWith('review-loop/') || dir.startsWith('review-loop\\')) {
       const withoutReviewLoop = dir.replace(/^review-loop[/\\]?/, '')
       return path.join('review-loop', 'src', withoutReviewLoop, `${base}${ext}`)
-    }
-    // tests/codeindex/foo/bar.test.ts → codeindex/src/foo/bar.ts
-    if (dir.startsWith('codeindex/') || dir.startsWith('codeindex\\') || dir === 'codeindex') {
-      const withoutCodeindex = dir.replace(/^codeindex[/\\]?/, '')
-      return path.join('codeindex', 'src', withoutCodeindex, `${base}${ext}`)
     }
     // tests/foo/bar.test.ts → src/foo/bar.ts (prepend src/)
     return path.join('src', dir, `${base}${ext}`)

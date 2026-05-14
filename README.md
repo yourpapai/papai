@@ -7,9 +7,9 @@
 <p align="center">Natural language task management for Telegram, Mattermost, and Discord</p>
 
 <p align="center">
-  <a href="https://github.com/wKich/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wKich/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
-  <a href="https://github.com/wKich/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/wKich/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/wKich/papai?style=flat-square" alt="License"></a>
+  <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
+  <a href="https://github.com/yourpapai/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/yourpapai/papai?style=flat-square" alt="License"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.3%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
 </p>
 
@@ -97,7 +97,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 ### 30-Second Setup
 
 ```bash
-git clone https://github.com/wKich/papai.git
+git clone https://github.com/yourpapai/papai.git
 cd papai
 bun install
 cp .env.example .env
@@ -484,7 +484,7 @@ Current deployment automation is opinionated for the Telegram + Kaneo production
 ### Manual (Bare Metal)
 
 ```bash
-git clone https://github.com/wKich/papai.git
+git clone https://github.com/yourpapai/papai.git
 cd papai
 bun install
 cp .env.example .env

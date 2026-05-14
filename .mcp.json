@@ -6,7 +6,7 @@
   "mcpServers": {
     "codeindex": {
       "command": "bun",
-      "args": ["run", "codeindex/src/cli.ts", "mcp"],
+      "args": ["run", "/Users/ki/Projects/papai/codeindex/src/cli.ts", "mcp"],
       "cwd": ".",
       "lifecycle": "lazy",
       "directTools": true

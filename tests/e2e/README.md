@@ -60,11 +60,11 @@ The following services are started via `docker-compose.yml` + `docker-compose.te
 
 #### Environment Variables
 
-| Variable             | Description                     | Default                  |
-| -------------------- | ------------------------------- | ------------------------ |
+| Variable             | Description                          | Default                  |
+| -------------------- | ------------------------------------ | ------------------------ |
 | `E2E_KANEO_URL`      | Base URL for E2E tests to connect to | `http://localhost:11337` |
-| `KANEO_INTERNAL_URL` | Internal Kaneo base URL             | Same as `E2E_KANEO_URL`  |
-| `KANEO_CLIENT_URL`   | Public URL for auth requests    | Same as base URL         |
+| `KANEO_INTERNAL_URL` | Internal Kaneo base URL              | Same as `E2E_KANEO_URL`  |
+| `KANEO_CLIENT_URL`   | Public URL for auth requests         | Same as base URL         |
 
 ## Test Structure
 

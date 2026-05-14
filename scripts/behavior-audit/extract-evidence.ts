@@ -1,10 +1,11 @@
 import path from 'node:path'
 
-import { loadCodeindexConfig } from '../../codeindex/src/config.js'
-import { findSymbolCandidates, findIncomingReferences } from '../../codeindex/src/search.js'
-import type { ImpactResult } from '../../codeindex/src/search.js'
-import { openDatabase } from '../../codeindex/src/storage/db.js'
-import type { RankedSearchResult } from '../../codeindex/src/types.js'
+import { loadCodeindexConfig } from 'codeindex/src/config.js'
+import { findSymbolCandidates, findIncomingReferences } from 'codeindex/src/search.js'
+import type { ImpactResult } from 'codeindex/src/search.js'
+import { openDatabase } from 'codeindex/src/storage/db.js'
+import type { RankedSearchResult } from 'codeindex/src/types.js'
+
 import type { EvidenceRef, CodeindexProvenance, CodeindexQueryProvenance } from './extract-trust-types.js'
 import type { TestCase } from './test-parser.js'
 

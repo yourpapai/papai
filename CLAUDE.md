@@ -43,10 +43,6 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun check` — run lint/typecheck/format checks for staged files
 - `bun check:full` — run the broader full check suite via `scripts/check.sh`
 - `bun check:verbose` — run lint, typecheck, format:check, knip, test, and duplicates in parallel
-- `bun codeindex:test` — run the codeindex workspace test suite
-- `bun codeindex:typecheck` — run codeindex workspace TypeScript checks
-- `bun codeindex:lint` — lint the codeindex workspace
-- `bun codeindex:format:check` — check codeindex workspace formatting
 - `bun review-loop:test` — run the review-loop workspace test suite
 - `bun review-loop:typecheck` — run review-loop workspace TypeScript checks
 - `bun review-loop:lint` — lint the review-loop workspace
@@ -299,8 +295,9 @@ Detailed conventions live in path-scoped `CLAUDE.md` files:
 | `src/commands/CLAUDE.md`  | command handler rules and DM/group setup flow                          |
 | `src/chat/CLAUDE.md`      | chat provider interface, capabilities, context rendering, interactions |
 | `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |
-| `codeindex/CLAUDE.md`     | codeindex workspace structure, scripts, storage, and indexing rules    |
 | `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, and TDD rules       |
+
+The `codeindex` MCP server now lives in a separate project at `~/Projects/papai/codeindex/`. See its `CLAUDE.md` for structure and scripts.
 
 ## Pi Workflow
 
@@ -340,7 +337,7 @@ When working inside this project, prefer the `codeindex` MCP server tools for st
 - Do NOT use `grep` to search for symbol definitions or usage inside `src/` or `client/`.
 - Do NOT use `glob` with `src/**/*.ts` to discover symbols by filename.
 - Do NOT use `task explore` for structural codebase navigation when the repository is indexed.
-- Do NOT run `bun run codeindex/src/cli.ts ...` directly in conversation; use the MCP tools instead.
+- Do NOT run the codeindex CLI directly in conversation; use the MCP tools instead.
 
 ### Auto-reindexing
 
