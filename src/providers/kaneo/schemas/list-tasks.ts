@@ -40,7 +40,7 @@ const PaginationSchema = z.object({
   totalPages: z.number(),
 })
 
-export const ListTasksResponseSchema = z.object({
+const GroupedTaskListDataSchema = z.object({
   id: z.string(),
   name: z.string(),
   slug: z.string().optional(),
@@ -51,5 +51,9 @@ export const ListTasksResponseSchema = z.object({
   columns: z.array(ColumnWithTasksSchema),
   archivedTasks: z.array(ListTaskSchema),
   plannedTasks: z.array(ListTaskSchema),
+})
+
+export const ListTasksResponseSchema = z.object({
+  data: GroupedTaskListDataSchema,
   pagination: PaginationSchema.optional(),
 })

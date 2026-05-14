@@ -273,38 +273,40 @@ describe('Schema Validation', () => {
     describe('TaskResource.list', () => {
       test('validates array response schema', async () => {
         const validTaskListResponse = {
-          id: 'proj-1',
-          name: 'Test Project',
-          slug: 'test-project',
-          icon: '',
-          description: null,
-          isPublic: false,
-          workspaceId: 'ws-1',
-          columns: [
-            {
-              id: 'col-1',
-              slug: 'to-do',
-              name: 'To Do',
-              icon: null,
-              color: null,
-              isFinal: false,
-              tasks: [
-                {
-                  ...validTaskResponse,
-                  status: 'col-1',
-                  dueDate: null,
-                  position: 1,
-                  createdAt: '2026-03-01T00:00:00Z',
-                  userId: null,
-                  projectId: 'proj-1',
-                  labels: [],
-                  externalLinks: [],
-                },
-              ],
-            },
-          ],
-          archivedTasks: [],
-          plannedTasks: [],
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            slug: 'test-project',
+            icon: '',
+            description: null,
+            isPublic: false,
+            workspaceId: 'ws-1',
+            columns: [
+              {
+                id: 'col-1',
+                slug: 'to-do',
+                name: 'To Do',
+                icon: null,
+                color: null,
+                isFinal: false,
+                tasks: [
+                  {
+                    ...validTaskResponse,
+                    status: 'col-1',
+                    dueDate: null,
+                    position: 1,
+                    createdAt: '2026-03-01T00:00:00Z',
+                    userId: null,
+                    projectId: 'proj-1',
+                    labels: [],
+                    externalLinks: [],
+                  },
+                ],
+              },
+            ],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
           pagination: {
             total: 1,
             page: 1,
@@ -327,41 +329,43 @@ describe('Schema Validation', () => {
         expect(result[0]).toHaveProperty('dueDate')
       })
 
-      test('ListTasksResponseSchema accepts documented grouped task-list payload', () => {
+      test('ListTasksResponseSchema accepts runtime-compatible task-list envelopes', () => {
         const result = ListTasksResponseSchema.safeParse({
-          id: 'proj-1',
-          name: 'Test Project',
-          slug: 'test-project',
-          icon: '',
-          description: null,
-          isPublic: false,
-          workspaceId: 'ws-1',
-          columns: [
-            {
-              id: 'to-do',
-              slug: 'to-do',
-              name: 'To Do',
-              isFinal: false,
-              tasks: [
-                {
-                  ...validTaskResponse,
-                  status: 'to-do',
-                  dueDate: null,
-                  position: 1,
-                  createdAt: '2026-03-01T00:00:00Z',
-                  userId: null,
-                  assigneeId: null,
-                  assigneeName: null,
-                  assigneeImage: null,
-                  projectId: 'proj-1',
-                  labels: [],
-                  externalLinks: [],
-                },
-              ],
-            },
-          ],
-          archivedTasks: [],
-          plannedTasks: [],
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            slug: 'test-project',
+            icon: '',
+            description: null,
+            isPublic: false,
+            workspaceId: 'ws-1',
+            columns: [
+              {
+                id: 'to-do',
+                slug: 'to-do',
+                name: 'To Do',
+                isFinal: false,
+                tasks: [
+                  {
+                    ...validTaskResponse,
+                    status: 'to-do',
+                    dueDate: null,
+                    position: 1,
+                    createdAt: '2026-03-01T00:00:00Z',
+                    userId: null,
+                    assigneeId: null,
+                    assigneeName: null,
+                    assigneeImage: null,
+                    projectId: 'proj-1',
+                    labels: [],
+                    externalLinks: [],
+                  },
+                ],
+              },
+            ],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
           pagination: {
             total: 1,
             page: 1,
@@ -373,15 +377,13 @@ describe('Schema Validation', () => {
         expect(result.success).toBe(true)
       })
 
-      test('ListTasksResponseSchema rejects data-envelope task-list payloads', () => {
+      test('ListTasksResponseSchema rejects top-level grouped task-list payloads', () => {
         const result = ListTasksResponseSchema.safeParse({
-          data: {
-            id: 'proj-1',
-            name: 'Test Project',
-            columns: [],
-            archivedTasks: [],
-            plannedTasks: [],
-          },
+          id: 'proj-1',
+          name: 'Test Project',
+          columns: [],
+          archivedTasks: [],
+          plannedTasks: [],
         })
 
         expect(result.success).toBe(false)

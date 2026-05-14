@@ -673,55 +673,57 @@ describe('TaskResource', () => {
         Promise.resolve(
           new Response(
             JSON.stringify({
-              id: 'proj-1',
-              name: 'Project 1',
-              slug: 'project-1',
-              icon: '',
-              description: null,
-              isPublic: false,
-              workspaceId: 'ws-1',
-              columns: [
-                {
-                  id: 'col-1',
-                  slug: 'to-do',
-                  name: 'Todo',
-                  icon: null,
-                  color: null,
-                  isFinal: false,
-                  tasks: [
-                    {
-                      id: 'task-1',
-                      title: 'Task 1',
-                      number: 1,
-                      status: 'col-1',
-                      priority: 'medium',
-                      dueDate: null,
-                      position: 1,
-                      createdAt: '2026-03-01T00:00:00.000Z',
-                      userId: null,
-                      projectId: 'proj-1',
-                      labels: [],
-                      externalLinks: [],
-                    },
-                    {
-                      id: 'task-2',
-                      title: 'Task 2',
-                      number: 2,
-                      status: 'col-1',
-                      priority: 'high',
-                      dueDate: '2026-12-31T00:00:00.000Z',
-                      position: 2,
-                      createdAt: '2026-03-01T00:00:00.000Z',
-                      userId: null,
-                      projectId: 'proj-1',
-                      labels: [],
-                      externalLinks: [],
-                    },
-                  ],
-                },
-              ],
-              archivedTasks: [],
-              plannedTasks: [],
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                slug: 'project-1',
+                icon: '',
+                description: null,
+                isPublic: false,
+                workspaceId: 'ws-1',
+                columns: [
+                  {
+                    id: 'col-1',
+                    slug: 'to-do',
+                    name: 'Todo',
+                    icon: null,
+                    color: null,
+                    isFinal: false,
+                    tasks: [
+                      {
+                        id: 'task-1',
+                        title: 'Task 1',
+                        number: 1,
+                        status: 'col-1',
+                        priority: 'medium',
+                        dueDate: null,
+                        position: 1,
+                        createdAt: '2026-03-01T00:00:00.000Z',
+                        userId: null,
+                        projectId: 'proj-1',
+                        labels: [],
+                        externalLinks: [],
+                      },
+                      {
+                        id: 'task-2',
+                        title: 'Task 2',
+                        number: 2,
+                        status: 'col-1',
+                        priority: 'high',
+                        dueDate: '2026-12-31T00:00:00.000Z',
+                        position: 2,
+                        createdAt: '2026-03-01T00:00:00.000Z',
+                        userId: null,
+                        projectId: 'proj-1',
+                        labels: [],
+                        externalLinks: [],
+                      },
+                    ],
+                  },
+                ],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
               pagination: {
                 total: 2,
                 page: 1,
@@ -740,47 +742,49 @@ describe('TaskResource', () => {
       expect(result[0]!.title).toBe('Task 1')
     })
 
-    test('reads documented grouped task lists', async () => {
+    test('reads runtime-compatible task list envelopes', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify({
-              id: 'proj-1',
-              name: 'Project 1',
-              slug: 'project-1',
-              icon: '',
-              description: null,
-              isPublic: false,
-              workspaceId: 'ws-1',
-              columns: [
-                {
-                  id: 'to-do',
-                  slug: 'to-do',
-                  name: 'To Do',
-                  isFinal: false,
-                  tasks: [
-                    {
-                      id: 'task-1',
-                      title: 'Task 1',
-                      number: 1,
-                      status: 'to-do',
-                      priority: 'medium',
-                      dueDate: null,
-                      position: 1,
-                      createdAt: '2026-03-01T00:00:00Z',
-                      userId: null,
-                      assigneeId: null,
-                      assigneeName: null,
-                      assigneeImage: null,
-                      projectId: 'proj-1',
-                      labels: [],
-                      externalLinks: [],
-                    },
-                  ],
-                },
-              ],
-              archivedTasks: [],
-              plannedTasks: [],
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                slug: 'project-1',
+                icon: '',
+                description: null,
+                isPublic: false,
+                workspaceId: 'ws-1',
+                columns: [
+                  {
+                    id: 'to-do',
+                    slug: 'to-do',
+                    name: 'To Do',
+                    isFinal: false,
+                    tasks: [
+                      {
+                        id: 'task-1',
+                        title: 'Task 1',
+                        number: 1,
+                        status: 'to-do',
+                        priority: 'medium',
+                        dueDate: null,
+                        position: 1,
+                        createdAt: '2026-03-01T00:00:00Z',
+                        userId: null,
+                        assigneeId: null,
+                        assigneeName: null,
+                        assigneeImage: null,
+                        projectId: 'proj-1',
+                        labels: [],
+                        externalLinks: [],
+                      },
+                    ],
+                  },
+                ],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
               pagination: {
                 total: 1,
                 page: 1,
@@ -804,18 +808,16 @@ describe('TaskResource', () => {
       })
     })
 
-    test('rejects data-envelope task lists', async () => {
+    test('rejects top-level grouped task lists', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify({
-              data: {
-                id: 'proj-1',
-                name: 'Project 1',
-                columns: [],
-                archivedTasks: [],
-                plannedTasks: [],
-              },
+              id: 'proj-1',
+              name: 'Project 1',
+              columns: [],
+              archivedTasks: [],
+              plannedTasks: [],
             }),
             { status: 200 },
           ),
@@ -831,11 +833,13 @@ describe('TaskResource', () => {
         Promise.resolve(
           new Response(
             JSON.stringify({
-              id: 'empty-proj',
-              name: 'Empty Project',
-              columns: [],
-              archivedTasks: [],
-              plannedTasks: [],
+              data: {
+                id: 'empty-proj',
+                name: 'Empty Project',
+                columns: [],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
             }),
             { status: 200 },
           ),

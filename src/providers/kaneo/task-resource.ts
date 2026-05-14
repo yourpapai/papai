@@ -78,7 +78,7 @@ export class TaskResource {
         query,
         ListTasksResponseSchema,
       )
-      const rawTasks = result.columns.flatMap((col) => col.tasks).concat(result.plannedTasks)
+      const rawTasks = result.data.columns.flatMap((col) => col.tasks).concat(result.data.plannedTasks)
       const tasks: KaneoTaskListItem[] = rawTasks.map((task) => ({
         id: task.id,
         title: task.title,
@@ -89,7 +89,7 @@ export class TaskResource {
       }))
       // Denormalize status from column slug to normalized slug for each task
       for (const task of tasks) {
-        const column = result.columns.find((c) => c.id === task.status)
+        const column = result.data.columns.find((c) => c.id === task.status)
         if (column !== undefined) {
           task.status = column.name.toLowerCase().replace(/\s+/g, '-')
         }
