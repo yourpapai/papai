@@ -12,6 +12,7 @@ type UpdateParams = {
   status?: string
   priority?: string
   dueDate?: string
+  startDate?: string
   projectId?: string
   userId?: string
 }

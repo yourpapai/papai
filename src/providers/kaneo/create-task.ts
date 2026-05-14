@@ -14,6 +14,7 @@ export async function createTask({
   priority,
   status,
   dueDate,
+  startDate,
   userId,
 }: {
   config: KaneoConfig
@@ -23,9 +24,10 @@ export async function createTask({
   priority?: string
   status?: string
   dueDate?: string
+  startDate?: string
   userId?: string
 }): Promise<CreateTaskResponse> {
-  log.debug({ projectId, title, priority, dueDate }, 'createTask called')
+  log.debug({ projectId, title, priority, dueDate, startDate }, 'createTask called')
 
   try {
     const client = new KaneoClient(config)
@@ -36,6 +38,7 @@ export async function createTask({
       priority,
       status,
       dueDate,
+      startDate,
       userId,
     })
     log.info({ taskId: task.id, title, number: task.number }, 'Task created')

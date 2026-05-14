@@ -261,6 +261,41 @@ describe('TaskResource', () => {
       })
     })
 
+    test('includes startDate in create requests', async () => {
+      let requestBody: unknown
+      setMockFetch((_url: string, options: RequestInit) => {
+        requestBody = parseRequestBody(options)
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...createMockTask({
+                id: 'task-1',
+                title: 'Test',
+                number: 1,
+                priority: 'high',
+                description: 'Description',
+              }),
+              startDate: '2026-03-01T00:00:00.000Z',
+            }),
+            { status: 200 },
+          ),
+        )
+      })
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await resource.create({
+        projectId: 'proj-1',
+        title: 'Test',
+        description: 'Description',
+        priority: 'high',
+        startDate: '2026-03-01T00:00:00.000Z',
+      })
+
+      expect(requestBody).toMatchObject({
+        startDate: '2026-03-01T00:00:00.000Z',
+      })
+    })
+
     test('applies default priority when not provided', async () => {
       let requestBody: unknown
       setMockFetch((_url: string, options: RequestInit) => {
@@ -410,12 +445,15 @@ describe('TaskResource', () => {
         Promise.resolve(
           new Response(
             JSON.stringify(
-              createMockTask({
+              {
+                ...createMockTask({
                 id: 'task-1',
                 title: 'Test',
                 number: 1,
                 description: 'Details',
-              }),
+                }),
+                startDate: '2026-03-01T00:00:00.000Z',
+              },
             ),
             { status: 200 },
           ),
@@ -426,6 +464,7 @@ describe('TaskResource', () => {
       const result = await resource.get('task-1')
       expect(result.id).toBe('task-1')
       expect(result.description).toBe('Details')
+      expect(result.startDate).toBe('2026-03-01T00:00:00.000Z')
     })
 
     test('parses relations from description frontmatter', async () => {
@@ -556,6 +595,7 @@ describe('TaskResource', () => {
         description: 'Existing desc',
         priority: 'medium',
         status: 'col-2',
+        startDate: '2026-02-01T00:00:00.000Z',
       })
 
       const resource = new TaskResource(mockConfig, statusDeps)
@@ -568,6 +608,26 @@ describe('TaskResource', () => {
         status: 'col-2',
         projectId: 'proj-1',
         position: 3,
+        startDate: '2026-02-01T00:00:00.000Z',
+      })
+    })
+
+    test('allows overriding startDate in the full PUT body', async () => {
+      const requests = mockGetThenPut({
+        startDate: '2026-02-01T00:00:00.000Z',
+      })
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await resource.update('task-1', { startDate: '2026-04-01T00:00:00.000Z' })
+
+      expect(requests[1]?.body).toMatchObject({
+        title: 'Test',
+        description: '',
+        status: 'col-1',
+        priority: 'no-priority',
+        projectId: 'proj-1',
+        position: 3,
+        startDate: '2026-04-01T00:00:00.000Z',
       })
     })
   })
@@ -591,28 +651,59 @@ describe('TaskResource', () => {
             JSON.stringify({
               id: 'proj-1',
               name: 'Project 1',
+              slug: 'project-1',
+              icon: '',
+              description: null,
+              isPublic: false,
+              workspaceId: 'ws-1',
               columns: [
                 {
                   id: 'col-1',
+                  slug: 'to-do',
                   name: 'Todo',
                   icon: null,
                   color: null,
                   isFinal: false,
                   tasks: [
-                    { id: 'task-1', title: 'Task 1', number: 1, status: 'todo', priority: 'medium', dueDate: null },
+                    {
+                      id: 'task-1',
+                      title: 'Task 1',
+                      number: 1,
+                      status: 'col-1',
+                      priority: 'medium',
+                      dueDate: null,
+                      position: 1,
+                      createdAt: '2026-03-01T00:00:00.000Z',
+                      userId: null,
+                      projectId: 'proj-1',
+                      labels: [],
+                      externalLinks: [],
+                    },
                     {
                       id: 'task-2',
                       title: 'Task 2',
                       number: 2,
-                      status: 'done',
+                      status: 'col-1',
                       priority: 'high',
                       dueDate: '2026-12-31',
+                      position: 2,
+                      createdAt: '2026-03-01T00:00:00.000Z',
+                      userId: null,
+                      projectId: 'proj-1',
+                      labels: [],
+                      externalLinks: [],
                     },
                   ],
                 },
               ],
               archivedTasks: [],
               plannedTasks: [],
+              pagination: {
+                total: 2,
+                page: 1,
+                pageSize: 50,
+                totalPages: 1,
+              },
             }),
             { status: 200 },
           ),
@@ -623,6 +714,70 @@ describe('TaskResource', () => {
       const result = await resource.list('proj-1')
       expect(result).toHaveLength(2)
       expect(result[0]!.title).toBe('Task 1')
+    })
+
+    test('reads documented grouped task lists', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'proj-1',
+              name: 'Project 1',
+              slug: 'project-1',
+              icon: '',
+              description: null,
+              isPublic: false,
+              workspaceId: 'ws-1',
+              columns: [
+                {
+                  id: 'to-do',
+                  slug: 'to-do',
+                  name: 'To Do',
+                  isFinal: false,
+                  tasks: [
+                    {
+                      id: 'task-1',
+                      title: 'Task 1',
+                      number: 1,
+                      status: 'to-do',
+                      priority: 'medium',
+                      dueDate: null,
+                      position: 1,
+                      createdAt: '2026-03-01T00:00:00Z',
+                      userId: null,
+                      assigneeId: null,
+                      assigneeName: null,
+                      assigneeImage: null,
+                      projectId: 'proj-1',
+                      labels: [],
+                      externalLinks: [],
+                    },
+                  ],
+                },
+              ],
+              archivedTasks: [],
+              plannedTasks: [],
+              pagination: {
+                total: 1,
+                page: 1,
+                pageSize: 1,
+                totalPages: 1,
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      const result = await resource.list('proj-1')
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        id: 'task-1',
+        title: 'Task 1',
+        status: 'to-do',
+      })
     })
 
     test('returns empty array when no tasks', async () => {

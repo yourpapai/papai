@@ -4,8 +4,9 @@ import { z } from 'zod'
 export const ColumnSchema = z.object({
   id: z.string(),
   name: z.string(),
-  icon: z.string().nullable(),
-  color: z.string().nullable(),
+  slug: z.string().optional(),
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
   isFinal: z.boolean(),
 })
 
@@ -24,4 +25,29 @@ export const ListTaskSchema = z.object({
   dueDate: z.string().nullable().optional(),
   labels: z.array(z.object({ id: z.string(), name: z.string(), color: z.string() })).optional(),
   externalLinks: z.array(z.unknown()).optional(),
+})
+
+const ColumnWithTasksSchema = ColumnSchema.extend({
+  tasks: z.array(ListTaskSchema),
+})
+
+const PaginationSchema = z.object({
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+  totalPages: z.number(),
+})
+
+export const ListTasksResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string().optional(),
+  icon: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  isPublic: z.boolean().nullable().optional(),
+  workspaceId: z.string().optional(),
+  columns: z.array(ColumnWithTasksSchema),
+  archivedTasks: z.array(ListTaskSchema),
+  plannedTasks: z.array(ListTaskSchema),
+  pagination: PaginationSchema.optional(),
 })

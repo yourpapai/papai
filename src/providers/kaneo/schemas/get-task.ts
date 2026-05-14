@@ -14,6 +14,7 @@ export const TaskSchema = z.object({
   description: z.string().nullable(),
   status: z.string(),
   priority: TaskPriorityEnum,
+  startDate: z.string().nullable().optional(),
   dueDate: z.unknown().optional(),
   createdAt: z.unknown(),
 })

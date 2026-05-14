@@ -11,6 +11,7 @@ type TaskUpdateParams = {
   status?: string
   priority?: string
   dueDate?: string
+  startDate?: string
   projectId?: string
   userId?: string
 }
@@ -23,6 +24,7 @@ type FullUpdateBody = {
   projectId: string
   position: number
   dueDate?: string
+  startDate?: string
   userId?: string
 }
 
@@ -58,6 +60,11 @@ function buildFullTaskUpdateBody(existing: CreateTaskResponse, patch: TaskUpdate
   const dueDate = patch.dueDate ?? existingDueDate
   if (dueDate !== undefined) {
     body.dueDate = dueDate
+  }
+
+  const startDate = patch.startDate ?? existing.startDate ?? undefined
+  if (startDate !== undefined) {
+    body.startDate = startDate
   }
 
   const userId = patch.userId ?? existing.userId ?? undefined

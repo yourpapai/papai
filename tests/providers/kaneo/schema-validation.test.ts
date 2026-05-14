@@ -3,12 +3,15 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { ColumnCompatSchema as KaneoColumnSchema } from '../../../src/providers/kaneo/schemas/api-compat.js'
+import {
+  ColumnCompatSchema as KaneoColumnSchema,
+} from '../../../src/providers/kaneo/schemas/api-compat.js'
 import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { TaskSchema as CreateTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { ActivityItemSchema } from '../../../src/providers/kaneo/schemas/get-activities.js'
 import { GetProjectResponseSchema as KaneoProjectFullSchema } from '../../../src/providers/kaneo/schemas/get-project.js'
+import { ListTasksResponseSchema } from '../../../src/providers/kaneo/schemas/list-tasks.js'
 import {
   createMockActivity,
   createMockColumn,
@@ -128,6 +131,11 @@ describe('Schema Validation', () => {
       userId: null,
     })
 
+    const validTaskFullResponseWithStartDate = {
+      ...validTaskFullResponse,
+      startDate: '2026-02-20T00:00:00.000Z',
+    }
+
     test('MinimalTaskSchema validates correct task structure', () => {
       const result = MinimalTaskSchema.safeParse(validTaskResponse)
       expect(result.success).toBe(true)
@@ -166,6 +174,13 @@ describe('Schema Validation', () => {
       expect(result.data.dueDate).toBeNull()
       expect(result.data.projectId).toBe('proj-1')
       expect(result.data.userId).toBeNull()
+    })
+
+    test('KaneoTaskResponseSchema preserves documented startDate', () => {
+      const result = KaneoTaskResponseSchema.safeParse(validTaskFullResponseWithStartDate)
+      expect(result.success).toBe(true)
+      assert(result.success)
+      expect(result.data.startDate).toBe('2026-02-20T00:00:00.000Z')
     })
 
     test('TaskWithProjectIdSchema validates projectId field', () => {
@@ -249,9 +264,15 @@ describe('Schema Validation', () => {
         const validTaskListResponse = {
           id: 'proj-1',
           name: 'Test Project',
+          slug: 'test-project',
+          icon: '',
+          description: null,
+          isPublic: false,
+          workspaceId: 'ws-1',
           columns: [
             {
               id: 'col-1',
+              slug: 'to-do',
               name: 'To Do',
               icon: null,
               color: null,
@@ -259,13 +280,26 @@ describe('Schema Validation', () => {
               tasks: [
                 {
                   ...validTaskResponse,
+                  status: 'col-1',
                   dueDate: null,
+                  position: 1,
+                  createdAt: '2026-03-01T00:00:00Z',
+                  userId: null,
+                  projectId: 'proj-1',
+                  labels: [],
+                  externalLinks: [],
                 },
               ],
             },
           ],
           archivedTasks: [],
           plannedTasks: [],
+          pagination: {
+            total: 1,
+            page: 1,
+            pageSize: 1,
+            totalPages: 1,
+          },
         }
         setMockFetch(() => Promise.resolve(new Response(JSON.stringify(validTaskListResponse), { status: 200 })))
 
@@ -280,6 +314,52 @@ describe('Schema Validation', () => {
         expect(result[0]).toHaveProperty('status')
         expect(result[0]).toHaveProperty('priority')
         expect(result[0]).toHaveProperty('dueDate')
+      })
+
+      test('ListTasksResponseSchema accepts documented grouped task-list payload', () => {
+        const result = ListTasksResponseSchema.safeParse({
+          id: 'proj-1',
+          name: 'Test Project',
+          slug: 'test-project',
+          icon: '',
+          description: null,
+          isPublic: false,
+          workspaceId: 'ws-1',
+          columns: [
+            {
+              id: 'to-do',
+              slug: 'to-do',
+              name: 'To Do',
+              isFinal: false,
+              tasks: [
+                {
+                  ...validTaskResponse,
+                  status: 'to-do',
+                  dueDate: null,
+                  position: 1,
+                  createdAt: '2026-03-01T00:00:00Z',
+                  userId: null,
+                  assigneeId: null,
+                  assigneeName: null,
+                  assigneeImage: null,
+                  projectId: 'proj-1',
+                  labels: [],
+                  externalLinks: [],
+                },
+              ],
+            },
+          ],
+          archivedTasks: [],
+          plannedTasks: [],
+          pagination: {
+            total: 1,
+            page: 1,
+            pageSize: 1,
+            totalPages: 1,
+          },
+        })
+
+        expect(result.success).toBe(true)
       })
     })
 

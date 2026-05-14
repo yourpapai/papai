@@ -7,9 +7,10 @@ import { type KaneoConfig, kaneoFetch } from './client.js'
 import { parseRelationsFromDescription, type TaskRelation } from './frontmatter.js'
 import { buildListTasksQuery } from './list-tasks-query.js'
 import type { KaneoTaskListItem } from './list-tasks.js'
-import { TaskSchema as KaneoTaskResponseSchema } from './schemas/create-task.js'
+import { TaskSchema as KaneoCreateTaskResponseSchema } from './schemas/create-task.js'
+import { TaskSchema as KaneoGetTaskResponseSchema } from './schemas/get-task.js'
+import { ListTasksResponseSchema } from './schemas/list-tasks.js'
 import { type TaskResult, KaneoSearchResponseSchema, TaskResultSchema } from './search-tasks.js'
-import { GetTasksResponseSchema } from './task-list-schema.js'
 import { type TaskStatusDeps, denormalizeStatus, validateStatus } from './task-status.js'
 import { performUpdate } from './task-update-helpers.js'
 
@@ -31,8 +32,9 @@ export class TaskResource {
     priority?: string
     status?: string
     dueDate?: string
+    startDate?: string
     userId?: string
-  }): Promise<z.infer<typeof KaneoTaskResponseSchema>> {
+  }): Promise<z.infer<typeof KaneoCreateTaskResponseSchema>> {
     this.log.debug({ projectId: params.projectId, title: params.title }, 'Creating task')
 
     try {
@@ -47,10 +49,11 @@ export class TaskResource {
           priority: params.priority ?? 'no-priority',
           status,
           dueDate: params.dueDate,
+          startDate: params.startDate,
           userId: params.userId,
         },
         undefined,
-        KaneoTaskResponseSchema,
+        KaneoCreateTaskResponseSchema,
       )
       // Denormalize status from column ID to slug
       task.status = await denormalizeStatus(this.config, params.projectId, task.status, this.statusDeps)
@@ -73,7 +76,7 @@ export class TaskResource {
         `/task/tasks/${projectId}`,
         undefined,
         query,
-        GetTasksResponseSchema,
+        ListTasksResponseSchema,
       )
       const rawTasks = result.columns.flatMap((col) => col.tasks).concat(result.plannedTasks)
       const tasks: KaneoTaskListItem[] = rawTasks.map((task) => ({
@@ -106,6 +109,7 @@ export class TaskResource {
     number: number
     status: string
     priority: string
+    startDate: string | null
     dueDate: string | null
     createdAt: string
     projectId: string
@@ -121,7 +125,7 @@ export class TaskResource {
         `/task/${taskId}`,
         undefined,
         undefined,
-        KaneoTaskResponseSchema,
+        KaneoGetTaskResponseSchema,
       )
       // Denormalize status from column ID to slug
       task.status = await denormalizeStatus(this.config, task.projectId, task.status, this.statusDeps)
@@ -134,6 +138,7 @@ export class TaskResource {
         description: task.description ?? '',
         relations,
         createdAt: typeof task.createdAt === 'string' ? task.createdAt : '',
+        startDate: task.startDate ?? null,
         dueDate:
           task.dueDate === null || task.dueDate === undefined
             ? null
@@ -155,9 +160,10 @@ export class TaskResource {
       status?: string
       priority?: string
       dueDate?: string
+      startDate?: string
       userId?: string
     },
-  ): Promise<z.infer<typeof KaneoTaskResponseSchema>> {
+  ): Promise<z.infer<typeof KaneoCreateTaskResponseSchema>> {
     this.log.debug({ taskId, ...params }, 'Updating task')
 
     try {
