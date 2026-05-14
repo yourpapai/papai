@@ -51,6 +51,7 @@ describe('codeindex CLI support', () => {
     const result = buildCodeindexSpawnSpec(['stats'], {
       repoRoot: '/tmp/yourpapai/papai',
       env: {},
+      executablePath: 'bun',
       pathExists: (filePath) =>
         filePath === '/tmp/yourpapai/codeindex/package.json' ||
         filePath === '/tmp/yourpapai/codeindex/src/cli.ts',
@@ -73,6 +74,7 @@ describe('runCodeindexCli', () => {
     const exitCode = await runCodeindexCli(['reindex'], {
       repoRoot: '/tmp/yourpapai/papai',
       env: {},
+      executablePath: 'bun',
       pathExists: (filePath) =>
         filePath === '/tmp/yourpapai/codeindex/package.json' ||
         filePath === '/tmp/yourpapai/codeindex/src/cli.ts',
@@ -103,5 +105,34 @@ describe('runCodeindexCli', () => {
         stdio: 'inherit',
       },
     ])
+  })
+
+  test('writes a controlled error and returns 1 when the child fails to spawn', async () => {
+    const stderrMessages: string[] = []
+
+    const exitCode = await runCodeindexCli(['reindex'], {
+      repoRoot: '/tmp/yourpapai/papai',
+      env: {},
+      executablePath: 'bun',
+      pathExists: (filePath) =>
+        filePath === '/tmp/yourpapai/codeindex/package.json' ||
+        filePath === '/tmp/yourpapai/codeindex/src/cli.ts',
+      spawnChild: () => {
+        const startupError = Object.assign(new Error('spawn bun ENOENT'), { code: 'ENOENT' })
+
+        return {
+          once(event, handler) {
+            if (event === 'error') handler(startupError)
+            return this
+          },
+        } as unknown as ReturnType<typeof import('node:child_process').spawn>
+      },
+      writeStderr: (message) => {
+        stderrMessages.push(message)
+      },
+    })
+
+    expect(exitCode).toBe(1)
+    expect(stderrMessages).toEqual(['spawn bun ENOENT\n'])
   })
 })

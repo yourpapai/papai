@@ -4,6 +4,7 @@ import path from 'node:path'
 export interface CodeindexResolutionInput {
   readonly repoRoot?: string
   readonly env?: Readonly<Record<string, string | undefined>>
+  readonly executablePath?: string
   readonly pathExists?: (filePath: string) => boolean
 }
 
@@ -13,7 +14,7 @@ export interface ResolvedCodeindexPaths {
 }
 
 export interface CodeindexSpawnSpec extends ResolvedCodeindexPaths {
-  readonly command: 'bun'
+  readonly command: string
   readonly args: readonly string[]
   readonly cwd: string
 }
@@ -50,10 +51,11 @@ export const buildCodeindexSpawnSpec = (
   input: CodeindexResolutionInput = {},
 ): CodeindexSpawnSpec => {
   const repoRoot = input.repoRoot ?? DEFAULT_REPO_ROOT
+  const executablePath = input.executablePath ?? process.execPath
   const { repoDir, cliPath } = resolveCodeindexPaths({ ...input, repoRoot })
 
   return {
-    command: 'bun',
+    command: executablePath,
     args: ['run', cliPath, ...argv],
     cwd: repoRoot,
     repoDir,
