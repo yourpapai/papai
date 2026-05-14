@@ -11,8 +11,5 @@
 	handle /api/auth/callback/* {
 		respond 403
 	}
-	handle /api/* {
-		reverse_proxy kaneo-api:1337
-	}
-	reverse_proxy kaneo-web:5173
+	reverse_proxy kaneo:5173
 }

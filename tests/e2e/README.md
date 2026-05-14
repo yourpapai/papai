@@ -54,8 +54,7 @@ The E2E setup automatically manages the Kaneo server:
 The following services are started via `docker-compose.yml` + `docker-compose.test.yml`:
 
 - `kaneo-postgres`: PostgreSQL database (port 5432 internally)
-- `kaneo-api`: Kaneo API server (exposed on port 11337)
-- `kaneo-db-fix`: One-shot migration fix service
+- `kaneo`: Combined Kaneo web/API server (exposed on port 11337)
 
 ### Configuration
 
@@ -63,8 +62,8 @@ The following services are started via `docker-compose.yml` + `docker-compose.te
 
 | Variable             | Description                     | Default                  |
 | -------------------- | ------------------------------- | ------------------------ |
-| `E2E_KANEO_URL`      | URL for E2E tests to connect to | `http://localhost:11337` |
-| `KANEO_INTERNAL_URL` | Internal Docker URL             | Same as `E2E_KANEO_URL`  |
+| `E2E_KANEO_URL`      | Base URL for E2E tests to connect to | `http://localhost:11337` |
+| `KANEO_INTERNAL_URL` | Internal Kaneo base URL             | Same as `E2E_KANEO_URL`  |
 | `KANEO_CLIENT_URL`   | Public URL for auth requests    | Same as base URL         |
 
 ## Test Structure
@@ -133,7 +132,7 @@ The test runner handles cleanup automatically:
 Check Docker logs:
 
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.test.yml logs kaneo-api
+docker compose -f docker-compose.yml -f docker-compose.test.yml logs kaneo
 ```
 
 ### Port already in use

@@ -164,18 +164,18 @@ jobs:
           docker image prune -f
           echo "Waiting for services to become healthy..."
           for i in \$(seq 1 18); do
-            status=\$(docker inspect \$(docker compose ps -q kaneo-api 2>/dev/null) --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)
+            status=\$(docker inspect \$(docker compose ps -q kaneo 2>/dev/null) --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)
             if [ "\$status" = "healthy" ]; then
-              echo "kaneo-api is healthy"
+              echo "kaneo is healthy"
               break
             fi
             if [ "\$i" -eq 18 ]; then
               echo "Health check timed out after 3 minutes" >&2
               docker compose ps >&2
-              docker compose logs --tail=50 kaneo-api >&2
+              docker compose logs --tail=50 kaneo >&2
               exit 1
             fi
-            echo "  kaneo-api status: \$status (\$i/18, waiting 10s...)"
+            echo "  kaneo status: \$status (\$i/18, waiting 10s...)"
             sleep 10
           done
           docker compose ps papai | grep -qiE "running|up" || {
