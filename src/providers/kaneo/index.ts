@@ -69,6 +69,7 @@ export class KaneoProvider implements TaskProvider {
     description?: string
     priority?: string
     status?: string
+    startDate?: string
     dueDate?: string
     assignee?: string
     customFields?: Array<{ name: string; value: string }>
@@ -87,6 +88,7 @@ export class KaneoProvider implements TaskProvider {
       description?: string
       status?: string
       priority?: string
+      startDate?: string
       dueDate?: string
       projectId?: string
       assignee?: string

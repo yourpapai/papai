@@ -148,6 +148,53 @@ describe('KaneoProvider', () => {
     })
   })
 
+  describe('createTask', () => {
+    test('passes startDate through the provider create path', async () => {
+      let requestBody: Record<string, unknown> | undefined
+
+      setMockFetch((url, options) => {
+        if (url.includes('/column/')) {
+          return Promise.resolve(
+            new Response(JSON.stringify([{ id: 'to-do', name: 'To Do', icon: null, color: null, isFinal: false }]), {
+              status: 200,
+            }),
+          )
+        }
+
+        requestBody =
+          typeof options.body === 'string' ? (JSON.parse(options.body) as Record<string, unknown>) : undefined
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'task-1',
+              projectId: 'proj-1',
+              position: 0,
+              number: 1,
+              userId: null,
+              title: 'Test Task',
+              description: '',
+              status: 'to-do',
+              priority: 'medium',
+              startDate: '2026-03-01T00:00:00.000Z',
+              dueDate: null,
+              createdAt: '2026-03-01T00:00:00.000Z',
+            }),
+            { status: 200 },
+          ),
+        )
+      })
+
+      await provider.createTask({
+        projectId: 'proj-1',
+        title: 'Test Task',
+        startDate: '2026-03-01T00:00:00.000Z',
+      })
+
+      expect(requestBody?.startDate).toBe('2026-03-01T00:00:00.000Z')
+    })
+  })
+
   describe('formatDueDateOutput', () => {
     test('converts UTC to local timezone', () => {
       const result = provider.formatDueDateOutput('2024-03-15T18:30:00.000Z', 'America/New_York')

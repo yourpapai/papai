@@ -18,11 +18,12 @@ export async function kaneoCreateTask(
     description?: string
     priority?: string
     status?: string
+    startDate?: string
     dueDate?: string
     assignee?: string
   },
 ): Promise<Task> {
-  const { projectId, title, description, priority, status, dueDate, assignee } = params
+  const { projectId, title, description, priority, status, startDate, dueDate, assignee } = params
   const result = await createTask({
     config,
     projectId,
@@ -30,6 +31,7 @@ export async function kaneoCreateTask(
     description,
     priority,
     status,
+    startDate,
     dueDate,
     userId: assignee,
   })
@@ -50,12 +52,13 @@ export async function kaneoUpdateTask(
     description?: string
     status?: string
     priority?: string
+    startDate?: string
     dueDate?: string
     projectId?: string
     assignee?: string
   },
 ): Promise<Task> {
-  const { title, description, status, priority, dueDate, projectId, assignee } = params
+  const { title, description, status, priority, startDate, dueDate, projectId, assignee } = params
   const result = await updateTask({
     config,
     taskId,
@@ -63,6 +66,7 @@ export async function kaneoUpdateTask(
     description,
     status,
     priority,
+    startDate,
     dueDate,
     projectId,
     userId: assignee,
