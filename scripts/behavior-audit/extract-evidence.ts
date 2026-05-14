@@ -56,6 +56,33 @@ type CodeindexDbDeps = Readonly<{
   readonly openDatabase: (dbPath: string) => import('bun:sqlite').Database
 }>
 
+type CodeindexConfigModule = Readonly<{
+  readonly loadCodeindexConfig: CodeindexConfigLoader
+}>
+
+type CodeindexSearchModule = Readonly<{
+  readonly findSymbolCandidates: CodeindexSearchDeps['findSymbolCandidates']
+  readonly findIncomingReferences: CodeindexSearchDeps['findIncomingReferences']
+}>
+
+type CodeindexDbModule = Readonly<{
+  readonly openDatabase: CodeindexDbDeps['openDatabase']
+}>
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && value !== undefined && typeof value === 'object'
+
+const isCodeindexConfigModule = (value: unknown): value is CodeindexConfigModule =>
+  isRecord(value) && typeof value['loadCodeindexConfig'] === 'function'
+
+const isCodeindexSearchModule = (value: unknown): value is CodeindexSearchModule =>
+  isRecord(value) &&
+  typeof value['findSymbolCandidates'] === 'function' &&
+  typeof value['findIncomingReferences'] === 'function'
+
+const isCodeindexDbModule = (value: unknown): value is CodeindexDbModule =>
+  isRecord(value) && typeof value['openDatabase'] === 'function'
+
 const loadCodeindexDeps = async (
   repoRoot: string,
 ): Promise<
@@ -66,20 +93,30 @@ const loadCodeindexDeps = async (
   }>
 > => {
   const modulePaths = resolveCodeindexModulePaths({ repoRoot })
-  const [configModule, searchModule, dbModule] = await Promise.all([
-    import(pathToFileURL(modulePaths.configModulePath).href),
-    import(pathToFileURL(modulePaths.searchModulePath).href),
-    import(pathToFileURL(modulePaths.storageDbModulePath).href),
+  const [configModule, searchModule, dbModule]: [unknown, unknown, unknown] = await Promise.all([
+    import(pathToFileURL(modulePaths.configModulePath).href).then((module): unknown => module),
+    import(pathToFileURL(modulePaths.searchModulePath).href).then((module): unknown => module),
+    import(pathToFileURL(modulePaths.storageDbModulePath).href).then((module): unknown => module),
   ])
 
+  if (!isCodeindexConfigModule(configModule)) {
+    throw new TypeError(`Invalid codeindex config module: ${modulePaths.configModulePath}`)
+  }
+  if (!isCodeindexSearchModule(searchModule)) {
+    throw new TypeError(`Invalid codeindex search module: ${modulePaths.searchModulePath}`)
+  }
+  if (!isCodeindexDbModule(dbModule)) {
+    throw new TypeError(`Invalid codeindex db module: ${modulePaths.storageDbModulePath}`)
+  }
+
   return {
-    loadCodeindexConfig: configModule.loadCodeindexConfig as CodeindexConfigLoader,
+    loadCodeindexConfig: configModule.loadCodeindexConfig,
     search: {
-      findSymbolCandidates: searchModule.findSymbolCandidates as CodeindexSearchDeps['findSymbolCandidates'],
-      findIncomingReferences: searchModule.findIncomingReferences as CodeindexSearchDeps['findIncomingReferences'],
+      findSymbolCandidates: searchModule.findSymbolCandidates,
+      findIncomingReferences: searchModule.findIncomingReferences,
     },
     db: {
-      openDatabase: dbModule.openDatabase as CodeindexDbDeps['openDatabase'],
+      openDatabase: dbModule.openDatabase,
     },
   }
 }

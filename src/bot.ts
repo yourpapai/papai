@@ -29,11 +29,13 @@ import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
 
 type ProcessMessageFn = typeof defaultProcessMessage
+type EnqueueMessageFn = typeof enqueueMessage
 export interface BotDeps {
   processMessage: ProcessMessageFn
   stagedDownloadFn?: StagedFileDownloadFn
+  enqueueMessage?: EnqueueMessageFn
 }
-const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage }
+const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
 const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
   log.debug({ userId }, 'Checking authorization')
@@ -171,7 +173,8 @@ async function handleMessage(
   }
   if (shouldIgnoreGroupMessage(msg)) return
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  enqueueMessage(
+  const queueMessage = deps.enqueueMessage ?? enqueueMessage
+  queueMessage(
     {
       text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
       userId: msg.user.id,

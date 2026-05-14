@@ -1,4 +1,4 @@
-import { describe, expect, mock, test, beforeEach, afterEach } from 'bun:test'
+import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
@@ -40,44 +40,23 @@ import {
   setupTestDb,
 } from './utils/test-helpers.js'
 
-// Mock enqueueMessage to process synchronously for tests
-void mock.module('../src/message-queue/index.js', () => ({
-  enqueueMessage: async (
-    item: {
-      text: string
-      userId: string
-      username: string | null
-      storageContextId: string
-      configContextId: string | undefined
-      contextType: 'dm' | 'group'
-      files: readonly IncomingFile[]
-    },
-    reply: ReplyFn,
-    handler: (coalesced: {
-      text: string
-      userId: string
-      username: string | null
-      storageContextId: string
-      configContextId: string | undefined
-      contextType: 'dm' | 'group'
-      files: readonly IncomingFile[]
-      reply: ReplyFn
-    }) => Promise<void>,
-  ): Promise<void> => {
-    // Execute handler synchronously for tests
-    await handler({
-      text: item.text,
-      userId: item.userId,
-      username: item.username,
-      storageContextId: item.storageContextId,
-      configContextId: item.configContextId,
-      contextType: item.contextType,
-      files: item.files,
-      reply,
-    }).catch(() => {})
-  },
-  flushOnShutdown: (): Promise<void> => Promise.resolve(),
-}))
+const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (item, reply, handler): void => {
+  void handler({
+    text: item.text,
+    userId: item.userId,
+    username: item.username,
+    storageContextId: item.storageContextId,
+    configContextId: item.configContextId,
+    contextType: item.contextType,
+    newAttachmentIds: item.newAttachmentIds,
+    reply,
+  }).catch(() => {})
+}
+
+const withSynchronousQueue = (deps: Readonly<Omit<BotDeps, 'enqueueMessage'>>): BotDeps => ({
+  ...deps,
+  enqueueMessage: enqueueMessageSynchronously,
+})
 
 // ---------------------------------------------------------------------------
 // Listener helpers defined outside test blocks to avoid no-conditional-in-test
@@ -380,7 +359,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     // Setup test database with migrations
     await setupTestDb()
 
-    const botDeps: BotDeps = {
+    const botDeps = withSynchronousQueue({
       processMessage: (
         _reply: ReplyFn,
         storageContextId: string,
@@ -397,7 +376,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
         lastProcessedContextType = contextType
         return Promise.resolve()
       },
-    }
+    })
 
     const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
     getMessageHandler = getHandler
@@ -484,11 +463,15 @@ describe('Bot Authorization Gate (setupBot)', () => {
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
-      setupBot(replyingChat, ADMIN_ID, {
-        processMessage: async (reply: ReplyFn): Promise<void> => {
-          await reply.text('queued reply')
-        },
-      })
+      setupBot(
+        replyingChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: async (reply: ReplyFn): Promise<void> => {
+            await reply.text('queued reply')
+          },
+        }),
+      )
 
       try {
         const messageHandler = getReplyingHandler()
@@ -520,13 +503,17 @@ describe('Bot Authorization Gate (setupBot)', () => {
       }
 
       const { provider: slowChat, getMessageHandler: getSlowHandler } = createMockChatForBot()
-      setupBot(slowChat, ADMIN_ID, {
-        processMessage: async (): Promise<void> => {
-          await new Promise((resolve) => {
-            setTimeout(resolve, 100)
-          })
-        },
-      })
+      setupBot(
+        slowChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: async (): Promise<void> => {
+            await new Promise((resolve) => {
+              setTimeout(resolve, 100)
+            })
+          },
+        }),
+      )
 
       const messageHandler = getSlowHandler()
       expect(messageHandler).not.toBeNull()
@@ -544,12 +531,16 @@ describe('Bot Authorization Gate (setupBot)', () => {
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
-      setupBot(replyingChat, ADMIN_ID, {
-        processMessage: async (reply: ReplyFn): Promise<void> => {
-          assert.ok(reply.replaceText !== undefined)
-          await reply.replaceText('queued replacement')
-        },
-      })
+      setupBot(
+        replyingChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: async (reply: ReplyFn): Promise<void> => {
+            assert.ok(reply.replaceText !== undefined)
+            await reply.replaceText('queued replacement')
+          },
+        }),
+      )
 
       try {
         const messageHandler = getReplyingHandler()
@@ -578,12 +569,16 @@ describe('Bot Authorization Gate (setupBot)', () => {
       subscribe(listener)
 
       const { provider: replyingChat, getMessageHandler: getReplyingHandler } = createMockChatForBot()
-      setupBot(replyingChat, ADMIN_ID, {
-        processMessage: async (reply: ReplyFn): Promise<void> => {
-          assert.ok(reply.replaceButtons !== undefined)
-          await reply.replaceButtons('queued replacement buttons', { buttons: [] })
-        },
-      })
+      setupBot(
+        replyingChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: async (reply: ReplyFn): Promise<void> => {
+            assert.ok(reply.replaceButtons !== undefined)
+            await reply.replaceButtons('queued replacement buttons', { buttons: [] })
+          },
+        }),
+      )
 
       try {
         const messageHandler = getReplyingHandler()
@@ -612,9 +607,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       subscribe(listener)
 
       const { provider: failingChat, getMessageHandler: getFailingHandler } = createMockChatForBot()
-      setupBot(failingChat, ADMIN_ID, {
-        processMessage: (): Promise<void> => Promise.reject(new Error('Simulated process failure')),
-      })
+      setupBot(
+        failingChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: (): Promise<void> => Promise.reject(new Error('Simulated process failure')),
+        }),
+      )
 
       try {
         const messageHandler = getFailingHandler()
@@ -778,9 +777,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const setupHandler = commandHandlers.get('setup')
     expect(setupHandler).not.toBeUndefined()
@@ -807,9 +810,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const setupHandler = commandHandlers.get('setup')
     expect(setupHandler).not.toBeUndefined()
@@ -872,9 +879,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       }
     }
 
-    setupBot(new PrototypeChatProvider(), ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      new PrototypeChatProvider(),
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const contextHandler = commandHandlers.get('context')
     expect(contextHandler).toBeDefined()
@@ -985,9 +996,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const setupHandler = commandHandlers.get('setup')
     expect(setupHandler).not.toBeUndefined()
@@ -1008,9 +1023,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const setupHandler = commandHandlers.get('setup')
     expect(setupHandler).not.toBeUndefined()
@@ -1029,9 +1048,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const groupHandler = commandHandlers.get('group')
     const groupsHandler = commandHandlers.get('groups')
@@ -1065,9 +1088,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
         (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
       >()
       const mockChat = createMockChat({ commandHandlers })
-      setupBot(mockChat, ADMIN_ID, {
-        processMessage: (): Promise<void> => Promise.resolve(),
-      })
+      setupBot(
+        mockChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: (): Promise<void> => Promise.resolve(),
+        }),
+      )
 
       const setupHandler = commandHandlers.get('setup')
       expect(setupHandler).not.toBeUndefined()
@@ -1112,9 +1139,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const groupHandler = commandHandlers.get('group')
     const groupsHandler = commandHandlers.get('groups')
@@ -1182,9 +1213,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
     >()
     const mockChat = createMockChat({ commandHandlers })
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const setupHandler = commandHandlers.get('setup')
     expect(setupHandler).not.toBeUndefined()
@@ -1250,9 +1285,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       getMessageHandler: getRegisteredMessageHandler,
       getInteractionHandler,
     } = createMockChatForBot()
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     expect(getRegisteredMessageHandler()).not.toBeNull()
     expect(getInteractionHandler()).not.toBeNull()
@@ -1273,9 +1312,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       },
     }
 
-    setupBot(provider, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      provider,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     expect(provider.registrationCount).toBe(1)
     expect(provider.interactionHandler).not.toBeNull()
@@ -1283,9 +1326,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('interaction handler replies with allowlist hint for non-allowlisted groups', async () => {
     const { provider: mockChat, getInteractionHandler } = createMockChatForBot()
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const interactionHandler = getInteractionHandler()
     expect(interactionHandler).not.toBeNull()
@@ -1310,9 +1357,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
     addAuthorizedGroup('group-allowed', ADMIN_ID)
 
     const { provider: mockChat, getInteractionHandler } = createMockChatForBot()
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const interactionHandler = getInteractionHandler()
     expect(interactionHandler).not.toBeNull()
@@ -1348,9 +1399,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
     setupUserConfig('auth-user')
 
     const { provider: mockChat, getInteractionHandler } = createMockChatForBot()
-    setupBot(mockChat, ADMIN_ID, {
-      processMessage: (): Promise<void> => Promise.resolve(),
-    })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
 
     const interactionHandler = getInteractionHandler()
     expect(interactionHandler).not.toBeNull()
@@ -1489,13 +1544,13 @@ describe('Demo Mode — wizard bypass (setupBot)', () => {
 
     await setupTestDb()
 
-    const botDeps: BotDeps = {
+    const botDeps = withSynchronousQueue({
       processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {
         processMessageCallCount++
         lastProcessedStorageId = storageContextId
         return Promise.resolve()
       },
-    }
+    })
 
     const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
     getMessageHandler = getHandler
@@ -1534,13 +1589,13 @@ describe('Attachment workspace integration (setupBot)', () => {
     mockLogger()
     await setupTestDb()
 
-    const botDeps: BotDeps = {
+    const botDeps = withSynchronousQueue({
       processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {
         capturedStorageId = storageContextId
         attachmentIdsAtProcessingTime = listActiveAttachments(storageContextId).map((ref) => ref.attachmentId)
         return Promise.resolve()
       },
-    }
+    })
 
     const { provider: mockChat, getMessageHandler: getHandler } = createMockChatForBot()
     getMessageHandler = getHandler

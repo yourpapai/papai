@@ -14,6 +14,11 @@ type LoggerMethods = {
   debug: () => void
 }
 
+type MessageQueueModule = Pick<
+  typeof import('../src/message-queue/index.js'),
+  'registry' | 'cleanupExpiredQueues' | 'flushOnShutdown'
+>
+
 const countMatches = (source: string, pattern: RegExp): number => {
   const matches = source.match(pattern)
   return matches === null ? 0 : matches.length
@@ -25,6 +30,15 @@ const createMockChildLogger = (): LoggerMethods => ({
   warn: (): void => undefined,
   debug: (): void => undefined,
 })
+
+const isMessageQueueModule = (value: unknown): value is MessageQueueModule =>
+  typeof value === 'object' &&
+  value !== null &&
+  'registry' in value &&
+  'cleanupExpiredQueues' in value &&
+  typeof value.cleanupExpiredQueues === 'function' &&
+  'flushOnShutdown' in value &&
+  typeof value.flushOnShutdown === 'function'
 
 describe('index.ts - graceful shutdown', () => {
   beforeEach(() => {
@@ -175,10 +189,8 @@ describe('index.ts - graceful shutdown', () => {
   })
 
   test('global preload restores the real message queue module before the next test', async () => {
-    const messageQueueModule = await import(`../src/message-queue/index.js?post-reset=${crypto.randomUUID()}`)
+    const messageQueueModule: unknown = await import(`../src/message-queue/index.js?post-reset=${crypto.randomUUID()}`)
 
-    expect('registry' in messageQueueModule).toBe(true)
-    expect(typeof messageQueueModule.cleanupExpiredQueues).toBe('function')
-    expect(typeof messageQueueModule.flushOnShutdown).toBe('function')
+    expect(isMessageQueueModule(messageQueueModule)).toBe(true)
   })
 })

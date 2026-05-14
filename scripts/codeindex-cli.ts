@@ -2,14 +2,30 @@ import { spawn } from 'node:child_process'
 
 import { buildCodeindexSpawnSpec, type CodeindexResolutionInput } from './codeindex-cli-support.js'
 
+type SpawnChildLike = Readonly<{
+  once: (event: 'error', handler: (error: unknown) => void) => SpawnChildLike
+}> & {
+  once: (event: 'exit', handler: (code: number | null) => void) => SpawnChildLike
+}
+
+type SpawnChild = (
+  command: string,
+  args: readonly string[],
+  options: Readonly<{ cwd: string; stdio: 'inherit' }>,
+) => SpawnChildLike
+
 export interface RunCodeindexCliDeps extends CodeindexResolutionInput {
-  readonly spawnChild?: typeof spawn
+  readonly spawnChild?: SpawnChild
   readonly writeStderr?: (message: string) => void
 }
 
 export const runCodeindexCli = async (argv: readonly string[], deps: RunCodeindexCliDeps = {}): Promise<number> => {
-  const spawnChild = deps.spawnChild ?? spawn
-  const writeStderr = deps.writeStderr ?? ((message: string) => process.stderr.write(message))
+  const spawnChild: SpawnChild = deps.spawnChild ?? spawn
+  const writeStderr =
+    deps.writeStderr ??
+    ((message: string): void => {
+      process.stderr.write(message)
+    })
 
   let spec
   try {

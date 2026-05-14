@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test'
-import type { SpawnOptions } from 'node:child_process'
 
 import {
   buildCodeindexSpawnSpec,
@@ -8,6 +7,17 @@ import {
 } from '../../scripts/codeindex-cli-support.js'
 import { runCodeindexCli, type RunCodeindexCliDeps } from '../../scripts/codeindex-cli.js'
 
+type SpawnInvocation = Readonly<{
+  command: string
+  args: readonly string[]
+  options: Readonly<{ cwd: string; stdio: 'inherit' }>
+}>
+
+type SpawnChildLike = Readonly<{
+  once(event: 'error', handler: (error: unknown) => void): SpawnChildLike
+  once(event: 'exit', handler: (code: number | null) => void): SpawnChildLike
+}>
+
 const SIBLING_PATHS = new Set(['/tmp/yourpapai/codeindex/package.json', '/tmp/yourpapai/codeindex/src/cli.ts'])
 const CUSTOM_PATHS = new Set(['/opt/tools/codeindex/package.json', '/opt/tools/codeindex/src/cli.ts'])
 
@@ -15,21 +25,48 @@ const hasSiblingPath = (filePath: string): boolean => SIBLING_PATHS.has(filePath
 
 const hasCustomPath = (filePath: string): boolean => CUSTOM_PATHS.has(filePath)
 
-const createExitChild = (code: number): ReturnType<typeof import('node:child_process').spawn> =>
-  ({
-    once(event: string, handler: (value: number) => void) {
-      if (event === 'exit') handler(code)
-      return this
-    },
-  }) as ReturnType<typeof import('node:child_process').spawn>
+const createExitChild = (code: number): SpawnChildLike => ({
+  once(event: 'error' | 'exit', handler: ((error: unknown) => void) | ((code: number | null) => void)): SpawnChildLike {
+    if (event === 'exit') {
+      handler(code)
+    }
+    return createExitChild(code)
+  },
+})
 
-const createErrorChild = (error: Error): ReturnType<typeof import('node:child_process').spawn> =>
-  ({
-    once(event: string, handler: (value: Error) => void) {
-      if (event === 'error') handler(error)
-      return this
-    },
-  }) as ReturnType<typeof import('node:child_process').spawn>
+function emitSpawnError(handler: (error: unknown) => void, error: Error): void {
+  handler(error)
+}
+
+const isErrorHandler = (
+  _handler: ((error: unknown) => void) | ((code: number | null) => void),
+): _handler is (error: unknown) => void => true
+
+const createErrorChild = (error: Error): SpawnChildLike => ({
+  once(event: 'error' | 'exit', handler: ((error: unknown) => void) | ((code: number | null) => void)): SpawnChildLike {
+    if (event === 'error' && isErrorHandler(handler)) {
+      emitSpawnError(handler, error)
+    }
+    return createErrorChild(error)
+  },
+})
+
+const expectSingleSpawnCall = (
+  value: readonly SpawnInvocation[],
+): Readonly<{ command: string; args: string[]; cwd: string; stdio: 'inherit' }> => {
+  const [call] = value
+  expect(value).toHaveLength(1)
+  expect(call).toBeDefined()
+  if (call === undefined) {
+    throw new Error('Expected a spawn call')
+  }
+  return {
+    command: call.command,
+    args: [...call.args],
+    cwd: call.options.cwd,
+    stdio: call.options.stdio,
+  }
+}
 
 describe('codeindex CLI support', () => {
   test('defaults to sibling ../codeindex when CODEINDEX_DIR is unset', () => {
@@ -103,26 +140,11 @@ describe('codeindex CLI support', () => {
 
 describe('runCodeindexCli', () => {
   test('spawns bun with inherited stdio and returns the child exit code', async () => {
-    const spawnCalls: Array<{ command: string; args: string[]; cwd: string; stdio: string }> = []
-    const spawnChild = ((command: string, args?: readonly string[], options?: SpawnOptions) => {
-      if (
-        args === undefined ||
-        options === undefined ||
-        typeof options.cwd !== 'string' ||
-        options.stdio !== 'inherit'
-      ) {
-        throw new Error('Unexpected spawn arguments')
-      }
-
-      spawnCalls.push({
-        command,
-        args: [...args],
-        cwd: options.cwd,
-        stdio: options.stdio,
-      })
-
+    const spawnCalls: SpawnInvocation[] = []
+    const spawnChild: NonNullable<RunCodeindexCliDeps['spawnChild']> = (command, args, options): SpawnChildLike => {
+      spawnCalls.push({ command, args, options })
       return createExitChild(0)
-    }) as NonNullable<RunCodeindexCliDeps['spawnChild']>
+    }
 
     const exitCode = await runCodeindexCli(['reindex'], {
       repoRoot: '/tmp/yourpapai/papai',
@@ -134,20 +156,19 @@ describe('runCodeindexCli', () => {
     })
 
     expect(exitCode).toBe(0)
-    expect(spawnCalls).toEqual([
-      {
-        command: 'bun',
-        args: ['run', '/tmp/yourpapai/codeindex/src/cli.ts', 'reindex'],
-        cwd: '/tmp/yourpapai/papai',
-        stdio: 'inherit',
-      },
-    ])
+    expect(expectSingleSpawnCall(spawnCalls)).toEqual({
+      command: 'bun',
+      args: ['run', '/tmp/yourpapai/codeindex/src/cli.ts', 'reindex'],
+      cwd: '/tmp/yourpapai/papai',
+      stdio: 'inherit',
+    })
   })
 
   test('writes a controlled error and returns 1 when the child fails to spawn', async () => {
     const stderrMessages: string[] = []
     const startupError = Object.assign(new Error('spawn bun ENOENT'), { code: 'ENOENT' })
-    const spawnChild = (() => createErrorChild(startupError)) as NonNullable<RunCodeindexCliDeps['spawnChild']>
+    const spawnChild: NonNullable<RunCodeindexCliDeps['spawnChild']> = (): SpawnChildLike =>
+      createErrorChild(startupError)
 
     const exitCode = await runCodeindexCli(['reindex'], {
       repoRoot: '/tmp/yourpapai/papai',
