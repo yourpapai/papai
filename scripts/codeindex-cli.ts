@@ -7,10 +7,7 @@ export interface RunCodeindexCliDeps extends CodeindexResolutionInput {
   readonly writeStderr?: (message: string) => void
 }
 
-export const runCodeindexCli = async (
-  argv: readonly string[],
-  deps: RunCodeindexCliDeps = {},
-): Promise<number> => {
+export const runCodeindexCli = async (argv: readonly string[], deps: RunCodeindexCliDeps = {}): Promise<number> => {
   const spawnChild = deps.spawnChild ?? spawn
   const writeStderr = deps.writeStderr ?? ((message: string) => process.stderr.write(message))
 

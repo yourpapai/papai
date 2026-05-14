@@ -2,7 +2,6 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { resolveCodeindexModulePaths } from '../codeindex-cli-support.js'
-
 import type { EvidenceRef, CodeindexProvenance, CodeindexQueryProvenance } from './extract-trust-types.js'
 import type { TestCase } from './test-parser.js'
 
@@ -42,7 +41,11 @@ type CodeindexConfigLoader = (input: { readonly configPath: string; readonly rep
 }>
 
 type CodeindexSearchDeps = Readonly<{
-  readonly findSymbolCandidates: (db: import('bun:sqlite').Database, name: string, limit: number) => RankedSearchResult[]
+  readonly findSymbolCandidates: (
+    db: import('bun:sqlite').Database,
+    name: string,
+    limit: number,
+  ) => RankedSearchResult[]
   readonly findIncomingReferences: (
     db: import('bun:sqlite').Database,
     input: { readonly qualifiedName: string; readonly limit: number },

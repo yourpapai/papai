@@ -4,8 +4,7 @@ import path from 'node:path'
 
 const REPO_ROOT = path.resolve(import.meta.dir, '../..')
 
-const readRepoFile = (relativePath: string): string =>
-  readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')
+const readRepoFile = (relativePath: string): string => readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')
 
 describe('codeindex portability wiring', () => {
   test('uses wrapper-based runtime resolution instead of a static codeindex package dependency', () => {

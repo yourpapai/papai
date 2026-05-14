@@ -44,10 +44,11 @@ export const resolveCodeindexPaths = (input: CodeindexResolutionInput = {}): Res
   const { packageJsonPath, cliPath } = requiredPaths(repoDir)
 
   if (!pathExists(packageJsonPath) || !pathExists(cliPath)) {
-    throw new Error([
-      `codeindex repo not found at ${repoDir}`,
-      'Set CODEINDEX_DIR or clone the sibling repo at ../codeindex',
-    ].join('\n'))
+    throw new Error(
+      [`codeindex repo not found at ${repoDir}`, 'Set CODEINDEX_DIR or clone the sibling repo at ../codeindex'].join(
+        '\n',
+      ),
+    )
   }
 
   return { repoDir, cliPath }

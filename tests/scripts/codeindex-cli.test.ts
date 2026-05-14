@@ -105,7 +105,12 @@ describe('runCodeindexCli', () => {
   test('spawns bun with inherited stdio and returns the child exit code', async () => {
     const spawnCalls: Array<{ command: string; args: string[]; cwd: string; stdio: string }> = []
     const spawnChild = ((command: string, args?: readonly string[], options?: SpawnOptions) => {
-      if (args === undefined || options === undefined || typeof options.cwd !== 'string' || options.stdio !== 'inherit') {
+      if (
+        args === undefined ||
+        options === undefined ||
+        typeof options.cwd !== 'string' ||
+        options.stdio !== 'inherit'
+      ) {
         throw new Error('Unexpected spawn arguments')
       }
 

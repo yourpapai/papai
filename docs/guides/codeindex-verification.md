@@ -206,14 +206,14 @@ Expected: After ~600 ms, a `bun run scripts/codeindex-cli.ts reindex` process ap
 
 ## 6. Failure Scenarios & Remedies
 
-| Symptom                                      | Root Cause                                                  | Fix                                                                                                                      |
-| -------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `codeindex` not in `opencode mcp list`       | `opencode.json` missing `mcp.codeindex` or path typo        | Verify `"command": ["bun", "run", "scripts/codeindex-cli.ts", "mcp"]` and that the wrapper resolves the repo path        |
+| Symptom                                      | Root Cause                                                  | Fix                                                                                                                             |
+| -------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `codeindex` not in `opencode mcp list`       | `opencode.json` missing `mcp.codeindex` or path typo        | Verify `"command": ["bun", "run", "scripts/codeindex-cli.ts", "mcp"]` and that the wrapper resolves the repo path               |
 | `opencode mcp tools codeindex` shows nothing | Server crashes on startup                                   | Run `bun run scripts/codeindex-cli.ts mcp` directly; if needed, set `CODEINDEX_DIR` or clone the sibling repo at `../codeindex` |
-| Agent still uses `grep`                      | Instructions were added to wrong config (global vs project) | Ensure `CLAUDE.md` is in repo root, not just `~/.config/opencode/AGENTS.md`                                              |
-| `codeindex_code_search` returns empty        | DB stale or file not indexed                                | Run `codeindex_code_index incremental`; verify file is in `.codeindex.json` roots                                        |
-| Reindex plugin not triggering                | Plugin not loaded                                           | Verify `opencode.json` `"plugin"` array includes `"./.opencode/plugins/codeindex-reindex.ts"`                            |
-| Reindex plugin runs too often                | Debounce configured at 600 ms but sessions not isolated     | Check `debounceMap` uses `sessionID` key                                                                                 |
+| Agent still uses `grep`                      | Instructions were added to wrong config (global vs project) | Ensure `CLAUDE.md` is in repo root, not just `~/.config/opencode/AGENTS.md`                                                     |
+| `codeindex_code_search` returns empty        | DB stale or file not indexed                                | Run `codeindex_code_index incremental`; verify file is in `.codeindex.json` roots                                               |
+| Reindex plugin not triggering                | Plugin not loaded                                           | Verify `opencode.json` `"plugin"` array includes `"./.opencode/plugins/codeindex-reindex.ts"`                                   |
+| Reindex plugin runs too often                | Debounce configured at 600 ms but sessions not isolated     | Check `debounceMap` uses `sessionID` key                                                                                        |
 
 ---
 

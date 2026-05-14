@@ -175,9 +175,7 @@ describe('index.ts - graceful shutdown', () => {
   })
 
   test('global preload restores the real message queue module before the next test', async () => {
-    const messageQueueModule = await import(
-      `../src/message-queue/index.js?post-reset=${crypto.randomUUID()}`,
-    )
+    const messageQueueModule = await import(`../src/message-queue/index.js?post-reset=${crypto.randomUUID()}`)
 
     expect('registry' in messageQueueModule).toBe(true)
     expect(typeof messageQueueModule.cleanupExpiredQueues).toBe('function')
