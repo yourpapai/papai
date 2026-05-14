@@ -9,7 +9,7 @@
     "codeindex": {
       "type": "local",
       "enabled": true,
-      "command": ["bun", "run", "/Users/ki/Projects/papai/codeindex/src/cli.ts", "mcp"]
+      "command": ["bun", "run", "scripts/codeindex-cli.ts", "mcp"]
     }
   }
 }

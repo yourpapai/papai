@@ -43,7 +43,7 @@ const defaultDeps: ReindexDeps = {
     clearTimeout(token)
   },
   spawnReindex: (cwd) => {
-    const child = spawn('bun', ['run', 'codeindex/src/cli.ts', 'reindex'], {
+    const child = spawn('bun', ['run', 'scripts/codeindex-cli.ts', 'reindex'], {
       cwd,
       stdio: 'ignore',
       detached: true,
