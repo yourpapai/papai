@@ -78,6 +78,12 @@ const fakeDeps = (
 })
 
 describe('registerCodeindexReindex', () => {
+  test('treats Windows absolute implementation paths as indexed files', async () => {
+    const { shouldReindexPath } = await loadCodeindexModule()
+
+    expect(shouldReindexPath('C:\\repo\\src\\bot.ts', 'C:\\repo')).toBe(true)
+  })
+
   test('schedules a reindex after qualifying multiedit operations', async () => {
     const { registerCodeindexReindex } = await loadCodeindexModule()
     const fakeApi = createFakeApi()

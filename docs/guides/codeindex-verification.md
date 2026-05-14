@@ -261,4 +261,6 @@ On macOS, stop the MCP command with `Ctrl-C` after the initialize response print
 
 If the wrapper cannot find the sibling checkout automatically, set `CODEINDEX_DIR` or clone the sibling repo at ../codeindex.
 
+That same `CODEINDEX_DIR` override now covers the behavior-audit evidence extraction path too; `papai` no longer depends on a local `codeindex` package install for that script.
+
 Expected: All sections print JSON without error.

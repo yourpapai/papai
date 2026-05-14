@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import path from 'node:path'
 
 type TimeoutToken = ReturnType<typeof setTimeout>
 
@@ -37,6 +38,11 @@ export type ReindexDeps = {
 const INDEXED_ROOTS = ['src', 'client']
 const INDEXED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
 
+const isWindowsAbsolutePath = (filePath: string): boolean =>
+  /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\')
+
+const isAbsolutePath = (filePath: string): boolean => path.isAbsolute(filePath) || isWindowsAbsolutePath(filePath)
+
 const defaultDeps: ReindexDeps = {
   schedule: (delayMs, run) => setTimeout(run, delayMs),
   cancel: (token) => {
@@ -50,7 +56,10 @@ const defaultDeps: ReindexDeps = {
     })
     child.unref()
   },
-  toRelativePath: (filePath, cwd) => (filePath.startsWith('/') ? filePath.slice(`${cwd}/`.length) : filePath),
+  toRelativePath: (filePath, cwd) => {
+    if (!isAbsolutePath(filePath)) return filePath
+    return isWindowsAbsolutePath(filePath) ? path.win32.relative(cwd, filePath) : path.relative(cwd, filePath)
+  },
   getExtension: (filePath) => {
     const dotIndex = filePath.lastIndexOf('.')
     if (dotIndex < 0) return ''

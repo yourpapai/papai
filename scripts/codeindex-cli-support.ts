@@ -13,6 +13,13 @@ export interface ResolvedCodeindexPaths {
   readonly cliPath: string
 }
 
+export interface ResolvedCodeindexModulePaths {
+  readonly configModulePath: string
+  readonly searchModulePath: string
+  readonly storageDbModulePath: string
+  readonly typesModulePath: string
+}
+
 export interface CodeindexSpawnSpec extends ResolvedCodeindexPaths {
   readonly command: string
   readonly args: readonly string[]
@@ -44,6 +51,17 @@ export const resolveCodeindexPaths = (input: CodeindexResolutionInput = {}): Res
   }
 
   return { repoDir, cliPath }
+}
+
+export const resolveCodeindexModulePaths = (input: CodeindexResolutionInput = {}): ResolvedCodeindexModulePaths => {
+  const { repoDir } = resolveCodeindexPaths(input)
+
+  return {
+    configModulePath: path.join(repoDir, 'src', 'config.js'),
+    searchModulePath: path.join(repoDir, 'src', 'search.js'),
+    storageDbModulePath: path.join(repoDir, 'src', 'storage', 'db.js'),
+    typesModulePath: path.join(repoDir, 'src', 'types.js'),
+  }
 }
 
 export const buildCodeindexSpawnSpec = (

@@ -8,14 +8,16 @@ const readRepoFile = (relativePath: string): string =>
   readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')
 
 describe('codeindex portability wiring', () => {
-  test('uses a declared local dependency instead of hidden bun link state', () => {
+  test('uses wrapper-based runtime resolution instead of a static codeindex package dependency', () => {
     const packageJson = readRepoFile('package.json')
+    const extractEvidence = readRepoFile('scripts/behavior-audit/extract-evidence.ts')
 
-    expect(packageJson).toContain('"codeindex": "file:../codeindex"')
+    expect(packageJson).not.toContain('"codeindex": "file:../codeindex"')
     expect(packageJson).not.toContain('"codeindex": "link:codeindex"')
     expect(packageJson).toContain('"codeindex:index": "bun run scripts/codeindex-cli.ts index"')
     expect(packageJson).toContain('"codeindex:reindex": "bun run scripts/codeindex-cli.ts reindex"')
     expect(packageJson).toContain('"codeindex:stats": "bun run scripts/codeindex-cli.ts stats"')
+    expect(extractEvidence).not.toContain("from 'codeindex/src/")
   })
 
   test('routes config and extensions through the wrapper without absolute codeindex paths', () => {

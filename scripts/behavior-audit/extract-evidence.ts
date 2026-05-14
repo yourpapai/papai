@@ -1,10 +1,7 @@
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
-import { loadCodeindexConfig } from 'codeindex/src/config.js'
-import { findSymbolCandidates, findIncomingReferences } from 'codeindex/src/search.js'
-import type { ImpactResult } from 'codeindex/src/search.js'
-import { openDatabase } from 'codeindex/src/storage/db.js'
-import type { RankedSearchResult } from 'codeindex/src/types.js'
+import { resolveCodeindexModulePaths } from '../codeindex-cli-support.js'
 
 import type { EvidenceRef, CodeindexProvenance, CodeindexQueryProvenance } from './extract-trust-types.js'
 import type { TestCase } from './test-parser.js'
@@ -22,6 +19,66 @@ export interface CollectEvidenceInput {
   readonly testCase: TestCase
   readonly testFilePath: string
   readonly manifestDependencyPaths: readonly string[]
+}
+
+type RankedSearchResult = Readonly<{
+  filePath: string
+  startLine: number
+  endLine: number
+  snippet: string
+  symbolKey: string
+  qualifiedName: string
+}>
+
+type ImpactResult = Readonly<{
+  sourceFilePath: string
+  lineNumber: number
+  edgeType: string
+  sourceQualifiedName: string | null
+}>
+
+type CodeindexConfigLoader = (input: { readonly configPath: string; readonly repoRoot: string }) => Promise<{
+  readonly dbPath: string
+}>
+
+type CodeindexSearchDeps = Readonly<{
+  readonly findSymbolCandidates: (db: import('bun:sqlite').Database, name: string, limit: number) => RankedSearchResult[]
+  readonly findIncomingReferences: (
+    db: import('bun:sqlite').Database,
+    input: { readonly qualifiedName: string; readonly limit: number },
+  ) => ImpactResult[]
+}>
+
+type CodeindexDbDeps = Readonly<{
+  readonly openDatabase: (dbPath: string) => import('bun:sqlite').Database
+}>
+
+const loadCodeindexDeps = async (
+  repoRoot: string,
+): Promise<
+  Readonly<{
+    readonly loadCodeindexConfig: CodeindexConfigLoader
+    readonly search: CodeindexSearchDeps
+    readonly db: CodeindexDbDeps
+  }>
+> => {
+  const modulePaths = resolveCodeindexModulePaths({ repoRoot })
+  const [configModule, searchModule, dbModule] = await Promise.all([
+    import(pathToFileURL(modulePaths.configModulePath).href),
+    import(pathToFileURL(modulePaths.searchModulePath).href),
+    import(pathToFileURL(modulePaths.storageDbModulePath).href),
+  ])
+
+  return {
+    loadCodeindexConfig: configModule.loadCodeindexConfig as CodeindexConfigLoader,
+    search: {
+      findSymbolCandidates: searchModule.findSymbolCandidates as CodeindexSearchDeps['findSymbolCandidates'],
+      findIncomingReferences: searchModule.findIncomingReferences as CodeindexSearchDeps['findIncomingReferences'],
+    },
+    db: {
+      openDatabase: dbModule.openDatabase as CodeindexDbDeps['openDatabase'],
+    },
+  }
 }
 
 function extractImportedNames(source: string): readonly string[] {
@@ -99,7 +156,12 @@ interface CodeindexEvidence {
   readonly indexStatus: CodeindexProvenance['indexStatus']
 }
 
-const collectCodeindexEvidence = (db: import('bun:sqlite').Database, testSource: string): CodeindexEvidence => {
+const collectCodeindexEvidence = (
+  db: import('bun:sqlite').Database,
+  testSource: string,
+  findSymbolCandidates: CodeindexSearchDeps['findSymbolCandidates'],
+  findIncomingReferences: CodeindexSearchDeps['findIncomingReferences'],
+): CodeindexEvidence => {
   const indexStatus = checkIndexFreshness(db)
   const importedNames = extractImportedNames(testSource)
   const queries: CodeindexQueryProvenance[] = []
@@ -144,13 +206,19 @@ export const collectEvidence = async (input: Readonly<CollectEvidenceInput>): Pr
 
   try {
     const repoRoot = path.resolve(import.meta.dir, '../..')
-    const config = await loadCodeindexConfig({
+    const codeindex = await loadCodeindexDeps(repoRoot)
+    const config = await codeindex.loadCodeindexConfig({
       configPath: path.join(repoRoot, '.codeindex.json'),
       repoRoot,
     })
-    db = openDatabase(config.dbPath)
+    db = codeindex.db.openDatabase(config.dbPath)
 
-    const ciEvidence = collectCodeindexEvidence(db, input.testCase.source)
+    const ciEvidence = collectCodeindexEvidence(
+      db,
+      input.testCase.source,
+      codeindex.search.findSymbolCandidates,
+      codeindex.search.findIncomingReferences,
+    )
     const uniqueNewFiles = ciEvidence.additionalFiles.filter((f) => !evidenceFilesRead.includes(f))
     evidenceFilesRead.push(...uniqueNewFiles)
 
