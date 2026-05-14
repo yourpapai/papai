@@ -3,45 +3,45 @@ name: papai — Paper & Papaya
 description: >
   Landing-page visual identity for papai, a self-hosted chat companion that
   turns natural-language messages into structured work inside a task tracker.
-  The design pairs a sun-warmed paper surface with a single papaya accent and
-  espresso-warm ink — a calm editorial page that reads like a magazine column,
-  set on the side of a developer's desk.
+  The design pairs a cool sage-paper surface with a single vivid-papaya accent
+  and forest-cool ink — a calm editorial page that reads less like a sepia
+  magazine and more like a fruit stand on a fresh morning.
 colors:
-  surface: '#faf6ef'
+  surface: '#eef1ec'
   surface-bright: '#ffffff'
-  surface-container-low: '#f7f2e9'
-  surface-container: '#efe8db'
-  surface-container-high: '#e7dfce'
-  ink: '#1f1a16'
-  ink-soft: '#3a322b'
-  ink-muted: '#6b6157'
-  ink-faint: '#8c8175'
-  ink-disabled: '#b6ad9f'
-  primary: '#e36a2c'
-  on-primary: '#3a1a07'
-  primary-tint: '#fde8d8'
-  primary-hover: '#f08856'
-  primary-container: '#ffd9c2'
-  on-primary-container: '#3a1a07'
-  secondary: '#5f8a6a'
-  secondary-tint: '#ecf3ee'
-  secondary-container: '#d8eadd'
-  on-secondary-container: '#1c3022'
-  tertiary-container: '#fbe9b3'
-  on-tertiary-container: '#3a2a04'
-  success-container: '#d8eadd'
-  on-success-container: '#1c3022'
-  warning-container: '#fbe9b3'
-  on-warning-container: '#3a2a04'
-  error-container: '#fbe0d8'
-  on-error-container: '#5a1a10'
-  info-container: '#dde6ef'
-  on-info-container: '#0e2640'
-  inverse-surface: '#1c1814'
-  inverse-surface-raised: '#26211c'
-  inverse-on-surface: '#f1ebe0'
-  inverse-on-surface-variant: '#a89d8d'
-  inverse-primary: '#ff9a5c'
+  surface-container-low: '#e6eae3'
+  surface-container: '#dde2da'
+  surface-container-high: '#d3d9cf'
+  ink: '#15201a'
+  ink-soft: '#2c3530'
+  ink-muted: '#566059'
+  ink-faint: '#7e877f'
+  ink-disabled: '#b0b6b0'
+  primary: '#ff5a1f'
+  on-primary: '#3a1505'
+  primary-tint: '#ffe0d0'
+  primary-hover: '#ff7a45'
+  primary-container: '#ffcdb3'
+  on-primary-container: '#4a1a08'
+  secondary: '#4a9d6b'
+  secondary-tint: '#e2f1e7'
+  secondary-container: '#c8e6d2'
+  on-secondary-container: '#0e2918'
+  tertiary-container: '#ffe69a'
+  on-tertiary-container: '#3d2a00'
+  success-container: '#c8e6d2'
+  on-success-container: '#0e2918'
+  warning-container: '#ffe69a'
+  on-warning-container: '#3d2a00'
+  error-container: '#ffd9cc'
+  on-error-container: '#5a160a'
+  info-container: '#cfdfee'
+  on-info-container: '#0c2640'
+  inverse-surface: '#161c18'
+  inverse-surface-raised: '#1f2722'
+  inverse-on-surface: '#e9efe5'
+  inverse-on-surface-variant: '#9aa39b'
+  inverse-primary: '#ff8755'
   chip-telegram: '#e7f1f8'
   on-chip-telegram: '#1f3a55'
   chip-mattermost: '#eef0fb'
@@ -572,25 +572,25 @@ components:
 
 The aesthetic blends three references:
 
-- **The notebook page.** A warm cream surface, espresso ink, generous leading, an occasional serif pull-quote — the rhythm of writing, not dashboard-building.
-- **The sunlit kitchen.** The name _papai_ is "papa" in Portuguese; papaya is the namesake fruit and the page's one moment of saturated color, lit from above by an aurora gradient.
+- **The notebook page.** A cool sage-tinted paper surface, forest-cool ink, generous leading, an occasional serif pull-quote — the rhythm of writing, not dashboard-building.
+- **The fruit stand.** The name _papai_ is "papa" in Portuguese; papaya is the namesake fruit and the page's one moment of saturated color, set against a leaf-paper canvas like a halved papaya on a tablecloth.
 - **The chat transcript.** Compact bubbles, a conspicuous sage tool-call pill, gentle typing motion. The product _is_ a conversation, so the marketing surface rehearses the product's own shape.
 
 The voice is plainspoken and slightly Brazilian-sunny. Headlines are short. Copy never apologizes for being a bot. Code samples are not hidden behind tabs. The emotional register is _competent calm_ — papai does heavy work (routing intent, calling APIs, persisting state) and the page should feel like a piece of equipment that has been tuned, not sold.
 
 ## Colors
 
-The palette is built around a 3-axis tension: **warm paper** for legibility and humanity, **espresso ink** for typographic gravity, **papaya** for the single thread of agency that runs through the page.
+The palette is built around a 3-axis tension: **sage-leaf paper** for legibility and a sense of garden calm, **forest-cool ink** for typographic gravity, **vivid papaya** for the single thread of agency that runs through the page.
 
-- **Surface family (`surface`, `surface-container-*`).** A sun-warmed cream (`#faf6ef` base), not paper-white. Five elevation tiers from `surface-bright` (`#ffffff`) to `surface-container-high` (`#e7dfce`) let cards, transcripts, and matrices stack without ever needing a hard divider. Each step is a low-contrast lift of roughly 4–6 luminance units — felt, not seen.
-- **Ink ladder (`ink-*`).** A five-step warm espresso (`#1f1a16` → `#3a322b` → `#6b6157` → `#8c8175` → `#b6ad9f`) carries every text role from headline to disabled metadata without ever dropping into a cold gray. Pure black is reserved; using it would push the design toward sterile dashboard territory.
-- **Papaya (`primary` `#e36a2c`).** The single saturated hue. Used for primary CTAs, focus rings, the eyebrow tag above the hero, the bot's chat bubble border, the install-block prompt, statistics, and the inline link color in long-form prose. Never use papaya for body copy or large filled regions — it is reserved for _moments of agency_.
-- **Sage (`secondary` `#5f8a6a`).** A calm counter-accent: the "tool used" pill in the chat mockup, success ticks in the provider matrix, and inline indicators of system-side action. Sage and papaya are deliberately complementary without competing — one is a fruit, the other a leaf. Never on a CTA.
-- **Corn-silk (`tertiary-container` `#fbe9b3`).** The rarest accent. Used only inside the final CTA band and as the third feature-icon-tile tint. Its scarcity is the point — it should always feel like a moment.
+- **Surface family (`surface`, `surface-container-*`).** A pale sage-tinted paper (`#eef1ec` base), not paper-white and deliberately not a warm cream — the canvas reads as a leaf turned over, not as aged newsprint. Five elevation tiers from `surface-bright` (`#ffffff`) to `surface-container-high` (`#d3d9cf`) let cards, transcripts, and matrices stack without ever needing a hard divider. Each step is a low-contrast lift of roughly 4–6 luminance units — felt, not seen.
+- **Ink ladder (`ink-*`).** A five-step forest-cool charcoal (`#15201a` → `#2c3530` → `#566059` → `#7e877f` → `#b0b6b0`) carries every text role from headline to disabled metadata. The ink is cooled with green rather than warmed with brown, distancing the page from the sepia editorial register and aligning it with the leaf-paper canvas. Pure black is reserved; using it would push the design toward sterile dashboard territory.
+- **Papaya (`primary` `#ff5a1f`).** The single saturated hue, dialed brighter and more red-orange than a muted terracotta would be — closer to halved fruit than to a clay tile. Used for primary CTAs, focus rings, the eyebrow tag above the hero, the bot's chat bubble border, the install-block prompt, statistics, and the inline link color in long-form prose. Never use papaya for body copy or large filled regions — it is reserved for _moments of agency_.
+- **Leaf-sage (`secondary` `#4a9d6b`).** A more saturated counter-accent than a muted moss would be: the "tool used" pill in the chat mockup, success ticks in the provider matrix, and inline indicators of system-side action. Leaf and papaya are deliberately complementary without competing — one is a fruit, the other its tree. Never on a CTA.
+- **Honey (`tertiary-container` `#ffe69a`).** The rarest accent — a clear, ripe honey-yellow rather than a dusty corn-silk. Used only inside the final CTA band and as the third feature-icon-tile tint. Its scarcity is the point — it should always feel like a moment.
 - **Semantic containers.** `success-container`, `warning-container`, `error-container`, `info-container` and their paired `on-*-container` ink colors appear only inside system bubbles, inline alerts, and matrix cells — never as decoration. The container pairs deliver WCAG AAA contrast at body sizes.
-- **Inverse band (`inverse-surface` `#1c1814`).** A warm charcoal used for the install code block, terminal prompts, and the footer. Never pure black; it carries the same espresso temperature as the ink so dark sections feel like the same brand viewed at night.
+- **Inverse band (`inverse-surface` `#161c18`).** A deep forest charcoal used for the install code block, terminal prompts, and the footer. Never pure black; it carries the same green-cool temperature as the ink so dark sections feel like the same brand viewed at dusk under a tree.
 - **Provider chips.** Telegram, Mattermost, Discord, Kaneo, YouTrack each receive a pale tint of the platform's house color paired with a deep `on-chip-*` ink. The tints are neutral monogram colors, not brand-accurate logos — enough signal to read instantly without crossing into trademark territory.
-- **Contrast contract.** Ink-on-surface clears WCAG AAA at body sizes. On-primary (`#3a1a07` on `#e36a2c`) clears WCAG AA for button labels at 14 px / 600 weight — espresso-on-papaya, not white-on-papaya, gives the namesake button a more legible and more editorial feel. Muted variant text (`ink-muted` `#6b6157`) is held at AA for body and reserved for metadata. All container/on-container alert pairs clear AAA.
+- **Contrast contract.** Ink-on-surface clears WCAG AAA at body sizes. On-primary (`#3a1505` on `#ff5a1f`) clears WCAG AA for button labels at 14 px / 600 weight — deep-roast-on-papaya, not white-on-papaya, gives the namesake button a more legible feel against the brighter fruit. Muted variant text (`ink-muted` `#566059`) is held at AA for body and reserved for metadata. All container/on-container alert pairs clear AAA.
 
 ## Typography
 
@@ -619,14 +619,14 @@ The page is a **12-column desktop grid (1240 px max, 24 px gutters)**, collapsin
 
 ## Elevation & Depth
 
-Depth is conveyed by **soft warm light, not hard shadow**. Because the canvas is cream, every shadow color should be a warm `rgba(31, 26, 22, x)` rather than black, so cards never feel cut out of the page. The system layers four cues:
+Depth is conveyed by **soft cool light, not hard shadow**. Because the canvas is sage-paper, every shadow color should be a cool `rgba(21, 32, 26, x)` rather than black, so cards never feel cut out of the page. The system layers four cues:
 
 1. **Surface tier shift.** Cards rise by stepping up one or two `surface-container-*` tiers (or onto `surface-bright` `#ffffff`). This is the primary depth cue and should always be tried first.
-2. **Hairline border.** Every elevated surface (levels 1–2) carries a `1px solid` warm-gray border so cards still hold their shape on low-contrast screens or in print.
-3. **Warm-tinted shadow.** Levels 3–5 add a long, blurred shadow with espresso tone (`rgba(31, 26, 22, 0.10)` at level 4) that anchors the element without darkening the surrounding surface.
-4. **Papaya glow, used once.** The hero's primary CTA — and only the primary CTA — carries a soft papaya glow (`0 0 0 6px rgba(227, 106, 44, 0.12), 0 18px 40px -10px rgba(227, 106, 44, 0.28)`). This is the page's single radiant element; reusing it dilutes its meaning.
+2. **Hairline border.** Every elevated surface (levels 1–2) carries a `1px solid` cool-gray border so cards still hold their shape on low-contrast screens or in print.
+3. **Forest-tinted shadow.** Levels 3–5 add a long, blurred shadow with a deep-leaf tone (`rgba(21, 32, 26, 0.10)` at level 4) that anchors the element without darkening the surrounding surface.
+4. **Papaya glow, used once.** The hero's primary CTA — and only the primary CTA — carries a soft papaya glow (`0 0 0 6px rgba(255, 90, 31, 0.14), 0 18px 40px -10px rgba(255, 90, 31, 0.30)`). This is the page's single radiant element; reusing it dilutes its meaning.
 
-Hover lifts are restrained: 2 px translate, 180 ms ease-out, shadow widening from rest to hover. Focus rings are always **4 px papaya at 18 % opacity**, never the browser default. The focused element also receives a `2px solid` papaya border. The hero uses a layered **radial-gradient aurora** — a papaya glow in the upper-left, a sage glow in the upper-right, both fading into cream — to give the top of the page a sense of dawn light without using a photograph.
+Hover lifts are restrained: 2 px translate, 180 ms ease-out, shadow widening from rest to hover. Focus rings are always **4 px papaya at 18 % opacity**, never the browser default. The focused element also receives a `2px solid` papaya border. The hero uses a layered **radial-gradient aurora** — a papaya glow in the upper-left, a leaf-sage glow in the upper-right, both fading into pale sage-paper — to give the top of the page a sense of morning garden light without using a photograph.
 
 ## Shapes
 
@@ -692,10 +692,10 @@ A rounded `matrix-table` mapping capability rows (DM, group, threads, file relay
 
 ### Buttons
 
-- `button-primary`: papaya fill (`#e36a2c`), espresso ink (`#3a1a07`), pill, 14 / 24 padding, 48 px tall. Hover lifts 2 px and warms toward `primary-hover`; focus adds the 4 px papaya ring; the hero-CTA instance also carries the papaya glow.
+- `button-primary`: papaya fill (`#ff5a1f`), deep-roast ink (`#3a1505`), pill, 14 / 24 padding, 48 px tall. Hover lifts 2 px and brightens toward `primary-hover`; focus adds the 4 px papaya ring; the hero-CTA instance also carries the papaya glow.
 - `button-primary-soft`: `primary-container` fill, `on-primary-container` ink. Used where a softer agency mark is needed (inline CTAs in long-form prose, "Try the demo" rows).
 - `button-secondary`: white fill, ink text, pill geometry. Used as the companion action.
-- `button-secondary-soft`: sage-container fill, deep-sage ink. Used in the matrix and beside `chat-tool-pill` for related actions.
+- `button-secondary-soft`: leaf-container fill, deep-forest ink. Used in the matrix and beside `chat-tool-pill` for related actions.
 - `button-ghost`: transparent, `ink-soft` text, hover fills with `surface-container`. Used everywhere a tertiary action lives.
 
 All variants share pill geometry so they read as one family across density.
@@ -722,11 +722,11 @@ Four soft-tinted variants — `alert-error`, `alert-warning`, `alert-info`, `ale
 
 ### CTA Band
 
-A nearly-rectangular 36 px-rounded card at the foot of the page on `tertiary-container` (corn-silk), a 48 px Fraunces headline (`display-md`), and the same primary/secondary button pair from the hero. The CTA band is the second appearance of the corn-silk family; its scarcity makes it land.
+A nearly-rectangular 36 px-rounded card at the foot of the page on `tertiary-container` (honey-yellow), a 48 px Fraunces headline (`display-md`), and the same primary/secondary button pair from the hero. The CTA band is the second appearance of the honey family; its scarcity makes it land.
 
 ### Footer
 
-A four-column layout on `inverse-surface`: brand mark and tagline (left), then "Product / Docs / Community" link columns. Footer wordmark in `inverse-primary` (`#ff9a5c`) so the namesake color reappears once at the bottom. The last footer line is a single `code-sm` build stamp aligned right — version, commit hash, build date — set in `inverse-on-surface-variant`. No social-media glyphs in primary color; if present, they are 1.5 px outline icons in muted paper.
+A four-column layout on `inverse-surface`: brand mark and tagline (left), then "Product / Docs / Community" link columns. Footer wordmark in `inverse-primary` (`#ff8755`) so the namesake color reappears once at the bottom. The last footer line is a single `code-sm` build stamp aligned right — version, commit hash, build date — set in `inverse-on-surface-variant`. No social-media glyphs in primary color; if present, they are 1.5 px outline icons in muted paper.
 
 ## Do's and Don'ts
 
@@ -734,17 +734,17 @@ A four-column layout on `inverse-surface`: brand mark and tagline (left), then "
 
 - Reserve the papaya accent for moments of agency: primary CTAs, focus rings, the bot bubble's left-bar, the install-block prompt, statistics, the hero eyebrow. Reserve the glow for a single CTA.
 - Use mono for anything the system _executes_ — tool names, command snippets, configuration keys, the build stamp.
-- Treat surface elevation as the primary depth cue. Reach for shadow only after stepping the surface tier first; always tint shadow with espresso, never pure black.
+- Treat surface elevation as the primary depth cue. Reach for shadow only after stepping the surface tier first; always tint shadow with the forest-ink hue, never pure black.
 - Allow paragraphs of long-form prose at 64 ch measure. The product is a writing surface; the landing page can be one too.
 - Show real (or realistic) chat transcripts. The product's voice is its strongest asset; do not hide it behind abstract marketing illustrations.
 - Honor `prefers-reduced-motion`. The marquee, typing dots, and reveal-up all fall back to opacity-only 120 ms transitions.
 
 **Don't**
 
-- Don't use pure white text or pure black ink. Cream `surface` (`#faf6ef`) and espresso `ink` (`#1f1a16`) are the brand temperatures everywhere.
+- Don't use pure white text or pure black ink. Sage-paper `surface` (`#eef1ec`) and forest-cool `ink` (`#15201a`) are the brand temperatures everywhere.
 - Don't apply papaya to body copy, large filled regions, or decorative gradients. It loses meaning the moment it stops marking action.
-- Don't introduce a third accent hue beyond sage and corn-silk, and don't use sage or corn-silk on a CTA.
-- Don't use cold-gray shadows on the cream canvas — they read as smudges. Use warm `rgba(31, 26, 22, x)` shadows plus hairline borders at low elevations.
+- Don't introduce a third accent hue beyond leaf-sage and honey, and don't use leaf-sage or honey on a CTA.
+- Don't use warm-brown or neutral-gray shadows on the sage-paper canvas — they read as muddied. Use cool `rgba(21, 32, 26, x)` shadows plus hairline borders at low elevations.
 - Don't lean on stock 3D illustrations, gradient orbs, or generative-AI render imagery. The brand is restrained editorial craft, not chrome.
 - Don't break the chat transcript metaphor with mascots, emoji-as-decoration, or speech-bubble tails. The transcript is the product; render it the way the product would render it.
 - Don't use italics for emphasis in body copy. The sole italic in the system is the Fraunces pull-quote. Use weight or inline papaya color instead.
