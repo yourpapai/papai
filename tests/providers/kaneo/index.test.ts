@@ -191,7 +191,7 @@ describe('KaneoProvider', () => {
         startDate: '2026-03-01T00:00:00.000Z',
       })
 
-      expect(requestBody?.startDate).toBe('2026-03-01T00:00:00.000Z')
+      expect(requestBody?.['startDate']).toBe('2026-03-01T00:00:00.000Z')
     })
   })
 
