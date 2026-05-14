@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - 2026-05-14
+
+### Changed
+
+- Extract codeindex workspace into standalone project
+
+### Fixed
+
+- **telegram:** Register bot handlers before startup
+- **kaneo:** Align self-hosted stack with single-image deploy
 ## [5.3.0] - 2026-05-13
 
 ### Added
