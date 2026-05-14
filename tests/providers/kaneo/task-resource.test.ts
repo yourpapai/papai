@@ -233,7 +233,7 @@ describe('TaskResource', () => {
                 number: 1,
                 priority: 'high',
                 description: 'Description',
-                dueDate: '2026-03-15',
+                dueDate: '2026-03-15T00:00:00.000Z',
                 userId: 'user-1',
               }),
             ),
@@ -248,7 +248,7 @@ describe('TaskResource', () => {
         title: 'Test',
         description: 'Description',
         priority: 'high',
-        dueDate: '2026-03-15',
+        dueDate: '2026-03-15T00:00:00.000Z',
         status: 'in-progress',
       })
 
@@ -256,7 +256,7 @@ describe('TaskResource', () => {
         title: 'Test',
         description: 'Description',
         priority: 'high',
-        dueDate: '2026-03-15',
+        dueDate: '2026-03-15T00:00:00.000Z',
         status: 'in-progress',
       })
     })
@@ -465,6 +465,30 @@ describe('TaskResource', () => {
       expect(result.id).toBe('task-1')
       expect(result.description).toBe('Details')
       expect(result.startDate).toBe('2026-03-01T00:00:00.000Z')
+    })
+
+    test('rejects non-date-time timestamps in task responses', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...createMockTask({
+                id: 'task-1',
+                title: 'Test',
+                number: 1,
+                description: 'Details',
+              }),
+              startDate: '2026-03-01',
+              dueDate: '2026-03-15',
+              createdAt: '2026-03-01',
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await expect(resource.get('task-1')).rejects.toThrow()
     })
 
     test('parses relations from description frontmatter', async () => {
@@ -685,7 +709,7 @@ describe('TaskResource', () => {
                       number: 2,
                       status: 'col-1',
                       priority: 'high',
-                      dueDate: '2026-12-31',
+                      dueDate: '2026-12-31T00:00:00.000Z',
                       position: 2,
                       createdAt: '2026-03-01T00:00:00.000Z',
                       userId: null,
@@ -778,6 +802,28 @@ describe('TaskResource', () => {
         title: 'Task 1',
         status: 'to-do',
       })
+    })
+
+    test('rejects data-envelope task lists', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                columns: [],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await expect(resource.list('proj-1')).rejects.toThrow()
     })
 
     test('returns empty array when no tasks', async () => {

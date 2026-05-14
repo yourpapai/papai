@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 // Enums
 const TaskPriorityEnum = z.enum(['no-priority', 'low', 'medium', 'high', 'urgent'])
+const TaskDateTimeSchema = z.iso.datetime({ offset: true })
 
 // Task schema (response)
 export const TaskSchema = z.object({
@@ -14,7 +15,7 @@ export const TaskSchema = z.object({
   description: z.string().nullable(),
   status: z.string(),
   priority: TaskPriorityEnum,
-  startDate: z.string().nullable().optional(),
-  dueDate: z.unknown().optional(),
-  createdAt: z.unknown(),
+  startDate: TaskDateTimeSchema.nullable().optional(),
+  dueDate: TaskDateTimeSchema.nullable().optional(),
+  createdAt: TaskDateTimeSchema,
 })

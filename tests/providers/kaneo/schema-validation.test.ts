@@ -183,6 +183,17 @@ describe('Schema Validation', () => {
       expect(result.data.startDate).toBe('2026-02-20T00:00:00.000Z')
     })
 
+    test('KaneoTaskResponseSchema rejects non-date-time task timestamps', () => {
+      const result = KaneoTaskResponseSchema.safeParse({
+        ...validTaskFullResponseWithStartDate,
+        startDate: '2026-02-20',
+        dueDate: '2026-03-01',
+        createdAt: '2026-03-01',
+      })
+
+      expect(result.success).toBe(false)
+    })
+
     test('TaskWithProjectIdSchema validates projectId field', () => {
       const validTaskWithProject = {
         ...validTaskResponse,
@@ -360,6 +371,20 @@ describe('Schema Validation', () => {
         })
 
         expect(result.success).toBe(true)
+      })
+
+      test('ListTasksResponseSchema rejects data-envelope task-list payloads', () => {
+        const result = ListTasksResponseSchema.safeParse({
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            columns: [],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
+        })
+
+        expect(result.success).toBe(false)
       })
     })
 
@@ -590,6 +615,22 @@ describe('Schema Validation', () => {
       assert(result.success)
       expect(result.data.id).toBe('act-1')
       expect(result.data.content).toBe('Test comment')
+    })
+
+    test('ActivityItemSchema accepts newer created activity payloads', () => {
+      const result = ActivityItemSchema.safeParse(
+        createMockActivity({
+          id: 'act-created',
+          type: 'created',
+          content: null,
+          eventData: {},
+          updatedAt: '2026-03-01T00:00:00Z',
+        }),
+      )
+
+      expect(result.success).toBe(true)
+      assert(result.success)
+      expect(result.data.type).toBe('created')
     })
 
     test('KaneoActivityWithTypeSchema validates activity array', () => {

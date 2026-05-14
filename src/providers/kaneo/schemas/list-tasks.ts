@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+const TaskDateTimeSchema = z.iso.datetime({ offset: true })
+
 // Column schema
 export const ColumnSchema = z.object({
   id: z.string(),
@@ -19,10 +21,10 @@ export const ListTaskSchema = z.object({
   priority: z.string(),
   description: z.string().optional(),
   position: z.number().optional(),
-  createdAt: z.string().or(z.date()).optional(),
+  createdAt: TaskDateTimeSchema.optional(),
   userId: z.string().nullable().optional(),
   projectId: z.string().optional(),
-  dueDate: z.string().nullable().optional(),
+  dueDate: TaskDateTimeSchema.nullable().optional(),
   labels: z.array(z.object({ id: z.string(), name: z.string(), color: z.string() })).optional(),
   externalLinks: z.array(z.unknown()).optional(),
 })
