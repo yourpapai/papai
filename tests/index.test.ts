@@ -173,4 +173,14 @@ describe('index.ts - graceful shutdown', () => {
     assert.ok(downloaded !== null)
     expect(downloaded.toString()).toBe('telegram:file-123')
   })
+
+  test('global preload restores the real message queue module before the next test', async () => {
+    const messageQueueModule = await import(
+      `../src/message-queue/index.js?post-reset=${crypto.randomUUID()}`,
+    )
+
+    expect('registry' in messageQueueModule).toBe(true)
+    expect(typeof messageQueueModule.cleanupExpiredQueues).toBe('function')
+    expect(typeof messageQueueModule.flushOnShutdown).toBe('function')
+  })
 })
