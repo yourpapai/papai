@@ -461,7 +461,7 @@ Minimal example:
 ```yaml
 services:
   papai:
-    image: ghcr.io/wkich/papai:latest
+    image: ghcr.io/yourpapai/papai:latest
     environment:
       CHAT_PROVIDER: telegram
       TASK_PROVIDER: kaneo

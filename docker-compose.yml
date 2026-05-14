@@ -1,6 +1,6 @@
 services:
   papai:
-    image: ${IMAGE:-ghcr.io/wkich/papai:latest}
+    image: ${IMAGE:-ghcr.io/yourpapai/papai:latest}
     restart: unless-stopped
     env_file:
       - .env
