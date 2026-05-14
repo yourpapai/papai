@@ -283,4 +283,54 @@ describe('searchTasks', () => {
       },
     ])
   })
+
+  test('should accept grouped task results with null dates', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            tasks: [
+              {
+                id: 'task-null-dates',
+                projectId: 'proj-1',
+                position: null,
+                number: 8,
+                userId: null,
+                title: 'Null dates task',
+                description: null,
+                status: 'doing',
+                priority: 'low',
+                startDate: null,
+                dueDate: null,
+                createdAt: '2026-02-28T00:00:00.000Z',
+              },
+            ],
+            projects: [],
+            workspaces: [],
+            comments: [],
+            activities: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const result = await searchTasks({
+      config: mockConfig,
+      query: 'null dates',
+      workspaceId: 'ws-1',
+    })
+
+    expect(result).toEqual([
+      {
+        id: 'task-null-dates',
+        title: 'Null dates task',
+        number: 8,
+        status: 'doing',
+        priority: 'low',
+        projectId: 'proj-1',
+        userId: '',
+      },
+    ])
+  })
 })

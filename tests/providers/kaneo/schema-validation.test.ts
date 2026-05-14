@@ -835,6 +835,33 @@ describe('Schema Validation', () => {
       expect(result.success).toBe(true)
     })
 
+    test('GlobalSearchResponseGroupedCompatSchema accepts null grouped task dates', () => {
+      const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
+        tasks: [
+          {
+            id: 'task-null-dates',
+            projectId: 'proj-1',
+            position: null,
+            number: 2,
+            userId: null,
+            title: 'Task with null dates',
+            description: null,
+            status: 'todo',
+            priority: 'medium',
+            startDate: null,
+            dueDate: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        projects: [],
+        workspaces: [],
+        comments: [],
+        activities: [],
+      })
+
+      expect(result.success).toBe(true)
+    })
+
     test('GlobalSearchResponseGroupedCompatSchema rejects the legacy flat search response', () => {
       const result = GlobalSearchResponseGroupedCompatSchema.safeParse({
         results: [],

@@ -25,8 +25,8 @@ export const SearchTaskSchema = z.object({
   description: z.string().nullable(),
   status: z.string(),
   priority: TaskPriorityEnum,
-  startDate: SearchDateTimeSchema.optional(),
-  dueDate: SearchDateTimeSchema.optional(),
+  startDate: SearchDateTimeSchema.nullable().optional(),
+  dueDate: SearchDateTimeSchema.nullable().optional(),
   createdAt: SearchDateTimeSchema,
 })
 
