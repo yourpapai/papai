@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.1] - 2026-05-14
+
+### Documentation
+
+- Add codeindex portability design and plan
+- Add Paper & Papaya landing-page design system
+- Shift design palette away from Anthropic warm-cream signature
+
+### Fixed
+
+- Restore lint and test checks
+- Align codeindex references with external repo layout
+- Align Kaneo task schemas with latest docs
+- Tighten Kaneo task timestamp schemas
+- Restore Kaneo task list envelope support
+- Validate Kaneo list task priorities
+- Pass Kaneo start dates through provider tasks
+- Add startDate to shared task provider contract
+- Preserve Kaneo start dates in normalized tasks
+- Align Kaneo search with grouped API contract
+- Accept null Kaneo search task dates
+- Move Kaneo search grouped adaptation upstream
+- Align Kaneo provider with verified runtime behavior
+- Restore Kaneo check suite
+
+### Styling
+
+- Format codeindex portability files
+
+### Testing
+
+- Restore message queue preload mocks
+
+### Build
+
+- Add portable codeindex wrapper
+- Handle codeindex wrapper spawn failures
+- Make codeindex integration portable
+- Fix pi codeindex reindex parity
+- Finish portable codeindex resolution
 ## [5.4.0] - 2026-05-14
 
 ### Changed
