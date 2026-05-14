@@ -41,8 +41,10 @@ Expected output:
 
 ### Verify Server Health
 
+On standard macOS shells, `timeout` is usually not installed unless GNU coreutils is present. Use the direct command below, then stop it with `Ctrl-C` after the initialize response prints. If you have GNU coreutils installed, `gtimeout 5` is a drop-in substitute.
+
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | timeout 5 bun run scripts/codeindex-cli.ts mcp
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | bun run scripts/codeindex-cli.ts mcp
 ```
 
 Expected: `{"result":{"protocolVersion":"2024-11-05",...,"serverInfo":{"name":"codeindex","version":"0.1.0"}}...}`
@@ -188,9 +190,11 @@ Run these prompts in OpenCode and observe tool calls via `OPENCODE_DEBUG=1` or T
 
 #### Test
 
+On standard macOS shells, prefer a simple `pgrep` polling loop because `watch` is typically not installed by default.
+
 ```bash
-# Terminal 1: watch for reindex process
-watch -n 0.5 "ps aux | grep 'scripts/codeindex-cli.ts reindex' | grep -v grep"
+# Terminal 1: poll for the short-lived reindex process
+while true; do pgrep -fl 'scripts/codeindex-cli.ts reindex'; sleep 0.5; done
 
 # Terminal 2: trigger write
 bun -e "require('fs').writeFileSync('src/bot.ts', require('fs').readFileSync('src/bot.ts', 'utf8'))"
@@ -247,11 +251,13 @@ Expected: After ~600 ms, a `bun run scripts/codeindex-cli.ts reindex` process ap
 ## 9. One-Line Smoke Test
 
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | timeout 5 bun run scripts/codeindex-cli.ts mcp
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | bun run scripts/codeindex-cli.ts mcp
 bun run scripts/codeindex-cli.ts stats
 bun run scripts/codeindex-cli.ts symbol "makeCreateTaskTool"
 bun run scripts/codeindex-cli.ts impact "src/tools/create-task#makeCreateTaskTool"
 ```
+
+On macOS, stop the MCP command with `Ctrl-C` after the initialize response prints unless you already have GNU `gtimeout` installed.
 
 If the wrapper cannot find the sibling checkout automatically, set `CODEINDEX_DIR` or clone the sibling repo at ../codeindex.
 

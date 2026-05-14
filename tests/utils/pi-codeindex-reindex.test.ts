@@ -78,6 +78,45 @@ const fakeDeps = (
 })
 
 describe('registerCodeindexReindex', () => {
+  test('schedules a reindex after qualifying multiedit operations', async () => {
+    const { registerCodeindexReindex } = await loadCodeindexModule()
+    const fakeApi = createFakeApi()
+    const scheduledTasks: ScheduledTask[] = []
+    const spawnCalls: string[] = []
+
+    registerCodeindexReindex(fakeApi.api, fakeDeps(scheduledTasks, spawnCalls))
+
+    const ctx = createContext('session-multiedit')
+    const toolCallHandler = fakeApi.handlers['tool_call']!
+    const toolEndHandler = fakeApi.handlers['tool_execution_end']!
+
+    toolCallHandler(
+      {
+        toolCallId: 'call-multiedit',
+        toolName: 'multiedit',
+        input: {
+          path: 'src/bot.ts',
+          edits: [{ oldText: 'before', newText: 'after' }],
+        },
+      },
+      ctx,
+    )
+    toolEndHandler(
+      {
+        toolCallId: 'call-multiedit',
+        toolName: 'multiedit',
+        result: null,
+        isError: false,
+      },
+      ctx,
+    )
+
+    expect(scheduledTasks.map((task) => task.delayMs)).toEqual([600])
+
+    scheduledTasks[0]?.run()
+    expect(spawnCalls).toEqual(['/repo'])
+  })
+
   test('schedules a reindex after qualifying implementation edits', async () => {
     const { registerCodeindexReindex } = await loadCodeindexModule()
     const fakeApi = createFakeApi()

@@ -75,8 +75,8 @@ export const shouldReindexPath = (
   return !relPath.includes('.test.') && !relPath.includes('.spec.')
 }
 
-const isWritableToolName = (toolName: string): toolName is 'write' | 'edit' =>
-  toolName === 'write' || toolName === 'edit'
+const isWritableToolName = (toolName: string): toolName is 'write' | 'edit' | 'multiedit' =>
+  toolName === 'write' || toolName === 'edit' || toolName === 'multiedit'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && value !== undefined && typeof value === 'object'
