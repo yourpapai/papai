@@ -118,13 +118,26 @@ export function emitLlmStart(
   ...args:
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet]
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet, routing: ToolRoutingTelemetry]
+    | [
+        contextId: string,
+        mainModel: string,
+        messages: ModelMessage[],
+        tools: ToolSet,
+        routing: ToolRoutingTelemetry | undefined,
+        turnId: string,
+      ]
 ): void {
-  const [contextId, mainModel, messages, tools, routing] = args
-  emitUser('llm:start', contextId, {
-    model: mainModel,
-    messageCount: messages.length,
-    ...buildToolTelemetry(tools, routing),
-  })
+  const [contextId, mainModel, messages, tools, routing, turnId] = args
+  emitUser(
+    'llm:start',
+    contextId,
+    {
+      model: mainModel,
+      messageCount: messages.length,
+      ...buildToolTelemetry(tools, routing),
+    },
+    turnId,
+  )
 }
 
 export function emitLlmEnd(
@@ -146,19 +159,34 @@ export function emitLlmEnd(
         tools: ToolSet,
         routing: ToolRoutingTelemetry,
       ]
+    | [
+        contextId: string,
+        mainModel: string,
+        result: ResolvedStreamTextResult,
+        startTime: number,
+        messages: ModelMessage[],
+        tools: ToolSet,
+        routing: ToolRoutingTelemetry | undefined,
+        turnId: string,
+      ]
 ): void {
-  const [contextId, mainModel, result, startTime, messages, tools, routing] = args
-  emitUser('llm:end', contextId, {
-    model: mainModel,
-    steps: result.steps.length,
-    totalDuration: Date.now() - startTime,
-    tokenUsage: result.usage,
-    responseId: result.response.id,
-    actualModel: result.response.modelId,
-    finishReason: result.finishReason,
-    messageCount: messages.length,
-    ...buildToolTelemetry(tools, routing),
-    generatedText: result.text,
-    stepsDetail: buildStepsDetail(result.steps),
-  })
+  const [contextId, mainModel, result, startTime, messages, tools, routing, turnId] = args
+  emitUser(
+    'llm:end',
+    contextId,
+    {
+      model: mainModel,
+      steps: result.steps.length,
+      totalDuration: Date.now() - startTime,
+      tokenUsage: result.usage,
+      responseId: result.response.id,
+      actualModel: result.response.modelId,
+      finishReason: result.finishReason,
+      messageCount: messages.length,
+      ...buildToolTelemetry(tools, routing),
+      generatedText: result.text,
+      stepsDetail: buildStepsDetail(result.steps),
+    },
+    turnId,
+  )
 }

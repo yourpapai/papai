@@ -2,7 +2,7 @@ import pLimit from 'p-limit'
 
 import type { ChatProvider } from '../chat/types.js'
 import { getConfig } from '../config.js'
-import { emitGlobal } from '../debug/event-bus.js'
+import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
@@ -47,17 +47,11 @@ function deliveryGroupKey(prompt: ScheduledPrompt): string {
 }
 
 function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
-  return {
-    createdByUserId: prompt.createdByUserId,
-    deliveryTarget: prompt.deliveryTarget,
-  }
+  return { createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget }
 }
 
 function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
-  return {
-    createdByUserId: alert.createdByUserId,
-    deliveryTarget: alert.deliveryTarget,
-  }
+  return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
 }
 
 async function executeScheduledPromptsForGroup(
@@ -93,6 +87,9 @@ async function executeScheduledPromptsForGroup(
 
   await chat.sendMessage(execCtx.deliveryTarget, response)
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
+  for (const prompt of prompts) {
+    emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })
+  }
 }
 
 export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
@@ -175,6 +172,8 @@ async function executeSingleAlert(
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
+  emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
+  emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
 }
 
 async function executeAlertsForUser(

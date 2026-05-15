@@ -102,8 +102,9 @@ export function trackReplyUsage(reply: ReplyFn, supportsFiles: boolean): Tracked
   }
 }
 
-function emitReplyCompleted(userId: string, contextId: string, start: number): void {
-  emitUser('message:replied', userId, { contextId, duration: Date.now() - start })
+function emitReplyCompleted(userId: string, contextId: string, start: number, turnId?: string): void {
+  emitUser('reply:sent', userId, { contextId, duration: Date.now() - start }, turnId)
+  emitUser('message:replied', userId, { contextId, duration: Date.now() - start }, turnId)
 }
 
 export function emitReplyCompletedIfNeeded(
@@ -111,6 +112,7 @@ export function emitReplyCompletedIfNeeded(
   userId: string,
   contextId: string,
   start: number,
+  turnId?: string,
 ): void {
-  if (tracked.didReply()) emitReplyCompleted(userId, contextId, start)
+  if (tracked.didReply()) emitReplyCompleted(userId, contextId, start, turnId)
 }

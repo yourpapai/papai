@@ -1,4 +1,5 @@
 import type { ChatFile, ReplyFn, ReplyOptions } from './chat/types.js'
+import { emitUser } from './debug/event-bus.js'
 import { createScheduler } from './utils/scheduler.js'
 
 const TYPING_INTERVAL_MS = 4500
@@ -12,7 +13,7 @@ type FileLikeReply = {
   (file: ChatFile): Promise<void>
   (file: ChatFile, options: ReplyOptions): Promise<void>
 }
-type TypingHeartbeatOptions = { intervalMs: number | undefined }
+type TypingHeartbeatOptions = { intervalMs: number | undefined; turnId?: string; userId?: string }
 
 function wrapReplyWithHeartbeatStop(reply: ReplyFn, stop: () => void): ReplyFn {
   const withStop =
@@ -85,6 +86,19 @@ function sendTypingSafely(reply: ReplyFn): void {
   }
 }
 
+function parseTypingOptions(rest: [] | [options: TypingHeartbeatOptions]): {
+  intervalMs: number
+  turnId: string | undefined
+  userId: string | undefined
+} {
+  const options = rest[0]
+  return {
+    intervalMs: options !== undefined && options.intervalMs !== undefined ? options.intervalMs : TYPING_INTERVAL_MS,
+    turnId: options?.turnId,
+    userId: options?.userId,
+  }
+}
+
 /**
  * Execute a function with a typing heartbeat that periodically
  * triggers the typing indicator until a reply is sent.
@@ -94,12 +108,7 @@ export async function withReplyTypingHeartbeat<T>(
   fn: (wrappedReply: ReplyFn) => Promise<T>,
   ...rest: [] | [options: TypingHeartbeatOptions]
 ): Promise<T> {
-  let intervalMs = TYPING_INTERVAL_MS
-  const options = rest[0]
-  if (options !== undefined && options.intervalMs !== undefined) {
-    intervalMs = options.intervalMs
-  }
-
+  const { intervalMs, turnId, userId } = parseTypingOptions(rest)
   const scheduler = createScheduler()
   let stopped = false
 
@@ -108,6 +117,7 @@ export async function withReplyTypingHeartbeat<T>(
     stopped = true
     scheduler.stop(TYPING_HEARTBEAT_TASK)
     scheduler.unregister(TYPING_HEARTBEAT_TASK)
+    if (userId !== undefined) emitUser('typing:stop', userId, {}, turnId)
   }
 
   scheduler.register(TYPING_HEARTBEAT_TASK, {
@@ -118,9 +128,8 @@ export async function withReplyTypingHeartbeat<T>(
     },
   })
 
-  // Initial typing indicator
   sendTypingSafely(reply)
-
+  if (userId !== undefined) emitUser('typing:start', userId, {}, turnId)
   scheduler.start(TYPING_HEARTBEAT_TASK)
 
   try {

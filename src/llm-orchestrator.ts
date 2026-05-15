@@ -5,14 +5,13 @@ import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
-import { emitUser } from './debug/event-bus.js'
 import { appendHistory, saveHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredConfig, getLlmConfig, resolveConfigId } from './llm-orchestrator-config.js'
-import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
-import { emitLlmError, handleOrchestratorMessageError, handleToolCallFinish } from './llm-orchestrator-support.js'
+import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
+import { emitLlmError, handleOrchestratorMessageError } from './llm-orchestrator-support.js'
 import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
@@ -21,8 +20,6 @@ import { extractFactsFromSdkResults, upsertFact } from './memory.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
 import type { TaskProvider } from './providers/types.js'
-import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
-import { buildSystemPrompt } from './system-prompt.js'
 import { getKaneoWorkspace } from './users.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
@@ -77,49 +74,6 @@ const sendLlmResponse = async (
   log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
 }
 
-const invokeModel = async (
-  args: InvokeModelArgs & { reply: ReplyFn | undefined },
-): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  const { contextId, mainModel, model, provider, tools, messages, deps, reply } = args
-  const start = Date.now()
-  if (args.toolRouting === undefined) {
-    emitLlmStart(contextId, mainModel, messages, tools)
-  } else {
-    emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting)
-  }
-  const result = await deps.generateText({
-    model,
-    system: buildSystemPrompt(provider, contextId),
-    messages,
-    tools,
-    timeout: 1_200_000,
-    stopWhen: deps.stepCountIs(25),
-    experimental_onToolCallStart(event) {
-      emitUser('llm:tool_call', contextId, {
-        toolName: event.toolCall.toolName,
-        toolCallId: event.toolCall.toolCallId,
-        args: event.toolCall.input,
-      })
-    },
-    experimental_onToolCallFinish(event) {
-      handleToolCallFinish(contextId, reply, event)
-    },
-  })
-  if (args.toolRouting === undefined) {
-    emitLlmEnd(contextId, mainModel, result, start, messages, tools)
-  } else {
-    emitLlmEnd(contextId, mainModel, result, start, messages, tools, args.toolRouting)
-  }
-  return result
-}
-
-const invokeModelWithTyping = (
-  reply: ReplyFn,
-  args: InvokeModelArgs,
-): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  return withReplyTypingHeartbeat(reply, (typingReply) => invokeModel({ ...args, reply: typingReply }))
-}
-
 const maybeAutoLinkIdentity = async (
   chatUserId: string,
   username: string | null,
@@ -170,6 +124,7 @@ const callLlm = async (
   contextType: 'dm' | 'group',
   deps: LlmOrchestratorDeps,
   configContextId: string | undefined,
+  turnId: string,
 ): Promise<{ response: { messages: ModelMessage[] } }> => {
   const configId = resolveConfigId(contextId, configContextId)
   if (contextType === 'dm') {
@@ -200,6 +155,7 @@ const callLlm = async (
     toolRouting: buildToolRoutingTelemetry(routingResult),
     messages: validatedMessages,
     deps,
+    turnId,
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
   log.debug({ contextId, toolCalls: toolCallCount, usage: result.usage }, 'LLM response received')
@@ -213,6 +169,33 @@ const resolveModelName = (contextId: string, configContextId: string | undefined
   return getConfig(cfgId, 'main_model') ?? ''
 }
 
+const logProcessMessage = (
+  contextId: string,
+  configContextId: string | undefined,
+  chatUserId: string,
+  userText: string,
+  attachmentIds: readonly string[],
+  turnId: string,
+): void => {
+  log.debug(
+    { contextId, configContextId, chatUserId, userText, newAttachmentIds: attachmentIds, turnId },
+    'processMessage called',
+  )
+  log.info({ contextId, chatUserId, messageLength: userText.length, turnId }, 'Message received from user')
+}
+
+const buildHistory = async (
+  contextId: string,
+  configContextId: string | undefined,
+  userText: string,
+  attachmentIds: readonly string[],
+): Promise<{ baseHistory: readonly ModelMessage[]; modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
+  const baseHistory = getCachedHistory(contextId)
+  const modelName = resolveModelName(contextId, configContextId)
+  const { modelMessage, historyMessage } = await buildUserTurnMessages(contextId, modelName, userText, attachmentIds)
+  return { baseHistory, modelMessage, historyMessage }
+}
+
 export const processMessage = async (
   reply: ReplyFn,
   contextId: string,
@@ -223,24 +206,16 @@ export const processMessage = async (
   configContextId?: string,
   deps: LlmOrchestratorDeps = defaultDeps,
   newAttachmentIds: readonly string[] = [],
+  turnId?: string,
 ): Promise<void> => {
-  const resolvedDeps = deps
-  const resolvedNewAttachmentIds = newAttachmentIds
-  log.debug(
-    { contextId, configContextId, chatUserId, userText, newAttachmentIds: resolvedNewAttachmentIds },
-    'processMessage called',
-  )
-  log.info({ contextId, chatUserId, messageLength: userText.length }, 'Message received from user')
-
-  const baseHistory = getCachedHistory(contextId)
-  const modelName = resolveModelName(contextId, configContextId)
-  const { modelMessage, historyMessage } = await buildUserTurnMessages(
+  const resolvedTurnId = turnId ?? crypto.randomUUID()
+  logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
+  const { baseHistory, modelMessage, historyMessage } = await buildHistory(
     contextId,
-    modelName,
+    configContextId,
     userText,
-    resolvedNewAttachmentIds,
+    newAttachmentIds,
   )
-  const history = [...baseHistory, historyMessage]
   appendHistory(contextId, [historyMessage])
   try {
     const result = await callLlm(
@@ -251,13 +226,13 @@ export const processMessage = async (
       [...baseHistory, modelMessage],
       userText,
       contextType,
-      resolvedDeps,
+      deps,
       configContextId,
+      resolvedTurnId,
     )
-    const assistantMessages = result.response.messages
-    appendAssistantHistory(contextId, history, assistantMessages)
+    appendAssistantHistory(contextId, [...baseHistory, historyMessage], result.response.messages)
   } catch (error) {
-    emitLlmError(contextId, configContextId, error)
+    emitLlmError(contextId, configContextId, error, resolvedTurnId)
     saveHistory(contextId, baseHistory)
     await handleOrchestratorMessageError(reply, contextId, error)
   }

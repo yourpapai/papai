@@ -151,6 +151,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.configContextId,
       { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
       coalescedItem.newAttachmentIds,
+      coalescedItem.turnId,
     )
   } finally {
     emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)

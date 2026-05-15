@@ -154,15 +154,25 @@ export async function handleOrchestratorMessageError(
   await reply.text(getUserMessage(appError))
 }
 
-export const emitLlmError = (contextId: string, configContextId: string | undefined, error: unknown): void => {
+export const emitLlmError = (
+  contextId: string,
+  configContextId: string | undefined,
+  error: unknown,
+  turnId?: string,
+): void => {
   const cfgId = resolveConfigId(contextId, configContextId)
   const model = getConfig(cfgId, 'main_model')
   let emittedModel = 'unknown'
   if (model !== null) {
     emittedModel = model
   }
-  emitUser('llm:error', contextId, {
-    error: error instanceof Error ? error.message : String(error),
-    model: emittedModel,
-  })
+  emitUser(
+    'llm:error',
+    contextId,
+    {
+      error: error instanceof Error ? error.message : String(error),
+      model: emittedModel,
+    },
+    turnId,
+  )
 }

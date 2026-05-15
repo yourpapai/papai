@@ -71,6 +71,8 @@ export const finalizeCreatedRecurringTask = async (
     'Recurring task instance created',
   )
   emitUser('scheduler:task_executed', task.userId, { recurringTaskId: task.id, createdTaskId: created.id })
+  emitUser('recurring:fired', task.userId, { recurringTaskId: task.id, createdTaskId: created.id })
+  emitUser('notify:scheduler_fired', task.userId, { recurringTaskId: task.id })
 
   await applyLabels(provider, created.id, task.labels)
   recordOccurrence(task.id, created.id)
