@@ -16,7 +16,7 @@ export function startKaneoServer(): Promise<void> {
 
   const dockerUp = spawn(
     'docker',
-    ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.test.yml', 'up', '-d'],
+    ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.test.yml', 'up', '-d', 'kaneo'],
     {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
