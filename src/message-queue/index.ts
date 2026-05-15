@@ -1,5 +1,7 @@
 import type { ReplyFn } from '../chat/types.js'
+import { emitGroup, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
+import type { MessageQueue } from './queue.js'
 import { QueueRegistry } from './registry.js'
 import type { CoalescedItem, QueueItem } from './types.js'
 
@@ -7,6 +9,73 @@ const log = logger.child({ scope: 'message-queue' })
 
 // Singleton registry instance
 const registry = new QueueRegistry()
+
+function emitScoped(type: string, storageContextId: string, data: Record<string, unknown>, turnId?: string): void {
+  const contextType = typeof data['contextType'] === 'string' ? data['contextType'] : undefined
+  if (contextType === 'group') {
+    const separatorIndex = storageContextId.indexOf(':')
+    const groupId = separatorIndex === -1 ? storageContextId : storageContextId.slice(0, separatorIndex)
+    const threadId = separatorIndex === -1 ? undefined : storageContextId.slice(separatorIndex + 1)
+    emitGroup(type, groupId, data, turnId, threadId)
+  } else {
+    const userId = typeof data['userId'] === 'string' ? data['userId'] : storageContextId
+    emitUser(type, userId, data, turnId)
+  }
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return JSON.stringify(error)
+}
+
+function emitTurnEnd(
+  storageContextId: string,
+  coalesced: CoalescedItem,
+  contextType: string,
+  userId: string,
+  startTime: number,
+  error?: unknown,
+): void {
+  const isError = error !== undefined
+  emitScoped(
+    'turn:end',
+    storageContextId,
+    {
+      turnId: coalesced.turnId,
+      status: isError ? 'error' : 'ok',
+      ...(isError ? { error: formatError(error) } : {}),
+      duration: Date.now() - startTime,
+      contextType,
+      userId,
+    },
+    coalesced.turnId,
+  )
+}
+
+function invokeHandlerWithEvents(
+  handler: (coalesced: CoalescedItem) => Promise<void>,
+  coalesced: CoalescedItem,
+  item: { storageContextId: string; contextType: string; userId: string },
+): void {
+  emitScoped('queue:dequeue', item.storageContextId, {
+    storageContextId: item.storageContextId,
+    contextType: item.contextType,
+    userId: item.userId,
+  })
+  const startTime = Date.now()
+  void handler(coalesced)
+    .then(() => {
+      emitTurnEnd(item.storageContextId, coalesced, item.contextType, item.userId, startTime)
+    })
+    .catch((error: unknown) => {
+      log.error(
+        { storageContextId: item.storageContextId, error: formatError(error) },
+        'Handler error during different-user flush',
+      )
+      emitTurnEnd(item.storageContextId, coalesced, item.contextType, item.userId, startTime, error)
+    })
+}
 
 // Export types for consumers
 export type { QueueItem, CoalescedItem }
@@ -54,12 +123,7 @@ export function enqueueMessage(
 
   // Handle different-user flush in group main - the returned item needs immediate processing
   if (coalesced !== null) {
-    void handler(coalesced).catch((error: unknown) => {
-      log.error(
-        { storageContextId: item.storageContextId, error: error instanceof Error ? error.message : String(error) },
-        'Handler error during different-user flush',
-      )
-    })
+    invokeHandlerWithEvents(handler, coalesced, item)
   }
 }
 
@@ -93,6 +157,28 @@ function raceWithTimeout<T>(promises: Promise<T>[], timeoutMs: number): Promise<
     })
 }
 
+function flushQueueWithEvents(storageContextId: string, queue: MessageQueue): Promise<void> | null {
+  const coalesced = queue.forceFlush()
+  if (coalesced === null) return null
+  log.debug({ storageContextId, textLength: coalesced.text.length }, 'Flushing queue')
+  const handler = queue.getHandler()
+  if (handler === null) return null
+  emitScoped('queue:dequeue', storageContextId, {
+    storageContextId,
+    contextType: coalesced.contextType,
+    userId: coalesced.userId,
+  })
+  const handlerStart = Date.now()
+  return handler(coalesced)
+    .then(() => {
+      emitTurnEnd(storageContextId, coalesced, coalesced.contextType, coalesced.userId, handlerStart)
+    })
+    .catch((error: unknown) => {
+      log.error({ storageContextId, error: formatError(error) }, 'Error during shutdown flush')
+      emitTurnEnd(storageContextId, coalesced, coalesced.contextType, coalesced.userId, handlerStart, error)
+    })
+}
+
 /**
  * Flush all active queues on shutdown.
  * Called during graceful shutdown to process pending messages.
@@ -102,7 +188,7 @@ function raceWithTimeout<T>(promises: Promise<T>[], timeoutMs: number): Promise<
  */
 export async function flushOnShutdown(options: { timeoutMs?: number } = {}): Promise<void> {
   const timeout = options.timeoutMs ?? 5000
-  const startTime = Date.now()
+  const overallStart = Date.now()
 
   log.info('Starting graceful shutdown flush')
 
@@ -110,33 +196,19 @@ export async function flushOnShutdown(options: { timeoutMs?: number } = {}): Pro
   const flushPromises: Promise<void>[] = []
 
   for (const [storageContextId, queue] of queues) {
-    const coalesced = queue.forceFlush()
-    if (coalesced !== null) {
-      log.debug({ storageContextId, textLength: coalesced.text.length }, 'Flushing queue')
-      const handler = queue.getHandler()
-      if (handler !== null) {
-        flushPromises.push(
-          handler(coalesced).catch((error: unknown) => {
-            log.error(
-              { storageContextId, error: error instanceof Error ? error.message : String(error) },
-              'Error during shutdown flush',
-            )
-          }),
-        )
-      }
-    }
+    const promise = flushQueueWithEvents(storageContextId, queue)
+    if (promise !== null) flushPromises.push(promise)
 
-    if (Date.now() - startTime > timeout) {
+    if (Date.now() - overallStart > timeout) {
       log.warn('Shutdown flush timeout reached, some messages may be lost')
       break
     }
   }
 
   // Wait for all flushes to complete (with timeout)
-  const remainingTimeout = Math.max(0, timeout - (Date.now() - startTime))
+  const remainingTimeout = Math.max(0, timeout - (Date.now() - overallStart))
   await raceWithTimeout(flushPromises, remainingTimeout).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
-    log.warn({ error: message }, 'Some handlers did not complete within timeout')
+    log.warn({ error: formatError(error) }, 'Some handlers did not complete within timeout')
   })
 
   log.info({ queueCount: queues.size }, 'Shutdown flush complete')

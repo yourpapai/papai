@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto'
+
 import type { ReplyFn } from '../chat/types.js'
+import { emitGroup, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { QueueItem, CoalescedItem } from './types.js'
 
@@ -41,6 +44,11 @@ export class MessageQueue {
       const flushed = this.forceFlush()
       this.messages.push({ item, reply })
       this.lastUserId = item.userId
+      this.emitScoped('queue:enqueue', item.userId, {
+        storageContextId: this.storageContextId,
+        userId: item.userId,
+        bufferedCount: this.messages.length,
+      })
       this.resetTimer()
       return flushed
     }
@@ -57,6 +65,12 @@ export class MessageQueue {
       },
       'Message enqueued',
     )
+
+    this.emitScoped('queue:enqueue', item.userId, {
+      storageContextId: this.storageContextId,
+      userId: item.userId,
+      bufferedCount: this.messages.length,
+    })
 
     this.resetTimer()
     return null
@@ -79,12 +93,35 @@ export class MessageQueue {
   private async flushAndHandle(): Promise<void> {
     const result = this.flush()
     if (result !== null && this.handler !== null) {
+      const startTime = Date.now()
       try {
         await this.handler(result)
+        this.emitScoped(
+          'turn:end',
+          result.userId,
+          {
+            turnId: result.turnId,
+            status: 'ok',
+            duration: Date.now() - startTime,
+          },
+          result.turnId,
+          result.contextType,
+        )
       } catch (error) {
         log.error(
           { storageContextId: this.storageContextId, error: error instanceof Error ? error.message : String(error) },
           'Handler error during flush',
+        )
+        this.emitScoped(
+          'turn:end',
+          result.userId,
+          {
+            turnId: result.turnId,
+            status: 'error',
+            error: error instanceof Error ? error.message : String(error),
+          },
+          result.turnId,
+          result.contextType,
         )
       }
     }
@@ -125,6 +162,8 @@ export class MessageQueue {
     const { texts, attachmentIds } = this.collectMessageContent(isThread)
     const text = isDm ? texts.join('\n\n') : texts.join('\n')
 
+    const turnId = randomUUID()
+
     const result: CoalescedItem = {
       text,
       userId: lastMessage.item.userId,
@@ -134,12 +173,41 @@ export class MessageQueue {
       contextType: lastMessage.item.contextType,
       newAttachmentIds: attachmentIds,
       reply: lastMessage.reply,
+      turnId,
     }
 
     this.messages = []
     this.lastUserId = null
 
+    this.emitFlushEvents(result, lastMessage.item.userId, texts.length, attachmentIds.length)
+
     return result
+  }
+
+  private emitFlushEvents(result: CoalescedItem, userId: string, textCount: number, attachmentCount: number): void {
+    this.emitScoped(
+      'queue:coalesce',
+      userId,
+      {
+        storageContextId: this.storageContextId,
+        itemCount: textCount,
+        attachmentCount,
+      },
+      undefined,
+      result.contextType,
+    )
+
+    this.emitScoped(
+      'turn:start',
+      userId,
+      {
+        turnId: result.turnId,
+        contextType: result.contextType,
+        incomingMessageCount: textCount,
+      },
+      result.turnId,
+      result.contextType,
+    )
   }
 
   forceFlush(): CoalescedItem | null {
@@ -150,5 +218,23 @@ export class MessageQueue {
       this.timer = null
     }
     return this.flush()
+  }
+
+  private emitScoped(
+    type: string,
+    userId: string,
+    data: Record<string, unknown>,
+    turnId?: string,
+    contextType?: string,
+  ): void {
+    const effectiveContextType = contextType ?? this.messages[0]?.item.contextType
+    if (effectiveContextType === 'group') {
+      const separatorIndex = this.storageContextId.indexOf(':')
+      const groupId = separatorIndex === -1 ? this.storageContextId : this.storageContextId.slice(0, separatorIndex)
+      const threadId = separatorIndex === -1 ? undefined : this.storageContextId.slice(separatorIndex + 1)
+      emitGroup(type, groupId, data, turnId, threadId)
+    } else {
+      emitUser(type, userId, data, turnId)
+    }
   }
 }
