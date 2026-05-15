@@ -518,4 +518,4 @@ bun start:debug
 
 ## License
 
-[MIT](LICENSE) © 2026 Dmitriy Lazarev
+[Business Source License](LICENSE) © 2026 Dmitriy Lazarev

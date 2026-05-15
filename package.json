@@ -2,6 +2,7 @@
   "name": "papai",
   "version": "5.4.2",
   "private": true,
+  "license": "BUSL-1.1",
   "description": "papai — an intelligent Telegram bot for managing Kaneo tasks with LLM.",
   "workspaces": [
     "review-loop"
@@ -50,7 +51,8 @@
     "plan-adr-workflow": "bun scripts/plan-adr-workflow.ts",
     "codeindex:index": "bun run scripts/codeindex-cli.ts index",
     "codeindex:reindex": "bun run scripts/codeindex-cli.ts reindex",
-    "codeindex:stats": "bun run scripts/codeindex-cli.ts stats"
+    "codeindex:stats": "bun run scripts/codeindex-cli.ts stats",
+    "license:headers": "bun scripts/add-license-headers.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.41",

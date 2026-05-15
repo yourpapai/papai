@@ -46,6 +46,16 @@ if [ "$STAGED_MODE" = true ]; then
     esac
   done
 
+  # Build array of newly added source files (for license header check)
+  added_source_files=()
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    case "$file" in src/*|client/*) ;; *) continue ;; esac
+    case "$file" in *.ts|*.tsx|*.js|*.jsx) ;; *) continue ;; esac
+    case "$file" in *.test.*|*.spec.*) continue ;; esac
+    added_source_files+=("$file")
+  done < <(git diff --staged --name-only --diff-filter=A 2>/dev/null || true)
+
   # Check if array is empty
   if [ ${#relevant_files[@]} -eq 0 ]; then
     echo "ℹ No relevant staged files to check"
@@ -55,7 +65,7 @@ if [ "$STAGED_MODE" = true ]; then
   echo "ℹ Checking staged files: ${relevant_files[*]}"
 
   # Run only lint, typecheck, format on staged files
-  checks=("lint" "typecheck" "format:check")
+  checks=("lint" "typecheck" "format:check" "license-headers")
   failed=0
 
   # Filter out files matching .oxlintignore patterns (oxlint ignores --ignore-path
@@ -110,10 +120,41 @@ if [ "$STAGED_MODE" = true ]; then
   ) &
   format_pid=$!
 
+  # Check license headers in newly added source files
+  (
+    exit_code=0
+    missing_headers=()
+    for file in "${added_source_files[@]+${added_source_files[@]}}"; do
+      if ! head -5 "$file" 2>/dev/null | grep -q "SPDX-License-Identifier:"; then
+        missing_headers+=("$file")
+      fi
+    done
+    if [ ${#missing_headers[@]} -gt 0 ]; then
+      {
+        echo "Missing BUSL-1.1 license header in newly added file(s):"
+        for f in "${missing_headers[@]}"; do
+          echo "  $f"
+        done
+        printf '\nAdd this header to the top of each file:\n'
+        printf '  // SPDX-License-Identifier: BUSL-1.1\n'
+        printf '  // Copyright (c) 2026 Dmitriy Lazarev\n'
+        printf '  // Use of this software is governed by the Business Source License 1.1.\n'
+        printf '  // See LICENSE in the project root for details.\n'
+        printf '\nOr run: bun license:headers\n'
+      } >"$TMPDIR/license-headers.out"
+      exit_code=1
+    else
+      printf '%s\n' 'ℹ All new source files have license headers' >"$TMPDIR/license-headers.out"
+    fi
+    echo "$exit_code" >"$TMPDIR/license-headers.exit"
+  ) &
+  license_headers_pid=$!
+
   # Wait for all background jobs (|| true prevents set -e from aborting on failure)
   wait "$lint_pid" || true
   wait "$typecheck_pid" || true
   wait "$format_pid" || true
+  wait "$license_headers_pid" || true
 
   # Check results and display failures
   failed_checks=()
