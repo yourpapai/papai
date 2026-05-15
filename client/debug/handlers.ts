@@ -32,6 +32,9 @@ import { state, LOG_CAP, renderAll } from './state.js'
 
 const NOTIFICATION_CAP = 2048
 const TOOL_FAILURE_CAP = 1024
+const RECURRING_CAP = 512
+const DEFERRED_CAP = 512
+const MEMO_CAP = 1024
 
 let logRenderPending = false
 let sessionsRenderPending = false
@@ -39,6 +42,8 @@ let tracesRenderPending = false
 let turnsRenderPending = false
 let notificationsRenderPending = false
 let toolFailuresRenderPending = false
+let remindersRenderPending = false
+let memosRenderPending = false
 
 export function scheduleLogRender(): void {
   if (!logRenderPending) {
@@ -96,6 +101,26 @@ export function scheduleToolFailuresRender(): void {
     requestAnimationFrame(() => {
       toolFailuresRenderPending = false
       window.dashboard.renderToolFailures()
+    })
+  }
+}
+
+export function scheduleRemindersRender(): void {
+  if (!remindersRenderPending) {
+    remindersRenderPending = true
+    requestAnimationFrame(() => {
+      remindersRenderPending = false
+      window.dashboard.renderReminders()
+    })
+  }
+}
+
+export function scheduleMemosRender(): void {
+  if (!memosRenderPending) {
+    memosRenderPending = true
+    requestAnimationFrame(() => {
+      memosRenderPending = false
+      window.dashboard.renderMemos()
     })
   }
 }
@@ -312,6 +337,98 @@ export function handleToolFailureClassified(d: Record<string, unknown>): void {
   scheduleToolFailuresRender()
 }
 
+export function handleRecurringEvent(type: string, d: Record<string, unknown>): void {
+  const taskId = typeof d['taskId'] === 'string' ? d['taskId'] : ''
+  if (taskId === '') return
+
+  if (type === 'recurring:created') {
+    const task = {
+      id: taskId,
+      userId: typeof d['userId'] === 'string' ? d['userId'] : '',
+      title: typeof d['title'] === 'string' ? d['title'] : 'Untitled',
+      rrule: typeof d['rrule'] === 'string' ? d['rrule'] : null,
+      nextRun: typeof d['nextRun'] === 'string' ? d['nextRun'] : null,
+      enabled: true,
+      lastRun: null,
+    }
+    state.recurringTasks.unshift(task)
+    if (state.recurringTasks.length > RECURRING_CAP) state.recurringTasks.pop()
+  } else if (type === 'recurring:updated') {
+    const existing = state.recurringTasks.find((t) => t.id === taskId)
+    if (existing !== undefined) {
+      if (typeof d['title'] === 'string') existing.title = d['title']
+      if (typeof d['rrule'] === 'string') existing.rrule = d['rrule']
+      if (typeof d['nextRun'] === 'string') existing.nextRun = d['nextRun']
+    }
+  } else if (type === 'recurring:paused') {
+    const existing = state.recurringTasks.find((t) => t.id === taskId)
+    if (existing !== undefined) existing.enabled = false
+  } else if (type === 'recurring:resumed') {
+    const existing = state.recurringTasks.find((t) => t.id === taskId)
+    if (existing !== undefined) existing.enabled = true
+  } else if (type === 'recurring:deleted') {
+    state.recurringTasks = state.recurringTasks.filter((t) => t.id !== taskId)
+  }
+  scheduleRemindersRender()
+}
+
+export function handleDeferredEvent(type: string, d: Record<string, unknown>): void {
+  const promptId = typeof d['promptId'] === 'string' ? d['promptId'] : ''
+  if (promptId === '') return
+
+  if (type === 'deferred:created') {
+    const prompt = {
+      id: promptId,
+      createdByUserId: typeof d['userId'] === 'string' ? d['userId'] : '',
+      prompt: typeof d['prompt'] === 'string' ? d['prompt'] : '',
+      fireAt: typeof d['fireAt'] === 'string' ? d['fireAt'] : new Date().toISOString(),
+      rrule: typeof d['rrule'] === 'string' ? d['rrule'] : null,
+      status: 'active',
+    }
+    state.deferredPrompts.unshift(prompt)
+    if (state.deferredPrompts.length > DEFERRED_CAP) state.deferredPrompts.pop()
+  } else if (type === 'deferred:updated') {
+    const existing = state.deferredPrompts.find((p) => p.id === promptId)
+    if (existing !== undefined) {
+      if (typeof d['prompt'] === 'string') existing.prompt = d['prompt']
+      if (typeof d['fireAt'] === 'string') existing.fireAt = d['fireAt']
+    }
+  } else if (type === 'deferred:cancelled') {
+    state.deferredPrompts = state.deferredPrompts.filter((p) => p.id !== promptId)
+  } else if (type === 'deferred:fired') {
+    const existing = state.deferredPrompts.find((p) => p.id === promptId)
+    if (existing !== undefined) existing.status = 'completed'
+  }
+  scheduleRemindersRender()
+}
+
+export function handleMemoEvent(type: string, d: Record<string, unknown>): void {
+  const memoId = typeof d['memoId'] === 'string' ? d['memoId'] : ''
+  if (memoId === '') return
+
+  if (type === 'memo:created') {
+    const memo = {
+      id: memoId,
+      userId: typeof d['userId'] === 'string' ? d['userId'] : '',
+      content: typeof d['content'] === 'string' ? d['content'] : '',
+      summary: null,
+      tags: Array.isArray(d['tags']) ? d['tags'].filter((t): t is string => typeof t === 'string') : [],
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    state.memos.unshift(memo)
+    if (state.memos.length > MEMO_CAP) state.memos.pop()
+  } else if (type === 'memo:archived') {
+    const memoIds = Array.isArray(d['memoIds']) ? d['memoIds'].filter((id): id is string => typeof id === 'string') : []
+    for (const id of memoIds) {
+      const existing = state.memos.find((m) => m.id === id)
+      if (existing !== undefined) existing.status = 'archived'
+    }
+  }
+  scheduleMemosRender()
+}
+
 type EventHandler = (d: unknown) => void
 
 export const handlers: Record<string, EventHandler> = {
@@ -383,5 +500,44 @@ export const handlers: Record<string, EventHandler> = {
   },
   'tool:failure_classified': (d: unknown): void => {
     handleToolFailureClassified(d as Record<string, unknown>)
+  },
+  'recurring:created': (d: unknown): void => {
+    handleRecurringEvent('recurring:created', d as Record<string, unknown>)
+  },
+  'recurring:updated': (d: unknown): void => {
+    handleRecurringEvent('recurring:updated', d as Record<string, unknown>)
+  },
+  'recurring:paused': (d: unknown): void => {
+    handleRecurringEvent('recurring:paused', d as Record<string, unknown>)
+  },
+  'recurring:resumed': (d: unknown): void => {
+    handleRecurringEvent('recurring:resumed', d as Record<string, unknown>)
+  },
+  'recurring:deleted': (d: unknown): void => {
+    handleRecurringEvent('recurring:deleted', d as Record<string, unknown>)
+  },
+  'recurring:fired': (d: unknown): void => {
+    handleRecurringEvent('recurring:fired', d as Record<string, unknown>)
+  },
+  'deferred:created': (d: unknown): void => {
+    handleDeferredEvent('deferred:created', d as Record<string, unknown>)
+  },
+  'deferred:updated': (d: unknown): void => {
+    handleDeferredEvent('deferred:updated', d as Record<string, unknown>)
+  },
+  'deferred:cancelled': (d: unknown): void => {
+    handleDeferredEvent('deferred:cancelled', d as Record<string, unknown>)
+  },
+  'deferred:fired': (d: unknown): void => {
+    handleDeferredEvent('deferred:fired', d as Record<string, unknown>)
+  },
+  'deferred:alerted': (d: unknown): void => {
+    handleDeferredEvent('deferred:alerted', d as Record<string, unknown>)
+  },
+  'memo:created': (d: unknown): void => {
+    handleMemoEvent('memo:created', d as Record<string, unknown>)
+  },
+  'memo:archived': (d: unknown): void => {
+    handleMemoEvent('memo:archived', d as Record<string, unknown>)
   },
 }

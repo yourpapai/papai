@@ -1,6 +1,9 @@
 import path from 'node:path'
 
+import { listScheduledPrompts } from '../deferred-prompts/scheduled.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
+import { listMemos } from '../memos.js'
+import { listRecurringTasks } from '../recurring.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 
@@ -112,6 +115,40 @@ function handleTurnLookup(url: URL): Response {
   return new Response('Not found', { status: 404 })
 }
 
+function handleRecurring(url: URL): Response {
+  const userId = url.searchParams.get('userId')
+  if (userId === null || userId === '') {
+    return new Response('Missing userId parameter', { status: 400 })
+  }
+  const tasks = listRecurringTasks(userId)
+  return new Response(JSON.stringify(tasks), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function handleDeferred(url: URL): Response {
+  const userId = url.searchParams.get('userId')
+  if (userId === null || userId === '') {
+    return new Response('Missing userId parameter', { status: 400 })
+  }
+  const prompts = listScheduledPrompts(userId)
+  return new Response(JSON.stringify(prompts), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function handleMemos(url: URL): Response {
+  const userId = url.searchParams.get('userId')
+  if (userId === null || userId === '') {
+    return new Response('Missing userId parameter', { status: 400 })
+  }
+  const state = url.searchParams.get('state') ?? 'active'
+  const memos = listMemos(userId, 100, state)
+  return new Response(JSON.stringify(memos), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 export function startDebugServer(adminUserId: string, logLevel = getLogLevel()): void {
   init(adminUserId)
   logMultistream.add({ stream: logBufferStream, level: logLevel })
@@ -143,6 +180,18 @@ export function startDebugServer(adminUserId: string, logLevel = getLogLevel()):
 
       if (url.pathname.startsWith('/turns/')) {
         return handleTurnLookup(url)
+      }
+
+      if (url.pathname === '/recurring') {
+        return handleRecurring(url)
+      }
+
+      if (url.pathname === '/deferred') {
+        return handleDeferred(url)
+      }
+
+      if (url.pathname === '/memos') {
+        return handleMemos(url)
       }
 
       if (

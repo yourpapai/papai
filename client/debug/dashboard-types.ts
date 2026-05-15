@@ -51,6 +51,45 @@ export type {
 }
 
 /**
+ * Recurring task type for dashboard display
+ */
+export type RecurringTask = {
+  id: string
+  userId: string
+  title: string
+  rrule: string | null
+  nextRun: string | null
+  enabled: boolean
+  lastRun: string | null
+}
+
+/**
+ * Deferred prompt type for dashboard display
+ */
+export type DeferredPrompt = {
+  id: string
+  createdByUserId: string
+  prompt: string
+  fireAt: string
+  rrule: string | null
+  status: string
+}
+
+/**
+ * Memo type for dashboard display
+ */
+export type Memo = {
+  id: string
+  userId: string
+  content: string
+  summary: string | null
+  tags: readonly string[]
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
  * Dashboard-specific wizard type that supports "unset" values for partial updates.
  * Uses '---' to indicate fields that haven't been received from the server yet.
  */
@@ -82,6 +121,9 @@ export interface DashboardState {
   turns: Turn[]
   notifications: Notification[]
   toolFailures: ToolFailure[]
+  recurringTasks: RecurringTask[]
+  deferredPrompts: DeferredPrompt[]
+  memos: Memo[]
   activeContext: string
   activeLogFilter: { turnId?: string }
 }
@@ -99,6 +141,8 @@ export interface DashboardAPI {
   renderTurns(): void
   renderNotifications(): void
   renderToolFailures(): void
+  renderReminders(): void
+  renderMemos(): void
   updateScopeFilter(scopes: Set<string>): void
   clearLogs(): void
   __state: DashboardState

@@ -17,6 +17,9 @@ export const state: DashboardState = {
   turns: [],
   notifications: [],
   toolFailures: [],
+  recurringTasks: [],
+  deferredPrompts: [],
+  memos: [],
   activeContext: 'all',
   activeLogFilter: {},
 }
@@ -35,6 +38,8 @@ export function renderAll(): void {
   dash.renderTurns()
   dash.renderNotifications()
   dash.renderToolFailures()
+  dash.renderReminders()
+  dash.renderMemos()
 }
 
 // --- Clear logs (called from UI) ---

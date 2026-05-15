@@ -2,7 +2,9 @@
 import type { ToolFailure } from '../../../src/debug/schemas.js'
 import { escapeHtml } from '../helpers.js'
 import { renderTreeView } from '../tree-view.js'
+import { renderMemos } from './memos.js'
 import { renderNotifications } from './notifications.js'
+import { renderReminders } from './reminders.js'
 import { renderToolFailures } from './tool-failures.js'
 import { renderTurns } from './turns.js'
 
@@ -111,72 +113,150 @@ function wireContextChips($chips: HTMLElement): void {
   })
 }
 
+function getPanelElements(): {
+  $contextChips: HTMLElement
+  $turnCount: HTMLElement
+  $turnList: HTMLElement
+  $notificationCount: HTMLElement
+  $notificationList: HTMLElement
+  $failureCount: HTMLElement
+  $failureList: HTMLElement
+  $reminderCount: HTMLElement
+  $reminderList: HTMLElement
+  $memoCount: HTMLElement
+  $memoList: HTMLElement
+  $memoSearch: HTMLInputElement | null
+} {
+  const memoSearchEl = document.getElementById('memo-search')
+  return {
+    $contextChips: document.getElementById('context-chips')!,
+    $turnCount: document.getElementById('turn-count')!,
+    $turnList: document.getElementById('turn-list')!,
+    $notificationCount: document.getElementById('notification-count')!,
+    $notificationList: document.getElementById('notification-list')!,
+    $failureCount: document.getElementById('failure-count')!,
+    $failureList: document.getElementById('failure-list')!,
+    $reminderCount: document.getElementById('reminder-count')!,
+    $reminderList: document.getElementById('reminder-list')!,
+    $memoCount: document.getElementById('memo-count')!,
+    $memoList: document.getElementById('memo-list')!,
+    $memoSearch: memoSearchEl instanceof HTMLInputElement ? memoSearchEl : null,
+  }
+}
+
+function createRenderTurnsPanel(
+  elements: ReturnType<typeof getPanelElements>,
+  turnModal: ReturnType<typeof wireTurnModal>,
+): () => void {
+  return (): void => {
+    const state = window.dashboard.__state
+    if (state === undefined) return
+    elements.$turnCount.textContent = String(state.turns.length)
+    elements.$turnList.innerHTML = renderTurns(state.turns, state.activeContext)
+
+    for (const row of elements.$turnList.querySelectorAll('.turn-row')) {
+      row.addEventListener('click', () => {
+        const turnId = row.getAttribute('data-turn-id')
+        if (turnId !== null) turnModal.showTurn(turnId)
+      })
+    }
+
+    elements.$contextChips.innerHTML = getContextChips(state)
+  }
+}
+
+function createRenderNotificationsPanel(
+  elements: ReturnType<typeof getPanelElements>,
+): () => void {
+  return (): void => {
+    const state = window.dashboard.__state
+    if (state === undefined) return
+    elements.$notificationCount.textContent = String(state.notifications.length)
+    elements.$notificationList.innerHTML = renderNotifications(state.notifications, state.activeContext)
+  }
+}
+
+function createRenderToolFailuresPanel(
+  elements: ReturnType<typeof getPanelElements>,
+  failureModal: ReturnType<typeof wireFailureModal>,
+): () => void {
+  return (): void => {
+    const state = window.dashboard.__state
+    if (state === undefined) return
+    elements.$failureCount.textContent = String(state.toolFailures.length)
+    elements.$failureList.innerHTML = renderToolFailures(state.toolFailures, state.activeContext)
+
+    for (const row of elements.$failureList.querySelectorAll('.failure-row')) {
+      row.addEventListener('click', () => {
+        const index = Number(row.getAttribute('data-index'))
+        const filtered = state.toolFailures.filter((f) => {
+          if (state.activeContext === 'all') return true
+          if (state.activeContext === 'dm') return f.scope.kind === 'user'
+          return true
+        })
+        const failure = filtered[index]
+        if (failure !== undefined) failureModal.showFailure(failure)
+      })
+    }
+  }
+}
+
+function createRenderRemindersPanel(
+  elements: ReturnType<typeof getPanelElements>,
+): () => void {
+  return (): void => {
+    const state = window.dashboard.__state
+    if (state === undefined) return
+    const totalCount = state.recurringTasks.length + state.deferredPrompts.length
+    elements.$reminderCount.textContent = String(totalCount)
+    elements.$reminderList.innerHTML = renderReminders(state.recurringTasks, state.deferredPrompts, state.activeContext)
+  }
+}
+
+function createRenderMemosPanel(
+  elements: ReturnType<typeof getPanelElements>,
+  getMemoSearchQuery: () => string,
+): () => void {
+  return (): void => {
+    const state = window.dashboard.__state
+    if (state === undefined) return
+    elements.$memoCount.textContent = String(state.memos.length)
+    elements.$memoList.innerHTML = renderMemos(state.memos, getMemoSearchQuery())
+  }
+}
+
 export function wirePanelElements(): {
   renderTurnsPanel(): void
   renderNotificationsPanel(): void
   renderToolFailuresPanel(): void
+  renderRemindersPanel(): void
+  renderMemosPanel(): void
   updateContextChips(): void
 } {
-  const $contextChips = document.getElementById('context-chips')!
-  const $turnCount = document.getElementById('turn-count')!
-  const $turnList = document.getElementById('turn-list')!
-  const $notificationCount = document.getElementById('notification-count')!
-  const $notificationList = document.getElementById('notification-list')!
-  const $failureCount = document.getElementById('failure-count')!
-  const $failureList = document.getElementById('failure-list')!
-
+  const elements = getPanelElements()
   const turnModal = wireTurnModal()
   const failureModal = wireFailureModal()
-  wireContextChips($contextChips)
+  wireContextChips(elements.$contextChips)
+
+  let memoSearchQuery = ''
+
+  if (elements.$memoSearch !== null) {
+    elements.$memoSearch.addEventListener('input', () => {
+      memoSearchQuery = elements.$memoSearch!.value
+      window.dashboard.renderMemos()
+    })
+  }
 
   return {
-    renderTurnsPanel(): void {
-      const state = window.dashboard.__state
-      if (state === undefined) return
-      $turnCount.textContent = String(state.turns.length)
-      $turnList.innerHTML = renderTurns(state.turns, state.activeContext)
-
-      for (const row of $turnList.querySelectorAll('.turn-row')) {
-        row.addEventListener('click', () => {
-          const turnId = row.getAttribute('data-turn-id')
-          if (turnId !== null) turnModal.showTurn(turnId)
-        })
-      }
-
-      $contextChips.innerHTML = getContextChips(state)
-    },
-
-    renderNotificationsPanel(): void {
-      const state = window.dashboard.__state
-      if (state === undefined) return
-      $notificationCount.textContent = String(state.notifications.length)
-      $notificationList.innerHTML = renderNotifications(state.notifications, state.activeContext)
-    },
-
-    renderToolFailuresPanel(): void {
-      const state = window.dashboard.__state
-      if (state === undefined) return
-      $failureCount.textContent = String(state.toolFailures.length)
-      $failureList.innerHTML = renderToolFailures(state.toolFailures, state.activeContext)
-
-      for (const row of $failureList.querySelectorAll('.failure-row')) {
-        row.addEventListener('click', () => {
-          const index = Number(row.getAttribute('data-index'))
-          const filtered = state.toolFailures.filter((f) => {
-            if (state.activeContext === 'all') return true
-            if (state.activeContext === 'dm') return f.scope.kind === 'user'
-            return true
-          })
-          const failure = filtered[index]
-          if (failure !== undefined) failureModal.showFailure(failure)
-        })
-      }
-    },
-
+    renderTurnsPanel: createRenderTurnsPanel(elements, turnModal),
+    renderNotificationsPanel: createRenderNotificationsPanel(elements),
+    renderToolFailuresPanel: createRenderToolFailuresPanel(elements, failureModal),
+    renderRemindersPanel: createRenderRemindersPanel(elements),
+    renderMemosPanel: createRenderMemosPanel(elements, () => memoSearchQuery),
     updateContextChips(): void {
       const state = window.dashboard.__state
       if (state === undefined) return
-      $contextChips.innerHTML = getContextChips(state)
+      elements.$contextChips.innerHTML = getContextChips(state)
     },
   }
 }

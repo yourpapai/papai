@@ -22,6 +22,8 @@ const dashboard: DashboardAPI = {
   renderTurns: noop,
   renderNotifications: noop,
   renderToolFailures: noop,
+  renderReminders: noop,
+  renderMemos: noop,
   updateScopeFilter: noop,
   clearLogs: noop,
   __state: {
@@ -38,6 +40,9 @@ const dashboard: DashboardAPI = {
     turns: [],
     notifications: [],
     toolFailures: [],
+    recurringTasks: [],
+    deferredPrompts: [],
+    memos: [],
     activeContext: 'all',
     activeLogFilter: {},
   },
@@ -255,4 +260,6 @@ if (isBrowser) {
   window.dashboard.renderTurns = panelApi.renderTurnsPanel
   window.dashboard.renderNotifications = panelApi.renderNotificationsPanel
   window.dashboard.renderToolFailures = panelApi.renderToolFailuresPanel
+  window.dashboard.renderReminders = panelApi.renderRemindersPanel
+  window.dashboard.renderMemos = panelApi.renderMemosPanel
 }
