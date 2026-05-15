@@ -2,6 +2,7 @@ import { eq, and, lte, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from './db/drizzle.js'
 import { recurringTasks } from './db/schema.js'
+import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { nextOccurrence } from './recurrence.js'
 import { buildCompiled, computeMissedDates, computeNextRun, toRecord } from './recurring-utils.js'
@@ -58,7 +59,13 @@ export const createRecurringTask = (input: RecurringTaskInput): RecurringTaskRec
 
   log.info({ id, userId: input.userId, title: input.title }, 'Recurring task created')
 
-  return getRecurringTask(id)!
+  const record = getRecurringTask(id)!
+  emitUser('recurring:created', input.userId, {
+    taskId: id,
+    name: input.title,
+    schedule: input.rrule ?? null,
+  })
+  return record
 }
 
 export const getRecurringTask = (id: string): RecurringTaskRecord | null => {
@@ -146,6 +153,7 @@ export const updateRecurringTask = (id: string, updates: Partial<UpdateFields>):
   db.update(recurringTasks).set(set).where(eq(recurringTasks.id, id)).run()
 
   log.info({ id }, 'Recurring task updated')
+  emitUser('recurring:updated', existing.userId, { taskId: id })
   return getRecurringTask(id)
 }
 
@@ -153,12 +161,19 @@ export const pauseRecurringTask = (id: string): RecurringTaskRecord | null => {
   log.debug({ id }, 'pauseRecurringTask called')
 
   const db = getDrizzleDb()
+  const existing = db.select().from(recurringTasks).where(eq(recurringTasks.id, id)).get()
+  if (existing === undefined) {
+    log.warn({ id }, 'Recurring task not found for pause')
+    return null
+  }
+
   db.update(recurringTasks)
     .set({ enabled: '0', updatedAt: new Date().toISOString() })
     .where(eq(recurringTasks.id, id))
     .run()
 
   log.info({ id }, 'Recurring task paused')
+  emitUser('recurring:paused', existing.userId, { taskId: id })
   return getRecurringTask(id)
 }
 
@@ -192,6 +207,7 @@ export const resumeRecurringTask = (id: string, createMissed: boolean): ResumeRe
     .run()
 
   log.info({ id, createMissed }, 'Recurring task resumed')
+  emitUser('recurring:resumed', existing.userId, { taskId: id })
   const record = getRecurringTask(id)!
   return { record, missedDates }
 }
@@ -222,6 +238,7 @@ export const skipNextOccurrence = (id: string): RecurringTaskRecord | null => {
     .run()
 
   log.info({ id, skippedRun: existing.nextRun, newNextRun: newNext?.toISOString() }, 'Skipped next occurrence')
+  emitUser('recurring:skipped', existing.userId, { taskId: id })
   return getRecurringTask(id)
 }
 
@@ -229,7 +246,7 @@ export const deleteRecurringTask = (id: string): boolean => {
   log.debug({ id }, 'deleteRecurringTask called')
 
   const db = getDrizzleDb()
-  const existing = db.select({ id: recurringTasks.id }).from(recurringTasks).where(eq(recurringTasks.id, id)).get()
+  const existing = db.select().from(recurringTasks).where(eq(recurringTasks.id, id)).get()
   if (existing === undefined) {
     log.warn({ id }, 'Recurring task not found for deletion')
     return false
@@ -237,6 +254,7 @@ export const deleteRecurringTask = (id: string): boolean => {
 
   db.delete(recurringTasks).where(eq(recurringTasks.id, id)).run()
   log.info({ id }, 'Recurring task deleted')
+  emitUser('recurring:deleted', existing.userId, { taskId: id })
   return true
 }
 

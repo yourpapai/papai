@@ -1,6 +1,7 @@
 import type { ContextType } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
 import { getConfig } from '../config.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
@@ -174,8 +175,14 @@ export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: 
   const executionMetadata = parseExecution(input.execution)
   const delivery = deliveryCtx === undefined ? undefined : buildDeliveryInput(deliveryCtx, input.delivery)
 
-  if (hasSchedule) return createScheduled(userId, input.prompt, input.schedule!, executionMetadata, delivery)
-  return createAlert(userId, input.prompt, input.condition, input.cooldown_minutes, executionMetadata, delivery)
+  if (hasSchedule) {
+    const result = createScheduled(userId, input.prompt, input.schedule!, executionMetadata, delivery)
+    if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
+    return result
+  }
+  const result = createAlert(userId, input.prompt, input.condition, input.cooldown_minutes, executionMetadata, delivery)
+  if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
+  return result
 }
 
 export function executeList(
@@ -248,19 +255,26 @@ function updateAlertFields(id: string, userId: string, input: UpdateInput): Upda
 
 export function executeUpdate(userId: string, input: UpdateInput): UpdateResult {
   log.debug({ userId, id: input.id }, 'update_deferred_prompt called')
-  if (getScheduledPrompt(input.id, userId) !== null) return updateScheduledFields(input.id, userId, input)
-  if (getAlertPrompt(input.id, userId) !== null) return updateAlertFields(input.id, userId, input)
-  return { error: 'Deferred prompt not found.' }
+  let result: UpdateResult
+  if (getScheduledPrompt(input.id, userId) !== null) result = updateScheduledFields(input.id, userId, input)
+  else if (getAlertPrompt(input.id, userId) !== null) result = updateAlertFields(input.id, userId, input)
+  else result = { error: 'Deferred prompt not found.' }
+  if (result !== undefined && 'id' in result && !('error' in result)) {
+    emitUser('deferred:updated', userId, { promptId: result.id })
+  }
+  return result
 }
 
 export function executeCancel(userId: string, input: { id: string }): CancelResult {
   log.debug({ userId, id: input.id }, 'cancel_deferred_prompt called')
   if (cancelScheduledPrompt(input.id, userId) !== null) {
     log.info({ id: input.id, userId, type: 'scheduled' }, 'Deferred prompt cancelled')
+    emitUser('deferred:cancelled', userId, { promptId: input.id })
     return { status: 'cancelled', id: input.id }
   }
   if (cancelAlertPrompt(input.id, userId) !== null) {
     log.info({ id: input.id, userId, type: 'alert' }, 'Deferred prompt cancelled')
+    emitUser('deferred:cancelled', userId, { promptId: input.id })
     return { status: 'cancelled', id: input.id }
   }
   return { error: 'Deferred prompt not found.' }
