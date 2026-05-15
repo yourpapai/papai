@@ -519,13 +519,13 @@ describe('TelegramChatProvider', () => {
       const onCalls: Array<{ filter: string | string[]; handler: (...args: unknown[]) => unknown }> = []
       let startCalls = 0
 
-      botValue.on = (filter, handler) => {
+      botValue.on = (filter, handler): void => {
         onCalls.push({ filter, handler })
-        return undefined
       }
-      botValue.start = async (options) => {
+      botValue.start = (options): Promise<void> => {
         startCalls += 1
         options?.onStart?.({ username: 'testbot' })
+        return Promise.resolve()
       }
 
       await provider.start()

@@ -35,8 +35,8 @@ describe('isVisibleToAdmin', () => {
   })
 
   test('unscoped events are denied (default-deny)', () => {
-    expect(isVisibleToAdmin(undefined as unknown as Scope, vis)).toBe(false)
-    expect(isVisibleToAdmin(null as unknown as Scope, vis)).toBe(false)
+    expect(isVisibleToAdmin(undefined, vis)).toBe(false)
+    expect(isVisibleToAdmin(null, vis)).toBe(false)
   })
 })
 

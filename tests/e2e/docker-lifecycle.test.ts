@@ -14,10 +14,11 @@ type MockChildProcess = EventEmitter & {
 }
 
 const createMockChildProcess = (): MockChildProcess => {
-  const process = new EventEmitter() as MockChildProcess
-  process.stdout = new EventEmitter()
-  process.stderr = new EventEmitter()
-  return process
+  const process = new EventEmitter()
+  return Object.assign(process, {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+  })
 }
 
 afterEach(() => {

@@ -80,7 +80,7 @@ export type AdminVisibility = {
   groupIds: ReadonlySet<string>
 }
 
-export function isVisibleToAdmin(scope: Scope, vis: AdminVisibility): boolean {
+export function isVisibleToAdmin(scope: Scope | null | undefined, vis: AdminVisibility): boolean {
   if (scope === null || scope === undefined || typeof scope.kind !== 'string') return false
   if (scope.kind === 'global') return true
   if (scope.kind === 'user') return scope.userId === vis.adminUserId

@@ -199,7 +199,7 @@ export {
   NotificationSchema,
   ToolFailureSchema,
 } from './turn-assembly.js'
-export type { TurnToolCall, Turn, Notification, ToolFailure } from './turn-assembly.js'
+export type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Inferred types
 export type Fact = z.infer<typeof FactSchema>

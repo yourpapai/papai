@@ -1329,26 +1329,19 @@ describe('Bot Authorization Gate (setupBot)', () => {
     const commandHandlers = new Map<string, CommandHandler>()
     let messageRegistrationCount = 0
     let interactionRegistrationCount = 0
+    const commandRegistrationNames: string[] = []
 
     const provider: ChatProvider = {
       ...createMockChat({ commandHandlers }),
       registerCommand(name: string, handler: CommandHandler): void {
-        if (commandHandlers.has(name)) {
-          throw new Error(`duplicate command registration: ${name}`)
-        }
+        commandRegistrationNames.push(name)
         commandHandlers.set(name, handler)
       },
       onMessage(_handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
         messageRegistrationCount += 1
-        if (messageRegistrationCount > 1) {
-          throw new Error('duplicate message handler registration')
-        }
       },
       onInteraction(_handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
         interactionRegistrationCount += 1
-        if (interactionRegistrationCount > 1) {
-          throw new Error('duplicate interaction handler registration')
-        }
       },
     }
 
@@ -1369,6 +1362,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
         }),
       ),
     ).not.toThrow()
+    expect(messageRegistrationCount).toBe(1)
+    expect(interactionRegistrationCount).toBe(1)
+    expect(commandRegistrationNames.length).toBe(commandHandlers.size)
   })
 
   test('interaction handler replies with allowlist hint for non-allowlisted groups', async () => {

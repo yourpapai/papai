@@ -23,4 +23,16 @@ describe('dashboard-api', () => {
     expect(typeof window.dashboard.renderStats).toBe('function')
     expect(typeof window.dashboard.renderLogs).toBe('function')
   })
+
+  test('registers handlers for context-related debug events', async () => {
+    const { handlers } = await import('../../../client/debug/handlers.js')
+
+    expect(typeof handlers['identity:set']).toBe('function')
+    expect(typeof handlers['identity:cleared']).toBe('function')
+    expect(typeof handlers['config_editor:opened']).toBe('function')
+    expect(typeof handlers['config_editor:closed']).toBe('function')
+    expect(typeof handlers['config_editor:step']).toBe('function')
+    expect(typeof handlers['auth:group_authorized']).toBe('function')
+    expect(typeof handlers['auth:group_revoked']).toBe('function')
+  })
 })

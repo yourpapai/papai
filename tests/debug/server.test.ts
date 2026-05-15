@@ -83,19 +83,19 @@ describe('debug-server', () => {
 
   beforeAll(() => {
     // Mock the database-dependent modules before starting the server
-    mock.module('../../src/recurring.js', () => ({
+    void mock.module('../../src/recurring.js', () => ({
       listRecurringTasks: (): unknown[] => [],
     }))
-    mock.module('../../src/deferred-prompts/scheduled.js', () => ({
+    void mock.module('../../src/deferred-prompts/scheduled.js', () => ({
       listScheduledPrompts: (): unknown[] => [],
     }))
-    mock.module('../../src/memos.js', () => ({
+    void mock.module('../../src/memos.js', () => ({
       listMemos: (): unknown[] => [],
     }))
-    mock.module('../../src/identity/mapping.js', () => ({
+    void mock.module('../../src/identity/mapping.js', () => ({
       getIdentityMapping: (): null => null,
     }))
-    mock.module('../../src/authorized-groups.js', () => ({
+    void mock.module('../../src/authorized-groups.js', () => ({
       listAuthorizedGroups: (): unknown[] => [],
     }))
 

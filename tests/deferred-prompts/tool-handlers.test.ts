@@ -148,9 +148,9 @@ describe('deferred lifecycle events', () => {
         schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
       })
       expect(result).not.toHaveProperty('error')
-      assert(typeof result === 'object' && result !== null && 'id' in result)
+      expect(result).toHaveProperty('id')
       expect(events).toHaveLength(1)
-      expect(events[0]!.data['promptId']).toBe(result.id)
+      expect(events[0]!.data['promptId']).toBe(Reflect.get(result, 'id'))
       expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()

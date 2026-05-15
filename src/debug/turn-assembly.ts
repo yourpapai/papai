@@ -44,7 +44,6 @@ export const ToolFailureSchema = z.object({
   data: z.record(z.string(), z.unknown()),
 })
 
-export type TurnToolCall = z.infer<typeof TurnToolCallSchema>
 export type Turn = z.infer<typeof TurnSchema>
 export type Notification = z.infer<typeof NotificationSchema>
 export type ToolFailure = z.infer<typeof ToolFailureSchema>
