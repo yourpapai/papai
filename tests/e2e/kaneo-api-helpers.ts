@@ -2,11 +2,13 @@ import { z } from 'zod'
 
 import { getE2EConfigSync } from './global-setup.js'
 
-const SessionSchema = z.object({
-  user: z.object({
-    id: z.string(),
-  }),
-})
+const SessionSchema = z
+  .object({
+    user: z.object({
+      id: z.string(),
+    }),
+  })
+  .nullable()
 
 const WorkspaceMembersSchema = z.array(
   z.object({
