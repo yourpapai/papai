@@ -15,18 +15,20 @@
 ## File Structure
 
 ### Modified files (Phase 1)
+
 - `src/debug/event-bus.ts` — add Scope type, emitUser/emitGroup/emitGlobal helpers, deprecation wrapper
 - `src/debug/state-collector.ts` — add AdminVisibility, isVisibleToAdmin, applyVisibility, replace isAdminEvent
 - `src/debug/schemas.ts` — add Scope schema, AdminVisibility schema
 - 12 source files — migrate emit() calls to typed helpers (bot.ts, bot-reply-tracking.ts, llm-orchestrator.ts, llm-orchestrator-events.ts, llm-orchestrator-support.ts, cache.ts, scheduler.ts, scheduler-recurring.ts, deferred-prompts/poller.ts, conversation.ts, wizard/state.ts, message-cache/cache.ts)
 
 ### Modified files (Phase 2)
+
 - `src/message-queue/types.ts` — add turnId to QueueItem, CoalescedItem
 - `src/message-queue/queue.ts` — mint turnId on flush, emit turn:start
 - `src/message-queue/index.ts` — emit turn:end, pass turnId to handler
 - `src/llm-orchestrator.ts` — accept turnId, pass to events/tools/reply
 - `src/llm-orchestrator-events.ts` — emit turnId on llm:start/llm:end
-- `src/llm-orchestrator-support.ts` — emit tool:* events with turnId
+- `src/llm-orchestrator-support.ts` — emit tool:\* events with turnId
 - `src/tools/wrap-tool-execution.ts` — emit tool:execute_start/end with turnId
 - `src/tools/confirmation-gate.ts` — emit tool:confirm_required/result with turnId
 - `src/bot-reply-tracking.ts` — emit reply:sent with turnId
@@ -46,9 +48,10 @@
 - New: `client/debug/panels/notifications.ts`
 
 ### Modified files (Phase 3)
-- `src/recurring.ts` — add emit calls for recurring:* events
+
+- `src/recurring.ts` — add emit calls for recurring:\* events
 - `src/deferred-prompts/tools.ts` — add emit calls for deferred:created/updated/cancelled
-- `src/memos.ts` — add emit calls for memo:* events
+- `src/memos.ts` — add emit calls for memo:\* events
 - `src/debug/state-collector.ts` — add recurring/deferred snapshot getters
 - `src/debug/server.ts` — add /recurring, /deferred, /memos endpoints
 - `client/debug/handlers.ts` — add recurring/deferred/memo event handlers
@@ -56,6 +59,7 @@
 - New: `client/debug/panels/memos.ts`
 
 ### Modified files (Phase 4)
+
 - `src/identity/mapping.ts` — add emit calls for identity:set/cleared
 - `src/group-settings/state.ts` — add emit for group_settings:target_changed
 - `src/config-editor/` — add emit for config_editor:opened/step/closed
@@ -68,6 +72,7 @@
 - `client/debug/dashboard-api.ts` — add log cross-link action
 
 ### New test files
+
 - `tests/debug/event-bus-scope.test.ts`
 - `tests/debug/admin-visibility.test.ts`
 - `tests/debug/turn-assembly.test.ts`
@@ -86,6 +91,7 @@
 ### Task 1: Add Scope type and typed emit helpers to event-bus
 
 **Files:**
+
 - Modify: `src/debug/event-bus.ts`
 - Test: `tests/debug/event-bus-scope.test.ts`
 
@@ -98,7 +104,9 @@ import { emitUser, emitGroup, emitGlobal, subscribe, unsubscribe, type DebugEven
 
 describe('typed emit helpers', () => {
   let events: DebugEvent[] = []
-  const capture = (e: DebugEvent): void => { events.push(e) }
+  const capture = (e: DebugEvent): void => {
+    events.push(e)
+  }
 
   beforeEach(() => {
     events = []
@@ -170,7 +178,11 @@ export function emitUser(type: string, userId: string, data: Record<string, unkn
 }
 
 export function emitGroup(
-  type: string, groupId: string, data: Record<string, unknown>, turnId?: string, threadId?: string,
+  type: string,
+  groupId: string,
+  data: Record<string, unknown>,
+  turnId?: string,
+  threadId?: string,
 ): void {
   if (listeners.size === 0) return
   const event: DebugEvent = { type, timestamp: Date.now(), data, __scope: { kind: 'group', groupId, threadId }, turnId }
@@ -194,7 +206,7 @@ Expected: PASS
 - [ ] **Step 5: Run existing event-bus tests to verify no regression**
 
 Run: `bun test tests/debug/event-bus.test.ts`
-Expected: PASS (existing emit() still works with added __scope field)
+Expected: PASS (existing emit() still works with added \_\_scope field)
 
 - [ ] **Step 6: Commit**
 
@@ -208,6 +220,7 @@ git commit -m "feat(debug): add Scope type and typed emit helpers to event-bus"
 ### Task 2: Add AdminVisibility and isVisibleToAdmin filter
 
 **Files:**
+
 - Modify: `src/debug/state-collector.ts`
 - Modify: `src/debug/schemas.ts`
 - Test: `tests/debug/admin-visibility.test.ts`
@@ -293,6 +306,7 @@ git commit -m "feat(debug): add AdminVisibility type and isVisibleToAdmin filter
 ### Task 3: Replace isAdminEvent with isVisibleToAdmin in collector
 
 **Files:**
+
 - Modify: `src/debug/state-collector.ts`
 - Test: `tests/debug/state-collector.test.ts` (existing)
 
@@ -340,6 +354,7 @@ git commit -m "feat(debug): replace isAdminEvent with scope-based isVisibleToAdm
 ### Task 4: Add applyVisibility helper for snapshots
 
 **Files:**
+
 - Modify: `src/debug/state-collector.ts`
 - Test: `tests/debug/admin-visibility.test.ts`
 
@@ -354,10 +369,14 @@ describe('applyVisibility', () => {
       { groupId: 'group-a', name: 'c' },
     ]
     const vis: AdminVisibility = { adminUserId: 'admin-1', groupIds: new Set(['group-a']) }
-    const filtered = applyVisibility(entries, (e) => {
-      if ('groupId' in e) return { kind: 'group', groupId: e.groupId as string }
-      return { kind: 'user', userId: e.userId as string }
-    }, vis)
+    const filtered = applyVisibility(
+      entries,
+      (e) => {
+        if ('groupId' in e) return { kind: 'group', groupId: e.groupId as string }
+        return { kind: 'user', userId: e.userId as string }
+      },
+      vis,
+    )
     expect(filtered).toHaveLength(2)
     expect(filtered[0]!.name).toBe('a')
     expect(filtered[1]!.name).toBe('c')
@@ -373,11 +392,7 @@ Expected: FAIL
 - [ ] **Step 3: Implement applyVisibility**
 
 ```ts
-export function applyVisibility<T>(
-  entries: T[],
-  getScope: (entry: T) => Scope,
-  vis: AdminVisibility,
-): T[] {
+export function applyVisibility<T>(entries: T[], getScope: (entry: T) => Scope, vis: AdminVisibility): T[] {
   return entries.filter((entry) => isVisibleToAdmin(getScope(entry), vis))
 }
 ```
@@ -399,6 +414,7 @@ git commit -m "feat(debug): add applyVisibility helper for snapshot filtering"
 ### Task 5: Migrate existing emit sites to typed helpers
 
 **Files:**
+
 - Modify: `src/bot.ts` (2 sites)
 - Modify: `src/bot-reply-tracking.ts` (1 site)
 - Modify: `src/llm-orchestrator.ts` (1 site)
@@ -418,7 +434,7 @@ git commit -m "feat(debug): add applyVisibility helper for snapshot filtering"
 
 Replace `emit('message:received', {...})` with `emitUser('message:received', userId, {...})` and `emit('auth:check', {...})` with `emitUser('auth:check', userId, {...})`.
 
-- [ ] **Step 2: Migrate llm-orchestrator*.ts emit sites**
+- [ ] **Step 2: Migrate llm-orchestrator\*.ts emit sites**
 
 Replace `emit('llm:tool_call', ...)` → `emitUser('llm:tool_call', userId, ...)`, same for `llm:start`, `llm:end`, `llm:tool_result`, `llm:error`.
 
@@ -458,6 +474,7 @@ git commit -m "feat(debug): migrate all 39 emit sites to typed helpers"
 ### Task 6: Add turnId to message-queue types and mint on flush
 
 **Files:**
+
 - Modify: `src/message-queue/types.ts`
 - Modify: `src/message-queue/queue.ts`
 - Test: `tests/message-queue/queue.test.ts` (existing)
@@ -471,7 +488,10 @@ it('mints a turnId on flush', async () => {
   const queue = new MessageQueue('ctx-1')
   const handler = mock().returns(Promise.resolve())
   queue.setHandler(handler)
-  queue.enqueue({ text: 'hello', userId: 'u1', username: null, storageContextId: 'ctx-1', newAttachmentIds: [], contextType: 'dm' }, mockReply)
+  queue.enqueue(
+    { text: 'hello', userId: 'u1', username: null, storageContextId: 'ctx-1', newAttachmentIds: [], contextType: 'dm' },
+    mockReply,
+  )
   queue.forceFlush()
   expect(handler).toHaveBeenCalledTimes(1)
   const coalesced = handler.mock.calls[0]![0]
@@ -503,9 +523,10 @@ git commit -m "feat(debug): mint turnId on message-queue flush"
 
 ---
 
-### Task 7: Emit turn:start, turn:end, and queue:* events from message-queue
+### Task 7: Emit turn:start, turn:end, and queue:\* events from message-queue
 
 **Files:**
+
 - Modify: `src/message-queue/queue.ts` — emit `queue:enqueue` on enqueue, `queue:coalesce` on flush, `turn:start` after flush
 - Modify: `src/message-queue/index.ts` — emit `queue:dequeue` on handler invocation, `turn:end` after handler completes
 - Test: `tests/message-queue/queue.test.ts`
@@ -572,6 +593,7 @@ git commit -m "feat(debug): emit turn:start, turn:end, and queue:* events from m
 ### Task 8: Thread turnId through orchestrator
 
 **Files:**
+
 - Modify: `src/llm-orchestrator.ts` — accept `turnId` parameter
 - Modify: `src/llm-orchestrator-events.ts` — include `turnId` in emitted events
 - Modify: `src/llm-orchestrator-support.ts` — include `turnId` in emitted events
@@ -618,9 +640,10 @@ git commit -m "feat(debug): thread turnId through orchestrator and LLM events"
 
 ---
 
-### Task 9: Add tool:* events with turnId
+### Task 9: Add tool:\* events with turnId
 
 **Files:**
+
 - Modify: `src/tools/wrap-tool-execution.ts` — emit `tool:execute_start`, `tool:execute_end`
 - Modify: `src/tools/confirmation-gate.ts` — emit `tool:confirm_required`, `tool:confirm_result`
 - Modify: `src/llm-orchestrator.ts` — emit `tool:request`
@@ -665,9 +688,10 @@ git commit -m "feat(debug): add tool:* events with turnId"
 
 ---
 
-### Task 10: Add reply:sent and typing:* events
+### Task 10: Add reply:sent and typing:\* events
 
 **Files:**
+
 - Modify: `src/bot-reply-tracking.ts` — emit `reply:sent`
 - Modify: `src/reply-typing-heartbeat.ts` — emit `typing:start`, `typing:stop`
 - Test: `tests/bot-reply-tracking.test.ts` (existing)
@@ -711,9 +735,10 @@ git commit -m "feat(debug): add reply:sent and typing:* events"
 
 ---
 
-### Task 11: Add notify:* events from scheduler and poller
+### Task 11: Add notify:\* events from scheduler and poller
 
 **Files:**
+
 - Modify: `src/scheduler-recurring.ts` — emit `notify:scheduler_fired` and `recurring:fired`
 - Modify: `src/deferred-prompts/poller.ts` — emit `notify:deferred_alert` and `deferred:fired`/`deferred:alerted`
 - Test: existing scheduler/poller tests
@@ -756,6 +781,7 @@ git commit -m "feat(debug): add notify:scheduler_fired and notify:deferred_alert
 ### Task 12: Add tool:failure_classified event
 
 **Files:**
+
 - Modify: `src/tool-failure.ts` — emit `tool:failure_classified` when building failure result
 - Test: `tests/tool-failure.test.ts` (existing)
 
@@ -793,6 +819,7 @@ git commit -m "feat(debug): emit tool:failure_classified from tool-failure.ts"
 ### Task 13: Add Turn assembly and ring buffers to state-collector
 
 **Files:**
+
 - Modify: `src/debug/state-collector.ts`
 - Modify: `src/debug/schemas.ts`
 - Test: `tests/debug/turn-assembly.test.ts`
@@ -831,6 +858,7 @@ Expected: FAIL
 - [ ] **Step 3: Implement Turn type and assembly**
 
 Add to `state-collector.ts`:
+
 - `Turn` type with `turnId, scope, startedAt, endedAt, status, incomingMessageIds, llmCalls, toolCalls, reply, error`
 - `recentTurns: Turn[]` (capacity 512)
 - `recentNotifications: Notification[]` (capacity 2048)
@@ -863,6 +891,7 @@ git commit -m "feat(debug): add Turn assembly, ring buffers, and new event handl
 ### Task 14: Add /turns/:id REST endpoint
 
 **Files:**
+
 - Modify: `src/debug/server.ts`
 - Test: `tests/debug/server.test.ts` (existing)
 
@@ -907,6 +936,7 @@ git commit -m "feat(debug): add /turns/:id REST endpoint"
 ### Task 15: Add context switcher and panel grid to dashboard HTML
 
 **Files:**
+
 - Modify: `client/debug/dashboard.html`
 - Modify: `client/debug/dashboard.css`
 - Modify: `client/debug/dashboard-types.ts`
@@ -956,6 +986,7 @@ git commit -m "feat(debug): add context switcher and 2-column panel grid to dash
 ### Task 16: Add SSE handlers for new event types
 
 **Files:**
+
 - Modify: `client/debug/handlers.ts`
 - Modify: `client/debug/sse.ts` (if needed)
 - Test: `tests/client/debug/handlers.test.ts` (existing or new)
@@ -999,6 +1030,7 @@ git commit -m "feat(debug): add SSE handlers for turn/tool/reply/typing/notify e
 ### Task 17: Add Turns panel
 
 **Files:**
+
 - New: `client/debug/panels/turns.ts`
 - Modify: `client/debug/dashboard-api.ts`
 - Test: `tests/client/debug/panels/turns.test.ts`
@@ -1047,6 +1079,7 @@ git commit -m "feat(debug): add Turns panel to dashboard"
 ### Task 18: Add Tool failures and Notifications panels
 
 **Files:**
+
 - New: `client/debug/panels/tool-failures.ts`
 - New: `client/debug/panels/notifications.ts`
 - Modify: `client/debug/dashboard-api.ts`
@@ -1094,9 +1127,10 @@ git commit -m "feat(debug): add Tool failures and Notifications panels"
 
 ## Phase 3 — Reminders & memos
 
-### Task 19: Add recurring:* events to recurring.ts
+### Task 19: Add recurring:\* events to recurring.ts
 
 **Files:**
+
 - Modify: `src/recurring.ts`
 - Test: `tests/recurring.test.ts` (existing)
 
@@ -1132,9 +1166,10 @@ git commit -m "feat(debug): add recurring:* lifecycle events"
 
 ---
 
-### Task 20: Add deferred:* events to deferred-prompts
+### Task 20: Add deferred:\* events to deferred-prompts
 
 **Files:**
+
 - Modify: `src/deferred-prompts/tools.ts` (or `tool-handlers.ts`)
 - Modify: `src/deferred-prompts/poller.ts`
 - Test: `tests/deferred-prompts/` (existing)
@@ -1170,9 +1205,10 @@ git commit -m "feat(debug): add deferred:* lifecycle events"
 
 ---
 
-### Task 21: Add memo:* events to memos.ts
+### Task 21: Add memo:\* events to memos.ts
 
 **Files:**
+
 - Modify: `src/memos.ts`
 - Test: `tests/memos.test.ts` (existing)
 
@@ -1210,6 +1246,7 @@ git commit -m "feat(debug): add memo:* lifecycle events"
 ### Task 22: Add recurring/deferred/memo snapshot getters and REST endpoints
 
 **Files:**
+
 - Modify: `src/recurring.ts` — add `getRecurringSnapshot(vis)`
 - Modify: `src/deferred-prompts/` — add `getDeferredSnapshot(vis)`
 - Modify: `src/debug/server.ts` — add `/recurring`, `/deferred`, `/memos` endpoints
@@ -1255,6 +1292,7 @@ git commit -m "feat(debug): add recurring/deferred/memo snapshot getters and RES
 ### Task 23: Add Reminders and Memos panels
 
 **Files:**
+
 - New: `client/debug/panels/reminders.ts`
 - New: `client/debug/panels/memos.ts`
 - Modify: `client/debug/dashboard-api.ts`
@@ -1305,9 +1343,10 @@ git commit -m "feat(debug): add Reminders and Memos panels"
 
 ## Phase 4 — Context & log cross-links
 
-### Task 24: Add identity:* and file_relay:* events
+### Task 24: Add identity:_ and file_relay:_ events
 
 **Files:**
+
 - Modify: `src/identity/mapping.ts` — emit `identity:set`, `identity:cleared`
 - Modify: `src/attachments/` — emit `file_relay:attached/consumed/dropped` (find the appropriate module)
 - Test: existing identity/attachment tests
@@ -1342,9 +1381,10 @@ git commit -m "feat(debug): add identity:* and file_relay:* events"
 
 ---
 
-### Task 25: Add group_settings:* and config_editor:* events
+### Task 25: Add group*settings:* and config*editor:* events
 
 **Files:**
+
 - Modify: `src/group-settings/state.ts` — emit `group_settings:target_changed`
 - Modify: `src/config-editor/` — emit `config_editor:opened/step/closed`
 - Test: existing tests
@@ -1377,9 +1417,10 @@ git commit -m "feat(debug): add group_settings:* and config_editor:* events"
 
 ---
 
-### Task 26: Add auth:group_* and group_member:* events
+### Task 26: Add auth:group\__ and group_member:_ events
 
 **Files:**
+
 - Modify: `src/group-settings/access.ts` (or `registry.ts`)
 - Test: existing tests
 
@@ -1420,6 +1461,7 @@ git commit -m "feat(debug): add auth:group_* and group_member:* events with allo
 ### Task 27: Add Context panel
 
 **Files:**
+
 - New: `client/debug/panels/context.ts`
 - Modify: `client/debug/dashboard-api.ts`
 - Modify: `client/debug/handlers.ts`
@@ -1465,6 +1507,7 @@ git commit -m "feat(debug): add Context panel with identity/file-relay/auth sect
 ### Task 28: Add turnId filter to log drawer and cross-links
 
 **Files:**
+
 - Modify: `src/debug/server.ts` — add `turnId` param to `/logs`
 - Modify: `src/debug/log-buffer.ts` — add `turnId` field to `LogEntry`
 - Modify: `client/debug/logs.ts` — add turnId filter UI
@@ -1520,6 +1563,7 @@ git commit -m "feat(debug): add turnId filter to log drawer and cross-links from
 ### Task 29: Remove bare emit() after full migration
 
 **Files:**
+
 - Modify: `src/debug/event-bus.ts`
 - Test: `tests/debug/event-bus.test.ts`
 
@@ -1557,6 +1601,7 @@ git commit -m "feat(debug): remove bare emit() after full migration to typed hel
 ## Verification Commands
 
 After each task, run:
+
 ```bash
 bun test tests/debug/          # debug module tests
 bun test tests/client/debug/   # dashboard client tests
@@ -1565,6 +1610,7 @@ bun typecheck                  # tsc --noEmit
 ```
 
 After each phase, run:
+
 ```bash
 bun test                       # full test suite
 bun check:full                 # broader check suite

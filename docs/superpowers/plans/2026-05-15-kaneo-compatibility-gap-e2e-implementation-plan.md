@@ -783,9 +783,9 @@ test('keeps unattached label deletion blocked and allows attached label deletion
 
   await removeLabel({ config: kaneoConfig, labelId: attached.id })
 
-  const workspaceLabels = (await kaneoApiJson(
-    `/label/workspace/${testClient.getWorkspaceId()}`,
-  )) as Array<{ id: string }>
+  const workspaceLabels = (await kaneoApiJson(`/label/workspace/${testClient.getWorkspaceId()}`)) as Array<{
+    id: string
+  }>
 
   expect(workspaceLabels.map((entry) => entry.id)).not.toContain(attached.id)
 })
