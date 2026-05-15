@@ -17,7 +17,6 @@ import {
   resolveEncodingName,
 } from './context-collector.js'
 import {
-  buildDirectToolCatalogPages,
   buildInvocationToolSet,
   resolveActiveToolDefinitions,
   resolveContextToolSurface,
@@ -33,7 +32,6 @@ export interface ContextCommandDeps {
   buildProvider: (contextId: string) => TaskProvider | null
   buildLiveToolSet: BuildLiveToolSet
   resolveActiveToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
-  buildToolCatalogPages: (resolvedToolSurface: ResolvedContextToolSurface) => readonly string[]
   resolveToolSurface: (
     storageContextId: string,
     actorUserId: string,
@@ -48,7 +46,6 @@ const defaultDeps: ContextCommandDeps = {
   buildProvider: safeBuildProvider,
   buildLiveToolSet: buildInvocationToolSet,
   resolveActiveToolDefinitions,
-  buildToolCatalogPages: buildDirectToolCatalogPages,
   resolveToolSurface: resolveContextToolSurface,
 }
 function resolveModelName(modelName: string | null | undefined): string {
@@ -190,11 +187,6 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
-  const toolCatalogPages = deps.buildToolCatalogPages(resolvedToolSurface)
-  await toolCatalogPages.reduce<Promise<void>>(
-    (pending, page) => pending.then(() => reply.formatted(page)),
-    Promise.resolve(),
-  )
   logContextExecuted(msg.user.id, auth.storageContextId, snapshot, rendered.method)
 }
 

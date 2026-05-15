@@ -5,7 +5,6 @@ import { logger } from '../logger.js'
 import { buildProviderForUser } from '../providers/factory.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeTools } from '../tools/index.js'
-import { buildContextToolCatalogPages } from './context-tool-catalog.js'
 
 const log = logger.child({ scope: 'commands:context-tool-resolution' })
 
@@ -18,7 +17,6 @@ export type BuildLiveToolSet = (
 
 export interface ResolvedContextToolSurface {
   definitions: Record<string, unknown>
-  catalogPages: readonly string[]
 }
 
 export function safeBuildProvider(contextId: string): TaskProvider | null {
@@ -53,10 +51,6 @@ export function buildInvocationToolSet(
   })
 }
 
-export function buildDirectToolCatalogPages(resolvedToolSurface: ResolvedContextToolSurface): readonly string[] {
-  return resolvedToolSurface.catalogPages
-}
-
 export function resolveContextToolSurface(
   storageContextId: string,
   actorUserId: string,
@@ -67,11 +61,7 @@ export function resolveContextToolSurface(
   try {
     const liveTools = buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
     if (liveTools !== null) {
-      const definitions = toToolRecord(liveTools)
-      return {
-        definitions,
-        catalogPages: buildContextToolCatalogPages(liveTools),
-      }
+      return { definitions: toToolRecord(liveTools) }
     }
   } catch (error) {
     log.warn(
@@ -105,8 +95,5 @@ function resolveCachedToolSet(contextId: string): ToolSet {
 function buildDegradedToolSurface(storageContextId: string): ResolvedContextToolSurface {
   const cachedTools = resolveCachedToolSet(storageContextId)
 
-  return {
-    definitions: toToolRecord(cachedTools),
-    catalogPages: buildContextToolCatalogPages(cachedTools),
-  }
+  return { definitions: toToolRecord(cachedTools) }
 }
