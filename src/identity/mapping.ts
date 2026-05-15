@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { getDrizzleDb as defaultGetDrizzleDb } from '../db/drizzle.js'
 import { userIdentityMappings } from '../db/schema.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import { isMatchMethod } from './types.js'
 import type { IdentityMapping, MatchMethod } from './types.js'
@@ -99,6 +100,11 @@ export function setIdentityMapping(params: SetIdentityMappingParams, deps: Ident
     { contextId: params.contextId, login: params.providerUserLogin, method: params.matchMethod },
     'Identity mapping stored',
   )
+
+  emitUser('identity:set', params.contextId, {
+    providerUserId: params.providerUserId,
+    provider: params.providerName,
+  })
 }
 
 /**
@@ -126,4 +132,6 @@ export function clearIdentityMapping(
     .run()
 
   log.info({ contextId, providerName }, 'Identity mapping cleared')
+
+  emitUser('identity:cleared', contextId, {})
 }

@@ -2,6 +2,7 @@
 import type { ToolFailure } from '../../../src/debug/schemas.js'
 import { escapeHtml } from '../helpers.js'
 import { renderTreeView } from '../tree-view.js'
+import { renderContext } from './context.js'
 import { renderMemos } from './memos.js'
 import { renderNotifications } from './notifications.js'
 import { renderReminders } from './reminders.js'
@@ -126,6 +127,7 @@ function getPanelElements(): {
   $memoCount: HTMLElement
   $memoList: HTMLElement
   $memoSearch: HTMLInputElement | null
+  $contextDetail: HTMLElement
 } {
   const memoSearchEl = document.getElementById('memo-search')
   return {
@@ -141,6 +143,7 @@ function getPanelElements(): {
     $memoCount: document.getElementById('memo-count')!,
     $memoList: document.getElementById('memo-list')!,
     $memoSearch: memoSearchEl instanceof HTMLInputElement ? memoSearchEl : null,
+    $contextDetail: document.getElementById('context-detail')!,
   }
 }
 
@@ -155,7 +158,24 @@ function createRenderTurnsPanel(
     elements.$turnList.innerHTML = renderTurns(state.turns, state.activeContext)
 
     for (const row of elements.$turnList.querySelectorAll('.turn-row')) {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e: Event) => {
+        const target = e.target
+        if (target instanceof HTMLElement && target.classList.contains('turn-log-link')) {
+          e.stopPropagation()
+          const turnId = target.getAttribute('data-turn-id')
+          if (turnId !== null) {
+            state.activeLogFilter.turnId = turnId
+            const badge = document.getElementById('log-turnid-badge')
+            const label = document.getElementById('log-turnid-label')
+            if (badge !== null && label !== null) {
+              label.textContent = `turn:${turnId.slice(0, 8)}`
+              badge.hidden = false
+            }
+            window.dashboard.renderLogs()
+            document.getElementById('log-explorer')?.scrollIntoView({ behavior: 'smooth' })
+          }
+          return
+        }
         const turnId = row.getAttribute('data-turn-id')
         if (turnId !== null) turnModal.showTurn(turnId)
       })
@@ -165,9 +185,7 @@ function createRenderTurnsPanel(
   }
 }
 
-function createRenderNotificationsPanel(
-  elements: ReturnType<typeof getPanelElements>,
-): () => void {
+function createRenderNotificationsPanel(elements: ReturnType<typeof getPanelElements>): () => void {
   return (): void => {
     const state = window.dashboard.__state
     if (state === undefined) return
@@ -201,9 +219,7 @@ function createRenderToolFailuresPanel(
   }
 }
 
-function createRenderRemindersPanel(
-  elements: ReturnType<typeof getPanelElements>,
-): () => void {
+function createRenderRemindersPanel(elements: ReturnType<typeof getPanelElements>): () => void {
   return (): void => {
     const state = window.dashboard.__state
     if (state === undefined) return
@@ -225,12 +241,26 @@ function createRenderMemosPanel(
   }
 }
 
+function createRenderContextPanel(elements: ReturnType<typeof getPanelElements>): () => void {
+  return (): void => {
+    const state = window.dashboard.__state
+    if (state === undefined) return
+    elements.$contextDetail.innerHTML = renderContext(
+      state.identityMappings,
+      state.activeConfigEditors,
+      state.wizards,
+      state.authorizedGroups,
+    )
+  }
+}
+
 export function wirePanelElements(): {
   renderTurnsPanel(): void
   renderNotificationsPanel(): void
   renderToolFailuresPanel(): void
   renderRemindersPanel(): void
   renderMemosPanel(): void
+  renderContextPanel(): void
   updateContextChips(): void
 } {
   const elements = getPanelElements()
@@ -253,6 +283,7 @@ export function wirePanelElements(): {
     renderToolFailuresPanel: createRenderToolFailuresPanel(elements, failureModal),
     renderRemindersPanel: createRenderRemindersPanel(elements),
     renderMemosPanel: createRenderMemosPanel(elements, () => memoSearchQuery),
+    renderContextPanel: createRenderContextPanel(elements),
     updateContextChips(): void {
       const state = window.dashboard.__state
       if (state === undefined) return

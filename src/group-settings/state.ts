@@ -1,3 +1,4 @@
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { GroupSettingsCommand, GroupSettingsSession, GroupSettingsSessionStage } from './types.js'
 
@@ -81,6 +82,14 @@ export function updateGroupSettingsSession(
     { userId, stage: nextSession.stage, targetContextId: nextSession.targetContextId },
     'Updated group settings session',
   )
+
+  if (update.targetContextId !== undefined) {
+    emitUser('group_settings:target_changed', userId, {
+      groupId: update.targetContextId,
+      target: update.targetContextId,
+    })
+  }
+
   return nextSession
 }
 

@@ -27,6 +27,7 @@ import {
   parseMessageCacheEvent,
   parseLogEntry,
 } from '../../src/debug/schemas.js'
+import { handleAuthEvent, handleConfigEditorEvent, handleIdentityEvent } from './context-handlers.js'
 import type { DashboardWizard } from './dashboard-types.js'
 import { state, LOG_CAP, renderAll } from './state.js'
 
@@ -539,5 +540,26 @@ export const handlers: Record<string, EventHandler> = {
   },
   'memo:archived': (d: unknown): void => {
     handleMemoEvent('memo:archived', d as Record<string, unknown>)
+  },
+  'identity:set': (d: unknown): void => {
+    handleIdentityEvent('identity:set', d as Record<string, unknown>)
+  },
+  'identity:cleared': (d: unknown): void => {
+    handleIdentityEvent('identity:cleared', d as Record<string, unknown>)
+  },
+  'config_editor:opened': (d: unknown): void => {
+    handleConfigEditorEvent('config_editor:opened', d as Record<string, unknown>)
+  },
+  'config_editor:closed': (d: unknown): void => {
+    handleConfigEditorEvent('config_editor:closed', d as Record<string, unknown>)
+  },
+  'config_editor:step': (d: unknown): void => {
+    handleConfigEditorEvent('config_editor:step', d as Record<string, unknown>)
+  },
+  'auth:group_authorized': (d: unknown): void => {
+    handleAuthEvent('auth:group_authorized', d as Record<string, unknown>)
+  },
+  'auth:group_revoked': (d: unknown): void => {
+    handleAuthEvent('auth:group_revoked', d as Record<string, unknown>)
   },
 }

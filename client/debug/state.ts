@@ -20,6 +20,9 @@ export const state: DashboardState = {
   recurringTasks: [],
   deferredPrompts: [],
   memos: [],
+  identityMappings: new Map(),
+  activeConfigEditors: new Set(),
+  authorizedGroups: [],
   activeContext: 'all',
   activeLogFilter: {},
 }
@@ -40,6 +43,7 @@ export function renderAll(): void {
   dash.renderToolFailures()
   dash.renderReminders()
   dash.renderMemos()
+  dash.renderContext()
 }
 
 // --- Clear logs (called from UI) ---

@@ -4,6 +4,7 @@ export type LogEntry = {
   level: number
   time: string
   scope?: string
+  turnId?: string
   msg: string
   [key: string]: unknown
 }
@@ -11,6 +12,7 @@ export type LogEntry = {
 type SearchParams = {
   level?: number
   scope?: string
+  turnId?: string
   q?: string
   limit?: number
 }
@@ -65,6 +67,9 @@ export class LogRingBuffer {
     }
     if (params.scope !== undefined) {
       results = results.filter((e) => e.scope === params.scope)
+    }
+    if (params.turnId !== undefined) {
+      results = results.filter((e) => e.turnId === params.turnId)
     }
     if (params.q !== undefined) {
       const lower = params.q.toLowerCase()

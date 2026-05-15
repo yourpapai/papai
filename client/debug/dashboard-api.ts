@@ -24,6 +24,7 @@ const dashboard: DashboardAPI = {
   renderToolFailures: noop,
   renderReminders: noop,
   renderMemos: noop,
+  renderContext: noop,
   updateScopeFilter: noop,
   clearLogs: noop,
   __state: {
@@ -43,6 +44,9 @@ const dashboard: DashboardAPI = {
     recurringTasks: [],
     deferredPrompts: [],
     memos: [],
+    identityMappings: new Map(),
+    activeConfigEditors: new Set(),
+    authorizedGroups: [],
     activeContext: 'all',
     activeLogFilter: {},
   },
@@ -101,6 +105,11 @@ if (isBrowser) {
   })
   logElements.$logClear.addEventListener('click', () => {
     window.dashboard.clearLogs()
+  })
+  logElements.$logTurnidClear.addEventListener('click', () => {
+    window.dashboard.__state.activeLogFilter.turnId = undefined
+    logElements.$logTurnidBadge.hidden = true
+    window.dashboard.renderLogs()
   })
 
   sessionElements.$sessionModalClose.addEventListener('click', () => {
@@ -217,9 +226,10 @@ if (isBrowser) {
     const minLevel = Number(logElements.$logLevelFilter.value)
     const scope = logElements.$logScopeFilter.value
     const query = logElements.$logSearch.value.trim()
+    const turnId = state.activeLogFilter.turnId
 
     fuseInstance = updateFuseIndex(state.logs)
-    const filtered = filterLogs(state.logs, minLevel, scope, query, fuseInstance)
+    const filtered = filterLogs(state.logs, minLevel, scope, query, fuseInstance, turnId)
 
     $logCount.textContent = String(filtered.length)
 
@@ -262,4 +272,5 @@ if (isBrowser) {
   window.dashboard.renderToolFailures = panelApi.renderToolFailuresPanel
   window.dashboard.renderReminders = panelApi.renderRemindersPanel
   window.dashboard.renderMemos = panelApi.renderMemosPanel
+  window.dashboard.renderContext = panelApi.renderContextPanel
 }

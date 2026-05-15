@@ -90,6 +90,26 @@ export type Memo = {
 }
 
 /**
+ * Identity mapping type for dashboard display
+ */
+export type IdentityMappingEntry = {
+  userId: string
+  provider: string
+  providerUserId: string | null
+  providerUserLogin: string | null
+  displayName: string | null
+}
+
+/**
+ * Authorized group type for dashboard display
+ */
+export type AuthorizedGroupEntry = {
+  group_id: string
+  added_by: string
+  added_at: string
+}
+
+/**
  * Dashboard-specific wizard type that supports "unset" values for partial updates.
  * Uses '---' to indicate fields that haven't been received from the server yet.
  */
@@ -124,6 +144,9 @@ export interface DashboardState {
   recurringTasks: RecurringTask[]
   deferredPrompts: DeferredPrompt[]
   memos: Memo[]
+  identityMappings: Map<string, IdentityMappingEntry>
+  activeConfigEditors: Set<string>
+  authorizedGroups: AuthorizedGroupEntry[]
   activeContext: string
   activeLogFilter: { turnId?: string }
 }
@@ -143,6 +166,7 @@ export interface DashboardAPI {
   renderToolFailures(): void
   renderReminders(): void
   renderMemos(): void
+  renderContext(): void
   updateScopeFilter(scopes: Set<string>): void
   clearLogs(): void
   __state: DashboardState

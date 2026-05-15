@@ -1,14 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import {
-  emit,
-  emitGlobal,
-  emitGroup,
-  emitUser,
-  subscribe,
-  unsubscribe,
-  type DebugEvent,
-} from '../../src/debug/event-bus.js'
+import { emitGlobal, emitGroup, emitUser, subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 
 describe('event-bus scope helpers', () => {
   const listeners: Array<(event: DebugEvent) => void> = []
@@ -104,22 +96,6 @@ describe('event-bus scope helpers', () => {
     expect(received).not.toBeNull()
     expect(received!.type).toBe('global:event')
     expect(received!.data).toEqual({ status: 'ok' })
-    expect(received!.__scope).toEqual({ kind: 'global' })
-  })
-
-  test('bare emit() defaults to __scope: { kind: "global" }', () => {
-    let received: DebugEvent | null = null
-    subscribe(
-      track((e) => {
-        received = e
-      }),
-    )
-
-    emit('legacy:event', { legacy: true })
-
-    expect(received).not.toBeNull()
-    expect(received!.type).toBe('legacy:event')
-    expect(received!.data).toEqual({ legacy: true })
     expect(received!.__scope).toEqual({ kind: 'global' })
   })
 })

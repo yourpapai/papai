@@ -4,6 +4,7 @@
  */
 
 import { getConfig, isSensitiveKey, maskValue, setConfig } from '../config.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import { isConfigKey, type ConfigKey } from '../types/config.js'
 import { createEditorSession, deleteEditorSession, getEditorSession, updateEditorSession } from './state.js'
@@ -137,6 +138,8 @@ export function startEditor(userId: string, storageContextId: string, key: Confi
 
   log.info({ userId, storageContextId, key }, 'Started config editor')
 
+  emitUser('config_editor:opened', userId, { userId })
+
   return {
     handled: true,
     response: lines.join('\n'),
@@ -159,6 +162,8 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
   const displayName = FIELD_DISPLAY_NAMES[session.editingKey]
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value saved')
 
+  emitUser('config_editor:closed', userId, { userId })
+
   return {
     handled: true,
     response: `✅ **${displayName}** saved successfully.`,
@@ -169,6 +174,8 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
 function handleCancelAction(userId: string, storageContextId: string): EditorProcessResult {
   deleteEditorSession(userId, storageContextId)
   log.info({ userId, storageContextId }, 'Config editor cancelled')
+
+  emitUser('config_editor:closed', userId, { userId })
 
   return {
     handled: true,
@@ -248,6 +255,8 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
   const maskedOrRaw = sensitiveKey ? maskValue(session.editingKey, trimmedText) : trimmedText
 
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value entered, awaiting confirmation')
+
+  emitUser('config_editor:step', userId, { userId, step: 'value_entered' })
 
   return {
     handled: true,

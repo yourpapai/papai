@@ -1268,3 +1268,102 @@ main {
   max-height: 400px;
   overflow-y: auto;
 }
+
+/* --- Context Panel --- */
+
+.context-panel-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.context-panel-section h3 {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #00ff88;
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+}
+
+.context-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+.context-key {
+  color: #cccccc;
+  font-weight: 600;
+}
+
+.context-value {
+  color: #888888;
+}
+
+.context-meta {
+  color: #555555;
+  font-size: 10px;
+}
+
+/* --- Turn log-link button --- */
+
+.turn-log-link {
+  background: none;
+  border: 1px solid #333333;
+  color: #0088ff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-left: 4px;
+}
+
+.turn-log-link:hover {
+  background: #222222;
+  border-color: #0088ff;
+}
+
+/* --- Log turnId filter --- */
+
+.log-turnid-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-turnid-filter label {
+  color: #666666;
+  font-size: 10px;
+}
+
+.log-turnid-badge {
+  background: #0088ff22;
+  border: 1px solid #0088ff;
+  color: #0088ff;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-turnid-badge button {
+  background: none;
+  border: none;
+  color: #0088ff;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
+}

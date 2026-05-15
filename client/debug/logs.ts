@@ -17,6 +17,9 @@ type LogFilterElements = {
   $logSearch: HTMLInputElement
   $logClear: HTMLElement
   $logAutoscroll: HTMLElement
+  $logTurnidBadge: HTMLElement
+  $logTurnidLabel: HTMLElement
+  $logTurnidClear: HTMLElement
 }
 
 export function getLogModalElements(): LogModalElements {
@@ -34,13 +37,19 @@ export function getLogFilterElements(): LogFilterElements {
   const $logSearch = document.querySelector<HTMLInputElement>('#log-search')
   const $logClear = document.getElementById('log-clear')
   const $logAutoscroll = document.getElementById('log-autoscroll')
+  const $logTurnidBadge = document.getElementById('log-turnid-badge')
+  const $logTurnidLabel = document.getElementById('log-turnid-label')
+  const $logTurnidClear = document.getElementById('log-turnid-clear')
 
   if (
     $logLevelFilter === null ||
     $logScopeFilter === null ||
     $logSearch === null ||
     $logClear === null ||
-    $logAutoscroll === null
+    $logAutoscroll === null ||
+    $logTurnidBadge === null ||
+    $logTurnidLabel === null ||
+    $logTurnidClear === null
   ) {
     throw new Error('Log filter elements not found in DOM')
   }
@@ -51,6 +60,9 @@ export function getLogFilterElements(): LogFilterElements {
     $logSearch,
     $logClear,
     $logAutoscroll,
+    $logTurnidBadge,
+    $logTurnidLabel,
+    $logTurnidClear,
   }
 }
 
@@ -121,11 +133,13 @@ export function filterLogs(
   scope: string,
   query: string,
   fuseInstance: ReturnType<typeof updateFuseIndex>,
+  turnId?: string,
 ): LogEntry[] {
   if (query === '') {
     return logs.filter((e: LogEntry) => {
       if (e.level < minLevel) return false
       if (scope !== '' && e.scope !== scope) return false
+      if (turnId !== undefined && turnId !== '' && e['turnId'] !== turnId) return false
       return true
     })
   }
@@ -141,6 +155,7 @@ export function filterLogs(
   return filtered.filter((e) => {
     if (e.level < minLevel) return false
     if (scope !== '' && e.scope !== scope) return false
+    if (turnId !== undefined && turnId !== '' && e['turnId'] !== turnId) return false
     return true
   })
 }

@@ -2,7 +2,7 @@ import { APICallError } from '@ai-sdk/provider'
 
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
-import { emit, emitUser } from './debug/event-bus.js'
+import { emitGlobal, emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { resolveConfigId } from './llm-orchestrator-config.js'
 import { logger } from './logger.js'
@@ -29,7 +29,7 @@ export interface LlmOrchestratorSupportDeps {
   }
 }
 
-const defaultDeps: LlmOrchestratorSupportDeps = { emit, log }
+const defaultDeps: LlmOrchestratorSupportDeps = { emit: emitGlobal, log }
 
 const resolveSupportDeps = (deps: LlmOrchestratorSupportDeps | undefined): LlmOrchestratorSupportDeps => {
   if (deps === undefined) {

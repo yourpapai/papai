@@ -52,6 +52,7 @@ export function renderTurns(turns: readonly Turn[], activeContext: string): stri
     html += `<span class="turn-status ${statusClass}">${turn.status}</span>`
     html += `<span class="turn-duration">${dur}</span>`
     html += `<span class="turn-tools">${toolCount} tool${toolCount === 1 ? '' : 's'}</span>`
+    html += `<button class="turn-log-link" data-turn-id="${escapeHtml(turn.turnId)}" title="Filter logs by this turn">logs</button>`
     html += '</div>'
     html += '</div>'
   }
