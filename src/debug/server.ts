@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
-import { addClient, init, removeClient } from './state-collector.js'
+import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 
 const log = logger.child({ scope: 'debug-server' })
 
@@ -99,6 +99,19 @@ function handleDashboardFile(pathname: string): Response {
   return new Response('Not found', { status: 404 })
 }
 
+function handleTurnLookup(url: URL): Response {
+  const turnId = url.pathname.slice('/turns/'.length)
+  if (turnId !== '') {
+    const turn = findTurnById(turnId)
+    if (turn !== undefined) {
+      return new Response(JSON.stringify(turn), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }
+  return new Response('Not found', { status: 404 })
+}
+
 export function startDebugServer(adminUserId: string, logLevel = getLogLevel()): void {
   init(adminUserId)
   logMultistream.add({ stream: logBufferStream, level: logLevel })
@@ -126,6 +139,10 @@ export function startDebugServer(adminUserId: string, logLevel = getLogLevel()):
         return new Response(JSON.stringify(logBuffer.stats()), {
           headers: { 'Content-Type': 'application/json' },
         })
+      }
+
+      if (url.pathname.startsWith('/turns/')) {
+        return handleTurnLookup(url)
       }
 
       if (

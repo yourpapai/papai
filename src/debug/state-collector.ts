@@ -5,6 +5,11 @@ import { getSchedulerSnapshot } from '../scheduler.js'
 import { getWizardSnapshots } from '../wizard/state.js'
 import { subscribe, unsubscribe, type DebugEvent, type Scope } from './event-bus.js'
 import { str, num, bool, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
+import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
+
+export { recentTurns, recentNotifications, recentToolFailures } from './turn-assembly.js'
+export { inFlightTurns, resetTurnBuffers, findTurnById } from './turn-assembly.js'
+export { getRecentTurns, getRecentNotifications, getRecentToolFailures, getInFlightTurns } from './turn-assembly.js'
 
 let adminUserId: string | null = null
 let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }
@@ -20,7 +25,6 @@ export const stats = {
 }
 
 const LLM_TRACE_CAPACITY = 65535
-
 type LlmTraceToolCall = {
   toolName: string
   durationMs: number
@@ -77,7 +81,7 @@ export type AdminVisibility = {
 }
 
 export function isVisibleToAdmin(scope: Scope, vis: AdminVisibility): boolean {
-  if (scope == null || typeof scope.kind !== 'string') return false
+  if (scope === null || scope === undefined || typeof scope.kind !== 'string') return false
   if (scope.kind === 'global') return true
   if (scope.kind === 'user') return scope.userId === vis.adminUserId
   if (scope.kind === 'group') return vis.groupIds.has(scope.groupId)
@@ -99,6 +103,9 @@ export function addClient(controller: ReadableStreamDefaultController): void {
     messageCache: getMessageCacheSnapshot(),
     stats,
     recentLlm,
+    recentTurns,
+    recentNotifications,
+    recentToolFailures,
   }
 
   sendTo(controller, { type: 'state:init', timestamp: Date.now(), data: initData, __scope: { kind: 'global' } })
@@ -131,13 +138,8 @@ function pushTrace(trace: LlmTrace): void {
   recentLlm.push(trace)
 }
 
-function traceToData(trace: LlmTrace): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...trace }
-  return result
-}
-
 function broadcastTrace(trace: LlmTrace, timestamp: number): void {
-  broadcast({ type: 'llm:full', timestamp, data: traceToData(trace), __scope: { kind: 'global' } })
+  broadcast({ type: 'llm:full', timestamp, data: { ...trace }, __scope: { kind: 'global' } })
 }
 
 function handleLlmStart(event: DebugEvent, userId: string): void {
@@ -269,6 +271,7 @@ function onEvent(event: DebugEvent): void {
   if (!isVisibleToAdmin(event.__scope, adminVisibility)) return
   handleLlmTraceAccumulation(event)
   handleStatsUpdate(event)
+  handleTurnAssembly(event, broadcast)
   broadcast(event)
 }
 

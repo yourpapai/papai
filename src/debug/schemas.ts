@@ -185,6 +185,16 @@ export const MessageCacheEventSchema = z.object({
   pendingWrites: z.number().optional(),
 })
 
+// Re-export turn schemas from turn-assembly
+export {
+  TurnToolCallSchema,
+  TurnReplySchema,
+  TurnSchema,
+  NotificationSchema,
+  ToolFailureSchema,
+} from './turn-assembly.js'
+export type { TurnToolCall, Turn, Notification, ToolFailure } from './turn-assembly.js'
+
 // Inferred types
 export type Fact = z.infer<typeof FactSchema>
 export type Instruction = z.infer<typeof InstructionSchema>

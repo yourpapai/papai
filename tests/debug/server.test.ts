@@ -249,4 +249,10 @@ describe('debug-server', () => {
     expect(text).toContain('event: state:init')
     expect(text).toContain('"type":"state:init"')
   })
+
+  test('GET /turns/:id returns 404 for unknown turnId', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/nonexistent`)
+    expect(res.status).toBe(404)
+    await res.body?.cancel()
+  })
 })
