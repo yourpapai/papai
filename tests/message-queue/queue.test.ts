@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ReplyFn } from '../../src/chat/types.js'
-import { MessageQueue } from '../../src/message-queue/queue.js'
+import { MessageQueue, type QueueEmitDeps } from '../../src/message-queue/queue.js'
 import type { CoalescedItem, QueueItem } from '../../src/message-queue/types.js'
 import { mockLogger } from '../utils/logger-mock.js'
 
@@ -12,8 +12,8 @@ interface CapturedEvent {
   turnId?: string
 }
 
-function mockEventBus(events: CapturedEvent[]): void {
-  void mock.module('../../src/debug/event-bus.js', () => ({
+function createMockEmitDeps(events: CapturedEvent[]): QueueEmitDeps {
+  return {
     emitUser: (type: string, _userId: string, data: Record<string, unknown>, turnId?: string): void => {
       events.push({ type, data, turnId })
     },
@@ -26,15 +26,7 @@ function mockEventBus(events: CapturedEvent[]): void {
     ): void => {
       events.push({ type, data, turnId })
     },
-    emitGlobal: (type: string, data: Record<string, unknown>): void => {
-      events.push({ type, data })
-    },
-    emit: (type: string, data: Record<string, unknown>): void => {
-      events.push({ type, data })
-    },
-    subscribe: (): void => {},
-    unsubscribe: (): void => {},
-  }))
+  }
 }
 
 /**
@@ -737,7 +729,7 @@ describe('MessageQueue', () => {
 
     beforeEach(() => {
       events = []
-      mockEventBus(events)
+      queue = new MessageQueue('user123', createMockEmitDeps(events))
     })
 
     it('should emit queue:enqueue when message is buffered', () => {

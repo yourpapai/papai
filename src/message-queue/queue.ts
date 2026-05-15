@@ -14,16 +14,25 @@ interface BufferedMessage {
   reply: ReplyFn
 }
 
+export type QueueEmitDeps = {
+  emitUser: (type: string, userId: string, data: Record<string, unknown>, turnId?: string) => void
+  emitGroup: (type: string, groupId: string, data: Record<string, unknown>, turnId?: string, threadId?: string) => void
+}
+
+const defaultEmitDeps: QueueEmitDeps = { emitUser, emitGroup }
+
 export class MessageQueue {
   private readonly storageContextId: string
+  private readonly emitDeps: QueueEmitDeps
   private messages: BufferedMessage[] = []
   private timer: ReturnType<typeof setTimeout> | null = null
   private lastUserId: string | null = null
   private handler: ((coalesced: CoalescedItem) => Promise<void>) | null = null
   private handlerChain: Promise<void> = Promise.resolve()
 
-  constructor(storageContextId: string) {
+  constructor(storageContextId: string, emitDeps: QueueEmitDeps = defaultEmitDeps) {
     this.storageContextId = storageContextId
+    this.emitDeps = emitDeps
     log.debug({ storageContextId }, 'MessageQueue created')
   }
 
@@ -232,9 +241,9 @@ export class MessageQueue {
       const separatorIndex = this.storageContextId.indexOf(':')
       const groupId = separatorIndex === -1 ? this.storageContextId : this.storageContextId.slice(0, separatorIndex)
       const threadId = separatorIndex === -1 ? undefined : this.storageContextId.slice(separatorIndex + 1)
-      emitGroup(type, groupId, data, turnId, threadId)
+      this.emitDeps.emitGroup(type, groupId, data, turnId, threadId)
     } else {
-      emitUser(type, userId, data, turnId)
+      this.emitDeps.emitUser(type, userId, data, turnId)
     }
   }
 }
