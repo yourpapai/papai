@@ -1,4 +1,4 @@
-import { emit } from './event-bus.js'
+import { emitGlobal } from './event-bus.js'
 
 export type LogEntry = {
   level: number
@@ -50,7 +50,7 @@ export class LogRingBuffer {
       this.buffer[this.head] = entry
       this.head = (this.head + 1) % this.capacity
     }
-    emit('log:entry', entry as Record<string, unknown>)
+    emitGlobal('log:entry', entry as Record<string, unknown>)
   }
 
   entries(): LogEntry[] {

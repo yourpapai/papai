@@ -2,7 +2,7 @@ import { APICallError } from '@ai-sdk/provider'
 
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
-import { emit } from './debug/event-bus.js'
+import { emit, emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { resolveConfigId } from './llm-orchestrator-config.js'
 import { logger } from './logger.js'
@@ -161,8 +161,7 @@ export const emitLlmError = (contextId: string, configContextId: string | undefi
   if (model !== null) {
     emittedModel = model
   }
-  emit('llm:error', {
-    userId: contextId,
+  emitUser('llm:error', contextId, {
     error: error instanceof Error ? error.message : String(error),
     model: emittedModel,
   })

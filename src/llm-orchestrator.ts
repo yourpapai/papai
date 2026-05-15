@@ -5,7 +5,7 @@ import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { appendHistory, saveHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
@@ -95,8 +95,7 @@ const invokeModel = async (
     timeout: 1_200_000,
     stopWhen: deps.stepCountIs(25),
     experimental_onToolCallStart(event) {
-      emit('llm:tool_call', {
-        userId: contextId,
+      emitUser('llm:tool_call', contextId, {
         toolName: event.toolCall.toolName,
         toolCallId: event.toolCall.toolCallId,
         args: event.toolCall.input,

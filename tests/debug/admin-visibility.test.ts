@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { Scope } from '../../src/debug/event-bus.js'
-import { isVisibleToAdmin, type AdminVisibility } from '../../src/debug/state-collector.js'
+import { applyVisibility, isVisibleToAdmin, type AdminVisibility } from '../../src/debug/state-collector.js'
 
 describe('isVisibleToAdmin', () => {
   const vis: AdminVisibility = {
@@ -37,5 +37,34 @@ describe('isVisibleToAdmin', () => {
   test('unscoped events are denied (default-deny)', () => {
     expect(isVisibleToAdmin(undefined as unknown as Scope, vis)).toBe(false)
     expect(isVisibleToAdmin(null as unknown as Scope, vis)).toBe(false)
+  })
+})
+
+describe('applyVisibility', () => {
+  type Entry = { userId: string; name: string } | { groupId: string; name: string }
+
+  const toScope = (e: Entry): Scope => {
+    if ('groupId' in e) return { kind: 'group', groupId: e.groupId }
+    return { kind: 'user', userId: e.userId }
+  }
+
+  test('filters entries by scope', () => {
+    const entries: Entry[] = [
+      { userId: 'admin-1', name: 'a' },
+      { userId: 'other', name: 'b' },
+      { groupId: 'group-a', name: 'c' },
+    ]
+    const vis: AdminVisibility = { adminUserId: 'admin-1', groupIds: new Set(['group-a']) }
+    const filtered = applyVisibility(entries, toScope, vis)
+    expect(filtered).toHaveLength(2)
+    expect(filtered[0]!.name).toBe('a')
+    expect(filtered[1]!.name).toBe('c')
+  })
+
+  test('returns empty array when no entries match', () => {
+    const entries: Entry[] = [{ userId: 'other', name: 'x' }]
+    const vis: AdminVisibility = { adminUserId: 'admin-1', groupIds: new Set() }
+    const filtered = applyVisibility(entries, toScope, vis)
+    expect(filtered).toHaveLength(0)
   })
 })

@@ -84,6 +84,10 @@ export function isVisibleToAdmin(scope: Scope, vis: AdminVisibility): boolean {
   return false
 }
 
+export function applyVisibility<T>(entries: T[], getScope: (entry: T) => Scope, vis: AdminVisibility): T[] {
+  return entries.filter((entry) => isVisibleToAdmin(getScope(entry), vis))
+}
+
 export function addClient(controller: ReadableStreamDefaultController): void {
   clients.add(controller)
 

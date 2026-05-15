@@ -1,6 +1,6 @@
 import type { ModelMessage, ToolSet } from 'ai'
 
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { buildStepsDetail } from './llm-orchestrator-steps.js'
 import { logger } from './logger.js'
 
@@ -120,8 +120,7 @@ export function emitLlmStart(
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet, routing: ToolRoutingTelemetry]
 ): void {
   const [contextId, mainModel, messages, tools, routing] = args
-  emit('llm:start', {
-    userId: contextId,
+  emitUser('llm:start', contextId, {
     model: mainModel,
     messageCount: messages.length,
     ...buildToolTelemetry(tools, routing),
@@ -149,8 +148,7 @@ export function emitLlmEnd(
       ]
 ): void {
   const [contextId, mainModel, result, startTime, messages, tools, routing] = args
-  emit('llm:end', {
-    userId: contextId,
+  emitUser('llm:end', contextId, {
     model: mainModel,
     steps: result.steps.length,
     totalDuration: Date.now() - startTime,

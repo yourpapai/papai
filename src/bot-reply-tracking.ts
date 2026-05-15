@@ -1,5 +1,5 @@
 import type { ButtonReplyOptions, ChatFile, EmbedOptions, ReplyFn, ReplyOptions } from './chat/types.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 
 export type TrackedReply = { reply: ReplyFn; didReply: () => boolean }
 
@@ -103,7 +103,7 @@ export function trackReplyUsage(reply: ReplyFn, supportsFiles: boolean): Tracked
 }
 
 function emitReplyCompleted(userId: string, contextId: string, start: number): void {
-  emit('message:replied', { userId, contextId, duration: Date.now() - start })
+  emitUser('message:replied', userId, { contextId, duration: Date.now() - start })
 }
 
 export function emitReplyCompletedIfNeeded(

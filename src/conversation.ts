@@ -2,7 +2,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, ModelMessage } from 'ai'
 
 import { getCachedConfig, getCachedHistory, setCachedHistory } from './cache.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
 
@@ -49,7 +49,7 @@ export const runTrimInBackground = async (
   const reason =
     history.length >= WORKING_MEMORY_CAP ? 'hard cap reached' : `periodic (${userMessageCount} user messages)`
   log.warn({ userId, historyLength: history.length, reason }, 'Smart trim triggered (running in background)')
-  emit('trim:start', { userId, historyLength: history.length, reason })
+  emitUser('trim:start', userId, { historyLength: history.length, reason })
 
   const llmApiKey = getCachedConfig(userId, 'llm_apikey')
   const llmBaseUrl = getCachedConfig(userId, 'llm_baseurl')
@@ -67,8 +67,7 @@ export const runTrimInBackground = async (
       saveSummary(userId, summary)
       setCachedHistory(userId, [...trimmedMessages, ...newMessages])
       log.info({ userId, retained: trimmedMessages.length, preserved: newMessages.length }, 'Smart trim complete')
-      emit('trim:end', {
-        userId,
+      emitUser('trim:end', userId, {
         kept: trimmedMessages.length,
         dropped: history.length - trimmedMessages.length,
         success: true,
@@ -78,7 +77,7 @@ export const runTrimInBackground = async (
         { userId, error: error instanceof Error ? error.message : String(error) },
         'Smart trim failed in background',
       )
-      emit('trim:end', { userId, error: error instanceof Error ? error.message : String(error), success: false })
+      emitUser('trim:end', userId, { error: error instanceof Error ? error.message : String(error), success: false })
     }
   } else {
     log.warn({ userId }, 'LLM config not available for background trim')

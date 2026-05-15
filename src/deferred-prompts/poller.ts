@@ -2,7 +2,7 @@ import pLimit from 'p-limit'
 
 import type { ChatProvider } from '../chat/types.js'
 import { getConfig } from '../config.js'
-import { emit } from '../debug/event-bus.js'
+import { emitGlobal } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
@@ -99,7 +99,7 @@ export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: Bui
   log.debug('pollScheduledOnce called')
 
   const duePrompts = getScheduledPromptsDue().filter((p) => !inFlightPrompts.has(p.id))
-  emit('poller:scheduled', { dueCount: duePrompts.length })
+  emitGlobal('poller:scheduled', { dueCount: duePrompts.length })
   log.debug({ count: duePrompts.length }, 'Due scheduled prompts found')
 
   if (duePrompts.length === 0) return
@@ -213,7 +213,7 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   log.debug('pollAlertsOnce called')
 
   const eligibleAlerts = getEligibleAlertPrompts()
-  emit('poller:alerts', { eligibleCount: eligibleAlerts.length })
+  emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
 
   if (eligibleAlerts.length === 0) return
 
