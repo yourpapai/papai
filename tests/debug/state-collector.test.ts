@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { emit } from '../../src/debug/event-bus.js'
+import { emit, emitUser, emitGroup, emitGlobal } from '../../src/debug/event-bus.js'
 import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
 import { resetStats } from '../utils/test-helpers.js'
 
@@ -162,7 +162,7 @@ describe('state-collector', () => {
     const { ctrl, enqueueMock } = createMockController()
     addClient(track(ctrl))
 
-    emit('message:received', { userId: 'other-user', textLength: 10 })
+    emitUser('message:received', 'other-user', { textLength: 10 })
 
     expect(enqueueMock).toHaveBeenCalledTimes(1)
   })
@@ -428,6 +428,56 @@ describe('state-collector', () => {
       assert.ok(isRecord(tc1))
       expect(tc0['result']).toEqual({ hits: 3 })
       expect(tc1['error']).toBe('permission denied')
+    })
+  })
+
+  describe('scope-based visibility filtering', () => {
+    test('user-scoped event for admin passes through', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitUser('message:received', 'admin-1', { textLength: 10 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).toContain('message:received')
+    })
+
+    test('user-scoped event for other user is filtered out', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitUser('message:received', 'other-user', { textLength: 10 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).not.toContain('message:received')
+    })
+
+    test('group-scoped event is filtered out when groupIds is empty', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitGroup('message:received', 'group-a', { textLength: 10 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).not.toContain('message:received')
+    })
+
+    test('global-scoped event passes through', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).toContain('scheduler:tick')
     })
   })
 })

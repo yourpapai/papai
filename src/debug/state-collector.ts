@@ -7,6 +7,7 @@ import { subscribe, unsubscribe, type DebugEvent, type Scope } from './event-bus
 import { str, num, bool, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
 
 let adminUserId: string | null = null
+let adminVisibility: AdminVisibility = { adminUserId: '', groupIds: new Set() }
 
 const clients = new Set<ReadableStreamDefaultController>()
 const encoder = new TextEncoder()
@@ -67,6 +68,7 @@ export const pendingTraces = new Map<string, PendingLlmTrace>()
 
 export function init(adminId: string): void {
   adminUserId = adminId
+  adminVisibility = { adminUserId: adminId, groupIds: new Set() }
 }
 
 export type AdminVisibility = {
@@ -108,12 +110,6 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
   if (clients.size === 0) {
     unsubscribe(onEvent)
   }
-}
-
-function isAdminEvent(event: DebugEvent): boolean {
-  const eventUserId = event.data['userId']
-  if (typeof eventUserId !== 'string') return true
-  return eventUserId === adminUserId
 }
 
 let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -266,7 +262,7 @@ function handleStatsUpdate(event: DebugEvent): void {
 }
 
 function onEvent(event: DebugEvent): void {
-  if (!isAdminEvent(event)) return
+  if (!isVisibleToAdmin(event.__scope, adminVisibility)) return
   handleLlmTraceAccumulation(event)
   handleStatsUpdate(event)
   broadcast(event)
