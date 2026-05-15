@@ -8,13 +8,6 @@ import type { ToolSet } from 'ai'
 import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
 import type { ContextType } from '../chat/types.js'
-import {
-  makeCancelDeferredPromptTool,
-  makeCreateDeferredPromptTool,
-  makeGetDeferredPromptTool,
-  makeListDeferredPromptsTool,
-  makeUpdateDeferredPromptTool,
-} from '../deferred-prompts/tools.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeAddCommentReactionTool } from './add-comment-reaction.js'
 import { makeAddCommentTool } from './add-comment.js'
@@ -34,6 +27,7 @@ import { makeCreateProjectTool } from './create-project.js'
 import { makeCreateRecurringTaskTool } from './create-recurring-task.js'
 import { makeCreateSprintTool } from './create-sprint.js'
 import { makeCreateStatusTool } from './create-status.js'
+import { addDeferredPromptTools } from './deferred-tools-builder.js'
 import { makeDeleteProjectTool } from './delete-project.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
 import { makeDeleteStatusTool } from './delete-status.js'
@@ -289,13 +283,7 @@ export function buildTools(
   addWebFetchTool(tools, contextId, chatUserId)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (mode === 'normal' && chatUserId !== undefined) {
-    const ctxId = contextId ?? chatUserId
-    const ctxType = contextType ?? 'dm'
-    tools['create_deferred_prompt'] = makeCreateDeferredPromptTool(chatUserId, ctxId, ctxType, username)
-    tools['list_deferred_prompts'] = makeListDeferredPromptsTool(chatUserId)
-    tools['get_deferred_prompt'] = makeGetDeferredPromptTool(chatUserId)
-    tools['update_deferred_prompt'] = makeUpdateDeferredPromptTool(chatUserId)
-    tools['cancel_deferred_prompt'] = makeCancelDeferredPromptTool(chatUserId)
+    addDeferredPromptTools(tools, chatUserId, contextId, contextType, username)
   }
   return tools
 }

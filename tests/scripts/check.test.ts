@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 // Integration tests for ../../scripts/check.js (check.sh — no TS module; shell script under test)
 import { describe, expect, test } from 'bun:test'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -125,6 +130,37 @@ describe('check.sh --staged', () => {
       expect(calls).toContain('bun run typecheck')
       expect(calls).toContain('bunx oxfmt --check --ignore-path=.oxfmtignore README.md')
       expect(calls).not.toContain('bunx oxlint')
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('requires license headers for new code files outside src and client', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const codeFiles = [
+        'scripts/new-tool.ts',
+        'review-loop/src/runner.ts',
+        'tests/new-tool.test.ts',
+        'drizzle.config.ts',
+      ] as const
+      codeFiles.forEach((file) => {
+        const filePath = path.join(repoDir, file)
+        mkdirSync(path.dirname(filePath), { recursive: true })
+        writeFileSync(filePath, 'export const value = true\n')
+      })
+      expectSuccess(runCommand(repoDir, ['git', 'add', ...codeFiles]))
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env)
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toContain('Missing BUSL-1.1 license header')
+      codeFiles.forEach((file) => expect(result.stdout).toContain(`  ${file}`))
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }

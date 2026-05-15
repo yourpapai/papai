@@ -48,6 +48,7 @@
     "node/no-path-concat": "error",
     "promise/catch-or-return": "error",
     "unicorn/no-abusive-eslint-disable": "error",
+    "papai-policy/require-license-header": "error",
     "papai-policy/no-inline-suppression-comments": "error",
     "papai-policy/no-optional-type-syntax": "off",
     "papai-policy/no-default-value-syntax": "off",

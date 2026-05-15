@@ -13,6 +13,7 @@ import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
 import { describeCondition, evaluateCondition, getEligibleAlertPrompts, updateAlertTriggerTime } from './alerts.js'
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
+import { groupScheduledPromptsByDelivery } from './poller-groups.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getScheduledPromptsDue } from './scheduled.js'
@@ -35,20 +36,6 @@ function logSettledErrors(results: PromiseSettledResult<void>[], context: string
   for (const r of results) {
     if (r.status === 'rejected') log.error({ error: String(r.reason) }, context)
   }
-}
-
-function deliveryGroupKey(prompt: ScheduledPrompt): string {
-  const t = prompt.deliveryTarget
-  const mentionKey = t.audience === 'shared' ? '' : [...t.mentionUserIds].sort().join(',')
-  return [
-    prompt.createdByUserId,
-    t.contextId,
-    t.contextType,
-    t.threadId ?? '',
-    t.audience,
-    t.createdByUsername ?? '',
-    mentionKey,
-  ].join('|')
 }
 
 function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
@@ -109,17 +96,10 @@ export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: Bui
 
   if (duePrompts.length === 0) return
 
-  const byGroup = new Map<string, ScheduledPrompt[]>()
   for (const prompt of duePrompts) {
     inFlightPrompts.add(prompt.id)
-    const key = deliveryGroupKey(prompt)
-    const existing = byGroup.get(key)
-    if (existing === undefined) {
-      byGroup.set(key, [prompt])
-    } else {
-      existing.push(prompt)
-    }
   }
+  const byGroup = groupScheduledPromptsByDelivery(duePrompts)
 
   const limit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   try {

@@ -22,6 +22,50 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # Sanitize check names for safe temp filenames (replace : with _)
 safe_name() { echo "${1//:/_}"; }
 
+is_license_header_file() {
+  local file="$1"
+  case "$file" in
+    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts) ;;
+    *) return 1 ;;
+  esac
+  case "$file" in
+    *.ts|*.tsx|*.js|*.jsx) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+run_license_header_check() {
+  local output_file="$1"
+  shift
+  local missing_headers=()
+  local file
+
+  for file in "$@"; do
+    if ! awk 'NR <= 5 && /^\/\/ SPDX-License-Identifier: BUSL-1\.1$/ { found=1 } END { exit found ? 0 : 1 }' "$file" 2>/dev/null; then
+      missing_headers+=("$file")
+    fi
+  done
+
+  if [ ${#missing_headers[@]} -gt 0 ]; then
+    {
+      echo "Missing BUSL-1.1 license header in file(s):"
+      local f
+      for f in "${missing_headers[@]}"; do
+        echo "  $f"
+      done
+      printf '\nAdd this header to the top of each file:\n'
+      printf '  // SPDX-License-Identifier: BUSL-1.1\n'
+      printf '  // Copyright (c) 2026 Dmitriy Lazarev\n'
+      printf '  // Use of this software is governed by the Business Source License 1.1.\n'
+      printf '  // See LICENSE in the project root for details.\n'
+      printf '\nOr run: bun license:headers\n'
+    } >"$output_file"
+    return 1
+  fi
+
+  printf '%s\n' 'ℹ All checked code files have license headers' >"$output_file"
+}
+
 if [ "$STAGED_MODE" = true ]; then
   # Get staged files into array
   staged_files=()
@@ -46,15 +90,14 @@ if [ "$STAGED_MODE" = true ]; then
     esac
   done
 
-  # Build array of newly added source files (for license header check)
-  added_source_files=()
+  # Build array of staged code files requiring license headers.
+  header_checked_files=()
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    case "$file" in src/*|client/*) ;; *) continue ;; esac
-    case "$file" in *.ts|*.tsx|*.js|*.jsx) ;; *) continue ;; esac
-    case "$file" in *.test.*|*.spec.*) continue ;; esac
-    added_source_files+=("$file")
-  done < <(git diff --staged --name-only --diff-filter=A 2>/dev/null || true)
+    if is_license_header_file "$file"; then
+      header_checked_files+=("$file")
+    fi
+  done < <(git diff --staged --name-only --diff-filter=ACM 2>/dev/null || true)
 
   # Check if array is empty
   if [ ${#relevant_files[@]} -eq 0 ]; then
@@ -123,29 +166,7 @@ if [ "$STAGED_MODE" = true ]; then
   # Check license headers in newly added source files
   (
     exit_code=0
-    missing_headers=()
-    for file in "${added_source_files[@]+${added_source_files[@]}}"; do
-      if ! head -5 "$file" 2>/dev/null | grep -q "SPDX-License-Identifier:"; then
-        missing_headers+=("$file")
-      fi
-    done
-    if [ ${#missing_headers[@]} -gt 0 ]; then
-      {
-        echo "Missing BUSL-1.1 license header in newly added file(s):"
-        for f in "${missing_headers[@]}"; do
-          echo "  $f"
-        done
-        printf '\nAdd this header to the top of each file:\n'
-        printf '  // SPDX-License-Identifier: BUSL-1.1\n'
-        printf '  // Copyright (c) 2026 Dmitriy Lazarev\n'
-        printf '  // Use of this software is governed by the Business Source License 1.1.\n'
-        printf '  // See LICENSE in the project root for details.\n'
-        printf '\nOr run: bun license:headers\n'
-      } >"$TMPDIR/license-headers.out"
-      exit_code=1
-    else
-      printf '%s\n' 'ℹ All new source files have license headers' >"$TMPDIR/license-headers.out"
-    fi
+    run_license_header_check "$TMPDIR/license-headers.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
     echo "$exit_code" >"$TMPDIR/license-headers.exit"
   ) &
   license_headers_pid=$!
@@ -202,7 +223,7 @@ if [ "$STAGED_MODE" = true ]; then
   fi
 else
   # Original behavior: run all checks
-  checks=("lint" "typecheck" "format:check" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
+  checks=("lint" "typecheck" "format:check" "license-headers" "knip" "test" "test:client" "duplicates" "review-loop:lint" "review-loop:typecheck" "review-loop:format:check" "review-loop:test")
   failed=0
   pids=()
 
@@ -211,7 +232,16 @@ else
     fname=$(safe_name "$check")
     (
       exit_code=0
-      if [ "$check" = "test" ]; then
+      if [ "$check" = "license-headers" ]; then
+        header_checked_files=()
+        while IFS= read -r file; do
+          [ -n "$file" ] || continue
+          if is_license_header_file "$file"; then
+            header_checked_files+=("$file")
+          fi
+        done < <(git ls-files 2>/dev/null || true)
+        run_license_header_check "$TMPDIR/$fname.out" "${header_checked_files[@]+${header_checked_files[@]}}" || exit_code=$?
+      elif [ "$check" = "test" ]; then
         bun run test >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?
       else
         bun run "$check" >"$TMPDIR/$fname.out" 2>&1 || exit_code=$?

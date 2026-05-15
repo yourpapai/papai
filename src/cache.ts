@@ -16,6 +16,7 @@ import {
   syncWorkspaceToDb,
 } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
+import type { CachedFact, CachedInstruction, UserCache } from './cache-types.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions, users } from './db/schema.js'
 import { emit } from './debug/event-bus.js'
@@ -24,17 +25,6 @@ import { logger } from './logger.js'
 const log = logger.child({ scope: 'cache' })
 
 // --- User Session Cache ---
-
-type UserCache = {
-  history: ModelMessage[]
-  summary: string | null
-  facts: Array<{ identifier: string; title: string; url: string; last_seen: string }>
-  instructions: Array<{ id: string; text: string; createdAt: string }> | null
-  config: Map<string, string | null>
-  workspaceId: string | null
-  tools: unknown
-  lastAccessed: number
-}
 
 const userCaches = new Map<string, UserCache>()
 
@@ -141,9 +131,7 @@ export function setCachedSummary(userId: string, summary: string): void {
   emit('cache:sync', { userId, field: 'summary', operation: 'set' })
 }
 
-export function getCachedFacts(
-  userId: string,
-): readonly { identifier: string; title: string; url: string; last_seen: string }[] {
+export function getCachedFacts(userId: string): readonly CachedFact[] {
   const cache = getOrCreateCache(userId)
   if (cache.facts.length === 0 && !cache.config.has('facts_loaded')) {
     log.debug({ userId }, 'Loading facts from DB into cache')
@@ -266,7 +254,7 @@ export function clearCachedHistoryFlag(userId: string): void {
   log.debug({ userId }, 'History loaded flag cleared')
 }
 
-export function getCachedInstructions(contextId: string): readonly { id: string; text: string; createdAt: string }[] {
+export function getCachedInstructions(contextId: string): readonly CachedInstruction[] {
   const cache = getOrCreateCache(contextId)
   if (cache.instructions === null) {
     log.debug({ contextId }, 'Loading instructions from DB into cache')

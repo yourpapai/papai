@@ -6,7 +6,7 @@
 import type { z } from 'zod'
 
 import { providerError } from '../../errors.js'
-import type { ListTasksParams, Task, TaskCustomField } from '../types.js'
+import type { ListTasksParams, Task } from '../types.js'
 import { YouTrackClassifiedError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import { youtrackFetch } from './client.js'
@@ -14,10 +14,8 @@ import { PROJECT_CUSTOM_FIELD_FIELDS, YOUTRACK_DUE_DATE_FIELD_NAME } from './con
 import { DueDateCustomFieldSchema, mapYouTrackDueDateValue, parseDueDateValue } from './due-date.js'
 import { paginate } from './helpers.js'
 import { ProjectCustomFieldListSchema, ProjectCustomFieldSchema } from './schemas/bundle.js'
-import type { CustomFieldValueSchema } from './schemas/custom-fields.js'
 
 type ProjectCustomField = z.infer<typeof ProjectCustomFieldSchema>
-type AnyCustomField = z.infer<typeof CustomFieldValueSchema>
 
 type CreateIssueCustomFieldPayload = {
   name: string
@@ -32,19 +30,6 @@ type StandardCustomFieldPayload = {
 }
 const NON_GENERIC_FIELD_NAMES = new Set(['State', 'Priority', 'Assignee', YOUTRACK_DUE_DATE_FIELD_NAME])
 const normalizeCustomFieldType = (value: string | undefined): string | undefined => value?.trim().toLowerCase()
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
-const getStringProperty = (value: unknown, property: 'login' | 'name' | 'text'): string | undefined => {
-  if (!isRecord(value)) return undefined
-  const prop = value[property]
-  return typeof prop === 'string' ? prop : undefined
-}
-const stringifyUnknownValue = (value: unknown): string => {
-  try {
-    return JSON.stringify(value) ?? '[complex value]'
-  } catch {
-    return '[complex value]'
-  }
-}
 
 const isStringSimpleProjectField = (field: ProjectCustomField): boolean => {
   if (field.$type !== 'SimpleProjectCustomField') return false
@@ -53,25 +38,6 @@ const isStringSimpleProjectField = (field: ProjectCustomField): boolean => {
   return fieldTypeId === 'string' || presentation === 'string'
 }
 const isTextProjectField = (field: ProjectCustomField): boolean => field.$type === 'TextProjectCustomField'
-const buildReadOnlyCustomFieldValue = (value: unknown): TaskCustomField['value'] => {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
-  const textValue = getStringProperty(value, 'text')
-  if (textValue !== undefined) return textValue
-  const nameValue = getStringProperty(value, 'name')
-  if (nameValue !== undefined) return nameValue
-  const loginValue = getStringProperty(value, 'login')
-  if (loginValue !== undefined) return loginValue
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (item === null || item === undefined) return undefined
-        return typeof item === 'string' ? item : (getStringProperty(item, 'name') ?? getStringProperty(item, 'login'))
-      })
-      .filter((item): item is string => item !== undefined)
-  }
-  return stringifyUnknownValue(value)
-}
 const fetchProjectCustomFields = async (
   config: Readonly<YouTrackConfig>,
   projectId: string,
@@ -256,15 +222,6 @@ export const buildWriteSafeCustomFields = async (
   const projectFieldsByName = buildProjectFieldsByName(await fetchProjectCustomFields(config, projectId))
   return customFields.map((input) => buildWriteSafeCustomFieldPayload(projectFieldsByName, input))
 }
-export const mapReadOnlyCustomFields = (
-  customFields: readonly AnyCustomField[] | undefined,
-): TaskCustomField[] | undefined => {
-  const mapped = (customFields ?? [])
-    .filter((field) => !NON_GENERIC_FIELD_NAMES.has(field.name))
-    .map((field) => ({ name: field.name, value: buildReadOnlyCustomFieldValue(field.value) }))
-
-  return mapped.length === 0 ? undefined : mapped
-}
 export const buildYouTrackQuery = (params: Readonly<ListTasksParams> | undefined, projectShortName: string): string => {
   const queryParts: string[] = [`project: {${projectShortName}}`]
   if (params?.status !== undefined) queryParts.push(`State: {${params.status}}`)
@@ -300,3 +257,4 @@ export const enrichTaskWithDueDate = async (config: Readonly<YouTrackConfig>, ta
   }
 }
 export { mapYouTrackDueDateValue } from './due-date.js'
+export { mapReadOnlyCustomFields } from './custom-field-values.js'

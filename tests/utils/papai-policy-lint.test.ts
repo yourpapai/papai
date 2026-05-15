@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -10,6 +15,8 @@ const eslintDirective = ['eslint', 'disable'].join('-')
 const oxlintDirective = ['oxlint', 'disable'].join('-')
 const tsIgnoreDirective = ['@ts', 'ignore'].join('-')
 const tsNoCheckDirective = ['@ts', 'nocheck'].join('-')
+const currentYear = new Date().getFullYear()
+const previousYear = currentYear - 1
 
 interface LintResult {
   exitCode: number
@@ -61,6 +68,78 @@ function runRule(ruleName: string, source: string): LintResult {
 }
 
 describe('papai policy oxlint plugin', () => {
+  test('rejects files without a BUSL license header', () => {
+    const result = runRule('papai-policy/require-license-header', 'export const value = 1\n')
+
+    expect(result.exitCode).toBe(1)
+    expect(result.output).toContain('papai-policy(require-license-header)')
+  })
+
+  test('allows files with a BUSL license header', () => {
+    const result = runRule(
+      'papai-policy/require-license-header',
+      [
+        '// SPDX-License-Identifier: BUSL-1.1',
+        `// Copyright (c) ${currentYear} Dmitriy Lazarev`,
+        '// Use of this software is governed by the Business Source License 1.1.',
+        '// See LICENSE in the project root for details.',
+        '',
+        'export const value = 1',
+      ].join('\n'),
+    )
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('allows files with a BUSL license header year range ending in the current year', () => {
+    const result = runRule(
+      'papai-policy/require-license-header',
+      [
+        '// SPDX-License-Identifier: BUSL-1.1',
+        `// Copyright (c) ${previousYear}-${currentYear} Dmitriy Lazarev`,
+        '// Use of this software is governed by the Business Source License 1.1.',
+        '// See LICENSE in the project root for details.',
+        '',
+        'export const value = 1',
+      ].join('\n'),
+    )
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('rejects incomplete or stale BUSL license headers', () => {
+    const result = runRule(
+      'papai-policy/require-license-header',
+      [
+        '// SPDX-License-Identifier: BUSL-1.1',
+        '// Copyright (c) 2000 Dmitriy Lazarev',
+        '// Use of this software is governed by the Business Source License 1.1.',
+        '',
+        'export const value = 1',
+      ].join('\n'),
+    )
+
+    expect(result.exitCode).toBe(1)
+    expect(result.output).toContain('papai-policy(require-license-header)')
+  })
+
+  test('allows executable shebangs before the BUSL license header', () => {
+    const result = runRule(
+      'papai-policy/require-license-header',
+      [
+        '#!/usr/bin/env bun',
+        '// SPDX-License-Identifier: BUSL-1.1',
+        `// Copyright (c) ${currentYear} Dmitriy Lazarev`,
+        '// Use of this software is governed by the Business Source License 1.1.',
+        '// See LICENSE in the project root for details.',
+        '',
+        'console.log("ok")',
+      ].join('\n'),
+    )
+
+    expect(result.exitCode).toBe(0)
+  })
+
   test('rejects inline suppression comments', () => {
     const result = runRule(
       'papai-policy/no-inline-suppression-comments',

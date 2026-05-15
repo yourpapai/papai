@@ -19,6 +19,7 @@ COPY --from=build /app/public ./public
 COPY --from=deps /app/node_modules ./node_modules
 COPY src ./src
 COPY package.json tsconfig.json CHANGELOG.md ./
+COPY LICENSE ./LICENSE
 
 ENV NODE_ENV=production
 

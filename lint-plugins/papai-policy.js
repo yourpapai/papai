@@ -2,6 +2,11 @@ const eslintDirective = ['eslint', 'disable'].join('-')
 const oxlintDirective = ['oxlint', 'disable'].join('-')
 const tsIgnoreDirective = ['@ts', 'ignore'].join('-')
 const tsNoCheckDirective = ['@ts', 'nocheck'].join('-')
+const licenseHeaderLine = '// SPDX-License-Identifier: BUSL-1.1'
+const currentYear = new Date().getFullYear()
+const copyrightLinePattern = /^\/\/ Copyright \(c\) (\d{4})(?:-(\d{4}))? Dmitriy Lazarev$/u
+const useLine = '// Use of this software is governed by the Business Source License 1.1.'
+const detailsLine = '// See LICENSE in the project root for details.'
 
 const suppressionMatchers = [
   {
@@ -29,6 +34,15 @@ function report(context, nodeOrLoc, message) {
   }
 
   context.report({ loc: nodeOrLoc, message })
+}
+
+function isCurrentCopyrightLine(line) {
+  const match = copyrightLinePattern.exec(line)
+  if (!match) return false
+
+  const startYear = Number.parseInt(match[1], 10)
+  const endYear = match[2] === undefined ? startYear : Number.parseInt(match[2], 10)
+  return startYear <= endYear && endYear === currentYear
 }
 
 function unwrapParameter(param) {
@@ -140,6 +154,30 @@ const noInlineSuppressionComments = {
   },
 }
 
+const requireLicenseHeader = {
+  meta: {
+    type: 'problem',
+    schema: [],
+  },
+  create(context) {
+    return {
+      Program(node) {
+        const lines = context.sourceCode.text.split('\n')
+        const headerLineIndex = lines[0]?.startsWith('#!') === true ? 1 : 0
+        const hasFullHeader =
+          lines[headerLineIndex] === licenseHeaderLine &&
+          isCurrentCopyrightLine(lines[headerLineIndex + 1] ?? '') &&
+          lines[headerLineIndex + 2] === useLine &&
+          lines[headerLineIndex + 3] === detailsLine
+
+        if (!hasFullHeader) {
+          report(context, node, 'Files must start with the full BUSL-1.1 license header.')
+        }
+      },
+    }
+  },
+}
+
 const noOptionalTypeSyntax = {
   meta: {
     type: 'problem',
@@ -218,6 +256,7 @@ export default {
     name: 'papai-policy',
   },
   rules: {
+    'require-license-header': requireLicenseHeader,
     'no-inline-suppression-comments': noInlineSuppressionComments,
     'no-optional-type-syntax': noOptionalTypeSyntax,
     'no-default-value-syntax': noDefaultValueSyntax,

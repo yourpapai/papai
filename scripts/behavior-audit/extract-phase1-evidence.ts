@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { collectEvidence, type EvidenceBundle } from './extract-evidence.js'
 import { buildEvidenceBackedPrompt } from './extract-prompts.js'
 import type { CodeindexQueryProvenance, EvidenceRef, ExtractionProvenance } from './extract-trust-types.js'

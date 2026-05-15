@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, mock, spyOn, test } from 'bun:test'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,7 +13,8 @@ import type {
   ProfiledClusters,
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
 import type { LinkageMode } from '../../../scripts/behavior-audit/consolidate-keywords-clustering.js'
-import { parseArgs, runTuneEmbedding } from '../../../scripts/behavior-audit/tune-embedding.js'
+import { parseArgs } from '../../../scripts/behavior-audit/tune-embedding-args.js'
+import { runTuneEmbedding } from '../../../scripts/behavior-audit/tune-embedding.js'
 
 type RecordedSubdivideCall = {
   readonly maxClusterSize: number

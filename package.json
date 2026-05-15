@@ -2,8 +2,8 @@
   "name": "papai",
   "version": "5.4.2",
   "private": true,
-  "license": "BUSL-1.1",
   "description": "papai — an intelligent Telegram bot for managing Kaneo tasks with LLM.",
+  "license": "BUSL-1.1",
   "workspaces": [
     "review-loop"
   ],

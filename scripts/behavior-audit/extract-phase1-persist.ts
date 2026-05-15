@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { markFileDoneWhenSelectedTestsPersisted, reconcileSelectedTestsAfterPersist } from './extract-phase1-helpers.js'
 import type { Phase1RunnerDeps, SingleTestResult } from './extract-phase1-types.js'
 import { reportPhase1ArtifactWrite, reportPhase1Failure, reportPhase1Success } from './extract-reporting.js'

@@ -31,27 +31,18 @@ import {
   defaultClientFactory,
 } from './client-factory.js'
 import { renderDiscordContext } from './context-renderer.js'
-import { chunkForDiscord } from './format-chunking.js'
 import { handleDiscordGroupSettingsSelection } from './group-settings.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
 import { mapDiscordMessage } from './map-message.js'
 import { discordCapabilities, discordConfigRequirements, discordTraits } from './metadata.js'
 import { buildDiscordReplyContext } from './reply-context.js'
 import { createDiscordReplyFn } from './reply-helpers.js'
+import { sendDiscordMessage } from './send-message.js'
 import { isDispatchableMessage, isReadyPayload } from './type-guards.js'
 export type { DiscordClientFactory, DiscordClientLike, DispatchableMessage }
 export { defaultClientFactory }
 const log = logger.child({ scope: 'chat:discord' })
 type OnMessageHandler = (msg: IncomingMessage, reply: ReplyFn) => Promise<void>
-type SendableChannel = { send: (opts: { content: string }) => Promise<unknown>; isSendable?: () => boolean }
-
-function isSendableChannel(val: unknown): val is SendableChannel {
-  if (typeof val !== 'object' || val === null) return false
-  const candidate = val as Partial<SendableChannel>
-  if (typeof candidate.send !== 'function') return false
-  if (candidate.isSendable === undefined) return true
-  return candidate.isSendable()
-}
 export class DiscordChatProvider implements ChatProvider {
   readonly name = 'discord'
   readonly threadCapabilities: ThreadCapabilities = {
@@ -90,37 +81,7 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
-    if (this.client === null || this.client.users === undefined) {
-      throw new Error('DiscordChatProvider.sendMessage called before start()')
-    }
-    if (target.contextType === 'dm') {
-      const user = await this.client.users.fetch(target.contextId)
-      const dm = await user.createDM()
-      const chunks = chunkForDiscord(markdown, discordTraits.maxMessageLength!)
-      await chunks.reduce<Promise<unknown>>(
-        (prev, chunk) => prev.then(() => dm.send({ content: chunk })),
-        Promise.resolve(null),
-      )
-      log.info({ userId: target.contextId }, 'Discord DM sent')
-      return
-    }
-    let content = markdown
-    if (target.audience === 'personal' && target.mentionUserIds.length > 0) {
-      const mentions = target.mentionUserIds.map((id) => `<@${id}>`).join(' ')
-      content = `${mentions} ${markdown}`
-    }
-    const fetchChannel = this.client.channels?.fetch
-    const channel = fetchChannel ? await fetchChannel.call(this.client.channels, target.contextId) : undefined
-    if (!isSendableChannel(channel)) {
-      log.warn({ channelId: target.contextId }, 'Discord channel not sendable')
-      throw new Error('Discord channel not sendable')
-    }
-    const chunks = chunkForDiscord(content, discordTraits.maxMessageLength!)
-    await chunks.reduce<Promise<unknown>>(
-      (prev, chunk) => prev.then(() => channel.send({ content: chunk })),
-      Promise.resolve(null),
-    )
-    log.info({ channelId: target.contextId }, 'Discord channel message sent')
+    await sendDiscordMessage(this.client, target, markdown)
   }
 
   async resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {

@@ -23,7 +23,8 @@ import type {
 } from '../types.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
-import { extractFileCandidatesFromContext, extractFilesFromContext, type TelegramFileFetcher } from './file-helpers.js'
+import { createTelegramFileFetcher } from './file-fetcher.js'
+import { extractFileCandidatesFromContext, extractFilesFromContext } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
 import { getTelegramDisplayLabel, resolveTelegramGroupLabel, resolveTelegramUserLabel } from './label-helpers.js'
@@ -51,9 +52,9 @@ import {
   telegramIsBotMentioned,
 } from './reply-helpers.js'
 export { extractReplyContext } from './message-extraction.js'
+export { getTelegramFileFetcher } from './file-fetcher.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
-let telegramFileFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
 
 export class TelegramChatProvider implements ChatProvider {
   readonly name = 'telegram'
@@ -276,28 +277,7 @@ export class TelegramChatProvider implements ChatProvider {
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
     const token = process.env['TELEGRAM_BOT_TOKEN'] ?? ''
-    const fetcher: TelegramFileFetcher = async (fileId: string) => {
-      telegramFileFetcher = fetcher
-      try {
-        const fileInfo = await this.bot.api.getFile(fileId)
-        if (fileInfo.file_path === undefined) return null
-        const url = `https://api.telegram.org/file/bot${token}/${fileInfo.file_path}`
-        const response = await fetch(url)
-        if (!response.ok) {
-          log.warn({ fileId, status: response.status }, 'Telegram file download failed')
-          return null
-        }
-        return Buffer.from(await response.arrayBuffer())
-      } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        log.error({ fileId, error: errMsg }, 'Failed to fetch Telegram file')
-        return null
-      }
-    }
+    const fetcher = createTelegramFileFetcher(this.bot.api, token, log)
     return extractFilesFromContext(ctx, fetcher)
   }
-}
-
-export function getTelegramFileFetcher(): ((fileId: string) => Promise<Buffer | null>) | undefined {
-  return telegramFileFetcher
 }
