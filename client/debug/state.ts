@@ -14,6 +14,11 @@ export const state: DashboardState = {
   llmTraces: [],
   logs: [],
   logScopes: new Set(),
+  turns: [],
+  notifications: [],
+  toolFailures: [],
+  activeContext: 'all',
+  activeLogFilter: {},
 }
 
 // Expose state for renderLogs() to access
@@ -27,6 +32,9 @@ export function renderAll(): void {
   dash.renderSessions(state.sessions, state.wizards)
   dash.renderTraces(state.llmTraces)
   dash.renderLogs()
+  dash.renderTurns()
+  dash.renderNotifications()
+  dash.renderToolFailures()
 }
 
 // --- Clear logs (called from UI) ---

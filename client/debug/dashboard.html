@@ -25,7 +25,38 @@
       </div>
     </header>
 
+    <div id="context-chips" class="context-chips">
+      <button class="chip active" data-context="all">all</button>
+    </div>
+
     <main>
+      <div class="panel-grid">
+        <section id="panel-turns" class="panel">
+          <h2>Turns <span id="turn-count" class="count-badge">0</span></h2>
+          <div id="turn-list"></div>
+        </section>
+        <section id="panel-notifications" class="panel">
+          <h2>Notifications <span id="notification-count" class="count-badge">0</span></h2>
+          <div id="notification-list"></div>
+        </section>
+        <section id="panel-tool-failures" class="panel">
+          <h2>Tool Failures <span id="failure-count" class="count-badge">0</span></h2>
+          <div id="failure-list"></div>
+        </section>
+        <section id="panel-reminders" class="panel">
+          <h2>Reminders</h2>
+          <div id="reminder-list"><span class="placeholder">Phase 3</span></div>
+        </section>
+        <section id="panel-memos" class="panel">
+          <h2>Memos</h2>
+          <div id="memo-list"><span class="placeholder">Phase 3</span></div>
+        </section>
+        <section id="panel-context" class="panel">
+          <h2>Context</h2>
+          <div id="context-detail"><span class="placeholder">Phase 4</span></div>
+        </section>
+      </div>
+
       <aside id="left-panel">
         <section id="sessions">
           <h2>Sessions <span id="session-count" class="count-badge">0</span></h2>
@@ -91,6 +122,28 @@
           <button id="trace-modal-close" class="modal-close">&times;</button>
         </div>
         <div id="trace-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Turn Detail Modal -->
+    <div id="turn-modal" class="modal" hidden>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="turn-modal-title">Turn Details</h3>
+          <button id="turn-modal-close" class="modal-close">&times;</button>
+        </div>
+        <div id="turn-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Failure Detail Modal -->
+    <div id="failure-modal" class="modal" hidden>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="failure-modal-title">Tool Failure Details</h3>
+          <button id="failure-modal-close" class="modal-close">&times;</button>
+        </div>
+        <div id="failure-modal-body" class="modal-body"></div>
       </div>
     </div>
 

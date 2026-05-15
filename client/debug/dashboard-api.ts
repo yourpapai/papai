@@ -4,37 +4,26 @@ import type { DashboardAPI } from './dashboard-types.js'
 import { escapeHtml, formatTime, formatTokens, formatUptime } from './helpers.js'
 import { renderLogDetailHTML, renderLogDetailTitle } from './log-detail.js'
 import { filterLogs, getLogFilterElements, getLogModalElements, renderLogEntry, updateFuseIndex } from './logs.js'
+import { wirePanelElements } from './panels/wire.js'
 import { buildSessionCard } from './session-card.js'
 import { getSessionModalElements, renderSessionDetail } from './session-detail.js'
 import { getTraceModalElements, renderTraceDetail } from './trace-detail.js'
 import type { SessionDetail } from './types.js'
 
-// Build dashboard API object with stub implementations
+const noop = (): void => {}
+
 const dashboard: DashboardAPI = {
-  renderConnection: () => {
-    // no-op - implemented below
-  },
-  renderStats: () => {
-    // no-op - implemented below
-  },
-  renderInfra: () => {
-    // no-op - implemented below
-  },
-  renderSessions: () => {
-    // no-op - implemented below
-  },
-  renderTraces: () => {
-    // no-op - implemented below
-  },
-  renderLogs: () => {
-    // no-op - implemented below
-  },
-  updateScopeFilter: () => {
-    // no-op - implemented below
-  },
-  clearLogs: () => {
-    // no-op - implemented below
-  },
+  renderConnection: noop,
+  renderStats: noop,
+  renderInfra: noop,
+  renderSessions: noop,
+  renderTraces: noop,
+  renderLogs: noop,
+  renderTurns: noop,
+  renderNotifications: noop,
+  renderToolFailures: noop,
+  updateScopeFilter: noop,
+  clearLogs: noop,
   __state: {
     connected: false,
     stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
@@ -46,20 +35,21 @@ const dashboard: DashboardAPI = {
     llmTraces: [],
     logs: [],
     logScopes: new Set(),
+    turns: [],
+    notifications: [],
+    toolFailures: [],
+    activeContext: 'all',
+    activeLogFilter: {},
   },
 }
 
-// Guard for browser environment
 const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
 
-// Assign to window if not already present (guard for non-browser environments)
 if (isBrowser && typeof window.dashboard === 'undefined') {
   window.dashboard = dashboard
 }
 
-// Skip initialization in non-browser environments (e.g., test runners)
 if (isBrowser) {
-  // --- DOM elements ---
   const $connStatus = document.getElementById('connection-status')!
   const $uptime = document.getElementById('uptime')!
   const $statMessages = document.getElementById('stat-messages')!
@@ -79,8 +69,8 @@ if (isBrowser) {
   const sessionElements = getSessionModalElements()
   const logModalElements = getLogModalElements()
   const traceModalElements = getTraceModalElements()
+  const panelApi = wirePanelElements()
 
-  // --- Auto-scroll state ---
   let autoScroll = true
 
   $logEntries.addEventListener('scroll', () => {
@@ -95,7 +85,6 @@ if (isBrowser) {
     $logEntries.scrollTop = $logEntries.scrollHeight
   })
 
-  // --- Filter event listeners ---
   logElements.$logLevelFilter.addEventListener('change', () => {
     window.dashboard.renderLogs()
   })
@@ -109,7 +98,6 @@ if (isBrowser) {
     window.dashboard.clearLogs()
   })
 
-  // --- Modal event listeners ---
   sessionElements.$sessionModalClose.addEventListener('click', () => {
     sessionElements.$sessionModal.hidden = true
   })
@@ -129,7 +117,6 @@ if (isBrowser) {
     if (e.target === traceModalElements.$traceModal) traceModalElements.$traceModal.hidden = true
   })
 
-  // --- Trace click handler (opens modal) ---
   $traceList.addEventListener('click', (e: Event) => {
     const target = e.target
     if (!(target instanceof HTMLElement)) return
@@ -144,7 +131,6 @@ if (isBrowser) {
     }
   })
 
-  // --- Render functions exposed on window ---
   window.dashboard.renderConnection = (connected: boolean): void => {
     $connStatus.textContent = connected ? '\u25cf connected' : '\u25cf disconnected'
     $connStatus.className = `status-dot ${connected ? 'connected' : 'disconnected'}`
@@ -180,7 +166,6 @@ if (isBrowser) {
     }
     $sessionList.innerHTML = html
 
-    // Add click handlers to session cards
     for (const card of $sessionList.querySelectorAll('.session-card')) {
       card.addEventListener('click', () => {
         const userId = card.getAttribute('data-userid')
@@ -239,7 +224,6 @@ if (isBrowser) {
     }
     $logEntries.innerHTML = html
 
-    // Add click handlers to log entries
     const entries = $logEntries.querySelectorAll('.log-entry')
     for (let i = 0; i < entries.length; i++) {
       const entryEl = entries[i]
@@ -267,4 +251,8 @@ if (isBrowser) {
     }
     logElements.$logScopeFilter.innerHTML = html
   }
+
+  window.dashboard.renderTurns = panelApi.renderTurnsPanel
+  window.dashboard.renderNotifications = panelApi.renderNotificationsPanel
+  window.dashboard.renderToolFailures = panelApi.renderToolFailuresPanel
 }

@@ -20,6 +20,9 @@ import type {
   SchedulerTickEvent,
   PollerEvent,
   MessageCacheEvent,
+  Turn,
+  Notification,
+  ToolFailure,
 } from '../../src/debug/schemas.js'
 
 // Re-export all types
@@ -42,6 +45,9 @@ export type {
   SchedulerTickEvent,
   PollerEvent,
   MessageCacheEvent,
+  Turn,
+  Notification,
+  ToolFailure,
 }
 
 /**
@@ -73,6 +79,11 @@ export interface DashboardState {
   llmTraces: LlmTrace[]
   logs: LogEntry[]
   logScopes: Set<string>
+  turns: Turn[]
+  notifications: Notification[]
+  toolFailures: ToolFailure[]
+  activeContext: string
+  activeLogFilter: { turnId?: string }
 }
 
 /**
@@ -85,6 +96,9 @@ export interface DashboardAPI {
   renderSessions(sessions: Map<string, Session>, wizards: Map<string, DashboardWizard>): void
   renderTraces(traces: LlmTrace[]): void
   renderLogs(): void
+  renderTurns(): void
+  renderNotifications(): void
+  renderToolFailures(): void
   updateScopeFilter(scopes: Set<string>): void
   clearLogs(): void
   __state: DashboardState

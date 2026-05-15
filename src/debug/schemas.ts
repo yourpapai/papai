@@ -152,6 +152,9 @@ export const StateInitEventSchema = z.object({
     })
     .optional(),
   recentLlm: z.array(z.unknown()).optional(),
+  recentTurns: z.array(z.unknown()).optional(),
+  recentNotifications: z.array(z.unknown()).optional(),
+  recentToolFailures: z.array(z.unknown()).optional(),
 })
 
 export const StateStatsEventSchema = z.object({
