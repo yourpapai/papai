@@ -3,7 +3,7 @@ import { getPollerSnapshot } from '../deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
 import { getWizardSnapshots } from '../wizard/state.js'
-import { subscribe, unsubscribe, type DebugEvent } from './event-bus.js'
+import { subscribe, unsubscribe, type DebugEvent, type Scope } from './event-bus.js'
 import { str, num, bool, tokenUsage, parseStepsDetail } from './state-collector-utils.js'
 
 let adminUserId: string | null = null
@@ -67,6 +67,19 @@ export const pendingTraces = new Map<string, PendingLlmTrace>()
 
 export function init(adminId: string): void {
   adminUserId = adminId
+}
+
+export type AdminVisibility = {
+  adminUserId: string
+  groupIds: ReadonlySet<string>
+}
+
+export function isVisibleToAdmin(scope: Scope, vis: AdminVisibility): boolean {
+  if (scope == null || typeof scope.kind !== 'string') return false
+  if (scope.kind === 'global') return true
+  if (scope.kind === 'user') return scope.userId === vis.adminUserId
+  if (scope.kind === 'group') return vis.groupIds.has(scope.groupId)
+  return false
 }
 
 export function addClient(controller: ReadableStreamDefaultController): void {
