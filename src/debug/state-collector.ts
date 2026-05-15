@@ -82,7 +82,7 @@ export function addClient(controller: ReadableStreamDefaultController): void {
     recentLlm,
   }
 
-  sendTo(controller, { type: 'state:init', timestamp: Date.now(), data: initData })
+  sendTo(controller, { type: 'state:init', timestamp: Date.now(), data: initData, __scope: { kind: 'global' } })
 
   if (clients.size === 1) {
     subscribe(onEvent)
@@ -109,7 +109,7 @@ function scheduleStatsBroadcast(): void {
   if (statsDebounceTimer !== null) return
   statsDebounceTimer = setTimeout(() => {
     statsDebounceTimer = null
-    broadcast({ type: 'state:stats', timestamp: Date.now(), data: { ...stats } })
+    broadcast({ type: 'state:stats', timestamp: Date.now(), data: { ...stats }, __scope: { kind: 'global' } })
   }, 500)
 }
 
@@ -124,7 +124,7 @@ function traceToData(trace: LlmTrace): Record<string, unknown> {
 }
 
 function broadcastTrace(trace: LlmTrace, timestamp: number): void {
-  broadcast({ type: 'llm:full', timestamp, data: traceToData(trace) })
+  broadcast({ type: 'llm:full', timestamp, data: traceToData(trace), __scope: { kind: 'global' } })
 }
 
 function handleLlmStart(event: DebugEvent, userId: string): void {

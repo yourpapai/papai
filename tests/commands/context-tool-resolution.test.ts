@@ -18,13 +18,7 @@ describe('context-tool-resolution', () => {
 
   test('resolveContextToolSurface returns definitions without catalogPages', () => {
     const provider = createMockProvider()
-    const surface = resolveContextToolSurface(
-      'user-1',
-      'user-1',
-      'dm',
-      provider,
-      buildInvocationToolSet,
-    )
+    const surface = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
 
     expect(surface).toHaveProperty('definitions')
     expect(surface).not.toHaveProperty('catalogPages')
