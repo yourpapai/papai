@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
+import { z } from 'zod'
+
 setDefaultTimeout(10000)
 
 import { addTaskRelation } from '../../src/providers/kaneo/add-task-relation.js'
@@ -8,14 +10,45 @@ import { createTask } from '../../src/providers/kaneo/create-task.js'
 import { getTask } from '../../src/providers/kaneo/get-task.js'
 import { removeTaskRelation } from '../../src/providers/kaneo/remove-task-relation.js'
 import { updateTaskRelation } from '../../src/providers/kaneo/update-task-relation.js'
-import { kaneoApiJson } from './kaneo-api-helpers.js'
+import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 
-type RawTaskRelation = {
-  id: string
-  sourceTaskId: string
-  targetTaskId: string
-  relationType: 'blocks' | 'related' | 'subtask'
+const RawTaskRelationSchema = z.object({
+  id: z.string(),
+  sourceTaskId: z.string(),
+  targetTaskId: z.string(),
+  relationType: z.enum(['blocks', 'related', 'subtask']),
+})
+
+type RawTaskRelation = z.infer<typeof RawTaskRelationSchema>
+
+function isRelationBetween(relation: RawTaskRelation, firstTaskId: string, secondTaskId: string): boolean {
+  return (
+    (relation.sourceTaskId === firstTaskId && relation.targetTaskId === secondTaskId) ||
+    (relation.sourceTaskId === secondTaskId && relation.targetTaskId === firstTaskId)
+  )
+}
+
+function requireRelation(
+  relations: readonly RawTaskRelation[],
+  sourceTaskId: string,
+  targetTaskId: string,
+): RawTaskRelation {
+  const relation = relations.find((entry) => entry.sourceTaskId === sourceTaskId && entry.targetTaskId === targetTaskId)
+  if (relation === undefined) {
+    throw new Error(`Expected relation ${sourceTaskId} -> ${targetTaskId}`)
+  }
+
+  return relation
+}
+
+function requireSingleRelation(relations: readonly RawTaskRelation[]): RawTaskRelation {
+  const [relation] = relations
+  if (relation === undefined) {
+    throw new Error('Expected a single relation')
+  }
+
+  return relation
 }
 
 describe('E2E: Task Relations', () => {
@@ -71,16 +104,9 @@ describe('E2E: Task Relations', () => {
     const blockedTaskWithRel = await getTask({ config: kaneoConfig, taskId: blockedTask.id })
     expect(blockedTaskWithRel.relations).toContainEqual({ type: 'blocked_by', taskId: blockingTask.id })
 
-    const rawRelations = (await kaneoApiJson(`/task-relation/${blockedTask.id}`)) as RawTaskRelation[]
-    expect(rawRelations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          sourceTaskId: blockingTask.id,
-          targetTaskId: blockedTask.id,
-          relationType: 'blocks',
-        }),
-      ]),
-    )
+    const rawRelations = await kaneoApiJsonParsed(`/task-relation/${blockedTask.id}`, z.array(RawTaskRelationSchema))
+    const rawRelation = requireRelation(rawRelations, blockingTask.id, blockedTask.id)
+    expect(rawRelation.relationType).toBe('blocks')
   })
 
   test('adds related relation', async () => {
@@ -137,16 +163,9 @@ describe('E2E: Task Relations', () => {
     expect(childWithRel.relations).toContainEqual({ type: 'parent', taskId: parentTask.id })
     expect(parentWithRel.relations).toContainEqual({ type: 'child', taskId: childTask.id })
 
-    const rawRelations = (await kaneoApiJson(`/task-relation/${parentTask.id}`)) as RawTaskRelation[]
-    expect(rawRelations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          sourceTaskId: childTask.id,
-          targetTaskId: parentTask.id,
-          relationType: 'subtask',
-        }),
-      ]),
-    )
+    const rawRelations = await kaneoApiJsonParsed(`/task-relation/${parentTask.id}`, z.array(RawTaskRelationSchema))
+    const rawRelation = requireRelation(rawRelations, childTask.id, parentTask.id)
+    expect(rawRelation.relationType).toBe('subtask')
   })
 
   test('updates relation type', async () => {
@@ -182,21 +201,14 @@ describe('E2E: Task Relations', () => {
     const task1WithRel = await getTask({ config: kaneoConfig, taskId: task1.id })
     expect(task1WithRel.relations).toContainEqual({ type: 'blocks', taskId: task2.id })
 
-    const rawRelations = (await kaneoApiJson(`/task-relation/${task1.id}`)) as RawTaskRelation[]
-    const liveRelations = rawRelations.filter(
-      (relation) =>
-        (relation.sourceTaskId === task1.id && relation.targetTaskId === task2.id) ||
-        (relation.sourceTaskId === task2.id && relation.targetTaskId === task1.id),
-    )
+    const rawRelations = await kaneoApiJsonParsed(`/task-relation/${task1.id}`, z.array(RawTaskRelationSchema))
+    const liveRelations = rawRelations.filter((relation) => isRelationBetween(relation, task1.id, task2.id))
 
     expect(liveRelations).toHaveLength(1)
-    expect(liveRelations[0]).toEqual(
-      expect.objectContaining({
-        sourceTaskId: task1.id,
-        targetTaskId: task2.id,
-        relationType: 'blocks',
-      }),
-    )
+    const liveRelation = requireSingleRelation(liveRelations)
+    expect(liveRelation.sourceTaskId).toBe(task1.id)
+    expect(liveRelation.targetTaskId).toBe(task2.id)
+    expect(liveRelation.relationType).toBe('blocks')
   })
 
   test('removes relation', async () => {

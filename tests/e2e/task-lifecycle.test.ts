@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
+import { z } from 'zod'
+
 setDefaultTimeout(10000)
 
 import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
@@ -8,8 +10,24 @@ import { getTask } from '../../src/providers/kaneo/get-task.js'
 import { listTasks } from '../../src/providers/kaneo/list-tasks.js'
 import { searchTasks } from '../../src/providers/kaneo/search-tasks.js'
 import { updateTask } from '../../src/providers/kaneo/update-task.js'
-import { getCurrentKaneoUserId, kaneoApiJson } from './kaneo-api-helpers.js'
+import { getCurrentKaneoUserId, kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
+
+const NullableStringSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
+
+const RawTaskDatesSchema = z.object({
+  startDate: NullableStringSchema,
+  dueDate: NullableStringSchema,
+  userId: NullableStringSchema,
+})
+
+const RawTaskStartDateSchema = z.object({
+  startDate: NullableStringSchema,
+})
 
 describe('E2E: Task Lifecycle', () => {
   let testClient: KaneoTestClient
@@ -179,11 +197,7 @@ describe('E2E: Task Lifecycle', () => {
     testClient.trackTask(task.id)
 
     const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
-    const rawTask = (await kaneoApiJson(`/task/${task.id}`)) as {
-      startDate?: string | null
-      dueDate?: string | null
-      userId?: string | null
-    }
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskDatesSchema)
 
     expect(retrieved.startDate).toBe(startDate)
     expect(retrieved.dueDate).toBe(dueDate)
@@ -211,7 +225,7 @@ describe('E2E: Task Lifecycle', () => {
     })
 
     const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
-    const rawTask = (await kaneoApiJson(`/task/${task.id}`)) as { startDate?: string | null }
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskStartDateSchema)
 
     expect(retrieved.startDate).toBe(startDate)
     expect(rawTask.startDate).toBe(startDate)
@@ -236,7 +250,7 @@ describe('E2E: Task Lifecycle', () => {
     })
 
     const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
-    const rawTask = (await kaneoApiJson(`/task/${task.id}`)) as { startDate?: string | null }
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskStartDateSchema)
 
     expect(retrieved.startDate).toBe(replacementStartDate)
     expect(rawTask.startDate).toBe(replacementStartDate)
@@ -251,14 +265,11 @@ describe('E2E: Task Lifecycle', () => {
     testClient.trackTask(task.id)
 
     const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
-    const rawTask = (await kaneoApiJson(`/task/${task.id}`)) as {
-      startDate?: string | null
-      dueDate?: string | null
-    }
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskDatesSchema)
 
     expect(retrieved.startDate).toBeNull()
     expect(retrieved.dueDate).toBeNull()
-    expect(rawTask.startDate ?? null).toBeNull()
-    expect(rawTask.dueDate ?? null).toBeNull()
+    expect(rawTask.startDate).toBeNull()
+    expect(rawTask.dueDate).toBeNull()
   })
 })

@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
+import { z } from 'zod'
+
 setDefaultTimeout(30000)
 
 import { addComment } from '../../src/providers/kaneo/add-comment.js'
@@ -7,11 +9,19 @@ import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
 import { createTask } from '../../src/providers/kaneo/create-task.js'
 import { getComments } from '../../src/providers/kaneo/get-comments.js'
 import { cleanupE2E } from './global-setup.js'
-import { kaneoApiJson } from './kaneo-api-helpers.js'
+import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, type KaneoTestClient } from './kaneo-test-client.js'
 import { generateUniqueSuffix } from './test-helpers.js'
 
 const taskCommentsTestPathSuffix = 'tests/e2e/task-comments.test.ts'
+const RawCommentSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  userId: z.string(),
+  content: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
 
 function normalizeArgPath(arg: string): string {
   return arg.replaceAll('\\', '/')
@@ -23,6 +33,10 @@ function getExplicitTestTargets(argv: readonly string[]): string[] {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
+    if (arg === undefined) {
+      continue
+    }
+
     if (optionsWithSeparateValues.has(arg)) {
       index += 1
       continue
@@ -49,7 +63,8 @@ function isTaskCommentsTestTarget(arg: string): boolean {
 
 function isDirectTaskCommentsTarget(argv: readonly string[] = process.argv): boolean {
   const explicitTargets = getExplicitTestTargets(argv)
-  return explicitTargets.length === 1 && isTaskCommentsTestTarget(explicitTargets[0])
+  const [onlyTarget] = explicitTargets
+  return explicitTargets.length === 1 && onlyTarget !== undefined && isTaskCommentsTestTarget(onlyTarget)
 }
 
 describe('isDirectTaskCommentsTarget', () => {
@@ -100,7 +115,6 @@ describe('isDirectTaskCommentsTarget', () => {
 describe('E2E: Task Comments', () => {
   let testClient: KaneoTestClient
   let kaneoConfig: KaneoConfig
-  let workspaceId: string
   let projectId: string
 
   afterAll(async () => {
@@ -112,7 +126,6 @@ describe('E2E: Task Comments', () => {
   beforeEach(async () => {
     testClient = createTestClient()
     kaneoConfig = testClient.getKaneoConfig()
-    workspaceId = testClient.getWorkspaceId()
 
     const suffix = generateUniqueSuffix()
     const project = await testClient.createTestProject(`Comments Test ${suffix}`)
@@ -241,30 +254,30 @@ describe('E2E: Task Comments', () => {
 
     const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Original text' })
 
-    const updated = (await kaneoApiJson(`/comment/${comment.id}`, {
+    const updated = await kaneoApiJsonParsed(`/comment/${comment.id}`, RawCommentSchema, {
       method: 'PUT',
       body: JSON.stringify({
         content: 'Updated through raw endpoint',
       }),
-    })) as Record<string, unknown>
+    })
 
     expect(updated.id).toBe(comment.id)
     expect(updated.taskId).toBe(task.id)
-    expect(typeof updated.userId).toBe('string')
+    expect(updated.userId).toBeString()
     expect(updated.content).toBe('Updated through raw endpoint')
-    expect(typeof updated.createdAt).toBe('string')
-    expect(typeof updated.updatedAt).toBe('string')
+    expect(updated.createdAt).toBeString()
+    expect(updated.updatedAt).toBeString()
 
-    const removed = (await kaneoApiJson(`/comment/${comment.id}`, {
+    const removed = await kaneoApiJsonParsed(`/comment/${comment.id}`, RawCommentSchema, {
       method: 'DELETE',
-    })) as Record<string, unknown>
+    })
 
     expect(removed.id).toBe(comment.id)
     expect(removed.taskId).toBe(task.id)
-    expect(typeof removed.userId).toBe('string')
-    expect(typeof removed.content).toBe('string')
-    expect(typeof removed.createdAt).toBe('string')
-    expect(typeof removed.updatedAt).toBe('string')
+    expect(removed.userId).toBeString()
+    expect(removed.content).toBeString()
+    expect(removed.createdAt).toBeString()
+    expect(removed.updatedAt).toBeString()
   })
 
   test('throws error when adding comment to non-existent task', async () => {

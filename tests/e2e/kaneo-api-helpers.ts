@@ -43,12 +43,22 @@ export async function kaneoApiFetch(path: string, init?: RequestInit): Promise<R
 }
 
 export async function kaneoApiJson(path: string, init?: RequestInit): Promise<unknown> {
-  return kaneoApiFetch(path, init).then((response) => response.json() as Promise<unknown>)
+  const response = await kaneoApiFetch(path, init)
+  const payload: unknown = await response.json()
+  return payload
 }
 
-async function getCurrentKaneoSession(): Promise<unknown | null> {
+export async function kaneoApiJsonParsed<Schema extends z.ZodType>(
+  path: string,
+  schema: Schema,
+  init?: RequestInit,
+): Promise<z.infer<Schema>> {
+  return schema.parse(await kaneoApiJson(path, init))
+}
+
+async function getCurrentKaneoSession(): Promise<z.infer<typeof SessionSchema> | null> {
   try {
-    return await kaneoApiJson('/auth/get-session')
+    return SessionSchema.parse(await kaneoApiJson('/auth/get-session'))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (message.includes('/auth/get-session')) {
@@ -62,7 +72,7 @@ async function getCurrentKaneoSession(): Promise<unknown | null> {
 export async function getCurrentKaneoUserId(): Promise<string> {
   const session = await getCurrentKaneoSession()
   if (session !== null) {
-    return SessionSchema.parse(session).user.id
+    return session.user.id
   }
 
   const { workspaceId } = getE2EConfigSync()
@@ -73,5 +83,10 @@ export async function getCurrentKaneoUserId(): Promise<string> {
     )
   }
 
-  return members[0].id
+  const [member] = members
+  if (member === undefined) {
+    throw new Error(`Expected workspace member for ${workspaceId}`)
+  }
+
+  return member.id
 }

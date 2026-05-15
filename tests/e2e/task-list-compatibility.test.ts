@@ -1,35 +1,50 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
+import { z } from 'zod'
+
 import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
 import { createTask } from '../../src/providers/kaneo/create-task.js'
 import { listTasks } from '../../src/providers/kaneo/list-tasks.js'
+import { getCurrentKaneoUserId, kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
-import { getCurrentKaneoUserId, kaneoApiJson } from './kaneo-api-helpers.js'
 
 setDefaultTimeout(10000)
 
-type RawListTask = {
-  id: string
-  dueDate?: string | null
-}
+const NullableDateSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
 
-type RawListResponse = {
-  data: {
-    columns: Array<{
-      tasks: RawListTask[]
-    }>
-    plannedTasks: RawListTask[]
-  }
-}
+const RawListTaskSchema = z.object({
+  id: z.string(),
+  dueDate: NullableDateSchema,
+})
+
+const RawListResponseSchema = z.object({
+  data: z.object({
+    columns: z.array(
+      z.object({
+        tasks: z.array(RawListTaskSchema),
+      }),
+    ),
+    plannedTasks: z.array(RawListTaskSchema),
+  }),
+})
+
+type RawListResponse = z.infer<typeof RawListResponseSchema>
 
 function getRawListTaskIds(payload: RawListResponse): string[] {
-  return payload.data.columns.flatMap((column) => column.tasks).concat(payload.data.plannedTasks).map((task) => task.id)
+  return payload.data.columns
+    .flatMap((column) => column.tasks)
+    .concat(payload.data.plannedTasks)
+    .map((task) => task.id)
 }
 
-async function getRawTaskList(projectId: string, query?: Record<string, string>): Promise<RawListResponse> {
+function getRawTaskList(projectId: string, query?: Record<string, string>): Promise<RawListResponse> {
   const search = new URLSearchParams(query).toString()
   const suffix = search.length > 0 ? `?${search}` : ''
-  return kaneoApiJson(`/task/tasks/${projectId}${suffix}`) as Promise<RawListResponse>
+  return kaneoApiJsonParsed(`/task/tasks/${projectId}${suffix}`, RawListResponseSchema)
 }
 
 describe('E2E: Task List Compatibility', () => {

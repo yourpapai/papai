@@ -70,6 +70,10 @@ function makeRepliedEventListener(repliedEvents: DebugEvent[]): (event: DebugEve
   }
 }
 
+function incrementRegistrationCount(current: number | undefined): number {
+  return current === undefined ? 1 : current + 1
+}
+
 // ---------------------------------------------------------------------------
 
 describe('Authorization Logic', () => {
@@ -1326,28 +1330,21 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('setupBot registers commands and handlers only once per provider instance', () => {
     const commandHandlers = new Map<string, CommandHandler>()
+    const commandRegistrationCounts = new Map<string, number>()
     let messageRegistrationCount = 0
     let interactionRegistrationCount = 0
 
     const provider: ChatProvider = {
       ...createMockChat({ commandHandlers }),
       registerCommand(name: string, handler: CommandHandler): void {
-        if (commandHandlers.has(name)) {
-          throw new Error(`duplicate command registration: ${name}`)
-        }
+        commandRegistrationCounts.set(name, incrementRegistrationCount(commandRegistrationCounts.get(name)))
         commandHandlers.set(name, handler)
       },
       onMessage(_handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
-        messageRegistrationCount += 1
-        if (messageRegistrationCount > 1) {
-          throw new Error('duplicate message handler registration')
-        }
+        messageRegistrationCount = incrementRegistrationCount(messageRegistrationCount)
       },
       onInteraction(_handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
-        interactionRegistrationCount += 1
-        if (interactionRegistrationCount > 1) {
-          throw new Error('duplicate interaction handler registration')
-        }
+        interactionRegistrationCount = incrementRegistrationCount(interactionRegistrationCount)
       },
     }
 
@@ -1368,6 +1365,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
         }),
       ),
     ).not.toThrow()
+    expect([...commandRegistrationCounts.values()]).toSatisfy((counts) => counts.every((count) => count === 1))
+    expect(messageRegistrationCount).toBe(1)
+    expect(interactionRegistrationCount).toBe(1)
   })
 
   test('interaction handler replies with allowlist hint for non-allowlisted groups', async () => {

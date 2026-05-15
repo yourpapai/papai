@@ -1,12 +1,52 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
+import { z } from 'zod'
+
 setDefaultTimeout(10000)
 
 import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
 import { createTask } from '../../src/providers/kaneo/create-task.js'
 import { searchTasks } from '../../src/providers/kaneo/search-tasks.js'
-import { getCurrentKaneoUserId, kaneoApiJson } from './kaneo-api-helpers.js'
+import { getCurrentKaneoUserId, kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
+
+const NullableDateSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
+
+const RawSearchTaskSchema = z.object({
+  id: z.string(),
+  startDate: NullableDateSchema,
+  dueDate: NullableDateSchema,
+})
+
+const RawSearchResponseSchema = z.object({
+  results: z.array(RawSearchTaskSchema),
+  searchQuery: z.string(),
+  totalCount: z.number(),
+})
+
+type RawSearchTask = z.infer<typeof RawSearchTaskSchema>
+
+function requireRawSearchTask(results: readonly RawSearchTask[], taskId: string): RawSearchTask {
+  const result = results.find((entry) => entry.id === taskId)
+  if (result === undefined) {
+    throw new Error(`Expected raw search result for task ${taskId}`)
+  }
+
+  return result
+}
+
+function requireSingleTask<T>(tasks: readonly T[]): T {
+  const [task] = tasks
+  if (task === undefined) {
+    throw new Error('Expected exactly one task result')
+  }
+
+  return task
+}
 
 function createRawSearchPath({
   query,
@@ -121,25 +161,24 @@ describe('E2E: Task Search and Filter', () => {
     })
     testClient.trackTask(task.id)
 
-    const rawSearch = (await kaneoApiJson(
+    const rawSearch = await kaneoApiJsonParsed(
       createRawSearchPath({
         query: uniqueKeyword,
         workspaceId,
         projectId,
       }),
-    )) as Record<string, unknown>
+      RawSearchResponseSchema,
+    )
 
-    expect(Array.isArray(rawSearch.results)).toBe(true)
-    expect(typeof rawSearch.searchQuery).toBe('string')
-    expect(typeof rawSearch.totalCount).toBe('number')
-    expect(Array.isArray(rawSearch.results)).toBe(true)
+    expect(rawSearch.searchQuery).toBeString()
+    expect(rawSearch.totalCount).toBeNumber()
+    expect(rawSearch.results).toBeArray()
 
-    const rawResults = rawSearch.results as Array<Record<string, unknown>>
-    expect(rawResults.some((result) => result.id === task.id)).toBe(true)
+    expect(rawSearch.results.some((result) => result.id === task.id)).toBe(true)
 
-    const matchingRawTask = rawResults.find((result) => result.id === task.id)
-    expect(matchingRawTask?.startDate ?? null).toBeNull()
-    expect(matchingRawTask?.dueDate ?? null).toBeNull()
+    const matchingRawTask = requireRawSearchTask(rawSearch.results, task.id)
+    expect(matchingRawTask.startDate).toBeNull()
+    expect(matchingRawTask.dueDate).toBeNull()
 
     const results = await searchTasks({
       config: kaneoConfig,
@@ -182,9 +221,10 @@ describe('E2E: Task Search and Filter', () => {
     })
 
     expect(results.tasks).toHaveLength(1)
-    expect(results.tasks[0]?.projectId).toBe(projectId)
-    expect([targetTaskOne.id, targetTaskTwo.id]).toContain(results.tasks[0]?.id)
-    expect(results.tasks[0]?.id).not.toBe(otherProjectTask.id)
+    const listedTask = requireSingleTask(results.tasks)
+    expect(listedTask.projectId).toBe(projectId)
+    expect([targetTaskOne.id, targetTaskTwo.id]).toContain(listedTask.id)
+    expect(listedTask.id).not.toBe(otherProjectTask.id)
   })
 
   test('filters locally by assigneeId without dropping the assigned task', async () => {
@@ -210,17 +250,17 @@ describe('E2E: Task Search and Filter', () => {
     testClient.trackTask(unassignedTaskOne.id)
     testClient.trackTask(unassignedTaskTwo.id)
 
-    const rawLimitedSearch = (await kaneoApiJson(
+    const rawLimitedSearch = await kaneoApiJsonParsed(
       createRawSearchPath({
         query: uniqueKeyword,
         workspaceId,
         projectId,
         limit: 1,
       }),
-    )) as Record<string, unknown>
-    const rawLimitedResults = rawLimitedSearch.results as Array<Record<string, unknown>>
+      RawSearchResponseSchema,
+    )
 
-    expect(rawLimitedResults).toHaveLength(1)
+    expect(rawLimitedSearch.results).toHaveLength(1)
 
     const filteredResults = await searchTasks({
       config: kaneoConfig,

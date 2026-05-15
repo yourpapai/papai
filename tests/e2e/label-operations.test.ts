@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
+import { z } from 'zod'
+
 setDefaultTimeout(10000)
 
 import { addTaskLabel } from '../../src/providers/kaneo/add-task-label.js'
@@ -10,15 +12,34 @@ import { listLabels } from '../../src/providers/kaneo/list-labels.js'
 import { removeLabel } from '../../src/providers/kaneo/remove-label.js'
 import { removeTaskLabel } from '../../src/providers/kaneo/remove-task-label.js'
 import { updateLabel } from '../../src/providers/kaneo/update-label.js'
-import { kaneoApiJson } from './kaneo-api-helpers.js'
+import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, type KaneoTestClient } from './kaneo-test-client.js'
 
-type RawWorkspaceLabel = {
-  id: string
-  name: string
-  color: string
-  taskId?: string | null
-  workspaceId?: string | null
+const RawWorkspaceLabelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: z.string(),
+  taskId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  workspaceId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+})
+
+type RawWorkspaceLabel = z.infer<typeof RawWorkspaceLabelSchema>
+
+function requireWorkspaceLabel(labels: readonly RawWorkspaceLabel[], labelId: string): RawWorkspaceLabel {
+  const label = labels.find((entry) => entry.id === labelId)
+  if (label === undefined) {
+    throw new Error(`Expected workspace label ${labelId}`)
+  }
+
+  return label
 }
 
 describe('E2E: Label Operations', () => {
@@ -138,43 +159,32 @@ describe('E2E: Label Operations', () => {
     })
     expect(addResult).toEqual({ taskId: task.id, labelId: label.id })
 
-    const taskLabels = (await kaneoApiJson(`/label/task/${task.id}`)) as RawWorkspaceLabel[]
-    expect(taskLabels).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: label.id,
-          name: label.name,
-          color: label.color,
-          taskId: task.id,
-        }),
-      ]),
-    )
+    const taskLabels = await kaneoApiJsonParsed(`/label/task/${task.id}`, z.array(RawWorkspaceLabelSchema))
+    const attachedTaskLabel = requireWorkspaceLabel(taskLabels, label.id)
+    expect(attachedTaskLabel.name).toBe(label.name)
+    expect(attachedTaskLabel.color).toBe(label.color)
+    expect(attachedTaskLabel.taskId).toBe(task.id)
 
-    const workspaceLabelsAfterAttach = (await kaneoApiJson(
+    const workspaceLabelsAfterAttach = await kaneoApiJsonParsed(
       `/label/workspace/${testClient.getWorkspaceId()}`,
-    )) as RawWorkspaceLabel[]
-    expect(workspaceLabelsAfterAttach).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: label.id,
-          taskId: task.id,
-        }),
-      ]),
+      z.array(RawWorkspaceLabelSchema),
     )
+    const attachedWorkspaceLabel = requireWorkspaceLabel(workspaceLabelsAfterAttach, label.id)
+    expect(attachedWorkspaceLabel.taskId).toBe(task.id)
 
     const removeResult = await removeTaskLabel({ config: kaneoConfig, taskId: task.id, labelId: label.id })
     expect(removeResult.taskId).toBe(task.id)
     expect(removeResult.labelId).toBe(label.id)
 
-    const taskLabelsAfterDetach = (await kaneoApiJson(`/label/task/${task.id}`)) as RawWorkspaceLabel[]
+    const taskLabelsAfterDetach = await kaneoApiJsonParsed(`/label/task/${task.id}`, z.array(RawWorkspaceLabelSchema))
     expect(taskLabelsAfterDetach.map((taskLabel) => taskLabel.id)).not.toContain(label.id)
 
-    const workspaceLabelsAfterDetach = (await kaneoApiJson(
+    const workspaceLabelsAfterDetach = await kaneoApiJsonParsed(
       `/label/workspace/${testClient.getWorkspaceId()}`,
-    )) as RawWorkspaceLabel[]
-    const detachedLabel = workspaceLabelsAfterDetach.find((workspaceLabel) => workspaceLabel.id === label.id)
-    expect(detachedLabel).toBeDefined()
-    expect(detachedLabel?.taskId).not.toBe(task.id)
+      z.array(RawWorkspaceLabelSchema),
+    )
+    const detachedLabel = requireWorkspaceLabel(workspaceLabelsAfterDetach, label.id)
+    expect(detachedLabel.taskId).not.toBe(task.id)
 
     await cleanupUnattachedLabel(label.id)
   })
@@ -223,7 +233,10 @@ describe('E2E: Label Operations', () => {
       success: true,
     })
 
-    const rawWorkspaceLabels = (await kaneoApiJson(`/label/workspace/${testClient.getWorkspaceId()}`)) as RawWorkspaceLabel[]
+    const rawWorkspaceLabels = await kaneoApiJsonParsed(
+      `/label/workspace/${testClient.getWorkspaceId()}`,
+      z.array(RawWorkspaceLabelSchema),
+    )
     expect(rawWorkspaceLabels.find((workspaceLabel) => workspaceLabel.id === attachedLabel.id)).toBeUndefined()
 
     const labels = await listLabels({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
