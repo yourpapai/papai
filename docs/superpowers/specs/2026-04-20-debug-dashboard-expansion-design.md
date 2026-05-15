@@ -1,8 +1,100 @@
 # Debug Dashboard Expansion — Design
 
-- Date: 2026-04-20
+- Date: 2026-04-20 (refreshed 2026-05-15)
 - Status: Approved (pre-plan)
 - Scope owner: bot admin (`ADMIN_USER_ID`), sole consumer
+- Implementation plan: `docs/superpowers/plans/2026-05-15-debug-dashboard-expansion-implementation.md`
+
+## 0. Current-state audit (2026-05-15)
+
+Verified against `src/` and `client/debug/` on branch HEAD. **No phase of this design has been implemented.**
+
+### 0.1 Event bus (`src/debug/event-bus.ts`)
+
+- Exports only bare `emit(type, data)` (line 12). No `emitUser` / `emitGroup` / `emitGlobal`. No `__scope`, no `turnId`.
+- `DebugEvent` type has only `{ type, timestamp, data }` (line 1-5).
+- 39 call sites across 12 source files produce 17 distinct event type strings. Full inventory:
+
+| File | Line | Event type | Key data fields |
+|------|------|-----------|-----------------|
+| `src/bot.ts` | 223 | `message:received` | `userId, contextId, contextType, threadId, textLength, isCommand` |
+| `src/bot.ts` | 232 | `auth:check` | `userId, allowed, isBotAdmin, isGroupAdmin, storageContextId` |
+| `src/bot-reply-tracking.ts` | 106 | `message:replied` | `userId, contextId, duration` |
+| `src/llm-orchestrator.ts` | 98 | `llm:tool_call` | `userId, toolName, toolCallId, args` |
+| `src/llm-orchestrator-events.ts` | 123 | `llm:start` | `userId, model, messageCount, toolCount, …` |
+| `src/llm-orchestrator-events.ts` | 152 | `llm:end` | `userId, model, steps, totalDuration, tokenUsage, …` |
+| `src/llm-orchestrator-support.ts` | 59 | `llm:tool_result` (fail) | `userId, toolName, toolCallId, durationMs, success:false, error` |
+| `src/llm-orchestrator-support.ts` | 84 | `llm:tool_result` (ok) | `userId, toolName, toolCallId, durationMs, success:true, result` |
+| `src/llm-orchestrator-support.ts` | 164 | `llm:error` | `userId, error, model` |
+| `src/cache.ts` | 54,239 | `cache:expire` | `userId` |
+| `src/cache.ts` | 97,127,158,189,212,275 | `cache:load` | `userId, field` |
+| `src/cache.ts` | 106,113,136,176,198,221,286,295 | `cache:sync` | `userId, field, operation` |
+| `src/scheduler.ts` | 167 | `scheduler:tick` | `tickCount, dueTaskCount` |
+| `src/scheduler-recurring.ts` | 73 | `scheduler:task_executed` | `userId, recurringTaskId, createdTaskId` |
+| `src/deferred-prompts/poller.ts` | 102 | `poller:scheduled` | `dueCount` |
+| `src/deferred-prompts/poller.ts` | 216 | `poller:alerts` | `eligibleCount` |
+| `src/conversation.ts` | 52 | `trim:start` | `userId, historyLength, reason` |
+| `src/conversation.ts` | 70,81 | `trim:end` | `userId, kept/dropped or error, success` |
+| `src/wizard/state.ts` | 66 | `wizard:created` | `userId, storageContextId, totalSteps, taskProvider` |
+| `src/wizard/state.ts` | 128,151 | `wizard:updated` | `userId, storageContextId, currentStep` |
+| `src/wizard/state.ts` | 170 | `wizard:deleted` | `userId, storageContextId` |
+| `src/message-cache/cache.ts` | 35 | `msgcache:sweep` | `swept, remaining` |
+| `src/debug/log-buffer.ts` | 53 | `log:entry` | full structured log entry |
+
+### 0.2 State collector (`src/debug/state-collector.ts`)
+
+- `isAdminEvent` (line 100-104): passes events when `userId` field is absent or equals `adminUserId`. No scope-based filtering, no allow-list.
+- In-memory state: `recentLlm: LlmTrace[]` (capacity 65535), `pendingTraces: Map<string, PendingLlmTrace>`, `stats` object.
+- `state:init` snapshot sends: `sessions`, `wizards`, `scheduler`, `pollers`, `messageCache`, `stats`, `recentLlm`.
+- No `recentTurns`, `recentNotifications`, `recentToolFailures` buffers.
+
+### 0.3 REST server (`src/debug/server.ts`)
+
+- Endpoints: `/events` (SSE), `/logs`, `/logs/stats`, `/dashboard*` (static files).
+- No `/turns/:id`, `/recurring`, `/deferred`, `/memos`, `/identity`, `/file-relay`, `/tool-failures`.
+- `handleLogs` parses only `level`, `scope`, `q`, `limit` — no `turnId` param.
+
+### 0.4 Client dashboard (`client/debug/`)
+
+- **DashboardState** (`dashboard-types.ts:60-76`): `connected`, `stats`, `sessions`, `wizards`, `scheduler`, `pollers`, `messageCache`, `llmTraces`, `logs`, `logScopes`. No turns, reminders, notifications, toolFailures, memosByUser, activeContext, activeLogFilter.
+- **HTML layout** (`dashboard.html`): single-column grid (left: sessions + LLM traces, right: log explorer). No context switcher, no 2-column panel grid, no panels directory.
+- **SSE handlers** (`handlers.ts`): handles `state:init`, `state:stats`, `llm:full`, `cache:*`, `wizard:*`, `scheduler:tick`, `poller:*`, `msgcache:sweep`, `log:entry`. No turn/queue/tool/reply/typing/notify/memo/recurring/deferred/identity/file_relay/group_settings/config_editor handlers.
+- **No `client/debug/panels/` directory** — all panel modules specified in §8.2 are absent.
+
+### 0.5 Message queue (`src/message-queue/`)
+
+- `QueueItem` type (`types.ts:13-21`): `text, userId, username, storageContextId, newAttachmentIds, contextType, configContextId`. No `turnId`.
+- `CoalescedItem` type (`types.ts:23-32`): same fields + `reply`. No `turnId`.
+- `MessageQueue.flush()` (`queue.ts:110`): private, coalesces buffered messages. No `turnId` minting.
+- `enqueueMessage()` (`index.ts:37`): entry point, calls `queue.enqueue(item, reply)` then handler on debounce.
+
+### 0.6 Orchestrator (`src/llm-orchestrator.ts`)
+
+- `processMessage` signature (line 217): `(reply, contextId, chatUserId, username, userText, contextType, configContextId?, deps?, newAttachmentIds?)`. No `turnId` parameter.
+- Tool execution via Vercel AI SDK `generateText()` with `experimental_onToolCallStart` / `experimental_onToolCallFinish` hooks.
+- `wrapToolExecution()` in `src/tools/wrap-tool-execution.ts:8` wraps each tool's execute in try/catch, returns `ToolFailureResult` on error.
+
+### 0.7 Source modules referenced in the design
+
+All exist and are accessible for emit-site migration:
+
+| Module | Path | Key exports |
+|--------|------|-------------|
+| Recurring | `src/recurring.ts` | `createRecurringTask`, `listRecurringTasks`, `updateRecurringTask`, `pauseRecurringTask`, `resumeRecurringTask`, `skipNextOccurrence`, `deleteRecurringTask`, `getDueRecurringTasks`, `markExecuted` |
+| Deferred prompts | `src/deferred-prompts/` (14 files) | Full subsystem: `poller.ts`, `proactive-llm.ts`, `tools.ts`, `tool-handlers.ts`, etc. |
+| Memos | `src/memos.ts` | `saveMemo`, `getMemo`, `listMemos`, `keywordSearchMemos`, `archiveMemos`, `addMemoLink` |
+| Identity | `src/identity/` | `mapping.ts` (`getIdentityMapping`, `setIdentityMapping`, `clearIdentityMapping`), `resolver.ts` |
+| Config editor | `src/config-editor/` (5 files) | `startEditor`, `handleEditorCallback`, `handleEditorMessage` |
+| Group settings | `src/group-settings/` (8 files) | `startGroupSettingsSelection`, `handleGroupSettingsSelectorCallback`, `registry.ts`, `access.ts` |
+| Tool failure | `src/tool-failure.ts` | `buildToolFailureResult`, `isToolFailureResult`, `createInterruptedToolFailureResult` |
+| Error analysis | `src/error-analysis.ts` | `getAgentGuidance`, `isRetryableAppError`, `getAppErrorDetails` |
+| Reply typing | `src/reply-typing-heartbeat.ts` | `withReplyTypingHeartbeat(reply, fn, options?)` |
+| Reply tracking | `src/bot-reply-tracking.ts` | `trackReplyUsage`, `emitReplyCompletedIfNeeded` |
+
+### 0.8 Existing tests
+
+- `tests/debug/`: `event-bus.test.ts`, `state-collector.test.ts`, `state-collector-utils.test.ts`, `schemas.test.ts`, `server.test.ts`, `dashboard-smoke.test.ts`, `log-buffer.test.ts`, `fuse-search.test.ts`, `debug-snapshots.test.ts`
+- `tests/client/debug/`: `dashboard-api.test.ts`, `dashboard-types.test.ts`, `handlers.test.ts` (implied), `helpers.test.ts`, `log-detail.test.ts`, `logs.test.ts`, `session-card.test.ts`, `session-detail.test.ts`, `trace-detail.test.ts`, `tree-view.test.ts`, `types.test.ts`
 
 ## 1. Problem
 
