@@ -13,7 +13,9 @@ describe('auth:group_* events', () => {
   test('addAuthorizedGroup emits auth:group_authorized event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     addAuthorizedGroup('group-1', 'admin-1')
 
@@ -25,7 +27,9 @@ describe('auth:group_* events', () => {
   test('removeAuthorizedGroup emits auth:group_revoked event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     addAuthorizedGroup('group-1', 'admin-1')
     removeAuthorizedGroup('group-1')
@@ -45,7 +49,9 @@ describe('group_member:* events', () => {
   test('addGroupMember emits group_member:added event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     addGroupMember('group-1', 'user-1', 'admin-1')
 
@@ -58,7 +64,9 @@ describe('group_member:* events', () => {
   test('removeGroupMember emits group_member:removed event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     addGroupMember('group-1', 'user-1', 'admin-1')
     removeGroupMember('group-1', 'user-1')

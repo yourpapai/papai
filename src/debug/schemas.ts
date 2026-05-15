@@ -188,6 +188,9 @@ export const MessageCacheEventSchema = z.object({
   pendingWrites: z.number().optional(),
 })
 
+import { TurnSchema, NotificationSchema, ToolFailureSchema } from './turn-assembly.js'
+import type { Turn, Notification, ToolFailure } from './turn-assembly.js'
+
 // Re-export turn schemas from turn-assembly
 export {
   TurnToolCallSchema,
@@ -272,5 +275,20 @@ export function safeParseWizard(data: unknown): Wizard | null {
 
 export function safeParseLlmTrace(data: unknown): LlmTrace | null {
   const result = LlmTraceSchema.safeParse(data)
+  return result.success ? result.data : null
+}
+
+export function safeParseTurn(data: unknown): Turn | null {
+  const result = TurnSchema.safeParse(data)
+  return result.success ? result.data : null
+}
+
+export function safeParseNotification(data: unknown): Notification | null {
+  const result = NotificationSchema.safeParse(data)
+  return result.success ? result.data : null
+}
+
+export function safeParseToolFailure(data: unknown): ToolFailure | null {
+  const result = ToolFailureSchema.safeParse(data)
   return result.success ? result.data : null
 }

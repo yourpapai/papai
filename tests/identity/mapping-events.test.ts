@@ -15,7 +15,9 @@ describe('identity mapping events', () => {
   test('setIdentityMapping emits identity:set event with providerUserId and provider', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     setIdentityMapping({
       contextId: testContextId,
@@ -36,7 +38,9 @@ describe('identity mapping events', () => {
   test('clearIdentityMapping emits identity:cleared event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     setIdentityMapping({
       contextId: testContextId,

@@ -16,7 +16,9 @@ describe('group_settings events', () => {
   test('updateGroupSettingsSession emits group_settings:target_changed when target changes', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     createGroupSettingsSession({ userId: 'user-1', command: 'config', stage: 'choose_scope' })
     updateGroupSettingsSession('user-1', { stage: 'active', targetContextId: 'group-1' })
@@ -30,7 +32,9 @@ describe('group_settings events', () => {
   test('updateGroupSettingsSession does not emit target_changed when no target change', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     createGroupSettingsSession({ userId: 'user-1', command: 'config', stage: 'choose_scope' })
     updateGroupSettingsSession('user-1', { stage: 'choose_group' })

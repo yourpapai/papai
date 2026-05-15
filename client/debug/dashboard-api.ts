@@ -10,7 +10,9 @@ import { getSessionModalElements, renderSessionDetail } from './session-detail.j
 import { getTraceModalElements, renderTraceDetail } from './trace-detail.js'
 import type { SessionDetail } from './types.js'
 
-const noop = (): void => {}
+const noop = (): void => {
+  void 0
+}
 
 const dashboard: DashboardAPI = {
   renderConnection: noop,
@@ -267,10 +269,22 @@ if (isBrowser) {
     logElements.$logScopeFilter.innerHTML = html
   }
 
-  window.dashboard.renderTurns = panelApi.renderTurnsPanel
-  window.dashboard.renderNotifications = panelApi.renderNotificationsPanel
-  window.dashboard.renderToolFailures = panelApi.renderToolFailuresPanel
-  window.dashboard.renderReminders = panelApi.renderRemindersPanel
-  window.dashboard.renderMemos = panelApi.renderMemosPanel
-  window.dashboard.renderContext = panelApi.renderContextPanel
+  window.dashboard.renderTurns = (): void => {
+    panelApi.renderTurnsPanel()
+  }
+  window.dashboard.renderNotifications = (): void => {
+    panelApi.renderNotificationsPanel()
+  }
+  window.dashboard.renderToolFailures = (): void => {
+    panelApi.renderToolFailuresPanel()
+  }
+  window.dashboard.renderReminders = (): void => {
+    panelApi.renderRemindersPanel()
+  }
+  window.dashboard.renderMemos = (): void => {
+    panelApi.renderMemosPanel()
+  }
+  window.dashboard.renderContext = (): void => {
+    panelApi.renderContextPanel()
+  }
 }

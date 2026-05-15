@@ -17,7 +17,9 @@ describe('config_editor events', () => {
   test('startEditor emits config_editor:opened event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     startEditor(userId, storageContextId, 'main_model')
 
@@ -29,7 +31,9 @@ describe('config_editor events', () => {
   test('handleEditorMessage emits config_editor:step event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     startEditor(userId, storageContextId, 'main_model')
     handleEditorMessage(userId, storageContextId, 'gpt-4o')
@@ -43,7 +47,9 @@ describe('config_editor events', () => {
   test('handleEditorCallback cancel emits config_editor:closed event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     startEditor(userId, storageContextId, 'main_model')
     handleEditorCallback(userId, storageContextId, 'cancel')
@@ -56,7 +62,9 @@ describe('config_editor events', () => {
   test('handleEditorCallback save emits config_editor:closed event', async () => {
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
-    subscribe((event) => events.push({ type: event.type, data: event.data }))
+    subscribe((event) => {
+      events.push({ type: event.type, data: event.data })
+    })
 
     startEditor(userId, storageContextId, 'main_model')
     handleEditorMessage(userId, storageContextId, 'gpt-4o')

@@ -255,13 +255,16 @@ function updateAlertFields(id: string, userId: string, input: UpdateInput): Upda
 
 export function executeUpdate(userId: string, input: UpdateInput): UpdateResult {
   log.debug({ userId, id: input.id }, 'update_deferred_prompt called')
-  let result: UpdateResult
-  if (getScheduledPrompt(input.id, userId) !== null) result = updateScheduledFields(input.id, userId, input)
-  else if (getAlertPrompt(input.id, userId) !== null) result = updateAlertFields(input.id, userId, input)
-  else result = { error: 'Deferred prompt not found.' }
-  if (result !== undefined && 'id' in result && !('error' in result)) {
-    emitUser('deferred:updated', userId, { promptId: result.id })
+  const scheduled = getScheduledPrompt(input.id, userId)
+  if (scheduled === null) {
+    const alert = getAlertPrompt(input.id, userId)
+    if (alert === null) return { error: 'Deferred prompt not found.' }
+    const result = updateAlertFields(input.id, userId, input)
+    if ('id' in result && !('error' in result)) emitUser('deferred:updated', userId, { promptId: result.id })
+    return result
   }
+  const result = updateScheduledFields(input.id, userId, input)
+  if ('id' in result && !('error' in result)) emitUser('deferred:updated', userId, { promptId: result.id })
   return result
 }
 
