@@ -39,12 +39,6 @@ services:
       KANEO_CLIENT_URL: ${KANEO_CLIENT_URL:?KANEO_CLIENT_URL is required}
       DISABLE_REGISTRATION: ${KANEO_DISABLE_REGISTRATION:-false}
       DISABLE_GUEST_ACCESS: ${KANEO_DISABLE_GUEST_ACCESS:-true}
-    healthcheck:
-      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:5173/api/health']
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
     depends_on:
       kaneo-postgres:
         condition: service_healthy
