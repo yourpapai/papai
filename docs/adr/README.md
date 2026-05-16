@@ -84,6 +84,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0078](0078-youtrack-remaining-parity-gaps.md)                 | YouTrack Remaining Parity Gaps — Pagination Controls                                        | 2026-04-16 | Accepted                              |
 | [0086](0086-kaneo-compatibility-gap-e2e-coverage.md)           | Kaneo Compatibility Gap — Tier 1 E2E Coverage Extension                                     | 2026-05-15 | Implemented                           |
 | [0087](0087-debug-dashboard-expansion.md)                      | Debug Dashboard Expansion — Memo, Recurring, Deferred, Turn, Context, Tool-Failure Analysis | 2026-05-15 | Implemented (with divergence)         |
+| [0088](0088-kaneo-doc-first-api-migration.md)                  | Kaneo Doc-First API Migration                                                               | 2026-05-16 | Implemented (with divergence)         |
 
 ## Skipped / Not Written
 
