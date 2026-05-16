@@ -1,12 +1,16 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { z } from 'zod'
 
 import { logger } from '../../../logger.js'
 import type { ListTasksParams, Task, TaskListItem, TaskSearchResult } from '../../types.js'
 import { classifyYouTrackError } from '../classify-error.js'
-import type { YouTrackConfig, YouTrackQueryValue } from '../client.js'
+import type { YouTrackConfig } from '../client.js'
 import { youtrackFetch } from '../client.js'
 import { ISSUE_FIELDS, ISSUE_LIST_FIELDS, YOUTRACK_INLINE_LIST_CUSTOM_FIELDS } from '../constants.js'
-import { paginate } from '../helpers.js'
 import { mapIssueToListItem, mapIssueToSearchResult, mapIssueToTask } from '../mappers.js'
 import { IssueListSchema, IssueSchema } from '../schemas/issue.js'
 import {
@@ -17,6 +21,7 @@ import {
   enrichTaskWithDueDate,
   validateRequiredCreateFields,
 } from '../task-helpers.js'
+import { fetchTasksWithPagination } from './task-list-fetch.js'
 
 const log = logger.child({ scope: 'provider:youtrack:tasks' })
 
@@ -162,54 +167,6 @@ export async function updateYouTrackTask(
     log.error({ error: error instanceof Error ? error.message : String(error), taskId }, 'Failed to update task')
     throw classifyYouTrackError(error, { taskId })
   }
-}
-
-function fetchTasksWithPagination(
-  config: YouTrackConfig,
-  query: string,
-  params: ListTasksParams | undefined,
-): Promise<z.infer<typeof IssueListSchema>[]> {
-  if (params?.limit !== undefined) {
-    return fetchTasksManual(config, query, params)
-  }
-  return fetchTasksAuto(config, query)
-}
-
-function fetchTasksAuto(config: YouTrackConfig, query: string): Promise<z.infer<typeof IssueListSchema>[]> {
-  return paginate(
-    config,
-    '/api/issues',
-    { fields: ISSUE_LIST_FIELDS, query, customFields: YOUTRACK_INLINE_LIST_CUSTOM_FIELDS },
-    IssueListSchema.array(),
-    10,
-    100,
-  )
-}
-
-async function fetchTasksManual(
-  config: YouTrackConfig,
-  query: string,
-  params: ListTasksParams,
-): Promise<z.infer<typeof IssueListSchema>[]> {
-  const limit = params.limit!
-  const page = params.page ?? 1
-  const skip = (page - 1) * limit
-
-  const requestQuery: Record<string, YouTrackQueryValue> = {
-    fields: ISSUE_LIST_FIELDS,
-    query,
-    $top: String(limit),
-    customFields: YOUTRACK_INLINE_LIST_CUSTOM_FIELDS,
-  }
-
-  if (skip > 0) {
-    requestQuery['$skip'] = String(skip)
-  }
-
-  const raw = await youtrackFetch(config, 'GET', '/api/issues', {
-    query: requestQuery,
-  })
-  return IssueListSchema.array().parse(raw)
 }
 
 export async function listYouTrackTasks(

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { getCachedConfig, setCachedConfig } from './cache.js'
 import { logger } from './logger.js'
 import { ALL_CONFIG_KEYS, CONFIG_KEYS, type ConfigKey } from './types/config.js'

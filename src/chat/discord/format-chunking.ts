@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 // Length of fence markers for chunk budget calculations
 // FENCE_CLOSE_LEN represents the length of newline + three backticks
 const FENCE_CLOSE_LEN = 4

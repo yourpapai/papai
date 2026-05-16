@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Config Editor handlers
  * Button callback and message handlers for standalone config editing
@@ -10,6 +15,8 @@ import type { ConfigKey } from '../types/config.js'
 import { createEditorSession, deleteEditorSession, getEditorSession, updateEditorSession } from './state.js'
 import type { EditorButton, EditorProcessResult } from './types.js'
 import { validateConfigValue } from './validation.js'
+
+export { parseCallbackData, serializeCallbackData } from './callback-data.js'
 
 const log = logger.child({ scope: 'config-editor:handlers' })
 

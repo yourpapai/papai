@@ -1,24 +1,20 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { getAllConfig, isSensitiveKey, maskValue } from '../config.js'
 import { logger } from '../logger.js'
 import { CONFIG_KEYS, type ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'wizard:engine' })
+import { buildPendingWizardResponse } from './responses.js'
 import { validateAndSaveWizardConfig } from './save.js'
 import { createWizardSession, getWizardSession, updateWizardSession, deleteWizardSession } from './state.js'
 import { getWizardSteps, getStepByIndex, formatSummary } from './steps.js'
 import type { WizardButton, WizardProcessResult } from './types.js'
 
 type TaskProvider = 'kaneo' | 'youtrack'
-
-function buildSkipButtons(stepKey: string): WizardButton[] | undefined {
-  if (stepKey === 'small_model') {
-    return [{ text: 'Use same as main model', action: 'skip_small_model', style: 'secondary' }]
-  }
-  if (stepKey === 'embedding_model') {
-    return [{ text: 'Skip (no semantic search)', action: 'skip_embedding', style: 'secondary' }]
-  }
-  return undefined
-}
 
 interface CreateWizardResult {
   readonly success: boolean
@@ -83,36 +79,6 @@ function getCompletedStepSensitivity(userId: string, storageContextId: string): 
 
   const completedStep = getStepByIndex(session.taskProvider, session.currentStep - 1)
   return completedStep !== undefined && isSensitiveKey(completedStep.key)
-}
-
-function buildPendingWizardResponse(
-  userId: string,
-  storageContextId: string,
-  prompt: string,
-  stepIsSensitive: boolean,
-): WizardProcessResult {
-  const session = getWizardSession(userId, storageContextId)
-  if (session === null) {
-    return { handled: true, response: prompt, requiresInput: true, isSensitiveKey: stepIsSensitive }
-  }
-
-  const currentStep = getStepByIndex(session.taskProvider, session.currentStep)
-  if (currentStep === undefined) {
-    return { handled: true, response: prompt, requiresInput: true, isSensitiveKey: stepIsSensitive }
-  }
-
-  const skipButtons = buildSkipButtons(currentStep.key)
-  if (skipButtons === undefined) {
-    return { handled: true, response: prompt, requiresInput: true, isSensitiveKey: stepIsSensitive }
-  }
-
-  return {
-    handled: true,
-    response: prompt,
-    requiresInput: true,
-    buttons: skipButtons,
-    isSensitiveKey: stepIsSensitive,
-  }
 }
 
 function handleSkipCommand(

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
   <a href="https://github.com/yourpapai/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/yourpapai/papai?style=flat-square" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-0f766e?style=flat-square" alt="License: BSL 1.1"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.3%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
 </p>
 
@@ -518,4 +518,4 @@ bun start:debug
 
 ## License
 
-[MIT](LICENSE) © 2026 Dmitriy Lazarev
+[Business Source License](LICENSE) © 2026 Dmitriy Lazarev

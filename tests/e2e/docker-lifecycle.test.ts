@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, expect, mock, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
 
@@ -14,8 +19,7 @@ type MockChildProcess = EventEmitter & {
 }
 
 const createMockChildProcess = (): MockChildProcess => {
-  const process = new EventEmitter()
-  return Object.assign(process, {
+  return Object.assign(new EventEmitter(), {
     stdout: new EventEmitter(),
     stderr: new EventEmitter(),
   })

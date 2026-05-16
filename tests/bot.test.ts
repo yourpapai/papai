@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -69,6 +74,10 @@ function makeRepliedEventListener(repliedEvents: DebugEvent[]): (event: DebugEve
       repliedEvents.push(event)
     }
   }
+}
+
+function incrementRegistrationCount(current: number | undefined): number {
+  return current === undefined ? 1 : current + 1
 }
 
 // ---------------------------------------------------------------------------
@@ -1327,21 +1336,21 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('setupBot registers commands and handlers only once per provider instance', () => {
     const commandHandlers = new Map<string, CommandHandler>()
+    const commandRegistrationCounts = new Map<string, number>()
     let messageRegistrationCount = 0
     let interactionRegistrationCount = 0
-    const commandRegistrationNames: string[] = []
 
     const provider: ChatProvider = {
       ...createMockChat({ commandHandlers }),
       registerCommand(name: string, handler: CommandHandler): void {
-        commandRegistrationNames.push(name)
+        commandRegistrationCounts.set(name, incrementRegistrationCount(commandRegistrationCounts.get(name)))
         commandHandlers.set(name, handler)
       },
       onMessage(_handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
-        messageRegistrationCount += 1
+        messageRegistrationCount = incrementRegistrationCount(messageRegistrationCount)
       },
       onInteraction(_handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
-        interactionRegistrationCount += 1
+        interactionRegistrationCount = incrementRegistrationCount(interactionRegistrationCount)
       },
     }
 
@@ -1362,9 +1371,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
         }),
       ),
     ).not.toThrow()
+    expect([...commandRegistrationCounts.values()]).toSatisfy((counts) => counts.every((count) => count === 1))
     expect(messageRegistrationCount).toBe(1)
     expect(interactionRegistrationCount).toBe(1)
-    expect(commandRegistrationNames.length).toBe(commandHandlers.size)
   })
 
   test('interaction handler replies with allowlist hint for non-allowlisted groups', async () => {
