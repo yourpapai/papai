@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-05-16
+
+### Added
+
+- **debug:** Add Scope type and typed emit helpers to event-bus
+- **debug:** Add AdminVisibility type and isVisibleToAdmin filter
+- **debug:** Replace isAdminEvent with scope-based isVisibleToAdmin
+- **debug:** Migrate all emit sites to typed helpers
+- **debug:** Mint turnId, emit turn:start/end and queue:* events
+- **debug:** Thread turnId through orchestrator, add tool/reply/typing/notify events
+- **debug:** Add Turn assembly, ring buffers, and /turns/:id endpoint
+- **debug:** Add context switcher, panel grid, Turns/Notifications/Tool-failures panels
+- **debug:** Add recurring:*, deferred:*, memo:* lifecycle events
+- **debug:** Add recurring/deferred/memo REST endpoints and Reminders/Memos panels
+- **debug:** Add Context panel, turnId log filter, remove bare emit()
+
+### Changed
+
+- **message-queue:** Replace mock.module() with DI for event-bus deps
+
+### Documentation
+
+- Capture verified implementation plans
+- Align README license badge with BSL 1.1
+
+### Fixed
+
+- Avoid pulling papai image during E2E setup
+- **/context:** Remove tool catalog follow-up from context command output
+- Resolve lint and knip failures in debug-dashboard-expansion
+- **debug:** Unblock lint and knip after dashboard expansion
+- Expand Kaneo E2E compatibility coverage
+- Restore full check suite
+- Tolerate null Kaneo session in E2E helper
+- Add BUSL-1.1 license headers and extract llm-trace-collector
+- **tests:** Restore mock.module state after debug-server tests
+- Resolve codeindex worktree path resolution
+
+### Miscellaneous
+
+- Relicense from MIT to Business Source License 1.1
+- Add BUSL-1.1 SPDX license headers to all source files
+- Enforce BUSL license headers across the repo
+- Bump .opencode plugin dependency
+- **deps:** Update oxlint, ai SDK, and fix all new lint errors
+
+### Styling
+
+- Format remaining docs and tests
+- Add spacing after license headers
+
+### Testing
+
+- Isolate debug server module mocks
 ## [5.4.2] - 2026-05-14
 
 ### Fixed
