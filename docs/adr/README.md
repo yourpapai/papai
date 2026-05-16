@@ -82,6 +82,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0076](0076-discord-thread-capabilities-documentation.md)      | Discord Thread Capabilities Documentation                            | 2026-04-18 | Implemented                           |
 | [0077](0077-behavior-audit-implementation.md)                  | Behavior Audit — Test-Driven UX Evaluation                           | 2026-04-16 | Implemented                           |
 | [0078](0078-youtrack-remaining-parity-gaps.md)                 | YouTrack Remaining Parity Gaps — Pagination Controls                 | 2026-04-16 | Accepted                              |
+| [0086](0086-kaneo-compatibility-gap-e2e-coverage.md)           | Kaneo Compatibility Gap — Tier 1 E2E Coverage Extension              | 2026-05-15 | Implemented                           |
 
 ## Skipped / Not Written
 
