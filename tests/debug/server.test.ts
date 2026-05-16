@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -83,27 +83,29 @@ function seedLogBuffer(): void {
   logBuffer.push({ level: 50, time: '2026-03-28T10:00:01.000Z', scope: 'bot', msg: 'Something failed' })
 }
 
+function mockDebugServerDependencies(): void {
+  void mock.module('../../src/recurring.js', () => ({
+    listRecurringTasks: (): unknown[] => [],
+  }))
+  void mock.module('../../src/deferred-prompts/scheduled.js', () => ({
+    listScheduledPrompts: (): unknown[] => [],
+  }))
+  void mock.module('../../src/memos.js', () => ({
+    listMemos: (): unknown[] => [],
+  }))
+  void mock.module('../../src/identity/mapping.js', () => ({
+    getIdentityMapping: (): null => null,
+  }))
+  void mock.module('../../src/authorized-groups.js', () => ({
+    listAuthorizedGroups: (): unknown[] => [],
+  }))
+}
+
 describe('debug-server', () => {
   let capturedLogLevel: string
 
   beforeAll(() => {
-    // Mock the database-dependent modules before starting the server
-    void mock.module('../../src/recurring.js', () => ({
-      listRecurringTasks: (): unknown[] => [],
-    }))
-    void mock.module('../../src/deferred-prompts/scheduled.js', () => ({
-      listScheduledPrompts: (): unknown[] => [],
-    }))
-    void mock.module('../../src/memos.js', () => ({
-      listMemos: (): unknown[] => [],
-    }))
-    void mock.module('../../src/identity/mapping.js', () => ({
-      getIdentityMapping: (): null => null,
-    }))
-    void mock.module('../../src/authorized-groups.js', () => ({
-      listAuthorizedGroups: (): unknown[] => [],
-    }))
-
+    mockDebugServerDependencies()
     ensurePublicBuilt()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
@@ -111,6 +113,10 @@ describe('debug-server', () => {
     capturedLogLevel = getLogLevel()
     startDebugServer('test-admin', capturedLogLevel)
     seedLogBuffer()
+  })
+
+  beforeEach(() => {
+    mockDebugServerDependencies()
   })
 
   afterAll(() => {
