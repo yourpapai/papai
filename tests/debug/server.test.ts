@@ -114,6 +114,7 @@ describe('debug-server', () => {
   })
 
   afterAll(() => {
+    mock.restore()
     stopDebugServer()
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
