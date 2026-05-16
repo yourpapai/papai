@@ -650,7 +650,7 @@ describe('recurring lifecycle events', () => {
       expect(events[0]!.data['taskId']).toBe(task.id)
       expect(events[0]!.data['name']).toBe('Weekly sync')
       expect(events[0]!.data['schedule']).toBe('FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0')
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -670,7 +670,7 @@ describe('recurring lifecycle events', () => {
       updateRecurringTask(task.id, { title: 'New' })
       expect(events).toHaveLength(1)
       expect(events[0]!.data['taskId']).toBe(task.id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -690,7 +690,7 @@ describe('recurring lifecycle events', () => {
       pauseRecurringTask(task.id)
       expect(events).toHaveLength(1)
       expect(events[0]!.data['taskId']).toBe(task.id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -711,7 +711,7 @@ describe('recurring lifecycle events', () => {
       resumeRecurringTask(task.id, false)
       expect(events).toHaveLength(1)
       expect(events[0]!.data['taskId']).toBe(task.id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -731,7 +731,7 @@ describe('recurring lifecycle events', () => {
       skipNextOccurrence(task.id)
       expect(events).toHaveLength(1)
       expect(events[0]!.data['taskId']).toBe(task.id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -751,7 +751,7 @@ describe('recurring lifecycle events', () => {
       deleteRecurringTask(task.id)
       expect(events).toHaveLength(1)
       expect(events[0]!.data['taskId']).toBe(task.id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }

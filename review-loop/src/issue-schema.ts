@@ -60,7 +60,7 @@ function extractJsonCandidates(text: string): string[] {
 }
 
 function extractFencedJsonCandidates(text: string): string[] {
-  const fencePattern = /```(?:json|jsonc)?\s*([\s\S]*?)```/gi
+  const fencePattern = /```(?:json|jsonc)?\s*([\s\S]*?)```/giu
   const candidates: string[] = []
 
   for (const match of text.matchAll(fencePattern)) {

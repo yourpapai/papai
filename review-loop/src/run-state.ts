@@ -40,7 +40,7 @@ const SessionPointerSchema = z.object({
 })
 
 function makeRunId(): string {
-  return new Date().toISOString().replace(/[:.]/g, '-')
+  return new Date().toISOString().replace(/[:.]/gu, '-')
 }
 
 export async function createRunState(config: ReviewLoopConfig, planPath: string): Promise<RunState> {

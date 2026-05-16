@@ -82,7 +82,7 @@ describe('buildContextGrid', () => {
       sections: [],
     })
     const grid = buildContextGrid(snapshot)
-    const cells = Array.from(grid.replace(/\n/g, ''))
+    const cells = Array.from(grid.replace(/\n/gu, ''))
     expect(cells.every((c) => c === '⬜')).toBe(true)
   })
 
@@ -92,7 +92,7 @@ describe('buildContextGrid', () => {
       sections: [{ label: 'System prompt', tokens: 200_000 }],
     })
     const grid = buildContextGrid(snapshot)
-    const cells = Array.from(grid.replace(/\n/g, ''))
+    const cells = Array.from(grid.replace(/\n/gu, ''))
     expect(cells.every((c) => c === '🟦')).toBe(true)
   })
 })

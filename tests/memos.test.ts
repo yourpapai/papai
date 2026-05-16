@@ -6,7 +6,7 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import {
   saveMemo,
@@ -35,7 +35,7 @@ beforeEach(() => {
 
 describe('saveMemo', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -69,7 +69,7 @@ describe('saveMemo', () => {
 
 describe('listMemos', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -124,7 +124,7 @@ describe('keywordSearchMemos (FTS5)', () => {
   let testDb: Awaited<ReturnType<typeof setupTestDb>>
 
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     testDb = await setupTestDb()
   })
 
@@ -185,7 +185,7 @@ describe('keywordSearchMemos (FTS5)', () => {
 
 describe('updateMemoEmbedding and loadEmbeddingsForUser', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -224,7 +224,7 @@ describe('updateMemoEmbedding and loadEmbeddingsForUser', () => {
 
 describe('archiveMemos', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -264,7 +264,7 @@ describe('archiveMemos', () => {
 
 describe('addMemoLink', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -280,7 +280,7 @@ describe('addMemoLink', () => {
 
 describe('memo lifecycle events', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -292,7 +292,7 @@ describe('memo lifecycle events', () => {
       expect(events[0]!.data['memoId']).toBe(memo.id)
       expect(events[0]!.data['content']).toBe('test content')
       expect(events[0]!.data['userId']).toBeUndefined()
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: 'user1' })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: 'user1' })
     } finally {
       cleanup()
     }
@@ -307,7 +307,7 @@ describe('memo lifecycle events', () => {
       expect(count).toBe(1)
       expect(events).toHaveLength(1)
       expect(events[0]!.data['memoIds']).toEqual([memo1.id])
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: 'user1' })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: 'user1' })
     } finally {
       cleanup()
     }
@@ -323,7 +323,7 @@ describe('memo lifecycle events', () => {
       expect(events).toHaveLength(1)
       expect(events[0]!.data['query']).toBe('lease')
       expect(events[0]!.data['resultCount']).toBe(1)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: 'user1' })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: 'user1' })
     } finally {
       cleanup()
     }

@@ -34,7 +34,7 @@ const dashboard: DashboardAPI = {
   renderContext: noop,
   updateScopeFilter: noop,
   clearLogs: noop,
-  __state: {
+  state: {
     connected: false,
     stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
     sessions: new Map(),
@@ -114,7 +114,7 @@ if (isBrowser) {
     window.dashboard.clearLogs()
   })
   logElements.$logTurnidClear.addEventListener('click', () => {
-    window.dashboard.__state.activeLogFilter.turnId = undefined
+    window.dashboard.state.activeLogFilter.turnId = undefined
     logElements.$logTurnidBadge.hidden = true
     window.dashboard.renderLogs()
   })
@@ -146,7 +146,7 @@ if (isBrowser) {
     const traceId = row.getAttribute('data-trace-id')
     if (traceId === null) return
 
-    const trace = window.dashboard.__state.llmTraces.find((t: LlmTrace) => String(t.timestamp) === traceId)
+    const trace = window.dashboard.state.llmTraces.find((t: LlmTrace) => String(t.timestamp) === traceId)
     if (trace !== undefined) {
       renderTraceDetail(trace, traceModalElements)
     }
@@ -227,7 +227,7 @@ if (isBrowser) {
   let fuseInstance: ReturnType<typeof updateFuseIndex> = null
 
   window.dashboard.renderLogs = (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
 
     const minLevel = Number(logElements.$logLevelFilter.value)

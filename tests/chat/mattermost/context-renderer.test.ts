@@ -50,6 +50,6 @@ describe('renderMattermostContext', () => {
   test('notes approximate counts when applicable', () => {
     const result = renderMattermostContext({ ...standardContextSnapshot, approximate: true })
     assert(result.method === 'formatted')
-    expect(result.content).toMatch(/_token counts are approximate_/i)
+    expect(result.content).toMatch(/_token counts are approximate_/iu)
   })
 })

@@ -15,17 +15,17 @@ export interface Migration {
 }
 
 const extractNumericPrefix = (id: string): number | undefined => {
-  const match = id.match(/^\d+/)
+  const match = id.match(/^\d+/u)
   return match === null ? undefined : Number.parseInt(match[0], 10)
 }
 
 const extractBaseName = (id: string): string | undefined => {
-  const match = id.match(/^\d+_(.+)$/)
+  const match = id.match(/^\d+_(.+)$/u)
   return match === null ? undefined : match[1]
 }
 
 const validateSingleMigration = (migration: Migration, seenIds: Set<string>, seenBaseNames: Set<string>): void => {
-  if (!/^\d+/.test(migration.id)) {
+  if (!/^\d+/u.test(migration.id)) {
     throw new Error(`Migration ID must start with a numeric prefix: ${migration.id}`)
   }
 

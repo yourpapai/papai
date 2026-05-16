@@ -34,7 +34,7 @@ export function buildAttachmentManifest(attachments: readonly AttachmentRef[]): 
   return `[Available attachments: ${attachments.map(renderRef).join('; ')}]`
 }
 
-const ATTACHMENT_ID_RE = /\batt_[a-z0-9-]+\b/gi
+const ATTACHMENT_ID_RE = /\batt_[a-z0-9-]+\b/giu
 
 export function selectAttachmentsForTurn(params: {
   text: string

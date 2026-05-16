@@ -116,7 +116,7 @@ describe('executeUpdate — rrule timezone', () => {
     expect(prompts).toHaveLength(1)
     const prompt = prompts[0]!
     assert(prompt.type === 'scheduled')
-    expect(prompt.dtstartUtc).toMatch(/T00:00:00\.000Z$/)
+    expect(prompt.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 
   test('update rrule preserves original dtstartUtc series anchor', () => {
@@ -156,7 +156,7 @@ describe('deferred lifecycle events', () => {
       expect(result).toHaveProperty('id')
       expect(events).toHaveLength(1)
       expect(events[0]!.data['promptId']).toBe(Reflect.get(result, 'id'))
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -176,7 +176,7 @@ describe('deferred lifecycle events', () => {
       executeUpdate(USER_ID, { id, prompt: 'Updated prompt' })
       expect(events).toHaveLength(1)
       expect(events[0]!.data['promptId']).toBe(id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }
@@ -196,7 +196,7 @@ describe('deferred lifecycle events', () => {
       executeCancel(USER_ID, { id })
       expect(events).toHaveLength(1)
       expect(events[0]!.data['promptId']).toBe(id)
-      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
     } finally {
       cleanup()
     }

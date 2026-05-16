@@ -5,7 +5,7 @@
 
 import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { setCachedConfig, _userCaches } from '../../src/cache.js'
+import { setCachedConfig } from '../../src/cache.js'
 import type { ResumeResult } from '../../src/recurring.js'
 import type { CreateRecurringTaskDeps } from '../../src/tools/create-recurring-task.js'
 import { makeCreateRecurringTaskTool } from '../../src/tools/create-recurring-task.js'
@@ -344,7 +344,7 @@ describe('recurring-tools', () => {
         toolCtx,
       )
       expect(capturedInput).not.toBeNull()
-      expect(capturedInput!.dtstartUtc).toMatch(/T00:00:00\.000Z$/)
+      expect(capturedInput!.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
     })
   })
 

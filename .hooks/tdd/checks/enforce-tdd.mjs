@@ -41,8 +41,8 @@ export function enforceTdd(ctx) {
         const testDir = path.dirname(testOnDisk)
         const expectedImport = path
           .relative(testDir, absPath)
-          .replace(/\\/g, '/')
-          .replace(/\.(ts|tsx)$/, '.js')
+          .replace(/\\/gu, '/')
+          .replace(/\.(ts|tsx)$/u, '.js')
         return {
           decision: 'block',
           reason:
@@ -59,9 +59,9 @@ export function enforceTdd(ctx) {
     const alreadyTestedThisSession = writtenTests.some((testAbsPath) => {
       const testRel = path.relative(cwd, testAbsPath)
       if (testRel.startsWith('tests/') || testRel.startsWith('tests\\')) {
-        const withoutTests = testRel.replace(/^tests[/\\]/, '')
+        const withoutTests = testRel.replace(/^tests[/\\]/u, '')
         const ext = path.extname(withoutTests)
-        const base = withoutTests.slice(0, -ext.length).replace(/\.(test|spec)$/, '')
+        const base = withoutTests.slice(0, -ext.length).replace(/\.(test|spec)$/u, '')
         if (path.join(cwd, 'src', `${base}${ext}`) === absPath) return true
       }
       return false

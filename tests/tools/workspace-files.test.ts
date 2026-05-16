@@ -5,7 +5,11 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { _createInMemoryBlobStore, _resetBlobStore, _setBlobStore } from '../../src/attachments/blob-store.js'
+import {
+  createInMemoryBlobStoreForTesting,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
+} from '../../src/attachments/blob-store.js'
 import { listActiveAttachments } from '../../src/attachments/index.js'
 import { persistIncomingAttachments } from '../../src/attachments/ingest.js'
 import { makeDeleteFileTool, makeListFilesTool } from '../../src/tools/workspace-files.js'
@@ -18,7 +22,7 @@ describe('workspace file tools', () => {
     mockLogger()
     mock.restore()
     await setupTestDb()
-    _setBlobStore(_createInMemoryBlobStore())
+    setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
 
     await persistIncomingAttachments({
       contextId: CTX,
@@ -43,7 +47,7 @@ describe('workspace file tools', () => {
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
   })
 
   describe('list_files', () => {

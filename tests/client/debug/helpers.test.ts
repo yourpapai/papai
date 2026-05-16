@@ -59,12 +59,12 @@ describe('dashboard-ui helpers', () => {
     test('formats timestamp correctly', () => {
       const timestamp = new Date('2024-01-15T10:30:45.123Z').getTime()
       const result = formatTime(timestamp)
-      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}$/u)
     })
 
     test('handles ISO string input', () => {
       const result = formatTime('2024-01-15T10:30:45.123Z')
-      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}$/u)
     })
   })
 

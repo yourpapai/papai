@@ -73,7 +73,7 @@ describe('index.ts - graceful shutdown', () => {
 
     expect(source).toContain("process.on('SIGTERM'")
     expect(source).toContain("process.on('SIGINT'")
-    expect(countMatches(source, /flushOnShutdown\(\s*\{\s*timeoutMs:\s*5000\s*\}\s*\)/g)).toBe(1)
+    expect(countMatches(source, /flushOnShutdown\(\s*\{\s*timeoutMs:\s*5000\s*\}\s*\)/gu)).toBe(1)
   })
 
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {

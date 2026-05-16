@@ -25,7 +25,7 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../../src/chat/types.js'
-import { _resetDrizzleDb, _setDrizzleDb } from '../../src/db/drizzle.js'
+import { resetDrizzleDbForTesting, setDrizzleDbForTesting } from '../../src/db/drizzle.js'
 import { MIGRATIONS } from '../../src/db/index.js'
 import * as schema from '../../src/db/schema.js'
 import type { AppError } from '../../src/errors.js'
@@ -109,15 +109,15 @@ export async function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof sc
   const { runMigrations } = await import('../../src/db/migrate.js')
 
   // Clear the in-memory user cache to prevent config/session bleed between tests
-  const { _userCaches } = await import('../../src/cache.js')
-  _userCaches.clear()
+  const { userCachesForTesting } = await import('../../src/cache.js')
+  userCachesForTesting.clear()
 
   testSqlite = new Database(':memory:')
   testSqlite.run('PRAGMA foreign_keys=ON')
   testDb = drizzle(testSqlite, { schema })
 
   runMigrations(testSqlite, MIGRATIONS)
-  _setDrizzleDb(testDb)
+  setDrizzleDbForTesting(testDb)
   return testDb
 }
 
@@ -138,14 +138,14 @@ export function getTestDb(): ReturnType<typeof drizzle<typeof schema>> {
  * (e.g. without full migrations). For full-migration setup, use setupTestDb().
  */
 export function setTestDrizzleDb(db: ReturnType<typeof drizzle<typeof schema>>): void {
-  _setDrizzleDb(db)
+  setDrizzleDbForTesting(db)
 }
 
 /**
  * Reset the drizzle singleton back to its default (lazy-init) behavior.
  */
 export function restoreDrizzle(): void {
-  _resetDrizzleDb()
+  resetDrizzleDbForTesting()
 }
 
 // Re-export logger mocks from dedicated file (no src/ imports to avoid mock timing issues)
@@ -279,7 +279,7 @@ export function createGroupMessage(
     contextType: 'group',
     isMentioned: text.includes('@bot'),
     text,
-    commandMatch: text.replace(/^\//, ''),
+    commandMatch: text.replace(/^\//u, ''),
   }
 }
 

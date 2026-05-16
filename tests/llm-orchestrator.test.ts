@@ -111,7 +111,7 @@ const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, bas
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
-import { getCachedFacts, getCachedHistory, _userCaches } from '../src/cache.js'
+import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
@@ -202,7 +202,7 @@ describe('processMessage', () => {
     await setupTestDb()
 
     // Clear caches to ensure clean state
-    _userCaches.clear()
+    userCachesForTesting.clear()
 
     seedConfig()
 

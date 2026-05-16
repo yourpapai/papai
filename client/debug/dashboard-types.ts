@@ -174,7 +174,7 @@ export interface DashboardAPI {
   renderContext(): void
   updateScopeFilter(scopes: Set<string>): void
   clearLogs(): void
-  __state: DashboardState
+  state: DashboardState
 }
 
 declare global {

@@ -158,7 +158,7 @@ export const rruleInputSchema = z
       .describe("Series anchor date in YYYY-MM-DD (user's local date). Defaults to today when omitted."),
     startTime: z
       .string()
-      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/u, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
       .optional()
       .describe(
         "Series anchor time in HH:MM 24-hour format (user's local time). Requires startDate. Defaults to 00:00 when omitted.",
@@ -187,7 +187,7 @@ export const scheduleSchema = z
         date: z.iso.date().describe("Date in YYYY-MM-DD format (user's local date)"),
         time: z
           .string()
-          .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
+          .regex(/^([01]\d|2[0-3]):[0-5]\d$/u, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
           .describe("Time in HH:MM 24-hour format (user's local time)"),
       })
       .optional()

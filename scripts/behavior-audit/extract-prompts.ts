@@ -7,7 +7,7 @@ import type { EvidenceRef } from './extract-trust-types.js'
 import type { TestCase } from './test-parser.js'
 
 function deriveImplPath(testPath: string): string {
-  return testPath.replace(/^tests\//, 'src/').replace(/\.test\.ts$/, '.ts')
+  return testPath.replace(/^tests\//u, 'src/').replace(/\.test\.ts$/u, '.ts')
 }
 
 export interface EvidencePromptInput {

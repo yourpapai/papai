@@ -55,7 +55,7 @@ describe('renderDiscordContext', () => {
     assertEmbed(result)
     expect(result.embed.footer).toContain('6,770')
     expect(result.embed.footer).toContain('128,000')
-    expect(result.embed.footer).toMatch(/5\.\d%/)
+    expect(result.embed.footer).toMatch(/5\.\d%/u)
   })
 
   test('color is green below 50% usage', () => {
@@ -79,13 +79,13 @@ describe('renderDiscordContext', () => {
   test('footer omits percentage when maxTokens is null', () => {
     const result = renderDiscordContext({ ...standardContextSnapshot, maxTokens: null })
     assertEmbed(result)
-    expect(result.embed.footer).not.toMatch(/%/)
+    expect(result.embed.footer).not.toMatch(/%/u)
     expect(result.embed.footer).toContain('6,770 tokens')
   })
 
   test('notes approximate counts in footer when applicable', () => {
     const result = renderDiscordContext({ ...standardContextSnapshot, approximate: true })
     assertEmbed(result)
-    expect(result.embed.footer).toMatch(/approximate/i)
+    expect(result.embed.footer).toMatch(/approximate/iu)
   })
 })

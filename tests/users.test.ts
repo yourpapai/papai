@@ -7,7 +7,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
 import * as schema from '../src/db/schema.js'
 import {
   addUser,
@@ -117,12 +117,12 @@ describe('removeUser', () => {
     addUser('cache-test', '999')
     setKaneoWorkspace('cache-test', 'workspace-1')
 
-    expect(_userCaches.has('cache-test')).toBe(true)
+    expect(userCachesForTesting.has('cache-test')).toBe(true)
 
     const removed = removeUser('cache-test')
 
     expect(removed).toBe(true)
-    expect(_userCaches.has('cache-test')).toBe(false)
+    expect(userCachesForTesting.has('cache-test')).toBe(false)
   })
 })
 
@@ -193,7 +193,7 @@ describe('listUsers', () => {
 describe('getKaneoWorkspace / setKaneoWorkspace', () => {
   beforeEach(async () => {
     await setupTestDb()
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('returns null when no workspace is set', () => {

@@ -154,13 +154,13 @@ describe('KaneoProvider', () => {
   describe('normalizeDueDateInput', () => {
     test('converts date+time to UTC', () => {
       const result = provider.normalizeDueDateInput({ date: '2024-03-15', time: '14:30' }, 'America/New_York')
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u)
       expect(result).toContain('Z')
     })
 
     test('converts date-only to UTC with midnight', () => {
       const result = provider.normalizeDueDateInput({ date: '2024-03-15' }, 'UTC')
-      expect(result).toMatch(/^2024-03-15/)
+      expect(result).toMatch(/^2024-03-15/u)
     })
 
     test('returns undefined when no dueDate', () => {
@@ -272,7 +272,7 @@ describe('KaneoProvider', () => {
   describe('formatDueDateOutput', () => {
     test('converts UTC to local timezone', () => {
       const result = provider.formatDueDateOutput('2024-03-15T18:30:00.000Z', 'America/New_York')
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u)
     })
 
     test('returns null when null', () => {

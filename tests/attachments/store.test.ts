@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import {
-  _createInMemoryBlobStore,
-  _resetBlobStore,
-  _setBlobStore,
+  createInMemoryBlobStoreForTesting,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
   type InMemoryBlobStore,
 } from '../../src/attachments/blob-store.js'
 import { loadAttachmentRecord, saveAttachment } from '../../src/attachments/store.js'
@@ -21,12 +21,12 @@ describe('attachment store', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    blobs = _createInMemoryBlobStore()
-    _setBlobStore(blobs)
+    blobs = createInMemoryBlobStoreForTesting()
+    setBlobStoreForTesting(blobs)
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
   })
 
   test('persists metadata in SQLite and bytes in the configured blob store', async () => {

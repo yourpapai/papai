@@ -74,7 +74,7 @@ export const makeCandidate = (candidateSeed: CandidateSeed, source: PieceSource)
 })
 
 export const extractBacktickedPaths = (markdown: string): readonly string[] =>
-  [...markdown.matchAll(/`([^`]+)`/g)].flatMap((match) => {
+  [...markdown.matchAll(/`([^`]+)`/gu)].flatMap((match) => {
     const value = match[1]
     return value === undefined || value.length === 0 ? [] : [value]
   })

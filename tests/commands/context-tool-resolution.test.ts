@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { _userCaches } from '../../src/cache.js'
+import { userCachesForTesting } from '../../src/cache.js'
 import {
   buildInvocationToolSet,
   resolveContextToolSurface,
@@ -17,7 +17,7 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 describe('context-tool-resolution', () => {
   beforeEach(async () => {
     mockLogger()
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 

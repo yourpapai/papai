@@ -14,7 +14,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
 import * as schema from '../src/db/schema.js'
 import { loadHistory, saveHistory } from '../src/history.js'
 import { loadSummary, saveSummary, loadFacts, upsertFact, buildMemoryContextMessage } from '../src/memory.js'
@@ -28,7 +28,7 @@ describe('Story 2: Surviving restart', () => {
     testDb = await setupTestDb()
 
     // Clear all caches
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('history, summary, and facts survive cache clear (restart simulation)', async () => {
@@ -59,7 +59,7 @@ describe('Story 2: Surviving restart', () => {
     expect(factsRows).toHaveLength(1)
 
     // Simulate restart: clear all caches
-    _userCaches.clear()
+    userCachesForTesting.clear()
 
     // Reload data (simulating new session after restart)
     const loadedHistory = loadHistory(userId)
@@ -86,7 +86,7 @@ describe('Story 4: Key facts remembered after read', () => {
     mockLogger()
     await setupTestDb()
 
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('facts from get_task are remembered and appear in LLM context', async () => {

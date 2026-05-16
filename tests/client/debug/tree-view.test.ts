@@ -90,7 +90,7 @@ describe('tree-view', () => {
     test('generates unique toggle IDs', () => {
       const html1 = renderTreeView({ a: 1 }, 'key1')
       const html2 = renderTreeView({ b: 2 }, 'key2')
-      const pattern = /(?:data-target|id)="(tree-[a-z0-9]+)"/
+      const pattern = /(?:data-target|id)="(tree-[a-z0-9]+)"/u
       const m1 = html1.match(pattern)
       const m2 = html2.match(pattern)
       expect(m1).toBeDefined()

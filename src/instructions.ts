@@ -26,7 +26,7 @@ function tokenize(text: string): Set<string> {
   return new Set(
     text
       .toLowerCase()
-      .split(/\W+/)
+      .split(/\W+/u)
       .filter((w) => w.length > 0),
   )
 }
@@ -47,7 +47,7 @@ function isDuplicate(newText: string, existing: readonly { text: string }[]): bo
 }
 
 function normalizeText(text: string): string {
-  return text.replace(/\s+/g, ' ').trim()
+  return text.replace(/\s+/gu, ' ').trim()
 }
 
 export function saveInstruction(contextId: string, text: string): SaveResult {

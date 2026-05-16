@@ -16,7 +16,7 @@ import {
   syncSummaryToDb,
   syncWorkspaceToDb,
 } from '../src/cache-db.js'
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import {
   conversationHistory,
@@ -33,7 +33,7 @@ describe('cache-db', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   describe('syncHistoryToDb', () => {
@@ -208,7 +208,7 @@ describe('cache-db', () => {
         setTimeout(() => resolve(), 50)
       })
 
-      _userCaches.delete(groupId)
+      userCachesForTesting.delete(groupId)
       expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
     })
 
@@ -231,7 +231,7 @@ describe('cache-db', () => {
         setTimeout(() => resolve(), 50)
       })
 
-      _userCaches.delete(groupId)
+      userCachesForTesting.delete(groupId)
       expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
     })
 

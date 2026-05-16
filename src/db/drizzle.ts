@@ -34,7 +34,7 @@ export const closeDrizzleDb = (): void => {
  * Reset the Drizzle DB instance. Useful for testing.
  * @internal
  */
-export const _resetDrizzleDb = (): void => {
+export const resetDrizzleDbForTesting = (): void => {
   dbInstance = undefined
 }
 
@@ -42,6 +42,6 @@ export const _resetDrizzleDb = (): void => {
  * Set a custom Drizzle DB instance. Useful for testing with in-memory DB.
  * @internal
  */
-export const _setDrizzleDb = (db: ReturnType<typeof drizzle<typeof schema>>): void => {
+export const setDrizzleDbForTesting = (db: ReturnType<typeof drizzle<typeof schema>>): void => {
   dbInstance = db
 }

@@ -5,7 +5,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { _createInMemoryBlobStore, _resetBlobStore, _setBlobStore } from '../src/attachments/blob-store.js'
+import {
+  createInMemoryBlobStoreForTesting,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
+} from '../src/attachments/blob-store.js'
 import { listActiveAttachments } from '../src/attachments/index.js'
 import { findStagedFilesByMessageId } from '../src/attachments/staged.js'
 import type { StagedFileRef, StageFileParams } from '../src/attachments/types.js'
@@ -30,17 +34,17 @@ const makeCandidate = (overrides: Partial<IncomingFileCandidate> = {}): Incoming
 })
 
 describe('bot-attachments', () => {
-  let blobs: ReturnType<typeof _createInMemoryBlobStore>
+  let blobs: ReturnType<typeof createInMemoryBlobStoreForTesting>
 
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    blobs = _createInMemoryBlobStore()
-    _setBlobStore(blobs)
+    blobs = createInMemoryBlobStoreForTesting()
+    setBlobStoreForTesting(blobs)
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
   })
 
   describe('DM context', () => {

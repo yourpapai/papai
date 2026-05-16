@@ -57,8 +57,8 @@ const extractYouTrackErrorMessage = (error: YouTrackApiError): string => {
 function normalizeFieldName(rawName: string): string | null {
   const cleaned = rawName
     .trim()
-    .replace(/^["'\s]+|["'\s]+$/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/^["'\s]+|["'\s]+$/gu, '')
+    .replace(/\s+/gu, ' ')
   if (cleaned === '') return null
   const lower = cleaned.toLowerCase()
   if (lower === 'field' || lower === 'fields' || lower === 'custom field' || lower === 'custom fields') return null
@@ -66,7 +66,7 @@ function normalizeFieldName(rawName: string): string | null {
 }
 
 function appendFieldNames(target: Set<string>, rawList: string): void {
-  const normalizedList = rawList.replace(/\sand\s/gi, ',')
+  const normalizedList = rawList.replace(/\sand\s/giu, ',')
   for (const part of normalizedList.split(',')) {
     const normalized = normalizeFieldName(part)
     if (normalized !== null) target.add(normalized)
@@ -80,17 +80,17 @@ function extractRequiredFields(body: YouTrackErrorBody | undefined, message: str
   for (const candidate of candidates) {
     if (candidate === undefined) continue
 
-    const listMatch = /requires these custom fields:\s*([^.;]+)/i.exec(candidate)
+    const listMatch = /requires these custom fields:\s*([^.;]+)/iu.exec(candidate)
     if (listMatch?.[1] !== undefined) {
       appendFieldNames(names, listMatch[1])
     }
 
-    const requiredFieldsMatch = /required fields?:\s*([^.;]+)/i.exec(candidate)
+    const requiredFieldsMatch = /required fields?:\s*([^.;]+)/iu.exec(candidate)
     if (requiredFieldsMatch?.[1] !== undefined) {
       appendFieldNames(names, requiredFieldsMatch[1])
     }
 
-    for (const match of candidate.matchAll(/field\s+["']?([^"':.;]+?)["']?\s+is required/gi)) {
+    for (const match of candidate.matchAll(/field\s+["']?([^"':.;]+?)["']?\s+is required/giu)) {
       const fieldName = match[1]
       if (fieldName === undefined) continue
       const normalized = normalizeFieldName(fieldName)
@@ -103,7 +103,7 @@ function extractRequiredFields(body: YouTrackErrorBody | undefined, message: str
     for (const candidate of allCandidates) {
       if (candidate === undefined) continue
       for (const match of candidate.matchAll(
-        /["\u201C\u201D\u00AB\u00BB]([^"\u201C\u201D\u00AB\u00BB]+)["\u201C\u201D\u00AB\u00BB]/g,
+        /["\u201C\u201D\u00AB\u00BB]([^"\u201C\u201D\u00AB\u00BB]+)["\u201C\u201D\u00AB\u00BB]/gu,
       )) {
         const fieldName = match[1]
         if (fieldName === undefined) continue

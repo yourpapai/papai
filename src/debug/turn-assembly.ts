@@ -109,7 +109,7 @@ function handleTurnStart(event: DebugEvent): void {
   if (turnId === '') return
   const turn: Turn = {
     turnId,
-    scope: event.__scope,
+    scope: event.scope,
     startedAt: event.timestamp,
     status: 'running',
     incomingMessageCount: num(event.data['incomingMessageCount']),
@@ -140,7 +140,7 @@ export function handleTurnEnd(event: DebugEvent, broadcast: (event: DebugEvent) 
     type: 'turn:summary',
     timestamp: event.timestamp,
     data: { ...turn },
-    __scope: event.__scope,
+    scope: event.scope,
   })
 }
 
@@ -161,11 +161,11 @@ function handleToolFailureClassified(event: DebugEvent): void {
     })
   }
 
-  pushToolFailure({ timestamp: event.timestamp, scope: event.__scope, data: event.data })
+  pushToolFailure({ timestamp: event.timestamp, scope: event.scope, data: event.data })
 }
 
 function handleNotification(event: DebugEvent): void {
-  pushNotification({ timestamp: event.timestamp, type: event.type, scope: event.__scope, data: event.data })
+  pushNotification({ timestamp: event.timestamp, type: event.type, scope: event.scope, data: event.data })
 }
 
 export function handleTurnAssembly(event: DebugEvent, broadcast: (event: DebugEvent) => void): void {

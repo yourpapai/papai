@@ -17,7 +17,7 @@ export function resolveInvocationText(
     return `${prefix}\n\n${body}`
   }
 
-  const commandName = prefix.slice(1).split(/\s+/, 1)[0] ?? ''
+  const commandName = prefix.slice(1).split(/\s+/u, 1)[0] ?? ''
   if (availableCommands.length === 0) {
     if (required) {
       throw new Error(`Required command /${commandName} is not advertised by the agent`)

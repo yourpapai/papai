@@ -20,7 +20,7 @@ describe('event-bus scope helpers', () => {
     return fn
   }
 
-  test('emitUser injects user scope and userId onto __scope', () => {
+  test('emitUser injects user scope and userId onto scope', () => {
     let received: DebugEvent | null = null
     subscribe(
       track((e) => {
@@ -33,7 +33,7 @@ describe('event-bus scope helpers', () => {
     expect(received).not.toBeNull()
     expect(received!.type).toBe('user:event')
     expect(received!.data).toEqual({ action: 'test' })
-    expect(received!.__scope).toEqual({ kind: 'user', userId: 'user-123' })
+    expect(received!.scope).toEqual({ kind: 'user', userId: 'user-123' })
     expect(received!.turnId).toBeUndefined()
   })
 
@@ -48,7 +48,7 @@ describe('event-bus scope helpers', () => {
     emitUser('user:turn', 'user-456', { step: 1 }, 'turn-abc')
 
     expect(received).not.toBeNull()
-    expect(received!.__scope).toEqual({ kind: 'user', userId: 'user-456' })
+    expect(received!.scope).toEqual({ kind: 'user', userId: 'user-456' })
     expect(received!.turnId).toBe('turn-abc')
   })
 
@@ -65,7 +65,7 @@ describe('event-bus scope helpers', () => {
     expect(received).not.toBeNull()
     expect(received!.type).toBe('group:event')
     expect(received!.data).toEqual({ msg: 'hello' })
-    expect(received!.__scope).toEqual({ kind: 'group', groupId: 'group-789' })
+    expect(received!.scope).toEqual({ kind: 'group', groupId: 'group-789' })
     expect(received!.turnId).toBeUndefined()
   })
 
@@ -80,7 +80,7 @@ describe('event-bus scope helpers', () => {
     emitGroup('group:thread', 'group-abc', { x: 1 }, 'turn-xyz', 'thread-42')
 
     expect(received).not.toBeNull()
-    expect(received!.__scope).toEqual({
+    expect(received!.scope).toEqual({
       kind: 'group',
       groupId: 'group-abc',
       threadId: 'thread-42',
@@ -101,6 +101,6 @@ describe('event-bus scope helpers', () => {
     expect(received).not.toBeNull()
     expect(received!.type).toBe('global:event')
     expect(received!.data).toEqual({ status: 'ok' })
-    expect(received!.__scope).toEqual({ kind: 'global' })
+    expect(received!.scope).toEqual({ kind: 'global' })
   })
 })

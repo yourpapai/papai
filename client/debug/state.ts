@@ -33,7 +33,7 @@ export const state: DashboardState = {
 }
 
 // Expose state for renderLogs() to access
-window.dashboard.__state = state
+window.dashboard.state = state
 
 export function renderAll(): void {
   const dash = window.dashboard

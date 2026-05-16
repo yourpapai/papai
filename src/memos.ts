@@ -123,7 +123,7 @@ export function updateMemoEmbedding(userId: string, memoId: string, embedding: F
 }
 
 function sanitizeFtsQuery(query: string): string {
-  return `"${query.replace(/"/g, '""')}"`
+  return `"${query.replace(/"/gu, '""')}"`
 }
 
 export function keywordSearchMemos(userId: string, query: string, limit: number = 5): readonly Memo[] {

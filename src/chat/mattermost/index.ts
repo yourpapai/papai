@@ -74,7 +74,7 @@ export class MattermostChatProvider implements ChatProvider {
     if (token === undefined || token.trim() === '') {
       throw new Error('MATTERMOST_BOT_TOKEN environment variable is required')
     }
-    this.baseUrl = url.replace(/\/+$/, '')
+    this.baseUrl = url.replace(/\/+$/u, '')
     this.token = token
   }
 
@@ -124,7 +124,7 @@ export class MattermostChatProvider implements ChatProvider {
   }
 
   private connectWebSocket(): void {
-    const wsUrl = this.baseUrl.replace(/^http/, 'ws') + '/api/v4/websocket'
+    const wsUrl = this.baseUrl.replace(/^http/u, 'ws') + '/api/v4/websocket'
     log.debug({ wsUrl }, 'Connecting to Mattermost WebSocket')
     const ws = new WebSocket(wsUrl)
     this.ws = ws

@@ -33,11 +33,11 @@ export async function validateStatus(
   const columns = await deps.listColumns({ config, projectId })
 
   // Normalize the input status
-  const normalizedStatus = status.toLowerCase().replace(/\s+/g, '-')
+  const normalizedStatus = status.toLowerCase().replace(/\s+/gu, '-')
 
   // Check if it matches any column name (slugified)
   for (const column of columns) {
-    const columnSlug = column.name.toLowerCase().replace(/\s+/g, '-')
+    const columnSlug = column.name.toLowerCase().replace(/\s+/gu, '-')
     if (columnSlug === normalizedStatus) {
       // Return the slug, not the column ID
       // The Kaneo task API expects slugs, not the random IDs from listColumns
@@ -46,11 +46,11 @@ export async function validateStatus(
   }
 
   // Also check if it's already a valid slug (matches pattern like "to-do" or "to-do-123")
-  const slugPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/
+  const slugPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/u
   if (slugPattern.test(normalizedStatus)) {
     // Check if any column's slug starts with this (for partial matches like "to-do")
     for (const column of columns) {
-      const columnSlug = column.name.toLowerCase().replace(/\s+/g, '-')
+      const columnSlug = column.name.toLowerCase().replace(/\s+/gu, '-')
       if (columnSlug === normalizedStatus || columnSlug.startsWith(normalizedStatus + '-')) {
         return normalizedStatus
       }
@@ -79,7 +79,7 @@ export async function denormalizeStatus(
   const columns = await deps.listColumns({ config, projectId })
   // Try to find a column whose name slug matches the status
   for (const column of columns) {
-    const columnSlug = column.name.toLowerCase().replace(/\s+/g, '-')
+    const columnSlug = column.name.toLowerCase().replace(/\s+/gu, '-')
     if (columnSlug === statusSlug || statusSlug.startsWith(columnSlug + '-')) {
       return columnSlug
     }

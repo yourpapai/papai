@@ -14,7 +14,7 @@
  * Returns null for invalid or unrecognizable values.
  */
 
-const UTC_OFFSET_PATTERN = /^UTC([+-])(\d{1,2})$/
+const UTC_OFFSET_PATTERN = /^UTC([+-])(\d{1,2})$/u
 
 const isValidIana = (value: string): boolean => {
   try {

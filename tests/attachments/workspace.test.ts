@@ -6,9 +6,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
-  _createInMemoryBlobStore,
-  _resetBlobStore,
-  _setBlobStore,
+  createInMemoryBlobStoreForTesting,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
   type InMemoryBlobStore,
 } from '../../src/attachments/blob-store.js'
 import { persistIncomingAttachments } from '../../src/attachments/ingest.js'
@@ -21,12 +21,12 @@ describe('attachment workspace', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    blobs = _createInMemoryBlobStore()
-    _setBlobStore(blobs)
+    blobs = createInMemoryBlobStoreForTesting()
+    setBlobStoreForTesting(blobs)
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
   })
 
   test('persists incoming files, lists them as active, and clears them by context', async () => {

@@ -14,7 +14,7 @@ const forumStatusCache = new Map<number, boolean>()
  * Clear the forum status cache. Used for testing.
  * @internal
  */
-export function _clearForumStatusCache(): void {
+export function clearForumStatusCacheForTesting(): void {
   forumStatusCache.clear()
 }
 

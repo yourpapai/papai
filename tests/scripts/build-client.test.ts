@@ -44,11 +44,11 @@ describe('build-client', () => {
     const content = fs.readFileSync(jsPath, 'utf8')
     expect(content.length).toBeGreaterThan(0)
     // IIFE format: starts with ( or !
-    expect(content).toMatch(/^[(!]/)
+    expect(content).toMatch(/^[(!]/u)
     // No ES module syntax
     expect(content).not.toContain('export *')
     expect(content).not.toContain('export {')
-    expect(content).not.toMatch(/^import /m)
+    expect(content).not.toMatch(/^import /mu)
   })
 
   test('copies dashboard.html', () => {

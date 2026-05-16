@@ -37,7 +37,7 @@ describe('event-bus', () => {
     expect(received).not.toBeNull()
     expect(received!.type).toBe('test:event')
     expect(received!.data).toEqual({ foo: 'bar' })
-    expect(received!.__scope).toEqual({ kind: 'global' })
+    expect(received!.scope).toEqual({ kind: 'global' })
   })
 
   test('event has correct shape with auto-populated timestamp', () => {
@@ -95,7 +95,7 @@ describe('event-bus', () => {
 
     expect(received).not.toBeNull()
     expect(received!.type).toBe('identity:set')
-    expect(received!.__scope).toEqual({ kind: 'user', userId: 'user-123' })
+    expect(received!.scope).toEqual({ kind: 'user', userId: 'user-123' })
   })
 
   test('emitUser includes turnId when provided', () => {
@@ -110,6 +110,6 @@ describe('event-bus', () => {
 
     expect(received).not.toBeNull()
     expect(received!.turnId).toBe('turn-abc')
-    expect(received!.__scope).toEqual({ kind: 'user', userId: 'user-1' })
+    expect(received!.scope).toEqual({ kind: 'user', userId: 'user-1' })
   })
 })

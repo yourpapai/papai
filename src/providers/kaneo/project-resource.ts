@@ -14,8 +14,8 @@ import { ProjectSchema } from './schemas/update-project.js'
 function generateSlug(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-|-$/gu, '')
 }
 
 // Use schemas from schema directory

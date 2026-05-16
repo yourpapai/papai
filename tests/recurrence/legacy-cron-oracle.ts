@@ -39,7 +39,7 @@ const parseField = (field: string, min: number, max: number): CronField => {
   const values: number[] = []
 
   for (const part of field.split(',')) {
-    const stepMatch = part.match(/^(.+)\/(\d+)$/)
+    const stepMatch = part.match(/^(.+)\/(\d+)$/u)
     if (stepMatch !== null) {
       const [, range, stepStr] = stepMatch
       const step = Number.parseInt(stepStr!, 10)
@@ -79,7 +79,7 @@ const parseRange = (range: string, min: number, max: number): [number, number] =
 }
 
 export const parseCron = (expression: string): ParsedCron | null => {
-  const fields = expression.trim().split(/\s+/)
+  const fields = expression.trim().split(/\s+/u)
   if (fields.length !== 5) {
     log.warn({ expression }, 'Invalid cron expression: expected 5 fields')
     return null

@@ -183,7 +183,7 @@ function clampIndices(
 }
 
 const parseModelResponse = (text: string): z.infer<typeof TrimResultSchema> => {
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  const jsonMatch = text.match(/\{[\s\S]*\}/u)
   let rawOutput: unknown = null
   if (jsonMatch !== null) {
     try {

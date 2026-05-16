@@ -108,6 +108,6 @@ describe('create-recurring-task — DTSTART anchor', () => {
       },
       toolCtx,
     )
-    expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/)
+    expect(capturedInput?.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 })

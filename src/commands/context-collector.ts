@@ -81,17 +81,17 @@ const MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [prefix: string, tokens: num
 export const resolveEncodingName = (modelName: string): 'o200k_base' | 'cl100k_base' => {
   // Match specific OpenAI model families exactly
   // gpt-4o family: gpt-4o, gpt-4o-mini, etc.
-  if (/^gpt-4o/.test(modelName)) return 'o200k_base'
+  if (/^gpt-4o/u.test(modelName)) return 'o200k_base'
   // gpt-4.1 family: gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, etc.
-  if (/^gpt-4\.1/.test(modelName)) return 'o200k_base'
+  if (/^gpt-4\.1/u.test(modelName)) return 'o200k_base'
   // o-series models with specific allowed patterns only
   // Match: o1, o1-preview, o1-mini, o3-mini, o4-mini (exact or with dash suffix for known variants)
   // Do NOT match: o1-custom, o3-other, etc.
   // o1 requires exact match or -preview/-mini suffix only
   if (modelName === 'o1') return 'o200k_base'
-  if (/^(o1-preview|o1-mini)(-|$)/.test(modelName)) return 'o200k_base'
+  if (/^(o1-preview|o1-mini)(-|$)/u.test(modelName)) return 'o200k_base'
   // o3-mini and o4-mini require exact match or known suffix pattern
-  if (/^(o3-mini|o4-mini)(-|$)/.test(modelName)) return 'o200k_base'
+  if (/^(o3-mini|o4-mini)(-|$)/u.test(modelName)) return 'o200k_base'
 
   return 'cl100k_base'
 }

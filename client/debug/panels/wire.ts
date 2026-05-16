@@ -64,7 +64,7 @@ function wireTurnModal(): {
 
   return {
     showTurn(turnId: string): void {
-      const turn = window.dashboard.__state.turns.find((t) => t.turnId === turnId)
+      const turn = window.dashboard.state.turns.find((t) => t.turnId === turnId)
       if (turn !== undefined) {
         $title.textContent = `Turn: ${turn.turnId}`
         $body.innerHTML = `<div class="tree-container">${renderTreeView(turn)}</div>`
@@ -112,7 +112,7 @@ function wireContextChips($chips: HTMLElement): void {
     }
     target.classList.add('active')
 
-    window.dashboard.__state.activeContext = context
+    window.dashboard.state.activeContext = context
     window.dashboard.renderTurns()
     window.dashboard.renderNotifications()
     window.dashboard.renderToolFailures()
@@ -157,7 +157,7 @@ function createRenderTurnsPanel(
   turnModal: ReturnType<typeof wireTurnModal>,
 ): () => void {
   return (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
     elements.$turnCount.textContent = String(state.turns.length)
     elements.$turnList.innerHTML = renderTurns(state.turns, state.activeContext)
@@ -192,7 +192,7 @@ function createRenderTurnsPanel(
 
 function createRenderNotificationsPanel(elements: ReturnType<typeof getPanelElements>): () => void {
   return (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
     elements.$notificationCount.textContent = String(state.notifications.length)
     elements.$notificationList.innerHTML = renderNotifications(state.notifications, state.activeContext)
@@ -204,7 +204,7 @@ function createRenderToolFailuresPanel(
   failureModal: ReturnType<typeof wireFailureModal>,
 ): () => void {
   return (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
     elements.$failureCount.textContent = String(state.toolFailures.length)
     elements.$failureList.innerHTML = renderToolFailures(state.toolFailures, state.activeContext)
@@ -226,7 +226,7 @@ function createRenderToolFailuresPanel(
 
 function createRenderRemindersPanel(elements: ReturnType<typeof getPanelElements>): () => void {
   return (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
     const totalCount = state.recurringTasks.length + state.deferredPrompts.length
     elements.$reminderCount.textContent = String(totalCount)
@@ -239,7 +239,7 @@ function createRenderMemosPanel(
   getMemoSearchQuery: () => string,
 ): () => void {
   return (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
     elements.$memoCount.textContent = String(state.memos.length)
     elements.$memoList.innerHTML = renderMemos(state.memos, getMemoSearchQuery())
@@ -248,7 +248,7 @@ function createRenderMemosPanel(
 
 function createRenderContextPanel(elements: ReturnType<typeof getPanelElements>): () => void {
   return (): void => {
-    const state = window.dashboard.__state
+    const state = window.dashboard.state
     if (state === undefined) return
     elements.$contextDetail.innerHTML = renderContext(
       state.identityMappings,
@@ -290,7 +290,7 @@ export function wirePanelElements(): {
     renderMemosPanel: createRenderMemosPanel(elements, () => memoSearchQuery),
     renderContextPanel: createRenderContextPanel(elements),
     updateContextChips(): void {
-      const state = window.dashboard.__state
+      const state = window.dashboard.state
       if (state === undefined) return
       elements.$contextChips.innerHTML = getContextChips(state)
     },

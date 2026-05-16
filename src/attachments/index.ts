@@ -25,9 +25,9 @@ export {
   supportsAttachmentModelInput,
 } from './resolver.js'
 export {
-  _createInMemoryBlobStore,
-  _resetBlobStore,
-  _setBlobStore,
+  createInMemoryBlobStoreForTesting,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
   buildBlobKey,
   createS3BlobStore,
   getBlobStore,

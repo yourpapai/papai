@@ -53,7 +53,7 @@ describe('license setup', () => {
   test('copies LICENSE into the final Docker image', () => {
     const dockerfile = readRepoFile('Dockerfile')
 
-    expect(dockerfile).toMatch(/FROM base AS final[\s\S]*COPY LICENSE \.\/LICENSE/)
+    expect(dockerfile).toMatch(/FROM base AS final[\s\S]*COPY LICENSE \.\/LICENSE/u)
   })
 
   test('keeps the BSL text separate from the standalone patent grant', () => {

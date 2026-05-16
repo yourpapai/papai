@@ -71,7 +71,7 @@ describe('makeGetCurrentTimeTool', () => {
 
     assert(isTimeResult(result), 'Invalid result')
     // ISO 8601 format check: YYYY-MM-DDTHH:MM:SS.sssZ or similar
-    const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+    const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u
     expect(result.datetime).toMatch(isoPattern)
   })
 

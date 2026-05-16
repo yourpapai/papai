@@ -30,7 +30,7 @@ const buildPrompt = (title: string, goal: string, content: string): string =>
 const splitParagraphs = (text: string): readonly string[] =>
   text
     .trim()
-    .split(/\n\s*\n+/)
+    .split(/\n\s*\n+/u)
     .map((paragraph) => paragraph.trim())
     .filter((paragraph) => paragraph.length > 0)
 

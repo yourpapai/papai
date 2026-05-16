@@ -12,7 +12,7 @@ export type DebugEvent = {
   type: string
   timestamp: number
   data: Record<string, unknown>
-  __scope: Scope
+  scope: Scope
   turnId?: string
 }
 
@@ -21,7 +21,7 @@ type Listener = (event: DebugEvent) => void
 const listeners = new Set<Listener>()
 
 function makeEvent(type: string, data: Record<string, unknown>, scope: Scope, turnId?: string): DebugEvent {
-  const event: DebugEvent = { type, timestamp: Date.now(), data, __scope: scope }
+  const event: DebugEvent = { type, timestamp: Date.now(), data, scope: scope }
   if (turnId !== undefined) event.turnId = turnId
   return event
 }

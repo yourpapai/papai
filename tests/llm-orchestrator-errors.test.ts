@@ -71,7 +71,7 @@ describe('Error handling in llm-orchestrator', () => {
     test('network-error has user-friendly message', () => {
       const error = systemError.networkError('Connection refused')
       const message = getUserMessage(error)
-      expect(message.toLowerCase()).toMatch(/unavailable|connection/)
+      expect(message.toLowerCase()).toMatch(/unavailable|connection/u)
     })
   })
 

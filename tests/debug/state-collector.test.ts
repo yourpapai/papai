@@ -42,8 +42,8 @@ function getFirstCallArg(enqueueMock: MockController['enqueueMock']): unknown {
 function parseSseFromUnknown(chunk: unknown): { event: string; data: Record<string, unknown> } {
   const raw = new Uint8Array(chunk instanceof Uint8Array ? chunk : [])
   const text = new TextDecoder().decode(raw)
-  const eventMatch = text.match(/^event: (.+)$/m)
-  const dataMatch = text.match(/^data: (.+)$/m)
+  const eventMatch = text.match(/^event: (.+)$/mu)
+  const dataMatch = text.match(/^data: (.+)$/mu)
 
   let event = ''
   if (eventMatch !== null) {

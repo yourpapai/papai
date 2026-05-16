@@ -7,7 +7,7 @@ import { describe, test, expect, beforeEach, mock } from 'bun:test'
 
 import { z } from 'zod'
 
-import { _userCaches } from '../../src/cache.js'
+import { userCachesForTesting } from '../../src/cache.js'
 import { setConfig } from '../../src/config.js'
 import { saveMemo } from '../../src/memos.js'
 import { makeArchiveMemosTool } from '../../src/tools/archive-memos.js'
@@ -42,7 +42,7 @@ function getInputFieldDescription(schema: unknown, fieldName: string): string | 
 
 describe('save_memo tool', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -61,7 +61,7 @@ describe('save_memo tool', () => {
 
 describe('search_memos tool', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -91,7 +91,7 @@ describe('search_memos tool', () => {
 
 describe('list_memos tool', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -113,7 +113,7 @@ describe('list_memos tool', () => {
 
 describe('archive_memos tool', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -149,7 +149,7 @@ describe('archive_memos tool', () => {
 
 describe('promote_memo tool', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
     setConfig('user1', 'timezone', 'UTC')
   })

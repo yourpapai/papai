@@ -132,7 +132,7 @@ function getRequiredSlashCommand(prefix: string | null, required: boolean): stri
   if (!required || prefix === null || !prefix.startsWith('/')) {
     return null
   }
-  return prefix.slice(1).split(/\s+/, 1)[0] ?? null
+  return prefix.slice(1).split(/\s+/u, 1)[0] ?? null
 }
 
 async function waitForRequiredCommand(

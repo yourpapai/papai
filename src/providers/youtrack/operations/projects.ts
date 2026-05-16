@@ -23,10 +23,10 @@ const log = logger.child({ scope: 'provider:youtrack:projects' })
 export function generateShortName(name: string): string {
   // Normalize Unicode characters (e.g., é → e, ñ → n)
   // Remove diacritics
-  const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/gu, '')
 
   // Extract ASCII alphanumeric characters
-  const alphanumeric = normalized.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const alphanumeric = normalized.toUpperCase().replace(/[^A-Z0-9]/gu, '')
 
   // Use first 7 chars of cleaned name, or fallback for non-ASCII names
   const base = alphanumeric.length > 0 ? alphanumeric.slice(0, 7) : 'PROJECT'

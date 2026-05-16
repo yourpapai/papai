@@ -32,29 +32,29 @@ describe('chat registry', () => {
   })
 
   test('createChatProvider("discord") returns a DiscordChatProvider instance', () => {
-    const provider = createChatProvider('discord')
+    const provider = createChatProvider('discord', { env: { DISCORD_BOT_TOKEN: 'fake-discord-token' } })
     expect(provider.name).toBe('discord')
   })
 
   test('createChatProvider("telegram") returns a TelegramChatProvider instance', () => {
-    const provider = createChatProvider('telegram')
+    const provider = createChatProvider('telegram', { env: { TELEGRAM_BOT_TOKEN: 'fake-telegram-token' } })
     expect(provider.name).toBe('telegram')
   })
 
   // Failure paths: pass { env: {} } so validation fires before the constructor reads process.env
   test('createChatProvider throws for unknown provider', () => {
-    expect(() => createChatProvider('unknown', { env: {} })).toThrow(/CHAT_PROVIDER must be/)
+    expect(() => createChatProvider('unknown', { env: {} })).toThrow(/CHAT_PROVIDER must be/u)
   })
 
   test('createChatProvider("discord") throws when DISCORD_BOT_TOKEN is missing', () => {
-    expect(() => createChatProvider('discord', { env: {} })).toThrow(/Missing discord env vars/)
+    expect(() => createChatProvider('discord', { env: {} })).toThrow(/Missing discord env vars/u)
   })
 
   test('createChatProvider("telegram") throws when TELEGRAM_BOT_TOKEN is missing', () => {
-    expect(() => createChatProvider('telegram', { env: {} })).toThrow(/Missing telegram env vars/)
+    expect(() => createChatProvider('telegram', { env: {} })).toThrow(/Missing telegram env vars/u)
   })
 
   test('createChatProvider("mattermost") throws when required env vars are missing', () => {
-    expect(() => createChatProvider('mattermost', { env: {} })).toThrow(/Missing mattermost env vars/)
+    expect(() => createChatProvider('mattermost', { env: {} })).toThrow(/Missing mattermost env vars/u)
   })
 })

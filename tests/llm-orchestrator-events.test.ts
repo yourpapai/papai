@@ -18,17 +18,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function makeEventCapture(eventType: string): {
   capture: () => unknown
   captureScope: () => unknown
-  listener: (event: { type: string; data: unknown; __scope: unknown }) => void
+  listener: (event: { type: string; data: unknown; scope: unknown }) => void
 } {
   let capturedData: unknown = null
   let capturedScope: unknown = null
   return {
     capture: () => capturedData,
     captureScope: () => capturedScope,
-    listener: (event: { type: string; data: unknown; __scope: unknown }): void => {
+    listener: (event: { type: string; data: unknown; scope: unknown }): void => {
       if (event.type === eventType) {
         capturedData = event.data
-        capturedScope = event.__scope
+        capturedScope = event.scope
       }
     },
   }

@@ -10,7 +10,7 @@
 
 // 1. Dashboard API setup (creates window.dashboard with render functions)
 import './dashboard-api.js'
-// 2. State management (sets window.dashboard.__state, clearLogs, uptime ticker)
+// 2. State management (sets window.dashboard.state, clearLogs, uptime ticker)
 import './state.js'
 // 4. Bootstrap (fetches initial logs, sets up SSE — must be last)
 import './init.js'

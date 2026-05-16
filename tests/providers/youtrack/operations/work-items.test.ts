@@ -106,7 +106,7 @@ describe('listYouTrackWorkItems', () => {
     mockFetchResponse(fetchMock, [makeWorkItemResponse({ date: 1700000000000 })])
     const result = await listYouTrackWorkItems(config, 'PROJ-1')
     // 1700000000000ms = 2023-11-14
-    expect(result[0]?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(result[0]?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
   })
 
   test('returns empty array when no work items', async () => {

@@ -285,11 +285,11 @@ describe('behavior-audit phase 1 incremental selection', () => {
     const successLine = lines[1]
     assert(successLine !== undefined, 'Expected success reporter line')
     expect(successLine).toMatch(
-      /^\[Phase 1\] \[tests\/tools\/sample\.test\.ts\] \[1\/1\] "selected case" — 2 tools, 150 tok in .+ ✓$/,
+      /^\[Phase 1\] \[tests\/tools\/sample\.test\.ts\] \[1\/1\] "selected case" — 2 tools, 150 tok in .+ ✓$/u,
     )
     expect(logLines).toHaveLength(2)
     expect(logLines[0]).toBe('[Phase 1] 1/1 — tests/tools/sample.test.ts')
-    expect(logLines[1]).toMatch(/^\n\[Phase 1 complete\] 1 files, 1 behaviors extracted, 0 failed/)
+    expect(logLines[1]).toMatch(/^\n\[Phase 1 complete\] 1 files, 1 behaviors extracted, 0 failed/u)
     expect(endCalls.count()).toBe(0)
 
     expect(progress.phase1.completedTests[testFilePath]).toEqual({ [selectedKey]: 'done' })

@@ -38,7 +38,7 @@ type TelegramMentionTarget = {
 }
 
 const parseTelegramUserId = (value: string): number | null => {
-  if (!/^\d+$/.test(value)) {
+  if (!/^\d+$/u.test(value)) {
     return null
   }
 

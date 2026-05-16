@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ToolSet } from 'ai'
 
-import { _userCaches } from '../../src/cache.js'
+import { userCachesForTesting } from '../../src/cache.js'
 import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
 import {
   resolveActiveToolDefinitions,
@@ -120,7 +120,7 @@ function createSequentialLiveToolSet(results: readonly (ToolSet | null)[]): () =
 describe('registerContextCommand', () => {
   beforeEach(async () => {
     mockLogger()
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -463,6 +463,6 @@ describe('registerContextCommand', () => {
     await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
     expect(textCalls.length).toBe(1)
-    expect(textCalls[0]).toMatch(/could not build context view/i)
+    expect(textCalls[0]).toMatch(/could not build context view/iu)
   })
 })

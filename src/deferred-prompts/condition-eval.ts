@@ -77,7 +77,7 @@ export const evaluateCondition = (
 
 const sanitizeValue = (value: string | number): string => {
   const str = String(value)
-  const clean = str.replaceAll(/[\n\r]/g, ' ').slice(0, 200)
+  const clean = str.replaceAll(/[\n\r]/gu, ' ').slice(0, 200)
   return `"${clean}"`
 }
 

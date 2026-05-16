@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, test } from 'bun:test'
 // the dashboard-api module, which wires DOM listeners at module load time.
 beforeAll(async () => {
   const html = await Bun.file('client/debug/dashboard.html').text()
-  const bodyMatch = /<body[^>]*>([\s\S]*?)<\/body>/.exec(html)
+  const bodyMatch = /<body[^>]*>([\s\S]*?)<\/body>/u.exec(html)
   if (bodyMatch !== null) {
     document.body.innerHTML = bodyMatch[1] ?? ''
   }
@@ -20,10 +20,10 @@ beforeAll(async () => {
 describe('dashboard-api', () => {
   test('registers window.dashboard global with expected shape', () => {
     expect(typeof window.dashboard).toBe('object')
-    expect(window.dashboard.__state).toBeDefined()
-    expect(window.dashboard.__state.connected).toBe(false)
-    expect(window.dashboard.__state.sessions).toBeInstanceOf(Map)
-    expect(window.dashboard.__state.logs).toEqual([])
+    expect(window.dashboard.state).toBeDefined()
+    expect(window.dashboard.state.connected).toBe(false)
+    expect(window.dashboard.state.sessions).toBeInstanceOf(Map)
+    expect(window.dashboard.state.logs).toEqual([])
     expect(typeof window.dashboard.renderConnection).toBe('function')
     expect(typeof window.dashboard.renderStats).toBe('function')
     expect(typeof window.dashboard.renderLogs).toBe('function')

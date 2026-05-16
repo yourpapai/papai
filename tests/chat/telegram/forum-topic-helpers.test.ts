@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   createForumTopicIfNeeded,
-  _clearForumStatusCache,
+  clearForumStatusCacheForTesting,
   type ForumTopicContext,
 } from '../../../src/chat/telegram/forum-topic-helpers.js'
 import { mockLogger } from '../../utils/test-helpers.js'
@@ -37,7 +37,7 @@ function createMockContext(
 describe('createForumTopicIfNeeded', () => {
   beforeEach(() => {
     mockLogger()
-    _clearForumStatusCache()
+    clearForumStatusCacheForTesting()
   })
 
   test('returns existing threadId if already in thread', async () => {

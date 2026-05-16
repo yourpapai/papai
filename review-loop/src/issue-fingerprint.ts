@@ -11,11 +11,12 @@ const normalize = (value: string): string =>
   value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
     .trim()
 
-const stripLineReferences = (value: string): string => value.replace(/\b(lines?|line)\s+\d+(?:\s*[-–]\s*\d+)?\b/gi, ' ')
+const stripLineReferences = (value: string): string =>
+  value.replace(/\b(lines?|line)\s+\d+(?:\s*[-–]\s*\d+)?\b/giu, ' ')
 
 export function computeIssueFingerprint(issue: ReviewerIssue): string {
   const source = [

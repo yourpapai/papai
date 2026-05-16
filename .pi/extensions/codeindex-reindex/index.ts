@@ -39,7 +39,7 @@ const INDEXED_ROOTS = ['src', 'client']
 const INDEXED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
 
 const isWindowsAbsolutePath = (filePath: string): boolean =>
-  /^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\')
+  /^[A-Za-z]:[\\/]/u.test(filePath) || filePath.startsWith('\\\\')
 
 const isAbsolutePath = (filePath: string): boolean => path.isAbsolute(filePath) || isWindowsAbsolutePath(filePath)
 

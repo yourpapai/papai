@@ -52,7 +52,7 @@ const resolvePrimaryRepoRoot = (repoRoot: string, input: CodeindexResolutionInpu
 
   try {
     const gitMetadata = readTextFile(gitMetadataPath)
-    const match = /^gitdir:\s+(.+)$/m.exec(gitMetadata)
+    const match = /^gitdir:\s+(.+)$/mu.exec(gitMetadata)
     if (match === null || match[1] === undefined) {
       return repoRoot
     }

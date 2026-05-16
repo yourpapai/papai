@@ -26,7 +26,7 @@ import * as _ai from 'ai'
 import * as _announcements from '../src/announcements.js'
 // Capture real module exports BEFORE any test file loads.
 // Spread into plain objects to snapshot current values.
-import { _createInMemoryBlobStore, _setBlobStore } from '../src/attachments/blob-store.js'
+import { createInMemoryBlobStoreForTesting, setBlobStoreForTesting } from '../src/attachments/blob-store.js'
 import * as _attachmentsIndex from '../src/attachments/index.js'
 import * as _stagedDownload from '../src/attachments/staged-download.js'
 import * as _bot from '../src/bot.js'
@@ -35,7 +35,7 @@ import * as _chatMattermost from '../src/chat/mattermost/index.js'
 import * as _chatRegistry from '../src/chat/registry.js'
 import * as _chatStartup from '../src/chat/startup.js'
 import * as _chatTelegram from '../src/chat/telegram/index.js'
-import { _resetDrizzleDb } from '../src/db/drizzle.js'
+import { resetDrizzleDbForTesting } from '../src/db/drizzle.js'
 import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
@@ -76,8 +76,8 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
 ]
 
 beforeEach(() => {
-  _resetDrizzleDb()
-  _setBlobStore(_createInMemoryBlobStore())
+  resetDrizzleDbForTesting()
+  setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   process.env['S3_BUCKET'] = 'test-bucket'
   process.env['S3_ACCESS_KEY_ID'] = 'test-key'
   process.env['S3_SECRET_ACCESS_KEY'] = 'test-secret'

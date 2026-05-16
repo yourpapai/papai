@@ -39,8 +39,8 @@ function countNewlines(text: string, upTo: number): number {
 type Match = { readonly type: 'describe' | 'test'; readonly name: string; readonly index: number }
 
 function collectMatches(content: string): readonly Match[] {
-  const testPattern = /\b(it|test)\s*\(\s*(['"`])(.*?)\2\s*,/g
-  const describePattern = /\bdescribe\s*\(\s*(['"`])(.*?)\1\s*,/g
+  const testPattern = /\b(it|test)\s*\(\s*(['"`])(.*?)\2\s*,/gu
+  const describePattern = /\bdescribe\s*\(\s*(['"`])(.*?)\1\s*,/gu
   const matches: Match[] = []
 
   let m: RegExpExecArray | null = null

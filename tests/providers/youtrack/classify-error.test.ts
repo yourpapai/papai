@@ -150,7 +150,7 @@ describe('classifyYouTrackError', () => {
     test('getUserMessage for network-error has user-friendly text', () => {
       const result = classifyYouTrackError(new TypeError('fetch failed'))
       const message = getUserMessage(result.appError)
-      expect(message.toLowerCase()).toMatch(/unavailable|connection/)
+      expect(message.toLowerCase()).toMatch(/unavailable|connection/u)
     })
   })
 
@@ -265,7 +265,7 @@ describe('classifyYouTrackError', () => {
       const error = new YouTrackApiError('Unauthorized', 401, {})
       const result = classifyYouTrackError(error)
       const message = getUserMessage(result.appError)
-      expect(message.toLowerCase()).toMatch(/api key|connect/)
+      expect(message.toLowerCase()).toMatch(/api key|connect/u)
     })
 
     test('network-error message mentions retry', () => {

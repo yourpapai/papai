@@ -69,7 +69,7 @@ export function addClient(controller: ReadableStreamDefaultController): void {
     recentToolFailures,
   }
 
-  sendTo(controller, { type: 'state:init', timestamp: Date.now(), data: initData, __scope: { kind: 'global' } })
+  sendTo(controller, { type: 'state:init', timestamp: Date.now(), data: initData, scope: { kind: 'global' } })
 
   if (clients.size === 1) {
     subscribe(onEvent)
@@ -90,16 +90,16 @@ function scheduleStatsBroadcast(): void {
   if (statsDebounceTimer !== null) return
   statsDebounceTimer = setTimeout(() => {
     statsDebounceTimer = null
-    broadcast({ type: 'state:stats', timestamp: Date.now(), data: { ...stats }, __scope: { kind: 'global' } })
+    broadcast({ type: 'state:stats', timestamp: Date.now(), data: { ...stats }, scope: { kind: 'global' } })
   }, 500)
 }
 
 function broadcastTrace(trace: LlmTrace, timestamp: number): void {
-  broadcast({ type: 'llm:full', timestamp, data: { ...trace }, __scope: { kind: 'global' } })
+  broadcast({ type: 'llm:full', timestamp, data: { ...trace }, scope: { kind: 'global' } })
 }
 
 function onEvent(event: DebugEvent): void {
-  if (!isVisibleToAdmin(event.__scope, adminVisibility)) return
+  if (!isVisibleToAdmin(event.scope, adminVisibility)) return
   handleLlmTraceEvent(event, { pushTrace, broadcastTrace }, stats, scheduleStatsBroadcast)
   if (event.type === 'message:received') {
     stats.totalMessages++

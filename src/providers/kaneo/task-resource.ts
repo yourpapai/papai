@@ -140,7 +140,7 @@ export class TaskResource {
       for (const task of tasks) {
         const column = result.data.columns.find((c) => c.id === task.status)
         if (column !== undefined) {
-          task.status = column.name.toLowerCase().replace(/\s+/g, '-')
+          task.status = column.name.toLowerCase().replace(/\s+/gu, '-')
         }
       }
       this.log.info({ count: tasks.length }, 'Tasks listed')

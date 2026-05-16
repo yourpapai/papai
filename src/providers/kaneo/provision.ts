@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { _userCaches, clearCachedTools } from '../../cache.js'
+import { userCachesForTesting, clearCachedTools } from '../../cache.js'
 import type { ReplyFn } from '../../chat/types.js'
 import { copyAdminLlmConfig, getConfig, isMissingLlmConfig, setConfig } from '../../config.js'
 import { logger } from '../../logger.js'
@@ -44,7 +44,7 @@ function isRegistrationDisabledErrorMessage(message: string): boolean {
 function clearProvisionedContextToolCaches(contextId: string): void {
   clearCachedTools(contextId)
   const groupScopedPrefix = `${contextId}:`
-  for (const cacheKey of _userCaches.keys()) {
+  for (const cacheKey of userCachesForTesting.keys()) {
     if (cacheKey.startsWith(groupScopedPrefix)) {
       clearCachedTools(cacheKey)
     }

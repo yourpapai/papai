@@ -24,8 +24,8 @@ import { getDomain, getDomainPrefix } from './domain-map.js'
 function getTestArtifactFileName(testFilePath: string): string {
   const domainPrefix = getDomainPrefix(testFilePath)
   const relative =
-    domainPrefix === null ? testFilePath.replace(/^tests\//, '') : testFilePath.slice(domainPrefix.length)
-  return relative.replace(/\.test\.ts$/, '.test.json').replaceAll('/', '_')
+    domainPrefix === null ? testFilePath.replace(/^tests\//u, '') : testFilePath.slice(domainPrefix.length)
+  return relative.replace(/\.test\.ts$/u, '.test.json').replaceAll('/', '_')
 }
 
 export function extractedArtifactPathForTestFile(testFilePath: string): string {

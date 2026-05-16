@@ -58,7 +58,7 @@ function writeVocab(vocabPath: string, entries: KeywordVocabularyEntry[]): void 
 }
 
 function writeExtracted(extractedDir: string, testFile: string, records: ExtractedBehaviorRecord[]): void {
-  const artifactPath = path.join(extractedDir, testFile.replace(/\.test\.ts$/, '.json'))
+  const artifactPath = path.join(extractedDir, testFile.replace(/\.test\.ts$/u, '.json'))
   mkdirSync(path.dirname(artifactPath), { recursive: true })
   writeFileSync(artifactPath, JSON.stringify(records, null, 2) + '\n')
 }

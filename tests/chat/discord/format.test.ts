@@ -38,7 +38,7 @@ describe('formatLlmOutput (Discord)', () => {
     expect(chunks[0]).toContain('col1 | col2')
     expect(chunks[0]).toContain('a | b')
     expect(chunks[0]).toContain('c | d')
-    expect(chunks[0]).not.toMatch(/^\|\s*-/m)
+    expect(chunks[0]).not.toMatch(/^\|\s*-/mu)
   })
 
   test('chunks output longer than 2000 chars into multiple strings', () => {

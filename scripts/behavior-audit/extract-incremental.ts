@@ -15,7 +15,7 @@ import { buildPhase1Fingerprint, buildPhase2Fingerprint, hashText } from './incr
 import type { ParsedTestFile, TestCase } from './test-parser.js'
 
 function deriveImplPath(testPath: string): string {
-  return testPath.replace(/^tests\//, 'src/').replace(/\.test\.ts$/, '.ts')
+  return testPath.replace(/^tests\//u, 'src/').replace(/\.test\.ts$/u, '.ts')
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

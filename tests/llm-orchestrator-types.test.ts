@@ -12,15 +12,15 @@ describe('llm-orchestrator-types', () => {
     // Type-only verification - these are compile-time checks
     // Using the types ensures the module is importable
     // Assign to a variable with underscore prefix to indicate intentional unused
-    const __deps: LlmOrchestratorDeps | undefined = undefined
-    const __invoke: InvokeModelArgs | undefined = undefined
-    const __stepIn: StepInput | undefined = undefined
-    const __stepOut: StepOutput | undefined = undefined
+    const depsTypeCheck: LlmOrchestratorDeps | undefined = undefined
+    const invokeTypeCheck: InvokeModelArgs | undefined = undefined
+    const stepInputTypeCheck: StepInput | undefined = undefined
+    const stepOutputTypeCheck: StepOutput | undefined = undefined
 
     // Use the variables to avoid unused warnings
-    expect(__deps).toBeUndefined()
-    expect(__invoke).toBeUndefined()
-    expect(__stepIn).toBeUndefined()
-    expect(__stepOut).toBeUndefined()
+    expect(depsTypeCheck).toBeUndefined()
+    expect(invokeTypeCheck).toBeUndefined()
+    expect(stepInputTypeCheck).toBeUndefined()
+    expect(stepOutputTypeCheck).toBeUndefined()
   })
 })

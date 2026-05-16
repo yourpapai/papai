@@ -224,7 +224,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
       toolCtx,
     )
 
-    expect(updateRecurringTaskCalls[0]?.updates['dtstartUtc']).toMatch(/T00:00:00\.000Z$/)
+    expect(updateRecurringTaskCalls[0]?.updates['dtstartUtc']).toMatch(/T00:00:00\.000Z$/u)
   })
 
   test('does not include triggerType in updates when no schedule is provided', async () => {

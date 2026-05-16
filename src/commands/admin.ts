@@ -32,9 +32,9 @@ const parseUserIdentifier = (
   const trimmed = input.trim()
   if (trimmed.startsWith('@')) return { type: 'username', value: trimmed.slice(1) }
   // Numeric string ID
-  if (/^\d+$/.test(trimmed)) return { type: 'id', value: trimmed }
+  if (/^\d+$/u.test(trimmed)) return { type: 'id', value: trimmed }
   // Alphanumeric username without @
-  if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return { type: 'username', value: trimmed }
+  if (/^[a-zA-Z0-9_-]+$/u.test(trimmed)) return { type: 'username', value: trimmed }
   return null
 }
 
@@ -96,7 +96,7 @@ async function handleUserCommand(
   deps: AdminCommandsDeps,
 ): Promise<void> {
   const matchStr = msg.commandMatch ?? ''
-  const args = matchStr.trim().split(/\s+/)
+  const args = matchStr.trim().split(/\s+/u)
   const subcommand = args[0]
   const identifier = args[1]
   if (subcommand === 'add') {

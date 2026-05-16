@@ -75,7 +75,7 @@ const normalizeYouTrackMockDueDateInput = (dueDate: ToolDueDateInput | undefined
 
 const formatYouTrackMockDueDateOutput = (dueDate: string | null | undefined): string | null | undefined => {
   if (dueDate === undefined || dueDate === null) return dueDate
-  return /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : dueDate
+  return /^\d{4}-\d{2}-\d{2}$/u.test(dueDate) ? dueDate : dueDate
 }
 
 const normalizeYouTrackMockListTaskParams = (params: Readonly<ListTasksParams>): ListTasksParams => ({
@@ -83,13 +83,13 @@ const normalizeYouTrackMockListTaskParams = (params: Readonly<ListTasksParams>):
   dueAfter:
     params.dueAfter === undefined
       ? undefined
-      : /^\d{4}-\d{2}-\d{2}$/.test(params.dueAfter)
+      : /^\d{4}-\d{2}-\d{2}$/u.test(params.dueAfter)
         ? params.dueAfter
         : params.dueAfter.slice(0, 10),
   dueBefore:
     params.dueBefore === undefined
       ? undefined
-      : /^\d{4}-\d{2}-\d{2}$/.test(params.dueBefore)
+      : /^\d{4}-\d{2}-\d{2}$/u.test(params.dueBefore)
         ? params.dueBefore
         : params.dueBefore.slice(0, 10),
 })

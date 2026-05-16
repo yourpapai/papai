@@ -41,12 +41,12 @@ export function chunkForDiscord(input: string, maxLen: number): string[] {
       carriedLanguage = null
     }
 
-    const fenceMatch = chunk.match(/```(\w+)?/g)
+    const fenceMatch = chunk.match(/```(\w+)?/gu)
     const fenceCount = fenceMatch?.length ?? 0
     if (fenceCount % 2 === 1) {
       // Extract language tag from opening fence if present
       const lastFence = fenceMatch![fenceMatch!.length - 1]
-      const langMatch = lastFence!.match(/```(\w+)/)
+      const langMatch = lastFence!.match(/```(\w+)/u)
       carriedLanguage = langMatch?.[1] ?? null
       chunk = chunk + '\n```'
       carriedOpenFence = true

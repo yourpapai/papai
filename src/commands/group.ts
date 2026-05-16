@@ -136,7 +136,7 @@ async function handleGroupMemberCommand(chat: ChatProvider, msg: IncomingMessage
     return
   }
 
-  const [subcommand, ...args] = match.split(/\s+/)
+  const [subcommand, ...args] = match.split(/\s+/u)
   const targetUser = args[0]
 
   switch (subcommand) {
@@ -174,7 +174,7 @@ async function handleAuthorizedGroupCommand(
     return
   }
 
-  const [subcommand, groupId] = match.split(/\s+/, 2)
+  const [subcommand, groupId] = match.split(/\s+/u, 2)
 
   if (groupId === undefined || groupId === '') {
     await reply.text(DM_ADMIN_USAGE)
@@ -287,7 +287,7 @@ async function extractUserId(
     }
     return { kind: 'resolved', userId: resolved }
   }
-  if (/^\d+$/.test(input) || /^[a-zA-Z0-9_-]+$/.test(input)) {
+  if (/^\d+$/u.test(input) || /^[a-zA-Z0-9_-]+$/u.test(input)) {
     return { kind: 'resolved', userId: input }
   }
   return { kind: 'error', message: 'Please provide a valid user mention or ID.' }

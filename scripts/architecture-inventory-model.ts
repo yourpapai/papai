@@ -289,6 +289,6 @@ export const MANDATORY_SCOPE_FAMILIES: readonly PieceCandidate[] = [
 export const slugifyPieceName = (name: string): string =>
   name
     .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+/g, '')
-    .replaceAll(/-+$/g, '')
+    .replaceAll(/[^a-z0-9]+/gu, '-')
+    .replaceAll(/^-+/gu, '')
+    .replaceAll(/-+$/gu, '')

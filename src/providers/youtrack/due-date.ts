@@ -11,10 +11,10 @@ import { YouTrackClassifiedError } from './classify-error.js'
 
 export const DueDateCustomFieldSchema = z.object({ name: z.string(), value: z.unknown().optional() })
 
-const isDateOnlyValue = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value)
+const isDateOnlyValue = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/u.test(value)
 
 const isIsoDateTimeValue = (value: string): boolean =>
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u.test(value)
 
 const isValidDateOnlyValue = (value: string): boolean => {
   if (!isDateOnlyValue(value)) return false
@@ -55,7 +55,7 @@ export const normalizeYouTrackDueDateInput = (
 }
 
 const normalizeYouTrackDueDateFilter = (value: string | undefined): string | undefined =>
-  value === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : value.slice(0, 10)
+  value === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : value.slice(0, 10)
 
 export const normalizeYouTrackListTaskParams = (params: Readonly<ListTasksParams>): ListTasksParams => ({
   ...params,

@@ -59,8 +59,8 @@ export class DiscordChatProvider implements ChatProvider {
   private messageHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
-  constructor(clientFactory?: DiscordClientFactory) {
-    const token = process.env['DISCORD_BOT_TOKEN']
+  constructor(clientFactory?: DiscordClientFactory, tokenOverride?: string) {
+    const token = tokenOverride ?? process.env['DISCORD_BOT_TOKEN']
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
@@ -86,7 +86,7 @@ export class DiscordChatProvider implements ChatProvider {
 
   async resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
     const clean = username.startsWith('@') ? username.slice(1) : username
-    if (/^\d+$/.test(clean)) return clean
+    if (/^\d+$/u.test(clean)) return clean
     if (context.contextType !== 'group') return null
     if (this.client === null) return null
     const resolvedGuild = await resolveDiscordGuildFromContext(this.client, context.contextId)

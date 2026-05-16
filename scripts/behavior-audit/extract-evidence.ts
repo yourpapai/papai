@@ -127,7 +127,7 @@ const loadCodeindexDeps = async (
 }
 
 function extractImportedNames(source: string): readonly string[] {
-  const pattern = /import\s*\{([^}]+)\}\s*from/g
+  const pattern = /import\s*\{([^}]+)\}\s*from/gu
   const names: string[] = []
   let match: RegExpExecArray | null = null
   while ((match = pattern.exec(source)) !== null) {
@@ -136,7 +136,7 @@ function extractImportedNames(source: string): readonly string[] {
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && s !== 'type')
-      .map((s) => s.replace(/^type\s+/, ''))
+      .map((s) => s.replace(/^type\s+/u, ''))
       .filter((s) => s.length > 0)
     names.push(...parsed)
   }

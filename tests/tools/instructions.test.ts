@@ -6,7 +6,7 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { _userCaches } from '../../src/cache.js'
+import { userCachesForTesting } from '../../src/cache.js'
 import { saveInstruction } from '../../src/instructions.js'
 import {
   makeSaveInstructionTool,
@@ -17,7 +17,7 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 beforeEach(async () => {
   mockLogger()
-  _userCaches.clear()
+  userCachesForTesting.clear()
   await setupTestDb()
 })
 

@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 
 import { getSessionSnapshots } from '../src/cache-snapshots.js'
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
 
 // Local type matching UserCache from cache.ts
 // Extended to allow extra properties that mapHistoryEntry checks for
@@ -27,7 +27,7 @@ type UserCache = {
 
 describe('getSessionSnapshots', () => {
   beforeEach(() => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('returns empty array when no caches for user', () => {
@@ -64,7 +64,7 @@ describe('getSessionSnapshots', () => {
       lastAccessed: Date.now(),
     }
 
-    _userCaches.set(userId, cache)
+    userCachesForTesting.set(userId, cache)
 
     const snapshots = getSessionSnapshots(userId)
 
@@ -113,7 +113,7 @@ describe('getSessionSnapshots', () => {
       lastAccessed: Date.now(),
     }
 
-    _userCaches.set(userId, cache)
+    userCachesForTesting.set(userId, cache)
 
     const snapshots = getSessionSnapshots(userId)
 
@@ -134,7 +134,7 @@ describe('getSessionSnapshots', () => {
       lastAccessed: Date.now(),
     }
 
-    _userCaches.set(userId, cache)
+    userCachesForTesting.set(userId, cache)
 
     const snapshots = getSessionSnapshots(userId)
 
@@ -155,7 +155,7 @@ describe('getSessionSnapshots', () => {
       lastAccessed: Date.now(),
     }
 
-    _userCaches.set(userId, cache)
+    userCachesForTesting.set(userId, cache)
 
     const snapshots = getSessionSnapshots(userId)
 
@@ -178,7 +178,7 @@ describe('getSessionSnapshots', () => {
       lastAccessed: Date.now(),
     }
 
-    _userCaches.set(userId, cache)
+    userCachesForTesting.set(userId, cache)
 
     const snapshots = getSessionSnapshots(userId)
 

@@ -56,8 +56,8 @@ describe('dashboard-smoke', () => {
       expect(body).not.toContain('export *')
       expect(body).not.toContain('export {')
       expect(body).not.toContain('export default')
-      expect(body).not.toMatch(/^import /m)
-      expect(body).not.toMatch(/^export /m)
+      expect(body).not.toMatch(/^import /mu)
+      expect(body).not.toMatch(/^export /mu)
     })
 
     test('contains dashboard initialization code', async () => {
@@ -121,11 +121,11 @@ describe('dashboard-smoke', () => {
       const body = await res.text()
 
       // Should be an IIFE (starts with `(` or `!`)
-      expect(body).toMatch(/^[(!]/)
+      expect(body).toMatch(/^[(!]/u)
 
       // Should not have ES module import/export statements that would fail in browser
-      expect(body).not.toMatch(/^import /m)
-      expect(body).not.toMatch(/^export /m)
+      expect(body).not.toMatch(/^import /mu)
+      expect(body).not.toMatch(/^export /mu)
       expect(body).not.toContain('export *')
       expect(body).not.toContain('export {')
       expect(body).not.toContain('export default')

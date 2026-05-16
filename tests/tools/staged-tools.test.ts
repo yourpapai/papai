@@ -6,7 +6,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { _createInMemoryBlobStore, _resetBlobStore, _setBlobStore } from '../../src/attachments/blob-store.js'
+import {
+  createInMemoryBlobStoreForTesting,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
+} from '../../src/attachments/blob-store.js'
 import { stageFileMetadata } from '../../src/attachments/staged.js'
 import { makeResolveStagedFileTool, makeSearchStagedFilesTool } from '../../src/tools/staged-tools.js'
 import { getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
@@ -36,7 +40,7 @@ describe('staged file tools', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    _setBlobStore(_createInMemoryBlobStore())
+    setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
     downloadCalls = []
 
     await stageFileMetadata({
@@ -65,7 +69,7 @@ describe('staged file tools', () => {
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
   })
 
   describe('search_staged_files', () => {
@@ -142,7 +146,7 @@ describe('staged file tools', () => {
       expect(first).toMatchObject({ status: 'resolved', filename: 'dup.pdf' })
 
       const firstAttachmentId = extractAttachmentId(first)
-      expect(firstAttachmentId).toMatch(/^att_[0-9a-f-]+$/)
+      expect(firstAttachmentId).toMatch(/^att_[0-9a-f-]+$/u)
 
       const second = await execute({ stagedId: staged.stagedId })
       expect(second).toEqual({ status: 'already_resolved', attachmentId: firstAttachmentId })

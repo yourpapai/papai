@@ -17,7 +17,7 @@ const log = logger.child({ scope: 'tool:list-tasks' })
 const dueDateFilterSchema = z
   .string()
   .refine(
-    (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) || z.iso.datetime({ offset: true }).safeParse(value).success,
+    (value) => /^\d{4}-\d{2}-\d{2}$/u.test(value) || z.iso.datetime({ offset: true }).safeParse(value).success,
     'Expected YYYY-MM-DD or ISO datetime with offset',
   )
 

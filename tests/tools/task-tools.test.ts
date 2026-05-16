@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { setCachedConfig, _userCaches } from '../../src/cache.js'
+import { setCachedConfig, userCachesForTesting } from '../../src/cache.js'
 import { makeCreateTaskTool } from '../../src/tools/create-task.js'
 import { makeDeleteTaskTool } from '../../src/tools/delete-task.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
@@ -76,7 +76,7 @@ describe('Task Tools', () => {
   })
 
   afterAll(() => {
-    _userCaches.delete('user-1')
+    userCachesForTesting.delete('user-1')
   })
 
   describe('makeCreateTaskTool', () => {

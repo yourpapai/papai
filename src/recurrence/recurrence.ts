@@ -23,7 +23,7 @@ export const recurrenceSpecToRrule = (spec: RecurrenceSpec): CompiledRecurrence 
   if (spec.interval !== undefined) parts.push(`INTERVAL=${spec.interval}`)
   if (spec.count !== undefined) parts.push(`COUNT=${spec.count}`)
   if (spec.until !== undefined) {
-    const until = spec.until.replace(/[-:]/g, '').replace(/\.\d+/, '')
+    const until = spec.until.replace(/[-:]/gu, '').replace(/\.\d+/u, '')
     parts.push(`UNTIL=${until}`)
   }
   if (spec.byMonth !== undefined) parts.push(`BYMONTH=${spec.byMonth.join(',')}`)

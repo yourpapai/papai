@@ -7,7 +7,7 @@ import { getCoverage } from '../coverage.mjs'
 import { findTestFile, isTestFile, isGateableImplFile } from '../test-resolver.mjs'
 import { runTest } from '../test-runner.mjs'
 
-const IMPL_PATTERN = /\.(?:ts|js|tsx|jsx)$/
+const IMPL_PATTERN = /\.(?:ts|js|tsx|jsx)$/u
 
 /**
  * @typedef {Object} BlockResult

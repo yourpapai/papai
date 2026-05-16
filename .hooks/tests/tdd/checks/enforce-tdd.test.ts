@@ -39,7 +39,7 @@ describe('enforceTdd', () => {
     isGateableImplFileImpl = () => true
     findTestFileImpl = () => null
     suggestTestPathImpl = (implRelPath: string) => {
-      const withoutSrc = implRelPath.replace(/^src[/\\]/, '')
+      const withoutSrc = implRelPath.replace(/^src[/\\]/u, '')
       const ext = path.extname(withoutSrc)
       const base = withoutSrc.slice(0, -ext.length)
       return path.join('tests', `${base}.test${ext}`)

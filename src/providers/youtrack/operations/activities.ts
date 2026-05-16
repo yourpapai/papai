@@ -17,7 +17,7 @@ const log = logger.child({ scope: 'provider:youtrack:activities' })
 
 const parseActivityBoundaryTimestamp = (field: 'start' | 'end', value: string): string => {
   const parsedValue = value.trim()
-  const timezoneAwareIsoDatetime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/
+  const timezoneAwareIsoDatetime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/u
   if (!timezoneAwareIsoDatetime.test(parsedValue)) {
     throw new YouTrackClassifiedError(
       `Invalid ${field}: ${value}`,

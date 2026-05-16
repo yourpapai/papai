@@ -7,7 +7,7 @@ import type { ContextType } from '../types.js'
 
 /** Strip the leading `<@botId>` or `<@!botId>` mention from a Discord message content and trim. */
 export function stripBotMention(content: string, botId: string): string {
-  const pattern = new RegExp(`^<@!?${RegExp.escape(botId)}>\\s*`)
+  const pattern = new RegExp(`^<@!?${RegExp.escape(botId)}>\\s*`, 'u')
   return content.replace(pattern, '').trim()
 }
 

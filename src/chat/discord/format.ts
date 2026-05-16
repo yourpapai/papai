@@ -25,7 +25,7 @@ function flattenTables(text: string): string {
   while (i < lines.length) {
     const line = lines[i]!
     const next = lines[i + 1]
-    if (line.trim().startsWith('|') && next !== undefined && /^\|[\s-:|]+\|\s*$/.test(next.trim())) {
+    if (line.trim().startsWith('|') && next !== undefined && /^\|[\s:|-]+\|\s*$/u.test(next.trim())) {
       const header = stripPipes(line)
       out.push(header)
       i += 2
@@ -44,12 +44,12 @@ function flattenTables(text: string): string {
 function stripPipes(row: string): string {
   return row
     .trim()
-    .replace(/^\||\|$/g, '')
+    .replace(/^\||\|$/gu, '')
     .split('|')
     .map((cell) => cell.trim())
     .join(' | ')
 }
 
 function escapeMassMentions(text: string): string {
-  return text.replace(/@everyone/g, '@\u200beveryone').replace(/@here/g, '@\u200bhere')
+  return text.replace(/@everyone/gu, '@\u200beveryone').replace(/@here/gu, '@\u200bhere')
 }

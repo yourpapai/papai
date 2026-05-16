@@ -67,14 +67,16 @@ export class TelegramChatProvider implements ChatProvider {
   readonly traits = telegramTraits
   readonly configRequirements = telegramConfigRequirements
   private readonly bot: Bot
+  private readonly token: string
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor() {
-    const token = process.env['TELEGRAM_BOT_TOKEN']
+  constructor(tokenOverride?: string) {
+    const token = tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }
+    this.token = token
     this.bot = new Bot(token)
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
@@ -163,7 +165,7 @@ export class TelegramChatProvider implements ChatProvider {
   }
   resolveUserId(username: string, _context: ResolveUserContext): Promise<string | null> {
     const clean = username.startsWith('@') ? username.slice(1) : username
-    return Promise.resolve(/^\d+$/.test(clean) ? clean : null)
+    return Promise.resolve(/^\d+$/u.test(clean) ? clean : null)
   }
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveTelegramGroupLabel((chatId) => this.bot.api.getChat(chatId), groupId)
@@ -276,8 +278,7 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const token = process.env['TELEGRAM_BOT_TOKEN'] ?? ''
-    const fetcher = createTelegramFileFetcher(this.bot.api, token, log)
+    const fetcher = createTelegramFileFetcher(this.bot.api, this.token, log)
     return extractFilesFromContext(ctx, fetcher)
   }
 }
