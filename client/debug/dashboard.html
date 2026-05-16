@@ -25,7 +25,41 @@
       </div>
     </header>
 
+    <div id="context-chips" class="context-chips">
+      <button class="chip active" data-context="all">all</button>
+    </div>
+
     <main>
+      <div class="panel-grid">
+        <section id="panel-turns" class="panel">
+          <h2>Turns <span id="turn-count" class="count-badge">0</span></h2>
+          <div id="turn-list"></div>
+        </section>
+        <section id="panel-notifications" class="panel">
+          <h2>Notifications <span id="notification-count" class="count-badge">0</span></h2>
+          <div id="notification-list"></div>
+        </section>
+        <section id="panel-tool-failures" class="panel">
+          <h2>Tool Failures <span id="failure-count" class="count-badge">0</span></h2>
+          <div id="failure-list"></div>
+        </section>
+        <section id="panel-reminders" class="panel">
+          <h2>Reminders <span id="reminder-count" class="count-badge">0</span></h2>
+          <div id="reminder-list"></div>
+        </section>
+        <section id="panel-memos" class="panel">
+          <h2>Memos <span id="memo-count" class="count-badge">0</span></h2>
+          <div class="memo-toolbar">
+            <input id="memo-search" type="text" placeholder="search memos..." />
+          </div>
+          <div id="memo-list"></div>
+        </section>
+        <section id="panel-context" class="panel">
+          <h2>Context</h2>
+          <div id="context-detail"></div>
+        </section>
+      </div>
+
       <aside id="left-panel">
         <section id="sessions">
           <h2>Sessions <span id="session-count" class="count-badge">0</span></h2>
@@ -53,6 +87,10 @@
               <option value="">all scopes</option>
             </select>
             <input id="log-search" type="text" placeholder="search..." />
+            <div id="log-turnid-badge" class="log-turnid-badge" hidden>
+              <span id="log-turnid-label"></span>
+              <button id="log-turnid-clear" type="button">&times;</button>
+            </div>
             <button id="log-clear" type="button">clear</button>
           </div>
         </div>
@@ -91,6 +129,28 @@
           <button id="trace-modal-close" class="modal-close">&times;</button>
         </div>
         <div id="trace-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Turn Detail Modal -->
+    <div id="turn-modal" class="modal" hidden>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="turn-modal-title">Turn Details</h3>
+          <button id="turn-modal-close" class="modal-close">&times;</button>
+        </div>
+        <div id="turn-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Failure Detail Modal -->
+    <div id="failure-modal" class="modal" hidden>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="failure-modal-title">Tool Failure Details</h3>
+          <button id="failure-modal-close" class="modal-close">&times;</button>
+        </div>
+        <div id="failure-modal-body" class="modal-body"></div>
       </div>
     </div>
 

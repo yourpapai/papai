@@ -19,7 +19,7 @@ import { parseHistoryFromDb } from './cache-helpers.js'
 import type { CachedFact, CachedInstruction, UserCache } from './cache-types.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions, users } from './db/schema.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'cache' })
@@ -46,7 +46,7 @@ export function cleanupExpiredCaches(): void {
   }
   for (const userId of expired) {
     userCaches.delete(userId)
-    emit('cache:expire', { userId })
+    emitUser('cache:expire', userId, {})
     log.debug({ userId }, 'Expired user cache removed')
   }
   if (expired.length > 0) {
@@ -89,7 +89,7 @@ export function getCachedHistory(userId: string): readonly ModelMessage[] {
       }
     }
     cache.config.set('history_loaded', 'true')
-    emit('cache:load', { userId, field: 'history' })
+    emitUser('cache:load', userId, { field: 'history' })
   }
   return [...cache.history]
 }
@@ -98,14 +98,14 @@ export function setCachedHistory(userId: string, messages: readonly ModelMessage
   const cache = getOrCreateCache(userId)
   cache.history = [...messages]
   syncHistoryToDb(userId, cache.history)
-  emit('cache:sync', { userId, field: 'history', operation: 'set' })
+  emitUser('cache:sync', userId, { field: 'history', operation: 'set' })
 }
 
 export function appendToCachedHistory(userId: string, messages: readonly ModelMessage[]): void {
   const cache = getOrCreateCache(userId)
   cache.history.push(...messages)
   syncHistoryToDb(userId, cache.history)
-  emit('cache:sync', { userId, field: 'history', operation: 'append' })
+  emitUser('cache:sync', userId, { field: 'history', operation: 'append' })
 }
 
 export function getCachedSummary(userId: string): string | null {
@@ -119,7 +119,7 @@ export function getCachedSummary(userId: string): string | null {
       .get()
     cache.summary = row?.summary ?? null
     cache.config.set('summary_loaded', 'true')
-    emit('cache:load', { userId, field: 'summary' })
+    emitUser('cache:load', userId, { field: 'summary' })
   }
   return cache.summary
 }
@@ -128,7 +128,7 @@ export function setCachedSummary(userId: string, summary: string): void {
   const cache = getOrCreateCache(userId)
   cache.summary = summary
   syncSummaryToDb(userId, summary)
-  emit('cache:sync', { userId, field: 'summary', operation: 'set' })
+  emitUser('cache:sync', userId, { field: 'summary', operation: 'set' })
 }
 
 export function getCachedFacts(userId: string): readonly CachedFact[] {
@@ -148,7 +148,7 @@ export function getCachedFacts(userId: string): readonly CachedFact[] {
       .all()
     cache.facts = rows
     cache.config.set('facts_loaded', 'true')
-    emit('cache:load', { userId, field: 'facts' })
+    emitUser('cache:load', userId, { field: 'facts' })
   }
   return cache.facts
 }
@@ -166,7 +166,7 @@ export function upsertCachedFact(userId: string, fact: { identifier: string; tit
     }
   }
   syncFactToDb(userId, fact, now)
-  emit('cache:sync', { userId, field: 'facts', operation: 'upsert' })
+  emitUser('cache:sync', userId, { field: 'facts', operation: 'upsert' })
 }
 
 export function getCachedConfig(userId: string, key: string): string | null {
@@ -179,7 +179,7 @@ export function getCachedConfig(userId: string, key: string): string | null {
       .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${key}`)
       .get()
     cache.config.set(key, row?.value ?? null)
-    emit('cache:load', { userId, field: 'config' })
+    emitUser('cache:load', userId, { field: 'config' })
   }
   return cache.config.get(key) ?? null
 }
@@ -188,7 +188,7 @@ export function setCachedConfig(userId: string, key: string, value: string): voi
   const cache = getOrCreateCache(userId)
   cache.config.set(key, value)
   syncConfigToDb(userId, key, value)
-  emit('cache:sync', { userId, field: 'config', operation: 'set' })
+  emitUser('cache:sync', userId, { field: 'config', operation: 'set' })
 }
 
 export function getCachedWorkspace(userId: string): string | null {
@@ -202,7 +202,7 @@ export function getCachedWorkspace(userId: string): string | null {
       .get()
     cache.workspaceId = row?.kaneoWorkspaceId ?? null
     cache.config.set('workspace_loaded', 'true')
-    emit('cache:load', { userId, field: 'workspace' })
+    emitUser('cache:load', userId, { field: 'workspace' })
   }
   return cache.workspaceId
 }
@@ -211,7 +211,7 @@ export function setCachedWorkspace(userId: string, workspaceId: string): void {
   const cache = getOrCreateCache(userId)
   cache.workspaceId = workspaceId
   syncWorkspaceToDb(userId, workspaceId)
-  emit('cache:sync', { userId, field: 'workspace', operation: 'set' })
+  emitUser('cache:sync', userId, { field: 'workspace', operation: 'set' })
 }
 
 export function getCachedTools(userId: string): unknown {
@@ -229,7 +229,7 @@ export function clearCachedTools(userId: string): void {
 
 export function evictUser(userId: string): void {
   userCaches.delete(userId)
-  emit('cache:expire', { userId })
+  emitUser('cache:expire', userId, {})
   log.debug({ userId }, 'User cache evicted')
 }
 
@@ -265,7 +265,7 @@ export function getCachedInstructions(contextId: string): readonly CachedInstruc
       .orderBy(sql`${userInstructions.createdAt} ASC`)
       .all()
     cache.instructions = rows
-    emit('cache:load', { userId: contextId, field: 'instructions' })
+    emitUser('cache:load', contextId, { field: 'instructions' })
   }
   return cache.instructions
 }
@@ -276,7 +276,7 @@ export function addCachedInstruction(contextId: string, instruction: { id: strin
   const createdAt = new Date().toISOString()
   cache.instructions.push({ ...instruction, createdAt })
   syncInstructionToDb(contextId, { ...instruction, createdAt })
-  emit('cache:sync', { userId: contextId, field: 'instructions', operation: 'set' })
+  emitUser('cache:sync', contextId, { field: 'instructions', operation: 'set' })
 }
 
 export function deleteCachedInstruction(contextId: string, id: string): void {
@@ -285,5 +285,5 @@ export function deleteCachedInstruction(contextId: string, id: string): void {
     cache.instructions = cache.instructions.filter((i) => i.id !== id)
   }
   deleteInstructionFromDb(contextId, id)
-  emit('cache:sync', { userId: contextId, field: 'instructions', operation: 'delete' })
+  emitUser('cache:sync', contextId, { field: 'instructions', operation: 'delete' })
 }

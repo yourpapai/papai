@@ -55,6 +55,7 @@ const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (ite
     contextType: item.contextType,
     newAttachmentIds: item.newAttachmentIds,
     reply,
+    turnId: 'test-turn-id',
   }).catch(() => {})
 }
 

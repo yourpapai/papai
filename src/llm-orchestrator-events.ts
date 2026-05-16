@@ -5,7 +5,7 @@
 
 import type { ModelMessage, ToolSet } from 'ai'
 
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { buildStepsDetail } from './llm-orchestrator-steps.js'
 import { logger } from './logger.js'
 
@@ -123,14 +123,26 @@ export function emitLlmStart(
   ...args:
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet]
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet, routing: ToolRoutingTelemetry]
+    | [
+        contextId: string,
+        mainModel: string,
+        messages: ModelMessage[],
+        tools: ToolSet,
+        routing: ToolRoutingTelemetry | undefined,
+        turnId: string,
+      ]
 ): void {
-  const [contextId, mainModel, messages, tools, routing] = args
-  emit('llm:start', {
-    userId: contextId,
-    model: mainModel,
-    messageCount: messages.length,
-    ...buildToolTelemetry(tools, routing),
-  })
+  const [contextId, mainModel, messages, tools, routing, turnId] = args
+  emitUser(
+    'llm:start',
+    contextId,
+    {
+      model: mainModel,
+      messageCount: messages.length,
+      ...buildToolTelemetry(tools, routing),
+    },
+    turnId,
+  )
 }
 
 export function emitLlmEnd(
@@ -152,20 +164,34 @@ export function emitLlmEnd(
         tools: ToolSet,
         routing: ToolRoutingTelemetry,
       ]
+    | [
+        contextId: string,
+        mainModel: string,
+        result: ResolvedStreamTextResult,
+        startTime: number,
+        messages: ModelMessage[],
+        tools: ToolSet,
+        routing: ToolRoutingTelemetry | undefined,
+        turnId: string,
+      ]
 ): void {
-  const [contextId, mainModel, result, startTime, messages, tools, routing] = args
-  emit('llm:end', {
-    userId: contextId,
-    model: mainModel,
-    steps: result.steps.length,
-    totalDuration: Date.now() - startTime,
-    tokenUsage: result.usage,
-    responseId: result.response.id,
-    actualModel: result.response.modelId,
-    finishReason: result.finishReason,
-    messageCount: messages.length,
-    ...buildToolTelemetry(tools, routing),
-    generatedText: result.text,
-    stepsDetail: buildStepsDetail(result.steps),
-  })
+  const [contextId, mainModel, result, startTime, messages, tools, routing, turnId] = args
+  emitUser(
+    'llm:end',
+    contextId,
+    {
+      model: mainModel,
+      steps: result.steps.length,
+      totalDuration: Date.now() - startTime,
+      tokenUsage: result.usage,
+      responseId: result.response.id,
+      actualModel: result.response.modelId,
+      finishReason: result.finishReason,
+      messageCount: messages.length,
+      ...buildToolTelemetry(tools, routing),
+      generatedText: result.text,
+      stepsDetail: buildStepsDetail(result.steps),
+    },
+    turnId,
+  )
 }

@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { emit } from '../../src/debug/event-bus.js'
+import { emitGlobal, emitUser, emitGroup } from '../../src/debug/event-bus.js'
 import { addClient, init, removeClient } from '../../src/debug/state-collector.js'
 import { resetStats } from '../utils/test-helpers.js'
 
@@ -155,7 +155,7 @@ describe('state-collector', () => {
     const { ctrl, enqueueMock } = createMockController()
     addClient(track(ctrl))
 
-    emit('message:received', { userId: 'admin-1', textLength: 10 })
+    emitGlobal('message:received', { userId: 'admin-1', textLength: 10 })
 
     expect(enqueueMock).toHaveBeenCalledTimes(2)
     const events = getAllSseEvents(enqueueMock)
@@ -167,7 +167,7 @@ describe('state-collector', () => {
     const { ctrl, enqueueMock } = createMockController()
     addClient(track(ctrl))
 
-    emit('message:received', { userId: 'other-user', textLength: 10 })
+    emitUser('message:received', 'other-user', { textLength: 10 })
 
     expect(enqueueMock).toHaveBeenCalledTimes(1)
   })
@@ -177,7 +177,7 @@ describe('state-collector', () => {
     const { ctrl, enqueueMock } = createMockController()
     addClient(track(ctrl))
 
-    emit('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
+    emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
 
     expect(enqueueMock).toHaveBeenCalledTimes(2)
     const events = getAllSseEvents(enqueueMock)
@@ -190,7 +190,7 @@ describe('state-collector', () => {
     addClient(ctrl)
     removeClient(ctrl)
 
-    emit('message:received', { userId: 'admin-1', textLength: 5 })
+    emitGlobal('message:received', { userId: 'admin-1', textLength: 5 })
 
     expect(enqueueMock).toHaveBeenCalledTimes(1)
   })
@@ -206,10 +206,10 @@ describe('state-collector', () => {
       throw new Error('stream closed')
     })
 
-    expect(() => emit('test:event', { userId: 'admin-1' })).not.toThrow()
+    expect(() => emitGlobal('test:event', { userId: 'admin-1' })).not.toThrow()
 
     badEnqueue.mockImplementation(() => {})
-    emit('test:after', { userId: 'admin-1' })
+    emitGlobal('test:after', { userId: 'admin-1' })
 
     expect(goodEnqueue).toHaveBeenCalledTimes(3)
   })
@@ -220,8 +220,8 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emit('llm:start', { userId: 'admin-1', model: 'gpt-4', messageCount: 5, toolCount: 10 })
-      emit('llm:tool_result', {
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4', messageCount: 5, toolCount: 10 })
+      emitGlobal('llm:tool_result', {
         userId: 'admin-1',
         toolName: 'create_task',
         toolCallId: 'call-1',
@@ -230,7 +230,7 @@ describe('state-collector', () => {
         args: { title: 'Test' },
         result: { id: 'task-1' },
       })
-      emit('llm:end', {
+      emitGlobal('llm:end', {
         userId: 'admin-1',
         model: 'gpt-4',
         steps: 2,
@@ -279,8 +279,8 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emit('llm:start', { userId: 'admin-1', model: 'gpt-4' })
-      emit('llm:tool_result', {
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
+      emitGlobal('llm:tool_result', {
         userId: 'admin-1',
         toolName: 'search_tasks',
         toolCallId: 'call-2',
@@ -289,7 +289,7 @@ describe('state-collector', () => {
         args: { query: 'invalid' },
         error: 'API error: 500',
       })
-      emit('llm:end', {
+      emitGlobal('llm:end', {
         userId: 'admin-1',
         model: 'gpt-4',
         steps: 1,
@@ -313,8 +313,8 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emit('llm:start', { userId: 'admin-1', model: 'gpt-4' })
-      emit('llm:end', {
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
+      emitGlobal('llm:end', {
         userId: 'admin-1',
         model: 'gpt-4',
         steps: 2,
@@ -354,8 +354,8 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emit('llm:start', { userId: 'admin-1', model: 'gpt-4' })
-      emit('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'boom' })
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
+      emitGlobal('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'boom' })
 
       const events = getAllSseEvents(enqueueMock)
       const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
@@ -369,7 +369,7 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emit('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'crash' })
+      emitGlobal('llm:error', { userId: 'admin-1', model: 'gpt-4', error: 'crash' })
 
       const events = getAllSseEvents(enqueueMock)
       const eventData = getTraceEventData(getLastEventByName(events, 'llm:full'))
@@ -382,8 +382,8 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emit('llm:start', { userId: 'admin-1', model: 'gpt-4' })
-      emit('llm:end', {
+      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4' })
+      emitGlobal('llm:end', {
         userId: 'admin-1',
         model: 'gpt-4',
         steps: 1,
@@ -433,6 +433,56 @@ describe('state-collector', () => {
       assert.ok(isRecord(tc1))
       expect(tc0['result']).toEqual({ hits: 3 })
       expect(tc1['error']).toBe('permission denied')
+    })
+  })
+
+  describe('scope-based visibility filtering', () => {
+    test('user-scoped event for admin passes through', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitUser('message:received', 'admin-1', { textLength: 10 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).toContain('message:received')
+    })
+
+    test('user-scoped event for other user is filtered out', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitUser('message:received', 'other-user', { textLength: 10 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).not.toContain('message:received')
+    })
+
+    test('group-scoped event is filtered out when groupIds is empty', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitGroup('message:received', 'group-a', { textLength: 10 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).not.toContain('message:received')
+    })
+
+    test('global-scoped event passes through', () => {
+      init('admin-1')
+      const { ctrl, enqueueMock } = createMockController()
+      addClient(track(ctrl))
+
+      emitGlobal('scheduler:tick', { tickCount: 1, dueTaskCount: 0 })
+
+      const events = getAllSseEvents(enqueueMock)
+      const eventNames = events.map((e) => e.event)
+      expect(eventNames).toContain('scheduler:tick')
     })
   })
 })

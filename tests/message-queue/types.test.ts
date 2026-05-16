@@ -40,6 +40,7 @@ describe('CoalescedItem interface', () => {
       contextType: 'dm',
       newAttachmentIds: [],
       reply: mockReply,
+      turnId: 'test-turn-id',
     }
     expect(item.text).toBe('Hello')
     expect(item.reply).toBe(mockReply)

@@ -25,6 +25,9 @@ import type {
   SchedulerTickEvent,
   PollerEvent,
   MessageCacheEvent,
+  Turn,
+  Notification,
+  ToolFailure,
 } from '../../src/debug/schemas.js'
 
 // Re-export all types
@@ -47,6 +50,68 @@ export type {
   SchedulerTickEvent,
   PollerEvent,
   MessageCacheEvent,
+  Turn,
+  Notification,
+  ToolFailure,
+}
+
+/**
+ * Recurring task type for dashboard display
+ */
+export type RecurringTask = {
+  id: string
+  userId: string
+  title: string
+  rrule: string | null
+  nextRun: string | null
+  enabled: boolean
+  lastRun: string | null
+}
+
+/**
+ * Deferred prompt type for dashboard display
+ */
+export type DeferredPrompt = {
+  id: string
+  createdByUserId: string
+  prompt: string
+  fireAt: string
+  rrule: string | null
+  status: string
+}
+
+/**
+ * Memo type for dashboard display
+ */
+export type Memo = {
+  id: string
+  userId: string
+  content: string
+  summary: string | null
+  tags: readonly string[]
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Identity mapping type for dashboard display
+ */
+export type IdentityMappingEntry = {
+  userId: string
+  provider: string
+  providerUserId: string | null
+  providerUserLogin: string | null
+  displayName: string | null
+}
+
+/**
+ * Authorized group type for dashboard display
+ */
+export type AuthorizedGroupEntry = {
+  group_id: string
+  added_by: string
+  added_at: string
 }
 
 /**
@@ -78,6 +143,17 @@ export interface DashboardState {
   llmTraces: LlmTrace[]
   logs: LogEntry[]
   logScopes: Set<string>
+  turns: Turn[]
+  notifications: Notification[]
+  toolFailures: ToolFailure[]
+  recurringTasks: RecurringTask[]
+  deferredPrompts: DeferredPrompt[]
+  memos: Memo[]
+  identityMappings: Map<string, IdentityMappingEntry>
+  activeConfigEditors: Set<string>
+  authorizedGroups: AuthorizedGroupEntry[]
+  activeContext: string
+  activeLogFilter: { turnId?: string }
 }
 
 /**
@@ -90,6 +166,12 @@ export interface DashboardAPI {
   renderSessions(sessions: Map<string, Session>, wizards: Map<string, DashboardWizard>): void
   renderTraces(traces: LlmTrace[]): void
   renderLogs(): void
+  renderTurns(): void
+  renderNotifications(): void
+  renderToolFailures(): void
+  renderReminders(): void
+  renderMemos(): void
+  renderContext(): void
   updateScopeFilter(scopes: Set<string>): void
   clearLogs(): void
   __state: DashboardState

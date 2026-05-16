@@ -119,6 +119,29 @@ describe('search', () => {
     expect(results[0]!.msg).toBe('error in generateText')
   })
 
+  test('filters by turnId', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(makeEntry({ msg: 'msg-a', turnId: 'turn-1' }))
+    buf.push(makeEntry({ msg: 'msg-b', turnId: 'turn-2' }))
+    buf.push(makeEntry({ msg: 'msg-c', turnId: 'turn-1' }))
+
+    const results = buf.search({ turnId: 'turn-1' })
+    expect(results).toHaveLength(2)
+    expect(results[0]!.msg).toBe('msg-a')
+    expect(results[1]!.msg).toBe('msg-c')
+  })
+
+  test('turnId filter combines with other filters', () => {
+    const buf = new LogRingBuffer(10)
+    buf.push(makeEntry({ level: 30, msg: 'info-a', turnId: 'turn-1' }))
+    buf.push(makeEntry({ level: 50, msg: 'error-a', turnId: 'turn-1' }))
+    buf.push(makeEntry({ level: 50, msg: 'error-b', turnId: 'turn-2' }))
+
+    const results = buf.search({ level: 40, turnId: 'turn-1' })
+    expect(results).toHaveLength(1)
+    expect(results[0]!.msg).toBe('error-a')
+  })
+
   test('respects limit (returns last N)', () => {
     const buf = new LogRingBuffer(10)
     for (let i = 0; i < 5; i++) {

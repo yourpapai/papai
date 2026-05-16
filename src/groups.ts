@@ -7,6 +7,7 @@ import { and, eq, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from './db/drizzle.js'
 import { groupMembers } from './db/schema.js'
+import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'groups' })
@@ -18,6 +19,8 @@ export function addGroupMember(groupId: string, userId: string, addedBy: string)
   db.insert(groupMembers).values({ groupId, userId, addedBy }).onConflictDoNothing().run()
 
   log.info({ groupId, userId, addedBy }, 'Group member added')
+
+  emitGlobal('group_member:added', { groupId, userId })
 }
 
 export function removeGroupMember(groupId: string, userId: string): void {
@@ -29,6 +32,8 @@ export function removeGroupMember(groupId: string, userId: string): void {
     .run()
 
   log.info({ groupId, userId }, 'Group member removed')
+
+  emitGlobal('group_member:removed', { groupId, userId })
 }
 
 export function isGroupMember(groupId: string, userId: string): boolean {

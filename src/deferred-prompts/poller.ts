@@ -7,7 +7,7 @@ import pLimit from 'p-limit'
 
 import type { ChatProvider } from '../chat/types.js'
 import { getConfig } from '../config.js'
-import { emit } from '../debug/event-bus.js'
+import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
@@ -39,17 +39,11 @@ function logSettledErrors(results: PromiseSettledResult<void>[], context: string
 }
 
 function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
-  return {
-    createdByUserId: prompt.createdByUserId,
-    deliveryTarget: prompt.deliveryTarget,
-  }
+  return { createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget }
 }
 
 function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
-  return {
-    createdByUserId: alert.createdByUserId,
-    deliveryTarget: alert.deliveryTarget,
-  }
+  return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
 }
 
 async function executeScheduledPromptsForGroup(
@@ -85,13 +79,16 @@ async function executeScheduledPromptsForGroup(
 
   await chat.sendMessage(execCtx.deliveryTarget, response)
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
+  for (const prompt of prompts) {
+    emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })
+  }
 }
 
 export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
   log.debug('pollScheduledOnce called')
 
   const duePrompts = getScheduledPromptsDue().filter((p) => !inFlightPrompts.has(p.id))
-  emit('poller:scheduled', { dueCount: duePrompts.length })
+  emitGlobal('poller:scheduled', { dueCount: duePrompts.length })
   log.debug({ count: duePrompts.length }, 'Due scheduled prompts found')
 
   if (duePrompts.length === 0) return
@@ -160,6 +157,8 @@ async function executeSingleAlert(
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
+  emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
+  emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
 }
 
 async function executeAlertsForUser(
@@ -198,7 +197,7 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   log.debug('pollAlertsOnce called')
 
   const eligibleAlerts = getEligibleAlertPrompts()
-  emit('poller:alerts', { eligibleCount: eligibleAlerts.length })
+  emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
 
   if (eligibleAlerts.length === 0) return
 

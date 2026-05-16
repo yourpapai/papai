@@ -9,6 +9,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 
 import * as schema from '../src/db/schema.js'
+import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import {
   createRecurringTask,
   deleteRecurringTask,
@@ -25,6 +26,15 @@ import {
   updateRecurringTask,
 } from '../src/recurring.js'
 import { mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
+
+function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => void } {
+  const events: DebugEvent[] = []
+  const handler = (e: DebugEvent): void => {
+    if (e.type === type) events.push(e)
+  }
+  subscribe(handler)
+  return { events, cleanup: () => unsubscribe(handler) }
+}
 
 const USER_ID = 'test-user-1'
 const PROJECT_ID = 'project-1'
@@ -561,5 +571,215 @@ describe('recurring tasks', () => {
       expect(isCompletionStatus('to-do')).toBe(false)
       expect(isCompletionStatus('in-review')).toBe(false)
     })
+  })
+})
+
+describe('recurring lifecycle events', () => {
+  let testDb: ReturnType<typeof drizzle<typeof schema>>
+  let testSqlite: Database
+
+  beforeEach(() => {
+    mockLogger()
+    testSqlite = new Database(':memory:')
+    testSqlite.run('PRAGMA journal_mode=WAL')
+    testSqlite.run('PRAGMA foreign_keys=ON')
+    testDb = drizzle(testSqlite, { schema })
+    setTestDrizzleDb(testDb)
+
+    testSqlite.run(`
+      CREATE TABLE users (
+        platform_user_id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        added_at TEXT DEFAULT (datetime('now')) NOT NULL,
+        added_by TEXT NOT NULL,
+        kaneo_workspace_id TEXT
+      )
+    `)
+    testSqlite.run(`INSERT INTO users (platform_user_id, added_by) VALUES ('${USER_ID}', 'admin')`)
+
+    testSqlite.run(`
+    CREATE TABLE recurring_tasks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(platform_user_id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      priority TEXT,
+      status TEXT,
+      assignee TEXT,
+      labels TEXT,
+      trigger_type TEXT NOT NULL DEFAULT 'cron',
+      rrule TEXT,
+      dtstart_utc TEXT,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      enabled TEXT NOT NULL DEFAULT '1',
+      catch_up TEXT NOT NULL DEFAULT '0',
+      last_run TEXT,
+      next_run TEXT,
+      created_at TEXT DEFAULT (datetime('now')) NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now')) NOT NULL
+    )
+  `)
+    testSqlite.run('CREATE INDEX idx_recurring_tasks_user ON recurring_tasks(user_id)')
+    testSqlite.run('CREATE INDEX idx_recurring_tasks_enabled_next ON recurring_tasks(enabled, next_run)')
+
+    testSqlite.run(`
+    CREATE TABLE recurring_task_occurrences (
+      id TEXT PRIMARY KEY,
+      template_id TEXT NOT NULL REFERENCES recurring_tasks(id) ON DELETE CASCADE,
+      task_id TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')) NOT NULL
+    )
+  `)
+    testSqlite.run('CREATE INDEX idx_recurring_occurrences_template ON recurring_task_occurrences(template_id)')
+    testSqlite.run('CREATE INDEX idx_recurring_occurrences_task ON recurring_task_occurrences(task_id)')
+  })
+
+  test('createRecurringTask emits recurring:created', () => {
+    const { events, cleanup } = collectEvents('recurring:created')
+    try {
+      const task = createRecurringTask({
+        userId: USER_ID,
+        projectId: PROJECT_ID,
+        title: 'Weekly sync',
+        triggerType: 'cron',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: '2026-04-20T09:00:00Z',
+      })
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['taskId']).toBe(task.id)
+      expect(events[0]!.data['name']).toBe('Weekly sync')
+      expect(events[0]!.data['schedule']).toBe('FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0')
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('updateRecurringTask emits recurring:updated', () => {
+    const task = createRecurringTask({
+      userId: USER_ID,
+      projectId: PROJECT_ID,
+      title: 'Old',
+      triggerType: 'cron',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+    })
+    const { events, cleanup } = collectEvents('recurring:updated')
+    try {
+      updateRecurringTask(task.id, { title: 'New' })
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['taskId']).toBe(task.id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('pauseRecurringTask emits recurring:paused', () => {
+    const task = createRecurringTask({
+      userId: USER_ID,
+      projectId: PROJECT_ID,
+      title: 'Test',
+      triggerType: 'cron',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+    })
+    const { events, cleanup } = collectEvents('recurring:paused')
+    try {
+      pauseRecurringTask(task.id)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['taskId']).toBe(task.id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('resumeRecurringTask emits recurring:resumed', () => {
+    const task = createRecurringTask({
+      userId: USER_ID,
+      projectId: PROJECT_ID,
+      title: 'Test',
+      triggerType: 'cron',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+    })
+    pauseRecurringTask(task.id)
+    const { events, cleanup } = collectEvents('recurring:resumed')
+    try {
+      resumeRecurringTask(task.id, false)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['taskId']).toBe(task.id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('skipNextOccurrence emits recurring:skipped', () => {
+    const task = createRecurringTask({
+      userId: USER_ID,
+      projectId: PROJECT_ID,
+      title: 'Test',
+      triggerType: 'cron',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+    })
+    const { events, cleanup } = collectEvents('recurring:skipped')
+    try {
+      skipNextOccurrence(task.id)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['taskId']).toBe(task.id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('deleteRecurringTask emits recurring:deleted', () => {
+    const task = createRecurringTask({
+      userId: USER_ID,
+      projectId: PROJECT_ID,
+      title: 'Test',
+      triggerType: 'cron',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
+      dtstartUtc: '2026-04-20T09:00:00Z',
+    })
+    const { events, cleanup } = collectEvents('recurring:deleted')
+    try {
+      deleteRecurringTask(task.id)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['taskId']).toBe(task.id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('non-existent operations do not emit events', () => {
+    const { events: updateEvents, cleanup: c1 } = collectEvents('recurring:updated')
+    const { events: pauseEvents, cleanup: c2 } = collectEvents('recurring:paused')
+    const { events: resumeEvents, cleanup: c3 } = collectEvents('recurring:resumed')
+    const { events: skipEvents, cleanup: c4 } = collectEvents('recurring:skipped')
+    const { events: deleteEvents, cleanup: c5 } = collectEvents('recurring:deleted')
+    try {
+      updateRecurringTask('non-existent', { title: 'X' })
+      pauseRecurringTask('non-existent')
+      resumeRecurringTask('non-existent', false)
+      skipNextOccurrence('non-existent')
+      deleteRecurringTask('non-existent')
+      expect(updateEvents).toHaveLength(0)
+      expect(pauseEvents).toHaveLength(0)
+      expect(resumeEvents).toHaveLength(0)
+      expect(skipEvents).toHaveLength(0)
+      expect(deleteEvents).toHaveLength(0)
+    } finally {
+      c1()
+      c2()
+      c3()
+      c4()
+      c5()
+    }
   })
 })

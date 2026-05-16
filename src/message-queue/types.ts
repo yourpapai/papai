@@ -32,6 +32,7 @@ export type CoalescedItem = Readonly<{
   storageContextId: string
   newAttachmentIds: readonly string[]
   reply: ReplyFn
+  turnId: string
 }> &
   QueueContextInfo &
   QueueConfigContextInfo

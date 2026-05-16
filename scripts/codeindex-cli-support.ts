@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 export interface CodeindexResolutionInput {
@@ -11,6 +11,7 @@ export interface CodeindexResolutionInput {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly executablePath?: string
   readonly pathExists?: (filePath: string) => boolean
+  readonly readTextFile?: (filePath: string) => string
 }
 
 export interface ResolvedCodeindexPaths {
@@ -33,13 +34,44 @@ export interface CodeindexSpawnSpec extends ResolvedCodeindexPaths {
 
 const DEFAULT_REPO_ROOT = path.resolve(import.meta.dir, '..')
 
+const WORKTREE_GITDIR_SEGMENT = `${path.sep}.git${path.sep}worktrees${path.sep}`
+
 const requiredPaths = (repoDir: string): Readonly<{ packageJsonPath: string; cliPath: string }> => ({
   packageJsonPath: path.join(repoDir, 'package.json'),
   cliPath: path.join(repoDir, 'src', 'cli.ts'),
 })
 
+const resolvePrimaryRepoRoot = (repoRoot: string, input: CodeindexResolutionInput): string => {
+  const pathExists = input.pathExists ?? existsSync
+  const readTextFile = input.readTextFile ?? ((filePath: string): string => readFileSync(filePath, 'utf8'))
+  const gitMetadataPath = path.join(repoRoot, '.git')
+
+  if (!pathExists(gitMetadataPath)) {
+    return repoRoot
+  }
+
+  try {
+    const gitMetadata = readTextFile(gitMetadataPath)
+    const match = /^gitdir:\s+(.+)$/m.exec(gitMetadata)
+    if (match === null || match[1] === undefined) {
+      return repoRoot
+    }
+
+    const gitDir = path.resolve(repoRoot, match[1].trim())
+    const segmentIndex = gitDir.lastIndexOf(WORKTREE_GITDIR_SEGMENT)
+
+    if (segmentIndex === -1) {
+      return repoRoot
+    }
+
+    return gitDir.slice(0, segmentIndex)
+  } catch {
+    return repoRoot
+  }
+}
+
 export const resolveCodeindexPaths = (input: CodeindexResolutionInput = {}): ResolvedCodeindexPaths => {
-  const repoRoot = input.repoRoot ?? DEFAULT_REPO_ROOT
+  const repoRoot = resolvePrimaryRepoRoot(input.repoRoot ?? DEFAULT_REPO_ROOT, input)
   const env = input.env ?? process.env
   const pathExists = input.pathExists ?? existsSync
   const configuredDir = env['CODEINDEX_DIR']?.trim()

@@ -7,8 +7,18 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert'
 
 import { setConfig } from '../../src/config.js'
-import { executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
+import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
+import { executeCancel, executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => void } {
+  const events: DebugEvent[] = []
+  const handler = (e: DebugEvent): void => {
+    if (e.type === type) events.push(e)
+  }
+  subscribe(handler)
+  return { events, cleanup: () => unsubscribe(handler) }
+}
 
 const USER_ID = 'user-tz-test'
 
@@ -130,5 +140,65 @@ describe('executeUpdate — rrule timezone', () => {
     assert(afterFirst.type === 'scheduled')
     // dtstartUtc must equal the original series anchor, not the edit timestamp
     expect(afterFirst.dtstartUtc).toBe(originalDtstartUtc)
+  })
+})
+
+describe('deferred lifecycle events', () => {
+  test('executeCreate emits deferred:created with promptId', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, {
+        prompt: 'Test prompt',
+        schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+      })
+      expect(result).not.toHaveProperty('error')
+      expect(result).toHaveProperty('id')
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(Reflect.get(result, 'id'))
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('executeUpdate emits deferred:updated with promptId', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'Original',
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const id = prompts[0]!.id
+
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      executeUpdate(USER_ID, { id, prompt: 'Updated prompt' })
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('executeCancel emits deferred:cancelled with promptId', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'Will cancel',
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const id = prompts[0]!.id
+
+    const { events, cleanup } = collectEvents('deferred:cancelled')
+    try {
+      executeCancel(USER_ID, { id })
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(id)
+      expect(events[0]!.__scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
   })
 })

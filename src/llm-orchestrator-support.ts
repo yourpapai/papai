@@ -7,7 +7,7 @@ import { APICallError } from '@ai-sdk/provider'
 
 import type { ReplyFn } from './chat/types.js'
 import { getConfig } from './config.js'
-import { emit } from './debug/event-bus.js'
+import { emitGlobal, emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { resolveConfigId } from './llm-orchestrator-config.js'
 import { logger } from './logger.js'
@@ -34,7 +34,7 @@ export interface LlmOrchestratorSupportDeps {
   }
 }
 
-const defaultDeps: LlmOrchestratorSupportDeps = { emit, log }
+const defaultDeps: LlmOrchestratorSupportDeps = { emit: emitGlobal, log }
 
 const resolveSupportDeps = (deps: LlmOrchestratorSupportDeps | undefined): LlmOrchestratorSupportDeps => {
   if (deps === undefined) {
@@ -159,16 +159,25 @@ export async function handleOrchestratorMessageError(
   await reply.text(getUserMessage(appError))
 }
 
-export const emitLlmError = (contextId: string, configContextId: string | undefined, error: unknown): void => {
+export const emitLlmError = (
+  contextId: string,
+  configContextId: string | undefined,
+  error: unknown,
+  turnId?: string,
+): void => {
   const cfgId = resolveConfigId(contextId, configContextId)
   const model = getConfig(cfgId, 'main_model')
   let emittedModel = 'unknown'
   if (model !== null) {
     emittedModel = model
   }
-  emit('llm:error', {
-    userId: contextId,
-    error: error instanceof Error ? error.message : String(error),
-    model: emittedModel,
-  })
+  emitUser(
+    'llm:error',
+    contextId,
+    {
+      error: error instanceof Error ? error.message : String(error),
+      model: emittedModel,
+    },
+    turnId,
+  )
 }

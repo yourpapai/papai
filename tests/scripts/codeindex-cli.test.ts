@@ -25,10 +25,17 @@ type SpawnChildLike = Readonly<{
 
 const SIBLING_PATHS = new Set(['/tmp/yourpapai/codeindex/package.json', '/tmp/yourpapai/codeindex/src/cli.ts'])
 const CUSTOM_PATHS = new Set(['/opt/tools/codeindex/package.json', '/opt/tools/codeindex/src/cli.ts'])
+const WORKTREE_PATHS = new Set([
+  '/tmp/yourpapai/papai/.worktrees/debug-dashboard-expansion/.git',
+  '/tmp/yourpapai/codeindex/package.json',
+  '/tmp/yourpapai/codeindex/src/cli.ts',
+])
 
 const hasSiblingPath = (filePath: string): boolean => SIBLING_PATHS.has(filePath)
 
 const hasCustomPath = (filePath: string): boolean => CUSTOM_PATHS.has(filePath)
+
+const hasWorktreePath = (filePath: string): boolean => WORKTREE_PATHS.has(filePath)
 
 const createExitChild = (code: number): SpawnChildLike => ({
   once(event: 'error' | 'exit', handler: ((error: unknown) => void) | ((code: number | null) => void)): SpawnChildLike {
@@ -97,6 +104,20 @@ describe('codeindex CLI support', () => {
     expect(result).toEqual({
       repoDir: '/opt/tools/codeindex',
       cliPath: '/opt/tools/codeindex/src/cli.ts',
+    })
+  })
+
+  test('resolves sibling codeindex from the main repo when running inside a git worktree', () => {
+    const result = resolveCodeindexPaths({
+      repoRoot: '/tmp/yourpapai/papai/.worktrees/debug-dashboard-expansion',
+      env: {},
+      pathExists: hasWorktreePath,
+      readTextFile: () => 'gitdir: /tmp/yourpapai/papai/.git/worktrees/debug-dashboard-expansion\n',
+    })
+
+    expect(result).toEqual({
+      repoDir: '/tmp/yourpapai/codeindex',
+      cliPath: '/tmp/yourpapai/codeindex/src/cli.ts',
     })
   })
 

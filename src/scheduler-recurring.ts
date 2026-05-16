@@ -5,7 +5,7 @@
 
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import type { Task, TaskProvider } from './providers/types.js'
 import { recordOccurrence } from './recurring-occurrences.js'
@@ -75,7 +75,9 @@ export const finalizeCreatedRecurringTask = async (
     { recurringTaskId: task.id, createdTaskId: created.id, title: task.title },
     'Recurring task instance created',
   )
-  emit('scheduler:task_executed', { userId: task.userId, recurringTaskId: task.id, createdTaskId: created.id })
+  emitUser('scheduler:task_executed', task.userId, { recurringTaskId: task.id, createdTaskId: created.id })
+  emitUser('recurring:fired', task.userId, { recurringTaskId: task.id, createdTaskId: created.id })
+  emitUser('notify:scheduler_fired', task.userId, { recurringTaskId: task.id })
 
   await applyLabels(provider, created.id, task.labels)
   recordOccurrence(task.id, created.id)

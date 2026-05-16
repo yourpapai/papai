@@ -157,6 +157,9 @@ export const StateInitEventSchema = z.object({
     })
     .optional(),
   recentLlm: z.array(z.unknown()).optional(),
+  recentTurns: z.array(z.unknown()).optional(),
+  recentNotifications: z.array(z.unknown()).optional(),
+  recentToolFailures: z.array(z.unknown()).optional(),
 })
 
 export const StateStatsEventSchema = z.object({
@@ -189,6 +192,19 @@ export const MessageCacheEventSchema = z.object({
   size: z.number().optional(),
   pendingWrites: z.number().optional(),
 })
+
+import { TurnSchema, NotificationSchema, ToolFailureSchema } from './turn-assembly.js'
+import type { Turn, Notification, ToolFailure } from './turn-assembly.js'
+
+// Re-export turn schemas from turn-assembly
+export {
+  TurnToolCallSchema,
+  TurnReplySchema,
+  TurnSchema,
+  NotificationSchema,
+  ToolFailureSchema,
+} from './turn-assembly.js'
+export type { Turn, Notification, ToolFailure } from './turn-assembly.js'
 
 // Inferred types
 export type Fact = z.infer<typeof FactSchema>
@@ -264,5 +280,20 @@ export function safeParseWizard(data: unknown): Wizard | null {
 
 export function safeParseLlmTrace(data: unknown): LlmTrace | null {
   const result = LlmTraceSchema.safeParse(data)
+  return result.success ? result.data : null
+}
+
+export function safeParseTurn(data: unknown): Turn | null {
+  const result = TurnSchema.safeParse(data)
+  return result.success ? result.data : null
+}
+
+export function safeParseNotification(data: unknown): Notification | null {
+  const result = NotificationSchema.safeParse(data)
+  return result.success ? result.data : null
+}
+
+export function safeParseToolFailure(data: unknown): ToolFailure | null {
+  const result = ToolFailureSchema.safeParse(data)
   return result.success ? result.data : null
 }

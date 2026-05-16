@@ -78,6 +78,220 @@ header {
   background: #333333;
 }
 
+/* --- Context chips --- */
+
+.context-chips {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #222222;
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+
+.chip {
+  background: #1a1a1a;
+  border: 1px solid #333333;
+  color: #888888;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  background: #222222;
+}
+
+.chip.active {
+  color: #00ff88;
+  border-color: #00ff88;
+}
+
+/* --- Panel grid --- */
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+
+.panel {
+  background: #111111;
+  border: 1px solid #222222;
+  border-radius: 2px;
+  padding: 8px;
+  min-height: 200px;
+  overflow-y: auto;
+}
+
+.panel h2 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #666666;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+.placeholder {
+  color: #333333;
+  font-style: italic;
+}
+
+/* --- Turn rows --- */
+
+.turn-row {
+  border-left: 2px solid #333333;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.turn-row:hover {
+  background: #1a1a1a;
+}
+
+.turn-row.status-running {
+  border-left-color: #0088ff;
+}
+
+.turn-row.status-ok {
+  border-left-color: #00ff88;
+}
+
+.turn-row.status-error {
+  border-left-color: #ff4444;
+}
+
+.turn-row.status-cancelled {
+  border-left-color: #ffaa00;
+}
+
+.turn-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #888888;
+}
+
+.turn-summary .turn-time {
+  color: #666666;
+}
+
+.turn-summary .turn-scope.scope-user {
+  color: #0088ff;
+}
+
+.turn-summary .turn-scope.scope-group {
+  color: #ffaa00;
+}
+
+.turn-summary .turn-scope.scope-global {
+  color: #888888;
+}
+
+.turn-summary .turn-status.status-running {
+  color: #0088ff;
+}
+
+.turn-summary .turn-status.status-ok {
+  color: #00ff88;
+}
+
+.turn-summary .turn-status.status-error {
+  color: #ff4444;
+}
+
+.turn-summary .turn-status.status-cancelled {
+  color: #ffaa00;
+}
+
+.turn-summary .turn-duration {
+  color: #ffaa00;
+}
+
+.turn-summary .turn-tools {
+  color: #555555;
+}
+
+/* --- Notification rows --- */
+
+.notification-row {
+  border-left: 2px solid #333333;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notification-row:nth-child(even) {
+  background: #131313;
+}
+
+.notification-time {
+  color: #666666;
+  margin-right: 8px;
+}
+
+.notification-type {
+  color: #00ff88;
+  margin-right: 8px;
+  font-weight: 600;
+}
+
+.notification-text {
+  color: #888888;
+}
+
+/* --- Failure rows --- */
+
+.failure-row {
+  border-left: 2px solid #ff4444;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.failure-row:hover {
+  background: #1a1a1a;
+}
+
+.failure-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #888888;
+}
+
+.failure-time {
+  color: #666666;
+}
+
+.failure-tool {
+  color: #ff4444;
+  font-weight: 600;
+}
+
+.failure-error {
+  color: #cccccc;
+}
+
+.failure-retriable.retriable {
+  color: #ffaa00;
+}
+
+.failure-retriable.non-retriable {
+  color: #ff4444;
+}
+
 /* --- Main grid --- */
 
 main {
@@ -1053,4 +1267,103 @@ main {
   word-break: break-word;
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* --- Context Panel --- */
+
+.context-panel-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.context-panel-section h3 {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #00ff88;
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+}
+
+.context-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+.context-key {
+  color: #cccccc;
+  font-weight: 600;
+}
+
+.context-value {
+  color: #888888;
+}
+
+.context-meta {
+  color: #555555;
+  font-size: 10px;
+}
+
+/* --- Turn log-link button --- */
+
+.turn-log-link {
+  background: none;
+  border: 1px solid #333333;
+  color: #0088ff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-left: 4px;
+}
+
+.turn-log-link:hover {
+  background: #222222;
+  border-color: #0088ff;
+}
+
+/* --- Log turnId filter --- */
+
+.log-turnid-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-turnid-filter label {
+  color: #666666;
+  font-size: 10px;
+}
+
+.log-turnid-badge {
+  background: #0088ff22;
+  border: 1px solid #0088ff;
+  color: #0088ff;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-turnid-badge button {
+  background: none;
+  border: none;
+  color: #0088ff;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
 }

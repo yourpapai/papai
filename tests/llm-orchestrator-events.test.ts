@@ -17,13 +17,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function makeEventCapture(eventType: string): {
   capture: () => unknown
-  listener: (event: { type: string; data: unknown }) => void
+  captureScope: () => unknown
+  listener: (event: { type: string; data: unknown; __scope: unknown }) => void
 } {
   let capturedData: unknown = null
+  let capturedScope: unknown = null
   return {
     capture: () => capturedData,
-    listener: (event: { type: string; data: unknown }): void => {
-      if (event.type === eventType) capturedData = event.data
+    captureScope: () => capturedScope,
+    listener: (event: { type: string; data: unknown; __scope: unknown }): void => {
+      if (event.type === eventType) {
+        capturedData = event.data
+        capturedScope = event.__scope
+      }
     },
   }
 }
@@ -38,7 +44,7 @@ describe('llm-orchestrator-events', () => {
     test('emits llm:start event with correct payload', async () => {
       const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
 
-      const { capture, listener } = makeEventCapture('llm:start')
+      const { capture, captureScope, listener } = makeEventCapture('llm:start')
       subscribe(listener)
 
       try {
@@ -47,8 +53,11 @@ describe('llm-orchestrator-events', () => {
         emitLlmStart('ctx-1', 'gpt-4', [{ role: 'user', content: 'hi' }], tools)
 
         const capturedEvent = capture()
+        const capturedScope = captureScope()
         assert.ok(isRecord(capturedEvent))
-        expect(capturedEvent['userId']).toBe('ctx-1')
+        assert.ok(isRecord(capturedScope))
+        expect(capturedScope['kind']).toBe('user')
+        expect(capturedScope['userId']).toBe('ctx-1')
         expect(capturedEvent['model']).toBe('gpt-4')
         expect(capturedEvent['messageCount']).toBe(1)
         expect(capturedEvent['toolCount']).toBe(Object.keys(tools).length)
@@ -65,7 +74,7 @@ describe('llm-orchestrator-events', () => {
     test('emits llm:end event with steps detail', async () => {
       const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
 
-      const { capture, listener } = makeEventCapture('llm:end')
+      const { capture, captureScope, listener } = makeEventCapture('llm:end')
       subscribe(listener)
 
       try {
@@ -93,8 +102,11 @@ describe('llm-orchestrator-events', () => {
         emitLlmEnd('ctx-1', 'gpt-4', result, startTime, [{ role: 'user', content: 'hi' }], tools)
 
         const capturedEvent = capture()
+        const capturedScope = captureScope()
         assert.ok(isRecord(capturedEvent))
-        expect(capturedEvent['userId']).toBe('ctx-1')
+        assert.ok(isRecord(capturedScope))
+        expect(capturedScope['kind']).toBe('user')
+        expect(capturedScope['userId']).toBe('ctx-1')
         expect(capturedEvent['model']).toBe('gpt-4')
         expect(capturedEvent['steps']).toBe(1)
         expect(capturedEvent['finishReason']).toBe('stop')

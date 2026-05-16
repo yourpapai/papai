@@ -43,7 +43,10 @@ export function setupEventSource(): EventSource {
           parsed !== null && typeof parsed === 'object' && 'data' in parsed && parsed['data'] !== undefined
             ? (parsed as { data: unknown }).data
             : parsed
-        handler(eventData)
+        const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+        if (isRecord(eventData)) {
+          handler(eventData)
+        }
       } catch {
         // Skip malformed events
       }

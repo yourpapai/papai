@@ -23,7 +23,7 @@ import {
   registerStartCommand,
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -156,6 +156,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.configContextId,
       { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
       coalescedItem.newAttachmentIds,
+      coalescedItem.turnId,
     )
   } finally {
     emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)
@@ -225,8 +226,7 @@ async function onIncomingMessage(
 ): Promise<void> {
   const start = Date.now()
   const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
-  emit('message:received', {
-    userId: msg.user.id,
+  emitUser('message:received', msg.user.id, {
     contextId: msg.contextId,
     contextType: msg.contextType,
     threadId: msg.threadId,
@@ -234,8 +234,7 @@ async function onIncomingMessage(
     isCommand: msg.text.startsWith('/'),
   })
   const auth = resolveMessageAuth(msg)
-  emit('auth:check', {
-    userId: msg.user.id,
+  emitUser('auth:check', msg.user.id, {
     allowed: auth.allowed,
     isBotAdmin: auth.isBotAdmin,
     isGroupAdmin: auth.isGroupAdmin,

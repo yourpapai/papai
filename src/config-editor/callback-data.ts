@@ -9,8 +9,9 @@ import type { EditorButton } from './types.js'
 const encodeContextId = (id: string): string => Buffer.from(id).toString('base64url')
 const decodeContextId = (encoded: string): string => Buffer.from(encoded, 'base64url').toString('utf8')
 
-const appendContext = (base: string, targetContextId: string | undefined): string =>
-  targetContextId === undefined ? base : `${base}@${encodeContextId(targetContextId)}`
+function appendContext(base: string, targetContextId: string | undefined): string {
+  return targetContextId === undefined ? base : `${base}@${encodeContextId(targetContextId)}`
+}
 
 export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key'>, targetContextId?: string): string {
   switch (button.action) {
