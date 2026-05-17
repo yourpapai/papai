@@ -89,6 +89,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0092](0092-architecture-inventory-generator.md)                     | Architecture Inventory Generator with Deletion-Candidate Identification                     | 2026-05-11 | Implemented (with file-structure deviation)         |
 | [0093](0093-tool-surface-benchmark.md)                               | Tool Surface Benchmark — Comparison of Full Direct Tools vs Intent-Routed Direct Tools      | 2026-05-09 | Implemented (with divergence)                       |
 | [0094](0094-single-proxy-tool-deprecated-by-intent-routing.md)       | Single Proxy Tool (`papai_tool`) Deprecated in Favor of Intent-Routed Direct Tools          | 2026-05-12 | Deprecated (reverted)                               |
+| [0095](0095-telegram-group-label-resolution.md)                      | Telegram-Specific Group and User Label Resolution for `/groups` and `/group users`          | 2026-05-17 | Implemented                                         |
 
 ## Declined
 
