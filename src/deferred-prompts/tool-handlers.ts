@@ -11,6 +11,7 @@ import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
+import { normalizeTimezoneValue } from '../utils/timezone.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildScheduleUpdates, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
 import {
@@ -91,6 +92,16 @@ export type ListInput = { type?: 'scheduled' | 'alert'; status?: 'active' | 'com
 
 // --- Handlers ---
 
+function getUserTimezone(userId: string): string | { error: string } {
+  const configuredTimezone = getConfig(userId, 'timezone')
+  if (configuredTimezone === null) return 'UTC'
+
+  const timezone = normalizeTimezoneValue(configuredTimezone)
+  if (timezone !== null) return timezone
+
+  return { error: 'Your configured timezone is invalid. Please update it in /config or rerun /setup and try again.' }
+}
+
 function createScheduled(
   userId: string,
   prompt: string,
@@ -100,7 +111,8 @@ function createScheduled(
 ): CreateResult {
   const hasFireAt = schedule.fire_at !== undefined
   const hasRrule = schedule.rrule !== undefined
-  const timezone = getConfig(userId, 'timezone') ?? 'UTC'
+  const timezone = getUserTimezone(userId)
+  if (typeof timezone !== 'string') return timezone
 
   if (hasFireAt) {
     const { date, time } = schedule.fire_at!

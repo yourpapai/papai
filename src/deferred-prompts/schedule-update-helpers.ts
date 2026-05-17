@@ -6,6 +6,7 @@
 import { getConfig } from '../config.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
 import { localDatetimeToUtc } from '../utils/datetime.js'
+import { normalizeTimezoneValue } from '../utils/timezone.js'
 import { getScheduledPrompt } from './scheduled.js'
 import type { ScheduleInput } from './types.js'
 
@@ -16,12 +17,23 @@ export type ScheduleFieldUpdates = {
   timezone?: string | null
 }
 
+function getUserTimezone(userId: string): string | { error: string } {
+  const configuredTimezone = getConfig(userId, 'timezone')
+  if (configuredTimezone === null) return 'UTC'
+
+  const timezone = normalizeTimezoneValue(configuredTimezone)
+  if (timezone !== null) return timezone
+
+  return { error: 'Your configured timezone is invalid. Please update it in /config or rerun /setup and try again.' }
+}
+
 export function buildScheduleUpdates(
   id: string,
   userId: string,
   schedule: ScheduleInput,
 ): ScheduleFieldUpdates | { error: string } {
-  const timezone = getConfig(userId, 'timezone') ?? 'UTC'
+  const timezone = getUserTimezone(userId)
+  if (typeof timezone !== 'string') return timezone
   const updates: ScheduleFieldUpdates = {}
   if (schedule.fire_at !== undefined) {
     const { date, time } = schedule.fire_at

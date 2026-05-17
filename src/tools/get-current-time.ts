@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { getConfig } from '../config.js'
 import { logger } from '../logger.js'
+import { normalizeTimezoneValue } from '../utils/timezone.js'
 
 const log = logger.child({ scope: 'tool:get-current-time' })
 
@@ -60,7 +61,8 @@ export function makeGetCurrentTimeTool(userId?: string): ToolSet[string] {
       'Get the current date and time. Use this tool to answer questions about the current date, time, or to determine relative dates like "tomorrow" or "next Monday".',
     inputSchema: z.object({}),
     execute: () => {
-      const timezone = userId === undefined ? 'UTC' : (getConfig(userId, 'timezone') ?? 'UTC')
+      const configuredTimezone = userId === undefined ? null : getConfig(userId, 'timezone')
+      const timezone = normalizeTimezoneValue(configuredTimezone) ?? 'UTC'
       const now = new Date()
       const datetime = getLocalIsoString(now, timezone)
       const formatted = getLocalFormattedString(now, timezone)

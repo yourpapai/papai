@@ -46,7 +46,11 @@ export function getWizardSteps(taskProvider: TaskProvider): WizardStep[] {
       true,
     ),
     createStep(providerStep.key, providerStep.key, providerStep.prompt),
-    createStep('timezone', 'timezone', '🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5):'),
+    createStep(
+      'timezone',
+      'timezone',
+      '🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5). UTC offsets are accepted and saved as a standard timezone:',
+    ),
   ]
 }
 
@@ -77,7 +81,7 @@ function validateModel(value: string): string | null {
 
 function validateTimezone(value: string): string | null {
   return normalizeTimezone(value.trim()) === null
-    ? 'Invalid timezone. Please enter a valid IANA timezone (e.g., America/New_York, UTC) or UTC offset (e.g., UTC+5)'
+    ? 'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.'
     : null
 }
 

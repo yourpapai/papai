@@ -11,6 +11,7 @@ import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
+import { normalizeTimezoneValue } from '../utils/timezone.js'
 import { describeCondition, evaluateCondition, getEligibleAlertPrompts, updateAlertTriggerTime } from './alerts.js'
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
@@ -53,7 +54,8 @@ async function executeScheduledPromptsForGroup(
   buildProviderFn: BuildProviderFn,
 ): Promise<void> {
   const { createdByUserId } = execCtx
-  const timezone = getConfig(createdByUserId, 'timezone') ?? 'UTC'
+  const configuredTimezone = getConfig(createdByUserId, 'timezone')
+  const timezone = normalizeTimezoneValue(configuredTimezone) ?? 'UTC'
   const metadata = mergeExecutionMetadata(prompts)
   const mergedPrompt =
     prompts.length === 1 ? prompts[0]!.prompt : prompts.map((p, i) => `${String(i + 1)}. "${p.prompt}"`).join('\n')

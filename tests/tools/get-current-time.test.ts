@@ -63,6 +63,17 @@ describe('makeGetCurrentTimeTool', () => {
     expect(result.timezone).toBe('UTC')
   })
 
+  test('normalizes legacy UTC offset config before returning timezone', async () => {
+    setCachedConfig('user-legacy', 'timezone', 'UTC+5')
+    const tool = makeGetCurrentTimeTool('user-legacy')
+    assert(tool.execute, 'Tool execute is undefined')
+
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+
+    assert(isTimeResult(result), 'Invalid result')
+    expect(result.timezone).toBe('Etc/GMT-5')
+  })
+
   test('returns ISO string datetime', async () => {
     const tool = makeGetCurrentTimeTool('user-1')
     assert(tool.execute, 'Tool execute is undefined')

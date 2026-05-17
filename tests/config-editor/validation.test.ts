@@ -80,7 +80,9 @@ describe('config-editor validation', () => {
     test('validates timezone - must be valid IANA or UTC offset', () => {
       const result = validateConfigValue('timezone', 'invalid')
       expect(result.valid).toBe(false)
-      expect(result.error).toContain('Invalid timezone')
+      expect(result.error).toBe(
+        'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
+      )
 
       const result2 = validateConfigValue('timezone', 'America/New_York')
       expect(result2.valid).toBe(true)

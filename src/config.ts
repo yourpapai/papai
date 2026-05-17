@@ -6,10 +6,21 @@
 import { getCachedConfig, setCachedConfig } from './cache.js'
 import { logger } from './logger.js'
 import { ALL_CONFIG_KEYS, CONFIG_KEYS, type ConfigKey } from './types/config.js'
+import { normalizeTimezoneValue } from './utils/timezone.js'
 
 const log = logger.child({ scope: 'config' })
 
 const SENSITIVE_KEYS: ReadonlySet<ConfigKey> = new Set(['kaneo_apikey', 'youtrack_token', 'llm_apikey'])
+
+function normalizeConfigValue(key: ConfigKey, value: string): string {
+  if (key !== 'timezone') return value
+  return normalizeTimezoneValue(value) ?? value.trim()
+}
+
+function readConfigValue(key: ConfigKey, value: string | null): string | null {
+  if (value === null || key !== 'timezone') return value
+  return normalizeTimezoneValue(value) ?? value.trim()
+}
 
 export function isSensitiveKey(key: ConfigKey): boolean {
   return SENSITIVE_KEYS.has(key)
@@ -17,13 +28,13 @@ export function isSensitiveKey(key: ConfigKey): boolean {
 
 export function setConfig(userId: string, key: ConfigKey, value: string): void {
   log.debug({ userId, key }, 'setConfig called')
-  setCachedConfig(userId, key, value)
+  setCachedConfig(userId, key, normalizeConfigValue(key, value))
   log.info({ userId, key }, 'Config key set (DB sync in background)')
 }
 
 export function getConfig(userId: string, key: ConfigKey): string | null {
   log.debug({ userId, key }, 'getConfig called')
-  return getCachedConfig(userId, key)
+  return readConfigValue(key, getCachedConfig(userId, key))
 }
 
 export function isConfigKey(key: string): key is ConfigKey {
@@ -35,7 +46,7 @@ export function getAllConfig(userId: string): Partial<Record<ConfigKey, string>>
   log.debug({ userId }, 'getAllConfig called')
   const result: Partial<Record<ConfigKey, string>> = {}
   for (const key of CONFIG_KEYS) {
-    const value = getCachedConfig(userId, key)
+    const value = readConfigValue(key, getCachedConfig(userId, key))
     if (value !== null) {
       result[key] = value
     }

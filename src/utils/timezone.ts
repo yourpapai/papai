@@ -39,3 +39,10 @@ export const normalizeTimezone = (value: string): string | null => {
 
   return isValidIana(value) ? value : null
 }
+
+export const normalizeTimezoneValue = (value: string | null | undefined): string | null => {
+  if (value === null || value === undefined) return null
+  const trimmedValue = value.trim()
+  if (trimmedValue === '') return null
+  return normalizeTimezone(trimmedValue)
+}

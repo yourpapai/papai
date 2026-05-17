@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert'
 
+import { setCachedConfig } from '../../src/cache.js'
 import { setConfig } from '../../src/config.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 import { executeCancel, executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
@@ -55,6 +56,25 @@ describe('executeCreate — rrule timezone', () => {
     assert(result !== null)
     assert('fireAt' in result)
     expect(result.fireAt).toContain('09:')
+  })
+
+  test('legacy UTC offset config is normalized before fire_at conversion', () => {
+    setCachedConfig(USER_ID, 'timezone', 'UTC+5')
+    const result = executeCreate(USER_ID, {
+      prompt: 'Morning reminder',
+      schedule: { fire_at: { date: '2030-01-10', time: '09:00' } },
+    })
+
+    expect(result).not.toHaveProperty('error')
+    assert(typeof result === 'object')
+    assert(result !== null)
+    assert('fireAt' in result)
+    expect(result.fireAt).toBe('2030-01-10T09:00:00')
+
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const prompt = prompts[0]!
+    assert(prompt.type === 'scheduled')
+    expect(prompt.fireAt).toBe('2030-01-10T04:00:00.000Z')
   })
 })
 
