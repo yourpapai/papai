@@ -5,13 +5,12 @@
 
 import type { ContextType } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
-import { getConfig } from '../config.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
+import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
-import { normalizeTimezoneValue } from '../utils/timezone.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildScheduleUpdates, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
 import {
@@ -92,14 +91,12 @@ export type ListInput = { type?: 'scheduled' | 'alert'; status?: 'active' | 'com
 
 // --- Handlers ---
 
-function getUserTimezone(userId: string): string | { error: string } {
-  const configuredTimezone = getConfig(userId, 'timezone')
-  if (configuredTimezone === null) return 'UTC'
-
-  const timezone = normalizeTimezoneValue(configuredTimezone)
-  if (timezone !== null) return timezone
-
-  return { error: 'Your configured timezone is invalid. Please update it in /config or rerun /setup and try again.' }
+function validateFutureFireAt(date: string, time: string, timezone: string): string | { error: string } {
+  const utcStr = localDatetimeToUtc(date, time, timezone)
+  const fireDate = new Date(utcStr)
+  if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
+  if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+  return utcStr
 }
 
 function createScheduled(
@@ -111,15 +108,13 @@ function createScheduled(
 ): CreateResult {
   const hasFireAt = schedule.fire_at !== undefined
   const hasRrule = schedule.rrule !== undefined
-  const timezone = getUserTimezone(userId)
+  const timezone = getUserTimezoneOrError(userId)
   if (typeof timezone !== 'string') return timezone
 
   if (hasFireAt) {
     const { date, time } = schedule.fire_at!
-    const utcStr = localDatetimeToUtc(date, time, timezone)
-    const fireDate = new Date(utcStr)
-    if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
-    if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+    const validatedFireAt = validateFutureFireAt(date, time, timezone)
+    if (typeof validatedFireAt !== 'string') return validatedFireAt
   }
 
   let cronCompiled: CompiledRecurrence | undefined

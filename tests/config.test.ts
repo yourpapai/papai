@@ -5,6 +5,7 @@
 
 import { describe, expect, test, beforeEach } from 'bun:test'
 
+import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import {
   copyAdminLlmConfig,
   getAllConfig,
@@ -15,7 +16,6 @@ import {
   maskValue,
   setConfig,
 } from '../src/config.js'
-import { getCachedConfig } from '../src/cache.js'
 import { CONFIG_KEYS, type ConfigKey } from '../src/types/config.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'

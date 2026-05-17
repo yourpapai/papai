@@ -3,10 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfig } from '../config.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
+import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc } from '../utils/datetime.js'
-import { normalizeTimezoneValue } from '../utils/timezone.js'
 import { getScheduledPrompt } from './scheduled.js'
 import type { ScheduleInput } from './types.js'
 
@@ -17,22 +16,12 @@ export type ScheduleFieldUpdates = {
   timezone?: string | null
 }
 
-function getUserTimezone(userId: string): string | { error: string } {
-  const configuredTimezone = getConfig(userId, 'timezone')
-  if (configuredTimezone === null) return 'UTC'
-
-  const timezone = normalizeTimezoneValue(configuredTimezone)
-  if (timezone !== null) return timezone
-
-  return { error: 'Your configured timezone is invalid. Please update it in /config or rerun /setup and try again.' }
-}
-
 export function buildScheduleUpdates(
   id: string,
   userId: string,
   schedule: ScheduleInput,
 ): ScheduleFieldUpdates | { error: string } {
-  const timezone = getUserTimezone(userId)
+  const timezone = getUserTimezoneOrError(userId)
   if (typeof timezone !== 'string') return timezone
   const updates: ScheduleFieldUpdates = {}
   if (schedule.fire_at !== undefined) {

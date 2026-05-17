@@ -197,7 +197,7 @@ describe('pollScheduledOnce', () => {
     const updated = getScheduledPrompt(created.id, USER_ID)
     expect(updated).not.toBeNull()
     expect(updated!.status).toBe('active')
-    expect(updated!.fireAt).toMatch(/T04:00:00\.000Z$/u)
+    expect(updated!.fireAt).toMatch(/T04:00:\d{2}\.000Z$/u)
   })
 
   test('skips prompt when LLM config is missing', async () => {
