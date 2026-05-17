@@ -3,9 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-/// <reference lib="dom" />
-
-// Import all types from schemas to ensure TypeScript interfaces are inferred from Zod schemas
 import type {
   Fact,
   Instruction,
@@ -30,7 +27,6 @@ import type {
   ToolFailure,
 } from '../../src/debug/schemas.js'
 
-// Re-export all types
 export type {
   Fact,
   Instruction,
@@ -55,9 +51,6 @@ export type {
   ToolFailure,
 }
 
-/**
- * Recurring task type for dashboard display
- */
 export type RecurringTask = {
   id: string
   userId: string
@@ -68,9 +61,6 @@ export type RecurringTask = {
   lastRun: string | null
 }
 
-/**
- * Deferred prompt type for dashboard display
- */
 export type DeferredPrompt = {
   id: string
   createdByUserId: string
@@ -80,9 +70,6 @@ export type DeferredPrompt = {
   status: string
 }
 
-/**
- * Memo type for dashboard display
- */
 export type Memo = {
   id: string
   userId: string
@@ -94,9 +81,6 @@ export type Memo = {
   updatedAt: string
 }
 
-/**
- * Identity mapping type for dashboard display
- */
 export type IdentityMappingEntry = {
   userId: string
   provider: string
@@ -105,9 +89,6 @@ export type IdentityMappingEntry = {
   displayName: string | null
 }
 
-/**
- * Authorized group type for dashboard display
- */
 export type AuthorizedGroupEntry = {
   group_id: string
   added_by: string
@@ -124,17 +105,16 @@ export type DashboardWizard = {
   totalSteps: number | '---'
 }
 
-/**
- * Dashboard state object exposed on window for render functions
- */
+export interface DashboardStats {
+  startedAt: number
+  totalMessages: number
+  totalLlmCalls: number
+  totalToolCalls: number
+}
+
 export interface DashboardState {
   connected: boolean
-  stats: {
-    startedAt: number
-    totalMessages: number
-    totalLlmCalls: number
-    totalToolCalls: number
-  }
+  stats: DashboardStats
   sessions: Map<string, Session>
   wizards: Map<string, DashboardWizard>
   scheduler: SchedulerInfo
@@ -154,31 +134,4 @@ export interface DashboardState {
   authorizedGroups: AuthorizedGroupEntry[]
   activeContext: string
   activeLogFilter: { turnId?: string }
-}
-
-/**
- * Dashboard API functions exposed on window
- */
-export interface DashboardAPI {
-  renderConnection(connected: boolean): void
-  renderStats(stats: DashboardState['stats']): void
-  renderInfra(scheduler: SchedulerInfo, pollers: PollersInfo, messageCache: MessageCacheInfo): void
-  renderSessions(sessions: Map<string, Session>, wizards: Map<string, DashboardWizard>): void
-  renderTraces(traces: LlmTrace[]): void
-  renderLogs(): void
-  renderTurns(): void
-  renderNotifications(): void
-  renderToolFailures(): void
-  renderReminders(): void
-  renderMemos(): void
-  renderContext(): void
-  updateScopeFilter(scopes: Set<string>): void
-  clearLogs(): void
-  state: DashboardState
-}
-
-declare global {
-  interface Window {
-    dashboard: DashboardAPI
-  }
 }

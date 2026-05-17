@@ -64,11 +64,11 @@ describe('dashboard-smoke', () => {
       const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.js`)
       const body = await res.text()
 
-      // Should expose the dashboard global and wire DOM
-      expect(body).toContain('window.dashboard')
+      // Should mount the Svelte app and render the top-level panels
       expect(body).toContain('getElementById')
-      expect(body).toContain('connection-status')
-      expect(body).toContain('renderLogs')
+      expect(body).toContain('papai debug')
+      expect(body).toContain('panel-grid')
+      expect(body).toContain('log-explorer')
     })
 
     test('contains state management and SSE setup', async () => {
@@ -83,7 +83,7 @@ describe('dashboard-smoke', () => {
   })
 
   describe('dashboard.html', () => {
-    test('loads the dashboard page with single script reference', async () => {
+    test('loads the dashboard page with a Svelte mount point and bundle reference', async () => {
       const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`)
       expect(res.status).toBe(200)
 
@@ -94,11 +94,8 @@ describe('dashboard-smoke', () => {
       expect(body).not.toContain('dashboard-ui.js')
       expect(body).not.toContain('dashboard-state.js')
 
-      // Should have all required DOM elements
-      expect(body).toContain('id="connection-status"')
-      expect(body).toContain('id="session-list"')
-      expect(body).toContain('id="log-entries"')
-      expect(body).toContain('id="trace-list"')
+      // Should contain the Svelte mount point
+      expect(body).toContain('id="app"')
     })
   })
 

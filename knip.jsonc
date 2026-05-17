@@ -42,8 +42,9 @@
     "catalog": "error",
   },
 
-  // Ignore Stryker plugin (loaded at runtime, not imported) and codeindex (linked via `bun link`)
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex"],
+  // Ignore Stryker plugin (loaded at runtime, not imported) and codeindex (linked via `bun link`).
+  // svelte is imported by client/debug/index.ts but knip can't follow .svelte file imports.
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex", "svelte"],
 
   "ignoreIssues": {
     "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
@@ -55,6 +56,15 @@
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
     "tests/scripts/behavior-audit/test-fixtures.ts": ["exports", "types"],
+    // The dashboard client uses Svelte components that knip can't parse, so most of these
+    // exports look orphaned even though .svelte files consume them.
+    "client/debug/dashboard.svelte.ts": ["exports"],
+    "client/debug/handlers.ts": ["exports"],
+    "client/debug/helpers.ts": ["exports"],
+    "client/debug/log-bootstrap.ts": ["exports"],
+    "client/debug/log-filter.ts": ["exports"],
+    "client/debug/sse.ts": ["exports"],
+    "client/debug/types.ts": ["types"],
   },
 
   // Report unused exports even in entry files
