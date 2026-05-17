@@ -86,6 +86,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0087](0087-debug-dashboard-expansion.md)                            | Debug Dashboard Expansion — Memo, Recurring, Deferred, Turn, Context, Tool-Failure Analysis | 2026-05-15 | Implemented (with divergence)                       |
 | [0090](0090-context-tool-catalog-declined-knip-cleanup-completed.md) | Decline Full Tool Catalog Emission in `/context`; Complete KNIP Cleanup                     | 2026-05-16 | Declined (tool catalog), Implemented (KNIP cleanup) |
 | [0088](0088-kaneo-doc-first-api-migration.md)                        | Kaneo Doc-First API Migration                                                               | 2026-05-16 | Implemented (with divergence)                       |
+| [0092](0092-architecture-inventory-generator.md)                     | Architecture Inventory Generator with Deletion-Candidate Identification                     | 2026-05-11 | Implemented (with file-structure deviation)         |
 
 ## Declined
 
