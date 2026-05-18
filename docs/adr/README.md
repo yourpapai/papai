@@ -101,6 +101,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0106](0106-dry-duplicate-test-code.md)                              | DRY Duplicate Test Code — Extract Shared Fixtures, Factories, and Utilities                 | 2026-04-25 | Implemented (with divergences)                      |
 | [0103](0103-behavior-audit-keyword-consolidation.md)                 | Behavior Audit Keyword Consolidation — Embedding-Based Vocabulary Deduplication             | 2026-04-27 | Implemented (with divergences)                      |
 | [0107](0107-behavior-audit-progress-ux-plan-execution.md)            | Behavior Audit Progress UX Plan — Execution and Architectural Divergence                    | 2026-05-18 | Implemented (with divergences)                      |
+| [0108](0108-behavior-audit-json-extraction-cleanup.md)               | Behavior Audit JSON Extraction Cleanup                                                      | 2026-04-24 | Implemented (with divergences)                      |
 
 ## Declined
 
