@@ -91,6 +91,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0094](0094-single-proxy-tool-deprecated-by-intent-routing.md)       | Single Proxy Tool (`papai_tool`) Deprecated in Favor of Intent-Routed Direct Tools          | 2026-05-12 | Deprecated (reverted)                               |
 | [0096](0096-opencode-tps-meter-removal.md)                           | Remove Local OpenCode TPS Meter Plugin Integration                                          | 2026-04-29 | Implemented                                         |
 | [0097](0097-pi-migration-partial-implementation.md)                  | Pi Migration — Partial Implementation with Intentional Divergences                          | 2026-05-17 | Partially Implemented                               |
+| [0098](0098-rrule-library-adoption.md)                               | Adopt RFC 5545 RRULE for Recurrence Storage and Runtime                                     | 2026-04-19 | Implemented (with divergence)                       |
 
 ## Declined
 
