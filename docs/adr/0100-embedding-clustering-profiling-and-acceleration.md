@@ -147,7 +147,7 @@ Should a future scale increase (e.g., 20,000+ slugs) make even the optimized Typ
 
 ## References
 
-- Profile results: `docs/superpowers/plans/2026-04-29-embedding-clustering-profile-results.md`
+- Profile results: `docs/archive/2026-04-29-embedding-clustering-profile-results.md`
 - CPU profile artifacts: `profiles/embedding-clustering-average.cpuprofile`, `profiles/embedding-clustering-complete.cpuprofile`
 - Archived implementation plans:
   - `docs/archive/2026-04-29-embedding-clustering-profiling.md`
