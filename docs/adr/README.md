@@ -92,6 +92,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0096](0096-opencode-tps-meter-removal.md)                           | Remove Local OpenCode TPS Meter Plugin Integration                                          | 2026-04-29 | Implemented                                         |
 | [0097](0097-pi-migration-partial-implementation.md)                  | Pi Migration — Partial Implementation with Intentional Divergences                          | 2026-05-17 | Partially Implemented                               |
 | [0098](0098-rrule-library-adoption.md)                               | Adopt RFC 5545 RRULE for Recurrence Storage and Runtime                                     | 2026-04-19 | Implemented (with divergence)                       |
+| [0099](0099-embedding-clustering-linkage-mode-improvements.md)       | Embedding Clustering — Linkage-Mode and Oversized-Cluster Improvements                      | 2026-04-29 | Implemented (supersedes ADR-0085)                   |
 
 ## Declined
 

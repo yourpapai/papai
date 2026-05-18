@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0099](0099-embedding-clustering-linkage-mode-improvements.md)
 
 ## Context
 
