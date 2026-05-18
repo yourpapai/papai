@@ -106,6 +106,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0110](0110-behavior-audit-legacy-cleanup.md)                        | Behavior Audit — Legacy Cleanup After Canonical Artifact Migration                                      | 2026-04-23 | Implemented                                         |
 | [0111](0111-behavior-audit-mock-module-cleanup.md)                   | Behavior Audit — Replace Avoidable mock.module() with Dependency Injection                              | 2026-04-22 | Implemented                                         |
 | [0112](0112-review-loop-enhancements.md)                             | Review Loop Enhancements — Severity Expansion, Plan-Then-Fix, Commit Discipline, Open Permission Policy | 2026-04-21 | Implemented (with divergence)                       |
+| [0113](0113-opencode-tps-meter-security-hardening.md)                | OpenCode TPS Meter Security Hardening — All 15 Audit Findings                                           | 2026-04-21 | Implemented                                         |
 
 ## Declined
 
