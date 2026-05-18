@@ -98,6 +98,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0102](0102-behavior-audit-progress-reporting.md)                    | Behavior Audit Progress Reporting with Structured Events                                    | 2026-05-18 | Implemented (with divergences)                      |
 | [0104](0104-fix-codeindex-lint-failures.md)                          | Fix codeindex `no-conditional-in-test` Lint Failures                                        | 2026-04-25 | Implemented                                         |
 | [0105](0105-fix-check-verbose-failures-sigint-cascade.md)            | Fix `bun check:verbose` Failures — SIGINT Cascade Remediation                               | 2026-04-25 | Implemented                                         |
+| [0106](0106-dry-duplicate-test-code.md)                              | DRY Duplicate Test Code — Extract Shared Fixtures, Factories, and Utilities                 | 2026-04-25 | Implemented (with divergences)                      |
 | [0103](0103-behavior-audit-keyword-consolidation.md)                 | Behavior Audit Keyword Consolidation — Embedding-Based Vocabulary Deduplication             | 2026-04-27 | Implemented (with divergences)                      |
 
 ## Declined
