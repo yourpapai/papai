@@ -7,15 +7,6 @@ import { z } from 'zod'
 
 const BY_DAY = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const
 
-export const isValidTimezone = (tz: string): boolean => {
-  try {
-    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz })
-    return fmt !== null
-  } catch {
-    return false
-  }
-}
-
 export const recurrenceSpecSchema = z
   .object({
     freq: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']).describe('Recurrence frequency.'),
@@ -45,15 +36,10 @@ export const recurrenceSpecSchema = z
     until: z.iso.datetime().optional().describe('End date (inclusive) in ISO 8601. Mutually exclusive with count.'),
     count: z.number().int().min(1).optional().describe('Total occurrences. Mutually exclusive with until.'),
     dtstart: z.iso.datetime().describe('Anchor datetime in ISO 8601 (UTC).'),
-    timezone: z.string().describe('IANA timezone used to interpret local-time fields.'),
   })
   .refine((v) => !(v.until !== undefined && v.count !== undefined), {
     message: 'until and count are mutually exclusive',
     path: ['count'],
-  })
-  .refine((v) => isValidTimezone(v.timezone), {
-    message: 'invalid IANA timezone',
-    path: ['timezone'],
   })
 
 export type RecurrenceSpec = z.infer<typeof recurrenceSpecSchema>

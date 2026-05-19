@@ -5,11 +5,12 @@
 
 import type { ContextType } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
-import { getConfig } from '../config.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
+import type { RecurrenceSpec } from '../types/recurrence.js'
+import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildScheduleUpdates, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
@@ -91,6 +92,14 @@ export type ListInput = { type?: 'scheduled' | 'alert'; status?: 'active' | 'com
 
 // --- Handlers ---
 
+function validateFutureFireAt(date: string, time: string, timezone: string): string | { error: string } {
+  const utcStr = localDatetimeToUtc(date, time, timezone)
+  const fireDate = new Date(utcStr)
+  if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
+  if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+  return utcStr
+}
+
 function createScheduled(
   userId: string,
   prompt: string,
@@ -100,24 +109,21 @@ function createScheduled(
 ): CreateResult {
   const hasFireAt = schedule.fire_at !== undefined
   const hasRrule = schedule.rrule !== undefined
-  const timezone = getConfig(userId, 'timezone') ?? 'UTC'
+  const timezone = getUserTimezoneOrError(userId)
+  if (typeof timezone !== 'string') return timezone
 
   if (hasFireAt) {
     const { date, time } = schedule.fire_at!
-    const utcStr = localDatetimeToUtc(date, time, timezone)
-    const fireDate = new Date(utcStr)
-    if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
-    if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+    const validatedFireAt = validateFutureFireAt(date, time, timezone)
+    if (typeof validatedFireAt !== 'string') return validatedFireAt
   }
 
   let cronCompiled: CompiledRecurrence | undefined
   if (hasRrule) {
     const { startDate, startTime, ...scheduleRest } = schedule.rrule!
     const dtstart =
-      startDate === undefined
-        ? midnightUtcForTimezone(scheduleRest.timezone)
-        : localDatetimeToUtc(startDate, startTime, scheduleRest.timezone)
-    cronCompiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart })
+      startDate === undefined ? midnightUtcForTimezone(timezone) : localDatetimeToUtc(startDate, startTime, timezone)
+    cronCompiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart } as Omit<RecurrenceSpec, 'timezone'>, timezone)
   }
 
   let fireAt: string

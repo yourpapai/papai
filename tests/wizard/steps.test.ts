@@ -95,7 +95,9 @@ describe('getWizardSteps', () => {
     const steps = getWizardSteps('kaneo')
     const step = steps.find((s: WizardStep) => s.key === 'timezone')
 
-    expect(step?.prompt).toBe('🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5):')
+    expect(step?.prompt).toBe(
+      '🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5). UTC offsets are accepted and saved as a standard timezone:',
+    )
   })
 
   test('all steps have validation functions', () => {
@@ -216,7 +218,7 @@ describe('validateStep', () => {
   test('validates timezone - rejects invalid timezone', async () => {
     const result = await validateStep('timezone', 'Invalid/Timezone')
     expect(result).toBe(
-      'Invalid timezone. Please enter a valid IANA timezone (e.g., America/New_York, UTC) or UTC offset (e.g., UTC+5)',
+      'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
     )
   })
 

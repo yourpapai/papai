@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfig } from '../config.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
+import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc } from '../utils/datetime.js'
 import { getScheduledPrompt } from './scheduled.js'
 import type { ScheduleInput } from './types.js'
@@ -21,7 +21,8 @@ export function buildScheduleUpdates(
   userId: string,
   schedule: ScheduleInput,
 ): ScheduleFieldUpdates | { error: string } {
-  const timezone = getConfig(userId, 'timezone') ?? 'UTC'
+  const timezone = getUserTimezoneOrError(userId)
+  if (typeof timezone !== 'string') return timezone
   const updates: ScheduleFieldUpdates = {}
   if (schedule.fire_at !== undefined) {
     const { date, time } = schedule.fire_at
@@ -48,8 +49,11 @@ export function buildScheduleUpdates(
     const anchor =
       startDate === undefined
         ? (updates.fireAt ?? existing.dtstartUtc ?? existing.fireAt)
-        : localDatetimeToUtc(startDate, startTime, scheduleRest.timezone)
-    const compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart: anchor })
+        : localDatetimeToUtc(startDate, startTime, timezone)
+    const compiled = recurrenceSpecToRrule(
+      { ...scheduleRest, dtstart: anchor } as Omit<Parameters<typeof recurrenceSpecToRrule>[0], 'timezone'>,
+      timezone,
+    )
     updates.rrule = compiled.rrule
     updates.dtstartUtc = compiled.dtstartUtc
     updates.timezone = compiled.timezone

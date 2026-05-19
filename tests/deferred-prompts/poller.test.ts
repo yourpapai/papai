@@ -7,6 +7,7 @@ import { mock, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { setCachedConfig } from '../../src/cache.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
@@ -181,6 +182,22 @@ describe('pollScheduledOnce', () => {
     expect(callCount).toBe(2)
     // Two messages: one per user
     expect(sentMessages).toHaveLength(2)
+  })
+
+  test('normalizes legacy timezone config before advancing recurring prompts without stored timezone', async () => {
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    setCachedConfig(USER_ID, 'timezone', 'UTC+5')
+    const created = createScheduledPrompt(USER_ID, 'Legacy timezone prompt', {
+      fireAt: pastTime,
+      cronCompiled: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0', dtstartUtc: pastTime },
+    })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    const updated = getScheduledPrompt(created.id, USER_ID)
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('active')
+    expect(updated!.fireAt).toMatch(/T04:00:\d{2}\.000Z$/u)
   })
 
   test('skips prompt when LLM config is missing', async () => {

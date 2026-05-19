@@ -5,6 +5,7 @@
 
 import { describe, expect, test, beforeEach } from 'bun:test'
 
+import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import {
   copyAdminLlmConfig,
   getAllConfig,
@@ -62,6 +63,12 @@ describe('setConfig', () => {
     setConfig(USER_A, 'kaneo_apikey', 'value-for-kaneo_apikey')
     expect(getConfig(USER_A, 'kaneo_apikey')).toBe('value-for-kaneo_apikey')
   })
+
+  test('normalizes timezone shorthand before storing it', () => {
+    setConfig(USER_A, 'timezone', 'UTC+5')
+    expect(getCachedConfig(USER_A, 'timezone')).toBe('Etc/GMT-5')
+    expect(getConfig(USER_A, 'timezone')).toBe('Etc/GMT-5')
+  })
 })
 
 describe('getConfig', () => {
@@ -78,6 +85,11 @@ describe('getConfig', () => {
 
   test('returns null for unset key', () => {
     expect(getConfig(USER_A, 'main_model')).toBeNull()
+  })
+
+  test('normalizes legacy timezone values on read', () => {
+    setCachedConfig(USER_A, 'timezone', 'UTC+5')
+    expect(getConfig(USER_A, 'timezone')).toBe('Etc/GMT-5')
   })
 })
 
@@ -112,6 +124,12 @@ describe('getAllConfig', () => {
     const allConfig = getAllConfig(USER_A)
     expect(allConfig.kaneo_apikey).toBe('key-1')
     expect(allConfig.main_model).toBe('gpt-4')
+  })
+
+  test('normalizes timezone values in bulk config reads', () => {
+    setCachedConfig(USER_A, 'timezone', 'UTC+5')
+    const allConfig = getAllConfig(USER_A)
+    expect(allConfig.timezone).toBe('Etc/GMT-5')
   })
 
   test('does not leak config from other users', () => {
