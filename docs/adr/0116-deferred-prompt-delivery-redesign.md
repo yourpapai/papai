@@ -209,5 +209,8 @@ Migration `025` renames `user_id` → `created_by_user_id` in both deferred prom
 
 ## References
 
-- Design spec: `docs/superpowers/specs/2026-04-19-deferred-prompt-delivery-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-04-19-deferred-prompt-delivery-implementation.md`
+- **Design spec (implemented)**: [`docs/archive/2026-04-19-deferred-prompt-delivery-design.md`](/docs/archive/2026-04-19-deferred-prompt-delivery-design.md)
+- **Implementation plan**: [`docs/archive/2026-04-19-deferred-prompt-delivery-implementation.md`](/docs/archive/2026-04-19-deferred-prompt-delivery-implementation.md)
+- **Superseded spec (2026-04-13)**: [`docs/archive/2026-04-13-proactive-group-messaging-design.md`](/docs/archive/2026-04-13-proactive-group-messaging-design.md)
+- **Superseded plan (2026-04-16)**: [`docs/archive/2026-04-16-proactive-group-messaging.md`](/docs/archive/2026-04-16-proactive-group-messaging.md)
+- **Divergence notes**: [`docs/superpowers/notes/0116-deferred-prompt-delivery-redesign-divergences.md`](/docs/superpowers/notes/0116-deferred-prompt-delivery-redesign-divergences.md)
