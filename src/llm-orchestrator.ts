@@ -8,13 +8,12 @@ import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
-import { getConfig } from './config.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory, saveHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
-import { checkRequiredConfig, getLlmConfig, resolveConfigId } from './llm-orchestrator-config.js'
+import { checkRequiredProviderConfig, getLlmConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
 import { emitLlmError, handleOrchestratorMessageError } from './llm-orchestrator-support.js'
 import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
@@ -25,6 +24,7 @@ import { extractFactsFromSdkResults, upsertFact } from './memory.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
 import type { TaskProvider } from './providers/types.js'
+import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'
 import { getKaneoWorkspace } from './users.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
@@ -102,11 +102,28 @@ const ensureRequiredConfig = async (
   configId: string,
   deps: LlmOrchestratorDeps,
 ): Promise<void> => {
-  const missing = checkRequiredConfig(configId, deps)
+  const missing = checkRequiredProviderConfig(configId, deps)
   if (missing.length === 0) return
-  log.warn({ contextId, configId, missing }, 'Missing required config keys')
+  log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
   await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /setup to configure.`)
   throw new Error('Missing configuration')
+}
+
+let botMisconfiguredNotified = false
+
+const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
+  const missing = missingSystemConfigKeys()
+  log.error({ contextId, missing }, 'system_config is incomplete; bot cannot serve this turn')
+  await reply.text('⚠️ The bot is not fully configured. The administrator has been notified.')
+  if (!botMisconfiguredNotified) {
+    botMisconfiguredNotified = true
+    log.warn({ missing }, 'admin notification suppressed for subsequent turns in this process')
+  }
+}
+
+/** Test-only helper to reset the admin-notified guard between tests. */
+export const resetBotMisconfiguredNotifiedForTesting = (): void => {
+  botMisconfiguredNotified = false
 }
 
 const buildToolRoutingTelemetry = (
@@ -136,7 +153,7 @@ const callLlm = async (
     await deps.maybeProvisionKaneo(reply, configId, username)
   }
   await ensureRequiredConfig(reply, contextId, configId, deps)
-  const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig(configId)
+  const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
   const provider = deps.buildProviderForUser(configId)
   await maybeAutoLinkIdentity(chatUserId, username, provider)
@@ -169,10 +186,7 @@ const callLlm = async (
   return result
 }
 
-const resolveModelName = (contextId: string, configContextId: string | undefined): string => {
-  const cfgId = resolveConfigId(contextId, configContextId)
-  return getConfig(cfgId, 'main_model') ?? ''
-}
+const resolveModelName = (): string => getSystemConfig('main_model') ?? ''
 
 const logProcessMessage = (
   contextId: string,
@@ -191,12 +205,11 @@ const logProcessMessage = (
 
 const buildHistory = async (
   contextId: string,
-  configContextId: string | undefined,
   userText: string,
   attachmentIds: readonly string[],
 ): Promise<{ baseHistory: readonly ModelMessage[]; modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
   const baseHistory = getCachedHistory(contextId)
-  const modelName = resolveModelName(contextId, configContextId)
+  const modelName = resolveModelName()
   const { modelMessage, historyMessage } = await buildUserTurnMessages(contextId, modelName, userText, attachmentIds)
   return { baseHistory, modelMessage, historyMessage }
 }
@@ -215,12 +228,11 @@ export const processMessage = async (
 ): Promise<void> => {
   const resolvedTurnId = turnId ?? crypto.randomUUID()
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
-  const { baseHistory, modelMessage, historyMessage } = await buildHistory(
-    contextId,
-    configContextId,
-    userText,
-    newAttachmentIds,
-  )
+  if (!isSystemConfigComplete()) {
+    await replyBotMisconfigured(reply, contextId)
+    return
+  }
+  const { baseHistory, modelMessage, historyMessage } = await buildHistory(contextId, userText, newAttachmentIds)
   appendHistory(contextId, [historyMessage])
   try {
     const result = await callLlm(

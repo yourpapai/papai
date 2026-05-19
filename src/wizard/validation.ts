@@ -99,62 +99,6 @@ export async function validateModelExists(
   }
 }
 
-/**
- * Configuration validation summary
- */
-export interface ValidationSummary {
-  readonly isValid: boolean
-  readonly errors: readonly ValidationError[]
-}
-
-interface ValidationError {
-  readonly field: string
-  readonly message: string
-}
-
-/**
- * Validate all wizard configuration values at once before saving
- * This provides a summary of any issues that need fixing
- */
-export async function validateWizardConfig(config: {
-  apiKey: string
-  baseUrl: string
-  mainModel: string
-  smallModel: string
-}): Promise<ValidationSummary> {
-  const errors: ValidationError[] = []
-
-  // Validate API key
-  const apiKeyResult = await validateLlmApiKey(config.apiKey, config.baseUrl)
-  if (!apiKeyResult.success) {
-    errors.push({ field: 'llm_apikey', message: apiKeyResult.message ?? 'API key validation failed' })
-  }
-
-  // Validate base URL connectivity
-  const baseUrlResult = await validateLlmBaseUrl(config.baseUrl)
-  if (!baseUrlResult.success) {
-    errors.push({ field: 'llm_baseurl', message: baseUrlResult.message ?? 'URL validation failed' })
-  }
-
-  // Only validate models if API key is valid
-  if (apiKeyResult.success) {
-    // Validate main model
-    const mainModelResult = await validateModelExists(config.mainModel, config.apiKey, config.baseUrl)
-    if (!mainModelResult.success) {
-      errors.push({ field: 'main_model', message: mainModelResult.message ?? 'Main model validation failed' })
-    }
-
-    // Validate small model (only if not using 'same')
-    if (config.smallModel !== 'same') {
-      const smallModelResult = await validateModelExists(config.smallModel, config.apiKey, config.baseUrl)
-      if (!smallModelResult.success) {
-        errors.push({ field: 'small_model', message: smallModelResult.message ?? 'Small model validation failed' })
-      }
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  }
-}
+// The lower-level helpers (`validateLlmApiKey`, `validateLlmBaseUrl`,
+// `validateModelExists`) remain exported so the future Phase 3 admin
+// credentials form can reuse them for live checks.

@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { setCachedConfig } from '../../src/cache.js'
+import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const MAX_EXCERPT_CHARS = 8_000
@@ -33,6 +33,18 @@ const getDistillWebContent = (value: unknown): DistillWebContent => {
   return value
 }
 
+const seedSystemLlm = (
+  overrides: Partial<{ apiKey: string; baseUrl: string; mainModel: string; smallModel: string }> = {},
+): void => {
+  resetSystemConfigCacheForTesting()
+  setSystemConfig('llm_apikey', overrides.apiKey ?? 'test-key', 'env')
+  setSystemConfig('llm_baseurl', overrides.baseUrl ?? 'https://llm.example', 'env')
+  setSystemConfig('main_model', overrides.mainModel ?? 'main-model', 'env')
+  if (overrides.smallModel !== undefined) {
+    setSystemConfig('small_model', overrides.smallModel, 'env')
+  }
+}
+
 describe('distillWebContent', () => {
   let distillWebContent: unknown
 
@@ -45,9 +57,7 @@ describe('distillWebContent', () => {
   test('bypasses the model for small content', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    setCachedConfig('ctx-1', 'llm_apikey', 'test-key')
-    setCachedConfig('ctx-1', 'llm_baseurl', 'https://llm.example')
-    setCachedConfig('ctx-1', 'small_model', 'small-model')
+    seedSystemLlm({ smallModel: 'small-model' })
 
     let generateTextCalls = 0
 
@@ -77,9 +87,7 @@ describe('distillWebContent', () => {
   test('falls back to main_model when small_model is missing', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    setCachedConfig('ctx-1', 'llm_apikey', 'test-key')
-    setCachedConfig('ctx-1', 'llm_baseurl', 'https://llm.example')
-    setCachedConfig('ctx-1', 'main_model', 'main-model')
+    seedSystemLlm()
 
     const builtModels: Array<{ apiKey: string; baseUrl: string; modelId: string }> = []
     const capturedModels: unknown[] = []
@@ -120,9 +128,7 @@ describe('distillWebContent', () => {
   test('uses a single-paragraph model response as both summary and excerpt', async () => {
     const runDistill = getDistillWebContent(distillWebContent)
 
-    setCachedConfig('ctx-1', 'llm_apikey', 'test-key')
-    setCachedConfig('ctx-1', 'llm_baseurl', 'https://llm.example')
-    setCachedConfig('ctx-1', 'main_model', 'main-model')
+    seedSystemLlm()
 
     const result = await runDistill(
       {

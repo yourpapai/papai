@@ -21,11 +21,6 @@ export { parseCallbackData, serializeCallbackData } from './callback-data.js'
 const log = logger.child({ scope: 'config-editor:handlers' })
 
 const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
-  llm_apikey: 'LLM API Key',
-  llm_baseurl: 'Base URL',
-  main_model: 'Main Model',
-  small_model: 'Small Model',
-  embedding_model: 'Embedding Model',
   kaneo_apikey: 'Kaneo API Key',
   kaneo_workspace_id: 'Kaneo Workspace ID',
   youtrack_token: 'YouTrack Token',
@@ -34,11 +29,6 @@ const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
 
 function getFieldEmoji(key: ConfigKey): string {
   const emojiMap: Record<ConfigKey, string> = {
-    llm_apikey: '🔑',
-    llm_baseurl: '🌐',
-    main_model: '🤖',
-    small_model: '⚡',
-    embedding_model: '📊',
     kaneo_apikey: '🔐',
     kaneo_workspace_id: '📁',
     youtrack_token: '🔐',
@@ -63,16 +53,7 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
   const lines = ['⚙️ **Configuration**\n']
   const buttons: EditorButton[] = []
 
-  const configKeys: ConfigKey[] = [
-    'llm_apikey',
-    'llm_baseurl',
-    'main_model',
-    'small_model',
-    'embedding_model',
-    'kaneo_apikey',
-    'youtrack_token',
-    'timezone',
-  ]
+  const configKeys: ConfigKey[] = ['kaneo_apikey', 'youtrack_token', 'timezone']
 
   for (const key of configKeys) {
     const value = getConfig(storageContextId, key)

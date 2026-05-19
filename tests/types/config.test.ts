@@ -14,36 +14,32 @@ import { isConfigKey, type ConfigKey } from '../../src/types/config.js'
 
 describe('config types', () => {
   describe('isConfigKey', () => {
-    test('returns true for valid config keys', () => {
-      const validKeys: ConfigKey[] = [
-        'llm_apikey',
-        'llm_baseurl',
-        'main_model',
-        'small_model',
-        'embedding_model',
-        'kaneo_apikey',
-        'youtrack_token',
-        'timezone',
-      ]
+    test('returns true for the valid per-user keys', () => {
+      const validKeys: ConfigKey[] = ['kaneo_apikey', 'kaneo_workspace_id', 'youtrack_token', 'timezone']
 
       for (const key of validKeys) {
         expect(isConfigKey(key)).toBe(true)
       }
     })
 
-    test('returns false for invalid keys', () => {
+    test('returns false for invalid keys and for the former LLM keys', () => {
       expect(isConfigKey('invalid_key')).toBe(false)
       expect(isConfigKey('')).toBe(false)
       expect(isConfigKey('llm_api_key')).toBe(false)
       expect(isConfigKey('apikey')).toBe(false)
+      // LLM keys moved to system_config in Phase 1
+      expect(isConfigKey('llm_apikey')).toBe(false)
+      expect(isConfigKey('llm_baseurl')).toBe(false)
+      expect(isConfigKey('main_model')).toBe(false)
+      expect(isConfigKey('small_model')).toBe(false)
+      expect(isConfigKey('embedding_model')).toBe(false)
     })
 
     test('type guard narrows string to ConfigKey', () => {
-      const maybeKey = 'llm_apikey'
+      const maybeKey = 'kaneo_apikey'
       assert(isConfigKey(maybeKey), 'expected isConfigKey to return true for a valid key')
-      // TypeScript should recognize this as ConfigKey after the assertion
       const key: ConfigKey = maybeKey
-      expect(key).toBe('llm_apikey')
+      expect(key).toBe('kaneo_apikey')
     })
   })
 })

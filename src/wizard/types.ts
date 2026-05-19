@@ -44,7 +44,7 @@ export interface WizardStep {
  */
 export interface WizardButton {
   text: string
-  action: 'edit' | 'cancel' | 'skip_small_model' | 'skip_embedding' | 'skip_keep_existing'
+  action: 'edit' | 'cancel' | 'skip_keep_existing'
   style?: 'primary' | 'secondary' | 'danger'
 }
 

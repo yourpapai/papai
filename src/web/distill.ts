@@ -6,8 +6,8 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, type LanguageModel } from 'ai'
 
-import { getConfig } from '../config.js'
 import { logger } from '../logger.js'
+import { getSystemConfig, type SystemConfigKey } from '../system-config.js'
 import { fetchWithoutTimeout } from '../utils/fetch.js'
 
 const log = logger.child({ scope: 'web:distill' })
@@ -34,13 +34,13 @@ const splitParagraphs = (text: string): readonly string[] =>
     .map((paragraph) => paragraph.trim())
     .filter((paragraph) => paragraph.length > 0)
 
-const requireConfigValue = (storageContextId: string, key: 'llm_apikey' | 'llm_baseurl' | 'main_model'): string => {
-  const value = getConfig(storageContextId, key)
+const requireSystemValue = (key: SystemConfigKey): string => {
+  const value = getSystemConfig(key)
   if (value !== null) {
     return value
   }
 
-  throw new Error(`Missing required config: ${key}`)
+  throw new Error(`Missing required system_config: ${key}`)
 }
 
 const bypassDistillation = (storageContextId: string, content: string): DistilledContent => {
@@ -48,10 +48,10 @@ const bypassDistillation = (storageContextId: string, content: string): Distille
   return { summary: content, excerpt: content, truncated: false }
 }
 
-const getModelConfig = (storageContextId: string): { apiKey: string; baseUrl: string; modelId: string } => ({
-  apiKey: requireConfigValue(storageContextId, 'llm_apikey'),
-  baseUrl: requireConfigValue(storageContextId, 'llm_baseurl'),
-  modelId: getConfig(storageContextId, 'small_model') ?? requireConfigValue(storageContextId, 'main_model'),
+const getModelConfig = (): { apiKey: string; baseUrl: string; modelId: string } => ({
+  apiKey: requireSystemValue('llm_apikey'),
+  baseUrl: requireSystemValue('llm_baseurl'),
+  modelId: getSystemConfig('small_model') ?? requireSystemValue('main_model'),
 })
 
 const parseDistilledContent = (text: string): DistilledContent => {
@@ -116,7 +116,7 @@ export async function distillWebContent(
     return bypassDistillation(input.storageContextId, input.content)
   }
 
-  const { apiKey, baseUrl, modelId } = getModelConfig(input.storageContextId)
+  const { apiKey, baseUrl, modelId } = getModelConfig()
   const model = deps.buildModel(apiKey, baseUrl, modelId)
   const prompt = buildPrompt(input.title, input.goal ?? DEFAULT_GOAL, input.content)
   const result = await deps.generateText({

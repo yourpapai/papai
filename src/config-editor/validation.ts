@@ -19,19 +19,6 @@ function validateRequired(value: string): ValidationResult {
   return { valid: true }
 }
 
-function validateUrl(value: string): ValidationResult {
-  const trimmedValue = value.trim()
-  try {
-    const url = new URL(trimmedValue)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return { valid: false, error: 'Please enter a valid URL (http/https)' }
-    }
-    return { valid: true }
-  } catch {
-    return { valid: false, error: 'Please enter a valid URL (http/https)' }
-  }
-}
-
 function validateTimezone(value: string): ValidationResult {
   const normalized = normalizeTimezone(value.trim())
   if (normalized === null) {
@@ -46,18 +33,9 @@ function validateTimezone(value: string): ValidationResult {
 
 export function validateConfigValue(key: ConfigKey, value: string): ValidationResult {
   switch (key) {
-    case 'llm_apikey':
     case 'kaneo_apikey':
     case 'kaneo_workspace_id':
     case 'youtrack_token':
-      return validateRequired(value)
-
-    case 'llm_baseurl':
-      return validateUrl(value)
-
-    case 'main_model':
-    case 'small_model':
-    case 'embedding_model':
       return validateRequired(value)
 
     case 'timezone':

@@ -10,7 +10,7 @@ import { normalizeTimezoneValue } from './utils/timezone.js'
 
 const log = logger.child({ scope: 'config' })
 
-const SENSITIVE_KEYS: ReadonlySet<ConfigKey> = new Set(['kaneo_apikey', 'youtrack_token', 'llm_apikey'])
+const SENSITIVE_KEYS: ReadonlySet<ConfigKey> = new Set(['kaneo_apikey', 'youtrack_token'])
 
 function normalizeConfigValue(key: ConfigKey, value: string): string {
   if (key !== 'timezone') return value
@@ -52,34 +52,6 @@ export function getAllConfig(userId: string): Partial<Record<ConfigKey, string>>
     }
   }
   return result
-}
-
-const LLM_COPY_KEYS: readonly ConfigKey[] = [
-  'llm_apikey',
-  'llm_baseurl',
-  'main_model',
-  'small_model',
-  'embedding_model',
-]
-
-/**
- * Returns true if the user is missing any of the LLM config keys that should be
- * copied from the admin. Used to avoid triggering copyAdminLlmConfig on every message.
- */
-export function isMissingLlmConfig(userId: string): boolean {
-  return LLM_COPY_KEYS.some((key) => getCachedConfig(userId, key) === null)
-}
-
-export function copyAdminLlmConfig(targetUserId: string, adminUserId: string): void {
-  log.debug({ targetUserId }, 'copyAdminLlmConfig called')
-  for (const key of LLM_COPY_KEYS) {
-    const existingValue = getCachedConfig(targetUserId, key)
-    if (existingValue !== null) continue
-    const adminValue = getCachedConfig(adminUserId, key)
-    if (adminValue === null) continue
-    setCachedConfig(targetUserId, key, adminValue)
-  }
-  log.info({ targetUserId }, 'LLM config copied from admin')
 }
 
 export function maskValue(key: ConfigKey, value: string): string {

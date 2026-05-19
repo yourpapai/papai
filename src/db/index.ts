@@ -44,6 +44,8 @@ import { migration030AttachmentWorkspace } from './migrations/030_attachment_wor
 import { migration031StagedFiles } from './migrations/031_staged_files.js'
 import { migration032StagedAttachmentId } from './migrations/032_staged_attachment_id.js'
 import { migration033StagedFilesUniquePlatformContext } from './migrations/033_staged_files_unique_platform_context.js'
+import { migration034SystemConfig } from './migrations/034_system_config.js'
+import { migration036DropUserLlmConfig } from './migrations/036_drop_user_llm_config.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -112,6 +114,8 @@ export const MIGRATIONS: readonly Migration[] = [
   migration031StagedFiles,
   migration032StagedAttachmentId,
   migration033StagedFilesUniquePlatformContext,
+  migration034SystemConfig,
+  migration036DropUserLlmConfig,
 ]
 
 export const initDb = (): void => {

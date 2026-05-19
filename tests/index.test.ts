@@ -139,6 +139,16 @@ describe('index.ts - graceful shutdown', () => {
       closeMigrationDbInstance: (): void => undefined,
       initDb: (): void => undefined,
     }))
+    void mock.module('../src/system-config.js', () => ({
+      seedSystemConfigFromEnv: (): void => undefined,
+      primeSystemConfigCache: (): void => undefined,
+      missingSystemConfigKeys: (): readonly string[] => [],
+      isSystemConfigComplete: (): boolean => true,
+      getSystemConfig: (): string | null => null,
+      setSystemConfig: (): void => undefined,
+      SYSTEM_CONFIG_KEYS: [],
+      resetSystemConfigCacheForTesting: (): void => undefined,
+    }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (): void => undefined,
       stopPollers: (): void => undefined,

@@ -126,6 +126,20 @@ Required at startup:
 - `ADMIN_USER_ID`
 - `TASK_PROVIDER`
 
+The bot also needs central LLM credentials before it can serve any message.
+They live in the admin-owned `system_config` SQLite table, seeded once from
+environment variables on first start and from the DB on subsequent starts:
+
+- `LLM_API_KEY` (seeded into `system_config.llm_apikey`)
+- `LLM_BASE_URL` (seeded into `system_config.llm_baseurl`)
+- `MAIN_MODEL` (seeded into `system_config.main_model`)
+- `SMALL_MODEL` — optional; callsites fall back to `main_model`
+- `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
+
+If `system_config` is missing any of the three required entries at runtime,
+the bot logs `WARN` at startup and replies "the bot is not fully configured"
+to incoming messages until the admin restarts with the env vars set.
+
 `ADMIN_USER_ID` is stored as the initial authorized `platform_user_id`, so it must match the user ID string the active chat adapter sees. For Telegram this is numeric; for Mattermost and Discord it is the platform user ID string, not a display name.
 
 Chat-provider requirements:
@@ -162,16 +176,15 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 | `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
 | `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
 
-Common runtime config keys:
+Common runtime config keys (per-user, set via `/setup` or `/config`):
 
-- `llm_apikey`
-- `llm_baseurl`
-- `main_model`
-- `small_model`
-- `embedding_model`
 - `timezone`
 
-Provider-specific runtime keys:
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`,
+`embedding_model`) are admin-owned and live in `system_config`, not in
+`user_config` — see the "Required Environment Variables" section above.
+
+Provider-specific per-user runtime keys:
 
 - Kaneo: `kaneo_apikey`
 - YouTrack: `youtrack_token`

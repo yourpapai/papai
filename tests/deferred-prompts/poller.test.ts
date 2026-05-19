@@ -14,14 +14,16 @@ import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/al
 import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { createMockChatWithSentMessages, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 function setupUserConfig(userId: string): void {
-  setConfig(userId, 'llm_apikey', 'test-key')
-  setConfig(userId, 'llm_baseurl', 'http://localhost:11434/v1')
-  setConfig(userId, 'main_model', 'test-model')
   setConfig(userId, 'timezone', 'UTC')
+  resetSystemConfigCacheForTesting()
+  setSystemConfig('llm_apikey', 'test-key', 'env')
+  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
+  setSystemConfig('main_model', 'test-model', 'env')
 }
 
 const USER_ID = 'poller-user-1'
@@ -200,17 +202,19 @@ describe('pollScheduledOnce', () => {
     expect(updated!.fireAt).toMatch(/T04:00:\d{2}\.000Z$/u)
   })
 
-  test('skips prompt when LLM config is missing', async () => {
-    // Create a user without LLM config
+  test('skips prompt when central LLM config is missing (Phase 1)', async () => {
+    // Reset the system_config cache so getSystemConfig returns null and
+    // the deferred prompt path bails out with the misconfigured message.
+    resetSystemConfigCacheForTesting()
+
     const unconfiguredUser = 'unconfigured-user'
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     createScheduledPrompt(unconfiguredUser, 'No config', { fireAt: pastTime })
 
     await pollScheduledOnce(chat, () => provider)
 
-    // Should still send the fallback message
     expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]!.text).toContain('missing LLM configuration')
+    expect(sentMessages[0]!.text).toContain('not fully configured')
   })
 })
 

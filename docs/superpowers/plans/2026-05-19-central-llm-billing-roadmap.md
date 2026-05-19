@@ -35,10 +35,12 @@ Each phase runs through the same five-step workflow:
 ## Phase 1 — Central LLM credentials, env-only
 
 ### Goal
+
 New users can DM the bot and get a useful reply without entering an LLM API
 key. Bot admin sets credentials once via environment variables.
 
 ### Scope
+
 - Migration 034: create `system_config` table.
 - Migration 036: delete the five LLM keys from `user_config`.
 - On startup, seed `system_config` from `LLM_API_KEY`, `LLM_BASE_URL`,
@@ -55,15 +57,18 @@ key. Bot admin sets credentials once via environment variables.
   empty, instead of "complete /setup".
 
 ### Out of scope for this phase
+
 - No dashboard admin form. Credentials change requires env update + restart.
 - No usage telemetry table — phase 2.
 - No billing UI — phase 3.
 
 ### Risk profile
+
 Highest of the three. Touches the hot path, deletes user data, removes a
 wizard branch. Needs careful staging.
 
 ### Acceptance
+
 - Fresh-install bot with `LLM_API_KEY` env set answers a first message
   with no `/setup` interaction beyond task provider + timezone.
 - Existing users keep working: migration drops their LLM rows; bot now
@@ -72,6 +77,7 @@ wizard branch. Needs careful staging.
   resolution path.
 
 ### Rollback
+
 - Revert the orchestrator and wizard code changes; the `system_config`
   rows can stay (harmless once unused).
 - Migration 036 (the destructive one) is one-way at the data level; a
@@ -80,6 +86,7 @@ wizard branch. Needs careful staging.
   a backup file before migration 036 runs.
 
 ### Estimated size
+
 ~600 lines code + migrations, ~400 lines tests.
 
 ---
@@ -87,11 +94,13 @@ wizard branch. Needs careful staging.
 ## Phase 2 — Usage telemetry recording
 
 ### Goal
+
 Every `llm:end` event becomes a durable row in `llm_usage_events`. No UI
 yet. The bot collects pricing data silently so phase 3 has something to
 show.
 
 ### Scope
+
 - Migration 035: create `llm_usage_events` table + indexes.
 - `src/db/schema.ts`: add Drizzle table.
 - `src/usage/` module:
@@ -110,16 +119,19 @@ show.
   primary key — duplicate inserts fail loudly in tests, never silently.
 
 ### Out of scope for this phase
+
 - No HTTP routes — phase 3.
 - No dashboard tab — phase 3.
 - No tool-call rows; per-request `tool_call_count` is enough.
 - No daily roll-ups; raw query works at this volume.
 
 ### Risk profile
+
 Low. Additive table, additive module. Recorder failures must not break
 the event bus — wrapped in try/catch with log, no rethrow.
 
 ### Acceptance
+
 - After a real LLM call, one row appears in `llm_usage_events` with
   populated tokens, model, model role, turn id, both subject ids.
 - Failed `llm:end` (error path) still produces a row with `error` set.
@@ -129,10 +141,12 @@ the event bus — wrapped in try/catch with log, no rethrow.
   using DI; query results match raw SQL on a seeded fixture.
 
 ### Rollback
+
 Drop the migration; remove the `initUsageRecorder()` call. Fully
 reversible.
 
 ### Estimated size
+
 ~400 lines code + migration, ~500 lines tests.
 
 ---
@@ -140,10 +154,12 @@ reversible.
 ## Phase 3 — Billing dashboard tab + admin credentials form
 
 ### Goal
+
 Bot admin opens the dashboard, sees subjects sorted by tokens, drills
 into one, and updates LLM credentials without restarting.
 
 ### Scope
+
 - `src/debug/server.ts`: routes
   - `GET /billing/subjects?window=30d`
   - `GET /billing/subject/:id?window=30d`
@@ -168,16 +184,19 @@ into one, and updates LLM credentials without restarting.
 - Window selector: 24h / 7d / 30d / all.
 
 ### Out of scope for this phase
+
 - No charts (explicitly "very basic").
 - No CSV export.
 - No DM `/admin` command — credentials still change via dashboard only.
 - No tool-call drill-down beyond the per-turn count.
 
 ### Risk profile
+
 Medium. New UI surface; only visible to admin. The credentials form is
 the new sensitive surface and needs a security review.
 
 ### Acceptance
+
 - Billing tab loads, lists subjects with totals matching a
   hand-rolled SQL aggregate over `llm_usage_events`.
 - Clicking a subject shows its request rows; row expansion shows
@@ -188,9 +207,11 @@ the new sensitive surface and needs a security review.
   records the change with `updated_by`.
 
 ### Rollback
+
 Remove the new routes and the Billing tab; data tables stay.
 
 ### Estimated size
+
 ~500 lines server code + tests, ~800 lines client code + tests.
 
 ---
@@ -200,6 +221,7 @@ Remove the new routes and the Billing tab; data tables stay.
 Listed for visibility, not committed.
 
 ### Possible scope
+
 - New `tool_call_events` table mirroring `llm_usage_events` shape, keyed
   by `turn_id`.
 - Switch `event_id` to a deterministic hash of
@@ -209,6 +231,7 @@ Listed for visibility, not committed.
   `forward_error`. No worker yet — just the schema slot.
 
 ### Trigger to start
+
 Phase 3 data shows tool-call cost is material, or the billing research
 moves toward a metering vendor and the outbox path is needed.
 
@@ -217,6 +240,7 @@ moves toward a metering vendor and the outbox path is needed.
 ## Phase 5 — Anonymous DB-wide statistics
 
 ### Goal
+
 Bot admin can see structural counts and sizes for every domain table in
 the bot's SQLite database, per billing subject and bot-wide, without
 exposing any content. The dataset answers questions the billing research
@@ -228,6 +252,7 @@ surfaces) and `04-metering-and-telemetry.md` §1 (candidate billable
 units).
 
 ### Anonymity contract
+
 Counts, sizes, timestamps, and enum distributions only. Never content,
 never usernames, never message text, never memo bodies, never
 attachment filenames. The only identifiers in the output are
@@ -239,27 +264,29 @@ suitable for screenshotting or sharing.
 ### Scope
 
 #### Per-subject counts (extend the phase 3 subject detail)
+
 For each `storage_context_id`, count rows in:
 
-| Table | Metrics |
-| --- | --- |
-| `memos` | total, by `status` (active / archived / promoted), by `tags` cardinality, total `content` bytes, total `embedding` bytes, oldest / newest `created_at`, count with `embedding IS NOT NULL` |
-| `scheduled_prompts` | total, pending / fired / cancelled, distinct delivery targets (no target identifiers, just count) |
-| `recurring_tasks` | total, enabled / disabled, distinct `projectId` count, count with `nextRun` in the next 7d, distinct `rrule` patterns (hashed) |
-| `instructions` | total, total `content` bytes |
-| `attachments` | total, by `status`, by `sourceProvider`, total stored bytes (from manifest), count with `isActive=1`, count by `extension` bucket |
-| `message_metadata` | total, by `contextType` derived from id shape, count with `author_id=chat_user_id`, oldest / newest `timestamp`, total `text` bytes (size only) |
-| conversation history | turn count per subject, summary count, total summarized bytes |
-| `user_identity_mappings` | count per provider name |
-| `staged_files` | count, by `status`, total bytes |
-| `users` (for subjects that are users) | `addedAt`, `addedBy` presence, `kaneoWorkspaceId` presence |
-| `group_members` (for subjects that are groups) | member count, distinct `addedBy` count |
-| `group_user_observations` | observation count per group; **counts only**, never observation text |
-| `web_fetch_cache` | distinct hosts (hashed), total fetches per subject if join is feasible, bytes stored |
-| `llm_usage_events` | already in phase 3; included here for completeness |
-| tool-failures (already in dashboard) | count per subject, per `errorType` distribution |
+| Table                                          | Metrics                                                                                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `memos`                                        | total, by `status` (active / archived / promoted), by `tags` cardinality, total `content` bytes, total `embedding` bytes, oldest / newest `created_at`, count with `embedding IS NOT NULL` |
+| `scheduled_prompts`                            | total, pending / fired / cancelled, distinct delivery targets (no target identifiers, just count)                                                                                          |
+| `recurring_tasks`                              | total, enabled / disabled, distinct `projectId` count, count with `nextRun` in the next 7d, distinct `rrule` patterns (hashed)                                                             |
+| `instructions`                                 | total, total `content` bytes                                                                                                                                                               |
+| `attachments`                                  | total, by `status`, by `sourceProvider`, total stored bytes (from manifest), count with `isActive=1`, count by `extension` bucket                                                          |
+| `message_metadata`                             | total, by `contextType` derived from id shape, count with `author_id=chat_user_id`, oldest / newest `timestamp`, total `text` bytes (size only)                                            |
+| conversation history                           | turn count per subject, summary count, total summarized bytes                                                                                                                              |
+| `user_identity_mappings`                       | count per provider name                                                                                                                                                                    |
+| `staged_files`                                 | count, by `status`, total bytes                                                                                                                                                            |
+| `users` (for subjects that are users)          | `addedAt`, `addedBy` presence, `kaneoWorkspaceId` presence                                                                                                                                 |
+| `group_members` (for subjects that are groups) | member count, distinct `addedBy` count                                                                                                                                                     |
+| `group_user_observations`                      | observation count per group; **counts only**, never observation text                                                                                                                       |
+| `web_fetch_cache`                              | distinct hosts (hashed), total fetches per subject if join is feasible, bytes stored                                                                                                       |
+| `llm_usage_events`                             | already in phase 3; included here for completeness                                                                                                                                         |
+| tool-failures (already in dashboard)           | count per subject, per `errorType` distribution                                                                                                                                            |
 
 #### Bot-wide aggregates (new "Stats" tab)
+
 - Total subjects (DM users, groups), with growth chart over the last 30d
   from `users.addedAt` and `authorized_groups.addedAt`.
 - Per-table totals + distribution percentiles (p50/p90/p99 per subject)
@@ -282,6 +309,7 @@ presence and any task-id references stored in `message_metadata`; we
 report those without leaving the local DB.
 
 #### Optional time series — migration 037 (deferred decision)
+
 A `usage_snapshots(snapshot_at INTEGER, subject_id TEXT, metric TEXT,
 value INTEGER)` table written by a nightly job lets the dashboard chart
 growth. Recommendation: **defer to phase 5b**. The phase 5a slice
@@ -290,6 +318,7 @@ queries are too slow to run on every dashboard open — typically when
 `memos` or `message_metadata` cross a few hundred thousand rows.
 
 #### Module sketch
+
 ```
 src/stats/
   index.ts           — public API: getSubjectStats(id), getGlobalStats()
@@ -300,14 +329,17 @@ src/stats/
 ```
 
 Server routes (phase 5a):
+
 - `GET /stats/subject/:id` — per-subject stats blob.
 - `GET /stats/global` — bot-wide aggregates.
 
 Dashboard:
+
 - Subject detail in the Billing tab gains a "Stats" sub-panel.
 - New top-level "Stats" tab shows the bot-wide view.
 
 ### Out of scope for this phase
+
 - No content, ever — even hashed. Hashing applies to rrule strings and
   hostnames, both already non-PII-ish, only to dedupe for distribution
   charts without exposing the raw value.
@@ -320,15 +352,18 @@ Dashboard:
 - No time series; reconsider in 5b.
 
 ### Risk profile
+
 Low. Read-only queries against existing tables, no schema change in
 5a. Main risk is query cost on large tables (`message_metadata`,
 `memos`) — mitigated by:
+
 - index check during planning; add missing indexes in 5a only if a
   required query degrades.
 - caching the global view for 60s in-process; per-subject views are
   fast enough to compute on click.
 
 ### Acceptance
+
 - `/stats/global` returns shapes documented in `types.ts` and matches
   hand-rolled SQL aggregates on a seeded fixture.
 - `/stats/subject/:id` returns counts that sum to the totals in the
@@ -341,14 +376,17 @@ Low. Read-only queries against existing tables, no schema change in
   `message_metadata` rows in under 500ms (in-process, on a dev laptop).
 
 ### Rollback
+
 Remove routes and the new tab. No data to roll back; queries are
 read-only.
 
 ### Estimated size
+
 ~600 lines server code + tests (mostly tests, the queries are short),
 ~700 lines client code + tests for the Stats tab and sub-panel.
 
 ### Open questions to resolve before phase 5 starts
+
 - Anonymity contract — is hashing hostnames in the web-fetch breakdown
   acceptable, or do we omit them entirely? Recommendation: keyed hash
   with a per-deployment salt, so values are deterministic in a single
@@ -369,6 +407,7 @@ read-only.
   only; ignore byte-size of historical text in 5a.
 
 ### Trigger to start
+
 After phase 3 ships and the Billing tab is in operator hands long
 enough to know which secondary stats they keep asking SQL for.
 
@@ -377,7 +416,9 @@ enough to know which secondary stats they keep asking SQL for.
 ## Cross-phase concerns
 
 ### Branch strategy
+
 One branch per phase, off `main`. Naming:
+
 - `claude/central-llm-phase-1-env-credentials`
 - `claude/central-llm-phase-2-usage-recorder`
 - `claude/central-llm-phase-3-billing-dashboard`
@@ -387,6 +428,7 @@ Each phase merges before the next opens. The design doc and this plan
 land first (current branch).
 
 ### Migration ordering
+
 Phase 1: 034, 036. Phase 2: 035. The numeric gap is intentional — 035
 lands second but ordering by phase is the user-facing contract.
 
@@ -395,6 +437,7 @@ consistent: `system_config` exists, `llm_usage_events` does not. No
 runtime check assumes 035's presence.
 
 ### Test strategy per phase
+
 - Phase 1: extend `tests/llm-orchestrator-config.test.ts`,
   `tests/wizard/steps.test.ts`, new `tests/db/migrations/034-*` and
   `036-*`. Manual smoke: fresh container with env vars only.
@@ -410,6 +453,7 @@ runtime check assumes 035's presence.
   global Stats tab, confirm latency budget.
 
 ### Security review checkpoints
+
 - Phase 1: `bun security` after wizard changes (prompt injection surface
   for the new misconfigured-bot reply).
 - Phase 3: dedicated `/security-review` of the credentials form route.
@@ -422,6 +466,7 @@ runtime check assumes 035's presence.
   blocking defect.
 
 ### Documentation updates
+
 - Phase 1: `CLAUDE.md` env-var section gains `LLM_API_KEY`,
   `LLM_BASE_URL`, `MAIN_MODEL`, `SMALL_MODEL`, `EMBEDDING_MODEL` as
   required at startup. `llm_apikey` and friends leave the runtime config
@@ -434,7 +479,9 @@ runtime check assumes 035's presence.
   future contributors don't widen the surface accidentally.
 
 ### Open questions to resolve before each phase starts
+
 Phase 1:
+
 - Do we hard-fail on missing env vars at startup, or boot and reply
   "bot misconfigured" until the admin sets them via dashboard
   (which phase 1 does not have)? Recommendation: hard-fail in phase 1
@@ -445,6 +492,7 @@ Phase 1:
   immediately, smaller diff is easier to review.
 
 Phase 2:
+
 - One emit point or three? Main, small, and embedding use the same OpenAI
   client and could share an emitter; separate emitters might be cleaner
   per modelRole. Decide in phase 2 brainstorm.
@@ -452,6 +500,7 @@ Phase 2:
   `web/distill.ts`? May be unsupported by the provider — store NULL.
 
 Phase 3:
+
 - `displayName` is best-effort. If a group has no recorded title in
   `group_user_observations`, do we hit the chat provider live for the
   name, or show the raw id? Recommendation: raw id only in v1; the live
