@@ -109,6 +109,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0113](0113-opencode-tps-meter-security-hardening.md)                | OpenCode TPS Meter Security Hardening — All 15 Audit Findings                                           | 2026-04-21 | Implemented                                                 |
 | [0114](0114-behavior-audit-phase2-redesign.md)                       | Behavior Audit Phase 2 Redesign — Per-Behavior Classification Before Feature Consolidation              | 2026-04-21 | Implemented (with divergences)                              |
 | [0115](0115-readable-group-and-user-labels.md)                       | Readable Group And User Labels in `/groups` and `/group users`                                          | 2026-04-19 | Implemented (with architectural extensions beyond the plan) |
+| [0116](0116-deferred-prompt-delivery-redesign.md)                    | Deferred Prompt Delivery Redesign — Same-Context Delivery with Personal vs Shared Audience              | 2026-04-19 | Implemented                                                 |
 
 ## Declined
 
