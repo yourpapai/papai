@@ -1,6 +1,6 @@
 # YouTrack Tool Parity Checklist
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Note**: This plan has been fully implemented. See ADR-0117: YouTrack Tool Parity Closure for the decision record.
 
 **Goal:** Close the highest-impact YouTrack gaps between papai's provider/tool surface and the cloned MCP baseline, while fixing confirmed YouTrack-specific correctness bugs.
 
@@ -73,13 +73,13 @@
 
 **Checklist:**
 
-- [ ] Add failing provider tests showing `createYouTrackTask()` sends due-date custom-field data when `dueDate` is provided.
-- [ ] Add failing provider tests showing `updateYouTrackTask()` sends due-date custom-field data when `dueDate` is provided.
-- [ ] Add failing provider tests showing `getYouTrackTask()` maps a YouTrack due-date custom field into normalized `task.dueDate`.
-- [ ] Update the issue field selection so due-date data is fetched from YouTrack responses.
-- [ ] Extend outgoing custom-field payload building to encode YouTrack due-date data instead of silently dropping it.
-- [ ] Extend incoming mapping so due date is parsed into the normalized ISO string expected by the tools.
-- [ ] Run targeted provider and tool tests covering create, update, and read paths.
+- [x] Add failing provider tests showing `createYouTrackTask()` sends due-date custom-field data when `dueDate` is provided.
+- [x] Add failing provider tests showing `updateYouTrackTask()` sends due-date custom-field data when `dueDate` is provided.
+- [x] Add failing provider tests showing `getYouTrackTask()` maps a YouTrack due-date custom field into normalized `task.dueDate`.
+- [x] Update the issue field selection so due-date data is fetched from YouTrack responses.
+- [x] Extend outgoing custom-field payload building to encode YouTrack due-date data instead of silently dropping it.
+- [x] Extend incoming mapping so due date is parsed into the normalized ISO string expected by the tools.
+- [x] Run targeted provider and tool tests covering create, update, and read paths.
 
 **Verification commands:**
 
@@ -97,10 +97,10 @@
 
 **Checklist:**
 
-- [ ] Add a failing builder test that demonstrates attachment tools must be created from `contextId` rather than `chatUserId`.
-- [ ] Change `buildTools()` to pass the storage context into `attachmentTools()`.
-- [ ] Keep watcher and identity behavior unchanged while fixing the attachment path.
-- [ ] Run the builder and attachment test suites.
+- [x] Add a failing builder test that demonstrates attachment tools must be created from `contextId` rather than `chatUserId`.
+- [x] Change `buildTools()` to pass the storage context into `attachmentTools()`.
+- [x] Keep watcher and identity behavior unchanged while fixing the attachment path.
+- [x] Run the builder and attachment test suites.
 
 **Verification commands:**
 
@@ -123,12 +123,12 @@
 
 **Checklist:**
 
-- [ ] Decide on the minimal safe contract for this iteration: either expose read-only normalized custom fields, or narrow the write contract so it no longer pretends to support arbitrary field types.
-- [ ] Add failing tests for the chosen contract before touching implementation.
-- [ ] If read support is added, extend normalized task shape with a provider-safe custom-field representation and map YouTrack custom fields into it.
-- [ ] If write support remains limited, update tool descriptions and validation text so they explicitly describe supported field types instead of generic arbitrary fields.
-- [ ] Do not add speculative generic field-type mutation logic unless it is backed by actual bundle/type resolution.
-- [ ] Run provider and tool tests covering the revised contract.
+- [x] Decide on the minimal safe contract for this iteration: either expose read-only normalized custom fields, or narrow the write contract so it no longer pretends to support arbitrary field types.
+- [x] Add failing tests for the chosen contract before touching implementation.
+- [x] If read support is added, extend normalized task shape with a provider-safe custom-field representation and map YouTrack custom fields into it.
+- [x] If write support remains limited, update tool descriptions and validation text so they explicitly describe supported field types instead of generic arbitrary fields.
+- [x] Do not add speculative generic field-type mutation logic unless it is backed by actual bundle/type resolution.
+- [x] Run provider and tool tests covering the revised contract.
 
 **Verification commands:**
 
@@ -153,11 +153,11 @@
 
 **Checklist:**
 
-- [ ] Add failing tool tests for a `get_project` tool that accepts `projectId` and returns one normalized project.
-- [ ] Implement `makeGetProjectTool()` using `provider.getProject!()`.
-- [ ] Gate exposure on `projects.read` in `buildTools()`.
-- [ ] Extend the integration test to expect `get_project` for YouTrack.
-- [ ] Run project-tool, builder, and integration suites.
+- [x] Add failing tool tests for a `get_project` tool that accepts `projectId` and returns one normalized project.
+- [x] Implement `makeGetProjectTool()` using `provider.getProject!()`.
+- [x] Gate exposure on `projects.read` in `buildTools()`.
+- [x] Extend the integration test to expect `get_project` for YouTrack.
+- [x] Run project-tool, builder, and integration suites.
 
 **Verification commands:**
 
@@ -177,11 +177,11 @@
 
 **Checklist:**
 
-- [ ] Add failing tests for a `get_current_user` tool that returns the normalized provider user.
-- [ ] Implement `makeGetCurrentUserTool()` using `provider.getCurrentUser!()`.
-- [ ] Gate exposure on method presence plus a stable capability rule chosen for shared providers.
-- [ ] Extend builder and integration tests to expect the tool for YouTrack.
-- [ ] Run the new tool tests and builder suite.
+- [x] Add failing tests for a `get_current_user` tool that returns the normalized provider user.
+- [x] Implement `makeGetCurrentUserTool()` using `provider.getCurrentUser!()`.
+- [x] Gate exposure on method presence plus a stable capability rule chosen for shared providers.
+- [x] Extend builder and integration tests to expect the tool for YouTrack.
+- [x] Run the new tool tests and builder suite.
 
 **Verification commands:**
 
@@ -206,10 +206,10 @@
 
 **Checklist:**
 
-- [ ] Add failing schema tests showing YouTrack-style priorities outside the current enum are accepted.
-- [ ] Replace fixed shared enums with a looser string contract where provider values are provider-defined.
-- [ ] Keep descriptions explicit that priority values must match the upstream provider's configured bundle.
-- [ ] Verify existing Kaneo-oriented tests still pass or update them to align with the less restrictive shared contract.
+- [x] Add failing schema tests showing YouTrack-style priorities outside the current enum are accepted.
+- [x] Replace fixed shared enums with a looser string contract where provider values are provider-defined.
+- [x] Keep descriptions explicit that priority values must match the upstream provider's configured bundle.
+- [x] Verify existing Kaneo-oriented tests still pass or update them to align with the less restrictive shared contract.
 
 **Verification commands:**
 
@@ -217,7 +217,7 @@
 
 ### 7. Add name-based tag convenience without regressing ID-based label tools
 
-**Impact:** Medium-high. MCP supports tag-name operations; papai currently requires prior `labelId` lookup and cannot mirror the common “add tag X” workflow directly.
+**Impact:** Medium-high. MCP supports tag-name operations; papai currently requires prior `labelId` lookup and cannot mirror the common "add tag X" workflow directly.
 
 **Files:**
 
@@ -230,11 +230,11 @@
 
 **Checklist:**
 
-- [ ] Choose a minimal compatibility design: either accept both `labelId` and `labelName` in existing tools, or add explicit name-based aliases.
-- [ ] Add failing tests for the selected contract.
-- [ ] Implement name resolution using visible tag data without breaking existing ID-based flows.
-- [ ] Avoid lossy whole-list rewrites if YouTrack has a more direct issue-tag operation available and practical for this code path.
-- [ ] Update tool descriptions to tell the model when name-based usage is preferable.
+- [x] Choose a minimal compatibility design: either accept both `labelId` and `labelName` in existing tools, or add explicit name-based aliases.
+- [x] Add failing tests for the selected contract.
+- [x] Implement name resolution using visible tag data without breaking existing ID-based flows.
+- [x] Avoid lossy whole-list rewrites if YouTrack has a more direct issue-tag operation available and practical for this code path.
+- [x] Update tool descriptions to tell the model when name-based usage is preferable.
 
 **Verification commands:**
 
@@ -262,12 +262,12 @@
 
 **Checklist:**
 
-- [ ] Prioritize only the tools that produce large result sets in real usage: `search_tasks`, `get_comments`, and `list_work` first.
-- [ ] Add failing schema and execution tests for `offset`/`count` or `limit`-style controls before provider changes.
-- [ ] Extend provider signatures minimally, avoiding breaking existing callers.
-- [ ] Thread pagination through the YouTrack operations using `$skip` and `$top` where appropriate.
-- [ ] Keep default behavior backward-compatible when pagination is omitted.
-- [ ] Defer `list_projects` pagination if the real-world project count is usually small and the added contract complexity is not worth it yet.
+- [x] Prioritize only the tools that produce large result sets in real usage: `search_tasks`, `get_comments`, and `list_work` first.
+- [x] Add failing schema and execution tests for `offset`/`count` or `limit`-style controls before provider changes.
+- [x] Extend provider signatures minimally, avoiding breaking existing callers.
+- [x] Thread pagination through the YouTrack operations using `$skip` and `$top` where appropriate.
+- [x] Keep default behavior backward-compatible when pagination is omitted.
+- [x] Defer `list_projects` pagination if the real-world project count is usually small and the added contract complexity is not worth it yet.
 
 **Verification commands:**
 
@@ -305,8 +305,10 @@
 
 **Checklist:**
 
-- [ ] Evaluate whether `count_tasks`, agiles/sprints, task history, and saved queries should be exposed now or left provider-only.
-- [ ] Keep this work separate from MCP parity fixes so it does not delay correctness and missing-tool items.
+- [x] Evaluate whether `count_tasks`, agiles/sprints, task history, and saved queries should be exposed now or left provider-only.
+- [x] Keep this work separate from MCP parity fixes so it does not delay correctness and missing-tool items.
+
+> **Note**: Phase 5 tools (agiles, sprints, activities, saved queries, apply_youtrack_command) were already exposed in ADR-0068. The phase-five provider methods are all surfaced through `tools-builder.ts`.
 
 ---
 
@@ -324,7 +326,7 @@
 
 ## Scope Guardrails
 
-- Do not attempt a generic “arbitrary YouTrack field editor” in this pass.
+- Do not attempt a generic "arbitrary YouTrack field editor" in this pass.
 - Do not mix MCP parity work with unrelated provider refactors.
 - Keep provider normalization stable for non-YouTrack providers.
 - Prefer adding the smallest shared-provider contract needed for each new exposed tool.
@@ -346,11 +348,3 @@
 
 - Uses existing provider/tool naming conventions.
 - Keeps `get_project` and `get_current_user` aligned with current provider method names.
-
-Plan complete and saved to `docs/superpowers/plans/2026-04-14-youtrack-tool-parity-checklist.md`. Two execution options:
-
-**1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
-
-**2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints
-
-**Which approach?**
