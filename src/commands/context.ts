@@ -20,6 +20,7 @@ import {
   defaultCountTokens,
   prepareDefaultCountTokens,
   resolveEncodingName,
+  type ToolRoutingInfo,
 } from './context-collector.js'
 import {
   buildInvocationToolSet,
@@ -43,6 +44,7 @@ export interface ContextCommandDeps {
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
+    lastUserText?: string,
   ) => ResolvedContextToolSurface
 }
 
@@ -71,6 +73,29 @@ function buildMemoryMessageText(contextId: string, history: readonly ModelMessag
   return memoryMsg === null ? null : memoryMsg.content
 }
 
+function extractTextFromUserContent(content: ModelMessage['content']): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const part of content) {
+    if (typeof part === 'object' && part !== null && 'type' in part && part.type === 'text' && 'text' in part) {
+      const text = (part as { text: unknown }).text
+      if (typeof text === 'string') parts.push(text)
+    }
+  }
+  return parts.join(' ')
+}
+
+export function getLastUserText(history: readonly ModelMessage[]): string | undefined {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const message = history[i]
+    if (message === undefined || message.role !== 'user') continue
+    const text = extractTextFromUserContent(message.content).trim()
+    if (text.length > 0) return text
+  }
+  return undefined
+}
+
 async function buildCollectorDeps(
   storageContextId: string,
   provider: TaskProvider | null,
@@ -97,6 +122,7 @@ async function buildCollectorDeps(
     getFacts: () => loadFacts(storageContextId),
     getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
     getProviderName: () => providerName,
+    getToolRoutingInfo: (): ToolRoutingInfo | undefined => resolvedToolSurface.routing,
     countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
 }
@@ -167,12 +193,14 @@ async function handleContextCommand(
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
   const provider = deps.buildProvider(auth.storageContextId)
+  const lastUserText = getLastUserText(loadHistory(auth.storageContextId))
   const resolvedToolSurface = deps.resolveToolSurface(
     auth.storageContextId,
     msg.user.id,
     msg.contextType,
     provider,
     deps.buildLiveToolSet,
+    lastUserText,
   )
   let snapshot: ContextSnapshot
   try {

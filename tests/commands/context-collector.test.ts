@@ -138,6 +138,17 @@ describe('collectContext', () => {
     expect(tools.detail).toBe('3 active, gated by kaneo')
   })
 
+  test('Tools detail includes routing info when last user message routed to a subset', () => {
+    const deps = makeDeps({
+      getActiveToolDefinitions: () => ({ save_memo: {}, search_memos: {} }),
+      getProviderName: () => 'kaneo',
+      getToolRoutingInfo: () => ({ intent: 'memo', fullToolCount: 49, exposedToolCount: 2 }),
+    })
+    const snapshot = collectContext('user1', deps)
+    const tools = requireSection(snapshot.sections, 'Tools')
+    expect(tools.detail).toBe('2 of 49 active, gated by kaneo · routed for memo')
+  })
+
   test('returns maxTokens=null for unknown model', () => {
     const deps = makeDeps({ getMainModel: () => 'some-random-new-model' })
     const snapshot = collectContext('user1', deps)
