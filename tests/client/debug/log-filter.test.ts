@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { filterLogs, flattenLogEntry, updateFuseIndex } from '../../../client/debug/log-filter.js'
+import { filterLogs, filterLogsWithIndex, flattenLogEntry, updateFuseIndex } from '../../../client/debug/log-filter.js'
 import type { LogEntry } from '../../../src/debug/schemas.js'
 
 function makeLog(overrides: Record<string, unknown> = {}): LogEntry {
@@ -55,6 +55,17 @@ describe('filterLogs', () => {
   test('returns all when no filters set', () => {
     const result = filterLogs(logs, 0, '', '', null)
     expect(result).toHaveLength(3)
+  })
+
+  test('returns entries with originalIndex when using filterLogsWithIndex', () => {
+    const result = filterLogsWithIndex(logs, 30, '', '', null)
+    expect(result).toHaveLength(2)
+    expect(result[0]!).toHaveProperty('entry')
+    expect(result[0]!).toHaveProperty('originalIndex')
+    expect(result[0]!.originalIndex).toBe(1)
+    expect(result[0]!.entry.msg).toBe('two')
+    expect(result[1]!.originalIndex).toBe(2)
+    expect(result[1]!.entry.msg).toBe('three')
   })
 })
 

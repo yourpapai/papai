@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
 
   import { formatTime, levelClass, levelName } from '../helpers.js'
-  import { filterLogs, updateFuseIndex } from '../log-filter.js'
+  import { filterLogsWithIndex, updateFuseIndex } from '../log-filter.js'
   import type { LogEntry, DashboardState } from '../dashboard-types.js'
 
   interface Props {
@@ -23,7 +23,7 @@
 
   const fuseInstance = $derived(updateFuseIndex(dashboard.logs))
   const filtered = $derived(
-    filterLogs(dashboard.logs, Number(levelFilter), scopeFilter, searchQuery.trim(), fuseInstance, dashboard.activeLogFilter.turnId),
+    filterLogsWithIndex(dashboard.logs, Number(levelFilter), scopeFilter, searchQuery.trim(), fuseInstance, dashboard.activeLogFilter.turnId),
   )
 
   // Auto-scroll when new entries arrive
@@ -85,21 +85,20 @@
     </div>
   </div>
   <div id="log-entries" bind:this={entriesEl} onscroll={onScroll}>
-    {#each filtered as entry, i (i)}
-      {@const idx = dashboard.logs.indexOf(entry)}
+    {#each filtered as fl, i (i)}
       <div
-        class="log-entry {levelClass(entry.level)}"
+        class="log-entry {levelClass(fl.entry.level)}"
         role="button"
         tabindex="0"
-        onclick={() => onSelectLog(entry, idx)}
+        onclick={() => onSelectLog(fl.entry, fl.originalIndex)}
         onkeydown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            onSelectLog(entry, idx)
+            onSelectLog(fl.entry, fl.originalIndex)
           }
         }}>
-        <span class="log-meta">{formatTime(entry.time)} {levelName(entry.level)}{entry.scope === undefined ? '' : ` ${entry.scope}`}</span>
-        <span class="log-msg">{entry.msg}</span>
+        <span class="log-meta">{formatTime(fl.entry.time)} {levelName(fl.entry.level)}{fl.entry.scope === undefined ? '' : ` ${fl.entry.scope}`}</span>
+        <span class="log-msg">{fl.entry.msg}</span>
       </div>
     {/each}
   </div>

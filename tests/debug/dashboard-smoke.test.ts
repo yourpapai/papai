@@ -97,6 +97,14 @@ describe('dashboard-smoke', () => {
       // Should contain the Svelte mount point
       expect(body).toContain('id="app"')
     })
+
+    test('includes Content-Security-Policy meta tag', async () => {
+      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`)
+      const body = await res.text()
+
+      expect(body).toContain('http-equiv="Content-Security-Policy"')
+      expect(body).toContain("default-src 'self'")
+    })
   })
 
   describe('dashboard.css', () => {

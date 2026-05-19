@@ -39,6 +39,11 @@ export function flattenLogEntry(entry: LogEntry): string {
 
 export type LogSearcher = { search: (query: string) => Array<{ item: SearchableLogEntry }> }
 
+export type FilteredLog = {
+  entry: LogEntry
+  originalIndex: number
+}
+
 export function updateFuseIndex(logs: readonly LogEntry[]): LogSearcher | null {
   if (typeof Fuse === 'undefined') return null
 
@@ -56,6 +61,13 @@ export function updateFuseIndex(logs: readonly LogEntry[]): LogSearcher | null {
   })
 }
 
+function isLogMatch(entry: LogEntry, minLevel: number, scope: string, turnId: string | undefined): boolean {
+  if (entry.level < minLevel) return false
+  if (scope !== '' && entry.scope !== scope) return false
+  if (turnId !== undefined && turnId !== '' && entry['turnId'] !== turnId) return false
+  return true
+}
+
 export function filterLogs(
   logs: readonly LogEntry[],
   minLevel: number,
@@ -65,12 +77,7 @@ export function filterLogs(
   turnId?: string,
 ): LogEntry[] {
   if (query === '') {
-    return logs.filter((e) => {
-      if (e.level < minLevel) return false
-      if (scope !== '' && e.scope !== scope) return false
-      if (turnId !== undefined && turnId !== '' && e['turnId'] !== turnId) return false
-      return true
-    })
+    return logs.filter((e) => isLogMatch(e, minLevel, scope, turnId))
   }
 
   let filtered: LogEntry[]
@@ -81,10 +88,44 @@ export function filterLogs(
     filtered = fuseResults.map((r) => r.item)
   }
 
-  return filtered.filter((e) => {
-    if (e.level < minLevel) return false
-    if (scope !== '' && e.scope !== scope) return false
-    if (turnId !== undefined && turnId !== '' && e['turnId'] !== turnId) return false
-    return true
-  })
+  return filtered.filter((e) => isLogMatch(e, minLevel, scope, turnId))
+}
+
+export function filterLogsWithIndex(
+  logs: readonly LogEntry[],
+  minLevel: number,
+  scope: string,
+  query: string,
+  fuseInstance: LogSearcher | null,
+  turnId?: string,
+): FilteredLog[] {
+  if (query === '') {
+    const result: FilteredLog[] = []
+    for (let i = 0; i < logs.length; i++) {
+      const entry = logs[i]!
+      if (isLogMatch(entry, minLevel, scope, turnId)) {
+        result.push({ entry, originalIndex: i })
+      }
+    }
+    return result
+  }
+
+  const searchableLogs = [...logs]
+  let filtered: LogEntry[]
+  if (fuseInstance === null) {
+    filtered = searchableLogs
+  } else {
+    const fuseResults = fuseInstance.search(query) as FuseResult<SearchableLogEntry>[]
+    filtered = fuseResults.map((r) => r.item)
+  }
+
+  const result: FilteredLog[] = []
+  for (let i = 0; i < filtered.length; i++) {
+    const entry = filtered[i]!
+    const originalIndex = searchableLogs.indexOf(entry)
+    if (isLogMatch(entry, minLevel, scope, turnId)) {
+      result.push({ entry, originalIndex })
+    }
+  }
+  return result
 }

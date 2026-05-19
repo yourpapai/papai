@@ -57,4 +57,17 @@ describe('TreeView', () => {
     expect(target.querySelector('.tree-bracket')?.textContent).toBe('[')
     void unmount(component)
   })
+
+  test('handles deeply nested objects without crashing', () => {
+    // Build a 60-level nested object
+    let nested: Record<string, unknown> = { value: 'deep' }
+    for (let i = 0; i < 59; i++) {
+      nested = { child: nested }
+    }
+
+    // Should not throw or overflow the stack
+    const { target, component } = render(nested)
+    expect(target.textContent).toContain('child')
+    void unmount(component)
+  })
 })
