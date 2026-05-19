@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.2] - 2026-05-19
+
+### Added
+
+- Normalize timezone config and scheduling reads
+- **dashboard:** Migrate debug dashboard from vanilla HTML to Svelte 5
+- **dashboard:** Apply review recommendations from Svelte 5 migration
+
+### Documentation
+
+- **adr:** Add ADR-0087 for debug dashboard expansion
+- Remove debug dashboard expansion spec and plan from active directories
+- **adr:** Add ADR-0088 for Kaneo doc-first API migration
+- **adr:** Add ADR-0089 for codeindex portability and test isolation
+- **adr:** Decline /context tool catalog emission; document completed knip cleanup
+- ADR-0091 for staged attachments and archive spec/plan
+- **adr:** Archive architecture inventory spec/plan; add ADR-0092
+- **adr:** ADR-0093 for tool surface benchmark implementation
+- **adr:** Add ADR-0094 for single proxy tool deprecation; archive design and plan
+- **archive:** Move stale 2026-05-09-bun-check-full-remediation plan to archive
+- **adr:** ADR-0095 telegram-specific group and user label resolution
+- **adr:** ADR-0096 for opencode TPS meter local removal; archive spec and plan
+- **adr:** ADR-0097 for Pi migration partial implementation; archive plan and document divergences
+- **adr:** Add ADR-0098 for RRULE library adoption, archive spec and plan
+- **adr:** Add ADR-0099 for embedding clustering linkage-mode improvements
+- **adr:** Add ADR-0100 for embedding clustering profiling and acceleration
+- Add ADR-0101 for compact-tools pi extension, archive spec+plan
+- **adr-0102:** Add ADR for behavior audit progress reporting with structured events
+- **adr:** Add ADR-0103 for behavior-audit keyword consolidation
+- **adr:** ADR-0105 — fix check:verbose SIGINT cascade remediation
+- **adr:** ADR-0106 for DRY duplicate test code refactoring
+- **adr:** Archive behavior-audit progress UX plan and add ADR-0107
+- **adr:** Add ADR-0108 for behavior-audit JSON extraction cleanup, archive plan and remaining tracker
+- **adr:** Add ADR-0109 for behavior-audit artifact model migration
+- **adr:** Add ADR-0110 for behavior-audit legacy cleanup; archive plan
+- **adr:** Add ADR-0111 for behavior-audit mock.module cleanup; archive plan
+- **adr:** Add review-loop enhancements ADR, archive spec and plan
+- **adr:** Write ADR-0113 for OpenCode TPS Meter security hardening, archive plan and spec
+- **adr:** Add ADR-0114 for behavior audit phase 2 redesign
+- Archive superseded 3-phase behavior-audit plan
+- **adr:** Add ADR-0115 for readable group and user labels; archive spec and plan
+- **adr:** Add ADR-0116 for deferred prompt delivery redesign with same-context delivery
+- **archive:** Relocate deferred prompt delivery design spec and implementation plan
+- **adr:** Archive superseded proactive group messaging spec/plan, add divergence notes
+- ADR-0117 — YouTrack tool parity closure
+- **adr:** Add ADR-0118 for codeindex Tier 1 completion, archive spec+plan, add future tiers note
+- **adr:** Add ADR-0119 for shared attachment pipeline completion
+- Add execution order recommendation for provider abstraction, architecture violations, and plugin system plans
+
+### Fixed
+
+- **checks:** Resolve all failing checks from check:full
+
+### Miscellaneous
+
+- **docs:** Move embedding clustering profile results to archive, update ADR-0100 references and index
+- **adr:** Add ADR-0104 for codeindex lint fix, archive plan
+
+### Testing
+
+- Cover timezone normalization regressions
 ## [5.5.1] - 2026-05-16
 
 ### Documentation
