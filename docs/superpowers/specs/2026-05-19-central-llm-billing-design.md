@@ -155,7 +155,7 @@ Phase 1 ships two entry points for the admin:
   the current set with the API key masked the same way `maskValue` already
   masks user keys.
 
-A DM `/admin` command is *not* in scope for v1 — it adds new auth surface
+A DM `/admin` command is _not_ in scope for v1 — it adds new auth surface
 (only bot admin) and a new wizard branch. Defer until the dashboard form
 shows real friction.
 
@@ -248,7 +248,7 @@ arrives:
   metering target, and sets `forwarded_at`.
 - the producer side does not change.
 
-So the v1 table *is* the v2 outbox.
+So the v1 table _is_ the v2 outbox.
 
 ### D6. Dashboard Billing tab
 
@@ -264,12 +264,12 @@ billingDetail: BillingDetail | null    // drill-down, fetched on open
 
 Routes added to `src/debug/server.ts`:
 
-| Route | Returns |
-| --- | --- |
-| `GET /billing/subjects?window=30d` | Array of `BillingSubject` for the list |
-| `GET /billing/subject/:id?window=30d` | `BillingDetail` for one subject |
-| `GET /admin/llm` | Current system_config keys with `llm_apikey` masked |
-| `POST /admin/llm` | `{ key, value }`; writes to `system_config` |
+| Route                                 | Returns                                             |
+| ------------------------------------- | --------------------------------------------------- |
+| `GET /billing/subjects?window=30d`    | Array of `BillingSubject` for the list              |
+| `GET /billing/subject/:id?window=30d` | `BillingDetail` for one subject                     |
+| `GET /admin/llm`                      | Current system_config keys with `llm_apikey` masked |
+| `POST /admin/llm`                     | `{ key, value }`; writes to `system_config`         |
 
 Shapes:
 
@@ -277,10 +277,10 @@ Shapes:
 interface BillingSubject {
   storageContextId: string
   contextType: 'dm' | 'group'
-  displayName: string | null    // username or group title if known
+  displayName: string | null // username or group title if known
   totals: {
-    main:      { inputTokens: number; outputTokens: number; calls: number }
-    small:     { inputTokens: number; outputTokens: number; calls: number }
+    main: { inputTokens: number; outputTokens: number; calls: number }
+    small: { inputTokens: number; outputTokens: number; calls: number }
     embedding: { inputTokens: number; outputTokens: number; calls: number }
   }
   toolCalls: number
@@ -300,7 +300,7 @@ interface BillingDetail {
     outputTokens: number | null
     stepCount: number
     toolCallCount: number
-    messageCount: number          // context size
+    messageCount: number // context size
     durationMs: number
     finishReason: string | null
     error: string | null
@@ -350,37 +350,37 @@ sensitive. v1 is internal-only and already gated by `DEBUG_TOKEN`, but:
    from env vars.
 2. **035_llm_usage_events** — create `llm_usage_events` plus indexes.
 3. **036_drop_user_llm_config** — `DELETE FROM user_config WHERE key IN
-   (...)`. Schema change only after step 1 proves out in staging.
+(...)`. Schema change only after step 1 proves out in staging.
 
 Steps 1 and 2 are additive and reversible. Step 3 is irreversible by data
 but reversible by code revert (admin re-runs `/setup` per-user, BYOK back).
 
 ## Code changes summary
 
-| File | Change |
-| --- | --- |
-| `src/db/migrations/034_system_config.ts` | New: create table, optional env seeding |
-| `src/db/migrations/035_llm_usage_events.ts` | New: create table + indexes |
-| `src/db/migrations/036_drop_user_llm_config.ts` | New: delete LLM rows from `user_config` |
-| `src/db/schema.ts` | Add `systemConfig`, `llmUsageEvents` Drizzle tables |
-| `src/system-config.ts` | New: `getSystemConfig(key)`, `setSystemConfig(key, value, adminId)` |
-| `src/llm-orchestrator-config.ts:19-47` | Read LLM keys from `system_config`, not `user_config` |
-| `src/llm-orchestrator-config.ts:28` | `checkRequiredConfig` no longer returns LLM keys |
-| `src/llm-orchestrator.ts:99-110` | New "bot misconfigured" reply when system_config is empty |
-| `src/types/config.ts:15` | Remove `LlmConfigKey`; remove LLM keys from `ALL_CONFIG_KEYS` and `CONFIG_KEYS` |
-| `src/config.ts:13,57-83` | Remove `llm_apikey` from `SENSITIVE_KEYS`; delete `LLM_COPY_KEYS`, `copyAdminLlmConfig`, `isMissingLlmConfig` |
-| `src/wizard/steps.ts:34-55` | Remove the five LLM steps |
-| `src/providers/kaneo/provision.ts:229-243` | Remove `copyAdminLlmConfig` calls |
-| `src/usage/index.ts` | New: subscribe to `llm:end`, call recorder |
-| `src/usage/recorder.ts` | New: insert into `llm_usage_events` |
-| `src/usage/query.ts` | New: aggregation queries for dashboard |
-| `src/index.ts` | Call `initUsageRecorder()` after DB init; seed `system_config` from env |
-| `src/debug/server.ts:182-200` | Route `/billing/subjects`, `/billing/subject/:id`, `/admin/llm` (GET, POST) |
-| `client/debug/dashboard-types.ts:115-137` | Add `billingSubjects`, `billingDetail` to `DashboardState` |
-| `client/debug/dashboard.svelte.ts` | New Billing tab component + nav entry |
-| `client/debug/billing/SubjectsTable.svelte` | New |
-| `client/debug/billing/SubjectDetail.svelte` | New |
-| `client/debug/billing/CredentialsForm.svelte` | New |
+| File                                            | Change                                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `src/db/migrations/034_system_config.ts`        | New: create table, optional env seeding                                                                       |
+| `src/db/migrations/035_llm_usage_events.ts`     | New: create table + indexes                                                                                   |
+| `src/db/migrations/036_drop_user_llm_config.ts` | New: delete LLM rows from `user_config`                                                                       |
+| `src/db/schema.ts`                              | Add `systemConfig`, `llmUsageEvents` Drizzle tables                                                           |
+| `src/system-config.ts`                          | New: `getSystemConfig(key)`, `setSystemConfig(key, value, adminId)`                                           |
+| `src/llm-orchestrator-config.ts:19-47`          | Read LLM keys from `system_config`, not `user_config`                                                         |
+| `src/llm-orchestrator-config.ts:28`             | `checkRequiredConfig` no longer returns LLM keys                                                              |
+| `src/llm-orchestrator.ts:99-110`                | New "bot misconfigured" reply when system_config is empty                                                     |
+| `src/types/config.ts:15`                        | Remove `LlmConfigKey`; remove LLM keys from `ALL_CONFIG_KEYS` and `CONFIG_KEYS`                               |
+| `src/config.ts:13,57-83`                        | Remove `llm_apikey` from `SENSITIVE_KEYS`; delete `LLM_COPY_KEYS`, `copyAdminLlmConfig`, `isMissingLlmConfig` |
+| `src/wizard/steps.ts:34-55`                     | Remove the five LLM steps                                                                                     |
+| `src/providers/kaneo/provision.ts:229-243`      | Remove `copyAdminLlmConfig` calls                                                                             |
+| `src/usage/index.ts`                            | New: subscribe to `llm:end`, call recorder                                                                    |
+| `src/usage/recorder.ts`                         | New: insert into `llm_usage_events`                                                                           |
+| `src/usage/query.ts`                            | New: aggregation queries for dashboard                                                                        |
+| `src/index.ts`                                  | Call `initUsageRecorder()` after DB init; seed `system_config` from env                                       |
+| `src/debug/server.ts:182-200`                   | Route `/billing/subjects`, `/billing/subject/:id`, `/admin/llm` (GET, POST)                                   |
+| `client/debug/dashboard-types.ts:115-137`       | Add `billingSubjects`, `billingDetail` to `DashboardState`                                                    |
+| `client/debug/dashboard.svelte.ts`              | New Billing tab component + nav entry                                                                         |
+| `client/debug/billing/SubjectsTable.svelte`     | New                                                                                                           |
+| `client/debug/billing/SubjectDetail.svelte`     | New                                                                                                           |
+| `client/debug/billing/CredentialsForm.svelte`   | New                                                                                                           |
 
 Tests (under `tests/`):
 
