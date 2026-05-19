@@ -214,6 +214,166 @@ moves toward a metering vendor and the outbox path is needed.
 
 ---
 
+## Phase 5 — Anonymous DB-wide statistics
+
+### Goal
+Bot admin can see structural counts and sizes for every domain table in
+the bot's SQLite database, per billing subject and bot-wide, without
+exposing any content. The dataset answers questions the billing research
+flags as inputs to pricing: how heavy is the median user, what's the
+right cap on memos or recurring tasks per tier, which surfaces are
+amplifiers vs niche. Aligns with
+`docs/research/billing/06-papai-integration-notes.md` §3 (cost-amplifier
+surfaces) and `04-metering-and-telemetry.md` §1 (candidate billable
+units).
+
+### Anonymity contract
+Counts, sizes, timestamps, and enum distributions only. Never content,
+never usernames, never message text, never memo bodies, never
+attachment filenames. The only identifiers in the output are
+`storage_context_id` and `chat_user_id`, both already opaque platform
+ids — which the dashboard already exposes. A second "global stats" view
+suppresses even those, returning only aggregates and distributions
+suitable for screenshotting or sharing.
+
+### Scope
+
+#### Per-subject counts (extend the phase 3 subject detail)
+For each `storage_context_id`, count rows in:
+
+| Table | Metrics |
+| --- | --- |
+| `memos` | total, by `status` (active / archived / promoted), by `tags` cardinality, total `content` bytes, total `embedding` bytes, oldest / newest `created_at`, count with `embedding IS NOT NULL` |
+| `scheduled_prompts` | total, pending / fired / cancelled, distinct delivery targets (no target identifiers, just count) |
+| `recurring_tasks` | total, enabled / disabled, distinct `projectId` count, count with `nextRun` in the next 7d, distinct `rrule` patterns (hashed) |
+| `instructions` | total, total `content` bytes |
+| `attachments` | total, by `status`, by `sourceProvider`, total stored bytes (from manifest), count with `isActive=1`, count by `extension` bucket |
+| `message_metadata` | total, by `contextType` derived from id shape, count with `author_id=chat_user_id`, oldest / newest `timestamp`, total `text` bytes (size only) |
+| conversation history | turn count per subject, summary count, total summarized bytes |
+| `user_identity_mappings` | count per provider name |
+| `staged_files` | count, by `status`, total bytes |
+| `users` (for subjects that are users) | `addedAt`, `addedBy` presence, `kaneoWorkspaceId` presence |
+| `group_members` (for subjects that are groups) | member count, distinct `addedBy` count |
+| `group_user_observations` | observation count per group; **counts only**, never observation text |
+| `web_fetch_cache` | distinct hosts (hashed), total fetches per subject if join is feasible, bytes stored |
+| `llm_usage_events` | already in phase 3; included here for completeness |
+| tool-failures (already in dashboard) | count per subject, per `errorType` distribution |
+
+#### Bot-wide aggregates (new "Stats" tab)
+- Total subjects (DM users, groups), with growth chart over the last 30d
+  from `users.addedAt` and `authorized_groups.addedAt`.
+- Per-table totals + distribution percentiles (p50/p90/p99 per subject)
+  for memo count, recurring task count, message count, attachment bytes.
+- Active-subject counts at 1d / 7d / 30d windows derived from
+  `llm_usage_events.occurred_at` (phase 2) and
+  `message_metadata.timestamp`.
+- Storage footprint: SQLite `page_count * page_size`, plus S3 bucket
+  total bytes from the manifest tally.
+- Identity-provider mix: how many subjects have mapped to Kaneo vs
+  YouTrack identity.
+- Recurring vs deferred mix: how many subjects use each surface.
+- Web fetch volume by hashed host (top 20 by count, hosts hashed).
+- Tool usage mix: rolled up from `llm_usage_events.tool_call_count`,
+  refined if phase 4 ships the per-tool table.
+
+External tasks (Kaneo / YouTrack) are out of scope — the bot doesn't
+own that data. The closest local proxies are `users.kaneoWorkspaceId`
+presence and any task-id references stored in `message_metadata`; we
+report those without leaving the local DB.
+
+#### Optional time series — migration 037 (deferred decision)
+A `usage_snapshots(snapshot_at INTEGER, subject_id TEXT, metric TEXT,
+value INTEGER)` table written by a nightly job lets the dashboard chart
+growth. Recommendation: **defer to phase 5b**. The phase 5a slice
+queries live tables on demand. Add the snapshot table only once the
+queries are too slow to run on every dashboard open — typically when
+`memos` or `message_metadata` cross a few hundred thousand rows.
+
+#### Module sketch
+```
+src/stats/
+  index.ts           — public API: getSubjectStats(id), getGlobalStats()
+  per-table.ts       — one query function per source table
+  aggregate.ts       — distribution math (percentiles), bucketing helpers
+  hashing.ts         — keyed hash for rrule patterns + hostnames
+  types.ts           — SubjectStats, GlobalStats
+```
+
+Server routes (phase 5a):
+- `GET /stats/subject/:id` — per-subject stats blob.
+- `GET /stats/global` — bot-wide aggregates.
+
+Dashboard:
+- Subject detail in the Billing tab gains a "Stats" sub-panel.
+- New top-level "Stats" tab shows the bot-wide view.
+
+### Out of scope for this phase
+- No content, ever — even hashed. Hashing applies to rrule strings and
+  hostnames, both already non-PII-ish, only to dedupe for distribution
+  charts without exposing the raw value.
+- No mutation: this phase is read-only against the existing tables.
+- No external provider calls (no live Kaneo `count_tasks`); we count
+  what the bot stored locally and label external-task counts as
+  unknown.
+- No CSV / JSON export to disk in v1; the dashboard rendering is the
+  output. Export is straightforward to add later from the same API.
+- No time series; reconsider in 5b.
+
+### Risk profile
+Low. Read-only queries against existing tables, no schema change in
+5a. Main risk is query cost on large tables (`message_metadata`,
+`memos`) — mitigated by:
+- index check during planning; add missing indexes in 5a only if a
+  required query degrades.
+- caching the global view for 60s in-process; per-subject views are
+  fast enough to compute on click.
+
+### Acceptance
+- `/stats/global` returns shapes documented in `types.ts` and matches
+  hand-rolled SQL aggregates on a seeded fixture.
+- `/stats/subject/:id` returns counts that sum to the totals in the
+  global view, modulo the time window.
+- No raw text, filename, memo body, message body, observation text, or
+  username appears in the response payload for either route — covered
+  by a redaction-style test that diffs the response against a forbidden
+  substring list.
+- Global view renders with 1k seeded subjects + 100k seeded
+  `message_metadata` rows in under 500ms (in-process, on a dev laptop).
+
+### Rollback
+Remove routes and the new tab. No data to roll back; queries are
+read-only.
+
+### Estimated size
+~600 lines server code + tests (mostly tests, the queries are short),
+~700 lines client code + tests for the Stats tab and sub-panel.
+
+### Open questions to resolve before phase 5 starts
+- Anonymity contract — is hashing hostnames in the web-fetch breakdown
+  acceptable, or do we omit them entirely? Recommendation: keyed hash
+  with a per-deployment salt, so values are deterministic in a single
+  deployment but not portable across deployments.
+- Bot-wide view — show only when the deployment has more than N subjects
+  (to avoid trivial deanonymization in tiny deployments)? Recommendation:
+  hide the per-subject id from global view always; show distribution
+  shapes only.
+- Time series — phase 5a (live queries) or jump straight to 5b
+  (`usage_snapshots`)? Recommendation: 5a first; the snapshot table
+  earns its place once we see live-query latency, not before.
+- External task counts (Kaneo / YouTrack) — defer entirely, or call the
+  provider tool's `count_tasks` per subject lazily on dashboard open?
+  Recommendation: defer. Live provider calls turn a stats page into a
+  rate-limit risk surface.
+- Conversation history — currently stored as turns plus summaries; what
+  exactly do we count? Recommendation: turn count and summary count
+  only; ignore byte-size of historical text in 5a.
+
+### Trigger to start
+After phase 3 ships and the Billing tab is in operator hands long
+enough to know which secondary stats they keep asking SQL for.
+
+---
+
 ## Cross-phase concerns
 
 ### Branch strategy
@@ -221,6 +381,7 @@ One branch per phase, off `main`. Naming:
 - `claude/central-llm-phase-1-env-credentials`
 - `claude/central-llm-phase-2-usage-recorder`
 - `claude/central-llm-phase-3-billing-dashboard`
+- `claude/central-llm-phase-5-anonymous-stats` (phase 4 named when scoped)
 
 Each phase merges before the next opens. The design doc and this plan
 land first (current branch).
@@ -242,12 +403,23 @@ runtime check assumes 035's presence.
 - Phase 3: `tests/debug/server-billing.test.ts`,
   `tests/client/billing/*`. Manual smoke: dashboard walkthrough with two
   seeded subjects.
+- Phase 5: `tests/stats/*` from scratch — per-table query tests against
+  seeded fixtures, redaction test that scans the response payload for
+  any forbidden substring (memo bodies, usernames, message text,
+  filenames). Manual smoke: seed 1k subjects + 100k messages, open the
+  global Stats tab, confirm latency budget.
 
 ### Security review checkpoints
 - Phase 1: `bun security` after wizard changes (prompt injection surface
   for the new misconfigured-bot reply).
 - Phase 3: dedicated `/security-review` of the credentials form route.
   Token in the request body must be redacted from access logs.
+- Phase 5: dedicated `/security-review` of the anonymity contract.
+  Reviewer's checklist: every query returns counts/sizes/timestamps
+  only; every string field in the response is either an opaque id, an
+  enum, a keyed-hash, or a number-as-string; the forbidden-substring
+  test exists and passes. Treat any leak of content as a release-
+  blocking defect.
 
 ### Documentation updates
 - Phase 1: `CLAUDE.md` env-var section gains `LLM_API_KEY`,
@@ -256,6 +428,10 @@ runtime check assumes 035's presence.
   key list.
 - Phase 2: no doc change; module is internal.
 - Phase 3: dashboard guide (if one exists) gets a Billing section.
+- Phase 5: dashboard guide gets a Stats section, plus an "Anonymity
+  contract" subsection in `CLAUDE.md` (or a sibling `docs/stats.md`)
+  spelling out which fields are exposed and which are forbidden, so
+  future contributors don't widen the surface accidentally.
 
 ### Open questions to resolve before each phase starts
 Phase 1:
@@ -302,8 +478,16 @@ Phase 3:
                                                                           |
                                                                           v
                                                             Phase 4 (proposed)
-                                                                  ...
+                                                                  |
+                                                                  v
+                                                Phase 5 (anonymous DB stats)
+                                          |---------------------------------------|
+                                            brainstorm → design → plan → impl → review → ship
 ```
+
+Phase 5 does not depend on phase 4 — it can land directly after phase 3.
+The diagram shows it after 4 only because 4's tool-call rows would feed
+phase 5's tool-usage breakdown if available.
 
 No phase opens its plan stage until the prior phase has merged. Each
 phase brings the codebase to a shippable state on its own.
