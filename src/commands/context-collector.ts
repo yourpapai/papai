@@ -112,7 +112,15 @@ const serializeHistory = (history: readonly ModelMessage[]): string => history.m
 
 const serializeTools = (tools: Record<string, unknown>): string => {
   try {
-    return JSON.stringify(tools)
+    const seen = new WeakSet<object>()
+    return JSON.stringify(tools, (_key, value: unknown) => {
+      if (typeof value === 'function') return '[function]'
+      if (value !== null && typeof value === 'object') {
+        if (seen.has(value)) return undefined
+        seen.add(value)
+      }
+      return value
+    })
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to serialize tools')
     return Object.keys(tools).join(',')

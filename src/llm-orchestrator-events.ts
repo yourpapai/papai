@@ -70,9 +70,14 @@ export type ResolvedStreamTextResult = {
 function stringifySingleToolSchema(toolName: string, value: unknown): string {
   log.debug({ toolName }, 'stringifySingleToolSchema')
   try {
+    const seen = new WeakSet<object>()
     return JSON.stringify(value, (key, nestedValue: unknown) => {
       if (key === '') return nestedValue
       if (typeof nestedValue === 'function') return '[function]'
+      if (nestedValue !== null && typeof nestedValue === 'object') {
+        if (seen.has(nestedValue)) return undefined
+        seen.add(nestedValue)
+      }
       return nestedValue
     })
   } catch (error) {

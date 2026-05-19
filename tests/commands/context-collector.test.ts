@@ -7,6 +7,8 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
+import { tool } from 'ai'
+import { z } from 'zod'
 
 import type { ContextSection } from '../../src/chat/types.js'
 import type { ContextCollectorDeps } from '../../src/commands/context-collector.js'
@@ -17,6 +19,7 @@ import {
   defaultCountTokens,
   prepareDefaultCountTokens,
 } from '../../src/commands/context-collector.js'
+import { alertConditionSchema } from '../../src/deferred-prompts/types.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextCollectorDeps {
@@ -277,5 +280,27 @@ describe('encoding-sensitive collection', () => {
 
     expect(systemPrompt.tokens).toBe(o200kTokens)
     expect(systemPrompt.tokens).not.toBe(cl100kTokens)
+  })
+
+  test('Tools section tokens >0 even with cyclic/recursive zod schemas after toJSONSchema', () => {
+    const cyclicAlertSchema = alertConditionSchema
+    cyclicAlertSchema.toJSONSchema()
+
+    // Empty description so that tool token count comes from the schema alone
+    const cyclicTool = tool({
+      description: '',
+      inputSchema: z.object({ condition: cyclicAlertSchema.optional() }),
+      execute: (input) => input,
+    })
+
+    const deps = makeDeps({
+      getActiveToolDefinitions: () => ({ x: cyclicTool }),
+      countTokens: (text: string) => text.length,
+    })
+    const snapshot = collectContext('user1', deps)
+    const toolsSection = requireSection(snapshot.sections, 'Tools')
+    // If serialisation fails silently the section would be 0; a few chars name
+    // plus even a truncated schema gives >0 on a real fix.
+    expect(toolsSection.tokens).toBeGreaterThan(50)
   })
 })
