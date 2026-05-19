@@ -111,6 +111,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0115](0115-readable-group-and-user-labels.md)                       | Readable Group And User Labels in `/groups` and `/group users`                                          | 2026-04-19 | Implemented (with architectural extensions beyond the plan) |
 | [0116](0116-deferred-prompt-delivery-redesign.md)                    | Deferred Prompt Delivery Redesign — Same-Context Delivery with Personal vs Shared Audience              | 2026-04-19 | Implemented                                                 |
 | [0117](0117-youtrack-tool-parity-closure.md)                         | YouTrack Tool Parity Closure — Due-Date Correctness, Attachment Context Bug, and Priority Relaxation    | 2026-04-14 | Implemented                                                 |
+| [0118](0118-codeindex-tier1-completion.md)                           | Codeindex Tier 1 Implementation Completion — Extraction to Standalone Repository                        | 2026-05-19 | Implemented (with extraction divergence)                    |
 
 ## Declined
 
