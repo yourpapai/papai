@@ -144,8 +144,8 @@ describe('architecture inventory signals', () => {
     })
 
     const capabilitySignal = signals.find((signal) => signal.name === 'provider-capability-not-surfaced')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('tasks.watchers')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('tasks.votes')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('tasks.watchers')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('tasks.votes')
   })
 
   test('marks omitted agile and sprint capability families as not surfaced', () => {
@@ -171,11 +171,11 @@ describe('architecture inventory signals', () => {
     })
 
     const capabilitySignal = signals.find((signal) => signal.name === 'provider-capability-not-surfaced')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('agiles.list')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('sprints.list')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('sprints.create')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('sprints.update')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('sprints.assign')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('agiles.list')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('sprints.list')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('sprints.create')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('sprints.update')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('sprints.assign')
   })
 
   test('does not mark benchmark-only or audit-only when a piece has no owned paths and no matching tags', () => {
@@ -228,8 +228,8 @@ describe('architecture inventory signals', () => {
     })
 
     const capabilitySignal = signals.find((signal) => signal.name === 'provider-capability-not-surfaced')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('attachments.delete')
-    expect(capabilitySignal?.evidence.join(' ')).toContain('workItems.update')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('attachments.delete')
+    expect(capabilitySignal!.evidence.join(' ')).toContain('workItems.update')
   })
 
   test('treats activities.read as surfaced only by the actual history tool key', () => {
@@ -267,7 +267,7 @@ describe('architecture inventory signals', () => {
     })
 
     expect(
-      missingSignals.find((signal) => signal.name === 'provider-capability-not-surfaced')?.evidence.join(' '),
+      missingSignals.find((signal) => signal.name === 'provider-capability-not-surfaced')!.evidence.join(' '),
     ).toContain('activities.read')
     expect(surfacedSignals.map((signal) => signal.name)).not.toContain('provider-capability-not-surfaced')
   })
@@ -317,7 +317,7 @@ describe('architecture inventory signals', () => {
     })
 
     expect(
-      missingSignals.find((signal) => signal.name === 'provider-capability-not-surfaced')?.evidence.join(' '),
+      missingSignals.find((signal) => signal.name === 'provider-capability-not-surfaced')!.evidence.join(' '),
     ).toContain('queries.saved')
     expect(surfacedByListSignals.map((signal) => signal.name)).not.toContain('provider-capability-not-surfaced')
     expect(surfacedByRunSignals.map((signal) => signal.name)).not.toContain('provider-capability-not-surfaced')

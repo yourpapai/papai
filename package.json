@@ -30,7 +30,7 @@
     "security": "bun run scripts/run-semgrep.ts",
     "security:ci": "bun run scripts/run-semgrep.ts --ci",
     "test": "bun test tests/providers tests/tools tests/web tests/db tests/utils tests/schemas tests/proactive tests/debug tests/scripts tests/*.test.ts",
-    "test:client": "bun test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
+    "test:client": "bun --conditions=browser test --preload ./tests/client-setup.ts --path-ignore-patterns '' tests/client/",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
     "test:mutate": "stryker run",
@@ -92,6 +92,7 @@
     "oxfmt": "^0.50.0",
     "oxlint": "1.65.0",
     "oxlint-tsgolint": "^0.22.1",
+    "svelte": "^5",
     "typescript": "^6.0.0"
   },
   "overrides": {

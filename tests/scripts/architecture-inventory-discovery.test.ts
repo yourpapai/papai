@@ -166,6 +166,6 @@ describe('architecture inventory discovery', () => {
       ],
     )
 
-    expect(pieces.find((piece) => piece.name === 'provider capability architecture')?.status).toBe('legacy')
+    expect(pieces.find((piece) => piece.name === 'provider capability architecture')!.status).toBe('legacy')
   })
 })

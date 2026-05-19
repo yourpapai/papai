@@ -37,7 +37,7 @@ const defaultParams = (): BenchmarkParams => ({
   linkage: 'average',
   gapThreshold: 0,
   sizes: [500, 1000, 2000, 4000, 7697],
-  outputPath: 'docs/superpowers/plans/2026-04-29-embedding-clustering-profile-results.md',
+  outputPath: 'docs/archive/embedding-clustering-profile-results.md',
 })
 
 function parseFiniteNumber(flag: string, value: string): number {

@@ -11,8 +11,13 @@ body {
   font-size: 12px;
   height: 100vh;
   overflow: hidden;
+}
+
+#app {
+  height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* --- Header --- */
@@ -110,13 +115,45 @@ header {
   border-color: #00ff88;
 }
 
-/* --- Panel grid --- */
+/* --- Main grid: sidebar | panels (top right) / logs (bottom right) --- */
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    'sidebar panels'
+    'sidebar logs';
+  min-height: 0;
+}
+
+#left-panel {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #222222;
+  min-height: 0;
+}
 
 .panel-grid {
+  grid-area: panels;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(180px, 1fr);
   gap: 8px;
   padding: 8px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#log-explorer {
+  grid-area: logs;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  border-top: 1px solid #222222;
 }
 
 .panel {
@@ -124,8 +161,10 @@ header {
   border: 1px solid #222222;
   border-radius: 2px;
   padding: 8px;
-  min-height: 200px;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel h2 {
@@ -135,6 +174,7 @@ header {
   color: #666666;
   margin-bottom: 8px;
   letter-spacing: 0.05em;
+  flex: 0 0 auto;
 }
 
 .placeholder {
@@ -177,6 +217,7 @@ header {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
   color: #888888;
 }
 
@@ -247,6 +288,7 @@ header {
 
 .notification-text {
   color: #888888;
+  word-break: break-word;
 }
 
 /* --- Failure rows --- */
@@ -268,6 +310,7 @@ header {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
   color: #888888;
 }
 
@@ -282,6 +325,7 @@ header {
 
 .failure-error {
   color: #cccccc;
+  word-break: break-word;
 }
 
 .failure-retriable.retriable {
@@ -292,23 +336,107 @@ header {
   color: #ff4444;
 }
 
-/* --- Main grid --- */
+/* --- Reminder rows --- */
 
-main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  min-height: 0;
+.reminder-row {
+  border-left: 2px solid #333333;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
-/* --- Left panel --- */
+.reminder-row.deferred {
+  border-left-color: #0088ff;
+}
 
-#left-panel {
+.reminder-summary {
   display: flex;
-  flex-direction: column;
-  border-right: 1px solid #222222;
-  min-height: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #888888;
 }
+
+.reminder-name,
+.reminder-prompt {
+  color: #cccccc;
+}
+
+.reminder-type {
+  color: #0088ff;
+  font-weight: 600;
+}
+
+.reminder-schedule {
+  color: #666666;
+}
+
+.reminder-next {
+  color: #ffaa00;
+}
+
+.reminder-status.status-active {
+  color: #00ff88;
+}
+
+.reminder-status.status-paused {
+  color: #555555;
+}
+
+/* --- Memo rows / toolbar --- */
+
+.memo-toolbar {
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+.memo-toolbar input {
+  width: 100%;
+  background: #1a1a1a;
+  color: #cccccc;
+  border: 1px solid #333333;
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 2px;
+}
+
+.memo-toolbar input:focus {
+  border-color: #00ff88;
+  outline: none;
+}
+
+.memo-row {
+  border-left: 2px solid #333333;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.memo-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #888888;
+}
+
+.memo-time {
+  color: #666666;
+}
+
+.memo-content {
+  color: #cccccc;
+  word-break: break-word;
+  flex: 1 1 60%;
+}
+
+.memo-tags {
+  color: #ffaa00;
+}
+
+/* --- Left panel children --- */
 
 #sessions {
   flex: 0 0 auto;
@@ -348,6 +476,12 @@ main {
   margin-bottom: 6px;
   font-size: 11px;
   line-height: 1.5;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.session-card:hover {
+  background: #1a1a1a;
 }
 
 .session-card.active {
@@ -410,53 +544,7 @@ main {
   color: #ffaa00;
 }
 
-.trace-detail {
-  display: none;
-  margin-top: 6px;
-  padding: 6px;
-  background: #1a1a1a;
-  border-radius: 2px;
-}
-
-.trace-row[data-expanded='true'] .trace-detail {
-  display: block;
-}
-
-.trace-tool {
-  display: flex;
-  justify-content: space-between;
-  padding: 2px 0;
-  color: #888888;
-}
-
-.trace-tool .tool-success {
-  color: #00ff88;
-}
-
-.trace-tool .tool-fail {
-  color: #ff4444;
-}
-
-.trace-tokens {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid #333333;
-  color: #666666;
-}
-
-.trace-error-msg {
-  color: #ff4444;
-  margin-top: 4px;
-}
-
 /* --- Log Explorer --- */
-
-#log-explorer {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  position: relative;
-}
 
 .log-toolbar {
   flex: 0 0 auto;
@@ -481,6 +569,7 @@ main {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .log-filters select,
@@ -520,10 +609,20 @@ main {
   padding: 2px 8px;
   font-size: 11px;
   line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 
 .log-entry:nth-child(even) {
   background: #131313;
+}
+
+.log-entry:hover {
+  background: #1a1a1a;
+}
+
+.log-entry:nth-child(even):hover {
+  background: #181818;
 }
 
 .log-entry .log-meta {
@@ -536,9 +635,7 @@ main {
   word-break: break-all;
 }
 
-.log-debug .log-meta {
-  color: #555555;
-}
+.log-debug .log-meta,
 .log-debug .log-msg {
   color: #555555;
 }
@@ -598,10 +695,6 @@ main {
   z-index: 1000;
 }
 
-.modal[hidden] {
-  display: none;
-}
-
 .modal-content {
   background: #1a1a1a;
   border: 1px solid #333333;
@@ -611,6 +704,7 @@ main {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .modal-header {
@@ -619,6 +713,7 @@ main {
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid #333333;
+  flex: 0 0 auto;
 }
 
 .modal-header h3 {
@@ -634,6 +729,7 @@ main {
   font-size: 20px;
   cursor: pointer;
   padding: 0 4px;
+  line-height: 1;
 }
 
 .modal-close:hover {
@@ -643,7 +739,8 @@ main {
 .modal-body {
   padding: 16px;
   overflow-y: auto;
-  max-height: calc(90vh - 60px);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* Session detail sections */
@@ -687,37 +784,6 @@ main {
 .session-detail-item .value.null {
   color: #555555;
   font-style: italic;
-}
-
-/* Facts list */
-.facts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.fact-item {
-  background: #131313;
-  padding: 8px 12px;
-  border-radius: 2px;
-  border-left: 2px solid #00ff88;
-}
-
-.fact-item .fact-title {
-  color: #cccccc;
-  font-size: 11px;
-  margin-bottom: 2px;
-}
-
-.fact-item .fact-meta {
-  color: #666666;
-  font-size: 10px;
-}
-
-.fact-item .fact-url {
-  color: #0088ff;
-  font-size: 10px;
-  word-break: break-all;
 }
 
 /* Instructions list */
@@ -790,7 +856,7 @@ main {
   background: #131313;
   padding: 10px 12px;
   border-radius: 2px;
-  border-left: 2px solid;
+  border-left: 2px solid transparent;
 }
 
 .history-item.user {
@@ -870,76 +936,17 @@ main {
   font-size: 11px;
 }
 
-.log-props-table {
-  width: 100%;
-  border-collapse: collapse;
+.log-detail-msg {
+  background: #131313;
+  padding: 12px;
+  border-radius: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
   font-size: 11px;
-}
-
-.log-props-table th,
-.log-props-table td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid #333333;
-}
-
-.log-props-table th {
-  color: #666666;
-  font-weight: 600;
-}
-
-.log-props-table td {
   color: #cccccc;
 }
 
-.log-props-table .prop-value {
-  font-family: 'JetBrains Mono', monospace;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.log-props-table .prop-value.object {
-  color: #00ff88;
-}
-
-.log-props-table .prop-value.string {
-  color: #cccccc;
-}
-
-.log-props-table .prop-value.number {
-  color: #ffaa00;
-}
-
-.log-props-table .prop-value.boolean {
-  color: #0088ff;
-}
-
-/* Make session cards clickable */
-.session-card {
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.session-card:hover {
-  background: #1a1a1a;
-}
-
-/* Make log entries clickable */
-.log-entry {
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.log-entry:hover {
-  background: #1a1a1a;
-}
-
-.log-entry:nth-child(even):hover {
-  background: #181818;
-}
-
-/* --- Tree View Styles --- */
+/* --- Tree View --- */
 
 .tree-container {
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -977,34 +984,28 @@ main {
 
 .tree-toggle {
   display: inline-block;
-  width: 14px;
+  min-width: 14px;
   height: 14px;
   line-height: 14px;
   text-align: center;
   cursor: pointer;
   user-select: none;
-  color: #666666;
+  color: #888888;
   font-size: 10px;
   margin-right: 4px;
-  transition: transform 0.15s ease;
 }
 
-.tree-toggle:hover {
-  color: #cccccc;
-  background: #333333;
+.tree-toggle:hover,
+.tree-toggle:focus-visible {
+  color: #00ff88;
+  background: #222222;
   border-radius: 2px;
-}
-
-.tree-toggle.collapsed {
-  transform: rotate(-90deg);
+  outline: none;
 }
 
 .tree-children {
-  display: inline;
-}
-
-.tree-children.collapsed {
-  display: none;
+  display: inline-block;
+  margin-left: 4px;
 }
 
 .tree-bracket {
@@ -1027,20 +1028,13 @@ main {
   color: #0088ff;
 }
 
-.tree-null {
-  color: #555555;
-  font-style: italic;
-}
-
+.tree-null,
 .tree-undefined {
   color: #555555;
   font-style: italic;
 }
 
-.tree-array {
-  color: #888888;
-}
-
+.tree-array,
 .tree-object {
   color: #888888;
 }
@@ -1071,14 +1065,14 @@ main {
 }
 
 .trace-detail-item .label {
-  color: #666;
+  color: #666666;
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .trace-detail-item .value {
-  color: #ccc;
+  color: #cccccc;
   font-size: 13px;
   word-break: break-word;
 }
@@ -1109,6 +1103,7 @@ main {
   gap: 16px;
   align-items: center;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .tool-call-summary .tool-name {
@@ -1125,9 +1120,10 @@ main {
 }
 
 .tool-call-id {
-  color: #666;
+  color: #666666;
   font-size: 11px;
   margin-bottom: 8px;
+  word-break: break-all;
 }
 
 .tool-section {
@@ -1135,7 +1131,7 @@ main {
 }
 
 .tool-section .label {
-  color: #666;
+  color: #666666;
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
@@ -1146,7 +1142,7 @@ main {
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
-  color: #ccc;
+  color: #cccccc;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1174,12 +1170,12 @@ main {
   color: #00ff88;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #333333;
 }
 
 .step-finish-reason {
   font-weight: normal;
-  color: #888;
+  color: #888888;
   font-size: 11px;
   margin-left: 6px;
 }
@@ -1189,7 +1185,7 @@ main {
 }
 
 .step-section .label {
-  color: #666;
+  color: #666666;
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
@@ -1201,7 +1197,7 @@ main {
   border-radius: 2px;
   font-size: 11px;
   line-height: 1.5;
-  color: #ccc;
+  color: #cccccc;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 300px;
@@ -1218,7 +1214,7 @@ main {
 .step-tool-call {
   padding: 8px;
   background: #131313;
-  border-left: 2px solid #333;
+  border-left: 2px solid #333333;
   border-radius: 2px;
 }
 
@@ -1231,6 +1227,7 @@ main {
   gap: 12px;
   align-items: center;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .step-tool-call-header .tool-name {
@@ -1239,19 +1236,16 @@ main {
 }
 
 .step-tool-call-header .tool-id {
-  color: #666;
+  color: #666666;
   font-size: 10px;
-}
-
-.step-tool-call .tool-section {
-  margin-top: 6px;
+  word-break: break-all;
 }
 
 .step-usage {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #333;
-  color: #666;
+  border-top: 1px solid #333333;
+  color: #666666;
   font-size: 12px;
 }
 
@@ -1262,7 +1256,7 @@ main {
   border-radius: 2px;
   font-size: 13px;
   line-height: 1.6;
-  color: #ccc;
+  color: #cccccc;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 400px;
@@ -1298,6 +1292,7 @@ main {
   align-items: baseline;
   font-size: 11px;
   padding: 4px 0;
+  flex-wrap: wrap;
 }
 
 .context-key {
@@ -1325,7 +1320,7 @@ main {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 2px;
-  margin-left: 4px;
+  margin-left: auto;
 }
 
 .turn-log-link:hover {
@@ -1333,18 +1328,7 @@ main {
   border-color: #0088ff;
 }
 
-/* --- Log turnId filter --- */
-
-.log-turnid-filter {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.log-turnid-filter label {
-  color: #666666;
-  font-size: 10px;
-}
+/* --- Log turnId filter badge --- */
 
 .log-turnid-badge {
   background: #0088ff22;
