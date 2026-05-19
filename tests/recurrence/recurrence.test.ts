@@ -21,9 +21,8 @@ describe('recurrenceSpecToRrule', () => {
       byHour: [9],
       byMinute: [0],
       dtstart: '2026-04-20T09:00:00Z',
-      timezone: 'Europe/London',
     }
-    const out = recurrenceSpecToRrule(spec)
+    const out = recurrenceSpecToRrule(spec, 'Europe/London')
     expect(out.rrule).toBe('FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=9;BYMINUTE=0')
     expect(out.dtstartUtc).toBe('2026-04-20T09:00:00Z')
     expect(out.timezone).toBe('Europe/London')
@@ -33,9 +32,8 @@ describe('recurrenceSpecToRrule', () => {
     const spec: RecurrenceSpec = {
       freq: 'DAILY',
       dtstart: '2026-04-20T09:30:00Z',
-      timezone: 'UTC',
     }
-    const out = recurrenceSpecToRrule(spec)
+    const out = recurrenceSpecToRrule(spec, 'UTC')
     expect(out.rrule).toBe('FREQ=DAILY')
   })
 
@@ -45,9 +43,8 @@ describe('recurrenceSpecToRrule', () => {
       interval: 2,
       count: 10,
       dtstart: '2026-04-20T00:00:00Z',
-      timezone: 'UTC',
     }
-    const out = recurrenceSpecToRrule(spec)
+    const out = recurrenceSpecToRrule(spec, 'UTC')
     expect(out.rrule).toBe('FREQ=DAILY;INTERVAL=2;COUNT=10')
   })
 
@@ -56,9 +53,8 @@ describe('recurrenceSpecToRrule', () => {
       freq: 'DAILY',
       until: '2026-12-31T00:00:00.000Z',
       dtstart: '2026-04-20T00:00:00Z',
-      timezone: 'UTC',
     }
-    const out = recurrenceSpecToRrule(spec)
+    const out = recurrenceSpecToRrule(spec, 'UTC')
     expect(out.rrule).toBe('FREQ=DAILY;UNTIL=20261231T000000Z')
   })
 
@@ -67,9 +63,8 @@ describe('recurrenceSpecToRrule', () => {
       freq: 'DAILY',
       until: '2026-12-31T00:00:00.123456Z',
       dtstart: '2026-04-20T00:00:00Z',
-      timezone: 'UTC',
     }
-    const out = recurrenceSpecToRrule(spec)
+    const out = recurrenceSpecToRrule(spec, 'UTC')
     expect(out.rrule).toBe('FREQ=DAILY;UNTIL=20261231T000000Z')
   })
 
@@ -79,9 +74,8 @@ describe('recurrenceSpecToRrule', () => {
       byMonth: [1, 4, 7, 10],
       byMonthDay: [1],
       dtstart: '2026-01-01T09:00:00Z',
-      timezone: 'UTC',
     }
-    const out = recurrenceSpecToRrule(spec)
+    const out = recurrenceSpecToRrule(spec, 'UTC')
     expect(out.rrule).toBe('FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=1')
   })
 })

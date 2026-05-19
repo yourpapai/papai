@@ -49,8 +49,11 @@ export function buildScheduleUpdates(
     const anchor =
       startDate === undefined
         ? (updates.fireAt ?? existing.dtstartUtc ?? existing.fireAt)
-        : localDatetimeToUtc(startDate, startTime, scheduleRest.timezone)
-    const compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart: anchor })
+        : localDatetimeToUtc(startDate, startTime, timezone)
+    const compiled = recurrenceSpecToRrule(
+      { ...scheduleRest, dtstart: anchor } as Omit<Parameters<typeof recurrenceSpecToRrule>[0], 'timezone'>,
+      timezone,
+    )
     updates.rrule = compiled.rrule
     updates.dtstartUtc = compiled.dtstartUtc
     updates.timezone = compiled.timezone

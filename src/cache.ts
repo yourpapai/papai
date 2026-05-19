@@ -28,10 +28,7 @@ const log = logger.child({ scope: 'cache' })
 
 const userCaches = new Map<string, UserCache>()
 
-/**
- * Exported for testing purposes only.
- * @internal
- */
+// Exported for testing purposes only.
 export const userCachesForTesting = userCaches
 
 const SESSION_TTL_MS = 30 * 60 * 1000

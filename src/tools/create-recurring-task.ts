@@ -7,12 +7,13 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { getConfig } from '../config.js'
 import { rruleInputSchema } from '../deferred-prompts/types.js'
 import { logger } from '../logger.js'
 import { describeCompiledRecurrence, recurrenceSpecToRrule, type CompiledRecurrence } from '../recurrence.js'
 import { createRecurringTask as defaultCreateRecurringTask } from '../recurring.js'
+import type { RecurrenceSpec } from '../types/recurrence.js'
 import type { RecurringTaskInput, RecurringTaskRecord, TriggerType } from '../types/recurring.js'
+import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 
 export interface CreateRecurringTaskDeps {
@@ -39,7 +40,7 @@ const inputSchema = z
       .describe("'cron' for fixed schedule, 'on_complete' for after-completion"),
     schedule: rruleInputSchema
       .optional()
-      .describe("Schedule for 'cron' triggerType. Call get_current_time first to obtain the user's IANA timezone."),
+      .describe("Schedule for 'cron' triggerType in user's local time — the tool handles timezone internally."),
     catchUp: z.boolean().optional().describe('Create missed occurrences on resume. Default: false'),
   })
   .superRefine(({ triggerType, schedule }, ctx) => {
@@ -60,14 +61,16 @@ type Input = z.infer<typeof inputSchema>
 function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDeps): unknown {
   log.debug({ userId, title: input.title, triggerType: input.triggerType }, 'Creating recurring task')
 
+  const userTimezone = getUserTimezoneOrDefault(userId)
+
   let compiled: CompiledRecurrence | undefined
   if (input.triggerType === 'cron' && input.schedule !== undefined) {
     const { startDate, startTime, ...scheduleRest } = input.schedule
     const dtstart =
       startDate === undefined
-        ? midnightUtcForTimezone(scheduleRest.timezone)
-        : localDatetimeToUtc(startDate, startTime, scheduleRest.timezone)
-    compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart })
+        ? midnightUtcForTimezone(userTimezone)
+        : localDatetimeToUtc(startDate, startTime, userTimezone)
+    compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart } as Omit<RecurrenceSpec, 'timezone'>, userTimezone)
   }
 
   const record = deps.createRecurringTask({
@@ -83,7 +86,7 @@ function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDe
     rrule: compiled?.rrule,
     dtstartUtc: compiled?.dtstartUtc,
     catchUp: input.catchUp,
-    timezone: compiled?.timezone ?? getConfig(userId, 'timezone') ?? 'UTC',
+    timezone: userTimezone,
   })
 
   const schedule =

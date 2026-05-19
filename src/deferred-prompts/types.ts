@@ -6,7 +6,6 @@
 import { z } from 'zod'
 
 import type { ContextType, DeferredAudience } from '../chat/types.js'
-import { isValidTimezone } from '../types/recurrence.js'
 
 // --- Delivery domain types ---
 
@@ -151,7 +150,6 @@ export const rruleInputSchema = z
     byMinute: z.array(z.number().int().min(0).max(59)).min(1).optional().describe('Minutes (0–59).'),
     until: z.iso.datetime().optional().describe('End datetime in UTC ISO 8601. Mutually exclusive with count.'),
     count: z.number().int().min(1).optional().describe('Total occurrences. Mutually exclusive with until.'),
-    timezone: z.string().describe('IANA timezone (e.g. "America/New_York"). Call get_current_time to obtain it.'),
     startDate: z.iso
       .date()
       .optional()
@@ -167,10 +165,6 @@ export const rruleInputSchema = z
   .refine((v) => !(v.until !== undefined && v.count !== undefined), {
     message: 'until and count are mutually exclusive',
     path: ['count'],
-  })
-  .refine((v) => isValidTimezone(v.timezone), {
-    message: 'invalid IANA timezone',
-    path: ['timezone'],
   })
   .refine((v) => !(v.startTime !== undefined && v.startDate === undefined), {
     message: 'startDate is required when startTime is provided',

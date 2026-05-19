@@ -6,10 +6,11 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { setConfig } from '../../src/config.js'
 import type { UpdateRecurringTaskDeps } from '../../src/tools/update-recurring-task.js'
 import { makeUpdateRecurringTaskTool } from '../../src/tools/update-recurring-task.js'
 import type { RecurringTaskRecord } from '../../src/types/recurring.js'
-import { mockLogger, schemaValidates } from '../utils/test-helpers.js'
+import { mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
 
 function getToolExecute(tool: ReturnType<typeof makeUpdateRecurringTaskTool>): NonNullable<typeof tool.execute> {
   assert(tool.execute, 'Tool execute is undefined')
@@ -49,8 +50,10 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
   let updateRecurringTaskCalls: Array<{ id: string; updates: Record<string, unknown> }>
   let deps: UpdateRecurringTaskDeps
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
+    await setupTestDb()
+    setConfig('user-1', 'timezone', 'UTC')
     getRecurringTaskResult = makeRecord()
     getRecurringTaskCalls = []
     updateRecurringTaskCalls = []
@@ -67,11 +70,11 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     }
   })
 
-  test('uses schedule.timezone for RRULE compilation', async () => {
-    getRecurringTaskResult = makeRecord({ timezone: 'America/New_York' })
+  test('uses user timezone for RRULE compilation', async () => {
+    getRecurringTaskResult = makeRecord({ timezone: 'UTC' })
     deps.updateRecurringTask = (id, updates): RecurringTaskRecord | null => {
       updateRecurringTaskCalls.push({ id, updates })
-      return makeRecord({ timezone: 'America/New_York' })
+      return makeRecord({ timezone: 'UTC' })
     }
 
     const tool = makeUpdateRecurringTaskTool('user-1', deps)
@@ -80,7 +83,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     await execute(
       {
         recurringTaskId: 'rec-1',
-        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'America/New_York' },
+        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0] },
       },
       toolCtx,
     )
@@ -88,7 +91,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     const call = updateRecurringTaskCalls[0]
     expect(call).toBeDefined()
     expect(call?.updates['rrule']).toContain('BYHOUR=9')
-    expect(call?.updates['timezone']).toBe('America/New_York')
+    expect(call?.updates['timezone']).toBe('UTC')
   })
 
   test('returns error immediately when task not found, without calling updateRecurringTask', async () => {
@@ -104,7 +107,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     expect(updateRecurringTaskCalls).toHaveLength(0)
   })
 
-  test('schedule.timezone in RRULE input is used verbatim regardless of existing task timezone', async () => {
+  test('user timezone is used for RRULE regardless of existing task timezone', async () => {
     getRecurringTaskResult = makeRecord({ timezone: 'America/New_York' })
     deps.updateRecurringTask = (id, updates): RecurringTaskRecord | null => {
       updateRecurringTaskCalls.push({ id, updates })
@@ -117,7 +120,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     await execute(
       {
         recurringTaskId: 'rec-1',
-        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
+        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0] },
       },
       toolCtx,
     )
@@ -153,7 +156,6 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
           freq: 'DAILY',
           byHour: [8],
           byMinute: [30],
-          timezone: 'UTC',
           startDate: '2026-07-01',
           startTime: '08:30',
         },
@@ -177,7 +179,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     await execute(
       {
         recurringTaskId: 'rec-1',
-        schedule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'UTC' },
+        schedule: { freq: 'DAILY', byHour: [10], byMinute: [0] },
       },
       toolCtx,
     )
@@ -198,7 +200,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     await execute(
       {
         recurringTaskId: 'rec-1',
-        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
+        schedule: { freq: 'DAILY', byHour: [9], byMinute: [0] },
       },
       toolCtx,
     )
@@ -219,7 +221,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
     await execute(
       {
         recurringTaskId: 'rec-1',
-        schedule: { freq: 'DAILY', timezone: 'UTC' },
+        schedule: { freq: 'DAILY' },
       },
       toolCtx,
     )
@@ -257,7 +259,7 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
       schemaValidates(tool, {
         recurringTaskId: 'rec-1',
         triggerType: 'on_complete',
-        schedule: { freq: 'DAILY', timezone: 'UTC' },
+        schedule: { freq: 'DAILY' },
       }),
     ).toBe(false)
   })

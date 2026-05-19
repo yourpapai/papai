@@ -39,7 +39,7 @@ describe('makeGetCurrentTimeTool', () => {
 
   test('returns tool with correct structure', () => {
     const tool = makeGetCurrentTimeTool()
-    expect(tool.description).toContain('current date and time')
+    expect(tool.description).toContain('current local date and time')
   })
 
   test('returns current time in user timezone', async () => {
@@ -74,15 +74,37 @@ describe('makeGetCurrentTimeTool', () => {
     expect(result.timezone).toBe('Etc/GMT-5')
   })
 
-  test('returns ISO string datetime', async () => {
+  test('returns local datetime (not UTC) when timezone is configured', async () => {
     const tool = makeGetCurrentTimeTool('user-1')
     assert(tool.execute, 'Tool execute is undefined')
 
     const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
 
     assert(isTimeResult(result), 'Invalid result')
-    // ISO 8601 format check: YYYY-MM-DDTHH:MM:SS.sssZ or similar
-    const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u
+    // Local time should NOT have a trailing Z (UTC indicator)
+    expect(result.datetime.endsWith('Z')).toBe(false)
+  })
+
+  test('legacy UTC offset returns local datetime, not UTC', async () => {
+    setCachedConfig('user-legacy', 'timezone', 'UTC+5')
+    const tool = makeGetCurrentTimeTool('user-legacy')
+    assert(tool.execute, 'Tool execute is undefined')
+
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+
+    assert(isTimeResult(result), 'Invalid result')
+    // Normalized to Etc/GMT-5, so Intl.DateTimeFormat works and returns local time
+    expect(result.datetime.endsWith('Z')).toBe(false)
+  })
+
+  test('returns ISO string datetime shape', async () => {
+    const tool = makeGetCurrentTimeTool('user-1')
+    assert(tool.execute, 'Tool execute is undefined')
+
+    const result: unknown = await tool.execute({}, { toolCallId: '1', messages: [] })
+
+    assert(isTimeResult(result), 'Invalid result')
+    const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/u
     expect(result.datetime).toMatch(isoPattern)
   })
 

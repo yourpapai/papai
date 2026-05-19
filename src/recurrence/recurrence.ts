@@ -16,8 +16,8 @@ export type CompiledRecurrence = {
   timezone: string
 }
 
-export const recurrenceSpecToRrule = (spec: RecurrenceSpec): CompiledRecurrence => {
-  log.debug({ freq: spec.freq, timezone: spec.timezone }, 'recurrenceSpecToRrule called')
+export const recurrenceSpecToRrule = (spec: RecurrenceSpec, timezone: string): CompiledRecurrence => {
+  log.debug({ freq: spec.freq, timezone }, 'recurrenceSpecToRrule called')
 
   const parts: string[] = [`FREQ=${spec.freq}`]
   if (spec.interval !== undefined) parts.push(`INTERVAL=${spec.interval}`)
@@ -35,7 +35,7 @@ export const recurrenceSpecToRrule = (spec: RecurrenceSpec): CompiledRecurrence 
   return {
     rrule: parts.join(';'),
     dtstartUtc: spec.dtstart,
-    timezone: spec.timezone,
+    timezone,
   }
 }
 

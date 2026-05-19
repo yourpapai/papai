@@ -107,7 +107,7 @@ describe('create_deferred_prompt', () => {
     const t = getTools()['create_deferred_prompt']!
     assert(t.execute)
     const result: unknown = await t.execute(
-      { prompt: 'Daily', schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } } },
+      { prompt: 'Daily', schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } } },
       toolCtx,
     )
     expect(result).toHaveProperty('status', 'created')
@@ -168,7 +168,7 @@ describe('create_deferred_prompt', () => {
     const result: unknown = await t.execute(
       {
         prompt: 'Weekly',
-        schedule: { rrule: { freq: 'WEEKLY', byDay: ['MO'], byHour: [9], byMinute: [0], timezone: 'UTC' } },
+        schedule: { rrule: { freq: 'WEEKLY', byDay: ['MO'], byHour: [9], byMinute: [0] } },
       },
       toolCtx,
     )

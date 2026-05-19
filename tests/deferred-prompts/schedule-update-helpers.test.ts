@@ -51,13 +51,13 @@ describe('buildScheduleUpdates — rrule', () => {
   test('returns recurrence fields for a known prompt', () => {
     executeCreate(USER_ID, {
       prompt: 'Daily',
-      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
     const { prompts } = executeList(USER_ID, { type: 'scheduled' })
     const id = prompts[0]!.id
 
     const result = buildScheduleUpdates(id, USER_ID, {
-      rrule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'UTC' },
+      rrule: { freq: 'DAILY', byHour: [10], byMinute: [0] },
     })
     expect(result).not.toHaveProperty('error')
     assert(!('error' in result))
@@ -68,7 +68,7 @@ describe('buildScheduleUpdates — rrule', () => {
 
   test('returns error when prompt not found', () => {
     const result = buildScheduleUpdates('nonexistent-id', USER_ID, {
-      rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' },
+      rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] },
     })
     expect(result).toHaveProperty('error')
   })

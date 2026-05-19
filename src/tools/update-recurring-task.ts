@@ -15,6 +15,7 @@ import {
   updateRecurringTask as defaultUpdateRecurringTask,
 } from '../recurring.js'
 import type { RecurringTaskRecord } from '../types/recurring.js'
+import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 
 const log = logger.child({ scope: 'tool:update-recurring-task' })
@@ -72,6 +73,7 @@ function buildScheduleUpdates(
   schedule: Input['schedule'],
   triggerType: Input['triggerType'],
   existingDtstart: string | null,
+  userTimezone: string,
 ): Record<string, unknown> {
   if (schedule === undefined) {
     return triggerType === 'on_complete' ? { triggerType: 'on_complete' } : {}
@@ -79,9 +81,12 @@ function buildScheduleUpdates(
   const { startDate, startTime, ...scheduleRest } = schedule
   const dtstart =
     startDate === undefined
-      ? (existingDtstart ?? midnightUtcForTimezone(scheduleRest.timezone))
-      : localDatetimeToUtc(startDate, startTime, scheduleRest.timezone)
-  const compiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart })
+      ? (existingDtstart ?? midnightUtcForTimezone(userTimezone))
+      : localDatetimeToUtc(startDate, startTime, userTimezone)
+  const compiled = recurrenceSpecToRrule(
+    { ...scheduleRest, dtstart } as Omit<Parameters<typeof recurrenceSpecToRrule>[0], 'timezone'>,
+    userTimezone,
+  )
   return {
     triggerType: 'cron' as const,
     rrule: compiled.rrule,
@@ -90,7 +95,7 @@ function buildScheduleUpdates(
   }
 }
 
-function executeUpdate(input: Input, deps: UpdateRecurringTaskDeps): unknown {
+function executeUpdate(userId: string, input: Input, deps: UpdateRecurringTaskDeps): unknown {
   const { recurringTaskId, title, description, priority, status, assignee, labels, schedule, catchUp, triggerType } =
     input
   log.debug({ recurringTaskId }, 'Updating recurring task')
@@ -101,6 +106,8 @@ function executeUpdate(input: Input, deps: UpdateRecurringTaskDeps): unknown {
     return { error: 'Recurring task not found' }
   }
 
+  const userTimezone = getUserTimezoneOrDefault(userId)
+
   const updated = deps.updateRecurringTask(recurringTaskId, {
     title,
     description,
@@ -108,7 +115,7 @@ function executeUpdate(input: Input, deps: UpdateRecurringTaskDeps): unknown {
     status,
     assignee,
     labels,
-    ...buildScheduleUpdates(schedule, triggerType, existing.dtstartUtc),
+    ...buildScheduleUpdates(schedule, triggerType, existing.dtstartUtc, userTimezone),
     catchUp,
   })
 
@@ -128,7 +135,7 @@ function executeUpdate(input: Input, deps: UpdateRecurringTaskDeps): unknown {
 }
 
 export function makeUpdateRecurringTaskTool(
-  _userId: string,
+  userId: string,
   deps: UpdateRecurringTaskDeps = defaultDeps,
 ): ToolSet[string] {
   return tool({
@@ -137,7 +144,7 @@ export function makeUpdateRecurringTaskTool(
     inputSchema,
     execute: (input) => {
       try {
-        return executeUpdate(input, deps)
+        return executeUpdate(userId, input, deps)
       } catch (error) {
         log.error(
           {
