@@ -112,6 +112,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0116](0116-deferred-prompt-delivery-redesign.md)                    | Deferred Prompt Delivery Redesign — Same-Context Delivery with Personal vs Shared Audience              | 2026-04-19 | Implemented                                                 |
 | [0117](0117-youtrack-tool-parity-closure.md)                         | YouTrack Tool Parity Closure — Due-Date Correctness, Attachment Context Bug, and Priority Relaxation    | 2026-04-14 | Implemented                                                 |
 | [0118](0118-codeindex-tier1-completion.md)                           | Codeindex Tier 1 Implementation Completion — Extraction to Standalone Repository                        | 2026-05-19 | Implemented (with extraction divergence)                    |
+| [0119](0119-file-attachments-implementation.md)                      | Shared Attachment Pipeline — Durable File Handling for LLM and Tool Workflows                           | 2026-04-11 | Implemented (with divergence)                               |
 
 ## Declined
 
