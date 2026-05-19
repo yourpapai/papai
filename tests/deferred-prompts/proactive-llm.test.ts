@@ -18,6 +18,7 @@ import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
 import { loadFacts } from '../../src/memory.js'
+import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -79,13 +80,14 @@ function makeGroupThreadExecCtx(): DeferredExecutionContext {
 type UserConfigOptions = Readonly<{ smallModel: string | null }>
 
 function setupUserConfig(...args: readonly [] | readonly [UserConfigOptions]): void {
-  setConfig(USER_ID, 'llm_apikey', 'test-key')
-  setConfig(USER_ID, 'llm_baseurl', 'http://localhost:11434/v1')
-  setConfig(USER_ID, 'main_model', 'main-model')
   setConfig(USER_ID, 'timezone', 'UTC')
+  resetSystemConfigCacheForTesting()
+  setSystemConfig('llm_apikey', 'test-key', 'env')
+  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
+  setSystemConfig('main_model', 'main-model', 'env')
   const opts = args[0]
   if (opts !== undefined && opts.smallModel !== null) {
-    setConfig(USER_ID, 'small_model', opts.smallModel)
+    setSystemConfig('small_model', opts.smallModel, 'env')
   }
 }
 

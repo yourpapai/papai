@@ -20,11 +20,6 @@ const NO_DELETE_WARNING =
   '⚠️ This platform does not support automatic deletion of messages containing secrets. Please manually delete your messages after entering API keys and tokens.\n\n'
 
 const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
-  llm_apikey: 'LLM API Key',
-  llm_baseurl: 'Base URL',
-  main_model: 'Main Model',
-  small_model: 'Small Model',
-  embedding_model: 'Embedding Model',
   kaneo_apikey: 'Kaneo API Key',
   kaneo_workspace_id: 'Kaneo Workspace ID',
   youtrack_token: 'YouTrack Token',
@@ -33,11 +28,6 @@ const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
 
 function getFieldEmoji(key: ConfigKey): string {
   const emojiMap: Record<ConfigKey, string> = {
-    llm_apikey: '🔑',
-    llm_baseurl: '🌐',
-    main_model: '🤖',
-    small_model: '⚡',
-    embedding_model: '📊',
     kaneo_apikey: '🔐',
     kaneo_workspace_id: '📁',
     youtrack_token: '🔐',

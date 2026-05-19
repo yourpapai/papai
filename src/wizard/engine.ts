@@ -36,13 +36,12 @@ You can type "cancel" at any time to exit, or "skip" for optional steps.
 Let's begin!`
 
 function normalizeValue(
-  key: ConfigKey,
+  _key: ConfigKey,
   value: string,
-  data: Readonly<Record<string, string | undefined>>,
+  _data: Readonly<Record<string, string | undefined>>,
   existingValue?: string,
 ): string {
   const trimmedValue = value.trim().toLowerCase()
-  if (trimmedValue === 'same' && key === 'small_model') return data['main_model'] ?? value
   if (trimmedValue === 'skip') return existingValue !== undefined && existingValue !== '' ? existingValue : ''
   return value.trim()
 }

@@ -35,16 +35,6 @@ export function getWizardSteps(taskProvider: TaskProvider): WizardStep[] {
   const providerStep = PROVIDER_SPECIFIC_STEP[taskProvider]
 
   return [
-    createStep('llm_apikey', 'llm_apikey', '🔑 Enter your LLM API key:'),
-    createStep('llm_baseurl', 'llm_baseurl', '🌐 Enter base URL (e.g., https://api.openai.com/v1):'),
-    createStep('main_model', 'main_model', '🤖 Enter main model name (e.g., gpt-5.4, claude-sonnet-4-6):'),
-    createStep('small_model', 'small_model', "⚡ Enter small model name (or 'same' to use main model):"),
-    createStep(
-      'embedding_model',
-      'embedding_model',
-      '📊 Enter embedding model for semantic search (skip to disable):',
-      true,
-    ),
     createStep(providerStep.key, providerStep.key, providerStep.prompt),
     createStep(
       'timezone',
@@ -62,23 +52,6 @@ function validateToken(value: string): string | null {
   return value.trim().length === 0 ? 'Token cannot be empty' : null
 }
 
-function validateUrl(value: string): string | null {
-  const trimmedValue = value.trim()
-  try {
-    const url = new URL(trimmedValue)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return 'Please enter a valid URL (http/https)'
-    }
-    return null
-  } catch {
-    return 'Please enter a valid URL (http/https)'
-  }
-}
-
-function validateModel(value: string): string | null {
-  return value.trim().length === 0 ? 'Model name cannot be empty' : null
-}
-
 function validateTimezone(value: string): string | null {
   return normalizeTimezone(value.trim()) === null
     ? 'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.'
@@ -88,18 +61,11 @@ function validateTimezone(value: string): string | null {
 export function validateStep(stepId: string, value: string): Promise<string | null> {
   const result = ((): string | null => {
     switch (stepId) {
-      case 'llm_apikey':
       case 'kaneo_apikey':
       case 'kaneo_workspace_id':
         return validateApiKey(value)
       case 'youtrack_token':
         return validateToken(value)
-      case 'llm_baseurl':
-        return validateUrl(value)
-      case 'main_model':
-      case 'small_model':
-      case 'embedding_model':
-        return validateModel(value)
       case 'timezone':
         return validateTimezone(value)
       default:
@@ -124,19 +90,6 @@ function getDisplayValue(key: ConfigKey, value: string | undefined): string {
 
 export function formatSummary(data: Record<string, string | undefined>, taskProvider: TaskProvider): string {
   const lines = ['Configuration Summary', '===================', '']
-
-  // LLM Configuration
-  lines.push(`LLM API Key: ${getDisplayValue('llm_apikey', data['llm_apikey'])}`)
-  lines.push(`Base URL: ${getDisplayValue('llm_baseurl', data['llm_baseurl'])}`)
-  lines.push(`Main Model: ${getDisplayValue('main_model', data['main_model'])}`)
-  lines.push(`Small Model: ${getDisplayValue('small_model', data['small_model'])}`)
-
-  const embeddingModel = data['embedding_model']
-  if (embeddingModel !== undefined) {
-    lines.push(`Embedding Model: ${embeddingModel}`)
-  }
-
-  lines.push('')
 
   // Provider-specific
   if (taskProvider === 'kaneo') {

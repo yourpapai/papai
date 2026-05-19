@@ -9,8 +9,9 @@ import type { LanguageModel, ModelMessage, ToolSet } from 'ai'
 import { generateText } from 'ai'
 import { z } from 'zod'
 
-import { getCachedConfig, getCachedHistory } from '../cache.js'
+import { getCachedHistory } from '../cache.js'
 import { logger } from '../logger.js'
+import { getSystemConfig } from '../system-config.js'
 
 const log = logger.child({ scope: 'tools:lookup-group-history' })
 
@@ -27,7 +28,7 @@ export type LookupGroupHistoryDeps = {
     model: LanguageModel
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   }) => Promise<GenerateTextResult>
-  getSmallModel: (userId: string) => LanguageModel | null
+  getSmallModel: () => LanguageModel | null
 }
 
 const buildUserPrompt = (queries: string[], history: readonly ModelMessage[]): string =>
@@ -44,10 +45,10 @@ const defaultDeps: LookupGroupHistoryDeps = {
     const result = await generateText(options)
     return { text: result.text }
   },
-  getSmallModel: (userId: string) => {
-    const llmApiKey = getCachedConfig(userId, 'llm_apikey')
-    const llmBaseUrl = getCachedConfig(userId, 'llm_baseurl')
-    const smallModel = getCachedConfig(userId, 'small_model')
+  getSmallModel: () => {
+    const llmApiKey = getSystemConfig('llm_apikey')
+    const llmBaseUrl = getSystemConfig('llm_baseurl')
+    const smallModel = getSystemConfig('small_model') ?? getSystemConfig('main_model')
 
     if (llmApiKey === null || llmBaseUrl === null || smallModel === null) {
       return null
@@ -74,7 +75,7 @@ export async function executeLookupGroupHistory(
     return 'No messages found in the main chat.'
   }
 
-  const smallModel = deps.getSmallModel(userId)
+  const smallModel = deps.getSmallModel()
   if (smallModel === null) {
     log.warn({ userId }, 'No LLM config available for lookup_group_history')
     return 'Unable to search: LLM not configured.'

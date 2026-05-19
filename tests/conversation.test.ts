@@ -10,6 +10,7 @@ import type { ModelMessage } from 'ai'
 import * as cacheModule from '../src/cache.js'
 import { shouldTriggerTrim, buildMessagesWithMemory, runTrimInBackground } from '../src/conversation.js'
 import { logger } from '../src/logger.js'
+import * as systemConfigModule from '../src/system-config.js'
 import { flushMicrotasks } from './utils/test-helpers.js'
 
 // Helper type for spy instances that need cleanup
@@ -24,6 +25,13 @@ function mockConfigLookup(
 
 function mockHistoryLookup(mockHistories: Map<string, ModelMessage[]>): (userId: string) => ModelMessage[] {
   return (userId: string): ModelMessage[] => mockHistories.get(userId) ?? []
+}
+
+function makeSystemConfigLookup(
+  configs: Map<string, Map<string, string | null>>,
+  userKey: string,
+): (key: string) => string | null {
+  return (key: string): string | null => configs.get(userKey)?.get(key) ?? null
 }
 
 // Define local type and mutable implementation BEFORE mocking
@@ -191,6 +199,13 @@ describe('runTrimInBackground', () => {
   const mockHistories = new Map<string, ModelMessage[]>()
   const mockConfigs = new Map<string, Map<string, string | null>>()
   const spies: SpyInstance[] = []
+
+  const spySystemConfigFromMockConfigs = (): void => {
+    const spy = spyOn(systemConfigModule, 'getSystemConfig').mockImplementation(
+      makeSystemConfigLookup(mockConfigs, 'user1'),
+    )
+    spies.push(spy)
+  }
   let generateTextImpl = defaultGenerateTextImpl
 
   function trackSpy<T extends SpyInstance>(spy: T): T {
@@ -238,6 +253,7 @@ describe('runTrimInBackground', () => {
     )
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
+    spySystemConfigFromMockConfigs()
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
@@ -278,6 +294,7 @@ describe('runTrimInBackground', () => {
       Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Trimmed' }) })
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
+    spySystemConfigFromMockConfigs()
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {
@@ -300,6 +317,7 @@ describe('runTrimInBackground', () => {
     mockHistories.set('user1', [...history])
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockReturnValue(null))
+    trackSpy(spyOn(systemConfigModule, 'getSystemConfig').mockReturnValue(null))
     trackSpy(spyOn(logger, 'warn').mockImplementation(() => {}))
 
     await runTrimInBackground('user1', history)
@@ -324,6 +342,7 @@ describe('runTrimInBackground', () => {
     generateTextImpl = (): Promise<GenerateTextResult> => Promise.reject(new Error('LLM API error'))
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(mockConfigs)))
+    spySystemConfigFromMockConfigs()
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(mockHistories)))
     trackSpy(spyOn(cacheModule, 'setCachedHistory').mockImplementation(() => {}))
     trackSpy(spyOn(cacheModule, 'getCachedSummary').mockReturnValue(null))
@@ -361,6 +380,11 @@ describe('runTrimInBackground', () => {
       Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Concurrent trim summary' }) })
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(concurrentConfigs)))
+    trackSpy(
+      spyOn(systemConfigModule, 'getSystemConfig').mockImplementation(
+        makeSystemConfigLookup(concurrentConfigs, 'user1'),
+      ),
+    )
     trackSpy(spyOn(cacheModule, 'getCachedHistory').mockImplementation(mockHistoryLookup(concurrentHistories)))
     trackSpy(
       spyOn(cacheModule, 'setCachedHistory').mockImplementation((userId: string, messages: readonly ModelMessage[]) => {

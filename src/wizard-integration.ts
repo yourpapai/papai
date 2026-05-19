@@ -16,9 +16,6 @@ const getWizardButtonStyle = (action: string): 'primary' | 'secondary' | 'danger
   if (action === 'cancel') {
     return 'danger'
   }
-  if (action === 'skip_small_model' || action === 'skip_embedding') {
-    return 'secondary'
-  }
   return 'primary'
 }
 

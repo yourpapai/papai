@@ -6,10 +6,11 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, ModelMessage } from 'ai'
 
-import { getCachedConfig, getCachedHistory, setCachedHistory } from './cache.js'
+import { getCachedHistory, setCachedHistory } from './cache.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
+import { getSystemConfig } from './system-config.js'
 
 const log = logger.child({ scope: 'conversation' })
 
@@ -56,10 +57,10 @@ export const runTrimInBackground = async (
   log.warn({ userId, historyLength: history.length, reason }, 'Smart trim triggered (running in background)')
   emitUser('trim:start', userId, { historyLength: history.length, reason })
 
-  const llmApiKey = getCachedConfig(userId, 'llm_apikey')
-  const llmBaseUrl = getCachedConfig(userId, 'llm_baseurl')
-  const mainModel = getCachedConfig(userId, 'main_model')
-  const smallModel = getCachedConfig(userId, 'small_model') ?? mainModel
+  const llmApiKey = getSystemConfig('llm_apikey')
+  const llmBaseUrl = getSystemConfig('llm_baseurl')
+  const mainModel = getSystemConfig('main_model')
+  const smallModel = getSystemConfig('small_model') ?? mainModel
 
   if (llmApiKey !== null && llmBaseUrl !== null && smallModel !== null) {
     try {

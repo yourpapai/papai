@@ -26,7 +26,7 @@ describe('config_editor events', () => {
       events.push({ type: event.type, data: event.data })
     })
 
-    startEditor(userId, storageContextId, 'main_model')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
 
     const openedEvent = events.find((e) => e.type === 'config_editor:opened')
     expect(openedEvent).toBeDefined()
@@ -40,7 +40,7 @@ describe('config_editor events', () => {
       events.push({ type: event.type, data: event.data })
     })
 
-    startEditor(userId, storageContextId, 'main_model')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
     handleEditorMessage(userId, storageContextId, 'gpt-4o')
 
     const stepEvent = events.find((e) => e.type === 'config_editor:step')
@@ -56,7 +56,7 @@ describe('config_editor events', () => {
       events.push({ type: event.type, data: event.data })
     })
 
-    startEditor(userId, storageContextId, 'main_model')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
     handleEditorCallback(userId, storageContextId, 'cancel')
 
     const closedEvent = events.find((e) => e.type === 'config_editor:closed')
@@ -71,9 +71,9 @@ describe('config_editor events', () => {
       events.push({ type: event.type, data: event.data })
     })
 
-    startEditor(userId, storageContextId, 'main_model')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
     handleEditorMessage(userId, storageContextId, 'gpt-4o')
-    handleEditorCallback(userId, storageContextId, 'save', 'main_model')
+    handleEditorCallback(userId, storageContextId, 'save', 'kaneo_apikey')
 
     const closedEvent = events.find((e) => e.type === 'config_editor:closed')
     expect(closedEvent).toBeDefined()

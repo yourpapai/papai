@@ -25,6 +25,8 @@ export const userConfig = sqliteTable(
   (table) => [primaryKey({ columns: [table.userId, table.key] }), index('idx_user_config_user_id').on(table.userId)],
 )
 
+export { systemConfig } from './system-config-schema.js'
+
 export const conversationHistory = sqliteTable('conversation_history', {
   userId: text('user_id').primaryKey(),
   messages: text('messages').notNull(),

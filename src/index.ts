@@ -20,6 +20,7 @@ import { flushOnShutdown } from './message-queue/index.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
+import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { addUser } from './users.js'
 
 const log = logger.child({ scope: 'main' })
@@ -68,6 +69,15 @@ try {
 } catch (error) {
   log.error({ error: error instanceof Error ? error.message : String(error) }, 'Database migration failed')
   process.exit(1)
+}
+
+seedSystemConfigFromEnv()
+const missingSystemKeys = missingSystemConfigKeys()
+if (missingSystemKeys.length > 0) {
+  log.warn(
+    { missing: missingSystemKeys },
+    'system_config is incomplete; the bot will reply "misconfigured" until these keys are set',
+  )
 }
 
 initializeMessageCache()

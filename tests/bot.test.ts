@@ -314,12 +314,9 @@ describe('Demo Mode Auto-Provision', () => {
   })
 })
 
-// Setup user config to bypass wizard auto-start
+// Setup user config to bypass wizard auto-start. Phase 1 removes per-user
+// LLM keys, so only the task-provider key and timezone need to be present.
 function setupUserConfig(userId: string): void {
-  setConfig(userId, 'llm_apikey', 'sk-test1234')
-  setConfig(userId, 'llm_baseurl', 'https://api.test.com')
-  setConfig(userId, 'main_model', 'gpt-4')
-  setConfig(userId, 'small_model', 'gpt-4')
   setConfig(userId, 'kaneo_apikey', 'test-kaneo-key')
   setConfig(userId, 'timezone', 'UTC')
 }
@@ -1555,7 +1552,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
       expect(processMessageCallCount).toBe(0)
       expect(textCalls).toHaveLength(0)
-      expect(getConfig('wizard-user', 'llm_apikey')).toBeNull()
+      expect(getConfig('wizard-user', 'kaneo_apikey')).toBeNull()
     })
 
     test('does not continue group settings selector after DM access is revoked', async () => {

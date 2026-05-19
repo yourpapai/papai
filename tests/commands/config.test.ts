@@ -36,7 +36,7 @@ describe('/config Command', () => {
     })
 
     test('shows all config keys with values and masked secrets', async () => {
-      setConfig(USER_ID, 'llm_apikey', 'sk-abc1234')
+      setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
       expect(buttonCalls[0]).toContain('****1234')
@@ -99,7 +99,7 @@ describe('/config Command', () => {
     })
 
     test('falls back to plain text with config output', async () => {
-      setConfig(USER_ID, 'llm_apikey', 'sk-abc1234')
+      setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
       const { reply, textCalls, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, false)
       expect(buttonCalls).toHaveLength(0)
