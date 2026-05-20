@@ -195,10 +195,10 @@ required pre-merge gate.
 
 - **Goal.** Atomic
   `tryIncrementFixedWindow(subjectId, resource, dimension, window, delta,
-  limit, nowMs, notifyPct)` implementing the `fixed_window` branch of §7.1:
+limit, nowMs, notifyPct)` implementing the `fixed_window` branch of §7.1:
   insert-on-conflict with bucket rollover via
   `ON CONFLICT … DO UPDATE … WHERE quota_counter.window_start <
-  excluded.window_start` resetting `count`, `balance`, and
+excluded.window_start` resetting `count`, `balance`, and
   `notified_threshold_pct` to `0`, then a conditional
   `UPDATE … WHERE count + :delta <= :limit RETURNING count`.
 - **Touches.** `src/quota/counter-fixed.ts` (new).
@@ -212,7 +212,7 @@ required pre-merge gate.
 
 - **Goal.**
   `applyDeltaFixedWindow(subjectId, resource, dimension, window, delta,
-  nowMs)` supporting **negative deltas** with
+nowMs)` supporting **negative deltas** with
   `count = MAX(0, count + :delta)` clamp. Used both for `commitQuota`
   reconciliation and for the `attachment.storage_bytes` refund path.
 - **Touches.** Extend `src/quota/counter-fixed.ts`.
@@ -224,14 +224,14 @@ required pre-merge gate.
 
 - **Goal.** Atomic
   `tryReserveRolling(subjectId, resource, dimension, window, delta, limit,
-  nowMs, notifyPct)` implementing §4.4 / §7.1's `rolling_refill` branch:
+nowMs, notifyPct)` implementing §4.4 / §7.1's `rolling_refill` branch:
   insert default row if missing (`balance = limit`, `window_start = nowMs`),
   lazily refill inside the same tx using
   `refilled = floor(elapsed_ms * limit / window_ms)`, advance
   `window_start` by exactly `refilled * window_ms / limit` so fractional
   tokens are preserved, then conditional
   `UPDATE … SET balance = :new_balance - :delta … WHERE :new_balance >=
-  :delta RETURNING balance`. A negative `delta` (refund) computes
+:delta RETURNING balance`. A negative `delta` (refund) computes
   `new_balance = min(limit, balance + refilled - delta)` and unconditionally
   succeeds (clamped at `limit`).
 - **Touches.** `src/quota/counter-rolling.ts` (new).
@@ -249,7 +249,7 @@ required pre-merge gate.
 - **Goal.** Public engine: resolve plan, fan out the right primitive
   (`tryIncrementFixedWindow` for `algorithm = 'fixed_window'`,
   `tryReserveRolling` for `'rolling_refill'`) over every `(dimension,
-  window)` triple in the limits matrix for the resource. On first breach,
+window)` triple in the limits matrix for the resource. On first breach,
   roll back all prior increments **within the same tx**.
 - **Touches.** `src/quota/reserve.ts` (new), `src/quota/index.ts` (new,
   re-export façade).
@@ -295,7 +295,7 @@ required pre-merge gate.
 ### Phase 14 — Orchestrator pre-call gate (main role)
 
 - **Goal.** Insert `reserveQuota('llm:main', { requests: 1, input_tokens:
-  estimateInput(prompt), output_tokens: outputBudget })` immediately before
+estimateInput(prompt), output_tokens: outputBudget })` immediately before
   the `generateText` call. On denial, return the structured "quota
   exhausted" reply (see §8 of spec) and **do not** call the model.
 - **Touches.** `src/llm-orchestrator-support.ts` (pre-call hook),
@@ -331,7 +331,7 @@ required pre-merge gate.
 - **Goal.** Increment `tool.requests.*` before every tool execution in the
   tool wrapper used by `src/tools/`. On denial, return the structured
   failure result described in §8 of spec (`{ success: false, error: {
-  code: 'quota_exceeded', ... } }`).
+code: 'quota_exceeded', ... } }`).
 - **Touches.** `src/tools/tool-execution-wrapper.ts` (or the equivalent
   module — locate via `code_symbol` before starting).
 - **Tests.** `tests/tools/quota-gate.test.ts`: gate fires; structured
@@ -392,7 +392,7 @@ required pre-merge gate.
   for metrics:
   - `delivery_mode: 'llm_main' | 'llm_small' | 'template'`.
   - `delivery_reason: 'normal' | 'proactive_degrade' | 'main_denied' |
-    'all_denied'`.
+'all_denied'`.
 
 - **Touches.**
   - `src/db/migrations/<M>_deferred_prompt_delivery_mode.ts` (new) —
@@ -405,15 +405,15 @@ required pre-merge gate.
     deciding whether to take the proactive degrade branch.
   - `src/deferred-prompts/templated-delivery.ts` (new) — three pure
     formatters plus a shared footer constant:
-    - `formatScheduledOneShot(prompt, executionMetadata, timezone)` for
-      `ScheduledPrompt` rows whose `rrule` is `null`.
-    - `formatScheduledRecurring(prompt, executionMetadata, timezone,
-      humanRruleSummary)` for `ScheduledPrompt` rows with an `rrule`.
-    - `formatAlert(prompt, executionMetadata, condition)` for
-      `AlertPrompt` rows; the condition clause is built from the stored
-      `AlertCondition` tree without any LLM call.
-    - All three prefer `execution_metadata.delivery_brief` over the raw
-      `prompt` field when non-empty.
+    `formatScheduledOneShot(prompt, executionMetadata, timezone)` for
+    `ScheduledPrompt` rows whose `rrule` is `null`;
+    `formatScheduledRecurring(prompt, executionMetadata, timezone,
+humanRruleSummary)` for `ScheduledPrompt` rows with an `rrule`;
+    `formatAlert(prompt, executionMetadata, condition)` for
+    `AlertPrompt` rows (the condition clause is built from the stored
+    `AlertCondition` tree without any LLM call). All three prefer
+    `execution_metadata.delivery_brief` over the raw `prompt` field
+    when non-empty.
   - `src/deferred-prompts/threshold-check.ts` (new, or extend an
     existing helper) — `isMainAtOrAboveNotifyPct(subjectId, nowMs)`
     returns true if any limited `llm:main.*` triple is at ≥`notify_pct`
@@ -430,23 +430,22 @@ required pre-merge gate.
     rolling_refill crossing, false for unlimited plans, false when
     only `llm:small` is over threshold.
   - `tests/deferred-prompts/fallback-chain.test.ts` — exercises every
-    branch:
-    - subject below threshold + main allowed → `delivery_mode =
-      'llm_main'`, `delivery_reason = 'normal'`.
-    - subject ≥`notify_pct` on main + small allowed → `delivery_mode =
-      'llm_small'`, `delivery_reason = 'proactive_degrade'`; assert no
-      `llm:main` reservation was held.
-    - subject below threshold but `llm:main` denied at the gate (race
-      between threshold check and reservation) → `delivery_mode =
-      'llm_small'`, `delivery_reason = 'main_denied'`.
-    - both `llm:main` and `llm:small` denied → `delivery_mode =
-      'template'`, `delivery_reason = 'all_denied'`; the templated
-      path is delivered regardless of quota.
-    - all three prompt types (`scheduled` one-shot, `scheduled`
-      recurring, `alert`) take the templated path correctly when
-      quota-exhausted.
-    - assert the dispatcher never reschedules a fire moment — no
-      defer-and-retry timer is set on any path.
+    branch. **Normal:** subject below threshold + main allowed →
+    `delivery_mode = 'llm_main'`, `delivery_reason = 'normal'`.
+    **Proactive degrade:** subject ≥`notify_pct` on main + small allowed
+    → `delivery_mode = 'llm_small'`, `delivery_reason =
+'proactive_degrade'`; assert no `llm:main` reservation was held.
+    **Main denied:** subject below threshold but `llm:main` denied at
+    the gate (race between threshold check and reservation) →
+    `delivery_mode = 'llm_small'`, `delivery_reason = 'main_denied'`.
+    **All denied:** both `llm:main` and `llm:small` denied →
+    `delivery_mode = 'template'`, `delivery_reason = 'all_denied'`;
+    the templated path is delivered regardless of quota. **Per-type
+    template coverage:** all three prompt types (`scheduled` one-shot,
+    `scheduled` recurring, `alert`) take the templated path correctly
+    when quota-exhausted. **No-defer guarantee:** assert the dispatcher
+    never reschedules a fire moment — no defer-and-retry timer is set
+    on any path.
 
 - **Exit criteria.** Every deferred prompt fires at its scheduled time
   regardless of quota state, with the right model / template chosen per
@@ -693,7 +692,7 @@ exactly like `POST /admin/llm` (see `src/debug/billing-routes.ts`).
 - **Goal.** Snapshot of live `quota_counter` rows for the subject,
   joined with the active plan's limits to render
   `{ used, limit, remaining, resetsAt, algorithm, notifyPct,
-  notifiedThresholdPct, refillRatePerSecond? }` per triple. Used by the
+notifiedThresholdPct, refillRatePerSecond? }` per triple. Used by the
   dashboard Subject Detail card.
 - **Touches.** `src/debug/billing-routes.ts`, `src/debug/billing.ts`
   (read helper).

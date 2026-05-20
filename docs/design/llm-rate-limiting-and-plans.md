@@ -137,14 +137,14 @@ where the mapping is defined.
 turn and **must not** be conflated with non-LLM resources. v1 introduces an
 orthogonal `resource` axis:
 
-| `resource`   | Meaning                                                 |
-| ------------ | ------------------------------------------------------- |
-| `llm:main`   | LLM call using the main model role                      |
-| `llm:small`  | LLM call using the small model role                     |
-| `llm:embed`  | Embedding call (memo search, etc.)                      |
-| `tool`       | One tool invocation (any tool name)                     |
-| `web_fetch`  | One `web_fetch` tool execution                          |
-| `attachment` | Durable file in the attachment workspace (S3-backed)    |
+| `resource`   | Meaning                                              |
+| ------------ | ---------------------------------------------------- |
+| `llm:main`   | LLM call using the main model role                   |
+| `llm:small`  | LLM call using the small model role                  |
+| `llm:embed`  | Embedding call (memo search, etc.)                   |
+| `tool`       | One tool invocation (any tool name)                  |
+| `web_fetch`  | One `web_fetch` tool execution                       |
+| `attachment` | Durable file in the attachment workspace (S3-backed) |
 
 Notes:
 
@@ -167,8 +167,7 @@ Notes:
 | `storage_bytes`  | `attachment`            | stock |
 
 Invalid combinations (e.g. `output_tokens` on `tool`, `storage_bytes` on
-`llm:*`, `requests` on `attachment`) are rejected by the plan editor with a
-400. "Flow" dimensions count usage that accrues inside a window; "stock"
+`llm:*`, `requests` on `attachment`) are rejected by the plan editor with a 400. "Flow" dimensions count usage that accrues inside a window; "stock"
 dimensions count the current outstanding total and are refunded on delete —
 the underlying counter machinery is the same, only the lifecycle differs.
 
@@ -198,9 +197,9 @@ plan can mix bursty and smooth limits — e.g. a generous monthly `input_tokens`
 cap on `fixed_window` plus a tighter daily `requests` cap on `rolling_refill`
 to keep the bot's pace healthy.
 
-| `algorithm`      | Behaviour                                                                                          | Best for                                                            |
-| ---------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `fixed_window`   | Counter accumulates inside the bucket and resets hard at the window boundary. Cheap, predictable.  | Calendar-anchored caps ("X per month"), billing-aligned limits      |
+| `algorithm`      | Behaviour                                                                                          | Best for                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `fixed_window`   | Counter accumulates inside the bucket and resets hard at the window boundary. Cheap, predictable.  | Calendar-anchored caps ("X per month"), billing-aligned limits               |
 | `rolling_refill` | Token-bucket: capacity = `limit_value`, refill rate = `limit_value / window_ms` accruing linearly. | Smoothing bursty workloads, fair pacing, preventing edge-of-window stampedes |
 
 Why these two and not three: the most-cited industry survey (Stripe, GitHub,
@@ -502,7 +501,7 @@ turn, however. Two non-negotiables shape the design:
   fire on time; degrade the content if you must.
 - **Silent loss is forbidden.** If every LLM path is over quota, the
   dispatcher still posts a templated, non-LLM message so the user can
-  see *that* the trigger fired, even if not *how* it would normally
+  see _that_ the trigger fired, even if not _how_ it would normally
   read.
 
 The two prompt families flow through the same chain but pick a
@@ -522,7 +521,7 @@ triggers, `AlertPrompt` covers condition-triggered notifications).
    reservation (if it was speculatively taken) and reissues against
    `llm:small`. A deferred prompt is not the right thing to spend the
    user's last 20 % of `llm:main` headroom on — interactive turns are.
-   This is a *preemptive* degradation, not a recovery path: it kicks in
+   This is a _preemptive_ degradation, not a recovery path: it kicks in
    while `llm:main` would still answer.
 3. **Hard fallback to `llm:small` on `llm:main` denial.** If step 1 was
    skipped (because step 2 fired preemptively) and `llm:small` is also
@@ -550,18 +549,18 @@ purely from columns already on the deferred-prompts row plus the
 subject's resolved timezone — no LLM call, no tool call.
 
 - **`scheduled` — one-shot (`fire_at`).** "Scheduled prompt fires now:
-  *{deliveryBriefOrPrompt}*". When
+  _{deliveryBriefOrPrompt}_". When
   `execution_metadata.delivery_brief` is non-empty, prefer it over the
   raw `prompt` field because the creator already framed it for the
   user.
 - **`scheduled` — recurring (`rrule`).** "Recurring prompt
-  ({humanRruleSummary}) fires now: *{deliveryBriefOrPrompt}*". The
+  ({humanRruleSummary}) fires now: _{deliveryBriefOrPrompt}_". The
   recurrence summary is produced locally from the stored `rrule` string
   by the same helper used in `list_recurring_tasks` output.
 - **`alert` — condition triggered.** "Alert condition met
-  ({humanConditionSummary}): *{deliveryBriefOrPrompt}*". The condition
-  is rendered as a short human-readable clause (e.g. "task *T-42*
-  status changed to *Done*") built directly from the stored
+  ({humanConditionSummary}): _{deliveryBriefOrPrompt}_". The condition
+  is rendered as a short human-readable clause (e.g. "task _T-42_
+  status changed to _Done_") built directly from the stored
   `AlertCondition` tree.
 
 All three templates end with the same short footer noting that the LLM
@@ -575,7 +574,7 @@ dispatch:
 - `delivery_mode: 'llm_main' | 'llm_small' | 'template'` — which
   renderer produced the message that left the bot.
 - `delivery_reason: 'normal' | 'proactive_degrade' | 'main_denied' |
-  'all_denied'` — which branch of the chain triggered.
+'all_denied'` — which branch of the chain triggered.
 
 Together they let the admin tune `notify_pct` and seeded plan limits if
 proactive degrades or template fallbacks start dominating.
@@ -712,15 +711,44 @@ quota-aware path.
     "planName": "Team",
     "description": "Shared team plan",
     "limits": [
-      { "resource": "llm:main", "dimension": "input_tokens", "window": "day", "algorithm": "rolling_refill", "limit": 200000, "notifyPct": 80 },
-      { "resource": "llm:main", "dimension": "output_tokens", "window": "day", "algorithm": "rolling_refill", "limit": 80000, "notifyPct": 80 },
-      { "resource": "tool", "dimension": "requests", "window": "day", "algorithm": "fixed_window", "limit": 1000, "notifyPct": 80 },
-      { "resource": "attachment", "dimension": "storage_bytes", "window": "month", "algorithm": "fixed_window", "limit": 524288000, "notifyPct": 80 }
+      {
+        "resource": "llm:main",
+        "dimension": "input_tokens",
+        "window": "day",
+        "algorithm": "rolling_refill",
+        "limit": 200000,
+        "notifyPct": 80
+      },
+      {
+        "resource": "llm:main",
+        "dimension": "output_tokens",
+        "window": "day",
+        "algorithm": "rolling_refill",
+        "limit": 80000,
+        "notifyPct": 80
+      },
+      {
+        "resource": "tool",
+        "dimension": "requests",
+        "window": "day",
+        "algorithm": "fixed_window",
+        "limit": 1000,
+        "notifyPct": 80
+      },
+      {
+        "resource": "attachment",
+        "dimension": "storage_bytes",
+        "window": "month",
+        "algorithm": "fixed_window",
+        "limit": 524288000,
+        "notifyPct": 80
+      }
     ]
   }
   ```
 - `get_my_quota` (same gating) → for every `(resource, dimension, window)` that
   the plan limits:
+
   ```json
   {
     "resource": "llm:main",
@@ -839,11 +867,11 @@ billing surface, which is `DEBUG_TOKEN`-gated. The anonymity contract in
 Migration N (next number after the latest in `src/db/migrations/`) creates the
 five new tables and seeds three plans:
 
-| Plan id     | Default? | Limits                                                                                                                                                                       |
-| ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plan id     | Default? | Limits                                                                                                                                                                                                                                                                                            |
+| ----------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `free`      | yes      | conservative `llm:main` daily limit (`rolling_refill`), monthly `input_tokens` cap (`fixed_window`), `tool.requests.day` (`fixed_window`), `attachment.storage_bytes.month` (`fixed_window`, stock), `web_fetch.requests.day` seeded so the previous per-minute behaviour is the long-run average |
-| `team`      | no       | higher daily and monthly caps on `llm:main`/`llm:small`, generous attachment storage, `tool.requests.week` (`rolling_refill`)                                                |
-| `unlimited` | no       | no `plan_limits` rows                                                                                                                                                        |
+| `team`      | no       | higher daily and monthly caps on `llm:main`/`llm:small`, generous attachment storage, `tool.requests.week` (`rolling_refill`)                                                                                                                                                                     |
+| `unlimited` | no       | no `plan_limits` rows                                                                                                                                                                                                                                                                             |
 
 The `ADMIN_USER_ID` subject is bound to `unlimited` in the same migration.
 
@@ -910,7 +938,7 @@ Following `tests/CLAUDE.md` and the project's TDD hooks:
   - Proactive LLM honours the same gate.
   - Deferred-prompt fallback chain: subject below threshold → `llm:main`;
     subject at ≥`notify_pct` → preemptive `llm:small` (`delivery_reason
-    = 'proactive_degrade'`); `llm:main` denied at the gate → `llm:small`
+= 'proactive_degrade'`); `llm:main` denied at the gate → `llm:small`
     retry (`delivery_reason = 'main_denied'`); both denied → templated
     delivery (`delivery_reason = 'all_denied'`). Assert the fire time
     is honoured in every case (no defer-and-retry path exists), the
@@ -934,14 +962,14 @@ Following `tests/CLAUDE.md` and the project's TDD hooks:
 
 ## 14. Phased rollout
 
-| Phase | Deliverable                                                                                                                                                                                                                                                  |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | Tables + `resolvePlan` + `reserveQuota` / `commitQuota` for both `fixed_window` and `rolling_refill` algorithms; wired into orchestrator and tool wrapper. Seed `free`/`team`/`unlimited`. No UI yet.                                                        |
-| 2     | `get_my_plan` / `get_my_quota` tools, `/plan` / `/quota` slash commands. 80 % early-warning notice via `quota:threshold_crossed` subscriber.                                                                                                                 |
+| Phase | Deliverable                                                                                                                                                                                                                                                    |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Tables + `resolvePlan` + `reserveQuota` / `commitQuota` for both `fixed_window` and `rolling_refill` algorithms; wired into orchestrator and tool wrapper. Seed `free`/`team`/`unlimited`. No UI yet.                                                          |
+| 2     | `get_my_plan` / `get_my_quota` tools, `/plan` / `/quota` slash commands. 80 % early-warning notice via `quota:threshold_crossed` subscriber.                                                                                                                   |
 | 3     | Deferred-prompts fallback chain (proactive small-model degrade at `notify_pct`, hard small-model fallback on `llm:main` denial, per-type templated delivery as last resort; no defer-and-retry) and `attachment.storage_bytes` gate with reconciliation sweep. |
-| 4     | Admin dashboard: Plans panel (with algorithm + `notify_pct` editors), extended Subjects table, per-subject Quota card. `/setplan` admin command.                                                                                                             |
-| 5     | `cost_usd_micro` dimension + model price table + cost meters in the dashboard.                                                                                                                                                                               |
-| 6     | Drop legacy `web_rate_limit` table once phase 1 has been live for one release.                                                                                                                                                                               |
+| 4     | Admin dashboard: Plans panel (with algorithm + `notify_pct` editors), extended Subjects table, per-subject Quota card. `/setplan` admin command.                                                                                                               |
+| 5     | `cost_usd_micro` dimension + model price table + cost meters in the dashboard.                                                                                                                                                                                 |
+| 6     | Drop legacy `web_rate_limit` table once phase 1 has been live for one release.                                                                                                                                                                                 |
 
 ## 15. Open questions
 
