@@ -25,6 +25,9 @@ export const llmUsageEvents = sqliteTable(
     durationMs: integer('duration_ms').notNull(),
     responseId: text('response_id'),
     error: text('error'),
+    forwardedAt: integer('forwarded_at'),
+    forwardAttempts: integer('forward_attempts').notNull().default(0),
+    forwardError: text('forward_error'),
   },
   (table) => [
     index('idx_llm_usage_subject').on(table.storageContextId, table.occurredAt),
