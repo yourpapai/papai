@@ -59,6 +59,7 @@ function logWebFetchSuccess(
 function createWebFetchExecutor(
   storageContextId: string,
   actorUserId: string | undefined,
+  contextType: 'dm' | 'group' | undefined,
   deps: WebFetchToolDeps,
 ): (
   input: WebFetchToolInput,
@@ -67,7 +68,7 @@ function createWebFetchExecutor(
   return async ({ url, goal }: WebFetchToolInput, { abortSignal }: ToolExecutionOptions) => {
     try {
       log.debug({ storageContextId, actorUserId, url, hasGoal: goal !== undefined }, 'Executing web_fetch')
-      const result = await deps.fetchAndExtract({ storageContextId, actorUserId, url, goal, abortSignal })
+      const result = await deps.fetchAndExtract({ storageContextId, actorUserId, contextType, url, goal, abortSignal })
       logWebFetchSuccess(storageContextId, actorUserId, result)
       return result
     } catch (error) {
@@ -89,12 +90,13 @@ function createWebFetchExecutor(
 export function makeWebFetchTool(
   storageContextId: string,
   actorUserId?: string,
+  contextType?: 'dm' | 'group',
   deps: WebFetchToolDeps = defaultDeps,
 ): ToolSet[string] {
   return tool({
     description:
       'Fetch a public URL and return a bounded summary and excerpt for answering questions or for later memo/task creation when the user explicitly asks.',
     inputSchema: webFetchInputSchema,
-    execute: createWebFetchExecutor(storageContextId, actorUserId, deps),
+    execute: createWebFetchExecutor(storageContextId, actorUserId, contextType, deps),
   })
 }

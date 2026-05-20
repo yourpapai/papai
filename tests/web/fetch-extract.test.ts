@@ -193,6 +193,7 @@ describe('fetchAndExtract', () => {
       title: 'docs.example.org',
       content: 'Plain body content',
       goal: 'Capture action items',
+      chatUserId: 'actor-7',
     })
     expect(putCachedWebFetch).toHaveBeenCalledWith(
       'https://example.com/path',
