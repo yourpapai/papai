@@ -9,7 +9,9 @@ import { getSubjectDetail, listSubjects } from '../../src/usage/query.js'
 import { recordUsage, type UsageEvent } from '../../src/usage/recorder.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
+let seedCounter = 0
 const seed = (overrides: Partial<UsageEvent>): void => {
+  seedCounter += 1
   recordUsage({
     occurredAt: 1_700_000_000_000,
     turnId: 'turn',
@@ -25,7 +27,7 @@ const seed = (overrides: Partial<UsageEvent>): void => {
     messageCount: 1,
     finishReason: 'stop',
     durationMs: 100,
-    responseId: 'resp',
+    responseId: `resp-${seedCounter}`,
     error: null,
     ...overrides,
   })
@@ -149,7 +151,7 @@ describe('getSubjectDetail', () => {
 
     const row = getSubjectDetail('ctx', { windowMs: null })[0]
     expect(row).toBeDefined()
-    expect(row?.eventId).toMatch(/^[0-9a-f-]{36}$/u)
+    expect(row?.eventId).toMatch(/^[0-9a-f]{64}$/u)
     expect(row?.occurredAt).toBe(1_700_000_000_000)
     expect(row?.turnId).toBe('turn')
     expect(row?.chatUserId).toBe('user')

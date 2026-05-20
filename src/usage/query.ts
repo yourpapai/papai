@@ -3,11 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { llmUsageEvents } from '../db/schema.js'
-import type { ContextType, ModelRole, RequestRow, SubjectRoleTotals, SubjectSummary, UsageWindow } from './types.js'
+import { llmUsageEvents, toolCallEvents } from '../db/schema.js'
+import type {
+  ContextType,
+  ModelRole,
+  RequestRow,
+  SubjectRoleTotals,
+  SubjectSummary,
+  ToolCallRow,
+  ToolCallSubjectSummary,
+  UsageWindow,
+} from './types.js'
 
 const computeSince = (window: UsageWindow): number => (window.windowMs === null ? 0 : Date.now() - window.windowMs)
 
@@ -73,6 +82,95 @@ export const listSubjects = (window: UsageWindow): SubjectSummary[] => {
     .groupBy(llmUsageEvents.storageContextId, llmUsageEvents.contextType, llmUsageEvents.modelRole)
     .all()
   return pivotByRole(rows)
+}
+
+const intToBool = (value: number | null): boolean | null => {
+  if (value === null) return null
+  return value !== 0
+}
+
+const isToolCallContextType = (value: string): value is ContextType => value === 'dm' || value === 'group'
+const isToolCallModelRole = (value: string): value is 'main' | 'small' => value === 'main' || value === 'small'
+
+export const listToolCallsForTurn = (turnId: string): ToolCallRow[] => {
+  const rows = getDrizzleDb()
+    .select()
+    .from(toolCallEvents)
+    .where(eq(toolCallEvents.turnId, turnId))
+    .orderBy(asc(toolCallEvents.occurredAt))
+    .all()
+  return rows.flatMap((row): ToolCallRow[] => {
+    if (!isToolCallContextType(row.contextType)) return []
+    if (!isToolCallModelRole(row.modelRole)) return []
+    return [
+      {
+        eventId: row.eventId,
+        turnId: row.turnId,
+        occurredAt: row.occurredAt,
+        storageContextId: row.storageContextId,
+        contextType: row.contextType,
+        chatUserId: row.chatUserId,
+        model: row.model,
+        modelRole: row.modelRole,
+        toolName: row.toolName,
+        toolCallId: row.toolCallId,
+        success: row.success !== 0,
+        durationMs: row.durationMs,
+        errorType: row.errorType,
+        errorCode: row.errorCode,
+        retryable: intToBool(row.retryable),
+        recovered: intToBool(row.recovered),
+        argsBytes: row.argsBytes,
+        resultBytes: row.resultBytes,
+        responseId: row.responseId,
+      },
+    ]
+  })
+}
+
+type ToolCallAggregateRow = {
+  storageContextId: string
+  contextType: string
+  totalCalls: number
+  successCalls: number
+  failureCalls: number
+  argsBytesTotal: number
+  resultBytesTotal: number
+  durationMsTotal: number
+}
+
+export const summarizeToolCallsBySubject = (windowMs: number | null): ToolCallSubjectSummary[] => {
+  const since = windowMs === null ? 0 : Date.now() - windowMs
+  const rows: ToolCallAggregateRow[] = getDrizzleDb()
+    .select({
+      storageContextId: toolCallEvents.storageContextId,
+      contextType: toolCallEvents.contextType,
+      totalCalls: sql<number>`count(*)`,
+      successCalls: sql<number>`coalesce(sum(${toolCallEvents.success}), 0)`,
+      failureCalls: sql<number>`coalesce(sum(case when ${toolCallEvents.success} = 0 then 1 else 0 end), 0)`,
+      argsBytesTotal: sql<number>`coalesce(sum(${toolCallEvents.argsBytes}), 0)`,
+      resultBytesTotal: sql<number>`coalesce(sum(${toolCallEvents.resultBytes}), 0)`,
+      durationMsTotal: sql<number>`coalesce(sum(${toolCallEvents.durationMs}), 0)`,
+    })
+    .from(toolCallEvents)
+    .where(gte(toolCallEvents.occurredAt, since))
+    .groupBy(toolCallEvents.storageContextId, toolCallEvents.contextType)
+    .all()
+  return rows.flatMap((row): ToolCallSubjectSummary[] => {
+    if (!isToolCallContextType(row.contextType)) return []
+    return [
+      {
+        storageContextId: row.storageContextId,
+        contextType: row.contextType,
+        totalCalls: row.totalCalls,
+        successCalls: row.successCalls,
+        failureCalls: row.failureCalls,
+        argsBytesTotal: row.argsBytesTotal,
+        resultBytesTotal: row.resultBytesTotal,
+        durationMsTotal: row.durationMsTotal,
+      },
+    ]
+  })
 }
 
 export const getSubjectDetail = (storageContextId: string, window: UsageWindow): RequestRow[] => {

@@ -34,6 +34,7 @@ import { getUserMessage, isAppError } from '../../src/errors.js'
 // MESSAGE CACHE TEST HELPERS
 // ============================================================================
 import type { CachedMessage } from '../../src/message-cache/types.js'
+import { systemConfigCacheForTesting } from '../../src/system-config.js'
 
 // Test-local message cache — fully isolated from production
 const testMessageCache = new Map<string, CachedMessage>()
@@ -146,6 +147,15 @@ export function setTestDrizzleDb(db: ReturnType<typeof drizzle<typeof schema>>):
  */
 export function restoreDrizzle(): void {
   resetDrizzleDbForTesting()
+}
+
+/**
+ * Clear the in-process system_config cache so tests start from a known state
+ * without going through a process restart. Mirrors the cache-reset escape
+ * hatch that `setupTestDb()` performs on `userCachesForTesting`.
+ */
+export function resetSystemConfigCacheForTesting(): void {
+  systemConfigCacheForTesting.clear()
 }
 
 // Re-export logger mocks from dedicated file (no src/ imports to avoid mock timing issues)

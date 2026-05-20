@@ -16,7 +16,7 @@ import { processMessage } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
-import { mockLogger, createMockReply, setupTestDb } from './utils/test-helpers.js'
+import { createMockReply, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
@@ -116,7 +116,7 @@ import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mappin
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
-import { resetSystemConfigCacheForTesting, setSystemConfig } from '../src/system-config.js'
+import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
 import { setKaneoWorkspace } from '../src/users.js'

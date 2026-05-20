@@ -43,3 +43,36 @@ export type RequestRow = {
   finishReason: string | null
   error: string | null
 }
+
+export type ToolCallRow = {
+  eventId: string
+  turnId: string
+  occurredAt: number
+  storageContextId: string
+  contextType: ContextType
+  chatUserId: string
+  model: string
+  modelRole: 'main' | 'small'
+  toolName: string
+  toolCallId: string
+  success: boolean
+  durationMs: number | null
+  errorType: string | null
+  errorCode: string | null
+  retryable: boolean | null
+  recovered: boolean | null
+  argsBytes: number | null
+  resultBytes: number | null
+  responseId: string | null
+}
+
+export type ToolCallSubjectSummary = {
+  storageContextId: string
+  contextType: ContextType
+  totalCalls: number
+  successCalls: number
+  failureCalls: number
+  argsBytesTotal: number
+  resultBytesTotal: number
+  durationMsTotal: number
+}

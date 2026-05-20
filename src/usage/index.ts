@@ -6,7 +6,13 @@
 import { subscribe, unsubscribe, type DebugEvent } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import { recordUsage, type UsageEvent } from './recorder.js'
-import type { ContextType } from './types.js'
+import {
+  recordToolCall,
+  type ToolCallClassification,
+  type ToolCallEvent,
+  updateToolCallClassification,
+} from './tool-call-recorder.js'
+import type { ContextType, ModelRole } from './types.js'
 
 const log = logger.child({ scope: 'usage:subscriber' })
 
@@ -18,6 +24,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 const asContextType = (value: unknown): ContextType | null => {
   if (value === 'dm' || value === 'group') return value
+  return null
+}
+
+const asModelRole = (value: unknown): ModelRole | null => {
+  if (value === 'main' || value === 'small' || value === 'embedding') return value
+  return null
+}
+
+const asBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value
   return null
 }
 
@@ -87,13 +103,83 @@ const buildUsageFromLlmError = (event: DebugEvent): UsageEvent | null => {
   }
 }
 
+const buildToolCallFromExecuteEnd = (event: DebugEvent): ToolCallEvent | null => {
+  if (event.scope.kind !== 'user') return null
+  if (event.turnId === undefined) return null
+  const data = event.data
+  const chatUserId = asString(data['chatUserId'])
+  const contextType = asContextType(data['contextType'])
+  const model = asString(data['model'])
+  const modelRole = asModelRole(data['modelRole'])
+  const toolName = asString(data['toolName'])
+  const toolCallId = asString(data['toolCallId'])
+  if (
+    chatUserId === null ||
+    contextType === null ||
+    model === null ||
+    modelRole === null ||
+    toolName === null ||
+    toolCallId === null
+  ) {
+    return null
+  }
+  if (modelRole === 'embedding') return null
+
+  const success = data['success'] === true
+  return {
+    turnId: event.turnId,
+    occurredAt: event.timestamp,
+    storageContextId: event.scope.userId,
+    contextType,
+    chatUserId,
+    model,
+    modelRole,
+    toolName,
+    toolCallId,
+    success,
+    durationMs: asNumber(data['durationMs']),
+    argsBytes: asNumber(data['argsBytes']),
+    resultBytes: asNumber(data['resultBytes']),
+    responseId: asString(data['responseId']),
+  }
+}
+
+const buildClassificationFromEvent = (
+  event: DebugEvent,
+): { turnId: string; toolCallId: string; classification: ToolCallClassification } | null => {
+  if (event.turnId === undefined) return null
+  const data = event.data
+  const toolCallId = asString(data['toolCallId'])
+  if (toolCallId === null) return null
+  return {
+    turnId: event.turnId,
+    toolCallId,
+    classification: {
+      errorType: asString(data['errorType']),
+      errorCode: asString(data['errorCode']),
+      retryable: asBoolean(data['retryable']),
+      recovered: asBoolean(data['recovered']),
+    },
+  }
+}
+
 const handleEvent = (event: DebugEvent): void => {
   try {
-    let usage: UsageEvent | null = null
-    if (event.type === 'llm:end') usage = buildUsageFromLlmEnd(event)
-    else if (event.type === 'llm:error') usage = buildUsageFromLlmError(event)
-    if (usage === null) return
-    recordUsage(usage)
+    if (event.type === 'llm:end' || event.type === 'llm:error') {
+      const usage: UsageEvent | null =
+        event.type === 'llm:end' ? buildUsageFromLlmEnd(event) : buildUsageFromLlmError(event)
+      if (usage !== null) recordUsage(usage)
+      return
+    }
+    if (event.type === 'tool:execute_end') {
+      const toolCall = buildToolCallFromExecuteEnd(event)
+      if (toolCall !== null) recordToolCall(toolCall)
+      return
+    }
+    if (event.type === 'tool:failure_classified') {
+      const update = buildClassificationFromEvent(event)
+      if (update !== null) updateToolCallClassification(update.turnId, update.toolCallId, update.classification)
+    }
   } catch (err) {
     log.error(
       { err: err instanceof Error ? err.message : String(err), eventType: event.type },

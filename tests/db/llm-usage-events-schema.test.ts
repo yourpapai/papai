@@ -59,6 +59,9 @@ describe('llmUsageEvents Drizzle table', () => {
       durationMs: 1234,
       responseId: 'resp-1',
       error: null,
+      forwardedAt: null,
+      forwardAttempts: 0,
+      forwardError: null,
     })
   })
 

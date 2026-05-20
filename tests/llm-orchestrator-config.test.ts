@@ -12,8 +12,8 @@ import {
   resolveConfigId,
   resolveTimezone,
 } from '../src/llm-orchestrator-config.js'
-import { resetSystemConfigCacheForTesting, setSystemConfig } from '../src/system-config.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { setSystemConfig } from '../src/system-config.js'
+import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
 const stubDeps = { getKaneoWorkspace: (): string => 'workspace-1' }
 const stubDepsNoWorkspace = { getKaneoWorkspace: (): string | null => null }

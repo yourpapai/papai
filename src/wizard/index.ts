@@ -6,5 +6,4 @@
 export { hasActiveWizard, getWizardSession, resetWizardSession } from './state.js'
 export { processWizardMessage, createWizard, getNextPrompt, cancelWizard } from './engine.js'
 export type { WizardProcessResult } from './types.js'
-export { validateLlmApiKey, validateLlmBaseUrl, validateModelExists, type ValidationResult } from './validation.js'
 export { validateAndSaveWizardConfig } from './save.js'

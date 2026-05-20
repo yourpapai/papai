@@ -14,9 +14,6 @@ import {
   processWizardMessage,
   resetWizardSession,
   validateAndSaveWizardConfig,
-  validateLlmApiKey,
-  validateLlmBaseUrl,
-  validateModelExists,
 } from '../../src/wizard/index.js'
 
 describe('wizard/index exports', () => {
@@ -34,10 +31,5 @@ describe('wizard/index exports', () => {
 
     // Save exports
     expect(typeof validateAndSaveWizardConfig).toBe('function')
-
-    // Validation exports
-    expect(typeof validateLlmApiKey).toBe('function')
-    expect(typeof validateLlmBaseUrl).toBe('function')
-    expect(typeof validateModelExists).toBe('function')
   })
 })
