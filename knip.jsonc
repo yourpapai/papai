@@ -66,6 +66,7 @@
     "src/stats/hashing.ts": ["files", "exports"],
     "src/stats/per-table.ts": ["files", "exports"],
     "src/stats/per-table-content.ts": ["files", "exports"],
+    "src/stats/per-table-subject.ts": ["files", "exports"],
     "src/stats/internal/util.ts": ["files", "exports"],
     // systemConfigCacheForTesting is the cache-reset escape hatch for tests
     // (consumed by tests/utils/test-helpers.ts). Mirrors the userCachesForTesting
