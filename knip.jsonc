@@ -61,6 +61,7 @@
     // src/stats/* lands incrementally for Phase 5; the per-table helpers and
     // orchestrator wire into the dashboard later in the plan. Until those
     // consumers ship, knip can't trace the type-only and pure helper modules.
+    "src/stats/index.ts": ["files", "exports"],
     "src/stats/types.ts": ["files", "types"],
     "src/stats/aggregate.ts": ["files", "exports"],
     "src/stats/hashing.ts": ["files", "exports"],
