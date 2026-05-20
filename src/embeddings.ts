@@ -7,6 +7,8 @@ import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/o
 import { embed } from 'ai'
 
 import { logger } from './logger.js'
+import { recordUsage } from './usage/recorder.js'
+import type { ContextType } from './usage/types.js'
 
 const log = logger.child({ scope: 'embeddings' })
 
@@ -30,21 +32,94 @@ const defaultEmbeddingsDeps: EmbeddingsDeps = {
   getProvider,
 }
 
+export type EmbeddingCallContext = {
+  storageContextId: string
+  contextType: ContextType
+  chatUserId: string
+}
+
+type EmbedReturnShape = { embedding: number[]; usage?: { tokens?: number } }
+
+const extractInputTokens = (result: EmbedReturnShape): number | null => {
+  const tokens = result.usage?.tokens
+  return typeof tokens === 'number' ? tokens : null
+}
+
+const recordEmbeddingSuccess = (
+  context: EmbeddingCallContext,
+  model: string,
+  startedAt: number,
+  result: EmbedReturnShape,
+): void => {
+  recordUsage({
+    occurredAt: startedAt,
+    turnId: null,
+    storageContextId: context.storageContextId,
+    contextType: context.contextType,
+    chatUserId: context.chatUserId,
+    model,
+    modelRole: 'embedding',
+    inputTokens: extractInputTokens(result),
+    outputTokens: null,
+    stepCount: 0,
+    toolCallCount: 0,
+    messageCount: 0,
+    finishReason: null,
+    durationMs: Date.now() - startedAt,
+    responseId: null,
+    error: null,
+  })
+}
+
+const recordEmbeddingFailure = (
+  context: EmbeddingCallContext,
+  model: string,
+  startedAt: number,
+  error: unknown,
+): void => {
+  recordUsage({
+    occurredAt: startedAt,
+    turnId: null,
+    storageContextId: context.storageContextId,
+    contextType: context.contextType,
+    chatUserId: context.chatUserId,
+    model,
+    modelRole: 'embedding',
+    inputTokens: null,
+    outputTokens: null,
+    stepCount: 0,
+    toolCallCount: 0,
+    messageCount: 0,
+    finishReason: null,
+    durationMs: Date.now() - startedAt,
+    responseId: null,
+    error: error instanceof Error ? error.message : String(error),
+  })
+}
+
 export async function getEmbedding(
   text: string,
   apiKey: string,
   baseUrl: string,
   model: string,
+  context?: EmbeddingCallContext,
   deps: EmbeddingsDeps = defaultEmbeddingsDeps,
 ): Promise<number[]> {
   log.debug({ textLength: text.length, model }, 'getEmbedding called')
   const provider = deps.getProvider(apiKey, baseUrl)
-  const { embedding } = await deps.embed({
-    model: provider.embeddingModel(model),
-    value: text,
-  })
-  log.info({ model, dimension: embedding.length }, 'Embedding generated')
-  return embedding
+  const startedAt = Date.now()
+  try {
+    const result = await deps.embed({
+      model: provider.embeddingModel(model),
+      value: text,
+    })
+    if (context !== undefined) recordEmbeddingSuccess(context, model, startedAt, result)
+    log.info({ model, dimension: result.embedding.length }, 'Embedding generated')
+    return result.embedding
+  } catch (error) {
+    if (context !== undefined) recordEmbeddingFailure(context, model, startedAt, error)
+    throw error
+  }
 }
 
 export async function tryGetEmbedding(
@@ -52,10 +127,11 @@ export async function tryGetEmbedding(
   apiKey: string,
   baseUrl: string,
   model: string,
+  context?: EmbeddingCallContext,
   deps: EmbeddingsDeps = defaultEmbeddingsDeps,
 ): Promise<number[] | null> {
   try {
-    return await getEmbedding(text, apiKey, baseUrl, model, deps)
+    return await getEmbedding(text, apiKey, baseUrl, model, context, deps)
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error), model }, 'Embedding generation failed')
     return null

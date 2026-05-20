@@ -5,6 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { llmUsageEvents } from '../../src/db/schema.js'
 import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -18,9 +20,15 @@ type DistillWebContent = (
     title: string
     content: string
     goal?: string
+    contextType?: 'dm' | 'group'
+    chatUserId?: string
   },
   deps?: {
-    generateText: (options: { model: unknown; prompt: string; timeout: number }) => Promise<{ text: string }>
+    generateText: (options: {
+      model: unknown
+      prompt: string
+      timeout: number
+    }) => Promise<{ text: string; usage?: { inputTokens?: number; outputTokens?: number } }>
     buildModel: (apiKey: string, baseUrl: string, modelId: string) => unknown
   },
 ) => Promise<{ summary: string; excerpt: string; truncated: boolean }>
@@ -147,5 +155,95 @@ describe('distillWebContent', () => {
       excerpt: 'Single paragraph summary only',
       truncated: true,
     })
+  })
+
+  test('records a usage row with modelRole="small" when context fields are provided', async () => {
+    const runDistill = getDistillWebContent(distillWebContent)
+
+    seedSystemLlm({ smallModel: 'small-model' })
+
+    await runDistill(
+      {
+        storageContextId: 'ctx-distill',
+        contextType: 'group',
+        chatUserId: 'user-distill',
+        title: 'Big page',
+        content: createLongContent(),
+      },
+      {
+        buildModel: () => ({ id: 'small-model' }),
+        generateText: () =>
+          Promise.resolve({ text: 'summary\n\nexcerpt', usage: { inputTokens: 30, outputTokens: 12 } }),
+      },
+    )
+
+    const rows = getDrizzleDb().select().from(llmUsageEvents).all()
+    expect(rows).toHaveLength(1)
+    const row = rows[0]
+    expect(row?.modelRole).toBe('small')
+    expect(row?.model).toBe('small-model')
+    expect(row?.storageContextId).toBe('ctx-distill')
+    expect(row?.contextType).toBe('group')
+    expect(row?.chatUserId).toBe('user-distill')
+    expect(row?.inputTokens).toBe(30)
+    expect(row?.outputTokens).toBe(12)
+    expect(row?.messageCount).toBe(1)
+    expect(row?.toolCallCount).toBe(0)
+    expect(row?.stepCount).toBeGreaterThanOrEqual(1)
+    expect(row?.error).toBeNull()
+  })
+
+  test('records an error row when generateText throws', async () => {
+    const runDistill = getDistillWebContent(distillWebContent)
+
+    seedSystemLlm({ smallModel: 'small-model' })
+
+    await expect(
+      runDistill(
+        {
+          storageContextId: 'ctx-fail',
+          contextType: 'dm',
+          chatUserId: 'user-fail',
+          title: 'Big page',
+          content: createLongContent(),
+        },
+        {
+          buildModel: () => ({ id: 'small-model' }),
+          generateText: () => Promise.reject(new Error('upstream down')),
+        },
+      ),
+    ).rejects.toThrow('upstream down')
+
+    const rows = getDrizzleDb().select().from(llmUsageEvents).all()
+    expect(rows).toHaveLength(1)
+    const row = rows[0]
+    expect(row?.error).toBe('upstream down')
+    expect(row?.modelRole).toBe('small')
+    expect(row?.storageContextId).toBe('ctx-fail')
+    expect(row?.contextType).toBe('dm')
+    expect(row?.chatUserId).toBe('user-fail')
+    expect(row?.inputTokens).toBeNull()
+    expect(row?.outputTokens).toBeNull()
+  })
+
+  test('omits the row when context fields are absent', async () => {
+    const runDistill = getDistillWebContent(distillWebContent)
+
+    seedSystemLlm({ smallModel: 'small-model' })
+
+    await runDistill(
+      {
+        storageContextId: 'ctx-no-context',
+        title: 'Big page',
+        content: createLongContent(),
+      },
+      {
+        buildModel: () => ({ id: 'small-model' }),
+        generateText: () => Promise.resolve({ text: 'summary\n\nexcerpt' }),
+      },
+    )
+
+    const rows = getDrizzleDb().select().from(llmUsageEvents).all()
+    expect(rows).toEqual([])
   })
 })

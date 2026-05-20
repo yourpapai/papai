@@ -103,7 +103,18 @@ describe('llm-orchestrator-events', () => {
         const tools = makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
         const startTime = Date.now() - 1000
 
-        emitLlmEnd('ctx-1', 'gpt-4', result, startTime, [{ role: 'user', content: 'hi' }], tools)
+        emitLlmEnd(
+          'ctx-1',
+          'user-1',
+          'dm',
+          'gpt-4',
+          result,
+          startTime,
+          [{ role: 'user', content: 'hi' }],
+          tools,
+          undefined,
+          'turn-1',
+        )
 
         const capturedEvent = capture()
         const capturedScope = captureScope()
@@ -122,6 +133,48 @@ describe('llm-orchestrator-events', () => {
         expect(capturedEvent['generatedText']).toBe('Done!')
         expect(Array.isArray(capturedEvent['stepsDetail'])).toBe(true)
         expect(typeof capturedEvent['totalDuration']).toBe('number')
+        expect(capturedEvent['chatUserId']).toBe('user-1')
+        expect(capturedEvent['contextType']).toBe('dm')
+      } finally {
+        unsubscribe(listener)
+      }
+    })
+
+    test('emits llm:end event with chatUserId and contextType for groups', async () => {
+      const { subscribe, unsubscribe } = await import('../src/debug/event-bus.js')
+
+      const { capture, listener } = makeEventCapture('llm:end')
+      subscribe(listener)
+
+      try {
+        const result: ResolvedStreamTextResult = {
+          text: 'Hi',
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [], id: 'resp-2', modelId: 'gpt-4' },
+          usage: { inputTokens: 1, outputTokens: 1 },
+          finishReason: 'stop',
+        }
+        const provider = createMockProvider()
+        const tools = makeTools(provider, { storageContextId: 'ctx-grp', chatUserId: 'user-2' })
+        emitLlmEnd(
+          'ctx-grp',
+          'user-2',
+          'group',
+          'gpt-4',
+          result,
+          Date.now() - 10,
+          [{ role: 'user', content: 'hi' }],
+          tools,
+          undefined,
+          'turn-2',
+        )
+
+        const captured = capture()
+        assert.ok(isRecord(captured))
+        expect(captured['chatUserId']).toBe('user-2')
+        expect(captured['contextType']).toBe('group')
       } finally {
         unsubscribe(listener)
       }
@@ -222,9 +275,18 @@ describe('llm-orchestrator-events', () => {
           finishReason: 'stop',
         }
 
-        emitLlmEnd('ctx-1', 'gpt-4', result, Date.now() - 1000, [{ role: 'user', content: 'hi' }], {
-          x: cyclicTool,
-        })
+        emitLlmEnd(
+          'ctx-1',
+          'user-1',
+          'dm',
+          'gpt-4',
+          result,
+          Date.now() - 1000,
+          [{ role: 'user', content: 'hi' }],
+          { x: cyclicTool },
+          undefined,
+          'turn-cyclic',
+        )
 
         const capturedEvent = capture()
         assert.ok(isRecord(capturedEvent))

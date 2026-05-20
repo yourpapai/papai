@@ -45,6 +45,7 @@ import { migration031StagedFiles } from './migrations/031_staged_files.js'
 import { migration032StagedAttachmentId } from './migrations/032_staged_attachment_id.js'
 import { migration033StagedFilesUniquePlatformContext } from './migrations/033_staged_files_unique_platform_context.js'
 import { migration034SystemConfig } from './migrations/034_system_config.js'
+import { migration035LlmUsageEvents } from './migrations/035_llm_usage_events.js'
 import { migration036DropUserLlmConfig } from './migrations/036_drop_user_llm_config.js'
 
 const getDbPath = (): string => {
@@ -115,6 +116,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration032StagedAttachmentId,
   migration033StagedFilesUniquePlatformContext,
   migration034SystemConfig,
+  migration035LlmUsageEvents,
   migration036DropUserLlmConfig,
 ]
 

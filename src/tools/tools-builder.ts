@@ -207,9 +207,14 @@ function addInstructionTools(tools: ToolSet, contextId: string | undefined): voi
   tools['list_instructions'] = makeListInstructionsTool(contextId)
   tools['delete_instruction'] = makeDeleteInstructionTool(contextId)
 }
-function addWebFetchTool(tools: ToolSet, storageContextId: string | undefined, actorUserId: string | undefined): void {
+function addWebFetchTool(
+  tools: ToolSet,
+  storageContextId: string | undefined,
+  actorUserId: string | undefined,
+  contextType: ContextType | undefined,
+): void {
   if (storageContextId === undefined) return
-  tools['web_fetch'] = makeWebFetchTool(storageContextId, actorUserId)
+  tools['web_fetch'] = makeWebFetchTool(storageContextId, actorUserId, contextType)
 }
 function addMemoTools(tools: ToolSet, provider: TaskProvider, userId: string | undefined): void {
   if (userId === undefined) return
@@ -280,7 +285,7 @@ export function buildTools(
   addMemoTools(tools, provider, chatUserId)
   addInstructionTools(tools, contextId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
-  addWebFetchTool(tools, contextId, chatUserId)
+  addWebFetchTool(tools, contextId, chatUserId, contextType)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (mode === 'normal' && chatUserId !== undefined) {
     addDeferredPromptTools(tools, chatUserId, contextId, contextType, username)

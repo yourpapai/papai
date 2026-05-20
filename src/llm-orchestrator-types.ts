@@ -54,6 +54,8 @@ type ToolRoutingInfo = {
 
 export type InvokeModelArgs = {
   contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
   mainModel: string
   model: ReturnType<ReturnType<typeof createOpenAICompatible>>
   provider: TaskProvider

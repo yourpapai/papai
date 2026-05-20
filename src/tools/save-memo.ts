@@ -35,7 +35,11 @@ export function makeSaveMemoTool(userId: string): ToolSet[string] {
       const baseUrl = getSystemConfig('llm_baseurl')
       const embeddingModel = getSystemConfig('embedding_model')
       if (apiKey !== null && baseUrl !== null && embeddingModel !== null) {
-        void tryGetEmbedding(content, apiKey, baseUrl, embeddingModel)
+        void tryGetEmbedding(content, apiKey, baseUrl, embeddingModel, {
+          storageContextId: userId,
+          contextType: 'dm',
+          chatUserId: userId,
+        })
           .then((embedding) => {
             if (embedding !== null) {
               updateMemoEmbedding(userId, memo.id, new Float32Array(embedding))

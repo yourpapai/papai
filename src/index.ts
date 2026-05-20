@@ -21,6 +21,7 @@ import { buildProviderForUser } from './providers/factory.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
+import { initUsageRecorder } from './usage/index.js'
 import { addUser } from './users.js'
 
 const log = logger.child({ scope: 'main' })
@@ -79,6 +80,8 @@ if (missingSystemKeys.length > 0) {
     'system_config is incomplete; the bot will reply "misconfigured" until these keys are set',
   )
 }
+
+initUsageRecorder()
 
 initializeMessageCache()
 

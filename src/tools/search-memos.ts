@@ -92,7 +92,11 @@ async function trySemanticMode(
   const embeddingModel = getSystemConfig('embedding_model')
   if (apiKey === null || baseUrl === null || embeddingModel === null) return { available: false }
 
-  const queryVec = await tryGetEmbedding(query, apiKey, baseUrl, embeddingModel)
+  const queryVec = await tryGetEmbedding(query, apiKey, baseUrl, embeddingModel, {
+    storageContextId: userId,
+    contextType: 'dm',
+    chatUserId: userId,
+  })
   if (queryVec === null) return { available: false }
 
   const results = trySemanticSearch(userId, queryVec, limit)

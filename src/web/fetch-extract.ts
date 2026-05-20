@@ -22,6 +22,7 @@ export const DEFAULT_TTL_MS = 15 * 60 * 1000
 type FetchAndExtractInput = {
   storageContextId: string
   actorUserId?: string
+  contextType?: 'dm' | 'group'
   url: string
   goal?: string
   abortSignal?: AbortSignal
@@ -190,6 +191,8 @@ async function distillProcessedContent(
       title: processed.title,
       content: processed.content,
       goal: input.goal,
+      ...(input.contextType === undefined ? {} : { contextType: input.contextType }),
+      ...(input.actorUserId === undefined ? {} : { chatUserId: input.actorUserId }),
     })
   } catch (error) {
     if (isAppError(error)) {
