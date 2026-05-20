@@ -5,7 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { users } from '../../src/db/schema.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { knownGroupContexts, users } from '../../src/db/schema.js'
 import {
   BILLING_DETAIL_LIMIT,
   getBillingDetail,
@@ -121,13 +122,40 @@ describe('listBillingSubjects', () => {
     expect(subjects[0]?.displayName).toBeNull()
   })
 
-  test('returns null displayName for group subjects in v1', () => {
+  test('resolves displayName for group subjects from known_group_contexts', () => {
+    getDrizzleDb()
+      .insert(knownGroupContexts)
+      .values([
+        {
+          provider: 'telegram',
+          contextId: 'group-123',
+          displayName: 'Engineering',
+          firstSeenAt: '2026-01-01T00:00:00Z',
+          lastSeenAt: '2026-01-01T00:00:00Z',
+        },
+        {
+          provider: 'telegram',
+          contextId: 'group-456',
+          displayName: 'Operations',
+          firstSeenAt: '2026-01-01T00:00:00Z',
+          lastSeenAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+      .run()
     seed({ storageContextId: 'group-123', contextType: 'group', chatUserId: 'user-A' })
     seed({ storageContextId: 'group-456:thread-1', contextType: 'group', chatUserId: 'user-B' })
+
     const subjects = listBillingSubjects('all')
-    for (const s of subjects) {
-      expect(s.displayName).toBeNull()
-    }
+    const main = subjects.find((s) => s.storageContextId === 'group-123')
+    const threaded = subjects.find((s) => s.storageContextId === 'group-456:thread-1')
+    expect(main?.displayName).toBe('Engineering')
+    expect(threaded?.displayName).toBe('Operations')
+  })
+
+  test('returns null displayName for group subjects with no known_group_contexts row', () => {
+    seed({ storageContextId: 'group-unknown', contextType: 'group', chatUserId: 'user-A' })
+    const subjects = listBillingSubjects('all')
+    expect(subjects.find((s) => s.storageContextId === 'group-unknown')?.displayName).toBeNull()
   })
 
   test('filters by window', () => {

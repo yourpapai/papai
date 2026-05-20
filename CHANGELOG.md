@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **deps:** Install devDependencies in Docker build stage for Svelte dashboard
+
 ## [5.5.2] - 2026-05-19
 
 ### Added
@@ -71,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - Cover timezone normalization regressions
+
 ## [5.5.1] - 2026-05-16
 
 ### Documentation
@@ -80,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **kaneo:** Rely on upstream image healthcheck
+
 ## [5.5.0] - 2026-05-16
 
 ### Added
@@ -88,11 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **debug:** Add AdminVisibility type and isVisibleToAdmin filter
 - **debug:** Replace isAdminEvent with scope-based isVisibleToAdmin
 - **debug:** Migrate all emit sites to typed helpers
-- **debug:** Mint turnId, emit turn:start/end and queue:* events
+- **debug:** Mint turnId, emit turn:start/end and queue:\* events
 - **debug:** Thread turnId through orchestrator, add tool/reply/typing/notify events
 - **debug:** Add Turn assembly, ring buffers, and /turns/:id endpoint
 - **debug:** Add context switcher, panel grid, Turns/Notifications/Tool-failures panels
-- **debug:** Add recurring:*, deferred:*, memo:* lifecycle events
+- **debug:** Add recurring:_, deferred:_, memo:\* lifecycle events
 - **debug:** Add recurring/deferred/memo REST endpoints and Reminders/Memos panels
 - **debug:** Add Context panel, turnId log filter, remove bare emit()
 
@@ -134,12 +137,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - Isolate debug server module mocks
+
 ## [5.4.2] - 2026-05-14
 
 ### Fixed
 
 - Restore GHCR deploy access after repo move
 - Prevent duplicate Telegram handler registration
+
 ## [5.4.1] - 2026-05-14
 
 ### Documentation
@@ -180,6 +185,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make codeindex integration portable
 - Fix pi codeindex reindex parity
 - Finish portable codeindex resolution
+
 ## [5.4.0] - 2026-05-14
 
 ### Changed
@@ -190,6 +196,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **telegram:** Register bot handlers before startup
 - **kaneo:** Align self-hosted stack with single-image deploy
+
 ## [5.3.0] - 2026-05-13
 
 ### Added
@@ -386,6 +393,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Spec
 
 - Compact tools extension design
+
 ## [5.2.0] - 2026-04-28
 
 ### Added
@@ -572,6 +580,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Guardrails
 
 - Block git checkout -- in both Claude Code and OpenCode hooks
+
 ## [5.1.3] - 2026-04-20
 
 ### Added
@@ -609,6 +618,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Merge
 
 - Sync readable-labels branch with origin/master
+
 ## [5.1.2] - 2026-04-18
 
 ### Changed
@@ -624,6 +634,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace unsafe object cloning with Proxy for observed chat provider
 - Address PR #95 review comments
+
 ## [5.1.1] - 2026-04-18
 
 ### Added
@@ -637,6 +648,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Delete or warn after sensitive wizard input
 - Pass messageId to setup flow integration functions
 - Add upfront warning on platforms without message deletion
+
 ## [5.1.0] - 2026-04-18
 
 ### Added
@@ -667,6 +679,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - **behavior-audit:** Narrow task 3 startup coverage
+
 ## [5.0.1] - 2026-04-16
 
 ### Added
@@ -705,6 +718,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **chat:** Specify reply replacement semantics
 - **discord:** Cover replacement fallback behavior
 - **interactions:** Verify menu replacement flows
+
 ## [5.0.0] - 2026-04-15
 
 ### Added
@@ -957,6 +971,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Review-loop
 
 - Harden permission policy, skip terminal issues, and cleanup
+
 ## [4.9.0] - 2026-04-09
 
 ### Added
@@ -1013,6 +1028,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix pre-existing failing tests in llm-orchestrator and tool tests
 - Create test helper for clearBundleCache, update bundle-cache.test.ts import
 - Update index.test.ts to use test helper for clearBundleCache
+
 ## [4.8.7] - 2026-04-08
 
 ### Added
@@ -1034,31 +1050,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Revert
 
 - Migrate back from streamText to generateText
+
 ## [4.8.6] - 2026-04-07
 
 ### Changed
 
 - Migrate deferred prompts and proactive LLM from generateText to streamText
+
 ## [4.8.5] - 2026-04-07
 
 ### Changed
 
 - Extract LLM event functions to reduce file size
+
 ## [4.8.4] - 2026-04-07
 
 ### Added
 
 - Add get_current_time tool for KV cache efficiency
+
 ## [4.8.3] - 2026-04-07
 
 ### Changed
 
 - Simplify LLM timeouts to flat 20-minute totalMs
+
 ## [4.8.2] - 2026-04-07
 
 ### Added
 
 - Add LLM timeout limits to proactive and memory generateText calls
+
 ## [4.8.1] - 2026-04-07
 
 ### Added
@@ -1072,6 +1094,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Ci
 
 - Disable mutation testing in CI
+
 ## [4.8.0] - 2026-04-06
 
 ### Added
@@ -1117,6 +1140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add build job for client assets
 - Drop unused build artifact dependency from e2e and mutation jobs
+
 ## [4.7.8] - 2026-04-05
 
 ### Added
@@ -1159,11 +1183,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move complex multi-mock files to beforeEach pattern
 - Move remaining inline mock.module calls to beforeEach
 - Extract duplicated mock setup to file-level beforeEach
-- **helpers:** Replace mockDrizzle mock.module with _setDrizzleDb setter
+- **helpers:** Replace mockDrizzle mock.module with \_setDrizzleDb setter
 - Remove mockDrizzle calls (setupTestDb auto-sets drizzle)
-- Replace drizzle mock.module with _setDrizzleDb in all test files
+- Replace drizzle mock.module with \_setDrizzleDb in all test files
 - Remove drizzle from mock-reset (DI migration complete for drizzle)
 - Remove vestigial db/index mock.module (exports don't exist)
+
 ## [4.7.7] - 2026-04-04
 
 ### Documentation
@@ -1177,6 +1202,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **debug:** Fix dashboard browser errors and add smoke tests
 - **debug:** Improve dashboard initialization and update tests
 - Send welcome message after demo mode auto-provisioning
+
 ## [4.7.6] - 2026-04-04
 
 ### Added
@@ -1198,16 +1224,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - **commands:** Update admin tests for unique email format
+
 ## [4.7.5] - 2026-04-03
 
 ### Changed
 
 - **announce:** Remove auth.allowed check, add p-limit, extract test helper
+
 ## [4.7.4] - 2026-04-02
 
 ### Fixed
 
 - **deploy:** Add DEMO_MODE to CI workflow .env generation
+
 ## [4.7.3] - 2026-04-02
 
 ### Fixed
@@ -1215,6 +1244,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **wizard:** Single-step edit confirmation was broken
 - Skip wizard auto-start for demo users
 - **deploy:** Transfer CADDY_ADDITIONAL_CONFIG via SCP instead of heredoc
+
 ## [4.7.2] - 2026-04-02
 
 ### Added
@@ -1240,7 +1270,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Single field edit from /config and skip to keep existing values
 - **plan:** Address 7 issues in demo auto-provision implementation plan
+
 ## [4.7.1] - 2026-03-31
+
 ## [4.7.0] - 2026-03-31
 
 ### Added
@@ -1367,6 +1399,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **debug:** Add log buffer unit tests (red)
 - **debug:** Add log route integration tests (red)
 - **scheduler:** Add integration tests for central scheduler
+
 ## [4.6.0] - 2026-03-27
 
 ### Added
@@ -1462,6 +1495,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Types
 
 - Add CachedMessage and MessageMetadataRow types
+
 ## [Unreleased]
 
 ### Added
@@ -1510,6 +1544,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - **utils:** Add DST transition tests for localDatetimeToUtc
+
 ## [4.5.0] - 2026-03-25
 
 ### Added
@@ -1557,6 +1592,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Finalize workflow improvements and documentation
 - Remove unused LocalDatetime type export
 - Disable max-lines lint rule for scripts directory
+
 ## [4.4.0] - 2026-03-24
 
 ### Added
@@ -1620,6 +1656,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Sanitize condition values in describeCondition for LLM prompts
+
 ## [4.3.0] - 2026-03-23
 
 ### Added
@@ -1678,6 +1715,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Ci
 
 - Disable mutation testing on pull requests
+
 ## [4.2.0] - 2026-03-21
 
 ### Added
@@ -1703,13 +1741,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Apply bun format and add CI concurrency group by commit SHA
 - Apply PR review feedback - propagate labelId and projectId context in YouTrack error classification
-- Rename unused reply param to _reply in bot-auth.test.ts (TS6133)
+- Rename unused reply param to \_reply in bot-auth.test.ts (TS6133)
 - Complete logger mock in recurring and cron tests to fix failing logger tests
 - Simplify test command to use bun test auto-discovery
 - Remove tests from ignorePatterns so tests are copied to sandbox
 - **scripts:** Fix shell escaping in detect-duplicates.ts
 - Await rejects assertion in propagates provider errors test
-- **cron:** Validate step > 0 to prevent infinite loop on */0
+- **cron:** Validate step > 0 to prevent infinite loop on \*/0
 - **recurring:** Address PR review feedback
 - Address Phase 8 verification gaps
 
@@ -1728,27 +1766,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tests for archive and relation methods in task-resource
 - Fix exception assertion patterns in task-resource tests
-- **cron:** Add test for negative step value (*/-1)
+- **cron:** Add test for negative step value (\*/-1)
 
 ### Ci
 
 - Add mutation testing job with incremental cache
 - Restrict push trigger to master branch only
+
 ## [4.1.5] - 2026-03-20
 
 ### Ci
 
 - Separate security scan job from check script
+
 ## [4.1.4] - 2026-03-20
 
 ### Fixed
 
 - **ci:** Escape variables in deploy script heredoc
+
 ## [4.1.3] - 2026-03-20
 
 ### Documentation
 
 - Redesign README with enterprise-grade standards
+
 ## [4.1.2] - 2026-03-20
 
 ### Added
@@ -1758,11 +1800,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Add missing migration008GroupMembers import
+
 ## [4.1.1] - 2026-03-20
 
 ### Fixed
 
 - Remove non-existent schemas directory from Dockerfile
+
 ## [4.1.0] - 2026-03-20
 
 ### Added
@@ -1824,12 +1868,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deps
 
 - Add drizzle-orm and drizzle-kit
+
 ## [4.0.4] - 2026-03-19
 
 ### Fixed
 
 - Add entrypoint script to fix /data permissions with su-exec dropping to bun user
 - **docker:** Run as non-root bun user to satisfy security scanner
+
 ## [4.0.3] - 2026-03-19
 
 ### Fixed
@@ -1840,6 +1886,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add typecheck and unit tests to pre-commit hook
 - Upgrade codeql-action to v4 and add required permissions for SARIF upload
+
 ## [4.0.2] - 2026-03-19
 
 ### Fixed
@@ -1849,7 +1896,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Ci
 
 - Add typecheck and unit tests to pre-commit hook
+
 ## [4.0.1] - 2026-03-19
+
 ## [4.0.0] - 2026-03-19
 
 ### Added
@@ -1923,17 +1972,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Revert
 
 - Restore queueMicrotask in cache-db.ts (accidentally included in youtrack schema migration)
+
 ## [3.2.3] - 2026-03-17
 
 ### Fixed
 
 - Use inputMessageCount to correctly slice assistant messages from LLM response
 - Append all response.messages to history without slicing
+
 ## [3.2.2] - 2026-03-17
 
 ### Added
 
 - Improve /context command output format
+
 ## [3.2.1] - 2026-03-17
 
 ### Added
@@ -1961,6 +2013,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Styling
 
 - Condense error logging to fix max-lines warning
+
 ## [3.2.0] - 2026-03-16
 
 ### Added
@@ -2042,6 +2095,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update task resource mocks to include to-do column
 - Update comment resource tests for pending ID behavior
 - Fix comment order in E2E test (newest first)
+
 ## [3.1.1] - 2026-03-13
 
 ### Added
@@ -2055,6 +2109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add missing projectId assertions in e2e test
 - Move testClient initialization to beforeAll
+
 ## [3.1.0] - 2026-03-13
 
 ### Added
@@ -2068,16 +2123,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Per-tool verification — fix bugs and improve test coverage
+
 ## [3.0.17] - 2026-03-12
 
 ### Fixed
 
 - Fall back to JSON token when sign-up response has no session cookie
+
 ## [3.0.16] - 2026-03-12
 
 ### Added
 
 - Allow specifying backup path in /migrate rollback
+
 ## [3.0.15] - 2026-03-12
 
 ### Fixed

@@ -91,6 +91,22 @@ describe('CredentialsForm', () => {
     void unmount(component)
   })
 
+  test('renders sensitive key values in a masked-value element with a "hidden" hint', () => {
+    const { target, component } = render(populated)
+    const masked = target.querySelector('[data-testid="masked-value-llm_apikey"]')
+    expect(masked).not.toBeNull()
+    expect(masked?.textContent).toContain('****1234')
+    expect(target.textContent.toLowerCase()).toContain('hidden')
+    void unmount(component)
+  })
+
+  test('does not render the masked-value element for non-sensitive keys', () => {
+    const { target, component } = render(populated)
+    expect(target.querySelector('[data-testid="masked-value-llm_baseurl"]')).toBeNull()
+    expect(target.querySelector('[data-testid="masked-value-main_model"]')).toBeNull()
+    void unmount(component)
+  })
+
   test('shows "not set" for keys without a value', () => {
     const { target, component } = render(emptySnapshot)
     const text = target.textContent.toLowerCase()

@@ -10,7 +10,7 @@ import { llmUsageEvents } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { listSubjects } from '../usage/query.js'
 import type { ModelRole, RequestRow, SubjectSummary } from '../usage/types.js'
-import { resolveDmDisplayNames } from './subject-display-name.js'
+import { resolveSubjectDisplayNames } from './subject-display-name.js'
 
 const log = logger.child({ scope: 'debug:billing' })
 
@@ -49,7 +49,7 @@ const isModelRole = (value: string): value is ModelRole =>
   value === 'main' || value === 'small' || value === 'embedding'
 
 const decorate = (subjects: readonly SubjectSummary[]): BillingSubject[] => {
-  const names = resolveDmDisplayNames(subjects)
+  const names = resolveSubjectDisplayNames(subjects)
   return subjects.map((s) => ({ ...s, displayName: names.get(s.storageContextId) ?? null }))
 }
 

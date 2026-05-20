@@ -6,7 +6,7 @@
 import { inArray } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { users } from '../db/schema.js'
+import { knownGroupContexts, users } from '../db/schema.js'
 
 export type SubjectDisplayInput = {
   storageContextId: string
@@ -26,4 +26,51 @@ export const resolveDmDisplayNames = (subjects: readonly SubjectDisplayInput[]):
     if (r.username !== null) out.set(r.id, r.username)
   }
   return out
+}
+
+// Storage context for a thread-scoped group is `${groupId}:${threadId}`.
+// known_group_contexts stores the raw `groupId`, so strip the suffix.
+const toGroupLookupId = (storageContextId: string): string => {
+  const idx = storageContextId.indexOf(':')
+  return idx === -1 ? storageContextId : storageContextId.slice(0, idx)
+}
+
+export const resolveGroupDisplayNames = (subjects: readonly SubjectDisplayInput[]): Map<string, string | null> => {
+  const groupSubjects = subjects.filter((s) => s.contextType === 'group')
+  if (groupSubjects.length === 0) return new Map()
+
+  const lookupIds = Array.from(new Set(groupSubjects.map((s) => toGroupLookupId(s.storageContextId))))
+
+  const rows = getDrizzleDb()
+    .select({
+      contextId: knownGroupContexts.contextId,
+      displayName: knownGroupContexts.displayName,
+      lastSeenAt: knownGroupContexts.lastSeenAt,
+    })
+    .from(knownGroupContexts)
+    .where(inArray(knownGroupContexts.contextId, lookupIds))
+    .all()
+
+  const latestByContext = new Map<string, { displayName: string; lastSeenAt: string }>()
+  for (const r of rows) {
+    const existing = latestByContext.get(r.contextId)
+    if (existing === undefined || r.lastSeenAt > existing.lastSeenAt) {
+      latestByContext.set(r.contextId, { displayName: r.displayName, lastSeenAt: r.lastSeenAt })
+    }
+  }
+
+  const out = new Map<string, string | null>()
+  for (const subject of groupSubjects) {
+    const lookupId = toGroupLookupId(subject.storageContextId)
+    const match = latestByContext.get(lookupId)
+    if (match !== undefined) out.set(subject.storageContextId, match.displayName)
+  }
+  return out
+}
+
+export const resolveSubjectDisplayNames = (subjects: readonly SubjectDisplayInput[]): Map<string, string | null> => {
+  const merged = new Map<string, string | null>()
+  for (const [k, v] of resolveDmDisplayNames(subjects)) merged.set(k, v)
+  for (const [k, v] of resolveGroupDisplayNames(subjects)) merged.set(k, v)
+  return merged
 }

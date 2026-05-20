@@ -12,6 +12,7 @@
   let { snapshot, onRefresh }: Props = $props()
 
   const KEYS: readonly Key[] = ['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']
+  const SENSITIVE_KEYS: ReadonlySet<Key> = new Set(['llm_apikey'])
 
   let editing: Key | null = $state(null)
   let inputValue: string = $state('')
@@ -71,6 +72,9 @@
                   data-testid={`input-${key}`}
                   bind:value={inputValue}
                   placeholder="new value" />
+              {:else if SENSITIVE_KEYS.has(key) && snapshot[key].value !== null}
+                <code class="masked-value" data-testid={`masked-value-${key}`}>{snapshot[key].value}</code>
+                <span class="masked-hint">(hidden)</span>
               {:else}
                 <span>{display(snapshot[key])}</span>
               {/if}
