@@ -33,6 +33,10 @@ describe('dashboard.svelte', () => {
     expect(state.stats.totalMessages).toBe(0)
     expect(state.stats.totalLlmCalls).toBe(0)
     expect(state.stats.totalToolCalls).toBe(0)
+    expect(state.billingWindow).toBe('30d')
+    expect(state.billingSubjects).toEqual([])
+    expect(state.billingDetail).toBeNull()
+    expect(state.adminLlm).toBeNull()
   })
 
   test('state mutations are observable on the same reference', () => {

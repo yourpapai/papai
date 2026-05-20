@@ -23,6 +23,7 @@ describe('App.svelte', () => {
     expect(html).toContain('Notifications')
     expect(html).toContain('Sessions')
     expect(html).toContain('LLM Trace')
+    expect(html).toContain('Billing')
 
     void unmount(component)
   })

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import BillingPanel from './billing/BillingPanel.svelte'
+  import SubjectDetail from './billing/SubjectDetail.svelte'
+  import { fetchBillingDetail } from './billing/fetchers.js'
   import ContextChips from './components/ContextChips.svelte'
   import ContextPanel from './components/ContextPanel.svelte'
   import FailureDetail from './components/FailureDetail.svelte'
@@ -20,13 +23,29 @@
   import { dashboard } from './dashboard.svelte.js'
   import { fetchInitialLogs, parseLogsArray, collectScopes } from './log-bootstrap.js'
   import { setupEventSource } from './sse.js'
-  import type { Session, LogEntry, LlmTrace, Turn, ToolFailure } from './dashboard-types.js'
+  import type { BillingSubject, Session, LogEntry, LlmTrace, Turn, ToolFailure } from './dashboard-types.js'
 
   let selectedSession: { userId: string; session: Session } | null = $state(null)
   let selectedTrace: LlmTrace | null = $state(null)
   let selectedLog: { entry: LogEntry; index: number } | null = $state(null)
   let selectedTurn: Turn | null = $state(null)
   let selectedFailure: ToolFailure | null = $state(null)
+  let selectedBillingSubject: BillingSubject | null = $state(null)
+
+  async function openBillingSubject(subject: BillingSubject): Promise<void> {
+    selectedBillingSubject = subject
+    try {
+      const detail = await fetchBillingDetail(subject.storageContextId, dashboard.billingWindow)
+      dashboard.billingDetail = detail
+    } catch {
+      dashboard.billingDetail = null
+    }
+  }
+
+  function closeBillingSubject(): void {
+    selectedBillingSubject = null
+    dashboard.billingDetail = null
+  }
 
   $effect(() => {
     void (async () => {
@@ -72,6 +91,11 @@
     <RemindersPanel {dashboard} />
     <MemosPanel {dashboard} />
     <ContextPanel {dashboard} />
+    <BillingPanel
+      {dashboard}
+      onSelectSubject={(subject) => {
+        void openBillingSubject(subject)
+      }} />
   </div>
 
   <LogExplorer {dashboard} onSelectLog={(entry, index) => (selectedLog = { entry, index })} />
@@ -116,6 +140,19 @@
   {#snippet body()}
     {#if selectedFailure !== null}
       <FailureDetail failure={selectedFailure} />
+    {/if}
+  {/snippet}
+</Modal>
+
+<Modal
+  open={selectedBillingSubject !== null}
+  title={selectedBillingSubject === null
+    ? ''
+    : `Billing: ${selectedBillingSubject.displayName ?? selectedBillingSubject.storageContextId}`}
+  onClose={closeBillingSubject}>
+  {#snippet body()}
+    {#if dashboard.billingDetail !== null}
+      <SubjectDetail detail={dashboard.billingDetail} />
     {/if}
   {/snippet}
 </Modal>

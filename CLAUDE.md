@@ -160,6 +160,12 @@ Optional but important runtime flags include:
 - `DEMO_MODE`
 - `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
 
+When `DEBUG_SERVER=true`, the dashboard at `/dashboard` exposes a
+Billing panel with a credentials form. The `POST /admin/llm` route
+requires `DEBUG_TOKEN` to be set in env (the route returns 401 if it
+is unset, so production-style deployments behind a reverse proxy
+keep the write surface closed by default).
+
 The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
 
 ### File Attachments (S3-compatible Object Storage)
