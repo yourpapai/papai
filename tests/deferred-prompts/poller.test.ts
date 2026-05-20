@@ -14,9 +14,14 @@ import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/al
 import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import type { TaskProvider } from '../../src/providers/types.js'
-import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
+import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { createMockChatWithSentMessages, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  createMockChatWithSentMessages,
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 function setupUserConfig(userId: string): void {
   setConfig(userId, 'timezone', 'UTC')

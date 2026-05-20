@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { systemConfig } from '../src/db/schema.js'
 import {
-  resetSystemConfigCacheForTesting,
   getSystemConfig,
   isSystemConfigComplete,
   listSystemConfigEntries,
@@ -18,7 +17,7 @@ import {
   setSystemConfig,
   SYSTEM_CONFIG_KEYS,
 } from '../src/system-config.js'
-import { getTestDb, mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { getTestDb, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
 const clearEnv = (): void => {
   delete process.env['LLM_API_KEY']

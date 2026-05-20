@@ -33,6 +33,11 @@ const ENV_KEY_BY_CONFIG_KEY: Readonly<Record<SystemConfigKey, string>> = {
 
 const cache = new Map<SystemConfigKey, string>()
 
+// Exported for testing purposes only — mirrors the `userCachesForTesting`
+// pattern in src/cache.ts. The reset wrapper lives in tests/utils/test-helpers.ts
+// so tests don't need to know about the internal cache directly.
+export const systemConfigCacheForTesting = cache
+
 export const getSystemConfig = (key: SystemConfigKey): string | null => cache.get(key) ?? null
 
 export const setSystemConfig = (key: SystemConfigKey, value: string, updatedBy: string): void => {
@@ -99,12 +104,4 @@ export const listSystemConfigEntries = (): SystemConfigEntry[] => {
     entries.push({ key: row.key, value: row.value, updatedAt: row.updatedAt, updatedBy: row.updatedBy })
   }
   return entries
-}
-
-/**
- * Test-only helper: clear the in-process cache so tests start from a known state
- * without going through a process restart.
- */
-export const resetSystemConfigCacheForTesting = (): void => {
-  cache.clear()
 }

@@ -58,6 +58,11 @@
     "src/usage/query.ts": ["files", "exports"],
     "src/usage/types.ts": ["types"],
     "src/usage/index.ts": ["exports"],
+    // systemConfigCacheForTesting is the cache-reset escape hatch for tests
+    // (consumed by tests/utils/test-helpers.ts). Mirrors the userCachesForTesting
+    // pattern in src/cache.ts, but unlike that one no production code currently
+    // consumes it, so knip can't trace it through to a project entry.
+    "src/system-config.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],

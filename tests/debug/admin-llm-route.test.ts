@@ -9,8 +9,14 @@ import assert from 'node:assert/strict'
 import { systemConfig } from '../../src/db/schema.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
-import { getSystemConfig, resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
-import { getTestDb, mockLogger, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
+import { getSystemConfig, setSystemConfig } from '../../src/system-config.js'
+import {
+  getTestDb,
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  restoreFetch,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 const TEST_PORT = 19112
 const TOKEN = 'admin-route-token'

@@ -18,10 +18,10 @@ import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
 import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
 import { loadFacts } from '../../src/memory.js'
-import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
+import { setSystemConfig } from '../../src/system-config.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
 
 // Track generateText calls
 type GenerateTextResult = {

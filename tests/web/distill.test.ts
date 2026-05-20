@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
-import { resetSystemConfigCacheForTesting, setSystemConfig } from '../../src/system-config.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { setSystemConfig } from '../../src/system-config.js'
+import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
 
 const MAX_EXCERPT_CHARS = 8_000
 
