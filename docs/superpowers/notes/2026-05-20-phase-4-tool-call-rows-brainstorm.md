@@ -36,7 +36,7 @@ asked to start Phase 4 now anyway. Two readings:
 - **R2.** Without operator evidence, we cannot justify the table shape
   empirically — risk of over-fitting the schema to a hypothesis.
 
-**Recommendation:** R1, with R2 informing scope. Land a *narrow*
+**Recommendation:** R1, with R2 informing scope. Land a _narrow_
 Phase 4 that mirrors `llm_usage_events` and reuses existing tool
 lifecycle events (`tool:request`, `tool:execute_end`,
 `tool:failure_classified`) rather than inventing rich new fields we
@@ -46,23 +46,23 @@ table itself is contentious.
 
 ## Surface area survey
 
-| Location                                  | Today                                                                        | Phase 4 implication                                                                                              |
-| ----------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `src/db/llm-usage-events-schema.ts:8-35`  | Drizzle table, 14 columns + 4 indexes; PK `event_id` text                    | Template for the new `tool_call_events` schema; outbox columns may be added here too (consistency)               |
-| `src/db/migrations/035_llm_usage_events.ts` | Plain SQL `db.run(SQL)` migration, mirror pattern                          | Migration 037 follows shape; possibly migration 038 if we also add outbox columns to `llm_usage_events`         |
-| `src/usage/recorder.ts:32-62`             | `recordUsage(payload)`; `eventId: crypto.randomUUID()` at insert            | Phase 4 swaps to deterministic hash here; tool-call recorder either lives here or in a sibling module           |
-| `src/usage/index.ts:90-110`               | `initUsageRecorder()` subscribes once at startup; handles `llm:end`/`llm:error` only | Subscribes to additional event types OR a sibling `initToolCallRecorder()` ships alongside                |
-| `src/llm-orchestrator-events.ts:114-125`  | `buildToolTelemetry(tools, routing)` returns `toolCount` (exposed count)     | This is roll-up only; per-call data needed for Phase 4 lives elsewhere                                          |
-| `src/llm-orchestrator-events.ts:173`      | `responseId: result.response.id` already captured                            | Same `responseId` for all tool-calls in a turn (LLM-level id); turn-scoped, not call-scoped                     |
-| `src/llm-orchestrator-events.ts:181`      | `stepsDetail: buildStepsDetail(result.steps)` in `llm:end` event             | Carries the full per-call breakdown post-hoc; alternative source if we don't add new bus events                 |
-| `src/llm-orchestrator-invoke.ts:17-30`    | `buildToolCallStartHandler` emits `tool:request {toolName, toolCallId, args}` with `turnId` | Available real-time event for "tool started"                                                              |
-| `src/llm-orchestrator-invoke.ts:70-90`    | `buildToolCallFinishHandler` emits `tool:execute_end {toolName, toolCallId, success, durationMs}` | Available real-time event for "tool finished"; full row data here                                  |
-| `src/llm-orchestrator-invoke.ts:38-67`    | `emitFailureClassified` emits `tool:failure_classified` with errorType/Code | Adjunct event with structured failure info; recorder can correlate by `toolCallId`                              |
-| `src/tools/wrap-tool-execution.ts:13-35`  | Wraps every tool; sees `(input, options)` with `options.toolCallId`         | Doesn't see `turnId`/`storageContextId`/`chatUserId` directly — those live in invoke.ts closure                |
-| `src/debug/event-bus.ts:1-61`             | In-process pub/sub, synchronous, no try/catch around listener calls         | Same constraints as Phase 2: recorder must catch internally; no rethrow                                         |
-| `src/debug/turn-assembly.ts:62-78`        | In-memory `recentToolFailures` ring buffer (1024)                            | Phase 3 dashboard already shows tool failures from here; do not duplicate into the new table — keep them complementary |
-| `src/db/migrations/`                      | Highest existing: `036_drop_user_llm_config.ts`                              | Next number is `037`                                                                                            |
-| `src/index.ts` (recorder init site)       | `initUsageRecorder()` called at startup (Phase 2)                            | New `initToolCallRecorder()` (if separate) wires in next to it                                                  |
+| Location                                    | Today                                                                                             | Phase 4 implication                                                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `src/db/llm-usage-events-schema.ts:8-35`    | Drizzle table, 14 columns + 4 indexes; PK `event_id` text                                         | Template for the new `tool_call_events` schema; outbox columns may be added here too (consistency)                     |
+| `src/db/migrations/035_llm_usage_events.ts` | Plain SQL `db.run(SQL)` migration, mirror pattern                                                 | Migration 037 follows shape; possibly migration 038 if we also add outbox columns to `llm_usage_events`                |
+| `src/usage/recorder.ts:32-62`               | `recordUsage(payload)`; `eventId: crypto.randomUUID()` at insert                                  | Phase 4 swaps to deterministic hash here; tool-call recorder either lives here or in a sibling module                  |
+| `src/usage/index.ts:90-110`                 | `initUsageRecorder()` subscribes once at startup; handles `llm:end`/`llm:error` only              | Subscribes to additional event types OR a sibling `initToolCallRecorder()` ships alongside                             |
+| `src/llm-orchestrator-events.ts:114-125`    | `buildToolTelemetry(tools, routing)` returns `toolCount` (exposed count)                          | This is roll-up only; per-call data needed for Phase 4 lives elsewhere                                                 |
+| `src/llm-orchestrator-events.ts:173`        | `responseId: result.response.id` already captured                                                 | Same `responseId` for all tool-calls in a turn (LLM-level id); turn-scoped, not call-scoped                            |
+| `src/llm-orchestrator-events.ts:181`        | `stepsDetail: buildStepsDetail(result.steps)` in `llm:end` event                                  | Carries the full per-call breakdown post-hoc; alternative source if we don't add new bus events                        |
+| `src/llm-orchestrator-invoke.ts:17-30`      | `buildToolCallStartHandler` emits `tool:request {toolName, toolCallId, args}` with `turnId`       | Available real-time event for "tool started"                                                                           |
+| `src/llm-orchestrator-invoke.ts:70-90`      | `buildToolCallFinishHandler` emits `tool:execute_end {toolName, toolCallId, success, durationMs}` | Available real-time event for "tool finished"; full row data here                                                      |
+| `src/llm-orchestrator-invoke.ts:38-67`      | `emitFailureClassified` emits `tool:failure_classified` with errorType/Code                       | Adjunct event with structured failure info; recorder can correlate by `toolCallId`                                     |
+| `src/tools/wrap-tool-execution.ts:13-35`    | Wraps every tool; sees `(input, options)` with `options.toolCallId`                               | Doesn't see `turnId`/`storageContextId`/`chatUserId` directly — those live in invoke.ts closure                        |
+| `src/debug/event-bus.ts:1-61`               | In-process pub/sub, synchronous, no try/catch around listener calls                               | Same constraints as Phase 2: recorder must catch internally; no rethrow                                                |
+| `src/debug/turn-assembly.ts:62-78`          | In-memory `recentToolFailures` ring buffer (1024)                                                 | Phase 3 dashboard already shows tool failures from here; do not duplicate into the new table — keep them complementary |
+| `src/db/migrations/`                        | Highest existing: `036_drop_user_llm_config.ts`                                                   | Next number is `037`                                                                                                   |
+| `src/index.ts` (recorder init site)         | `initUsageRecorder()` called at startup (Phase 2)                                                 | New `initToolCallRecorder()` (if separate) wires in next to it                                                         |
 
 Net: ~5 files touched in `src/` for the recorder + schema, plus the new
 migration, plus tests. If we choose to retrofit `llm_usage_events` with
@@ -129,30 +129,30 @@ tool-call-specific fields, drop the LLM-level ones.
 
 Proposed columns:
 
-| Column                  | Type     | Nullable | Notes                                                                                |
-| ----------------------- | -------- | -------- | ------------------------------------------------------------------------------------ |
-| `event_id`              | text PK  | no       | Deterministic hash (open question E) — `hash(turnId, toolCallId)`                    |
-| `turn_id`               | text     | no       | The LLM turn this call belongs to. PK candidate but kept secondary; PK is event_id   |
-| `occurred_at`           | int      | no       | epoch ms at call finish                                                              |
-| `storage_context_id`    | text     | no       | same as the parent `llm:end` event                                                   |
-| `context_type`          | text     | no       | `dm` / `group`                                                                       |
-| `chat_user_id`          | text     | no       | same as parent                                                                       |
-| `model`                 | text     | no       | the model whose `llm:end` produced this call (main / small)                          |
-| `model_role`            | text     | no       | `main` / `small` — embeddings don't have tool calls, so never `embedding`            |
-| `tool_name`             | text     | no       | e.g. `create_task`                                                                   |
-| `tool_call_id`          | text     | no       | SDK-provided unique id within turn                                                   |
-| `success`               | int      | no       | `0` / `1`                                                                            |
-| `duration_ms`           | int      | yes      | from `tool:execute_end` if A1/A3; null if A2 + no thread-through                     |
-| `error_type`            | text     | yes      | from `tool:failure_classified` (`schema_validation`, etc.)                           |
-| `error_code`            | text     | yes      | from `tool:failure_classified`                                                       |
-| `retryable`             | int      | yes      | `0`/`1`/null                                                                         |
-| `recovered`             | int      | yes      | `0`/`1`/null                                                                         |
-| `args_bytes`            | int      | yes      | JSON length of args; lets dashboard see argument-size amplifiers                     |
-| `result_bytes`          | int      | yes      | JSON length of tool result; cost-amplifier signal                                    |
-| `response_id`           | text     | yes      | parent LLM response id (turn-scoped, NOT per-call)                                   |
-| `forwarded_at`          | int      | yes      | OUTBOX (Phase 4 part 3) — null on insert                                             |
-| `forward_attempts`      | int      | no       | default 0                                                                            |
-| `forward_error`         | text     | yes      | last forward error message, null when no attempts                                    |
+| Column               | Type    | Nullable | Notes                                                                              |
+| -------------------- | ------- | -------- | ---------------------------------------------------------------------------------- |
+| `event_id`           | text PK | no       | Deterministic hash (open question E) — `hash(turnId, toolCallId)`                  |
+| `turn_id`            | text    | no       | The LLM turn this call belongs to. PK candidate but kept secondary; PK is event_id |
+| `occurred_at`        | int     | no       | epoch ms at call finish                                                            |
+| `storage_context_id` | text    | no       | same as the parent `llm:end` event                                                 |
+| `context_type`       | text    | no       | `dm` / `group`                                                                     |
+| `chat_user_id`       | text    | no       | same as parent                                                                     |
+| `model`              | text    | no       | the model whose `llm:end` produced this call (main / small)                        |
+| `model_role`         | text    | no       | `main` / `small` — embeddings don't have tool calls, so never `embedding`          |
+| `tool_name`          | text    | no       | e.g. `create_task`                                                                 |
+| `tool_call_id`       | text    | no       | SDK-provided unique id within turn                                                 |
+| `success`            | int     | no       | `0` / `1`                                                                          |
+| `duration_ms`        | int     | yes      | from `tool:execute_end` if A1/A3; null if A2 + no thread-through                   |
+| `error_type`         | text    | yes      | from `tool:failure_classified` (`schema_validation`, etc.)                         |
+| `error_code`         | text    | yes      | from `tool:failure_classified`                                                     |
+| `retryable`          | int     | yes      | `0`/`1`/null                                                                       |
+| `recovered`          | int     | yes      | `0`/`1`/null                                                                       |
+| `args_bytes`         | int     | yes      | JSON length of args; lets dashboard see argument-size amplifiers                   |
+| `result_bytes`       | int     | yes      | JSON length of tool result; cost-amplifier signal                                  |
+| `response_id`        | text    | yes      | parent LLM response id (turn-scoped, NOT per-call)                                 |
+| `forwarded_at`       | int     | yes      | OUTBOX (Phase 4 part 3) — null on insert                                           |
+| `forward_attempts`   | int     | no       | default 0                                                                          |
+| `forward_error`      | text    | yes      | last forward error message, null when no attempts                                  |
 
 Indexes:
 
@@ -246,7 +246,7 @@ Phase 4 (per roadmap) switches to a deterministic hash. Three sub-questions:
    - **D3b.** Backfill — for each row, compute the deterministic id
      and update. Risk: collisions if `turnId+responseId+occurredAt` is
      not unique across the existing data (likely fine).
-   - **D3c.** Only the *new* `tool_call_events` table uses deterministic
+   - **D3c.** Only the _new_ `tool_call_events` table uses deterministic
      ids; `llm_usage_events` keeps random UUIDs forever.
 
    **Recommendation:** D3a, soft. The hash switchover is a code change
@@ -354,6 +354,7 @@ Lifecycle:
 
 Open subquestion: if `llm:end` never fires (process crash mid-turn),
 the buffer leaks. Two mitigations:
+
 - TTL: remove turn slots after 5 minutes regardless. The orchestrator's
   current call timeout is well under that.
 - Periodic GC at next `llm:end` for any turn.
@@ -413,9 +414,9 @@ Phase 3's debug dashboard has an in-memory ring buffer
 (`src/debug/turn-assembly.ts:62-78`) for `tool:failure_classified`.
 With Phase 4, every classifier event also writes a row.
 
-- The dashboard's `recentToolFailures` is for *live SSE dashboarding*.
-- Phase 4's `tool_call_events` is for *billing and historical
-  analysis*.
+- The dashboard's `recentToolFailures` is for _live SSE dashboarding_.
+- Phase 4's `tool_call_events` is for _billing and historical
+  analysis_.
 
 They have different purposes and lifetimes. The brainstorm verdict is
 to keep both. Phase 3's ring is 1024 deep and ephemeral; Phase 4's
@@ -453,12 +454,12 @@ The dashboard can join `tool_call_events` against
 `billing_subjects` in a follow-on phase. Phase 4 lands the schema,
 recorder, and (deterministic event_id + outbox columns), full stop.
 
-Open subquestion: do we land *any* query helper? Even a basic
+Open subquestion: do we land _any_ query helper? Even a basic
 `countToolCallsBySubject(windowMs)` makes the migration testable
 end-to-end and gives Phase 3's billing tab a future hook. The Phase 2
 brainstorm decision (Option H1: ship the minimal query surface that
 Phase 3 needs) generalizes: ship the minimal query surface that a
-*future* Phase 3-style consumer would need.
+_future_ Phase 3-style consumer would need.
 
 **Recommendation:** Ship two read helpers: `listToolCallsForTurn(turnId)`
 and `summarizeToolCallsBySubject(windowMs)`. Both have tests against

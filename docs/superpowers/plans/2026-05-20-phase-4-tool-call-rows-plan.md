@@ -145,35 +145,39 @@ Drizzle schema and select it back. Mirror the existing pattern for
 ```ts
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
 
-export const toolCallEvents = sqliteTable('tool_call_events', {
-  eventId: text('event_id').primaryKey(),
-  turnId: text('turn_id').notNull(),
-  occurredAt: integer('occurred_at').notNull(),
-  storageContextId: text('storage_context_id').notNull(),
-  contextType: text('context_type').notNull(),
-  chatUserId: text('chat_user_id').notNull(),
-  model: text('model').notNull(),
-  modelRole: text('model_role').notNull(),
-  toolName: text('tool_name').notNull(),
-  toolCallId: text('tool_call_id').notNull(),
-  success: integer('success').notNull(),
-  durationMs: integer('duration_ms'),
-  errorType: text('error_type'),
-  errorCode: text('error_code'),
-  retryable: integer('retryable'),
-  recovered: integer('recovered'),
-  argsBytes: integer('args_bytes'),
-  resultBytes: integer('result_bytes'),
-  responseId: text('response_id'),
-  forwardedAt: integer('forwarded_at'),
-  forwardAttempts: integer('forward_attempts').notNull().default(0),
-  forwardError: text('forward_error'),
-}, (table) => ({
-  subjectIdx: index('idx_tool_call_subject').on(table.storageContextId, table.occurredAt),
-  chatUserIdx: index('idx_tool_call_chat_user').on(table.chatUserId, table.occurredAt),
-  turnIdx: index('idx_tool_call_turn').on(table.turnId),
-  toolIdx: index('idx_tool_call_tool').on(table.toolName, table.occurredAt),
-}))
+export const toolCallEvents = sqliteTable(
+  'tool_call_events',
+  {
+    eventId: text('event_id').primaryKey(),
+    turnId: text('turn_id').notNull(),
+    occurredAt: integer('occurred_at').notNull(),
+    storageContextId: text('storage_context_id').notNull(),
+    contextType: text('context_type').notNull(),
+    chatUserId: text('chat_user_id').notNull(),
+    model: text('model').notNull(),
+    modelRole: text('model_role').notNull(),
+    toolName: text('tool_name').notNull(),
+    toolCallId: text('tool_call_id').notNull(),
+    success: integer('success').notNull(),
+    durationMs: integer('duration_ms'),
+    errorType: text('error_type'),
+    errorCode: text('error_code'),
+    retryable: integer('retryable'),
+    recovered: integer('recovered'),
+    argsBytes: integer('args_bytes'),
+    resultBytes: integer('result_bytes'),
+    responseId: text('response_id'),
+    forwardedAt: integer('forwarded_at'),
+    forwardAttempts: integer('forward_attempts').notNull().default(0),
+    forwardError: text('forward_error'),
+  },
+  (table) => ({
+    subjectIdx: index('idx_tool_call_subject').on(table.storageContextId, table.occurredAt),
+    chatUserIdx: index('idx_tool_call_chat_user').on(table.chatUserId, table.occurredAt),
+    turnIdx: index('idx_tool_call_turn').on(table.turnId),
+    toolIdx: index('idx_tool_call_tool').on(table.toolName, table.occurredAt),
+  }),
+)
 ```
 
 (The partial outbox index is migration-only; Drizzle doesn't model
@@ -217,7 +221,9 @@ export const toolCallEventId = (turnId: string, toolCallId: string): string => {
 }
 
 export const usageEventId = (turnId: string | null, responseId: string | null, modelRole: string): string => {
-  return createHash('sha256').update(`${turnId ?? ''}|${responseId ?? ''}|${modelRole}`).digest('hex')
+  return createHash('sha256')
+    .update(`${turnId ?? ''}|${responseId ?? ''}|${modelRole}`)
+    .digest('hex')
 }
 ```
 
@@ -228,7 +234,7 @@ export const usageEventId = (turnId: string | null, responseId: string | null, m
 **T**: extend `tests/usage/recorder.test.ts`:
 
 - Calling `recordUsage()` twice with the same `(turnId, responseId,
-  modelRole)` triggers a PK collision; the recorder logs `warn` and
+modelRole)` triggers a PK collision; the recorder logs `warn` and
   does not crash.
 - Two distinct calls produce distinct rows.
 - When `turnId` and `responseId` are BOTH null, `recordUsage()` logs
@@ -304,7 +310,7 @@ bun test tests/llm-orchestrator.test.ts`.
 
 - `recordToolCall(event)` inserts a `tool_call_events` row with the
   expected columns; `event_id` matches `toolCallEventId(turnId,
-  toolCallId)`.
+toolCallId)`.
 - Idempotent: second insert with the same payload triggers PK
   conflict, recorder logs `warn`, returns without throwing.
 - `updateToolCallClassification(turnId, toolCallId, classifier)`
@@ -335,45 +341,60 @@ const PENDING_UPDATE_RETRY_MS = 100
 export const recordToolCall = (event: ToolCallEvent): void => {
   const eventId = toolCallEventId(event.turnId, event.toolCallId)
   try {
-    getDrizzleDb().insert(toolCallEvents).values({
-      eventId,
-      turnId: event.turnId,
-      occurredAt: event.occurredAt,
-      storageContextId: event.storageContextId,
-      contextType: event.contextType,
-      chatUserId: event.chatUserId,
-      model: event.model,
-      modelRole: event.modelRole,
-      toolName: event.toolName,
-      toolCallId: event.toolCallId,
-      success: event.success ? 1 : 0,
-      durationMs: event.durationMs,
-      argsBytes: event.argsBytes,
-      resultBytes: event.resultBytes,
-      responseId: event.responseId,
-    }).run()
+    getDrizzleDb()
+      .insert(toolCallEvents)
+      .values({
+        eventId,
+        turnId: event.turnId,
+        occurredAt: event.occurredAt,
+        storageContextId: event.storageContextId,
+        contextType: event.contextType,
+        chatUserId: event.chatUserId,
+        model: event.model,
+        modelRole: event.modelRole,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        success: event.success ? 1 : 0,
+        durationMs: event.durationMs,
+        argsBytes: event.argsBytes,
+        resultBytes: event.resultBytes,
+        responseId: event.responseId,
+      })
+      .run()
   } catch (error) {
     handleRecorderInsertError(error, { table: 'tool_call_events', eventId })
   }
 }
 
-export const updateToolCallClassification = (turnId: string, toolCallId: string, classification: ToolCallClassification): void => {
+export const updateToolCallClassification = (
+  turnId: string,
+  toolCallId: string,
+  classification: ToolCallClassification,
+): void => {
   const eventId = toolCallEventId(turnId, toolCallId)
   const db = getDrizzleDb()
-  const result = db.update(toolCallEvents).set({
-    errorType: classification.errorType,
-    errorCode: classification.errorCode,
-    retryable: classification.retryable === null ? null : classification.retryable ? 1 : 0,
-    recovered: classification.recovered === null ? null : classification.recovered ? 1 : 0,
-  }).where(eq(toolCallEvents.eventId, eventId)).run()
+  const result = db
+    .update(toolCallEvents)
+    .set({
+      errorType: classification.errorType,
+      errorCode: classification.errorCode,
+      retryable: classification.retryable === null ? null : classification.retryable ? 1 : 0,
+      recovered: classification.recovered === null ? null : classification.recovered ? 1 : 0,
+    })
+    .where(eq(toolCallEvents.eventId, eventId))
+    .run()
   if (result.changes === 0) {
     setTimeout(() => {
-      const retry = db.update(toolCallEvents).set({
-        errorType: classification.errorType,
-        errorCode: classification.errorCode,
-        retryable: classification.retryable === null ? null : classification.retryable ? 1 : 0,
-        recovered: classification.recovered === null ? null : classification.recovered ? 1 : 0,
-      }).where(eq(toolCallEvents.eventId, eventId)).run()
+      const retry = db
+        .update(toolCallEvents)
+        .set({
+          errorType: classification.errorType,
+          errorCode: classification.errorCode,
+          retryable: classification.retryable === null ? null : classification.retryable ? 1 : 0,
+          recovered: classification.recovered === null ? null : classification.recovered ? 1 : 0,
+        })
+        .where(eq(toolCallEvents.eventId, eventId))
+        .run()
       if (retry.changes === 0) {
         log.warn({ turnId, toolCallId, eventId }, 'tool-call classification: row not found after retry')
       }
@@ -481,7 +502,7 @@ subscriber. Subscriber stays synchronous.
   ordered by `occurred_at`.
 - `summarizeToolCallsBySubject(windowMs)` returns aggregates;
   totals match hand-rolled SQL `SELECT COUNT(*), SUM(args_bytes),
-  ...`.
+...`.
 - `summarizeToolCallsBySubject(null)` returns all-time aggregates.
 - Empty table → both helpers return `[]`.
 

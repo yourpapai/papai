@@ -31,30 +31,30 @@ worker, no dashboard tab, no `args`/`result` content — bytes only.
 
 New table `tool_call_events`. Columns:
 
-| Column                  | Type    | Constraints                  | Notes                                                                |
-| ----------------------- | ------- | ---------------------------- | -------------------------------------------------------------------- |
-| `event_id`              | TEXT    | PRIMARY KEY                  | SHA-256(turn_id + ':' + tool_call_id), 64 hex chars                  |
-| `turn_id`               | TEXT    | NOT NULL                     | LLM turn this call belongs to                                        |
-| `occurred_at`           | INTEGER | NOT NULL                     | epoch ms at execute_end                                              |
-| `storage_context_id`    | TEXT    | NOT NULL                     | same as parent `llm:end` event                                       |
-| `context_type`          | TEXT    | NOT NULL                     | `dm` / `group`                                                       |
-| `chat_user_id`          | TEXT    | NOT NULL                     | same as parent                                                       |
-| `model`                 | TEXT    | NOT NULL                     | LLM model whose turn produced this call                              |
-| `model_role`            | TEXT    | NOT NULL                     | `main` / `small`                                                     |
-| `tool_name`             | TEXT    | NOT NULL                     | e.g. `create_task`                                                   |
-| `tool_call_id`          | TEXT    | NOT NULL                     | SDK-issued id (UUID)                                                 |
-| `success`               | INTEGER | NOT NULL                     | `0` / `1`                                                            |
-| `duration_ms`           | INTEGER |                              | from `tool:execute_end`                                              |
-| `error_type`            | TEXT    |                              | from `tool:failure_classified` (may arrive later — UPDATE)           |
-| `error_code`            | TEXT    |                              | from classifier                                                      |
-| `retryable`             | INTEGER |                              | `0`/`1`/null                                                         |
-| `recovered`             | INTEGER |                              | `0`/`1`/null                                                         |
-| `args_bytes`            | INTEGER |                              | byteLength of JSON-stringified args                                  |
-| `result_bytes`          | INTEGER |                              | byteLength of JSON-stringified result (null on failure)              |
-| `response_id`           | TEXT    |                              | parent LLM response id, turn-scoped (NOT per-call)                   |
-| `forwarded_at`          | INTEGER |                              | OUTBOX — null on insert                                              |
-| `forward_attempts`      | INTEGER | NOT NULL DEFAULT 0           |                                                                      |
-| `forward_error`         | TEXT    |                              | last forward error                                                   |
+| Column               | Type    | Constraints        | Notes                                                      |
+| -------------------- | ------- | ------------------ | ---------------------------------------------------------- |
+| `event_id`           | TEXT    | PRIMARY KEY        | SHA-256(turn_id + ':' + tool_call_id), 64 hex chars        |
+| `turn_id`            | TEXT    | NOT NULL           | LLM turn this call belongs to                              |
+| `occurred_at`        | INTEGER | NOT NULL           | epoch ms at execute_end                                    |
+| `storage_context_id` | TEXT    | NOT NULL           | same as parent `llm:end` event                             |
+| `context_type`       | TEXT    | NOT NULL           | `dm` / `group`                                             |
+| `chat_user_id`       | TEXT    | NOT NULL           | same as parent                                             |
+| `model`              | TEXT    | NOT NULL           | LLM model whose turn produced this call                    |
+| `model_role`         | TEXT    | NOT NULL           | `main` / `small`                                           |
+| `tool_name`          | TEXT    | NOT NULL           | e.g. `create_task`                                         |
+| `tool_call_id`       | TEXT    | NOT NULL           | SDK-issued id (UUID)                                       |
+| `success`            | INTEGER | NOT NULL           | `0` / `1`                                                  |
+| `duration_ms`        | INTEGER |                    | from `tool:execute_end`                                    |
+| `error_type`         | TEXT    |                    | from `tool:failure_classified` (may arrive later — UPDATE) |
+| `error_code`         | TEXT    |                    | from classifier                                            |
+| `retryable`          | INTEGER |                    | `0`/`1`/null                                               |
+| `recovered`          | INTEGER |                    | `0`/`1`/null                                               |
+| `args_bytes`         | INTEGER |                    | byteLength of JSON-stringified args                        |
+| `result_bytes`       | INTEGER |                    | byteLength of JSON-stringified result (null on failure)    |
+| `response_id`        | TEXT    |                    | parent LLM response id, turn-scoped (NOT per-call)         |
+| `forwarded_at`       | INTEGER |                    | OUTBOX — null on insert                                    |
+| `forward_attempts`   | INTEGER | NOT NULL DEFAULT 0 |                                                            |
+| `forward_error`      | TEXT    |                    | last forward error                                         |
 
 Indexes:
 
@@ -140,27 +140,37 @@ Two existing events grow their data payloads:
 
 ```ts
 // src/llm-orchestrator-invoke.ts:78-86 (current shape)
-emitUser('tool:execute_end', contextId, {
-  toolName,
-  toolCallId,
-  success,
-  durationMs,
-}, turnId)
+emitUser(
+  'tool:execute_end',
+  contextId,
+  {
+    toolName,
+    toolCallId,
+    success,
+    durationMs,
+  },
+  turnId,
+)
 
 // Phase 4 shape
-emitUser('tool:execute_end', contextId, {
-  toolName,
-  toolCallId,
-  success,
-  durationMs,
-  argsBytes,
-  resultBytes,
-  chatUserId,
-  contextType,
-  model,
-  modelRole,
-  responseId,
-}, turnId)
+emitUser(
+  'tool:execute_end',
+  contextId,
+  {
+    toolName,
+    toolCallId,
+    success,
+    durationMs,
+    argsBytes,
+    resultBytes,
+    chatUserId,
+    contextType,
+    model,
+    modelRole,
+    responseId,
+  },
+  turnId,
+)
 ```
 
 `tool:failure_classified` grows similarly (`chatUserId`, `contextType`
@@ -203,7 +213,7 @@ Two migrations. Both are forward-only.
 - **037_tool_call_events.ts** — `CREATE TABLE tool_call_events (...)`
   plus 5 indexes (including partial).
 - **038_llm_usage_events_outbox.ts** — `ALTER TABLE llm_usage_events
-  ADD COLUMN forwarded_at INTEGER`, two more ALTERs, one partial
+ADD COLUMN forwarded_at INTEGER`, two more ALTERs, one partial
   index.
 
 037 must land before 038 in execution order; the chain runner
@@ -240,7 +250,9 @@ export interface ToolCallRow {
   responseId: string | null
 }
 
-export const listToolCallsForTurn = (turnId: string): ToolCallRow[] => { /* ... */ }
+export const listToolCallsForTurn = (turnId: string): ToolCallRow[] => {
+  /* ... */
+}
 
 export interface ToolCallSubjectSummary {
   storageContextId: string
@@ -253,7 +265,9 @@ export interface ToolCallSubjectSummary {
   durationMsTotal: number
 }
 
-export const summarizeToolCallsBySubject = (windowMs: number | null): ToolCallSubjectSummary[] => { /* ... */ }
+export const summarizeToolCallsBySubject = (windowMs: number | null): ToolCallSubjectSummary[] => {
+  /* ... */
+}
 ```
 
 Dashboard wiring is **out of scope** for Phase 4. Knip will mark these
