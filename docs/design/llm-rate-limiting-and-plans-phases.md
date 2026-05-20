@@ -371,39 +371,88 @@ required pre-merge gate.
 
 ### Phase 20 — Deferred-prompt fallback chain
 
-- **Goal.** Add the §7.4 fallback chain to the deferred-prompt
-  dispatcher so quota exhaustion never silently drops a scheduled
-  reminder:
-  1. on `llm:main` denial, retry the reservation as `llm:small`;
-  2. on `llm:small` denial, deliver a templated non-LLM reminder built
-     from the deferred-prompt row (`originalUserText`, `scheduledFor`,
-     `resetHuman`, subject timezone);
-  3. but if `retryAfterMs <= DEFERRED_PROMPT_GRACE_MS` (default
-     `15 min`), reschedule the dispatch attempt instead of falling back.
+- **Goal.** Implement the §7.4 fallback chain in the deferred-prompt
+  dispatcher so the fire moment is always honoured and quota exhaustion
+  never silently drops a prompt. The chain, executed in order at fire
+  time:
+  1. **Try `llm:main`** for subjects whose `llm:main.*` usage is below
+     `notify_pct` on every limited triple.
+  2. **Proactive `llm:small` degrade** for subjects who have already
+     crossed `notify_pct` on any `llm:main.*` triple — the dispatcher
+     skips `llm:main` reservation entirely and reserves on `llm:small`
+     instead, saving the user's last 20 % of main-model headroom for
+     interactive turns.
+  3. **Hard fallback to `llm:small`** if step 1 was attempted and denied
+     at the gate.
+  4. **Templated non-LLM delivery** as the last resort, only when both
+     `llm:main` and `llm:small` are exhausted.
 
-  Record `delivery_mode` (`'llm_main' | 'llm_small' | 'template' |
-  'deferred_retry'`) per dispatch for metrics.
+  Defer-and-retry is **not** implemented — the design forbids slipping
+  the fire moment around a quota reset. Record two columns per dispatch
+  for metrics:
+  - `delivery_mode: 'llm_main' | 'llm_small' | 'template'`.
+  - `delivery_reason: 'normal' | 'proactive_degrade' | 'main_denied' |
+    'all_denied'`.
+
 - **Touches.**
-  - `src/db/migrations/<M>_deferred_prompt_delivery_mode.ts` (new) — adds
-    `delivery_mode text NOT NULL DEFAULT 'llm_main'` to the
+  - `src/db/migrations/<M>_deferred_prompt_delivery_mode.ts` (new) —
+    adds `delivery_mode text NOT NULL DEFAULT 'llm_main'` and
+    `delivery_reason text NOT NULL DEFAULT 'normal'` to the
     `deferred_prompts` table.
-  - `src/db/deferred-prompts-schema.ts` — export the column.
-  - `src/deferred-prompts/proactive-llm.ts` — wire the chain.
-  - `src/deferred-prompts/templated-reminder.ts` (new) — pure formatter
-    that builds the user-visible reminder string from
-    `(originalUserText, scheduledFor, resetHuman, timezone)`.
+  - `src/db/deferred-prompts-schema.ts` — export the new columns.
+  - `src/deferred-prompts/proactive-llm.ts` — wire the chain; consult
+    the threshold via a new helper (or reuse §7.8's check) before
+    deciding whether to take the proactive degrade branch.
+  - `src/deferred-prompts/templated-delivery.ts` (new) — three pure
+    formatters plus a shared footer constant:
+    - `formatScheduledOneShot(prompt, executionMetadata, timezone)` for
+      `ScheduledPrompt` rows whose `rrule` is `null`.
+    - `formatScheduledRecurring(prompt, executionMetadata, timezone,
+      humanRruleSummary)` for `ScheduledPrompt` rows with an `rrule`.
+    - `formatAlert(prompt, executionMetadata, condition)` for
+      `AlertPrompt` rows; the condition clause is built from the stored
+      `AlertCondition` tree without any LLM call.
+    - All three prefer `execution_metadata.delivery_brief` over the raw
+      `prompt` field when non-empty.
+  - `src/deferred-prompts/threshold-check.ts` (new, or extend an
+    existing helper) — `isMainAtOrAboveNotifyPct(subjectId, nowMs)`
+    returns true if any limited `llm:main.*` triple is at ≥`notify_pct`
+    in its active bucket; pure read from `quota_counter` + `plan_limits`.
+
 - **Tests.**
-  - `tests/deferred-prompts/templated-reminder.test.ts` — formatter shape
-    and timezone formatting.
-  - `tests/deferred-prompts/fallback-chain.test.ts` — all four paths fire
-    correctly; templated path is **never** blocked by quota and is
-    delivered even when every LLM resource is denied; `delivery_mode` is
-    recorded; defer-and-retry actually reschedules and is bounded by
-    `DEFERRED_PROMPT_GRACE_MS`.
-- **Exit criteria.** A subject whose `llm:main` is exhausted still
-  receives every scheduled deferred prompt, either as a small-model
-  message, as a templated reminder, or as a slightly delayed
-  LLM-generated message after the bucket rolls over.
+  - `tests/deferred-prompts/templated-delivery.test.ts` — formatter
+    shape for all three template variants; `delivery_brief` overrides
+    `prompt` when non-empty; condition clause renders correctly for
+    each `FIELD_OPERATORS` combination; shared footer present on every
+    variant.
+  - `tests/deferred-prompts/threshold-check.test.ts` —
+    `isMainAtOrAboveNotifyPct` true on fixed_window crossing, true on
+    rolling_refill crossing, false for unlimited plans, false when
+    only `llm:small` is over threshold.
+  - `tests/deferred-prompts/fallback-chain.test.ts` — exercises every
+    branch:
+    - subject below threshold + main allowed → `delivery_mode =
+      'llm_main'`, `delivery_reason = 'normal'`.
+    - subject ≥`notify_pct` on main + small allowed → `delivery_mode =
+      'llm_small'`, `delivery_reason = 'proactive_degrade'`; assert no
+      `llm:main` reservation was held.
+    - subject below threshold but `llm:main` denied at the gate (race
+      between threshold check and reservation) → `delivery_mode =
+      'llm_small'`, `delivery_reason = 'main_denied'`.
+    - both `llm:main` and `llm:small` denied → `delivery_mode =
+      'template'`, `delivery_reason = 'all_denied'`; the templated
+      path is delivered regardless of quota.
+    - all three prompt types (`scheduled` one-shot, `scheduled`
+      recurring, `alert`) take the templated path correctly when
+      quota-exhausted.
+    - assert the dispatcher never reschedules a fire moment — no
+      defer-and-retry timer is set on any path.
+
+- **Exit criteria.** Every deferred prompt fires at its scheduled time
+  regardless of quota state, with the right model / template chosen per
+  the chain above, and the `delivery_mode` + `delivery_reason` columns
+  reflect which branch was taken. No code path in the dispatcher
+  reschedules a fire moment.
 
 ### Phase 21 — Embedding gate
 

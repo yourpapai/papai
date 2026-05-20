@@ -72,9 +72,11 @@ This spec was grounded in the following code, current as of the date above:
 - Subjects receive an in-chat heads-up the first time their usage crosses **80 %**
   of any dimension within the active window, so they can pace themselves before
   hitting the hard cap.
-- Deferred prompts degrade gracefully if the subject is out of quota at delivery
-  time — the prompt still fires, just as a non-LLM templated reminder instead
-  of being silently dropped.
+- Deferred prompts (both `scheduled` and `alert` types) always fire on time
+  even under quota pressure: the dispatcher proactively degrades to the
+  small model once the subject crosses `notify_pct`, falls through to a
+  type-specific non-LLM template if every LLM path is exhausted, and never
+  defers a fire moment around a quota reset.
 - Plan changes are audited.
 - All admin write surfaces are `DEBUG_TOKEN`-gated; `/stats/*` is untouched and
   remains anonymous.
@@ -489,51 +491,100 @@ fit inside the user's quota.
 prompt cannot bypass the subject's plan.
 
 The product principle for deferred prompts is different from a normal LLM
-turn, however: the user explicitly asked, in the past, to be reminded at a
-specific time. If we silently drop the reminder because their LLM quota
-ran out, we have **broken a promise** the bot made — and they may not even
-notice until the reminder window is gone. Quota enforcement therefore must
-not turn deferred prompts into a UX regression.
+turn, however. Two non-negotiables shape the design:
 
-**Fallback chain on `reserveQuota('llm:<role>', ...)` denial in the
-deferred-prompts dispatcher:**
+- **Fire time is sacred.** A deferred prompt MUST be delivered at its
+  scheduled fire moment. The dispatcher never slips a prompt around a
+  quota reset — slipping is a slippery slope: a "leave for the airport
+  now" trigger that arrives 15 min after the gate closes is worse than
+  useless, and once delivery has been delayed there is no principled
+  point to stop deferring (the next bucket may also be empty). Always
+  fire on time; degrade the content if you must.
+- **Silent loss is forbidden.** If every LLM path is over quota, the
+  dispatcher still posts a templated, non-LLM message so the user can
+  see *that* the trigger fired, even if not *how* it would normally
+  read.
 
-1. **Templated reminder (always delivered).** The dispatcher composes a
-   non-LLM message from the stored prompt payload, e.g.:
+The two prompt families flow through the same chain but pick a
+type-specific template at the bottom (see `src/deferred-prompts/types.ts`
+— `ScheduledPrompt` covers one-shot `fire_at` and recurring `rrule`
+triggers, `AlertPrompt` covers condition-triggered notifications).
 
-   > Reminder you scheduled for {scheduledFor}: {originalUserText}
-   > _(LLM is over quota right now, so this is a plain reminder. Your quota
-   > resets {resetHuman}. Reply when you're ready and I'll pick it up.)_
+**Fallback chain at fire time (executed in order, top to bottom):**
 
-   This path costs **zero LLM tokens** and is built entirely from columns
-   already on the deferred-prompts row (`originalUserText`,
-   `scheduledFor`, the subject's resolved timezone). It is gated by no
-   quota and cannot itself be rate-limited, because the alternative is
-   silent loss.
+1. **Try `llm:main`.** Default path for subjects below the early-warning
+   threshold: reserve and dispatch with the main model, same code path
+   as an interactive turn.
+2. **Proactive small-model degrade once the subject has crossed
+   `notify_pct` (the same threshold §7.8 uses for the early-warning
+   notice; default 80 %) on any limited `llm:main.*` triple.** When the
+   subject is in that band, the dispatcher rolls back the step-1
+   reservation (if it was speculatively taken) and reissues against
+   `llm:small`. A deferred prompt is not the right thing to spend the
+   user's last 20 % of `llm:main` headroom on — interactive turns are.
+   This is a *preemptive* degradation, not a recovery path: it kicks in
+   while `llm:main` would still answer.
+3. **Hard fallback to `llm:small` on `llm:main` denial.** If step 1 was
+   skipped (because step 2 fired preemptively) and `llm:small` is also
+   over quota, **or** if step 1 was attempted but `llm:main` was denied
+   at the gate, retry the reservation with `llm:small`. Same code path
+   as step 2's small-model call, different `delivery_reason` for
+   metrics.
+4. **Templated delivery (last resort).** Only when both `llm:main` and
+   `llm:small` are out of quota (or otherwise unavailable). The
+   dispatcher composes a non-LLM message from the stored prompt row
+   using the type-specific formatter below. This path costs **zero LLM
+   tokens**, is gated by no quota, and cannot itself be rate-limited —
+   the alternative is silent loss.
 
-2. **Small-model degrade (best effort).** Before falling all the way back
-   to step 1, the dispatcher retries the reservation with
-   `resource = 'llm:small'`. If `llm:small` is not separately exhausted,
-   it generates the reminder with the small model — typically much
-   cheaper, and produces a friendlier message than the template.
+Defer-and-retry is intentionally **not** part of this chain. Slipping
+the fire time around a quota reset trades a small content downgrade for
+a large UX failure, and there is no good place to stop deferring once
+you start. Keep the fire time; degrade the content.
 
-3. **Defer-and-retry (only if reset is imminent).** If
-   `retryAfterMs <= DEFERRED_PROMPT_GRACE_MS` (default `15 min`), the
-   dispatcher reschedules the dispatch attempt for `retryAfterMs + jitter`
-   instead of falling back, so the user gets the full LLM-generated
-   experience after the bucket rolls over. Past that grace window, step 1
-   fires immediately — the user's "reminder time" is closer to the
-   original schedule than to the reset.
+**Per-type templates (last resort, step 4):**
 
-The choice between the three is recorded in the deferred-prompts row
-(`delivery_mode: 'llm_main' | 'llm_small' | 'template' | 'deferred_retry'`)
-so we can measure how often each path fires and tune the seeded plan
-limits if templated delivery dominates.
+Templates live in `src/deferred-prompts/templated-delivery.ts` next to
+each other so wording stays consistent across types. All three render
+purely from columns already on the deferred-prompts row plus the
+subject's resolved timezone — no LLM call, no tool call.
 
-`commitQuota` is **not** called for the templated path — no LLM call was
-made, no tokens were spent. The `requests` counter for `llm:main` is also
-not consumed in that case (reservation was rolled back), so the user keeps
-the same headroom for their next interactive message.
+- **`scheduled` — one-shot (`fire_at`).** "Scheduled prompt fires now:
+  *{deliveryBriefOrPrompt}*". When
+  `execution_metadata.delivery_brief` is non-empty, prefer it over the
+  raw `prompt` field because the creator already framed it for the
+  user.
+- **`scheduled` — recurring (`rrule`).** "Recurring prompt
+  ({humanRruleSummary}) fires now: *{deliveryBriefOrPrompt}*". The
+  recurrence summary is produced locally from the stored `rrule` string
+  by the same helper used in `list_recurring_tasks` output.
+- **`alert` — condition triggered.** "Alert condition met
+  ({humanConditionSummary}): *{deliveryBriefOrPrompt}*". The condition
+  is rendered as a short human-readable clause (e.g. "task *T-42*
+  status changed to *Done*") built directly from the stored
+  `AlertCondition` tree.
+
+All three templates end with the same short footer noting that the LLM
+is over quota right now and that interactive replies are still accepted
+as soon as the bucket refills. The footer string is a single constant
+in the same module.
+
+**Metrics.** Two columns are recorded on the deferred-prompts row per
+dispatch:
+
+- `delivery_mode: 'llm_main' | 'llm_small' | 'template'` — which
+  renderer produced the message that left the bot.
+- `delivery_reason: 'normal' | 'proactive_degrade' | 'main_denied' |
+  'all_denied'` — which branch of the chain triggered.
+
+Together they let the admin tune `notify_pct` and seeded plan limits if
+proactive degrades or template fallbacks start dominating.
+
+`commitQuota` is **not** called for the templated path — no LLM call
+was made, no tokens were spent. The `requests` counter for `llm:main`
+is also not consumed when step 2 fires preemptively (no `llm:main`
+reservation is held in that case), so the user keeps the same headroom
+for their next interactive message.
 
 ### 7.5 Embeddings
 
@@ -810,8 +861,9 @@ No new required env vars. Optional:
   `fixed_window`-with-no-reset.
 - `QUOTA_NOTIFY_THRESHOLD_PCT` — global default for `plan_limits.notify_pct`
   on newly created rows (default `80`; set to `0` to disable the early
-  warning by default).
-- `DEFERRED_PROMPT_GRACE_MS` — see §7.4 (default `15 * 60 * 1000`).
+  warning by default). The deferred-prompts dispatcher reads the same
+  threshold to decide when to proactively degrade to `llm:small` (§7.4
+  step 2).
 
 ### 12.3 Backwards compatibility
 
@@ -856,11 +908,15 @@ Following `tests/CLAUDE.md` and the project's TDD hooks:
     user-visible reply.
   - Tool wrapper emits `quota_exceeded` structured failure.
   - Proactive LLM honours the same gate.
-  - Deferred-prompt fallback chain: `llm:main` denial → `llm:small`
-    retry; `llm:small` denial → templated reminder; reset within grace
-    window → `deferred_retry`. Assert that the templated path is always
-    delivered, never silently dropped, and that `delivery_mode` is
-    recorded.
+  - Deferred-prompt fallback chain: subject below threshold → `llm:main`;
+    subject at ≥`notify_pct` → preemptive `llm:small` (`delivery_reason
+    = 'proactive_degrade'`); `llm:main` denied at the gate → `llm:small`
+    retry (`delivery_reason = 'main_denied'`); both denied → templated
+    delivery (`delivery_reason = 'all_denied'`). Assert the fire time
+    is honoured in every case (no defer-and-retry path exists), the
+    templated branch is never blocked by quota, per-type templates
+    (`scheduled` one-shot, `scheduled` recurring, `alert`) render
+    correctly, and `delivery_mode` + `delivery_reason` are recorded.
   - Embedding denial degrades memo search to keyword (assert existing
     behaviour still holds).
   - Attachment ingest abort: `reserveQuota` denial prevents S3 write.
@@ -882,7 +938,7 @@ Following `tests/CLAUDE.md` and the project's TDD hooks:
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1     | Tables + `resolvePlan` + `reserveQuota` / `commitQuota` for both `fixed_window` and `rolling_refill` algorithms; wired into orchestrator and tool wrapper. Seed `free`/`team`/`unlimited`. No UI yet.                                                        |
 | 2     | `get_my_plan` / `get_my_quota` tools, `/plan` / `/quota` slash commands. 80 % early-warning notice via `quota:threshold_crossed` subscriber.                                                                                                                 |
-| 3     | Deferred-prompts fallback chain (small-model → templated reminder → deferred retry) and `attachment.storage_bytes` gate with reconciliation sweep.                                                                                                           |
+| 3     | Deferred-prompts fallback chain (proactive small-model degrade at `notify_pct`, hard small-model fallback on `llm:main` denial, per-type templated delivery as last resort; no defer-and-retry) and `attachment.storage_bytes` gate with reconciliation sweep. |
 | 4     | Admin dashboard: Plans panel (with algorithm + `notify_pct` editors), extended Subjects table, per-subject Quota card. `/setplan` admin command.                                                                                                             |
 | 5     | `cost_usd_micro` dimension + model price table + cost meters in the dashboard.                                                                                                                                                                               |
 | 6     | Drop legacy `web_rate_limit` table once phase 1 has been live for one release.                                                                                                                                                                               |
@@ -893,8 +949,8 @@ Following `tests/CLAUDE.md` and the project's TDD hooks:
   see one member starving a group, the cleanest fix is a secondary counter
   keyed by `(subject_id, chat_user_id, resource)` reusing the same gate.
   Combined with the deferred-prompts fallback (§7.4), this would also let
-  us preserve "your personal reminders still fire" even when the group's
-  shared LLM quota is exhausted by another member.
+  us preserve "your personal deferred prompts still fire" even when the
+  group's shared LLM quota is exhausted by another member.
 - **Cost dimension scoping** — for cost, should we expose **billed** cost
   (provider-side, may not be available until later) or **list-price** cost
   (computed from a local model price table)? Recommendation: list-price first
