@@ -229,6 +229,7 @@ Optional: debug server + dashboard client
 - `src/providers/` — Kaneo and YouTrack normalized provider implementations
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
 - `src/debug/` and `client/debug/` — optional debug server and dashboard UI
+- `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
 
 ## Available Tools
 
