@@ -11,6 +11,7 @@ import { getIdentityMapping } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { listMemos } from '../memos.js'
 import { listRecurringTasks } from '../recurring.js'
+import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 
@@ -179,7 +180,7 @@ function handleAuthGroups(): Response {
   })
 }
 
-function routeRequest(req: Request): Response {
+function routeRequest(req: Request): Response | Promise<Response> {
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
   }
@@ -199,6 +200,13 @@ function routeRequest(req: Request): Response {
   if (url.pathname === '/memos') return handleMemos(url)
   if (url.pathname === '/identity') return handleIdentity(url)
   if (url.pathname === '/auth/groups') return handleAuthGroups()
+  if (url.pathname === '/billing/subjects') return handleBillingSubjects(url)
+  if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
+  if (url.pathname === '/admin/llm') {
+    if (req.method === 'GET') return handleAdminLlmGet()
+    if (req.method === 'POST') return handleAdminLlmPost(req)
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (
     url.pathname === '/dashboard' ||
     url.pathname.startsWith('/dashboard.') ||
