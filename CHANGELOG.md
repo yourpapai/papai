@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.0] - 2026-05-20
+
+### Added
+
+- **billing:** Central LLM credentials in system_config (Phase 1)
+- **billing:** Migration 035 + usage recorder + query module (Phase 2)
+- **billing:** Thread chatUserId and contextType into llm:end and llm:error
+- **billing:** Subscribe usage recorder to the debug event bus
+- **billing:** Record embedding usage from tryGetEmbedding callsites
+- **billing:** Record web/distill usage with modelRole='small'
+- **billing:** Server helpers for Phase 3 billing dashboard
+- **billing:** Wire /billing and /admin/llm routes (Phase 3)
+- **billing:** Client state types and fetchers (Phase 3)
+- **billing:** Billing dashboard panel and components (Phase 3)
+- **billing:** Drizzle schema for tool_call_events + outbox fields
+- **billing:** Deterministic SHA-256 event_id for usage rows
+- **orchestrator:** Extend tool lifecycle event payloads
+- **billing:** Tool-call recorder + bus subscriber
+- **billing:** Tool-call query helpers (read surface)
+- **stats:** Types + aggregate helpers (Phase 5)
+- **stats:** Keyed hashing with lazy salt (Phase 5)
+- **stats:** Per-subject helpers — batch A (Phase 5)
+- **stats:** Per-subject content helpers — batch B (Phase 5)
+- **stats:** Per-subject identity/staged/user+group helpers — batch C (Phase 5)
+- **stats:** Per-subject web/usage/tool-call helpers — batch D (Phase 5)
+- **stats:** Global query helpers (Phase 5)
+- **stats:** Orchestrator + 60s global-view cache (Phase 5)
+- **stats:** /stats routes behind DEBUG_TOKEN (Phase 5)
+- **stats:** Client fetchers + types (Phase 5)
+- **stats:** SubjectStatsPanel + StatsTab + dashboard wiring (Phase 5)
+
+### Changed
+
+- **debug:** Extract resolveDmDisplayNames helper (Phase 5)
+
+### Documentation
+
+- **billing:** Design initial migration from BYOK to central LLM + usage telemetry
+- **billing:** Split central-llm rollout into three phases
+- **billing:** Add phase 5 — anonymous DB-wide statistics
+- **billing:** Add Phase 1 brainstorm, per-phase design, and plan
+- **billing:** Add Phase 2 brainstorm, per-phase design, and plan
+- **billing:** Phase 3 brainstorm + design + plan
+- Note Phase 3 dashboard credentials surface in CLAUDE.md
+- **billing:** Phase 4 brainstorm — tool-call rows + idempotency
+- **billing:** Phase 4 design + implementation plan
+- **billing:** Note Phase 4 tool_call_events + outbox slots in CLAUDE.md
+- **billing:** Phase 5 brainstorm — anonymous DB-wide stats
+- **billing:** Phase 5 design + implementation plan
+- **stats:** Document /stats anonymity contract + src/stats module (Phase 5)
+- Align README, .env.example, CLAUDE.md with central-llm rollout
+
+### Fixed
+
+- **/context:** Apply tool routing to reflect actual exposed surface
+- **billing:** Include occurredAt in usage event_id hash
+- **billing:** Resolve group display names + mark masked credentials
+
+### Miscellaneous
+
+- **billing:** Mark usage module exports as Phase-3-pending in knip
+- **billing:** Ignore .svelte-only exports in client/debug/billing/fetchers.ts
+- **billing:** Migrations 037 + 038 for Phase 4 tables
+- **docs:** Apply oxfmt formatting to Phase 4 doc set
+- **cleanup:** Clear pre-existing knip orphans
+
+### Testing
+
+- **stats:** Forbidden-substring anonymity contract (Phase 5)
+- **stats:** 1k subjects + 100k messages perf bench (Phase 5)
+
+### Ci
+
+- Verify docker image build in build job
+- Tag docker build validation image
+- **deploy:** Propagate S3 + central LLM env to deployed .env
 ## [5.5.3] - 2026-05-19
 
 ### Fixed
