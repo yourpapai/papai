@@ -37,6 +37,9 @@ function freshState(turns: Turn[] = []): DashboardState {
     billingSubjects: [],
     billingDetail: null,
     adminLlm: null,
+    statsWindow: '30d',
+    globalStats: null,
+    subjectStats: null,
   }
 }
 

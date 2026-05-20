@@ -33,4 +33,7 @@ export const dashboard = $state<DashboardState>({
   billingSubjects: [],
   billingDetail: null,
   adminLlm: null,
+  statsWindow: '30d',
+  globalStats: null,
+  subjectStats: null,
 })
