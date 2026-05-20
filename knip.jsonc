@@ -52,6 +52,12 @@
     "src/attachments/workspace.ts": ["exports"],
     "src/debug/state-collector.ts": ["exports"],
     "src/debug/turn-assembly.ts": ["exports"],
+    // src/usage/query.ts and src/usage/types.ts ship the public query surface
+    // that the Phase 3 billing dashboard will consume; nothing in src/ imports
+    // them yet, but the recorder tests in tests/usage/ exercise the queries.
+    "src/usage/query.ts": ["files", "exports"],
+    "src/usage/types.ts": ["types"],
+    "src/usage/index.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
