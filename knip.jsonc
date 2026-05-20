@@ -71,6 +71,7 @@
     "client/debug/log-filter.ts": ["exports"],
     "client/debug/sse.ts": ["exports"],
     "client/debug/types.ts": ["types"],
+    "client/debug/billing/fetchers.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
