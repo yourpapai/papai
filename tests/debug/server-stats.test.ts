@@ -95,7 +95,7 @@ describe('debug-server stats routes', () => {
     const body = await readJson(res)
     expect(pick(body, 'storageContextId')).toBe('u1')
     expect(pick(body, 'contextType')).toBe('dm')
-    expect(pick(body, 'displayName')).toBe('alice')
+    expect(pick(body, 'displayName')).toBeNull()
     expect(pick(body, 'memos')).toBeDefined()
     expect(pick(body, 'llmUsage')).toBeDefined()
     expect(pick(body, 'toolCalls')).toBeDefined()

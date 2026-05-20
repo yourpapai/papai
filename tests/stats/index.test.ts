@@ -49,7 +49,7 @@ describe('getSubjectStats', () => {
     expect(result?.storageContextId).toBe('u1')
     expect(result?.contextType).toBe('dm')
     expect(result?.chatUserId).toBe('u1')
-    expect(result?.displayName).toBe('alice')
+    expect(result?.displayName).toBeNull()
     expect(result?.userBlock).not.toBeNull()
     expect(result?.groupBlock).toBeNull()
     expect(result?.llmUsage.rowCount).toBe(1)

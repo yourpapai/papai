@@ -7,7 +7,6 @@ import { eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { authorizedGroups, llmUsageEvents, users } from '../db/schema.js'
-import { resolveDmDisplayNames } from '../debug/subject-display-name.js'
 import { distributionsGlobal } from './global-distributions.js'
 import { identityMixGlobal, storageGlobal, surfaceMixGlobal } from './global-mix.js'
 import { activeSubjectCounts, subjectsGlobal } from './global-subjects.js'
@@ -68,14 +67,14 @@ export function getSubjectStats(storageContextId: string): SubjectStats | null {
   const { contextType, chatUserId } = resolveContextType(storageContextId)
   if (contextType === 'unknown') return null
 
-  const displayMap = resolveDmDisplayNames([{ storageContextId, contextType }])
-  const displayName = displayMap.get(storageContextId) ?? null
-
+  // displayName is intentionally null in the stats payload — the anonymity
+  // contract forbids exposing usernames. Billing renders display names via
+  // resolveDmDisplayNames on its own.
   return {
     storageContextId,
     chatUserId,
     contextType,
-    displayName,
+    displayName: null,
     memos: memosForSubject(storageContextId),
     scheduledPrompts: scheduledForSubject(storageContextId),
     alertPrompts: alertsForSubject(storageContextId),
