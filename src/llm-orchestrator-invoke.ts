@@ -14,31 +14,74 @@ import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
 import { buildSystemPrompt } from './system-prompt.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
 
-const buildToolCallStartHandler =
-  (contextId: string, turnId: string): Parameters<typeof generateText>[0]['experimental_onToolCallStart'] =>
+export type ToolCallContext = {
+  contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
+  model: string
+  modelRole: 'main' | 'small'
+  turnId: string
+}
+
+const safeByteLength = (value: unknown): number | null => {
+  if (value === undefined || value === null) return null
+  try {
+    return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8')
+  } catch {
+    return null
+  }
+}
+
+const contextEnvelope = (
+  ctx: ToolCallContext,
+): { chatUserId: string; contextType: 'dm' | 'group'; model: string; modelRole: 'main' | 'small' } => ({
+  chatUserId: ctx.chatUserId,
+  contextType: ctx.contextType,
+  model: ctx.model,
+  modelRole: ctx.modelRole,
+})
+
+export type ToolCallStartEvent = {
+  toolCall: { toolName: string; toolCallId: string; input: unknown }
+}
+
+export type ToolCallFinishEvent = {
+  toolCall: { toolName: string; toolCallId: string; input: unknown }
+  durationMs: number
+  success: boolean
+  output?: unknown
+  error?: unknown
+}
+
+export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
+  emitUser(
+    'tool:request',
+    ctx.contextId,
+    {
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      argsBytes: safeByteLength(event.toolCall.input),
+      ...contextEnvelope(ctx),
+    },
+    ctx.turnId,
+  )
+}
+
+export const buildToolCallStartHandler =
+  (ctx: ToolCallContext): Parameters<typeof generateText>[0]['experimental_onToolCallStart'] =>
   (event) => {
-    emitUser(
-      'tool:request',
-      contextId,
-      {
-        toolName: event.toolCall.toolName,
-        toolCallId: event.toolCall.toolCallId,
-        args: event.toolCall.input,
-      },
-      turnId,
-    )
+    handleToolCallStart(ctx, event)
   }
 
 const emitFailureClassified = (
-  contextId: string,
-  turnId: string,
+  ctx: ToolCallContext,
   event: { success: boolean; output?: unknown; error?: unknown; toolCall: { toolName: string; toolCallId: string } },
 ): void => {
   if (event.success && isToolFailureResult(event.output)) {
     const failure = event.output
     emitUser(
       'tool:failure_classified',
-      contextId,
+      ctx.contextId,
       {
         toolName: failure.toolName,
         toolCallId: failure.toolCallId,
@@ -46,14 +89,15 @@ const emitFailureClassified = (
         errorCode: failure.errorCode,
         retryable: failure.retryable,
         recovered: failure.recovered ?? false,
+        ...contextEnvelope(ctx),
       },
-      turnId,
+      ctx.turnId,
     )
   } else if (!event.success) {
     const failure = buildToolFailureResult(event.error, event.toolCall.toolName, event.toolCall.toolCallId)
     emitUser(
       'tool:failure_classified',
-      contextId,
+      ctx.contextId,
       {
         toolName: failure.toolName,
         toolCallId: failure.toolCallId,
@@ -61,32 +105,43 @@ const emitFailureClassified = (
         errorCode: failure.errorCode,
         retryable: failure.retryable,
         recovered: failure.recovered ?? false,
+        ...contextEnvelope(ctx),
       },
-      turnId,
+      ctx.turnId,
     )
   }
 }
 
-const buildToolCallFinishHandler =
+export const handleToolCallFinishEvent = (
+  ctx: ToolCallContext,
+  reply: ReplyFn | undefined,
+  event: ToolCallFinishEvent,
+): void => {
+  emitUser(
+    'tool:execute_end',
+    ctx.contextId,
+    {
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      success: event.success,
+      durationMs: event.durationMs,
+      argsBytes: safeByteLength(event.toolCall.input),
+      resultBytes: event.success ? safeByteLength(event.output) : null,
+      ...contextEnvelope(ctx),
+    },
+    ctx.turnId,
+  )
+  emitFailureClassified(ctx, event)
+  handleToolCallFinish(ctx.contextId, reply, event)
+}
+
+export const buildToolCallFinishHandler =
   (
-    contextId: string,
+    ctx: ToolCallContext,
     reply: ReplyFn | undefined,
-    turnId: string,
   ): Parameters<typeof generateText>[0]['experimental_onToolCallFinish'] =>
   (event) => {
-    emitUser(
-      'tool:execute_end',
-      contextId,
-      {
-        toolName: event.toolCall.toolName,
-        toolCallId: event.toolCall.toolCallId,
-        success: event.success,
-        durationMs: event.durationMs,
-      },
-      turnId,
-    )
-    emitFailureClassified(contextId, turnId, event)
-    handleToolCallFinish(contextId, reply, event)
+    handleToolCallFinishEvent(ctx, reply, event)
   }
 
 export const invokeModel = async (
@@ -95,6 +150,14 @@ export const invokeModel = async (
   const { contextId, chatUserId, contextType, mainModel, model, provider, tools, messages, deps, reply, turnId } = args
   const start = Date.now()
   emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting, turnId)
+  const ctx: ToolCallContext = {
+    contextId,
+    chatUserId,
+    contextType,
+    model: mainModel,
+    modelRole: 'main',
+    turnId,
+  }
   const result = await deps.generateText({
     model,
     system: buildSystemPrompt(provider, contextId),
@@ -102,8 +165,8 @@ export const invokeModel = async (
     tools,
     timeout: 1_200_000,
     stopWhen: deps.stepCountIs(25),
-    experimental_onToolCallStart: buildToolCallStartHandler(contextId, turnId),
-    experimental_onToolCallFinish: buildToolCallFinishHandler(contextId, reply, turnId),
+    experimental_onToolCallStart: buildToolCallStartHandler(ctx),
+    experimental_onToolCallFinish: buildToolCallFinishHandler(ctx, reply),
   })
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, args.toolRouting, turnId)
   return result
