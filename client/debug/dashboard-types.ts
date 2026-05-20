@@ -95,6 +95,64 @@ export type AuthorizedGroupEntry = {
   added_at: string
 }
 
+export type BillingWindow = '24h' | '7d' | '30d' | 'all'
+
+export type BillingRoleTotals = {
+  inputTokens: number
+  outputTokens: number
+  calls: number
+}
+
+export type BillingSubject = {
+  storageContextId: string
+  contextType: 'dm' | 'group'
+  displayName: string | null
+  totals: {
+    main: BillingRoleTotals
+    small: BillingRoleTotals
+    embedding: BillingRoleTotals
+  }
+  toolCalls: number
+  lastActiveAt: number
+}
+
+export type BillingRequestRow = {
+  eventId: string
+  occurredAt: number
+  turnId: string | null
+  chatUserId: string
+  model: string
+  modelRole: 'main' | 'small' | 'embedding'
+  inputTokens: number | null
+  outputTokens: number | null
+  stepCount: number
+  toolCallCount: number
+  messageCount: number
+  durationMs: number
+  finishReason: string | null
+  error: string | null
+}
+
+export type BillingDetail = {
+  subject: BillingSubject
+  requests: readonly BillingRequestRow[]
+  truncated: boolean
+}
+
+export type AdminLlmKeyState = {
+  value: string | null
+  updatedAt: number | null
+  updatedBy: string | null
+}
+
+export type AdminLlmSnapshot = {
+  llm_apikey: AdminLlmKeyState
+  llm_baseurl: AdminLlmKeyState
+  main_model: AdminLlmKeyState
+  small_model: AdminLlmKeyState
+  embedding_model: AdminLlmKeyState
+}
+
 /**
  * Dashboard-specific wizard type that supports "unset" values for partial updates.
  * Uses '---' to indicate fields that haven't been received from the server yet.
@@ -134,4 +192,8 @@ export interface DashboardState {
   authorizedGroups: AuthorizedGroupEntry[]
   activeContext: string
   activeLogFilter: { turnId?: string }
+  billingWindow: BillingWindow
+  billingSubjects: BillingSubject[]
+  billingDetail: BillingDetail | null
+  adminLlm: AdminLlmSnapshot | null
 }

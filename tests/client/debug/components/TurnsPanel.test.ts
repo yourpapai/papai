@@ -33,6 +33,10 @@ function freshState(turns: Turn[] = []): DashboardState {
     authorizedGroups: [],
     activeContext: 'all',
     activeLogFilter: {},
+    billingWindow: '30d',
+    billingSubjects: [],
+    billingDetail: null,
+    adminLlm: null,
   }
 }
 
