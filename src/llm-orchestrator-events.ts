@@ -151,36 +151,17 @@ export function emitLlmStart(
 }
 
 export function emitLlmEnd(
-  ...args:
-    | [
-        contextId: string,
-        mainModel: string,
-        result: ResolvedStreamTextResult,
-        startTime: number,
-        messages: ModelMessage[],
-        tools: ToolSet,
-      ]
-    | [
-        contextId: string,
-        mainModel: string,
-        result: ResolvedStreamTextResult,
-        startTime: number,
-        messages: ModelMessage[],
-        tools: ToolSet,
-        routing: ToolRoutingTelemetry,
-      ]
-    | [
-        contextId: string,
-        mainModel: string,
-        result: ResolvedStreamTextResult,
-        startTime: number,
-        messages: ModelMessage[],
-        tools: ToolSet,
-        routing: ToolRoutingTelemetry | undefined,
-        turnId: string,
-      ]
+  contextId: string,
+  chatUserId: string,
+  contextType: 'dm' | 'group',
+  mainModel: string,
+  result: ResolvedStreamTextResult,
+  startTime: number,
+  messages: ModelMessage[],
+  tools: ToolSet,
+  routing: ToolRoutingTelemetry | undefined,
+  turnId: string,
 ): void {
-  const [contextId, mainModel, result, startTime, messages, tools, routing, turnId] = args
   emitUser(
     'llm:end',
     contextId,
@@ -193,6 +174,8 @@ export function emitLlmEnd(
       actualModel: result.response.modelId,
       finishReason: result.finishReason,
       messageCount: messages.length,
+      chatUserId,
+      contextType,
       ...buildToolTelemetry(tools, routing),
       generatedText: result.text,
       stepsDetail: buildStepsDetail(result.steps),

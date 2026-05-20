@@ -9,7 +9,6 @@ import type { ReplyFn } from './chat/types.js'
 import { emitGlobal, emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
 import { logger } from './logger.js'
-import { getSystemConfig } from './system-config.js'
 import { buildToolFailureResult, isToolFailureResult, type ToolFailureResult } from './tool-failure.js'
 
 const log = logger.child({ scope: 'llm-orchestrator:support' })
@@ -160,21 +159,24 @@ export async function handleOrchestratorMessageError(
 
 export const emitLlmError = (
   contextId: string,
-  _configContextId: string | undefined,
+  chatUserId: string,
+  contextType: 'dm' | 'group',
+  mainModel: string,
+  startTime: number,
+  messageCount: number,
   error: unknown,
   turnId?: string,
 ): void => {
-  const model = getSystemConfig('main_model')
-  let emittedModel = 'unknown'
-  if (model !== null) {
-    emittedModel = model
-  }
   emitUser(
     'llm:error',
     contextId,
     {
       error: error instanceof Error ? error.message : String(error),
-      model: emittedModel,
+      model: mainModel,
+      chatUserId,
+      contextType,
+      durationMs: Date.now() - startTime,
+      messageCount,
     },
     turnId,
   )

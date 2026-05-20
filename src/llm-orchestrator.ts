@@ -136,18 +136,21 @@ const buildToolRoutingTelemetry = (
   exposedToolCount: routingResult.exposedToolCount,
 })
 
-const callLlm = async (
-  reply: ReplyFn,
-  contextId: string,
-  chatUserId: string,
-  username: string | null,
-  history: readonly ModelMessage[],
-  userText: string,
-  contextType: 'dm' | 'group',
-  deps: LlmOrchestratorDeps,
-  configContextId: string | undefined,
-  turnId: string,
-): Promise<{ response: { messages: ModelMessage[] } }> => {
+type CallLlmArgs = {
+  reply: ReplyFn
+  contextId: string
+  chatUserId: string
+  username: string | null
+  history: readonly ModelMessage[]
+  userText: string
+  contextType: 'dm' | 'group'
+  deps: LlmOrchestratorDeps
+  configContextId: string | undefined
+  turnId: string
+}
+
+const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: ModelMessage[] } }> => {
+  const { reply, contextId, chatUserId, username, history, userText, contextType, deps, configContextId, turnId } = args
   const configId = resolveConfigId(contextId, configContextId)
   if (contextType === 'dm') {
     await deps.maybeProvisionKaneo(reply, configId, username)
@@ -170,6 +173,8 @@ const callLlm = async (
   )
   const result = await invokeModelWithTyping(reply, {
     contextId,
+    chatUserId,
+    contextType,
     mainModel,
     model,
     provider,
@@ -234,23 +239,57 @@ export const processMessage = async (
   }
   const { baseHistory, modelMessage, historyMessage } = await buildHistory(contextId, userText, newAttachmentIds)
   appendHistory(contextId, [historyMessage])
+  const failureCtx: ProcessFailureContext = {
+    contextId,
+    chatUserId,
+    contextType,
+    mainModel: resolveModelName(),
+    startedAt: Date.now(),
+    messageCount: baseHistory.length + 1,
+    turnId: resolvedTurnId,
+    baseHistory,
+  }
   try {
-    const result = await callLlm(
+    const result = await callLlm({
       reply,
       contextId,
       chatUserId,
       username,
-      [...baseHistory, modelMessage],
+      history: [...baseHistory, modelMessage],
       userText,
       contextType,
       deps,
       configContextId,
-      resolvedTurnId,
-    )
+      turnId: resolvedTurnId,
+    })
     appendAssistantHistory(contextId, [...baseHistory, historyMessage], result.response.messages)
   } catch (error) {
-    emitLlmError(contextId, configContextId, error, resolvedTurnId)
-    saveHistory(contextId, baseHistory)
-    await handleOrchestratorMessageError(reply, contextId, error)
+    await handleProcessFailure(reply, failureCtx, error)
   }
+}
+
+type ProcessFailureContext = {
+  contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
+  mainModel: string
+  startedAt: number
+  messageCount: number
+  turnId: string
+  baseHistory: readonly ModelMessage[]
+}
+
+const handleProcessFailure = async (reply: ReplyFn, ctx: ProcessFailureContext, error: unknown): Promise<void> => {
+  emitLlmError(
+    ctx.contextId,
+    ctx.chatUserId,
+    ctx.contextType,
+    ctx.mainModel,
+    ctx.startedAt,
+    ctx.messageCount,
+    error,
+    ctx.turnId,
+  )
+  saveHistory(ctx.contextId, ctx.baseHistory)
+  await handleOrchestratorMessageError(reply, ctx.contextId, error)
 }
