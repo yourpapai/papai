@@ -26,6 +26,7 @@ export const userConfig = sqliteTable(
 )
 
 export { systemConfig } from './system-config-schema.js'
+export { llmUsageEvents, type LlmUsageEventRow } from './llm-usage-events-schema.js'
 
 export const conversationHistory = sqliteTable('conversation_history', {
   userId: text('user_id').primaryKey(),
@@ -295,5 +296,4 @@ export const attachments = sqliteTable(
   ],
 )
 export type AttachmentRow = typeof attachments.$inferSelect
-export { stagedFiles } from './staged-schema.js'
-export type { StagedFileRow } from './staged-schema.js'
+export { stagedFiles, type StagedFileRow } from './staged-schema.js'

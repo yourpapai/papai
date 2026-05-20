@@ -16,19 +16,19 @@ The roadmap and parent design D5 list a `src/usage/` module subscribing to
 `llm:end` plus a migration. A read of the actual emit code surfaces a
 short list of gaps that the per-phase design must close.
 
-| Location                                  | Today                                                                                                   | Phase 2 implication                                                                                       |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `src/llm-orchestrator-events.ts:153-202`  | `emitLlmEnd` payload does NOT carry `chatUserId` or `contextType`                                       | Extend the emit signature; recorder needs both to populate `chat_user_id` and `context_type`              |
-| `src/llm-orchestrator-events.ts:184`      | All `llm:*` events go through `emitUser`, scope `{ kind: 'user', userId: contextId }` even for groups   | Scope kind is misleading for groups but we still have `contextId` and we plan to pass `contextType` explicitly — leave scope alone |
-| `src/debug/event-bus.ts:34`               | `emitUser` short-circuits when `listeners.size === 0`                                                   | Recorder MUST subscribe at startup so the bus always has ≥1 listener; otherwise events drop on the floor   |
-| `src/llm-orchestrator-support.ts:161-181` | `emitLlmError` already exists and fires on the throw path (`llm-orchestrator.ts:252`)                   | Recorder subscribes to both `llm:end` and `llm:error`; failure rows fall out for free                      |
-| `src/embeddings.ts:33-48`                 | `getEmbedding` calls `embed()` directly, no event emitted                                               | Embedding callsites need a direct recorder call (or a new emit); cannot rely on the orchestrator bus       |
-| `src/web/distill.ts:96-128`               | `distillWebContent` calls `generateText` directly with the small model, no event emitted                | Same — direct recorder call, `modelRole: 'small'`                                                          |
-| `src/debug/state-collector.ts:74-85`      | Existing subscriber that wires `subscribe()`/`unsubscribe()` only when a debug client is connected      | Pattern to mirror but NOT to copy verbatim — the recorder subscribes unconditionally at startup            |
-| `src/db/migrations/034_system_config.ts`  | Recent migration example, plain `db.run()` SQL                                                          | Migration 035 follows this shape                                                                           |
-| `src/db/schema.ts:28`                     | `systemConfig` re-exported from `system-config-schema.ts`                                               | New Drizzle table in `llm-usage-events-schema.ts`, re-exported from `schema.ts`                            |
-| `src/system-config.ts`                    | Recent Drizzle-using module (insert + select), good API shape to mirror                                 | Recorder uses `getDrizzleDb()` + Drizzle insert; query module same pattern                                 |
-| `src/index.ts:74-83`                      | After `initDb()` + `seedSystemConfigFromEnv()`; calls into singletons (`scheduler`, `startScheduler`)   | Add `initUsageRecorder()` after the system-config seed step                                                |
+| Location                                  | Today                                                                                                 | Phase 2 implication                                                                                                                |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `src/llm-orchestrator-events.ts:153-202`  | `emitLlmEnd` payload does NOT carry `chatUserId` or `contextType`                                     | Extend the emit signature; recorder needs both to populate `chat_user_id` and `context_type`                                       |
+| `src/llm-orchestrator-events.ts:184`      | All `llm:*` events go through `emitUser`, scope `{ kind: 'user', userId: contextId }` even for groups | Scope kind is misleading for groups but we still have `contextId` and we plan to pass `contextType` explicitly — leave scope alone |
+| `src/debug/event-bus.ts:34`               | `emitUser` short-circuits when `listeners.size === 0`                                                 | Recorder MUST subscribe at startup so the bus always has ≥1 listener; otherwise events drop on the floor                           |
+| `src/llm-orchestrator-support.ts:161-181` | `emitLlmError` already exists and fires on the throw path (`llm-orchestrator.ts:252`)                 | Recorder subscribes to both `llm:end` and `llm:error`; failure rows fall out for free                                              |
+| `src/embeddings.ts:33-48`                 | `getEmbedding` calls `embed()` directly, no event emitted                                             | Embedding callsites need a direct recorder call (or a new emit); cannot rely on the orchestrator bus                               |
+| `src/web/distill.ts:96-128`               | `distillWebContent` calls `generateText` directly with the small model, no event emitted              | Same — direct recorder call, `modelRole: 'small'`                                                                                  |
+| `src/debug/state-collector.ts:74-85`      | Existing subscriber that wires `subscribe()`/`unsubscribe()` only when a debug client is connected    | Pattern to mirror but NOT to copy verbatim — the recorder subscribes unconditionally at startup                                    |
+| `src/db/migrations/034_system_config.ts`  | Recent migration example, plain `db.run()` SQL                                                        | Migration 035 follows this shape                                                                                                   |
+| `src/db/schema.ts:28`                     | `systemConfig` re-exported from `system-config-schema.ts`                                             | New Drizzle table in `llm-usage-events-schema.ts`, re-exported from `schema.ts`                                                    |
+| `src/system-config.ts`                    | Recent Drizzle-using module (insert + select), good API shape to mirror                               | Recorder uses `getDrizzleDb()` + Drizzle insert; query module same pattern                                                         |
+| `src/index.ts:74-83`                      | After `initDb()` + `seedSystemConfigFromEnv()`; calls into singletons (`scheduler`, `startScheduler`) | Add `initUsageRecorder()` after the system-config seed step                                                                        |
 
 Net: ~10 files touched in `src/`, plus the new `src/usage/` module (4
 files), plus the new Drizzle schema file, plus tests. The parent design
@@ -236,7 +236,7 @@ function onEvent(event: DebugEvent): void {
 }
 ```
 
-Open subquestion: should we wrap *every* listener in `dispatch` with a
+Open subquestion: should we wrap _every_ listener in `dispatch` with a
 try/catch defensively? That's a broader-than-Phase-2 change to the bus.
 Not in scope; flag for a follow-up.
 
@@ -346,12 +346,14 @@ select reads the same columns. Drift becomes a test failure.
 ## Open question J — Where to subscribe: state-collector or new module?
 
 Option **J1**: extend `state-collector.ts` to also write rows.
+
 - Pro: one subscriber, one place.
 - Con: collector is for ephemeral SSE broadcasting; persistence
   responsibility doesn't belong there. Also collector subscribes
   on-demand; recorder needs unconditional.
 
 Option **J2**: new `src/usage/` module with its own subscriber.
+
 - Pro: clean separation, matches the parent design D5 sketch exactly.
 - Con: another subscriber to register.
 
@@ -440,6 +442,7 @@ setup already gives us a clean per-test DB.
    fields (`chatUserId`, `contextType`, `mainModel`, `startTime`,
    `messages.length`, `tools` count) and put defaults of 0 where there
    are no data.
+
 4. **`buildStepsDetail` runs on every emit.** Already runs today; not
    new. Mentioned only because flagging the "always-on subscriber"
    change in (D) made me re-check it.

@@ -70,7 +70,7 @@ re-exported from `src/db/schema.ts`.
 export type ModelRole = 'main' | 'small' | 'embedding'
 
 export type UsageEvent = {
-  occurredAt: number              // ms epoch, defaults to Date.now() when omitted
+  occurredAt: number // ms epoch, defaults to Date.now() when omitted
   turnId: string | null
   storageContextId: string
   contextType: 'dm' | 'group'
@@ -79,13 +79,13 @@ export type UsageEvent = {
   modelRole: ModelRole
   inputTokens: number | null
   outputTokens: number | null
-  stepCount: number               // 0 for embeddings
-  toolCallCount: number           // 0 for embeddings
-  messageCount: number            // 0 for embeddings, 1 for distill
+  stepCount: number // 0 for embeddings
+  toolCallCount: number // 0 for embeddings
+  messageCount: number // 0 for embeddings, 1 for distill
   finishReason: string | null
   durationMs: number
   responseId: string | null
-  error: string | null            // null on success
+  error: string | null // null on success
 }
 
 export function recordUsage(event: UsageEvent): void
@@ -100,7 +100,7 @@ export function initUsageRecorder(): void
 `src/usage/query.ts`:
 
 ```ts
-export type UsageWindow = { windowMs: number | null }  // null = all-time
+export type UsageWindow = { windowMs: number | null } // null = all-time
 
 export function listSubjects(window: UsageWindow): SubjectSummary[]
 export function getSubjectDetail(storageContextId: string, window: UsageWindow): RequestRow[]
@@ -113,12 +113,12 @@ export type SubjectSummary = {
   storageContextId: string
   contextType: 'dm' | 'group'
   totals: {
-    main:      { inputTokens: number; outputTokens: number; calls: number }
-    small:     { inputTokens: number; outputTokens: number; calls: number }
+    main: { inputTokens: number; outputTokens: number; calls: number }
+    small: { inputTokens: number; outputTokens: number; calls: number }
     embedding: { inputTokens: number; outputTokens: number; calls: number }
   }
-  toolCalls: number              // sum of tool_call_count
-  lastActiveAt: number           // max occurred_at
+  toolCalls: number // sum of tool_call_count
+  lastActiveAt: number // max occurred_at
 }
 
 export type RequestRow = {
@@ -227,8 +227,8 @@ emitUser(
     actualModel: result.response.modelId,
     finishReason: result.finishReason,
     messageCount: messages.length,
-    chatUserId,                        // ★ new
-    contextType,                       // ★ new
+    chatUserId, // ★ new
+    contextType, // ★ new
     ...buildToolTelemetry(tools, routing),
     generatedText: result.text,
     stepsDetail: buildStepsDetail(result.steps),
@@ -287,8 +287,8 @@ Caller (`llm-orchestrator.ts:252`) passes the values it already has.
 ```ts
 export type InvokeModelArgs = {
   contextId: string
-  chatUserId: string                       // ★ new
-  contextType: 'dm' | 'group'              // ★ new
+  chatUserId: string // ★ new
+  contextType: 'dm' | 'group' // ★ new
   mainModel: string
   model: ReturnType<ReturnType<typeof createOpenAICompatible>>
   provider: TaskProvider
@@ -361,8 +361,8 @@ recordUsage({
   chatUserId: context.chatUserId,
   model,
   modelRole: 'embedding',
-  inputTokens: usage?.tokens ?? null,   // single-value embed returns tokens count
-  outputTokens: null,                    // embeddings have no output tokens
+  inputTokens: usage?.tokens ?? null, // single-value embed returns tokens count
+  outputTokens: null, // embeddings have no output tokens
   stepCount: 0,
   toolCallCount: 0,
   messageCount: 0,
@@ -410,8 +410,8 @@ Same pattern — widen `distillWebContent` input to require
 export async function distillWebContent(
   input: {
     readonly storageContextId: string
-    readonly contextType: 'dm' | 'group'       // ★ new
-    readonly chatUserId: string                // ★ new
+    readonly contextType: 'dm' | 'group' // ★ new
+    readonly chatUserId: string // ★ new
     readonly title: string
     readonly content: string
     readonly goal?: string
@@ -465,23 +465,23 @@ import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
 export const llmUsageEvents = sqliteTable(
   'llm_usage_events',
   {
-    eventId:          text('event_id').primaryKey(),
-    occurredAt:       integer('occurred_at').notNull(),
-    turnId:           text('turn_id'),
+    eventId: text('event_id').primaryKey(),
+    occurredAt: integer('occurred_at').notNull(),
+    turnId: text('turn_id'),
     storageContextId: text('storage_context_id').notNull(),
-    contextType:      text('context_type').notNull(),
-    chatUserId:       text('chat_user_id').notNull(),
-    model:            text('model').notNull(),
-    modelRole:        text('model_role').notNull(),
-    inputTokens:      integer('input_tokens'),
-    outputTokens:     integer('output_tokens'),
-    stepCount:        integer('step_count').notNull().default(0),
-    toolCallCount:    integer('tool_call_count').notNull().default(0),
-    messageCount:     integer('message_count').notNull().default(0),
-    finishReason:     text('finish_reason'),
-    durationMs:       integer('duration_ms').notNull(),
-    responseId:       text('response_id'),
-    error:            text('error'),
+    contextType: text('context_type').notNull(),
+    chatUserId: text('chat_user_id').notNull(),
+    model: text('model').notNull(),
+    modelRole: text('model_role').notNull(),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    stepCount: integer('step_count').notNull().default(0),
+    toolCallCount: integer('tool_call_count').notNull().default(0),
+    messageCount: integer('message_count').notNull().default(0),
+    finishReason: text('finish_reason'),
+    durationMs: integer('duration_ms').notNull(),
+    responseId: text('response_id'),
+    error: text('error'),
   },
   (table) => [
     index('idx_llm_usage_subject').on(table.storageContextId, table.occurredAt),
@@ -567,11 +567,7 @@ export function listSubjects(window: UsageWindow): SubjectSummary[] {
     })
     .from(llmUsageEvents)
     .where(gte(llmUsageEvents.occurredAt, since))
-    .groupBy(
-      llmUsageEvents.storageContextId,
-      llmUsageEvents.contextType,
-      llmUsageEvents.modelRole,
-    )
+    .groupBy(llmUsageEvents.storageContextId, llmUsageEvents.contextType, llmUsageEvents.modelRole)
     .all()
 
   // Pivot model_role into the three columns of SubjectSummary
@@ -581,12 +577,11 @@ export function listSubjects(window: UsageWindow): SubjectSummary[] {
 export function getSubjectDetail(storageContextId: string, window: UsageWindow): RequestRow[] {
   const since = window.windowMs === null ? 0 : Date.now() - window.windowMs
   return getDrizzleDb()
-    .select({ /* RequestRow columns */ })
+    .select({
+      /* RequestRow columns */
+    })
     .from(llmUsageEvents)
-    .where(and(
-      eq(llmUsageEvents.storageContextId, storageContextId),
-      gte(llmUsageEvents.occurredAt, since),
-    ))
+    .where(and(eq(llmUsageEvents.storageContextId, storageContextId), gte(llmUsageEvents.occurredAt, since)))
     .orderBy(desc(llmUsageEvents.occurredAt))
     .all()
 }
@@ -631,13 +626,13 @@ Per parent §D7, the recorder NEVER logs:
 
 ## D11. Forward-compatibility checks (carry-through from brainstorm)
 
-| Future                       | This-phase shape                                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Phase 3 dashboard            | Query module already returns the design D6 shapes; routes just wire them                                               |
-| Phase 4 tool-call table      | Mirror this module pattern; the `tool_call_count` field stays as a fast aggregate                                      |
-| Phase 4 outbox columns       | `ALTER TABLE ADD COLUMN forwarded_at INTEGER`, no schema migration required for the existing rows                      |
-| Phase 5 anonymous stats      | Reads `occurred_at`, `storage_context_id`, `chat_user_id` for active-subject counts; indexes already there             |
-| Deterministic event_id       | Phase 4 swap is local: change `crypto.randomUUID()` to a hash of `(response_id, occurred_at, model_role)` and migrate  |
+| Future                  | This-phase shape                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Phase 3 dashboard       | Query module already returns the design D6 shapes; routes just wire them                                              |
+| Phase 4 tool-call table | Mirror this module pattern; the `tool_call_count` field stays as a fast aggregate                                     |
+| Phase 4 outbox columns  | `ALTER TABLE ADD COLUMN forwarded_at INTEGER`, no schema migration required for the existing rows                     |
+| Phase 5 anonymous stats | Reads `occurred_at`, `storage_context_id`, `chat_user_id` for active-subject counts; indexes already there            |
+| Deterministic event_id  | Phase 4 swap is local: change `crypto.randomUUID()` to a hash of `(response_id, occurred_at, model_role)` and migrate |
 
 ## D12. Out of scope
 
@@ -651,42 +646,42 @@ Per parent §D7, the recorder NEVER logs:
 
 ## D13. Code-change file list
 
-| File                                            | Change                                                                                                    |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `src/db/migrations/035_llm_usage_events.ts`     | New: create table + 4 indexes                                                                             |
-| `src/db/index.ts:48-119`                        | Register `migration035LlmUsageEvents` between 034 and 036                                                 |
-| `src/db/llm-usage-events-schema.ts`             | New: Drizzle table                                                                                        |
-| `src/db/schema.ts:28`                           | Re-export `llmUsageEvents` and `LlmUsageEventRow`                                                         |
-| `src/usage/recorder.ts`                         | New: `recordUsage`, `UsageEvent` type                                                                     |
-| `src/usage/index.ts`                            | New: `initUsageRecorder`, bus subscriber                                                                  |
-| `src/usage/query.ts`                            | New: `listSubjects`, `getSubjectDetail`                                                                   |
-| `src/usage/types.ts`                            | New: `SubjectSummary`, `RequestRow`, `ModelRole`, `UsageWindow`                                           |
-| `src/index.ts:74-83`                            | Call `initUsageRecorder()` after `seedSystemConfigFromEnv`                                                |
-| `src/llm-orchestrator-events.ts:153-202`        | Extend `emitLlmEnd` payload with `chatUserId`, `contextType`; simplify to single signature                |
-| `src/llm-orchestrator-support.ts:161-181`       | Extend `emitLlmError` with `chatUserId`, `contextType`, `mainModel`, `startTime`, `messageCount`          |
-| `src/llm-orchestrator-types.ts:55`              | Add `chatUserId`, `contextType` to `InvokeModelArgs`                                                      |
-| `src/llm-orchestrator-invoke.ts:97,108`         | Pass new fields through to emit calls                                                                     |
-| `src/llm-orchestrator-tools.ts`                 | If `prepareLlmInvocation` builds `InvokeModelArgs`, thread the new fields                                 |
-| `src/llm-orchestrator.ts:217-256`               | Capture `startedAt`/`messageCount`/`mainModel` before try, pass to `emitLlmError`; thread to `callLlm`    |
-| `src/embeddings.ts:33-63`                       | Add `EmbeddingCallContext` parameter; call `recordUsage` after embed (success and failure)                |
-| `src/tools/save-memo.ts:38`                     | Pass embedding context to `tryGetEmbedding`                                                               |
-| `src/tools/search-memos.ts:95`                  | Same                                                                                                      |
-| `src/web/distill.ts:96-128`                     | Accept `chatUserId`, `contextType` in input; call `recordUsage` after `generateText`                      |
+| File                                               | Change                                                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/db/migrations/035_llm_usage_events.ts`        | New: create table + 4 indexes                                                                          |
+| `src/db/index.ts:48-119`                           | Register `migration035LlmUsageEvents` between 034 and 036                                              |
+| `src/db/llm-usage-events-schema.ts`                | New: Drizzle table                                                                                     |
+| `src/db/schema.ts:28`                              | Re-export `llmUsageEvents` and `LlmUsageEventRow`                                                      |
+| `src/usage/recorder.ts`                            | New: `recordUsage`, `UsageEvent` type                                                                  |
+| `src/usage/index.ts`                               | New: `initUsageRecorder`, bus subscriber                                                               |
+| `src/usage/query.ts`                               | New: `listSubjects`, `getSubjectDetail`                                                                |
+| `src/usage/types.ts`                               | New: `SubjectSummary`, `RequestRow`, `ModelRole`, `UsageWindow`                                        |
+| `src/index.ts:74-83`                               | Call `initUsageRecorder()` after `seedSystemConfigFromEnv`                                             |
+| `src/llm-orchestrator-events.ts:153-202`           | Extend `emitLlmEnd` payload with `chatUserId`, `contextType`; simplify to single signature             |
+| `src/llm-orchestrator-support.ts:161-181`          | Extend `emitLlmError` with `chatUserId`, `contextType`, `mainModel`, `startTime`, `messageCount`       |
+| `src/llm-orchestrator-types.ts:55`                 | Add `chatUserId`, `contextType` to `InvokeModelArgs`                                                   |
+| `src/llm-orchestrator-invoke.ts:97,108`            | Pass new fields through to emit calls                                                                  |
+| `src/llm-orchestrator-tools.ts`                    | If `prepareLlmInvocation` builds `InvokeModelArgs`, thread the new fields                              |
+| `src/llm-orchestrator.ts:217-256`                  | Capture `startedAt`/`messageCount`/`mainModel` before try, pass to `emitLlmError`; thread to `callLlm` |
+| `src/embeddings.ts:33-63`                          | Add `EmbeddingCallContext` parameter; call `recordUsage` after embed (success and failure)             |
+| `src/tools/save-memo.ts:38`                        | Pass embedding context to `tryGetEmbedding`                                                            |
+| `src/tools/search-memos.ts:95`                     | Same                                                                                                   |
+| `src/web/distill.ts:96-128`                        | Accept `chatUserId`, `contextType` in input; call `recordUsage` after `generateText`                   |
 | `src/web/fetch.ts` (or wherever distill is called) | Thread the new fields through                                                                          |
 
 Tests (under `tests/`):
 
-| Test file                                              | Coverage                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `tests/db/migrations/035-llm-usage-events.test.ts`     | Table + 4 indexes; NOT NULL; default 0 on counts; idempotency                  |
-| `tests/usage/recorder.test.ts`                         | Round-trip insert; failure path logs but doesn't throw; null tokens accepted   |
-| `tests/usage/recorder-integration.test.ts`             | `llm:end` event in → row out; `llm:error` event in → row out with error set    |
-| `tests/usage/query.test.ts`                            | `listSubjects` aggregates correctly across model roles + windows; pivot logic  |
-| `tests/llm-orchestrator-events.test.ts`                | Extended payload contains chatUserId/contextType; existing assertions still pass |
-| `tests/llm-orchestrator-support.test.ts`               | `emitLlmError` extended payload                                                |
-| `tests/embeddings.test.ts`                             | `tryGetEmbedding` records on success + failure                                 |
-| `tests/web/distill.test.ts`                            | `distillWebContent` records on success + failure                               |
-| `tests/llm-orchestrator.test.ts`                       | `emitLlmError` is called with the captured fields on the throw path            |
+| Test file                                          | Coverage                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `tests/db/migrations/035-llm-usage-events.test.ts` | Table + 4 indexes; NOT NULL; default 0 on counts; idempotency                    |
+| `tests/usage/recorder.test.ts`                     | Round-trip insert; failure path logs but doesn't throw; null tokens accepted     |
+| `tests/usage/recorder-integration.test.ts`         | `llm:end` event in → row out; `llm:error` event in → row out with error set      |
+| `tests/usage/query.test.ts`                        | `listSubjects` aggregates correctly across model roles + windows; pivot logic    |
+| `tests/llm-orchestrator-events.test.ts`            | Extended payload contains chatUserId/contextType; existing assertions still pass |
+| `tests/llm-orchestrator-support.test.ts`           | `emitLlmError` extended payload                                                  |
+| `tests/embeddings.test.ts`                         | `tryGetEmbedding` records on success + failure                                   |
+| `tests/web/distill.test.ts`                        | `distillWebContent` records on success + failure                                 |
+| `tests/llm-orchestrator.test.ts`                   | `emitLlmError` is called with the captured fields on the throw path              |
 
 ## D14. Acceptance (from roadmap, refined)
 

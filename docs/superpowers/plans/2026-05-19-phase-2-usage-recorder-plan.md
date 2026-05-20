@@ -24,7 +24,7 @@ Steps are ordered so each leaves the tree green between steps.
 - `bun test` should pass on the baseline. If not, stop and investigate.
 - `bun typecheck` should pass. Same.
 - Confirm Phase 1's `system_config` table is in place (`grep
-  migration034SystemConfig src/db/index.ts`).
+migration034SystemConfig src/db/index.ts`).
 
 ## Step 1 — Migration 035 (`llm_usage_events` table + indexes)
 
@@ -290,6 +290,7 @@ already carries it).
 **R**: none.
 
 **Verify**:
+
 ```
 bun test tests/embeddings.test.ts
 bun test tests/tools/save-memo.test.ts
@@ -324,6 +325,7 @@ the call. If the calling tool is `web_fetch`, its tool options
 already carry both.
 
 **Verify**:
+
 ```
 bun test tests/web/distill.test.ts
 bun test tests/web/<callsite>.test.ts
@@ -357,7 +359,7 @@ test.
   call returns. Row fields match the orchestrator inputs.
 - A `processMessage` where `generateText` throws produces one row
   with `error` populated, NULL token/response fields, `model_role:
-  'main'`.
+'main'`.
 
 If the existing orchestrator test file is too tangled to extend
 cleanly, add a focused `tests/usage/end-to-end.test.ts` that drives
@@ -438,18 +440,18 @@ Per the roadmap:
 
 ## Risks + mitigations
 
-| Risk                                                                         | Mitigation                                                                                                                       |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| TDD hook blocks an `src/` edit because the new test was not yet written      | Strict T → I sequencing inside each step; the order is documented above                                                          |
-| `emitLlmEnd` signature change ripples through multiple files                 | Step 5 batches all callers; tests cover the new fields in one suite                                                              |
-| Bus dispatch no longer short-circuits, hot-path cost                         | The expensive payload builders run upstream of dispatch regardless; net cost is a single Set-iteration step per emit             |
-| Recorder exception kills the bus                                             | Catch internally per design D2.2; integration test asserts other listeners still fire after a failing recorder                   |
-| `embed()` shape difference across `@ai-sdk` versions                         | Treat `usage` as `{ tokens?: number } \| undefined` and pass through `?? null`; never crash on missing fields                    |
-| Tool-option `contextType` not actually exposed to the embedding tools today  | Audit `MakeToolsOptions` flow in `src/tools/tools-builder.ts` during Step 7; thread if missing — this is a small, bounded change |
-| Migration 035 collides with an in-flight `claude/phase-2*` branch elsewhere  | Branch ownership: only this branch is authorized; CI enforces unique migration ids                                               |
-| Test isolation: cache state in `usage/index.ts` persists across tests        | Use the standard test-helpers reset path; expose a `resetUsageRecorderForTesting()` helper if needed                             |
-| `recordUsage` from inside the bus dispatcher creates re-entrancy on the bus  | Recorder does NOT emit any bus events; pure DB insert. Confirmed.                                                                |
-| `bun security` flags the new SQL                                             | Drizzle parameterizes by default; raw SQL only in the migration. Inspect any finding rather than silencing.                      |
+| Risk                                                                        | Mitigation                                                                                                                       |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| TDD hook blocks an `src/` edit because the new test was not yet written     | Strict T → I sequencing inside each step; the order is documented above                                                          |
+| `emitLlmEnd` signature change ripples through multiple files                | Step 5 batches all callers; tests cover the new fields in one suite                                                              |
+| Bus dispatch no longer short-circuits, hot-path cost                        | The expensive payload builders run upstream of dispatch regardless; net cost is a single Set-iteration step per emit             |
+| Recorder exception kills the bus                                            | Catch internally per design D2.2; integration test asserts other listeners still fire after a failing recorder                   |
+| `embed()` shape difference across `@ai-sdk` versions                        | Treat `usage` as `{ tokens?: number } \| undefined` and pass through `?? null`; never crash on missing fields                    |
+| Tool-option `contextType` not actually exposed to the embedding tools today | Audit `MakeToolsOptions` flow in `src/tools/tools-builder.ts` during Step 7; thread if missing — this is a small, bounded change |
+| Migration 035 collides with an in-flight `claude/phase-2*` branch elsewhere | Branch ownership: only this branch is authorized; CI enforces unique migration ids                                               |
+| Test isolation: cache state in `usage/index.ts` persists across tests       | Use the standard test-helpers reset path; expose a `resetUsageRecorderForTesting()` helper if needed                             |
+| `recordUsage` from inside the bus dispatcher creates re-entrancy on the bus | Recorder does NOT emit any bus events; pure DB insert. Confirmed.                                                                |
+| `bun security` flags the new SQL                                            | Drizzle parameterizes by default; raw SQL only in the migration. Inspect any finding rather than silencing.                      |
 
 ## Out-of-plan checklist before Step 13
 
