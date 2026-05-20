@@ -33,6 +33,7 @@ jobs:
         with:
           context: .
           push: false
+          tags: papai:ci-build-${{ github.sha }}
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
