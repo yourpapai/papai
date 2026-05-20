@@ -79,6 +79,28 @@ export const isSystemConfigComplete = (): boolean => REQUIRED_KEYS.every((key) =
 
 export const missingSystemConfigKeys = (): SystemConfigKey[] => REQUIRED_KEYS.filter((key) => !cache.has(key))
 
+export const maskSystemConfigValue = (key: SystemConfigKey, value: string): string => {
+  if (key === 'llm_apikey') return `****${value.slice(-4)}`
+  return value
+}
+
+export type SystemConfigEntry = {
+  key: SystemConfigKey
+  value: string
+  updatedAt: number
+  updatedBy: string
+}
+
+export const listSystemConfigEntries = (): SystemConfigEntry[] => {
+  const rows = getDrizzleDb().select().from(systemConfig).all()
+  const entries: SystemConfigEntry[] = []
+  for (const row of rows) {
+    if (!isSystemConfigKey(row.key)) continue
+    entries.push({ key: row.key, value: row.value, updatedAt: row.updatedAt, updatedBy: row.updatedBy })
+  }
+  return entries
+}
+
 /**
  * Test-only helper: clear the in-process cache so tests start from a known state
  * without going through a process restart.

@@ -69,9 +69,7 @@ resolver does not produce N+1 lookups for a 100-subject list.
 
 ```ts
 // in src/debug/billing.ts
-const resolveDisplayNames = (
-  subjects: readonly SubjectSummary[],
-): ReadonlyMap<string, string | null> => {
+const resolveDisplayNames = (subjects: readonly SubjectSummary[]): ReadonlyMap<string, string | null> => {
   const dmIds = subjects.filter((s) => s.contextType === 'dm').map((s) => s.storageContextId)
   if (dmIds.length === 0) return new Map()
   const rows = getDrizzleDb()
@@ -149,12 +147,12 @@ export const applyAdminLlmUpdate = (body: unknown, updatedBy: string): { key: Sy
 
 ### D5. Routes
 
-| Method | Path                           | Behavior                                                                                                              |
-| ------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/billing/subjects?window=30d` | Returns `{ subjects: BillingSubject[], window }`. 400 on unknown window.                                              |
-| GET    | `/billing/subject/:id?window=30d` | Returns `BillingDetail`. 404 if no rows. 400 on unknown window. `:id` decoded with `decodeURIComponent`.          |
-| GET    | `/admin/llm`                   | Returns `AdminLlmSnapshot`. Masks `llm_apikey`. Requires `DEBUG_TOKEN` (existing gate).                               |
-| POST   | `/admin/llm`                   | Body `{ key, value }`. 400 on bad body. 401 if `DEBUG_TOKEN` missing/wrong OR if `DEBUG_TOKEN` unset in env. 503 if `ADMIN_USER_ID` unset (cannot resolve `updatedBy`). 200 on success. |
+| Method | Path                              | Behavior                                                                                                                                                                                |
+| ------ | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/billing/subjects?window=30d`    | Returns `{ subjects: BillingSubject[], window }`. 400 on unknown window.                                                                                                                |
+| GET    | `/billing/subject/:id?window=30d` | Returns `BillingDetail`. 404 if no rows. 400 on unknown window. `:id` decoded with `decodeURIComponent`.                                                                                |
+| GET    | `/admin/llm`                      | Returns `AdminLlmSnapshot`. Masks `llm_apikey`. Requires `DEBUG_TOKEN` (existing gate).                                                                                                 |
+| POST   | `/admin/llm`                      | Body `{ key, value }`. 400 on bad body. 401 if `DEBUG_TOKEN` missing/wrong OR if `DEBUG_TOKEN` unset in env. 503 if `ADMIN_USER_ID` unset (cannot resolve `updatedBy`). 200 on success. |
 
 POST `/admin/llm` extra refusal: if `DEBUG_TOKEN` is unset (i.e. the
 dashboard is in unauthenticated-dev-mode), the route returns 401 with
@@ -283,8 +281,8 @@ type BillingSubject = {
   contextType: 'dm' | 'group'
   displayName: string | null
   totals: {
-    main:      { inputTokens: number; outputTokens: number; calls: number }
-    small:     { inputTokens: number; outputTokens: number; calls: number }
+    main: { inputTokens: number; outputTokens: number; calls: number }
+    small: { inputTokens: number; outputTokens: number; calls: number }
     embedding: { inputTokens: number; outputTokens: number; calls: number }
   }
   toolCalls: number
@@ -304,10 +302,10 @@ type AdminLlmKeyState = {
 }
 
 type AdminLlmSnapshot = {
-  llm_apikey:      AdminLlmKeyState
-  llm_baseurl:     AdminLlmKeyState
-  main_model:      AdminLlmKeyState
-  small_model:     AdminLlmKeyState
+  llm_apikey: AdminLlmKeyState
+  llm_baseurl: AdminLlmKeyState
+  main_model: AdminLlmKeyState
+  small_model: AdminLlmKeyState
   embedding_model: AdminLlmKeyState
 }
 
@@ -363,37 +361,37 @@ Same rules as parent design D7:
 
 ## Test plan (refined for Phase 3)
 
-| Test                                                            | What it covers                                                                              |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `tests/debug/billing-route.test.ts`                             | Window parsing, 400s, GET /billing/subjects shape, GET /billing/subject/:id shape, 404, truncation flag at LIMIT |
-| `tests/debug/admin-llm-route.test.ts`                           | GET masking, POST validation (400), unauthed POST (401 when DEBUG_TOKEN unset), success path, audit log emitted |
-| `tests/debug/billing.test.ts`                                   | `listBillingSubjects` resolves DM display names, leaves group names null, parses window correctly |
-| `tests/debug/admin-llm.test.ts`                                 | `getAdminLlmSnapshot` masks llm_apikey, returns null for missing keys, `applyAdminLlmUpdate` rejects unknown keys |
-| `tests/system-config.test.ts` (extend)                          | `maskSystemConfigValue`, `listSystemConfigEntries`                                          |
-| `tests/client/billing/BillingPanel.test.ts`                     | Renders three children; refresh button triggers fetch                                       |
-| `tests/client/billing/SubjectsTable.test.ts`                    | Renders subjects; click selects                                                             |
-| `tests/client/billing/SubjectDetail.test.ts`                    | Renders rows; row expansion shows JSON                                                      |
-| `tests/client/billing/CredentialsForm.test.ts`                  | Masked display; edit reveals input; submit POSTs then re-fetches                            |
+| Test                                           | What it covers                                                                                                    |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `tests/debug/billing-route.test.ts`            | Window parsing, 400s, GET /billing/subjects shape, GET /billing/subject/:id shape, 404, truncation flag at LIMIT  |
+| `tests/debug/admin-llm-route.test.ts`          | GET masking, POST validation (400), unauthed POST (401 when DEBUG_TOKEN unset), success path, audit log emitted   |
+| `tests/debug/billing.test.ts`                  | `listBillingSubjects` resolves DM display names, leaves group names null, parses window correctly                 |
+| `tests/debug/admin-llm.test.ts`                | `getAdminLlmSnapshot` masks llm_apikey, returns null for missing keys, `applyAdminLlmUpdate` rejects unknown keys |
+| `tests/system-config.test.ts` (extend)         | `maskSystemConfigValue`, `listSystemConfigEntries`                                                                |
+| `tests/client/billing/BillingPanel.test.ts`    | Renders three children; refresh button triggers fetch                                                             |
+| `tests/client/billing/SubjectsTable.test.ts`   | Renders subjects; click selects                                                                                   |
+| `tests/client/billing/SubjectDetail.test.ts`   | Renders rows; row expansion shows JSON                                                                            |
+| `tests/client/billing/CredentialsForm.test.ts` | Masked display; edit reveals input; submit POSTs then re-fetches                                                  |
 
 E2E out of scope (matches parent design — Phase 3 is internal admin
 surface).
 
 ## Files touched
 
-| File                                            | Change                                                                  |
-| ----------------------------------------------- | ----------------------------------------------------------------------- |
-| `src/system-config.ts`                          | Add `maskSystemConfigValue`, `listSystemConfigEntries`                  |
-| `src/debug/billing.ts`                          | NEW — billing aggregation + window parsing                              |
-| `src/debug/admin-llm.ts`                        | NEW — admin LLM snapshot + apply                                        |
-| `src/debug/server.ts`                           | 4 new route branches + a `parseJsonBody` helper                         |
-| `client/debug/dashboard-types.ts`               | Add `BillingSubject`, `BillingDetail`, `AdminLlmSnapshot`, state slots  |
-| `client/debug/dashboard.svelte.ts`              | Initial values for the new state slots                                  |
-| `client/debug/billing/BillingPanel.svelte`      | NEW                                                                     |
-| `client/debug/billing/CredentialsForm.svelte`   | NEW                                                                     |
-| `client/debug/billing/SubjectsTable.svelte`     | NEW                                                                     |
-| `client/debug/billing/SubjectDetail.svelte`     | NEW                                                                     |
-| `client/debug/App.svelte`                       | Slot `BillingPanel` into the panel grid; modal open state for detail    |
-| `client/debug/handlers-extras.ts`               | NEW handlers OR extend existing: `fetchBillingSubjects`, `fetchBillingDetail`, `fetchAdminLlm`, `submitAdminLlm` |
+| File                                          | Change                                                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `src/system-config.ts`                        | Add `maskSystemConfigValue`, `listSystemConfigEntries`                                                           |
+| `src/debug/billing.ts`                        | NEW — billing aggregation + window parsing                                                                       |
+| `src/debug/admin-llm.ts`                      | NEW — admin LLM snapshot + apply                                                                                 |
+| `src/debug/server.ts`                         | 4 new route branches + a `parseJsonBody` helper                                                                  |
+| `client/debug/dashboard-types.ts`             | Add `BillingSubject`, `BillingDetail`, `AdminLlmSnapshot`, state slots                                           |
+| `client/debug/dashboard.svelte.ts`            | Initial values for the new state slots                                                                           |
+| `client/debug/billing/BillingPanel.svelte`    | NEW                                                                                                              |
+| `client/debug/billing/CredentialsForm.svelte` | NEW                                                                                                              |
+| `client/debug/billing/SubjectsTable.svelte`   | NEW                                                                                                              |
+| `client/debug/billing/SubjectDetail.svelte`   | NEW                                                                                                              |
+| `client/debug/App.svelte`                     | Slot `BillingPanel` into the panel grid; modal open state for detail                                             |
+| `client/debug/handlers-extras.ts`             | NEW handlers OR extend existing: `fetchBillingSubjects`, `fetchBillingDetail`, `fetchAdminLlm`, `submitAdminLlm` |
 
 ## Open questions for the next session
 

@@ -31,7 +31,7 @@ Markdown / config / migration edits do not trigger the gate.
   returns the import.
 - The system-config module exposes `setSystemConfig` and
   `SYSTEM_CONFIG_KEYS` (Phase 1). Confirmed via `grep -n
-  SYSTEM_CONFIG_KEYS src/system-config.ts`.
+SYSTEM_CONFIG_KEYS src/system-config.ts`.
 
 ## Step 1 — `system-config` helper extensions
 
@@ -85,8 +85,8 @@ export const listSystemConfigEntries = (): Array<{
 - `windowToMs('24h')` returns `86_400_000`; `windowToMs('all')` returns
   `null`.
 - `listBillingSubjects('all')` over a seeded fixture (3 subjects, 2 DM
-  + 1 group) returns 3 `BillingSubject`s, with DM display names from
-  `users.username` and group display name `null`.
+  - 1 group) returns 3 `BillingSubject`s, with DM display names from
+    `users.username` and group display name `null`.
 - `listBillingSubjects('24h')` filters by window.
 - DM with no matching `users` row returns `displayName: null`.
 - `getBillingDetail(id, 'all')` returns `{ subject, requests, truncated }`;
@@ -217,8 +217,8 @@ bun typecheck
 - A factory `makeEmptyAdminLlm()` returns an `AdminLlmSnapshot` with
   the five keys all `{ value: null, updatedAt: null, updatedBy: null }`.
 - A factory `makeEmptyBillingState()` returns `{
-  billingWindow: '30d', billingSubjects: [], billingDetail: null,
-  adminLlm: makeEmptyAdminLlm() }`.
+billingWindow: '30d', billingSubjects: [], billingDetail: null,
+adminLlm: makeEmptyAdminLlm() }`.
 - The shapes match the server-side `BillingSubject` and
   `AdminLlmSnapshot`.
 
@@ -462,20 +462,20 @@ Push with
 
 ## Risks + mitigations
 
-| Risk                                                                             | Mitigation                                                                                                                |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| TDD hook blocks an `src/` edit because the new test was not yet written          | Strict T → I sequencing inside each step                                                                                  |
-| Bun.serve test ports collide with other suites                                   | Use a distinct port (e.g. `19101`) for the billing-route suite                                                            |
-| `process.env['DEBUG_TOKEN']` leaks across tests                                  | Always set/unset in `beforeEach`/`afterEach`                                                                              |
-| The dashboard build doesn't pick up the new `billing/` subdirectory              | Verify `scripts/build-client.ts` imports from `App.svelte` (it should — the bundler follows imports)                       |
-| `llm_apikey` accidentally logged                                                 | Pino logger only ever sees `{ key, updatedBy }`. Code review confirms no `value` lands in a log line                       |
-| Credentials form posts before re-render flushes (Svelte 5 batching)              | Use `await tick()` in the test setup if needed; the form's submit is `async` and awaits the fetch                          |
-| Subject id with `:` breaks the router slice                                      | Decode with `decodeURIComponent`; test fixture includes a `groupId:threadId` subject                                       |
-| `users.username` is null for some platforms (Mattermost) → DM display = null      | Falls through to the raw id rendering in `SubjectsTable.svelte`; verified by the test for null displayName                |
-| Group has no display name in v1; operators may assume a bug                       | Document in the dashboard guide (Step 10); UI shows the raw id, no question marks                                          |
-| The `LIMIT 501 / trim 500 / set truncated` flow can drift if someone changes LIMIT | Constants exported from `billing.ts` so the test references the same value                                                 |
-| Auth gate gives 401 with no body, confusing the form                              | The credentials form treats 401 as "session expired" and shows a one-line "Refresh and re-authenticate" message            |
-| Read-only dashboard mode (no `DEBUG_TOKEN`) silently allows writes               | POST `/admin/llm` returns 401 when `DEBUG_TOKEN` is unset (D7); explicit refusal, not silent acceptance                    |
+| Risk                                                                               | Mitigation                                                                                                      |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| TDD hook blocks an `src/` edit because the new test was not yet written            | Strict T → I sequencing inside each step                                                                        |
+| Bun.serve test ports collide with other suites                                     | Use a distinct port (e.g. `19101`) for the billing-route suite                                                  |
+| `process.env['DEBUG_TOKEN']` leaks across tests                                    | Always set/unset in `beforeEach`/`afterEach`                                                                    |
+| The dashboard build doesn't pick up the new `billing/` subdirectory                | Verify `scripts/build-client.ts` imports from `App.svelte` (it should — the bundler follows imports)            |
+| `llm_apikey` accidentally logged                                                   | Pino logger only ever sees `{ key, updatedBy }`. Code review confirms no `value` lands in a log line            |
+| Credentials form posts before re-render flushes (Svelte 5 batching)                | Use `await tick()` in the test setup if needed; the form's submit is `async` and awaits the fetch               |
+| Subject id with `:` breaks the router slice                                        | Decode with `decodeURIComponent`; test fixture includes a `groupId:threadId` subject                            |
+| `users.username` is null for some platforms (Mattermost) → DM display = null       | Falls through to the raw id rendering in `SubjectsTable.svelte`; verified by the test for null displayName      |
+| Group has no display name in v1; operators may assume a bug                        | Document in the dashboard guide (Step 10); UI shows the raw id, no question marks                               |
+| The `LIMIT 501 / trim 500 / set truncated` flow can drift if someone changes LIMIT | Constants exported from `billing.ts` so the test references the same value                                      |
+| Auth gate gives 401 with no body, confusing the form                               | The credentials form treats 401 as "session expired" and shows a one-line "Refresh and re-authenticate" message |
+| Read-only dashboard mode (no `DEBUG_TOKEN`) silently allows writes                 | POST `/admin/llm` returns 401 when `DEBUG_TOKEN` is unset (D7); explicit refusal, not silent acceptance         |
 
 ## Out-of-plan checklist before Step 13
 

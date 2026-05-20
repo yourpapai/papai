@@ -17,21 +17,21 @@ Phase 2 has already landed the data model and read helpers; Phase 3 wires
 HTTP routes around them, adds the admin credentials form, and renders both
 on the dashboard.
 
-| Location                                  | Today                                                                                                                                       | Phase 3 implication                                                                                                                |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `src/usage/query.ts`                      | `listSubjects(window)` returns `SubjectSummary[]` keyed by `storageContextId`; no `displayName`                                             | Add a join-or-resolver layer that decorates each summary with a best-effort `displayName`                                          |
-| `src/usage/types.ts`                      | `SubjectSummary` shape does NOT include `displayName`; design D6 says it does                                                               | Either widen the type or layer a new `BillingSubject` over it; recommend layering in `src/debug/billing.ts` so query stays generic |
-| `src/system-config.ts`                    | `getSystemConfig(key)`, `setSystemConfig(key, value, updatedBy)`, `SYSTEM_CONFIG_KEYS`; cache already invalidated on set                    | Add a "list all keys" / "snapshot" helper returning `{ key, hasValue, updatedAt, updatedBy }` for the GET /admin/llm response      |
-| `src/debug/server.ts:182-200`             | Plain pattern-match routing with `routeRequest`; no body parsing helper today                                                               | Add 4 routes + a small request-body parser for POST `/admin/llm`                                                                   |
-| `src/debug/server.ts:41-48`               | `isAuthorizedRequest` gates everything on `DEBUG_TOKEN` (Bearer header); no per-route ACL today                                             | Same gate covers `/admin/llm` and `/billing/*` — no new auth surface to design                                                     |
-| `client/debug/App.svelte`                 | Single-page panel grid (`SessionsList`, `TraceList`, `TurnsPanel`, `NotificationsPanel`, `ToolFailuresPanel`, `RemindersPanel`, `MemosPanel`, `ContextPanel`) + `LogExplorer`; NO tab nav | Roadmap says "New 'Billing' tab" but today there are no tabs. Two design options below                                            |
-| `client/debug/dashboard-types.ts:115-137` | `DashboardState` carries all live state; `billingSubjects`/`billingDetail` not yet present                                                  | Add the two fields plus their handlers (fetch on tab/panel open)                                                                   |
-| `client/debug/sse.ts`                     | Live SSE handlers update most panels in real time                                                                                           | Billing data is fetched-on-demand (no SSE event for usage rows). Decision: do we add SSE updates or rely on manual refresh?        |
-| `src/users.ts`                            | `users` table has `platformUserId`, `username`                                                                                              | DM subject display = `users.username` lookup by `platformUserId`                                                                   |
-| `src/db/schema.ts` — `authorizedGroups`   | `groupId`, `addedBy`, `addedAt` — no title field                                                                                            | Group subject has no canonical title locally; fall through to `group_user_observations` heuristic OR the raw id                    |
-| `src/db/schema.ts` — `groupUserObservations` | `(provider, contextId, userId)` keys; per-user labels per group                                                                          | The group itself has no title row; this table stores members, not the group name. So group `displayName` = null (raw id)           |
-| `src/embeddings.ts` / `src/web/distill.ts` | Each `recordUsage` call now writes a row keyed by `(storageContextId, chatUserId)`; both already in scope                                  | No change for Phase 3 (Phase 2 already wires writes)                                                                               |
-| `tests/utils/test-helpers.ts`             | `setupTestDb()` mounts an isolated DB and runs migrations; standard pattern                                                                 | Server tests use it; route tests use Bun's request-shaped fetch against the handler                                                |
+| Location                                     | Today                                                                                                                                                                                     | Phase 3 implication                                                                                                                |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `src/usage/query.ts`                         | `listSubjects(window)` returns `SubjectSummary[]` keyed by `storageContextId`; no `displayName`                                                                                           | Add a join-or-resolver layer that decorates each summary with a best-effort `displayName`                                          |
+| `src/usage/types.ts`                         | `SubjectSummary` shape does NOT include `displayName`; design D6 says it does                                                                                                             | Either widen the type or layer a new `BillingSubject` over it; recommend layering in `src/debug/billing.ts` so query stays generic |
+| `src/system-config.ts`                       | `getSystemConfig(key)`, `setSystemConfig(key, value, updatedBy)`, `SYSTEM_CONFIG_KEYS`; cache already invalidated on set                                                                  | Add a "list all keys" / "snapshot" helper returning `{ key, hasValue, updatedAt, updatedBy }` for the GET /admin/llm response      |
+| `src/debug/server.ts:182-200`                | Plain pattern-match routing with `routeRequest`; no body parsing helper today                                                                                                             | Add 4 routes + a small request-body parser for POST `/admin/llm`                                                                   |
+| `src/debug/server.ts:41-48`                  | `isAuthorizedRequest` gates everything on `DEBUG_TOKEN` (Bearer header); no per-route ACL today                                                                                           | Same gate covers `/admin/llm` and `/billing/*` — no new auth surface to design                                                     |
+| `client/debug/App.svelte`                    | Single-page panel grid (`SessionsList`, `TraceList`, `TurnsPanel`, `NotificationsPanel`, `ToolFailuresPanel`, `RemindersPanel`, `MemosPanel`, `ContextPanel`) + `LogExplorer`; NO tab nav | Roadmap says "New 'Billing' tab" but today there are no tabs. Two design options below                                             |
+| `client/debug/dashboard-types.ts:115-137`    | `DashboardState` carries all live state; `billingSubjects`/`billingDetail` not yet present                                                                                                | Add the two fields plus their handlers (fetch on tab/panel open)                                                                   |
+| `client/debug/sse.ts`                        | Live SSE handlers update most panels in real time                                                                                                                                         | Billing data is fetched-on-demand (no SSE event for usage rows). Decision: do we add SSE updates or rely on manual refresh?        |
+| `src/users.ts`                               | `users` table has `platformUserId`, `username`                                                                                                                                            | DM subject display = `users.username` lookup by `platformUserId`                                                                   |
+| `src/db/schema.ts` — `authorizedGroups`      | `groupId`, `addedBy`, `addedAt` — no title field                                                                                                                                          | Group subject has no canonical title locally; fall through to `group_user_observations` heuristic OR the raw id                    |
+| `src/db/schema.ts` — `groupUserObservations` | `(provider, contextId, userId)` keys; per-user labels per group                                                                                                                           | The group itself has no title row; this table stores members, not the group name. So group `displayName` = null (raw id)           |
+| `src/embeddings.ts` / `src/web/distill.ts`   | Each `recordUsage` call now writes a row keyed by `(storageContextId, chatUserId)`; both already in scope                                                                                 | No change for Phase 3 (Phase 2 already wires writes)                                                                               |
+| `tests/utils/test-helpers.ts`                | `setupTestDb()` mounts an isolated DB and runs migrations; standard pattern                                                                                                               | Server tests use it; route tests use Bun's request-shaped fetch against the handler                                                |
 
 Net: ~3-4 new server files (`src/debug/billing.ts` for the joined-list
 helper, route wiring inside `src/debug/server.ts`, possibly a `src/debug/admin-llm.ts`
@@ -125,8 +125,14 @@ Resolver shape:
 
 ```ts
 const resolveDisplayName = (storageContextId: string, contextType: ContextType): string | null => {
-  if (contextType === 'dm') return getDrizzleDb().select({ username: users.username }).from(users)
-    .where(eq(users.platformUserId, storageContextId)).get()?.username ?? null
+  if (contextType === 'dm')
+    return (
+      getDrizzleDb()
+        .select({ username: users.username })
+        .from(users)
+        .where(eq(users.platformUserId, storageContextId))
+        .get()?.username ?? null
+    )
   // group → null in v1
   return null
 }
@@ -216,9 +222,8 @@ NOT return the API key in cleartext. Two options:
 
 - **F1. Return `null` for `llm_apikey`, return the rest as-is.** The UI
   knows the value is "set but hidden" via a `hasValue: true` flag.
-- **F2. Return masked values everywhere (`****6f5a`).** Match the
-  existing `maskValue` helper that `src/config.ts` uses for
-  `kaneo_apikey`.
+- **F2. Return masked values everywhere (`\*\***6f5a`).** Match the
+existing `maskValue`helper that`src/config.ts`uses for`kaneo_apikey`.
 
 Looking at `src/config.ts`: `maskValue` keeps the last 4 chars. Useful
 for "did we paste the right key" verification.
@@ -230,11 +235,11 @@ secrets. The response shape:
 
 ```ts
 type AdminLlmSnapshot = {
-  llm_apikey:       { value: string | null /* masked */; updatedAt: number | null; updatedBy: string | null }
-  llm_baseurl:      { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
-  main_model:       { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
-  small_model:      { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
-  embedding_model:  { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
+  llm_apikey: { value: string | null /* masked */; updatedAt: number | null; updatedBy: string | null }
+  llm_baseurl: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
+  main_model: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
+  small_model: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
+  embedding_model: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
 }
 ```
 
@@ -480,7 +485,7 @@ No corners painted.
    `updatedBy` resolved from `ADMIN_USER_ID` env var.
 6. **GET masking:** `llm_apikey` masked via the existing helper; other
    keys returned in cleartext. Each key gets `{ value, updatedAt,
-   updatedBy }`.
+updatedBy }`.
 7. **Subject detail:** SQL `LIMIT 500`; UI shows a "truncated" banner
    beyond that.
 8. **Refresh:** manual button per panel. No SSE for usage rows in v1.

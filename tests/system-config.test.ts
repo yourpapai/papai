@@ -10,6 +10,8 @@ import {
   resetSystemConfigCacheForTesting,
   getSystemConfig,
   isSystemConfigComplete,
+  listSystemConfigEntries,
+  maskSystemConfigValue,
   missingSystemConfigKeys,
   primeSystemConfigCache,
   seedSystemConfigFromEnv,
@@ -192,6 +194,67 @@ describe('system-config', () => {
       // small_model / embedding_model unset
 
       expect(isSystemConfigComplete()).toBe(true)
+    })
+  })
+
+  describe('maskSystemConfigValue', () => {
+    test('masks llm_apikey, keeping only the last 4 characters', () => {
+      expect(maskSystemConfigValue('llm_apikey', 'sk-abc12345')).toBe('****2345')
+    })
+
+    test('returns short llm_apikey values padded by the mask prefix', () => {
+      expect(maskSystemConfigValue('llm_apikey', 'abc')).toBe('****abc')
+    })
+
+    test('returns llm_baseurl unchanged', () => {
+      expect(maskSystemConfigValue('llm_baseurl', 'https://api.example.com/v1')).toBe('https://api.example.com/v1')
+    })
+
+    test('returns main_model unchanged', () => {
+      expect(maskSystemConfigValue('main_model', 'gpt-5')).toBe('gpt-5')
+    })
+
+    test('returns small_model unchanged', () => {
+      expect(maskSystemConfigValue('small_model', 'gpt-mini')).toBe('gpt-mini')
+    })
+
+    test('returns embedding_model unchanged', () => {
+      expect(maskSystemConfigValue('embedding_model', 'text-embedding-3-small')).toBe('text-embedding-3-small')
+    })
+  })
+
+  describe('listSystemConfigEntries', () => {
+    test('returns an empty array when no rows exist', () => {
+      expect(listSystemConfigEntries()).toEqual([])
+    })
+
+    test('returns one entry per row with key/value/updatedAt/updatedBy', () => {
+      setSystemConfig('main_model', 'gpt-9', 'admin-1')
+      setSystemConfig('small_model', 'gpt-mini', 'env')
+
+      const entries = listSystemConfigEntries()
+      expect(entries).toHaveLength(2)
+
+      const main = entries.find((e) => e.key === 'main_model')
+      expect(main).toBeDefined()
+      expect(main?.value).toBe('gpt-9')
+      expect(main?.updatedBy).toBe('admin-1')
+      expect(typeof main?.updatedAt).toBe('number')
+
+      const small = entries.find((e) => e.key === 'small_model')
+      expect(small?.value).toBe('gpt-mini')
+      expect(small?.updatedBy).toBe('env')
+    })
+
+    test('skips rows whose key is not a known SystemConfigKey', () => {
+      // Seed an unknown key directly to confirm the helper filters it.
+      getTestDb().insert(systemConfig).values({ key: 'rogue_key', value: 'x', updatedAt: 1, updatedBy: 'env' }).run()
+      setSystemConfig('main_model', 'gpt-9', 'admin-1')
+
+      const entries = listSystemConfigEntries()
+      const keys = entries.map((e) => e.key)
+      expect(keys).toContain('main_model')
+      expect(keys).not.toContain('rogue_key')
     })
   })
 })
