@@ -26,6 +26,7 @@ import type {
   Notification,
   ToolFailure,
 } from '../../src/debug/schemas.js'
+import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/types.js'
 
 export type {
   Fact,
@@ -49,6 +50,9 @@ export type {
   Turn,
   Notification,
   ToolFailure,
+  GlobalStats,
+  StatsWindow,
+  SubjectStats,
 }
 
 export type RecurringTask = {
@@ -196,4 +200,7 @@ export interface DashboardState {
   billingSubjects: BillingSubject[]
   billingDetail: BillingDetail | null
   adminLlm: AdminLlmSnapshot | null
+  statsWindow: StatsWindow
+  globalStats: GlobalStats | null
+  subjectStats: SubjectStats | null
 }

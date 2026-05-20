@@ -166,6 +166,28 @@ requires `DEBUG_TOKEN` to be set in env (the route returns 401 if it
 is unset, so production-style deployments behind a reverse proxy
 keep the write surface closed by default).
 
+The same dashboard exposes a Stats panel and a per-subject stats view
+backed by `GET /stats/global` and `GET /stats/subject/:id`. Both
+routes require `DEBUG_TOKEN`.
+
+#### Anonymity contract for `/stats/*`
+
+`/stats/global` and `/stats/subject/:id` are constrained to anonymous,
+aggregate-shaped data only:
+
+- Allowed: counts, byte sizes, oldest/newest timestamps, enum
+  distributions (e.g. `byStatus`, `byProvider`, `byExtension`), and
+  hashed/keyed identifiers for high-cardinality strings (rrule
+  patterns, web-fetch hostnames). The keying salt is the
+  `stats_anonymity_salt` row in `system_config`, seeded lazily on
+  first read and never rotated automatically.
+- Never returned: message text, memo bodies, observation text,
+  attachment filenames, raw URLs/paths, usernames or display names,
+  workspace names, tags, project names, status names, RRULE text,
+  any other free-form content.
+
+Any leak of content from these routes is a release-blocking defect.
+
 The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
 
 ### File Attachments (S3-compatible Object Storage)
@@ -230,6 +252,7 @@ Optional: debug server + dashboard client
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
 - `src/debug/` and `client/debug/` — optional debug server and dashboard UI
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
+- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the dashboard Stats panel through `/stats/*` (DEBUG_TOKEN-gated). All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 
 ## Available Tools
 

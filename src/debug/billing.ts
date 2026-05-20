@@ -3,13 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, desc, eq, gte, inArray } from 'drizzle-orm'
+import { and, desc, eq, gte } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import { llmUsageEvents, users } from '../db/schema.js'
+import { llmUsageEvents } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { listSubjects } from '../usage/query.js'
 import type { ModelRole, RequestRow, SubjectSummary } from '../usage/types.js'
+import { resolveDmDisplayNames } from './subject-display-name.js'
 
 const log = logger.child({ scope: 'debug:billing' })
 
@@ -46,17 +47,6 @@ export const windowToMs = (w: BillingWindow): number | null => WINDOW_MS[w]
 
 const isModelRole = (value: string): value is ModelRole =>
   value === 'main' || value === 'small' || value === 'embedding'
-
-const resolveDmDisplayNames = (subjects: readonly SubjectSummary[]): Map<string, string | null> => {
-  const dmIds = subjects.filter((s) => s.contextType === 'dm').map((s) => s.storageContextId)
-  if (dmIds.length === 0) return new Map()
-  const rows = getDrizzleDb()
-    .select({ id: users.platformUserId, username: users.username })
-    .from(users)
-    .where(inArray(users.platformUserId, dmIds))
-    .all()
-  return new Map(rows.map((r) => [r.id, r.username ?? null]))
-}
 
 const decorate = (subjects: readonly SubjectSummary[]): BillingSubject[] => {
   const names = resolveDmDisplayNames(subjects)

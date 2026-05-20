@@ -19,6 +19,8 @@
   import TraceList from './components/TraceList.svelte'
   import TurnDetail from './components/TurnDetail.svelte'
   import TurnsPanel from './components/TurnsPanel.svelte'
+  import StatsPanel from './stats/StatsPanel.svelte'
+  import SubjectStatsPanel from './stats/SubjectStatsPanel.svelte'
 
   import { dashboard } from './dashboard.svelte.js'
   import { fetchInitialLogs, parseLogsArray, collectScopes } from './log-bootstrap.js'
@@ -96,6 +98,7 @@
       onSelectSubject={(subject) => {
         void openBillingSubject(subject)
       }} />
+    <StatsPanel {dashboard} />
   </div>
 
   <LogExplorer {dashboard} onSelectLog={(entry, index) => (selectedLog = { entry, index })} />
@@ -153,6 +156,9 @@
   {#snippet body()}
     {#if dashboard.billingDetail !== null}
       <SubjectDetail detail={dashboard.billingDetail} />
+    {/if}
+    {#if selectedBillingSubject !== null}
+      <SubjectStatsPanel storageContextId={selectedBillingSubject.storageContextId} />
     {/if}
   {/snippet}
 </Modal>

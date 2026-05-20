@@ -50,6 +50,9 @@ const freshState = (): DashboardState => ({
   billingSubjects: [],
   billingDetail: null,
   adminLlm: null,
+  statsWindow: '30d',
+  globalStats: null,
+  subjectStats: null,
 })
 
 const installFetch = (handlers: { subjects?: BillingSubject[]; adminEmpty?: boolean }): string[] => {

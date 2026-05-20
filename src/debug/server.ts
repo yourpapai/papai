@@ -14,6 +14,7 @@ import { listRecurringTasks } from '../recurring.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
+import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 
 const log = logger.child({ scope: 'debug-server' })
 
@@ -202,6 +203,8 @@ function routeRequest(req: Request): Response | Promise<Response> {
   if (url.pathname === '/auth/groups') return handleAuthGroups()
   if (url.pathname === '/billing/subjects') return handleBillingSubjects(url)
   if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
+  if (url.pathname === '/stats/global') return handleStatsGlobal(url)
+  if (url.pathname.startsWith('/stats/subject/')) return handleStatsSubject(url)
   if (url.pathname === '/admin/llm') {
     if (req.method === 'GET') return handleAdminLlmGet()
     if (req.method === 'POST') return handleAdminLlmPost(req)
