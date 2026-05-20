@@ -19,10 +19,12 @@ import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 const NOW = 1_700_000_000_000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
+let seedCounter = 0
 const seed = (overrides: Partial<UsageEvent>): void => {
+  seedCounter += 1
   recordUsage({
     occurredAt: NOW,
-    turnId: 'turn',
+    turnId: `turn-${seedCounter}`,
     storageContextId: 'ctx',
     contextType: 'dm',
     chatUserId: 'user',
@@ -35,7 +37,7 @@ const seed = (overrides: Partial<UsageEvent>): void => {
     messageCount: 1,
     finishReason: 'stop',
     durationMs: 100,
-    responseId: 'resp',
+    responseId: `resp-${seedCounter}`,
     error: null,
     ...overrides,
   })

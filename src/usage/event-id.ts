@@ -9,5 +9,9 @@ const sha256Hex = (input: string): string => createHash('sha256').update(input).
 
 export const toolCallEventId = (turnId: string, toolCallId: string): string => sha256Hex(`${turnId}|${toolCallId}`)
 
-export const usageEventId = (turnId: string | null, responseId: string | null, modelRole: string): string =>
-  sha256Hex(`${turnId ?? ''}|${responseId ?? ''}|${modelRole}`)
+export const usageEventId = (
+  turnId: string | null,
+  responseId: string | null,
+  modelRole: string,
+  occurredAt: number,
+): string => sha256Hex(`${turnId ?? ''}|${responseId ?? ''}|${modelRole}|${occurredAt}`)

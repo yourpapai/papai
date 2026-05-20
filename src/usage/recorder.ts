@@ -36,14 +36,7 @@ export type UsageEvent = {
 }
 
 export const recordUsage = (event: UsageEvent): void => {
-  if (event.turnId === null && event.responseId === null) {
-    log.warn(
-      { modelRole: event.modelRole, storageContextId: event.storageContextId },
-      'recordUsage skipped: both turnId and responseId are null',
-    )
-    return
-  }
-  const eventId = usageEventId(event.turnId, event.responseId, event.modelRole)
+  const eventId = usageEventId(event.turnId, event.responseId, event.modelRole, event.occurredAt)
   try {
     getDrizzleDb()
       .insert(llmUsageEvents)

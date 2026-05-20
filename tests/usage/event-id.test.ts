@@ -38,68 +38,70 @@ describe('toolCallEventId', () => {
 
 describe('usageEventId', () => {
   test('returns a 64-character hex string', () => {
-    const id = usageEventId('turn-abc', 'resp-1', 'main')
+    const id = usageEventId('turn-abc', 'resp-1', 'main', 1000)
 
     expect(id).toMatch(/^[0-9a-f]{64}$/u)
   })
 
   test('is stable for the same inputs', () => {
-    const a = usageEventId('turn-abc', 'resp-1', 'main')
-    const b = usageEventId('turn-abc', 'resp-1', 'main')
+    const a = usageEventId('turn-abc', 'resp-1', 'main', 1000)
+    const b = usageEventId('turn-abc', 'resp-1', 'main', 1000)
 
     expect(a).toBe(b)
   })
 
   test('differs when modelRole changes', () => {
-    const main = usageEventId('turn-abc', 'resp-1', 'main')
-    const small = usageEventId('turn-abc', 'resp-1', 'small')
+    const main = usageEventId('turn-abc', 'resp-1', 'main', 1000)
+    const small = usageEventId('turn-abc', 'resp-1', 'small', 1000)
 
     expect(main).not.toBe(small)
   })
 
   test('differs when turnId changes', () => {
-    const a = usageEventId('turn-1', 'resp-1', 'main')
-    const b = usageEventId('turn-2', 'resp-1', 'main')
+    const a = usageEventId('turn-1', 'resp-1', 'main', 1000)
+    const b = usageEventId('turn-2', 'resp-1', 'main', 1000)
 
     expect(a).not.toBe(b)
   })
 
   test('differs when responseId changes', () => {
-    const a = usageEventId('turn-1', 'resp-a', 'main')
-    const b = usageEventId('turn-1', 'resp-b', 'main')
+    const a = usageEventId('turn-1', 'resp-a', 'main', 1000)
+    const b = usageEventId('turn-1', 'resp-b', 'main', 1000)
+
+    expect(a).not.toBe(b)
+  })
+
+  test('differs when occurredAt changes', () => {
+    const a = usageEventId('turn-1', 'resp-1', 'main', 1000)
+    const b = usageEventId('turn-1', 'resp-1', 'main', 2000)
 
     expect(a).not.toBe(b)
   })
 
   test('accepts null turnId and remains stable', () => {
-    const a = usageEventId(null, 'resp-1', 'main')
-    const b = usageEventId(null, 'resp-1', 'main')
+    const a = usageEventId(null, 'resp-1', 'main', 1000)
+    const b = usageEventId(null, 'resp-1', 'main', 1000)
 
     expect(a).toBe(b)
     expect(a).toMatch(/^[0-9a-f]{64}$/u)
   })
 
   test('accepts null responseId and remains stable', () => {
-    const a = usageEventId('turn-1', null, 'main')
-    const b = usageEventId('turn-1', null, 'main')
+    const a = usageEventId('turn-1', null, 'main', 1000)
+    const b = usageEventId('turn-1', null, 'main', 1000)
 
     expect(a).toBe(b)
     expect(a).toMatch(/^[0-9a-f]{64}$/u)
   })
 
   test('does not throw when both turnId and responseId are null', () => {
-    expect(() => usageEventId(null, null, 'main')).not.toThrow()
+    expect(() => usageEventId(null, null, 'main', 1000)).not.toThrow()
   })
 
-  test('null turn + null response collides only across the same modelRole', () => {
-    // Documenting the deterministic-id contract: with both ids missing,
-    // only modelRole distinguishes calls. The recorder is responsible
-    // for rejecting this case.
-    const a = usageEventId(null, null, 'main')
-    const b = usageEventId(null, null, 'main')
-    const c = usageEventId(null, null, 'small')
+  test('embedding rows with the same occurredAt and modelRole produce the same id (idempotent)', () => {
+    const a = usageEventId(null, null, 'embedding', 1700000000000)
+    const b = usageEventId(null, null, 'embedding', 1700000000000)
 
     expect(a).toBe(b)
-    expect(a).not.toBe(c)
   })
 })

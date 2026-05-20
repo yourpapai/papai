@@ -71,46 +71,44 @@ describe('recordUsage', () => {
     expect(rows[0]?.eventId).not.toBe(rows[1]?.eventId)
   })
 
-  test('event_id is a deterministic SHA-256 hex of (turnId, responseId, modelRole)', () => {
-    recordUsage(validEvent({ turnId: 'turn-x', responseId: 'resp-x', modelRole: 'main' }))
+  test('event_id is a deterministic SHA-256 hex of (turnId, responseId, modelRole, occurredAt)', () => {
+    recordUsage(
+      validEvent({ turnId: 'turn-x', responseId: 'resp-x', modelRole: 'main', occurredAt: 1_700_000_000_000 }),
+    )
 
     const row = getDrizzleDb().select().from(llmUsageEvents).all()[0]
     expect(row?.eventId).toMatch(/^[0-9a-f]{64}$/u)
-    // Stable: same id is computed each time
-    const sameId = usageEventId('turn-x', 'resp-x', 'main')
+    const sameId = usageEventId('turn-x', 'resp-x', 'main', 1_700_000_000_000)
     expect(row?.eventId).toBe(sameId)
   })
 
-  test('duplicate insert (same turnId/responseId/modelRole) does not throw', () => {
-    recordUsage(validEvent({ turnId: 'turn-dup', responseId: 'resp-dup' }))
+  test('duplicate insert (same turnId/responseId/modelRole/occurredAt) does not throw', () => {
+    recordUsage(validEvent({ turnId: 'turn-dup', responseId: 'resp-dup', occurredAt: 5000 }))
 
     expect(() => {
-      recordUsage(validEvent({ turnId: 'turn-dup', responseId: 'resp-dup' }))
+      recordUsage(validEvent({ turnId: 'turn-dup', responseId: 'resp-dup', occurredAt: 5000 }))
     }).not.toThrow()
 
     const rows = getDrizzleDb().select().from(llmUsageEvents).all()
     expect(rows).toHaveLength(1)
   })
 
-  test('drops the row when both turnId and responseId are null', () => {
-    recordUsage(validEvent({ turnId: null, responseId: null }))
-
-    const rows = getDrizzleDb().select().from(llmUsageEvents).all()
-    expect(rows).toHaveLength(0)
-  })
-
-  test('still records when turnId is set and responseId is null', () => {
-    recordUsage(validEvent({ turnId: 'turn-only', responseId: null }))
-
-    const rows = getDrizzleDb().select().from(llmUsageEvents).all()
-    expect(rows).toHaveLength(1)
-  })
-
-  test('still records when responseId is set and turnId is null', () => {
-    recordUsage(validEvent({ turnId: null, responseId: 'resp-only' }))
+  test('records embedding rows with null turnId and null responseId', () => {
+    recordUsage(
+      validEvent({
+        turnId: null,
+        responseId: null,
+        modelRole: 'embedding',
+        finishReason: null,
+        stepCount: 0,
+        toolCallCount: 0,
+        messageCount: 0,
+      }),
+    )
 
     const rows = getDrizzleDb().select().from(llmUsageEvents).all()
     expect(rows).toHaveLength(1)
+    expect(rows[0]?.modelRole).toBe('embedding')
   })
 
   test('accepts NULL tokens on a success row', () => {
