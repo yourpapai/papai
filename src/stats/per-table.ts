@@ -8,6 +8,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, memos, recurringTasks, scheduledPrompts, userInstructions } from '../db/schema.js'
 import { keyedHash } from './hashing.js'
+import { parseIsoToMs, safeParseTags } from './internal/util.js'
 import type {
   AlertPromptStats,
   InstructionStats,
@@ -15,25 +16,6 @@ import type {
   RecurringTaskStats,
   ScheduledPromptStats,
 } from './types.js'
-
-const parseIsoToMs = (value: string | null): number | null => {
-  if (value === null || value === '') return null
-  const trimmed = value.includes('T') ? value : value.replace(' ', 'T') + 'Z'
-  const ms = Date.parse(trimmed)
-  return Number.isFinite(ms) ? ms : null
-}
-
-const safeParseTags = (raw: string): readonly string[] => {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    const out: string[] = []
-    for (const v of parsed) if (typeof v === 'string') out.push(v)
-    return out
-  } catch {
-    return []
-  }
-}
 
 type MemoAccum = {
   byStatus: Record<string, number>
