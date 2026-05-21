@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { fetchStatsGlobal } from '../../../client/admin/fetchers.js'
+import type { StatsWindow } from '../../../src/stats/types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
@@ -32,6 +33,32 @@ const firstCaptured = (): { readonly url: string; readonly init: RequestInit } =
   if (first === undefined) throw new Error('missing captured fetch call')
   return first
 }
+
+const emptyPercentiles = { count: 0, min: 0, p50: 0, p90: 0, p99: 0, max: 0, mean: 0 }
+
+const fullGlobalPayload = (overrides: Record<string, unknown>): Record<string, unknown> => ({
+  generatedAt: 1000,
+  window: '30d',
+  subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+  active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+  distributions: {
+    memosPerSubject: emptyPercentiles,
+    recurringTasksPerSubject: emptyPercentiles,
+    messageMetadataPerSubject: emptyPercentiles,
+    attachmentBytesPerSubject: emptyPercentiles,
+  },
+  storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+  identityMix: { byProvider: {}, kaneoWorkspaces: 0 },
+  surfaceMix: {
+    subjectsWithRecurring: 0,
+    subjectsWithDeferred: 0,
+    subjectsWithMemos: 0,
+    subjectsWithInstructions: 0,
+  },
+  webFetches: { topHosts: [] },
+  toolMix: { topTools: [], errorTypeCounts: {} },
+  ...overrides,
+})
 
 describe('fetchStatsGlobal', () => {
   test('GETs /stats/global with the selected window', async () => {
@@ -62,5 +89,21 @@ describe('fetchStatsGlobal', () => {
 
     expect(firstCaptured().url).toBe('/stats/global?window=7d')
     expect(result.window).toBe('7d')
+  })
+
+  test('defaults to no query param when window is omitted', async () => {
+    installFetch(200, fullGlobalPayload({}))
+    const missingWindow: StatsWindow | undefined = undefined
+
+    const result = await fetchStatsGlobal(missingWindow)
+
+    expect(firstCaptured()).toEqual({ url: '/stats/global', init: {} })
+    expect(result.window).toBe('30d')
+  })
+
+  test('throws on non-2xx with the server error message', async () => {
+    installFetch(400, { error: 'unknown window' })
+
+    await expect(fetchStatsGlobal('7d')).rejects.toThrow('unknown window')
   })
 })
