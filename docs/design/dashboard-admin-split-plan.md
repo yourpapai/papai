@@ -114,11 +114,11 @@ bun build:client    # both bundles produce non-empty artifacts
   generalisation is the point.
 - **Touches.**
   - `scripts/build-client.ts` — refactor into `buildBundle({ entry,
-    htmlSrc, jsName, htmlName, cssName })`. Loop over a config array.
+htmlSrc, jsName, htmlName, cssName })`. Loop over a config array.
     For this phase the config holds **one** entry:
     `{ entry: 'client/debug/index.ts', htmlSrc: 'client/debug/dashboard.html',
-    jsName: 'dashboard.js', htmlName: 'dashboard.html',
-    cssName: 'dashboard.css' }`. Shared base CSS read once.
+jsName: 'dashboard.js', htmlName: 'dashboard.html',
+cssName: 'dashboard.css' }`. Shared base CSS read once.
   - `client/shared/base.css` (new) — extracted from
     `client/debug/dashboard.css`: reset, body, font stack, panel,
     count-badge, placeholder, status-error, status-success, modal.
@@ -212,7 +212,7 @@ bun build:client    # both bundles produce non-empty artifacts
     - `handleDashboardFile()` → `handleDebugFile()` matching `/debug`,
       `/debug.js`, `/debug.css`.
     - Add `if (pathname === '/dashboard') return new Response(null, {
-      status: 301, headers: { Location: '/debug' } })`.
+status: 301, headers: { Location: '/debug' } })`.
   - `tests/debug/server.test.ts` — flip to `/debug` + assert 301 from
     `/dashboard`.
   - `tests/debug/dashboard-smoke.test.ts` — rename references to /debug.
@@ -415,7 +415,7 @@ bun build:client    # both bundles produce non-empty artifacts
   can land without modal-rewrite friction.
 - **Touches.**
   - `client/shared/Modal.svelte` — add `size?: 'sm' | 'md' | 'lg' |
-    'xl'` and `footer?: Snippet`. CSS classes `.modal--sm/md/lg/xl`.
+'xl'` and `footer?: Snippet`. CSS classes `.modal--sm/md/lg/xl`.
   - `client/shared/Confirm.svelte` — new; thin wrapper around Modal
     with `size: 'sm'` + Cancel/Confirm footer.
   - All current callers keep using defaults — no visible change.
