@@ -208,10 +208,8 @@ cssName: 'dashboard.css' }`. Shared base CSS read once.
   - `client/debug/dashboard.svelte.ts` → `client/debug/debug.svelte.ts`
     (rename + update imports).
   - `client/debug/dashboard.css` → `client/debug/debug.css` (rename).
-  - `src/debug/server.ts`:
-    - `handleDashboardFile()` → `handleDebugFile()` matching `/debug`,
-      `/debug.js`, `/debug.css`.
-    - Add `if (pathname === '/dashboard') return new Response(null, {
+  - `src/debug/server.ts`: - `handleDashboardFile()` → `handleDebugFile()` matching `/debug`,
+    `/debug.js`, `/debug.css`. - Add `if (pathname === '/dashboard') return new Response(null, {
 status: 301, headers: { Location: '/debug' } })`.
   - `tests/debug/server.test.ts` — flip to `/debug` + assert 301 from
     `/dashboard`.
