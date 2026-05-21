@@ -8,7 +8,12 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { flushSync, mount, unmount } from 'svelte'
 
 import BillingPanel from '../../../../client/debug/billing/BillingPanel.svelte'
-import type { BillingSubject, DashboardState } from '../../../../client/debug/dashboard-types.js'
+import type {
+  AdminLlmSnapshot,
+  BillingSubject,
+  BillingWindow,
+  DashboardState,
+} from '../../../../client/debug/dashboard-types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const emptyTotals = { inputTokens: 0, outputTokens: 0, calls: 0 }
@@ -24,7 +29,13 @@ const subject = (id: string): BillingSubject => ({
   lastActiveAt: 0,
 })
 
-const freshState = (): DashboardState => ({
+type BillingPanelState = DashboardState & {
+  billingWindow: BillingWindow
+  billingSubjects: BillingSubject[]
+  adminLlm: AdminLlmSnapshot | null
+}
+
+const freshState = (): BillingPanelState => ({
   connected: false,
   stats: { startedAt: 0, totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },
   sessions: new Map(),
@@ -38,21 +49,12 @@ const freshState = (): DashboardState => ({
   turns: [],
   notifications: [],
   toolFailures: [],
-  recurringTasks: [],
-  deferredPrompts: [],
-  memos: [],
-  identityMappings: new Map(),
   activeConfigEditors: new Set(),
-  authorizedGroups: [],
   activeContext: 'all',
   activeLogFilter: {},
   billingWindow: '30d',
   billingSubjects: [],
-  billingDetail: null,
   adminLlm: null,
-  statsWindow: '30d',
-  globalStats: null,
-  subjectStats: null,
 })
 
 const installFetch = (handlers: { subjects?: BillingSubject[]; adminEmpty?: boolean }): string[] => {
@@ -86,7 +88,7 @@ const installFetch = (handlers: { subjects?: BillingSubject[]; adminEmpty?: bool
   return calls
 }
 
-const render = (state: DashboardState): { target: HTMLElement; component: ReturnType<typeof mount> } => {
+const render = (state: BillingPanelState): { target: HTMLElement; component: ReturnType<typeof mount> } => {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.getElementById('root')
   if (target === null) throw new Error('root missing')

@@ -112,19 +112,7 @@ export interface DashboardState {
   turns: Turn[]
   notifications: Notification[]
   toolFailures: ToolFailure[]
-  recurringTasks: RecurringTask[]
-  deferredPrompts: DeferredPrompt[]
-  memos: Memo[]
-  identityMappings: Map<string, IdentityMappingEntry>
   activeConfigEditors: Set<string>
-  authorizedGroups: AuthorizedGroupEntry[]
   activeContext: string
   activeLogFilter: { turnId?: string }
-  billingWindow: BillingWindow
-  billingSubjects: BillingSubject[]
-  billingDetail: BillingDetail | null
-  adminLlm: AdminLlmSnapshot | null
-  statsWindow: StatsWindow
-  globalStats: GlobalStats | null
-  subjectStats: SubjectStats | null
 }

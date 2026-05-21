@@ -16,14 +16,7 @@ import {
   parseLogEntry,
 } from '../../src/debug/schemas.js'
 import type { DashboardState } from './dashboard-types.js'
-import {
-  handleAuthEvent,
-  handleConfigEditorEvent,
-  handleDeferredEvent,
-  handleIdentityEvent,
-  handleMemoEvent,
-  handleRecurringEvent,
-} from './handlers-extras.js'
+import { handleConfigEditorEvent } from './handlers-extras.js'
 import {
   handleCacheEvent,
   handleCacheExpire,
@@ -130,32 +123,6 @@ function turnHandlers(state: DashboardState): Record<string, EventHandler> {
   }
 }
 
-function recurringHandlers(state: DashboardState): Record<string, EventHandler> {
-  const recur =
-    (subtype: string): EventHandler =>
-    (d) => {
-      handleRecurringEvent(state, subtype, d)
-    }
-  const defer =
-    (subtype: string): EventHandler =>
-    (d) => {
-      handleDeferredEvent(state, subtype, d)
-    }
-  return {
-    'recurring:created': recur('recurring:created'),
-    'recurring:updated': recur('recurring:updated'),
-    'recurring:paused': recur('recurring:paused'),
-    'recurring:resumed': recur('recurring:resumed'),
-    'recurring:deleted': recur('recurring:deleted'),
-    'recurring:fired': recur('recurring:fired'),
-    'deferred:created': defer('deferred:created'),
-    'deferred:updated': defer('deferred:updated'),
-    'deferred:cancelled': defer('deferred:cancelled'),
-    'deferred:fired': defer('deferred:fired'),
-    'deferred:alerted': defer('deferred:alerted'),
-  }
-}
-
 function contextHandlers(state: DashboardState): Record<string, EventHandler> {
   const editor =
     (subtype: string): EventHandler =>
@@ -163,32 +130,14 @@ function contextHandlers(state: DashboardState): Record<string, EventHandler> {
       handleConfigEditorEvent(state, subtype, d)
     }
   return {
-    'memo:created': (d) => {
-      handleMemoEvent(state, 'memo:created', d)
-    },
-    'memo:archived': (d) => {
-      handleMemoEvent(state, 'memo:archived', d)
-    },
-    'identity:set': (d) => {
-      handleIdentityEvent(state, 'identity:set', d)
-    },
-    'identity:cleared': (d) => {
-      handleIdentityEvent(state, 'identity:cleared', d)
-    },
     'config_editor:opened': editor('config_editor:opened'),
     'config_editor:closed': editor('config_editor:closed'),
     'config_editor:step': editor('config_editor:step'),
-    'auth:group_authorized': (d) => {
-      handleAuthEvent(state, 'auth:group_authorized', d)
-    },
-    'auth:group_revoked': (d) => {
-      handleAuthEvent(state, 'auth:group_revoked', d)
-    },
   }
 }
 
 export function buildHandlerMap(state: DashboardState): Record<string, EventHandler> {
-  return { ...coreHandlers(state), ...turnHandlers(state), ...recurringHandlers(state), ...contextHandlers(state) }
+  return { ...coreHandlers(state), ...turnHandlers(state), ...contextHandlers(state) }
 }
 
 export interface SseConnection {

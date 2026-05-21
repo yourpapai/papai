@@ -25,21 +25,9 @@ function freshState(): DashboardState {
     turns: [],
     notifications: [],
     toolFailures: [],
-    recurringTasks: [],
-    deferredPrompts: [],
-    memos: [],
-    identityMappings: new Map(),
     activeConfigEditors: new Set(),
-    authorizedGroups: [],
     activeContext: 'all',
     activeLogFilter: {},
-    billingWindow: '30d',
-    billingSubjects: [],
-    billingDetail: null,
-    adminLlm: null,
-    statsWindow: '30d',
-    globalStats: null,
-    subjectStats: null,
   }
 }
 
