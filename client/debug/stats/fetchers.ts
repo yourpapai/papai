@@ -6,6 +6,7 @@
 import { z } from 'zod'
 
 import type { GlobalStats, StatsWindow, SubjectStats } from '../../../src/stats/types.js'
+import { readBody, requireOk } from '../../shared/fetcher-helpers.js'
 
 const PercentilesSchema = z.object({
   count: z.number(),
@@ -129,26 +130,6 @@ const SubjectStatsSchema = z.object({
     errorTypeCounts: z.record(z.string(), z.number()),
   }),
 })
-
-const ErrorBodySchema = z.object({ error: z.string() })
-
-const errorMessageFrom = (body: unknown, fallback: string): string => {
-  const parsed = ErrorBodySchema.safeParse(body)
-  return parsed.success ? parsed.data.error : fallback
-}
-
-const readBody = async (res: Response): Promise<unknown> => {
-  try {
-    return await res.json()
-  } catch {
-    return null
-  }
-}
-
-const requireOk = (res: Response, body: unknown): void => {
-  if (res.ok) return
-  throw new Error(errorMessageFrom(body, `request failed with status ${res.status}`))
-}
 
 export const fetchStatsGlobal = async (window?: StatsWindow): Promise<GlobalStats> => {
   const path = window === undefined ? '/stats/global' : `/stats/global?window=${encodeURIComponent(window)}`

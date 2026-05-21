@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 
+import { readBody, requireOk } from '../../shared/fetcher-helpers.js'
 import type { AdminLlmSnapshot, BillingDetail, BillingSubject, BillingWindow } from '../dashboard-types.js'
 
 const BillingRoleTotalsSchema = z.object({
@@ -71,31 +72,11 @@ const AdminLlmSnapshotSchema = z.object({
   embedding_model: AdminLlmKeyStateSchema,
 })
 
-const ErrorBodySchema = z.object({ error: z.string() })
-
 const SubmitAdminLlmResponseSchema = z.object({
   ok: z.literal(true),
   key: z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']),
   updatedAt: z.number(),
 })
-
-const errorMessageFrom = (body: unknown, fallback: string): string => {
-  const parsed = ErrorBodySchema.safeParse(body)
-  return parsed.success ? parsed.data.error : fallback
-}
-
-const readBody = async (res: Response): Promise<unknown> => {
-  try {
-    return await res.json()
-  } catch {
-    return null
-  }
-}
-
-const requireOk = (res: Response, body: unknown): void => {
-  if (res.ok) return
-  throw new Error(errorMessageFrom(body, `request failed with status ${res.status}`))
-}
 
 export type FetchBillingSubjectsResult = {
   window: BillingWindow

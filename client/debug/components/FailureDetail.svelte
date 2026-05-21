@@ -1,5 +1,5 @@
 <script lang="ts">
-  import TreeView from './TreeView.svelte'
+  import TreeView from '../../shared/TreeView.svelte'
   import type { ToolFailure } from '../dashboard-types.js'
 
   interface Props {

@@ -9,7 +9,7 @@
   import LogDetail from './components/LogDetail.svelte'
   import LogExplorer from './components/LogExplorer.svelte'
   import MemosPanel from './components/MemosPanel.svelte'
-  import Modal from './components/Modal.svelte'
+  import Modal from '../shared/Modal.svelte'
   import NotificationsPanel from './components/NotificationsPanel.svelte'
   import RemindersPanel from './components/RemindersPanel.svelte'
   import SessionDetail from './components/SessionDetail.svelte'

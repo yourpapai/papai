@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatTime } from '../helpers.js'
+  import { formatTime } from '../../shared/helpers.js'
   import type { ToolFailure, DashboardState } from '../dashboard-types.js'
 
   interface Props {

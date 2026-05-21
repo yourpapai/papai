@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatUptime } from '../helpers.js'
+  import { formatUptime } from '../../shared/helpers.js'
   import type { DashboardState } from '../dashboard-types.js'
 
   interface Props {
