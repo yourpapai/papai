@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
+import { TelegramChatProvider, getTelegramFileFetcher } from '../../../src/chat/telegram/index.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -102,6 +102,15 @@ describe('TelegramChatProvider', () => {
   test('provider has correct name', () => {
     // We can't instantiate without TELEGRAM_BOT_TOKEN, but we can verify the class exists
     expect(typeof TelegramChatProvider).toBe('function')
+  })
+
+  test('eagerly initializes module-level file fetcher on construction', () => {
+    process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
+    const provider = new TelegramChatProvider()
+    expect(provider).toBeDefined()
+    const fetcher = getTelegramFileFetcher()
+    expect(typeof fetcher).toBe('function')
+    delete process.env['TELEGRAM_BOT_TOKEN']
   })
 
   describe('thread capabilities', () => {

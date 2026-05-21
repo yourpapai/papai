@@ -23,7 +23,7 @@ import type {
 } from '../types.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
-import { createTelegramFileFetcher } from './file-fetcher.js'
+import { createTelegramFileFetcher, getTelegramFileFetcher } from './file-fetcher.js'
 import { extractFileCandidatesFromContext, extractFilesFromContext } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
@@ -78,6 +78,7 @@ export class TelegramChatProvider implements ChatProvider {
     }
     this.token = token
     this.bot = new Bot(token)
+    createTelegramFileFetcher(this.bot.api, this.token, log)
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
   registerCommand(name: string, handler: CommandHandler): void {
@@ -278,7 +279,7 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const fetcher = createTelegramFileFetcher(this.bot.api, this.token, log)
+    const fetcher = getTelegramFileFetcher() ?? createTelegramFileFetcher(this.bot.api, this.token, log)
     return extractFilesFromContext(ctx, fetcher)
   }
 }
