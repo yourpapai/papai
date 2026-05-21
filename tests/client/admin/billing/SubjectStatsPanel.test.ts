@@ -7,11 +7,11 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
-import SubjectStatsPanel from '../../../../client/debug/stats/SubjectStatsPanel.svelte'
+import SubjectStatsPanel from '../../../../client/admin/components/SubjectStatsPanel.svelte'
 import type { SubjectStats } from '../../../../src/stats/types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
-const subjectPayload = (overrides: Partial<SubjectStats> = {}): SubjectStats => ({
+const subjectPayload = (overrides: Partial<SubjectStats>): SubjectStats => ({
   storageContextId: 'u1',
   chatUserId: 'u1',
   contextType: 'dm',
@@ -76,7 +76,7 @@ const installFetch = (status: number, payload: unknown): void => {
 
 const render = (storageContextId: string): { target: HTMLElement; component: ReturnType<typeof mount> } => {
   document.body.innerHTML = '<div id="root"></div>'
-  const target = document.getElementById('root')
+  const target = document.querySelector<HTMLElement>('#root')
   if (target === null) throw new Error('root missing')
   const component = mount(SubjectStatsPanel, { target, props: { storageContextId } })
   return { target, component }
@@ -86,16 +86,16 @@ afterEach(() => {
   restoreFetch()
 })
 
-describe('SubjectStatsPanel', () => {
+describe('admin SubjectStatsPanel', () => {
   test('renders a loading placeholder before data resolves', () => {
-    installFetch(200, subjectPayload())
+    installFetch(200, subjectPayload({}))
     const { target, component } = render('u1')
     expect(target.textContent).toContain('Loading')
     void unmount(component)
   })
 
   test('renders memo total, recurring total, attachment bytes, turn count once loaded', async () => {
-    installFetch(200, subjectPayload())
+    installFetch(200, subjectPayload({}))
     const { target, component } = render('u1')
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
