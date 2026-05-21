@@ -139,7 +139,7 @@ Then configure runtime settings in chat:
 
 For groups, run `/setup` or `/config` in DM and choose either personal settings or one of the groups you manage.
 
-> LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#billing` without restarting the bot.
+> LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
 
 ---
 
@@ -199,7 +199,7 @@ flowchart TD
 <details>
 <summary><b>Central LLM Credentials</b></summary>
 
-LLM credentials are admin-owned and live in the `system_config` SQLite table. They are seeded from the env vars below on the first start that finds the corresponding `system_config` row missing. After seeding, the bot reads them from the database on every startup; rotation happens either by editing the env and restarting, or by using `/admin#billing` (no restart needed).
+LLM credentials are admin-owned and live in the `system_config` SQLite table. They are seeded from the env vars below on the first start that finds the corresponding `system_config` row missing. After seeding, the bot reads them from the database on every startup; rotation happens either by editing the env and restarting, or by using `/admin#system` (no restart needed).
 
 | Variable          | Required | Description                                                                               |
 | ----------------- | -------- | ----------------------------------------------------------------------------------------- |
@@ -209,7 +209,7 @@ LLM credentials are admin-owned and live in the `system_config` SQLite table. Th
 | `SMALL_MODEL`     | No       | Smaller helper model; callsites fall back to `main_model` when unset                      |
 | `EMBEDDING_MODEL` | No       | Embedding model for semantic memo search; when unset memo search degrades to keyword-only |
 
-If `system_config` is missing any of the three required entries at runtime, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin sets them (via env + restart, or via `/admin#billing`).
+If `system_config` is missing any of the three required entries at runtime, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin sets them (via env + restart, or via `/admin#system`).
 
 </details>
 
@@ -273,12 +273,12 @@ Runtime setup still requires a per-user `youtrack_token`, configured through the
 <details>
 <summary><b>Optional Debug Server</b></summary>
 
-| Variable         | Description                                                          |
-| ---------------- | -------------------------------------------------------------------- |
-| `DEBUG_SERVER`   | Set to `true` to start the local debug server                        |
-| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                         |
-| `DEBUG_PORT`     | Debug server bind port (default `9100`)                              |
-| `DEBUG_TOKEN`    | Bearer token required for debug, billing, stats, and admin endpoints |
+| Variable         | Description                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `DEBUG_SERVER`   | Set to `true` to start the local debug server                                |
+| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                                 |
+| `DEBUG_PORT`     | Debug server bind port (default `9100`)                                      |
+| `DEBUG_TOKEN`    | Optional bearer token for debug/admin routes; required for `POST /admin/llm` |
 
 When the debug server is enabled, the local surfaces are split by audience:
 
@@ -288,10 +288,11 @@ When the debug server is enabled, the local surfaces are split by audience:
 
 Admin sections include:
 
-- **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows), drill-down by request, and a credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
+- **System** at `/admin#system` — environment summary plus the credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
+- **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows) and drill-down by request.
 - **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
 
-`/billing/*`, `/stats/*`, and `/admin/llm` all require `DEBUG_TOKEN` to be set; the routes return 401 when it is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
+When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer token. When it is unset, read-only debug/admin routes remain available without a token. `POST /admin/llm` is the special case: it returns 401 when `DEBUG_TOKEN` is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
 
 </details>
 
@@ -331,7 +332,7 @@ Runtime keys shown by `/setup` and `/config` include:
 | `youtrack_token` | YouTrack permanent token                         |
 | `timezone`       | User timezone for local date/time interpretation |
 
-LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#billing` - not through `/setup` or `/config`.
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
 
 ---
 

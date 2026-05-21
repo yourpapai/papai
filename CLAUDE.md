@@ -166,13 +166,15 @@ When `DEBUG_SERVER=true`, the local UI is split by audience:
 - `/admin` — operator/configuration and durable records surface
 - `/dashboard` — compatibility redirect to `/debug`
 
-The admin billing surface lives at `/admin#billing` and includes the
-credentials form backed by `POST /admin/llm`. The admin stats surface
-lives at `/admin#stats` and uses `GET /stats/global` and
-`GET /stats/subject/:id`. These routes require `DEBUG_TOKEN` to be set
-in env (they return 401 when it is unset), so production-style
-deployments behind a reverse proxy keep the write surface closed by
-default.
+The admin system surface lives at `/admin#system` and includes the
+credentials form backed by `GET`/`POST /admin/llm`. The admin billing
+surface lives at `/admin#billing`, and the admin stats surface lives at
+`/admin#stats` and uses `GET /stats/global` and `GET /stats/subject/:id`.
+When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer
+token. When it is unset, read-only debug/admin routes remain available
+without a token. `POST /admin/llm` is the special case: it returns 401
+when `DEBUG_TOKEN` is unset, so production-style deployments behind a
+reverse proxy keep the write surface closed by default.
 
 #### Anonymity contract for `/stats/*`
 
@@ -254,9 +256,9 @@ Optional: debug server + debug/admin clients
 - `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
 - `src/providers/` — Kaneo and YouTrack normalized provider implementations
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
-- `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form (`src/debug/admin-llm.ts`, `POST /admin/llm`) writes through `setSystemConfig()` and masks `llm_apikey` values server-side.
+- `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side.
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
-- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*` (DEBUG_TOKEN-gated). All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
+- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 
 ## Available Tools
 
