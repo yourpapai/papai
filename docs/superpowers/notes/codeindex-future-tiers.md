@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Codeindex Future Tiers and Layers
 
 This note documents intentionally scoped-out features from the `codeindex` Tier 1 implementation, plus the forward-looking layers described in the archived Tier 1 design spec. None of this is scheduled work; these are candidate directions if and when structural search limitations become a bottleneck.

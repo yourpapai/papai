@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 04 — Tool-output steering: `next_actions`, hints, and response_format
 
 Anthropic's most under-used lever is the observation that **tool outputs are prompts too**. Every token the tool returns is attended to by the model on the next step; that means tool outputs can (and should) steer behavior. ([10](./10-references.md) #3)

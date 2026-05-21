@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Behavior Audit — 3-Phase Restructure
 
 > **Superseded:** Do not execute this plan as written. The approved replacement design is `docs/superpowers/specs/2026-04-20-behavior-audit-keyword-batching-design.md`, and a new implementation plan must be used for execution. This file is kept only as historical context for the original domain-grouped 3-phase restructure.

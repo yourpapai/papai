@@ -25,11 +25,18 @@ safe_name() { echo "${1//:/_}"; }
 is_license_header_file() {
   local file="$1"
   case "$file" in
-    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts) ;;
-    *) return 1 ;;
-  esac
-  case "$file" in
-    *.ts|*.tsx|*.js|*.jsx) return 0 ;;
+    *.md)
+      case "$file" in
+        docs/*.md) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    src/*|client/*|scripts/*|review-loop/src/*|tests/*|drizzle.config.ts)
+      case "$file" in
+        *.ts|*.tsx|*.js|*.jsx) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
     *) return 1 ;;
   esac
 }
@@ -41,9 +48,18 @@ run_license_header_check() {
   local file
 
   for file in "$@"; do
-    if ! awk 'NR <= 5 && /^\/\/ SPDX-License-Identifier: BUSL-1\.1$/ { found=1 } END { exit found ? 0 : 1 }' "$file" 2>/dev/null; then
-      missing_headers+=("$file")
-    fi
+    case "$file" in
+      *.md)
+        if ! awk 'NR <= 2 && /^<!--$/ { found=1 } NR >= 2 && NR <= 3 && /SPDX-License-Identifier: BUSL-1\.1/ { found=1 } END { exit found ? 0 : 1 }' "$file" 2>/dev/null; then
+          missing_headers+=("$file")
+        fi
+        ;;
+      *)
+        if ! awk 'NR <= 5 && /^\/\/ SPDX-License-Identifier: BUSL-1\.1$/ { found=1 } END { exit found ? 0 : 1 }' "$file" 2>/dev/null; then
+          missing_headers+=("$file")
+        fi
+        ;;
+    esac
   done
 
   if [ ${#missing_headers[@]} -gt 0 ]; then
@@ -58,12 +74,19 @@ run_license_header_check() {
       printf '  // Copyright (c) 2026 Dmitriy Lazarev\n'
       printf '  // Use of this software is governed by the Business Source License 1.1.\n'
       printf '  // See LICENSE in the project root for details.\n'
+      printf '\nFor .md files, use this HTML-comment style header:\n'
+      printf '  <!--\n'
+      printf '  SPDX-License-Identifier: BUSL-1.1\n'
+      printf '  Copyright (c) 2026 Dmitriy Lazarev\n'
+      printf '  Use of this software is governed by the Business Source License 1.1.\n'
+      printf '  See LICENSE in the project root for details.\n'
+      printf '  -->\n'
       printf '\nOr run: bun license:headers\n'
     } >"$output_file"
     return 1
   fi
 
-  printf '%s\n' 'ℹ All checked code files have license headers' >"$output_file"
+  printf '%s\n' 'ℹ All checked code and docs files have license headers' >"$output_file"
 }
 
 if [ "$STAGED_MODE" = true ]; then

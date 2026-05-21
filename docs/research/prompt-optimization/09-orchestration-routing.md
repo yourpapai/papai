@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 09 — Orchestration, model routing, and workflow patterns
 
 Covers: how `src/llm-orchestrator.ts` drives the Vercel AI SDK loop today, what `stopWhen` / `prepareStep` unlock, when (and how) to split work between `main_model` and `small_model`, and how the orchestrator should pick between "just answer", "answer with tool calls", and "plan then act".

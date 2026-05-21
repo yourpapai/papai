@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 06 — Confirmation, HITL, and prompt-injection safety
 
 Security and trust for an agent that takes actions on the user's behalf. Covers: destructive-action confirmation patterns, human-in-the-loop middleware, prompt-injection mitigation for tool outputs and external fetches, and the trust boundaries that should be explicit in the system prompt.

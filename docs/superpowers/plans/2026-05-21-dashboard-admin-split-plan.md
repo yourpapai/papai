@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Dashboard / Admin Split Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -15,6 +22,7 @@
 ### Task 1: Create Shared Client skeleton
 
 **Files:**
+
 - Create: `client/shared/helpers.ts`
 - Create: `client/shared/api-types.ts`
 - Create: `client/shared/fetcher-helpers.ts`
@@ -29,6 +37,7 @@
 - [ ] **Step 1: Write the failing tests**
 
 Create `tests/client/shared/fetcher-helpers.test.ts`:
+
 ```typescript
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
@@ -53,6 +62,7 @@ describe('fetcher-helpers', () => {
 ```
 
 Create `tests/client/shared/Modal.test.ts`:
+
 ```typescript
 import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
@@ -68,13 +78,15 @@ describe('Modal.svelte', () => {
       props: {
         open: true,
         title: 'Test Modal',
-        onClose: () => { closed = true },
+        onClose: () => {
+          closed = true
+        },
         body: () => {
           const div = document.createElement('div')
           div.textContent = 'Modal Content'
           return div
-        }
-      }
+        },
+      },
     })
     expect(target.innerHTML).toContain('Test Modal')
     expect(target.innerHTML).toContain('Modal Content')
@@ -91,6 +103,7 @@ Expected: FAIL due to missing files and compile errors.
 - [ ] **Step 3: Write minimal implementation**
 
 Create `client/shared/helpers.ts`:
+
 ```typescript
 const LEVEL_NAMES: Record<number, string> = {
   10: 'trace',
@@ -142,6 +155,7 @@ export function escapeHtml(str: string): string {
 ```
 
 Create `client/shared/api-types.ts`:
+
 ```typescript
 import type {
   Fact,
@@ -299,6 +313,7 @@ export type AdminLlmSnapshot = {
 ```
 
 Create `client/shared/fetcher-helpers.ts`:
+
 ```typescript
 import { z } from 'zod'
 
@@ -324,6 +339,7 @@ export const requireOk = (res: Response, body: unknown): void => {
 ```
 
 Create `client/shared/Modal.svelte`:
+
 ```svelte
 <script lang="ts">
   import type { Snippet } from 'svelte'
@@ -364,6 +380,7 @@ Create `client/shared/Modal.svelte`:
 ```
 
 Create `client/shared/PropertiesTable.svelte`:
+
 ```svelte
 <script lang="ts">
   import TreeView from './TreeView.svelte'
@@ -406,6 +423,7 @@ Create `client/shared/PropertiesTable.svelte`:
 ```
 
 Create `client/shared/TreeView.svelte`:
+
 ```svelte
 <script lang="ts">
   import Self from './TreeView.svelte'
@@ -497,6 +515,7 @@ Create `client/shared/TreeView.svelte`:
 ```
 
 Create `client/shared/StatusDot.svelte`:
+
 ```svelte
 <script lang="ts">
   interface Props {
@@ -509,6 +528,7 @@ Create `client/shared/StatusDot.svelte`:
 ```
 
 Create `client/shared/PanelShell.svelte`:
+
 ```svelte
 <script lang="ts">
   import type { Snippet } from 'svelte'
@@ -550,6 +570,7 @@ git commit -m "feat(shared): extract shared client skeleton"
 ### Task 2: Migrate `client/debug/` to consume `client/shared/`
 
 **Files:**
+
 - Modify: `client/debug/components/Modal.svelte` (Delete)
 - Modify: `client/debug/components/PropertiesTable.svelte` (Delete)
 - Modify: `client/debug/components/TreeView.svelte` (Delete)
@@ -567,20 +588,23 @@ Run `tsc` to make sure there are unresolved local imports if we delete files.
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `bun typecheck` after deleting:
+
 - `client/debug/components/Modal.svelte`
 - `client/debug/components/PropertiesTable.svelte`
 - `client/debug/components/TreeView.svelte`
 - `client/debug/helpers.ts`
-Expected: Errors indicating imported modules do not exist.
+  Expected: Errors indicating imported modules do not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Rewrite Svelte component imports from:
+
 - `import Modal from './Modal.svelte'` to `import Modal from '../../shared/Modal.svelte'`
 - `import PropertiesTable from './PropertiesTable.svelte'` to `import PropertiesTable from '../../shared/PropertiesTable.svelte'`
 - Helper imports to point to `../shared/helpers.js` or `../../shared/helpers.js`.
 
 In `client/debug/dashboard-types.ts`, delete original types and import them:
+
 ```typescript
 import type { DashboardState, DashboardWizard, DashboardStats } from './dashboard-types.js'
 // and re-export other types from '../shared/api-types.js'
@@ -588,6 +612,7 @@ export * from '../shared/api-types.js'
 ```
 
 In `client/debug/billing/fetchers.ts`:
+
 ```typescript
 import { readBody, requireOk, errorMessageFrom } from '../../shared/fetcher-helpers.js'
 ```
@@ -610,6 +635,7 @@ git commit -m "refactor(debug): migrate debug pages to use shared primitives"
 ### Task 3: Two-entrypoint build script
 
 **Files:**
+
 - Create: `client/shared/base.css` (Extract from `client/debug/dashboard.css`)
 - Modify: `client/debug/dashboard.css` (Remove common rules)
 - Modify: `scripts/build-client.ts` (Generalize build)
@@ -618,6 +644,7 @@ git commit -m "refactor(debug): migrate debug pages to use shared primitives"
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/scripts/build-client.test.ts`:
+
 ```typescript
 import { describe, expect, test } from 'bun:test'
 import fs from 'node:fs'
@@ -642,6 +669,7 @@ Expected: PASS (if public files exist, but we will test our build helper dynamic
 
 Create `client/shared/base.css` with dark theme fonts, `.panel`, `.modal` styling.
 Modify `scripts/build-client.ts`:
+
 ```typescript
 import fs from 'node:fs'
 import path from 'node:path'
@@ -730,6 +758,7 @@ git commit -m "build: generalize build-client.ts to support multiple bundle opti
 ### Task 4: Carve out `DebugApp.svelte`
 
 **Files:**
+
 - Create: `client/debug/components/LiveContextCard.svelte`
 - Create: `client/debug/DebugApp.svelte`
 - Modify: `client/debug/App.svelte` (Thin wrapper wrapping DebugApp)
@@ -739,6 +768,7 @@ git commit -m "build: generalize build-client.ts to support multiple bundle opti
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/client/debug/components/DebugApp.test.ts`:
+
 ```typescript
 import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
@@ -765,6 +795,7 @@ Expected: FAIL (missing files)
 - [ ] **Step 3: Write minimal implementation**
 
 Create `client/debug/components/LiveContextCard.svelte`:
+
 ```svelte
 <script lang="ts">
   import type { DashboardState } from '../dashboard-types.js'
@@ -787,10 +818,12 @@ Create `client/debug/components/LiveContextCard.svelte`:
 ```
 
 Create `client/debug/DebugApp.svelte` by copying Svelte template from `client/debug/App.svelte` but removing:
+
 - `MemosPanel`, `RemindersPanel`, `BillingPanel`, `StatsPanel` references.
 - 3-column layout is reduced to 2 columns on the right (TurnsPanel, NotificationsPanel, ToolFailuresPanel, LiveContextCard) and LogExplorer at full-width.
 
 Update `client/debug/App.svelte` to wrap `DebugApp`:
+
 ```svelte
 <script lang="ts">
   import DebugApp from './DebugApp.svelte'
@@ -817,6 +850,7 @@ git commit -m "feat(debug): carve out DebugApp containing only engineering panel
 ### Task 5: Trim `client/debug/handlers-extras.ts`
 
 **Files:**
+
 - Modify: `client/debug/handlers-extras.ts` (Keep only config-editor events)
 - Modify: `client/debug/sse.ts` (Remove registrations for admin SSE events)
 - Create: `client/admin/handlers-admin-extras.ts` (Move trimmed handlers here as reference)
@@ -856,6 +890,7 @@ git commit -m "refactor(debug): trim admin-specific SSE handlers from debug bund
 ### Task 6: Rename `/dashboard` → `/debug`, add 301 redirect
 
 **Files:**
+
 - Rename: `client/debug/dashboard.html` to `client/debug/debug.html`
 - Rename: `client/debug/dashboard.svelte.ts` to `client/debug/debug.svelte.ts`
 - Rename: `client/debug/dashboard.css` to `client/debug/debug.css`
@@ -866,18 +901,19 @@ git commit -m "refactor(debug): trim admin-specific SSE handlers from debug bund
 - [ ] **Step 1: Write the failing tests**
 
 Modify `tests/debug/server.test.ts` around line 129:
-```typescript
-  test('GET /dashboard returns a 301 redirect to /debug', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`, { redirect: 'manual' })
-    expect(res.status).toBe(301)
-    expect(res.headers.get('location')).toBe('/debug')
-  })
 
-  test('GET /debug returns debug HTML', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toContain('text/html')
-  })
+```typescript
+test('GET /dashboard returns a 301 redirect to /debug', async () => {
+  const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`, { redirect: 'manual' })
+  expect(res.status).toBe(301)
+  expect(res.headers.get('location')).toBe('/debug')
+})
+
+test('GET /debug returns debug HTML', async () => {
+  const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
+  expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toContain('text/html')
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -893,6 +929,7 @@ Modify `scripts/build-client.ts` to output `debug.js`, `debug.html`, `debug.css`
 
 In `src/debug/server.ts`:
 Modify `handleDashboardFile` to `handleDebugFile`:
+
 ```typescript
 function handleDebugFile(pathname: string): Response {
   if (pathname === '/debug') {
@@ -911,20 +948,17 @@ function handleDebugFile(pathname: string): Response {
 ```
 
 In `routeRequest`:
+
 ```typescript
-  if (url.pathname === '/dashboard') {
-    return new Response(null, {
-      status: 301,
-      headers: { Location: '/debug' },
-    })
-  }
-  if (
-    url.pathname === '/debug' ||
-    url.pathname === '/debug.js' ||
-    url.pathname === '/debug.css'
-  ) {
-    return handleDebugFile(url.pathname)
-  }
+if (url.pathname === '/dashboard') {
+  return new Response(null, {
+    status: 301,
+    headers: { Location: '/debug' },
+  })
+}
+if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname === '/debug.css') {
+  return handleDebugFile(url.pathname)
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -949,6 +983,7 @@ git commit -m "feat(server): rename dashboard route to debug and add 301 redirec
 ### Task 7: Empty `/admin` bundle and route
 
 **Files:**
+
 - Create: `client/admin/admin.html`
 - Create: `client/admin/index.ts`
 - Create: `client/admin/AdminApp.svelte`
@@ -963,6 +998,7 @@ git commit -m "feat(server): rename dashboard route to debug and add 301 redirec
 - [ ] **Step 1: Write the failing tests**
 
 Create `tests/client/admin/AdminApp.test.ts`:
+
 ```typescript
 import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
@@ -982,12 +1018,13 @@ describe('AdminApp.svelte', () => {
 ```
 
 Add to `tests/debug/server.test.ts`:
+
 ```typescript
-  test('GET /admin returns admin HTML', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/admin`)
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toContain('text/html')
-  })
+test('GET /admin returns admin HTML', async () => {
+  const res = await fetch(`http://localhost:${TEST_PORT}/admin`)
+  expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toContain('text/html')
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -998,22 +1035,24 @@ Expected: FAIL (missing admin files, routes)
 - [ ] **Step 3: Write minimal implementation**
 
 Create `client/admin/admin.html`:
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>papai admin</title>
-  <link rel="stylesheet" href="/admin.css">
-</head>
-<body>
-  <div id="app"></div>
-  <script src="/admin.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>papai admin</title>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="/admin.js"></script>
+  </body>
 </html>
 ```
 
 Create `client/admin/index.ts`:
+
 ```typescript
 import { mount } from 'svelte'
 import AdminApp from './AdminApp.svelte'
@@ -1025,6 +1064,7 @@ if (target) {
 ```
 
 Create `client/admin/admin.svelte.ts`:
+
 ```typescript
 export const adminState = $state({
   activeHash: '#system',
@@ -1032,6 +1072,7 @@ export const adminState = $state({
 ```
 
 Create `client/admin/components/NavSidebar.svelte`:
+
 ```svelte
 <script lang="ts">
   import { adminState } from '../admin.svelte.js'
@@ -1050,6 +1091,7 @@ Create `client/admin/components/NavSidebar.svelte`:
 ```
 
 Create `client/admin/AdminApp.svelte`:
+
 ```svelte
 <script lang="ts">
   import NavSidebar from './components/NavSidebar.svelte'
@@ -1085,20 +1127,22 @@ Create `client/admin/AdminApp.svelte`:
 Create `client/admin/admin.css` with sidebar grids.
 
 Add build configuration to `scripts/build-client.ts`:
+
 ```typescript
-  // Build admin dashboard
-  await buildBundle({
-    entry: path.join(ROOT, 'client', 'admin', 'index.ts'),
-    htmlSrc: path.join(ROOT, 'client', 'admin', 'admin.html'),
-    jsName: 'admin.js',
-    htmlName: 'admin.html',
-    cssName: 'admin.css',
-    baseCssPath: path.join(ROOT, 'client', 'shared', 'base.css'),
-    localCssPath: path.join(ROOT, 'client', 'admin', 'admin.css'),
-  })
+// Build admin dashboard
+await buildBundle({
+  entry: path.join(ROOT, 'client', 'admin', 'index.ts'),
+  htmlSrc: path.join(ROOT, 'client', 'admin', 'admin.html'),
+  jsName: 'admin.js',
+  htmlName: 'admin.html',
+  cssName: 'admin.css',
+  baseCssPath: path.join(ROOT, 'client', 'shared', 'base.css'),
+  localCssPath: path.join(ROOT, 'client', 'admin', 'admin.css'),
+})
 ```
 
 Add server routes in `src/debug/server.ts`:
+
 ```typescript
 function handleAdminFile(pathname: string): Response {
   if (pathname === '/admin') {
@@ -1133,6 +1177,7 @@ git commit -m "feat(admin): build empty admin shell bundle and add static routin
 ### Task 8: System section (Credentials form)
 
 **Files:**
+
 - Create: `client/admin/components/CredentialsForm.svelte`
 - Create: `client/admin/sections/SystemSection.svelte`
 - Modify: `client/admin/fetchers.ts`
@@ -1142,6 +1187,7 @@ git commit -m "feat(admin): build empty admin shell bundle and add static routin
 - [ ] **Step 1: Write the failing tests**
 
 Create `tests/client/admin/sections/SystemSection.test.ts`:
+
 ```typescript
 import { describe, expect, test } from 'bun:test'
 import { mount, unmount } from 'svelte'
@@ -1169,6 +1215,7 @@ Expected: FAIL (missing files)
 Move `client/debug/billing/CredentialsForm.svelte` to `client/admin/components/CredentialsForm.svelte` and adjust imports to point to `../../shared/fetcher-helpers.js`.
 
 Create `client/admin/fetchers.ts`:
+
 ```typescript
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import type { AdminLlmSnapshot } from '../shared/api-types.js'
@@ -1182,16 +1229,20 @@ export const fetchAdminLlm = async (): Promise<AdminLlmSnapshot> => {
 ```
 
 Add server endpoint `GET /admin/system` in `src/debug/server.ts` that outputs required environmental config state:
+
 ```typescript
 function handleAdminSystem(): Response {
-  return new Response(JSON.stringify({
-    chatProvider: process.env['CHAT_PROVIDER'] ?? 'unknown',
-    taskProvider: process.env['TASK_PROVIDER'] ?? 'unknown',
-    debugServer: 'true',
-    adminUserSet: process.env['ADMIN_USER_ID'] !== undefined ? 'true' : 'false'
-  }), {
-    headers: { 'Content-Type': 'application/json' }
-  })
+  return new Response(
+    JSON.stringify({
+      chatProvider: process.env['CHAT_PROVIDER'] ?? 'unknown',
+      taskProvider: process.env['TASK_PROVIDER'] ?? 'unknown',
+      debugServer: 'true',
+      adminUserSet: process.env['ADMIN_USER_ID'] !== undefined ? 'true' : 'false',
+    }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+    },
+  )
 }
 ```
 
@@ -1214,6 +1265,7 @@ git commit -m "feat(admin): move LLM credentials form and build system config se
 ### Task 9: Billing section
 
 **Files:**
+
 - Move: `client/debug/billing/SubjectsTable.svelte` to `client/admin/components/SubjectsTable.svelte`
 - Move: `client/debug/billing/SubjectDetail.svelte` to `client/admin/components/SubjectDetail.svelte`
 - Move: `client/debug/stats/SubjectStatsPanel.svelte` to `client/admin/components/SubjectStatsPanel.svelte`
@@ -1255,6 +1307,7 @@ git commit -m "feat(admin): port billing section and component files to admin ar
 ### Task 10: Stats section
 
 **Files:**
+
 - Move: `client/debug/stats/StatsPanel.svelte` to `client/admin/components/StatsPanel.svelte`
 - Create: `client/admin/sections/StatsSection.svelte`
 - Delete: `client/debug/stats` directory
@@ -1291,6 +1344,7 @@ git commit -m "feat(admin): move and setup global stats section"
 ### Task 11: Memos, Reminders, Identities, Groups sections
 
 **Files:**
+
 - Create: `client/admin/sections/MemosSection.svelte`
 - Create: `client/admin/sections/RemindersSection.svelte`
 - Create: `client/admin/sections/IdentitiesSection.svelte`
@@ -1333,6 +1387,7 @@ git commit -m "feat(admin): build memos, reminders, identities, and groups secti
 ### Task 12: Cleanup
 
 **Files:**
+
 - Modify: `client/debug/App.svelte` (Delete / replace with clean mounting)
 - Modify: `client/debug/debug.svelte.ts` (Prune unused reactive states)
 - Modify: `client/shared/base.css` (De-duplicate styling rule classes)
@@ -1371,6 +1426,7 @@ git commit -m "chore: prune dead states and delete legacy debug App.svelte"
 ### Task 13: Documentation
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 - Modify: `README.md`
 
@@ -1402,6 +1458,7 @@ git commit -m "docs: update CLAUDE.md and README.md with debug and admin split"
 ### Task 14: Modal primitive: size + footer + Escape
 
 **Files:**
+
 - Modify: `client/shared/Modal.svelte` (Add `size` and `footer` snippets)
 - Create: `client/shared/Confirm.svelte` (Thin Action Confirm dialog wrapper)
 - Test: `tests/client/shared/Modal.test.ts` (Sized checks)
@@ -1418,6 +1475,7 @@ Expected: FAIL
 - [ ] **Step 3: Write minimal implementation**
 
 Enhance `client/shared/Modal.svelte`:
+
 ```svelte
 <script lang="ts">
   import type { Snippet } from 'svelte'

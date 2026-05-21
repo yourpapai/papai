@@ -13,10 +13,15 @@ const DETAILS_LINE = '// See LICENSE in the project root for details.'
 const COPYRIGHT_LINE_PATTERN = /^\/\/ Copyright \(c\) (\d{4})(?:-(\d{4}))? Dmitriy Lazarev$/u
 
 const SOURCE_ROOTS = ['src', 'client', 'scripts', 'review-loop/src', 'tests'] as const
-const ROOT_SOURCE_FILES = ['drizzle.config.ts'] as const
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
 
+const DOCS_ROOTS = ['docs'] as const
+const DOCS_EXTENSIONS = new Set(['.md'])
+
+const ROOT_SOURCE_FILES = ['drizzle.config.ts'] as const
+
 const isSourceFile = (filePath: string): boolean => SOURCE_EXTENSIONS.has(extname(filePath))
+const isDocsFile = (filePath: string): boolean => DOCS_EXTENSIONS.has(extname(filePath))
 
 const getCurrentHeaderYear = (): number => {
   const configuredYear = process.env['LICENSE_HEADER_YEAR']
@@ -46,6 +51,25 @@ const normalizeCopyrightLine = (line: string | undefined, currentYear: number): 
 
 const buildHeader = (copyrightLine: string): string =>
   [SPDX_LINE, copyrightLine, USE_LINE, DETAILS_LINE, '', ''].join('\n')
+
+const MD_SPDX_LINE = '<!--'
+const MD_SPDX_CONTENT = 'SPDX-License-Identifier: BUSL-1.1'
+const MD_COPYRIGHT_PATTERN = /^Copyright \(c\) (\d{4})(?:-(\d{4}))? Dmitriy Lazarev$/u
+const MD_USE_LINE = 'Use of this software is governed by the Business Source License 1.1.'
+const MD_DETAILS_LINE = 'See LICENSE in the project root for details.'
+const MD_CLOSE_LINE = '-->'
+
+const buildMdHeader = (year: number): string =>
+  [
+    MD_SPDX_LINE,
+    MD_SPDX_CONTENT,
+    `Copyright (c) ${year} ${COPYRIGHT_HOLDER}`,
+    MD_USE_LINE,
+    MD_DETAILS_LINE,
+    MD_CLOSE_LINE,
+    '',
+    '',
+  ].join('\n')
 
 type StampResult =
   | { readonly kind: 'stamped'; readonly path: string }
@@ -135,11 +159,75 @@ const updateExistingHeader = (content: string, currentYear: number): string | nu
   return [...prefix, header + contentAfterHeader(lines, startIndex).join('\n')].join('\n')
 }
 
+const normalizeMdCopyrightLine = (line: string | undefined, currentYear: number): string => {
+  if (line === undefined) return `Copyright (c) ${currentYear} Dmitriy Lazarev`
+
+  const match = MD_COPYRIGHT_PATTERN.exec(line)
+  if (match === null) return `Copyright (c) ${currentYear} Dmitriy Lazarev`
+
+  const startYearText = match[1]
+  if (startYearText === undefined) return `Copyright (c) ${currentYear} Dmitriy Lazarev`
+
+  const startYear = Number.parseInt(startYearText, 10)
+  const endYear = match[2] === undefined ? startYear : Number.parseInt(match[2], 10)
+  if (currentYear <= endYear) return line
+
+  return `Copyright (c) ${startYear}-${currentYear} Dmitriy Lazarev`
+}
+
+const looksLikeMdHeaderBlock = (lines: readonly string[]): boolean => {
+  if (lines[0] !== MD_SPDX_LINE) return false
+  if (lines[1]?.trim() !== MD_SPDX_CONTENT) return false
+  for (let closeIdx = 2; closeIdx <= 6; closeIdx++) {
+    if (lines[closeIdx] === MD_CLOSE_LINE) return true
+  }
+  return false
+}
+
+const contentMdAfterHeader = (lines: readonly string[]): readonly string[] => {
+  if (!looksLikeMdHeaderBlock(lines)) {
+    const closeIdx = lines.findIndex((l, i) => i > 0 && l === MD_CLOSE_LINE)
+    if (closeIdx !== -1) {
+      const rest = lines.slice(closeIdx + 1)
+      return rest[0] === '' ? rest.slice(1) : rest
+    }
+    return lines
+  }
+  const closeIdx = lines.indexOf(MD_CLOSE_LINE, 1)
+  const rest = lines.slice(closeIdx + 1)
+  return rest[0] === '' ? rest.slice(1) : rest
+}
+
+const updateExistingMdHeader = (content: string, currentYear: number): string | null => {
+  const lines = content.split('\n')
+  if (lines[0] !== MD_SPDX_LINE) return null
+  if (lines[1]?.trim() !== MD_SPDX_CONTENT) return null
+
+  const copyrightLine = normalizeMdCopyrightLine(lines[2], currentYear)
+  const yearMatch = copyrightLine.match(/(\d{4})(?:(\d{4}))?/u)
+  const headerYear = yearMatch === null ? currentYear : Number.parseInt(yearMatch[1]!, 10)
+  const header = buildMdHeader(headerYear)
+  const rest = contentMdAfterHeader(lines)
+  return header + rest.join('\n')
+}
+
+const addMdHeader = (content: string, currentYear: number): string => buildMdHeader(currentYear) + content
+
 const processFile = async (filePath: string, repoRoot: string): Promise<StampResult> => {
   const rel = relative(repoRoot, filePath)
   const content = await readFile(filePath, 'utf-8')
-  const repaired = repairShebangHeader(content)
   const currentYear = getCurrentHeaderYear()
+
+  if (isDocsFile(filePath)) {
+    const updatedContent = updateExistingMdHeader(content, currentYear) ?? addMdHeader(content, currentYear)
+    if (updatedContent === content) {
+      return { kind: 'skipped', path: rel }
+    }
+    await writeFile(filePath, updatedContent, 'utf-8')
+    return { kind: 'stamped', path: rel }
+  }
+
+  const repaired = repairShebangHeader(content)
   const baseContent = repaired ?? content
   const updatedContent = updateExistingHeader(baseContent, currentYear) ?? addHeader(baseContent, currentYear)
 
@@ -153,13 +241,20 @@ const processFile = async (filePath: string, repoRoot: string): Promise<StampRes
 
 const main = async (): Promise<void> => {
   const repoRoot = new URL('..', import.meta.url).pathname
-  const files = [
+  const sourceFiles = [
     ...(await Promise.all(SOURCE_ROOTS.map((root) => walkFiles(join(repoRoot, root))))).flat(),
     ...(await existingRootSourceFiles(repoRoot)),
   ]
     .flat()
     .filter(isSourceFile)
-  const results = await Promise.all(files.map((filePath) => processFile(filePath, repoRoot)))
+
+  const docsFiles = (await Promise.all(DOCS_ROOTS.map((root) => walkFiles(join(repoRoot, root)))))
+    .flat()
+    .flat()
+    .filter(isDocsFile)
+
+  const allFiles = [...sourceFiles, ...docsFiles]
+  const results = await Promise.all(allFiles.map((filePath) => processFile(filePath, repoRoot)))
   results
     .filter((result) => result.kind === 'stamped')
     .forEach((result) => {

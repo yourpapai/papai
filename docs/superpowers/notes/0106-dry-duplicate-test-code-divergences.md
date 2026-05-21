@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # ADR-0106: DRY Duplicate Test Code — Divergence Notes
 
 > Companion document to ADR-0106. Captures deviations between the implementation plan and the actual implementation. Each deviation includes why it happened and whether correction is needed.

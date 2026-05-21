@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # ADR-0116: Deferred Prompt Delivery Redesign — Divergence Notes
 
 > Companion document to ADR-0116. Captures deviations between the original proactive group messaging design spec (2026-04-13), its implementation plan (2026-04-16), and the actual implementation. The spec and plan were superseded by a redesign (2026-04-19) before implementation began.

@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Execution Order Recommendation: Provider Abstraction Leaks, Architecture Violations, and Plugin System
 
 > Analysis of three interdependent plans targeting the same infrastructure surface, written after verifying implementation completeness against the current codebase. Captures dependency chains, partial implementations, and the correct sequencing for remediation.

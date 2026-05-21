@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Kaneo Compatibility Gap E2E Test Plan
 
 **Objective:** Extend the Tier 1 Kaneo E2E suite so papai proves the highest-risk Kaneo compatibility behaviors that are still only partially covered today: `startDate` round-tripping, task-list contract adaptation, search-envelope adaptation, dedicated comment semantics, directional relation mapping, and label delete or attach or detach runtime behavior.

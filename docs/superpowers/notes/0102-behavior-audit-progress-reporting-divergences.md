@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # ADR-0102: Behavior Audit Progress Reporting — Divergence Notes
 
 > Companion document to ADR-0102. Captures each deviation between the original spec (2026-04-25), the implementation plan (2026-04-27), and the accepted delivery state.

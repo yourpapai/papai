@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Discord ChatProvider Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use `executing-plans` to implement this plan task-by-task. Do not skip TDD steps — the repository's hook pipeline (see `CLAUDE.md` → "TDD Enforcement (Hooks)") blocks any edit that is not preceded by a failing test that imports the implementation module.
