@@ -6,7 +6,6 @@
 export const adminSections = [
   { id: 'system', label: 'System' },
   { id: 'billing', label: 'Billing' },
-  { id: 'stats', label: 'Stats' },
   { id: 'memos', label: 'Memos' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'identities', label: 'Identities' },
@@ -32,7 +31,9 @@ export function sectionFromHash(hash: string): AdminSectionId {
 }
 
 export function sectionLabel(sectionId: AdminSectionId): string {
-  return adminSections.find((section) => section.id === sectionId)?.label ?? 'System'
+  const section = adminSections.find((candidate) => candidate.id === sectionId)
+  if (section === undefined) return 'System'
+  return section.label
 }
 
 export const adminState = $state({
