@@ -69,6 +69,13 @@
   overflow: auto;
 }
 
+.panel {
+  padding: 20px;
+  border: 1px solid #20252d;
+  border-radius: 8px;
+  background: #11151b;
+}
+
 .admin-section-header {
   display: flex;
   gap: 12px;
