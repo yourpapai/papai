@@ -107,7 +107,7 @@ export const fetchAdminSystem = async (): Promise<AdminSystemSummary> => {
   return AdminSystemSummarySchema.parse(body)
 }
 
-export const fetchMemos = async (userId: string, state: 'active' | 'archived' | 'all'): Promise<Memo[]> => {
+export const fetchMemos = async (userId: string, state: 'active' | 'archived'): Promise<Memo[]> => {
   const path = `/memos?userId=${encodeURIComponent(userId)}&state=${encodeURIComponent(state)}`
   const res = await fetch(path)
   const body = await readBody(res)

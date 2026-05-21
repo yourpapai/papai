@@ -129,6 +129,12 @@ describe('fetchMemos', () => {
 
     await expect(fetchMemos('user-1', 'active')).rejects.toThrow()
   })
+
+  test('falls back to generic error for plain-text server errors', async () => {
+    installFetch(400, 'Missing userId parameter')
+
+    await expect(fetchMemos('user-1', 'archived')).rejects.toThrow('request failed with status 400')
+  })
 })
 
 describe('fetchRecurringTasks', () => {
@@ -157,6 +163,12 @@ describe('fetchRecurringTasks', () => {
 
     await expect(fetchRecurringTasks('user-1')).rejects.toThrow()
   })
+
+  test('falls back to generic error for plain-text server errors', async () => {
+    installFetch(400, 'Missing userId parameter')
+
+    await expect(fetchRecurringTasks('user-1')).rejects.toThrow('request failed with status 400')
+  })
 })
 
 describe('fetchDeferredPrompts', () => {
@@ -184,6 +196,12 @@ describe('fetchDeferredPrompts', () => {
 
     await expect(fetchDeferredPrompts('user-1')).rejects.toThrow()
   })
+
+  test('falls back to generic error for plain-text server errors', async () => {
+    installFetch(400, 'Missing userId parameter')
+
+    await expect(fetchDeferredPrompts('user-1')).rejects.toThrow('request failed with status 400')
+  })
 })
 
 describe('fetchAdminIdentity', () => {
@@ -209,9 +227,15 @@ describe('fetchAdminIdentity', () => {
   })
 
   test('returns null for not found identity lookups', async () => {
-    installFetch(404, { error: 'not found' })
+    installFetch(404, 'Not found')
 
     await expect(fetchAdminIdentity('user-1', 'kaneo')).resolves.toBeNull()
+  })
+
+  test('falls back to generic error for plain-text server errors', async () => {
+    installFetch(400, 'Missing userId parameter')
+
+    await expect(fetchAdminIdentity('user-1', 'kaneo')).rejects.toThrow('request failed with status 400')
   })
 
   test('rejects malformed identity payloads', async () => {

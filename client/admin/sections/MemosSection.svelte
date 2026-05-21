@@ -8,7 +8,7 @@
   import { fetchMemos } from '../fetchers.js'
 
   let userId = $state('')
-  let state = $state<'active' | 'archived' | 'all'>('active')
+  let state = $state<'active' | 'archived'>('active')
   let memos: Memo[] = $state([])
   let hasLoaded = $state(false)
   let loading = $state(false)
@@ -55,11 +55,10 @@
         data-testid="memos-state"
         value={state}
         onchange={(event) => {
-          state = (event.currentTarget as HTMLSelectElement).value as 'active' | 'archived' | 'all'
+          state = (event.currentTarget as HTMLSelectElement).value as 'active' | 'archived'
         }}>
         <option value="active">Active</option>
         <option value="archived">Archived</option>
-        <option value="all">All</option>
       </select>
     </label>
     <button data-testid="memos-load" disabled={userId.trim() === '' || loading} type="submit">

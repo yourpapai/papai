@@ -77,8 +77,20 @@ describe('MemosSection', () => {
     void unmount(component)
   })
 
+  test('only offers supported memo states', () => {
+    const { target, component } = render()
+    const stateSelect = target.querySelector<HTMLSelectElement>('[data-testid="memos-state"]')
+    expect(stateSelect).not.toBeNull()
+
+    const optionValues = Array.from(stateSelect!.querySelectorAll('option')).map((option) => option.value)
+
+    expect(optionValues).toEqual(['active', 'archived'])
+
+    void unmount(component)
+  })
+
   test('shows empty state when no memos are returned', async () => {
-    const responses = new Map<string, Response>([['/memos?userId=user-2&state=all', Response.json([])]])
+    const responses = new Map<string, Response>([['/memos?userId=user-2&state=archived', Response.json([])]])
     setMockFetch((url) => responseFor(responses, url))
 
     const { target, component } = render()
@@ -86,7 +98,7 @@ describe('MemosSection', () => {
     const stateSelect = target.querySelector<HTMLSelectElement>('[data-testid="memos-state"]')
     userInput!.value = 'user-2'
     userInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    stateSelect!.value = 'all'
+    stateSelect!.value = 'archived'
     stateSelect!.dispatchEvent(new Event('change', { bubbles: true }))
     flushSync()
 
@@ -100,7 +112,7 @@ describe('MemosSection', () => {
 
   test('shows fetch errors', async () => {
     const responses = new Map<string, Response>([
-      ['/memos?userId=user-3&state=active', Response.json({ error: 'boom' }, { status: 500 })],
+      ['/memos?userId=user-3&state=active', new Response('Missing userId parameter', { status: 400 })],
     ])
     setMockFetch((url) => responseFor(responses, url))
 
@@ -113,7 +125,7 @@ describe('MemosSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="memos-load"]')!.click()
     await drain()
 
-    expect(target.textContent).toContain('boom')
+    expect(target.textContent).toContain('request failed with status 400')
 
     void unmount(component)
   })
