@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.1] - 2026-05-21
+
+### Documentation
+
+- **design:** LLM rate limiting and plans spec + phase decomposition
+- **design:** Rework quotas — day/week/month windows, refill algo, attachment storage, 80% notice, deferred-prompt fallback
+- **design:** Align phase decomposition with reworked quota spec
+- **design:** Rework deferred-prompt fallback — fire time is sacred, proactive small-model degrade at notify_pct, per-type templates
+- **design:** Split /dashboard into /debug and /admin — design + phase plan
+
+### Fixed
+
+- **auth:** Include actual group id in unauthorized-group hints
+
+### Miscellaneous
+
+- Format
+
+### Styling
+
+- **docs:** Oxfmt pass on rate-limiting design + phases
 ## [5.6.0] - 2026-05-20
 
 ### Added
