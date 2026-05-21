@@ -5,7 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { fetchStatsGlobal, fetchStatsSubject } from '../../../../client/debug/stats/fetchers.js'
+import { fetchStatsGlobal } from '../../../../client/debug/stats/fetchers.js'
+import type { StatsWindow } from '../../../../src/stats/types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const captured: Array<{ url: string; init: RequestInit }> = []
@@ -32,7 +33,7 @@ const installFetch = (status: number, payload: unknown): void => {
 
 const emptyPercentiles = { count: 0, min: 0, p50: 0, p90: 0, p99: 0, max: 0, mean: 0 }
 
-const fullGlobalPayload = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+const fullGlobalPayload = (overrides: Record<string, unknown>): Record<string, unknown> => ({
   generatedAt: 1000,
   window: '30d',
   subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
@@ -56,98 +57,24 @@ const fullGlobalPayload = (overrides: Record<string, unknown> = {}): Record<stri
   ...overrides,
 })
 
-const fullSubjectPayload = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  storageContextId: 'u1',
-  chatUserId: 'u1',
-  contextType: 'dm',
-  displayName: null,
-  memos: {
-    total: 0,
-    byStatus: {},
-    tagCardinality: { distinct: 0, meanPerMemo: 0 },
-    contentBytesTotal: 0,
-    embeddingBytesTotal: 0,
-    withEmbedding: 0,
-    oldestCreatedAt: null,
-    newestCreatedAt: null,
-  },
-  scheduledPrompts: { total: 0, byStatus: {}, distinctDeliveryTargets: 0 },
-  alertPrompts: { total: 0, byStatus: {} },
-  recurringTasks: {
-    total: 0,
-    enabled: 0,
-    disabled: 0,
-    distinctProjects: 0,
-    nextRunWithin7d: 0,
-    distinctRrulePatterns: 0,
-  },
-  userInstructions: { total: 0, textBytesTotal: 0 },
-  attachments: {
-    total: 0,
-    byStatus: {},
-    bySourceProvider: {},
-    storedBytesTotal: 0,
-    active: 0,
-    byExtension: {},
-  },
-  messageMetadata: {
-    total: 0,
-    authoredBySubject: 0,
-    oldestTimestamp: null,
-    newestTimestamp: null,
-    textBytesTotal: 0,
-  },
-  conversationHistory: { turnCount: 0, summaryPresent: false },
-  userIdentityMappings: {},
-  stagedFiles: { total: 0, byStatus: {}, bytesTotal: 0 },
-  userBlock: { addedAt: null, addedByPresent: false, kaneoWorkspacePresent: false },
-  groupBlock: null,
-  webFetches: { totalRequests: 0 },
-  llmUsage: { rowCount: 0, inputTokensTotal: 0, outputTokensTotal: 0 },
-  toolCalls: { total: 0, success: 0, failure: 0, topTools: [], errorTypeCounts: {} },
-  ...overrides,
-})
-
 describe('fetchStatsGlobal', () => {
   test('GETs /stats/global with the requested window', async () => {
     installFetch(200, fullGlobalPayload({ window: '7d' }))
     const result = await fetchStatsGlobal('7d')
-    expect(captured[0]?.url).toBe('/stats/global?window=7d')
+    expect(captured[0]).toEqual({ url: '/stats/global?window=7d', init: {} })
     expect(result.window).toBe('7d')
   })
 
   test('defaults to no query param when window is omitted', async () => {
-    installFetch(200, fullGlobalPayload())
-    const result = await fetchStatsGlobal()
-    expect(captured[0]?.url).toBe('/stats/global')
+    installFetch(200, fullGlobalPayload({}))
+    const missingWindow: StatsWindow | undefined = undefined
+    const result = await fetchStatsGlobal(missingWindow)
+    expect(captured[0]).toEqual({ url: '/stats/global', init: {} })
     expect(result.window).toBe('30d')
   })
 
   test('throws on non-2xx with the server error message', async () => {
     installFetch(400, { error: 'unknown window' })
     await expect(fetchStatsGlobal('7d')).rejects.toThrow('unknown window')
-  })
-})
-
-describe('fetchStatsSubject', () => {
-  test('GETs /stats/subject/<encoded id>', async () => {
-    installFetch(
-      200,
-      fullSubjectPayload({
-        storageContextId: 'group-9:thread-1',
-        contextType: 'group',
-        chatUserId: null,
-        userBlock: null,
-        groupBlock: { memberCount: 1, distinctAddedBy: 1, observationCount: 0 },
-      }),
-    )
-    const result = await fetchStatsSubject('group-9:thread-1')
-    expect(captured[0]?.url).toBe(`/stats/subject/${encodeURIComponent('group-9:thread-1')}`)
-    expect(result.storageContextId).toBe('group-9:thread-1')
-  })
-
-  test('throws on 404 with the server error message', async () => {
-    installFetch(404, { error: 'subject not found' })
-    await expect(fetchStatsSubject('missing')).rejects.toThrow('subject not found')
   })
 })

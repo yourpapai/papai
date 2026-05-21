@@ -138,4 +138,33 @@ describe('BillingSection', () => {
     expect(calls.some((url) => url.startsWith('/stats/subject/ctx-A'))).toBe(true)
     void unmount(component)
   })
+
+  test('shows the visible error when a window change fetch fails', async () => {
+    const calls: string[] = []
+    const responses = [
+      Response.json({ window: '30d', subjects: [subject('ctx-A')] }),
+      Response.json({ error: 'unknown window' }, { status: 400 }),
+    ]
+    setMockFetch((url) => {
+      calls.push(url)
+      const response = responses[calls.length - 1]
+      expect(response).toBeDefined()
+      return Promise.resolve(response!)
+    })
+
+    const { target, component } = render()
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="billing-window-select"]')
+    expect(select).not.toBeNull()
+    select!.value = '7d'
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    flushSync()
+
+    expect(calls.some((url) => url.includes('window=7d'))).toBe(true)
+    expect(target.textContent).toContain('unknown window')
+    void unmount(component)
+  })
 })

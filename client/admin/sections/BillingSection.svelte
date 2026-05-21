@@ -56,7 +56,7 @@
 
   function onWindowChange(window: BillingWindow): void {
     billingWindow = window
-    void loadSubjects()
+    void refreshAll()
   }
 
   function closeDetail(): void {

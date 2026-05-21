@@ -24,4 +24,12 @@ describe('debug/admin split boundaries', () => {
     const source = await Bun.file('client/admin/handlers-admin-extras.ts').text()
     expect(source).not.toContain('../debug/handlers-helpers.js')
   })
+
+  test('debug no longer owns per-subject stats UI or subject fetcher after task 9', async () => {
+    expect(await Bun.file('client/debug/stats/SubjectStatsPanel.svelte').exists()).toBe(false)
+
+    const fetchers = await Bun.file('client/debug/stats/fetchers.ts').text()
+    expect(fetchers).not.toContain('SubjectStatsSchema')
+    expect(fetchers).not.toContain('fetchStatsSubject')
+  })
 })

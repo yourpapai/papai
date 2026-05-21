@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import type { GlobalStats, StatsWindow, SubjectStats } from '../../../src/stats/types.js'
+import type { GlobalStats, StatsWindow } from '../../../src/stats/types.js'
 import { readBody, requireOk } from '../../shared/fetcher-helpers.js'
 
 const PercentilesSchema = z.object({
@@ -52,96 +52,10 @@ const GlobalStatsSchema = z.object({
   }),
 })
 
-const StatsContextTypeSchema = z.enum(['dm', 'group', 'unknown'])
-
-const SubjectStatsSchema = z.object({
-  storageContextId: z.string(),
-  chatUserId: z.string().nullable(),
-  contextType: StatsContextTypeSchema,
-  displayName: z.string().nullable(),
-  memos: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    tagCardinality: z.object({ distinct: z.number(), meanPerMemo: z.number() }),
-    contentBytesTotal: z.number(),
-    embeddingBytesTotal: z.number(),
-    withEmbedding: z.number(),
-    oldestCreatedAt: z.number().nullable(),
-    newestCreatedAt: z.number().nullable(),
-  }),
-  scheduledPrompts: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    distinctDeliveryTargets: z.number(),
-  }),
-  alertPrompts: z.object({ total: z.number(), byStatus: z.record(z.string(), z.number()) }),
-  recurringTasks: z.object({
-    total: z.number(),
-    enabled: z.number(),
-    disabled: z.number(),
-    distinctProjects: z.number(),
-    nextRunWithin7d: z.number(),
-    distinctRrulePatterns: z.number(),
-  }),
-  userInstructions: z.object({ total: z.number(), textBytesTotal: z.number() }),
-  attachments: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    bySourceProvider: z.record(z.string(), z.number()),
-    storedBytesTotal: z.number(),
-    active: z.number(),
-    byExtension: z.record(z.string(), z.number()),
-  }),
-  messageMetadata: z.object({
-    total: z.number(),
-    authoredBySubject: z.number(),
-    oldestTimestamp: z.number().nullable(),
-    newestTimestamp: z.number().nullable(),
-    textBytesTotal: z.number(),
-  }),
-  conversationHistory: z.object({ turnCount: z.number(), summaryPresent: z.boolean() }),
-  userIdentityMappings: z.record(z.string(), z.number()),
-  stagedFiles: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    bytesTotal: z.number(),
-  }),
-  userBlock: z
-    .object({
-      addedAt: z.string().nullable(),
-      addedByPresent: z.boolean(),
-      kaneoWorkspacePresent: z.boolean(),
-    })
-    .nullable(),
-  groupBlock: z
-    .object({ memberCount: z.number(), distinctAddedBy: z.number(), observationCount: z.number() })
-    .nullable(),
-  webFetches: z.object({ totalRequests: z.number() }),
-  llmUsage: z.object({
-    rowCount: z.number(),
-    inputTokensTotal: z.number(),
-    outputTokensTotal: z.number(),
-  }),
-  toolCalls: z.object({
-    total: z.number(),
-    success: z.number(),
-    failure: z.number(),
-    topTools: z.array(z.object({ toolName: z.string(), count: z.number() })),
-    errorTypeCounts: z.record(z.string(), z.number()),
-  }),
-})
-
-export const fetchStatsGlobal = async (window?: StatsWindow): Promise<GlobalStats> => {
+export const fetchStatsGlobal = async (window: StatsWindow | undefined): Promise<GlobalStats> => {
   const path = window === undefined ? '/stats/global' : `/stats/global?window=${encodeURIComponent(window)}`
   const res = await fetch(path)
   const body = await readBody(res)
   requireOk(res, body)
   return GlobalStatsSchema.parse(body) as GlobalStats
-}
-
-export const fetchStatsSubject = async (storageContextId: string): Promise<SubjectStats> => {
-  const res = await fetch(`/stats/subject/${encodeURIComponent(storageContextId)}`)
-  const body = await readBody(res)
-  requireOk(res, body)
-  return SubjectStatsSchema.parse(body) as SubjectStats
 }
