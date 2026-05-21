@@ -38,8 +38,8 @@ describe('build-client', () => {
     expect(fs.existsSync(PUBLIC_DIR)).toBe(true)
   })
 
-  test('outputs debug.js as IIFE', () => {
-    const jsPath = path.join(PUBLIC_DIR, 'debug.js')
+  test.each([['debug.js'], ['admin.js']])('outputs %s as IIFE', (jsName) => {
+    const jsPath = path.join(PUBLIC_DIR, jsName)
     expect(fs.existsSync(jsPath)).toBe(true)
     const content = fs.readFileSync(jsPath, 'utf8')
     expect(content.length).toBeGreaterThan(0)
@@ -51,19 +51,22 @@ describe('build-client', () => {
     expect(content).not.toMatch(/^import /mu)
   })
 
-  test('copies debug.html', () => {
-    const htmlPath = path.join(PUBLIC_DIR, 'debug.html')
+  test.each([
+    ['debug.html', 'debug.js'],
+    ['admin.html', 'admin.js'],
+  ])('copies %s', (htmlName, jsName) => {
+    const htmlPath = path.join(PUBLIC_DIR, htmlName)
     expect(fs.existsSync(htmlPath)).toBe(true)
     const content = fs.readFileSync(htmlPath, 'utf8')
     expect(content).toContain('<!doctype html>')
-    expect(content).toContain('debug.js')
+    expect(content).toContain(jsName)
     // Single script reference (not dashboard-ui.js + dashboard-state.js)
     expect(content).not.toContain('dashboard-ui.js')
     expect(content).not.toContain('dashboard-state.js')
   })
 
-  test('copies debug.css', () => {
-    const cssPath = path.join(PUBLIC_DIR, 'debug.css')
+  test.each([['debug.css'], ['admin.css']])('copies %s', (cssName) => {
+    const cssPath = path.join(PUBLIC_DIR, cssName)
     expect(fs.existsSync(cssPath)).toBe(true)
     const content = fs.readFileSync(cssPath, 'utf8')
     expect(content).toContain('{')

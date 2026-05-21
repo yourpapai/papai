@@ -27,7 +27,7 @@ const TEST_PORT = 19100
 const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
 
 function ensurePublicBuilt(): void {
-  const required = ['debug.js', 'debug.html', 'debug.css']
+  const required = ['debug.js', 'debug.html', 'debug.css', 'admin.js', 'admin.html', 'admin.css']
   const missing = required.some((f) => !fs.existsSync(path.join(PUBLIC_DIR, f)))
   if (!missing) return
 
@@ -150,6 +150,18 @@ describe('debug-server', () => {
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('javascript')
+    const body = await res.text()
+    expect(body.length).toBeGreaterThan(0)
+  })
+
+  test.each([
+    ['/admin', 'text/html'],
+    ['/admin.js', 'javascript'],
+    ['/admin.css', 'text/css'],
+  ])('GET %s returns admin asset', async (assetPath, contentType) => {
+    const res = await fetch(`http://localhost:${TEST_PORT}${assetPath}`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain(contentType)
     const body = await res.text()
     expect(body.length).toBeGreaterThan(0)
   })

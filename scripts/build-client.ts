@@ -31,6 +31,15 @@ const BUNDLES: BundleConfig[] = [
     baseCssPath: 'client/shared/base.css',
     localCssPath: 'client/debug/debug.css',
   },
+  {
+    entry: 'client/admin/index.ts',
+    htmlSrc: 'client/admin/admin.html',
+    jsName: 'admin.js',
+    htmlName: 'admin.html',
+    cssName: 'admin.css',
+    baseCssPath: 'client/shared/base.css',
+    localCssPath: 'client/admin/admin.css',
+  },
 ]
 
 async function bundleJS(config: BundleConfig, collectedCss: string[]): Promise<void> {

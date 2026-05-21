@@ -112,6 +112,24 @@ function handleDebugFile(pathname: string): Response {
   return new Response('Not found', { status: 404 })
 }
 
+function handleAdminFile(pathname: string): Response {
+  if (pathname === '/admin') {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.html')))
+  }
+
+  if (pathname === '/admin.js') {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.js')), {
+      headers: { 'Content-Type': 'text/javascript' },
+    })
+  }
+
+  if (pathname === '/admin.css') {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.css')))
+  }
+
+  return new Response('Not found', { status: 404 })
+}
+
 function handleTurnLookup(url: URL): Response {
   const turnId = url.pathname.slice('/turns/'.length)
   if (turnId !== '') {
@@ -212,6 +230,9 @@ function routeRequest(req: Request): Response | Promise<Response> {
   }
   if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname === '/debug.css') {
     return handleDebugFile(url.pathname)
+  }
+  if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
+    return handleAdminFile(url.pathname)
   }
   if (url.pathname === '/dashboard') {
     return new Response(null, { status: 301, headers: { Location: '/debug' } })

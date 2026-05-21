@@ -1,0 +1,82 @@
+/* SPDX-License-Identifier: BUSL-1.1 */
+/* Copyright (c) 2026 Dmitriy Lazarev */
+/* Use of this software is governed by the Business Source License 1.1. */
+/* See LICENSE in the project root for details. */
+
+.admin-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0b0d10;
+}
+
+.admin-topbar {
+  flex: 0 0 auto;
+  padding: 16px 20px;
+  border-bottom: 1px solid #20252d;
+  background: #11151b;
+}
+
+.admin-topbar h1,
+.admin-pane h2 {
+  color: #f2f5f8;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: #778292;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-right: 1px solid #20252d;
+  background: #0f1318;
+}
+
+.admin-sidebar a {
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #aab3c0;
+  text-decoration: none;
+}
+
+.admin-sidebar a:hover,
+.admin-sidebar a.active {
+  border-color: #2b3543;
+  background: #18202a;
+  color: #ffffff;
+}
+
+.admin-pane {
+  min-width: 0;
+  padding: 24px;
+  overflow: auto;
+}
+
+@media (max-width: 720px) {
+  .admin-body {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    flex-flow: row wrap;
+    border-right: 0;
+    border-bottom: 1px solid #20252d;
+  }
+}
