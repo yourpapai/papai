@@ -166,10 +166,15 @@ describe('Modal.svelte', () => {
     void unmount(component)
   })
 
-  test('defaults to the md size class', () => {
+  test('keeps the legacy modal width when size is omitted', () => {
     const { target, component } = renderModal(defaultRenderModalOptions())
 
-    expect(target.querySelector('.modal-content.modal--md')).not.toBeNull()
+    const modalContent = target.querySelector('.modal-content')
+    expect(modalContent).not.toBeNull()
+    expect(modalContent!.classList.contains('modal--sm')).toBe(false)
+    expect(modalContent!.classList.contains('modal--md')).toBe(false)
+    expect(modalContent!.classList.contains('modal--lg')).toBe(false)
+    expect(modalContent!.classList.contains('modal--xl')).toBe(false)
     void unmount(component)
   })
 

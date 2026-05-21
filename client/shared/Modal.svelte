@@ -17,7 +17,7 @@
 
   let { open, title, onClose, body, size, footer }: Props = $props()
 
-  const sizeClass = $derived(size === undefined ? 'md' : size)
+  const sizeClass = $derived(size === undefined ? null : size)
 
   function onBackdropClick(event: MouseEvent): void {
     if (event.target === event.currentTarget) onClose()
@@ -32,7 +32,7 @@
 
 {#if open}
   <div class="modal" onclick={onBackdropClick} role="presentation">
-    <div class={`modal-content modal--${sizeClass}`}>
+    <div class={`modal-content${sizeClass === null ? '' : ` modal--${sizeClass}`}`}>
       <div class="modal-header">
         <h3>{title}</h3>
         <button class="modal-close" aria-label="Close" onclick={onClose}>×</button>
