@@ -5,25 +5,92 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { mount, unmount } from 'svelte'
+import { createRawSnippet, mount, unmount } from 'svelte'
+import type { Snippet } from 'svelte'
 
-import ModalTestHelper from './ModalTestHelper.svelte'
+import Modal from '../../../client/shared/Modal.svelte'
+
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl'
+
+interface RenderModalOptions {
+  open: boolean | undefined
+  title: string | undefined
+  onClose: (() => void) | undefined
+  size: ModalSize | undefined
+  footer: Snippet | undefined
+}
+
+function textSnippet(text: string): Snippet {
+  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<div>${text}</div>` }))
+}
+
+function defaultRenderModalOptions(): RenderModalOptions {
+  return {
+    open: undefined,
+    title: undefined,
+    onClose: undefined,
+    size: undefined,
+    footer: undefined,
+  }
+}
+
+function resolveModalOptions(optionsInput: RenderModalOptions | undefined): RenderModalOptions {
+  if (optionsInput !== undefined) return optionsInput
+  return defaultRenderModalOptions()
+}
+
+function resolveModalOpen(options: RenderModalOptions): boolean {
+  if (options.open !== undefined) return options.open
+  return true
+}
+
+function resolveModalTitle(options: RenderModalOptions): string {
+  if (options.title !== undefined) return options.title
+  return 'Test Modal'
+}
+
+function noop(): void {}
+
+function resolveModalOnClose(options: RenderModalOptions): () => void {
+  if (options.onClose !== undefined) return options.onClose
+  return noop
+}
+
+function renderModal(optionsInput: RenderModalOptions | undefined): {
+  target: HTMLElement
+  component: ReturnType<typeof mount>
+} {
+  const options = resolveModalOptions(optionsInput)
+  const open = resolveModalOpen(options)
+  const title = resolveModalTitle(options)
+  const onClose = resolveModalOnClose(options)
+
+  document.body.innerHTML = '<div id="root"></div>'
+  const target = document.body.querySelector<HTMLElement>('#root')!
+  const component = mount(Modal, {
+    target,
+    props: {
+      open,
+      title,
+      onClose,
+      size: options.size,
+      body: textSnippet('Modal Content'),
+      footer: options.footer,
+    },
+  })
+  return { target, component }
+}
 
 describe('Modal.svelte', () => {
   test('renders title and content when open', () => {
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.getElementById('root')!
     let closed = false
-    const component = mount(ModalTestHelper, {
-      target,
-      props: {
-        open: true,
-        title: 'Test Modal',
-        onClose: () => {
-          closed = true
-        },
+    const { target, component } = renderModal({
+      ...defaultRenderModalOptions(),
+      onClose: () => {
+        closed = true
       },
     })
+
     expect(target.innerHTML).toContain('Test Modal')
     expect(target.innerHTML).toContain('Modal Content')
     expect(closed).toBe(false)
@@ -31,84 +98,89 @@ describe('Modal.svelte', () => {
   })
 
   test('when open is false, nothing is rendered', () => {
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.getElementById('root')!
     let closed = false
-    const component = mount(ModalTestHelper, {
-      target,
-      props: {
-        open: false,
-        title: 'Test Modal',
-        onClose: () => {
-          closed = true
-        },
+    const { target, component } = renderModal({
+      ...defaultRenderModalOptions(),
+      open: false,
+      onClose: () => {
+        closed = true
       },
     })
-    expect(target.innerHTML).toBe('<!---->')
+
+    expect(target.querySelector('.modal')).toBeNull()
+    expect(target.textContent).toBe('')
     expect(closed).toBe(false)
     void unmount(component)
   })
 
   test('pressing Escape closes the modal', () => {
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.getElementById('root')!
     let closed = false
-    const component = mount(ModalTestHelper, {
-      target,
-      props: {
-        open: true,
-        title: 'Test Modal',
-        onClose: () => {
-          closed = true
-        },
+    const { component } = renderModal({
+      ...defaultRenderModalOptions(),
+      onClose: () => {
+        closed = true
       },
     })
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(closed).toBe(true)
     void unmount(component)
   })
 
   test('clicking backdrop triggers onClose', () => {
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.getElementById('root')!
     let closed = false
-    const component = mount(ModalTestHelper, {
-      target,
-      props: {
-        open: true,
-        title: 'Test Modal',
-        onClose: () => {
-          closed = true
-        },
+    const { target, component } = renderModal({
+      ...defaultRenderModalOptions(),
+      onClose: () => {
+        closed = true
       },
     })
 
     const backdrop = target.querySelector('.modal')
     expect(backdrop).not.toBeNull()
-    backdrop?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    backdrop!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     expect(closed).toBe(true)
     void unmount(component)
   })
 
   test('clicking modal-content does not trigger onClose', () => {
-    document.body.innerHTML = '<div id="root"></div>'
-    const target = document.getElementById('root')!
     let closed = false
-    const component = mount(ModalTestHelper, {
-      target,
-      props: {
-        open: true,
-        title: 'Test Modal',
-        onClose: () => {
-          closed = true
-        },
+    const { target, component } = renderModal({
+      ...defaultRenderModalOptions(),
+      onClose: () => {
+        closed = true
       },
     })
 
     const modalContent = target.querySelector('.modal-content')
     expect(modalContent).not.toBeNull()
-    modalContent?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    modalContent!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     expect(closed).toBe(false)
+    void unmount(component)
+  })
+
+  test.each<ModalSize>(['sm', 'md', 'lg', 'xl'])('renders the %s size class', (size) => {
+    const { target, component } = renderModal({ ...defaultRenderModalOptions(), size })
+
+    expect(target.querySelector(`.modal-content.modal--${size}`)).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('defaults to the md size class', () => {
+    const { target, component } = renderModal(defaultRenderModalOptions())
+
+    expect(target.querySelector('.modal-content.modal--md')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('renders footer content when provided', () => {
+    const { target, component } = renderModal({
+      ...defaultRenderModalOptions(),
+      footer: textSnippet('Modal Footer'),
+    })
+
+    expect(target.querySelector('.modal-footer')).not.toBeNull()
+    expect(target.textContent).toContain('Modal Footer')
     void unmount(component)
   })
 })
