@@ -5,4 +5,6 @@
   let { connected }: Props = $props()
 </script>
 
-<span class="status-dot {connected ? 'connected' : 'disconnected'}"></span>
+<span class="status-dot {connected ? 'connected' : 'disconnected'}">
+  ● {connected ? 'connected' : 'disconnected'}
+</span>

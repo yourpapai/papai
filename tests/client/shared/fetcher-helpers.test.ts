@@ -18,8 +18,23 @@ describe('fetcher-helpers', () => {
     expect(await readBody(res)).toEqual({ ok: true })
   })
 
-  test('requireOk throws on non-ok', () => {
+  test('readBody handles non-json input safely', async () => {
+    const res = new Response('not a json string')
+    expect(await readBody(res)).toBeNull()
+  })
+
+  test('requireOk does not throw on ok response', () => {
+    const res = new Response(null, { status: 200 })
+    expect(() => requireOk(res, null)).not.toThrow()
+  })
+
+  test('requireOk throws on non-ok (5xx)', () => {
     const res = new Response(null, { status: 500 })
     expect(() => requireOk(res, { error: 'server error' })).toThrow('server error')
+  })
+
+  test('requireOk throws on non-ok (4xx)', () => {
+    const res = new Response(null, { status: 400 })
+    expect(() => requireOk(res, { error: 'bad request' })).toThrow('bad request')
   })
 })
