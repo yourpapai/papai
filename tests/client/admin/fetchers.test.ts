@@ -5,7 +5,16 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { fetchAdminLlm, fetchAdminSystem, submitAdminLlm } from '../../../client/admin/fetchers.js'
+import {
+  fetchAdminGroups,
+  fetchAdminIdentity,
+  fetchAdminLlm,
+  fetchAdminSystem,
+  fetchDeferredPrompts,
+  fetchMemos,
+  fetchRecurringTasks,
+  submitAdminLlm,
+} from '../../../client/admin/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
@@ -31,6 +40,12 @@ const firstCaptured = (): { readonly url: string; readonly init: RequestInit } =
   const first = captured[0]
   if (first === undefined) throw new Error('missing captured fetch call')
   return first
+}
+
+const expectDefined = <T>(value: T | undefined | null, message: string): NonNullable<T> => {
+  expect(value, message).not.toBeUndefined()
+  expect(value, message).not.toBeNull()
+  return value!
 }
 
 describe('fetchAdminLlm', () => {
@@ -83,5 +98,138 @@ describe('fetchAdminSystem', () => {
     })
 
     await expect(fetchAdminSystem()).rejects.toThrow()
+  })
+})
+
+describe('fetchMemos', () => {
+  test('GETs /memos with userId and state', async () => {
+    installFetch(200, [
+      {
+        id: 'memo-1',
+        userId: 'user-1',
+        content: 'remember this',
+        summary: 'remember',
+        tags: ['work'],
+        status: 'archived',
+        createdAt: '2026-05-21T00:00:00.000Z',
+        updatedAt: '2026-05-21T01:00:00.000Z',
+      },
+    ])
+
+    const result = await fetchMemos('user-1', 'archived')
+    const firstMemo = expectDefined(result[0], 'missing memo')
+
+    expect(firstCaptured().url).toBe('/memos?userId=user-1&state=archived')
+    expect(result).toHaveLength(1)
+    expect(firstMemo.status).toBe('archived')
+  })
+
+  test('rejects malformed memo payloads', async () => {
+    installFetch(200, [{ id: 'memo-1', userId: 'user-1' }])
+
+    await expect(fetchMemos('user-1', 'active')).rejects.toThrow()
+  })
+})
+
+describe('fetchRecurringTasks', () => {
+  test('GETs /recurring with userId', async () => {
+    installFetch(200, [
+      {
+        id: 'rec-1',
+        userId: 'user-1',
+        title: 'Daily sync',
+        rrule: 'FREQ=DAILY',
+        nextRun: '2026-05-22T00:00:00.000Z',
+        enabled: true,
+        lastRun: null,
+      },
+    ])
+
+    const result = await fetchRecurringTasks('user-1')
+    const firstTask = expectDefined(result[0], 'missing recurring task')
+
+    expect(firstCaptured().url).toBe('/recurring?userId=user-1')
+    expect(firstTask.title).toBe('Daily sync')
+  })
+
+  test('rejects malformed recurring payloads', async () => {
+    installFetch(200, [{ id: 'rec-1' }])
+
+    await expect(fetchRecurringTasks('user-1')).rejects.toThrow()
+  })
+})
+
+describe('fetchDeferredPrompts', () => {
+  test('GETs /deferred with userId', async () => {
+    installFetch(200, [
+      {
+        id: 'def-1',
+        createdByUserId: 'user-1',
+        prompt: 'Check project',
+        fireAt: '2026-05-22T10:00:00.000Z',
+        rrule: null,
+        status: 'active',
+      },
+    ])
+
+    const result = await fetchDeferredPrompts('user-1')
+    const firstPrompt = expectDefined(result[0], 'missing deferred prompt')
+
+    expect(firstCaptured().url).toBe('/deferred?userId=user-1')
+    expect(firstPrompt.prompt).toBe('Check project')
+  })
+
+  test('rejects malformed deferred payloads', async () => {
+    installFetch(200, [{ id: 'def-1' }])
+
+    await expect(fetchDeferredPrompts('user-1')).rejects.toThrow()
+  })
+})
+
+describe('fetchAdminIdentity', () => {
+  test('GETs /identity with userId and provider', async () => {
+    installFetch(200, {
+      userId: 'user-1',
+      provider: 'kaneo',
+      providerUserId: 'provider-1',
+      providerUserLogin: 'ki',
+      displayName: 'Ki',
+    })
+
+    const result = await fetchAdminIdentity('user-1', 'kaneo')
+    const mapping = expectDefined(result, 'missing identity mapping')
+
+    expect(firstCaptured().url).toBe('/identity?userId=user-1&provider=kaneo')
+    expect(mapping.providerUserId).toBe('provider-1')
+  })
+
+  test('returns null for not found identity lookups', async () => {
+    installFetch(404, { error: 'not found' })
+
+    await expect(fetchAdminIdentity('user-1', 'kaneo')).resolves.toBeNull()
+  })
+
+  test('rejects malformed identity payloads', async () => {
+    installFetch(200, { userId: 'user-1', provider: 'kaneo' })
+
+    await expect(fetchAdminIdentity('user-1', 'kaneo')).rejects.toThrow()
+  })
+})
+
+describe('fetchAdminGroups', () => {
+  test('GETs /auth/groups', async () => {
+    installFetch(200, [{ group_id: 'group-1', added_by: 'admin', added_at: '2026-05-21T00:00:00.000Z' }])
+
+    const result = await fetchAdminGroups()
+    const firstGroup = expectDefined(result[0], 'missing group')
+
+    expect(firstCaptured().url).toBe('/auth/groups')
+    expect(firstGroup.group_id).toBe('group-1')
+  })
+
+  test('rejects malformed group payloads', async () => {
+    installFetch(200, [{ group_id: 'group-1' }])
+
+    await expect(fetchAdminGroups()).rejects.toThrow()
   })
 })

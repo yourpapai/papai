@@ -9,6 +9,10 @@
   import { adminState, sectionLabel, syncSectionFromLocation } from './admin.svelte.js'
   import NavSidebar from './components/NavSidebar.svelte'
   import BillingSection from './sections/BillingSection.svelte'
+  import GroupsSection from './sections/GroupsSection.svelte'
+  import IdentitiesSection from './sections/IdentitiesSection.svelte'
+  import MemosSection from './sections/MemosSection.svelte'
+  import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
   import SystemSection from './sections/SystemSection.svelte'
 
@@ -36,6 +40,14 @@
         <BillingSection />
       {:else if adminState.currentSection === 'stats'}
         <StatsSection />
+      {:else if adminState.currentSection === 'memos'}
+        <MemosSection />
+      {:else if adminState.currentSection === 'reminders'}
+        <RemindersSection />
+      {:else if adminState.currentSection === 'identities'}
+        <IdentitiesSection />
+      {:else if adminState.currentSection === 'groups'}
+        <GroupsSection />
       {:else}
         <section>
           <p class="eyebrow">Section</p>

@@ -5,23 +5,15 @@
 
 import { describe, expect, test } from 'bun:test'
 
-const files = [
-  'client/debug/components/RemindersPanel.svelte',
-  'client/debug/components/MemosPanel.svelte',
-  'client/debug/components/ContextPanel.svelte',
-] as const
-
 describe('debug/admin split boundaries', () => {
-  test('legacy admin and backstage components do not type props with debug DashboardState', async () => {
-    for (const file of files) {
-      const source = await Bun.file(file).text()
-      expect(source).not.toContain('DashboardState')
-    }
+  test('legacy debug-only admin panels were removed after admin split', async () => {
+    expect(await Bun.file('client/debug/components/RemindersPanel.svelte').exists()).toBe(false)
+    expect(await Bun.file('client/debug/components/MemosPanel.svelte').exists()).toBe(false)
+    expect(await Bun.file('client/debug/components/ContextPanel.svelte').exists()).toBe(false)
   })
 
-  test('admin handler holding pen does not import debug helpers', async () => {
-    const source = await Bun.file('client/admin/handlers-admin-extras.ts').text()
-    expect(source).not.toContain('../debug/handlers-helpers.js')
+  test('temporary admin extras holding pen was removed', async () => {
+    expect(await Bun.file('client/admin/handlers-admin-extras.ts').exists()).toBe(false)
   })
 
   test('debug no longer owns stats UI or stats fetchers after task 10', async () => {

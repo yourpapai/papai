@@ -9,219 +9,34 @@ import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/typ
 import type {
   AdminLlmSnapshot,
   AdminSystemSummary,
+  AuthorizedGroupEntry,
   BillingDetail,
   BillingSubject,
   BillingWindow,
+  DeferredPrompt,
+  IdentityMappingEntry,
+  Memo,
+  RecurringTask,
 } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
-
-const BillingRoleTotalsSchema = z.object({
-  inputTokens: z.number(),
-  outputTokens: z.number(),
-  calls: z.number(),
-})
-
-const PercentilesSchema = z.object({
-  count: z.number(),
-  min: z.number(),
-  p50: z.number(),
-  p90: z.number(),
-  p99: z.number(),
-  max: z.number(),
-  mean: z.number(),
-})
-
-const StatsWindowSchema = z.enum(['1d', '7d', '30d', 'all'])
-
-const GlobalStatsSchema = z.object({
-  generatedAt: z.number(),
-  window: StatsWindowSchema,
-  subjects: z.object({
-    dmTotal: z.number(),
-    groupTotal: z.number(),
-    growthLast30d: z.array(z.object({ date: z.string(), dmAdded: z.number(), groupAdded: z.number() })),
-  }),
-  active: z.object({ activeIn1d: z.number(), activeIn7d: z.number(), activeIn30d: z.number() }),
-  distributions: z.object({
-    memosPerSubject: PercentilesSchema,
-    recurringTasksPerSubject: PercentilesSchema,
-    messageMetadataPerSubject: PercentilesSchema,
-    attachmentBytesPerSubject: PercentilesSchema,
-  }),
-  storage: z.object({ sqliteBytes: z.number(), s3AttachmentBytes: z.number() }),
-  identityMix: z.object({ byProvider: z.record(z.string(), z.number()), kaneoWorkspaces: z.number() }),
-  surfaceMix: z.object({
-    subjectsWithRecurring: z.number(),
-    subjectsWithDeferred: z.number(),
-    subjectsWithMemos: z.number(),
-    subjectsWithInstructions: z.number(),
-  }),
-  webFetches: z.object({
-    topHosts: z.array(z.object({ hostHash: z.string(), count: z.number() })),
-  }),
-  toolMix: z.object({
-    topTools: z.array(z.object({ toolName: z.string(), count: z.number(), successRate: z.number() })),
-    errorTypeCounts: z.record(z.string(), z.number()),
-  }),
-})
-
-const BillingSubjectSchema = z.object({
-  storageContextId: z.string(),
-  contextType: z.enum(['dm', 'group']),
-  displayName: z.string().nullable(),
-  totals: z.object({
-    main: BillingRoleTotalsSchema,
-    small: BillingRoleTotalsSchema,
-    embedding: BillingRoleTotalsSchema,
-  }),
-  toolCalls: z.number(),
-  lastActiveAt: z.number(),
-})
-
-const BillingRequestRowSchema = z.object({
-  eventId: z.string(),
-  occurredAt: z.number(),
-  turnId: z.string().nullable(),
-  chatUserId: z.string(),
-  model: z.string(),
-  modelRole: z.enum(['main', 'small', 'embedding']),
-  inputTokens: z.number().nullable(),
-  outputTokens: z.number().nullable(),
-  stepCount: z.number(),
-  toolCallCount: z.number(),
-  messageCount: z.number(),
-  durationMs: z.number(),
-  finishReason: z.string().nullable(),
-  error: z.string().nullable(),
-})
-
-const BillingWindowSchema = z.enum(['24h', '7d', '30d', 'all'])
-
-const BillingSubjectsResponseSchema = z.object({
-  window: BillingWindowSchema,
-  subjects: z.array(BillingSubjectSchema),
-})
-
-const BillingDetailResponseSchema = z.object({
-  window: BillingWindowSchema,
-  subject: BillingSubjectSchema,
-  requests: z.array(BillingRequestRowSchema),
-  truncated: z.boolean(),
-})
-
-const StatsContextTypeSchema = z.enum(['dm', 'group', 'unknown'])
-
-const SubjectStatsSchema = z.object({
-  storageContextId: z.string(),
-  chatUserId: z.string().nullable(),
-  contextType: StatsContextTypeSchema,
-  displayName: z.string().nullable(),
-  memos: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    tagCardinality: z.object({ distinct: z.number(), meanPerMemo: z.number() }),
-    contentBytesTotal: z.number(),
-    embeddingBytesTotal: z.number(),
-    withEmbedding: z.number(),
-    oldestCreatedAt: z.number().nullable(),
-    newestCreatedAt: z.number().nullable(),
-  }),
-  scheduledPrompts: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    distinctDeliveryTargets: z.number(),
-  }),
-  alertPrompts: z.object({ total: z.number(), byStatus: z.record(z.string(), z.number()) }),
-  recurringTasks: z.object({
-    total: z.number(),
-    enabled: z.number(),
-    disabled: z.number(),
-    distinctProjects: z.number(),
-    nextRunWithin7d: z.number(),
-    distinctRrulePatterns: z.number(),
-  }),
-  userInstructions: z.object({ total: z.number(), textBytesTotal: z.number() }),
-  attachments: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    bySourceProvider: z.record(z.string(), z.number()),
-    storedBytesTotal: z.number(),
-    active: z.number(),
-    byExtension: z.record(z.string(), z.number()),
-  }),
-  messageMetadata: z.object({
-    total: z.number(),
-    authoredBySubject: z.number(),
-    oldestTimestamp: z.number().nullable(),
-    newestTimestamp: z.number().nullable(),
-    textBytesTotal: z.number(),
-  }),
-  conversationHistory: z.object({ turnCount: z.number(), summaryPresent: z.boolean() }),
-  userIdentityMappings: z.record(z.string(), z.number()),
-  stagedFiles: z.object({
-    total: z.number(),
-    byStatus: z.record(z.string(), z.number()),
-    bytesTotal: z.number(),
-  }),
-  userBlock: z
-    .object({
-      addedAt: z.string().nullable(),
-      addedByPresent: z.boolean(),
-      kaneoWorkspacePresent: z.boolean(),
-    })
-    .nullable(),
-  groupBlock: z
-    .object({ memberCount: z.number(), distinctAddedBy: z.number(), observationCount: z.number() })
-    .nullable(),
-  webFetches: z.object({ totalRequests: z.number() }),
-  llmUsage: z.object({
-    rowCount: z.number(),
-    inputTokensTotal: z.number(),
-    outputTokensTotal: z.number(),
-  }),
-  toolCalls: z.object({
-    total: z.number(),
-    success: z.number(),
-    failure: z.number(),
-    topTools: z.array(z.object({ toolName: z.string(), count: z.number() })),
-    errorTypeCounts: z.record(z.string(), z.number()),
-  }),
-})
-
-const AdminLlmKeyStateSchema = z.object({
-  value: z.string().nullable(),
-  updatedAt: z.number().nullable(),
-  updatedBy: z.string().nullable(),
-})
-
-const AdminLlmSnapshotSchema = z.object({
-  llm_apikey: AdminLlmKeyStateSchema,
-  llm_baseurl: AdminLlmKeyStateSchema,
-  main_model: AdminLlmKeyStateSchema,
-  small_model: AdminLlmKeyStateSchema,
-  embedding_model: AdminLlmKeyStateSchema,
-})
-
-const AdminChatProviderSchema = z.enum(['telegram', 'mattermost', 'discord', 'unknown'])
-const AdminTaskProviderSchema = z.enum(['kaneo', 'youtrack', 'unknown'])
-
-const AdminSystemSummarySchema = z.object({
-  chatProvider: AdminChatProviderSchema,
-  taskProvider: AdminTaskProviderSchema,
-  debugServer: z.boolean(),
-  adminUserSet: z.boolean(),
-})
-
-const AdminLlmKeySchema = z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model'])
-
-const SubmitAdminLlmResponseSchema = z.object({
-  ok: z.literal(true),
-  key: AdminLlmKeySchema,
-  updatedAt: z.number(),
-})
+import {
+  AdminLlmSnapshotSchema,
+  AdminSystemSummarySchema,
+  AuthorizedGroupEntrySchema,
+  BillingDetailResponseSchema,
+  BillingSubjectsResponseSchema,
+  DeferredPromptSchema,
+  GlobalStatsSchema,
+  IdentityMappingEntrySchema,
+  MemoSchema,
+  RecurringTaskSchema,
+  SubjectStatsSchema,
+  SubmitAdminLlmResponseSchema,
+  type SubmitAdminLlmKey,
+} from './fetcher-schemas.js'
 
 export type SubmitAdminLlmInput = {
-  readonly key: z.infer<typeof AdminLlmKeySchema>
+  readonly key: SubmitAdminLlmKey
   readonly value: string
 }
 
@@ -290,4 +105,42 @@ export const fetchAdminSystem = async (): Promise<AdminSystemSummary> => {
   const body = await readBody(res)
   requireOk(res, body)
   return AdminSystemSummarySchema.parse(body)
+}
+
+export const fetchMemos = async (userId: string, state: 'active' | 'archived' | 'all'): Promise<Memo[]> => {
+  const path = `/memos?userId=${encodeURIComponent(userId)}&state=${encodeURIComponent(state)}`
+  const res = await fetch(path)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(MemoSchema).parse(body) as Memo[]
+}
+
+export const fetchRecurringTasks = async (userId: string): Promise<RecurringTask[]> => {
+  const res = await fetch(`/recurring?userId=${encodeURIComponent(userId)}`)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(RecurringTaskSchema).parse(body) as RecurringTask[]
+}
+
+export const fetchDeferredPrompts = async (userId: string): Promise<DeferredPrompt[]> => {
+  const res = await fetch(`/deferred?userId=${encodeURIComponent(userId)}`)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(DeferredPromptSchema).parse(body) as DeferredPrompt[]
+}
+
+export const fetchAdminIdentity = async (userId: string, provider: string): Promise<IdentityMappingEntry | null> => {
+  const path = `/identity?userId=${encodeURIComponent(userId)}&provider=${encodeURIComponent(provider)}`
+  const res = await fetch(path)
+  const body = await readBody(res)
+  if (res.status === 404) return null
+  requireOk(res, body)
+  return IdentityMappingEntrySchema.parse(body) as IdentityMappingEntry
+}
+
+export const fetchAdminGroups = async (): Promise<AuthorizedGroupEntry[]> => {
+  const res = await fetch('/auth/groups')
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(AuthorizedGroupEntrySchema).parse(body) as AuthorizedGroupEntry[]
 }
