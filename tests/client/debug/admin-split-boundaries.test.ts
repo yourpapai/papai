@@ -6,7 +6,6 @@
 import { describe, expect, test } from 'bun:test'
 
 const files = [
-  'client/debug/billing/BillingPanel.svelte',
   'client/debug/stats/StatsPanel.svelte',
   'client/debug/components/RemindersPanel.svelte',
   'client/debug/components/MemosPanel.svelte',

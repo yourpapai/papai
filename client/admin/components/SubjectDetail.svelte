@@ -1,6 +1,11 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
-  import type { BillingDetail, BillingRequestRow } from '../dashboard-types.js'
+  import type { BillingDetail, BillingRequestRow } from '../../shared/api-types.js'
 
   interface Props {
     detail: BillingDetail
@@ -54,8 +59,8 @@
           <tr
             data-testid="request-row"
             onclick={() => toggle(row.eventId)}
-            onkeydown={(e: KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ' ') toggle(row.eventId)
+            onkeydown={(event: KeyboardEvent) => {
+              if (event.key === 'Enter' || event.key === ' ') toggle(row.eventId)
             }}
             tabindex="0"
             role="button">

@@ -1,6 +1,11 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
-  import type { BillingSubject } from '../dashboard-types.js'
+  import type { BillingSubject } from '../../shared/api-types.js'
 
   interface Props {
     subjects: readonly BillingSubject[]
@@ -9,9 +14,9 @@
 
   let { subjects, onSelect }: Props = $props()
 
-  function displayLabel(s: BillingSubject): string {
-    if (s.displayName !== null && s.displayName !== '') return s.displayName
-    return s.storageContextId
+  function displayLabel(subject: BillingSubject): string {
+    if (subject.displayName !== null && subject.displayName !== '') return subject.displayName
+    return subject.storageContextId
   }
 </script>
 
@@ -37,8 +42,8 @@
           <tr
             data-testid="subject-row"
             onclick={() => onSelect(subject)}
-            onkeydown={(e: KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ' ') onSelect(subject)
+            onkeydown={(event: KeyboardEvent) => {
+              if (event.key === 'Enter' || event.key === ' ') onSelect(subject)
             }}
             tabindex="0"
             role="button">

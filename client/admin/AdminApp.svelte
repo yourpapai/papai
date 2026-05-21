@@ -8,6 +8,7 @@
 
   import { adminState, sectionLabel, syncSectionFromLocation } from './admin.svelte.js'
   import NavSidebar from './components/NavSidebar.svelte'
+  import BillingSection from './sections/BillingSection.svelte'
   import SystemSection from './sections/SystemSection.svelte'
 
   onMount(() => {
@@ -30,6 +31,8 @@
     <main class="admin-pane" aria-live="polite">
       {#if adminState.currentSection === 'system'}
         <SystemSection />
+      {:else if adminState.currentSection === 'billing'}
+        <BillingSection />
       {:else}
         <section>
           <p class="eyebrow">Section</p>

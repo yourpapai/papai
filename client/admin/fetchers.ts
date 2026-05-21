@@ -5,8 +5,144 @@
 
 import { z } from 'zod'
 
-import type { AdminLlmSnapshot, AdminSystemSummary } from '../shared/api-types.js'
+import type { SubjectStats } from '../../src/stats/types.js'
+import type {
+  AdminLlmSnapshot,
+  AdminSystemSummary,
+  BillingDetail,
+  BillingSubject,
+  BillingWindow,
+} from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+
+const BillingRoleTotalsSchema = z.object({
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  calls: z.number(),
+})
+
+const BillingSubjectSchema = z.object({
+  storageContextId: z.string(),
+  contextType: z.enum(['dm', 'group']),
+  displayName: z.string().nullable(),
+  totals: z.object({
+    main: BillingRoleTotalsSchema,
+    small: BillingRoleTotalsSchema,
+    embedding: BillingRoleTotalsSchema,
+  }),
+  toolCalls: z.number(),
+  lastActiveAt: z.number(),
+})
+
+const BillingRequestRowSchema = z.object({
+  eventId: z.string(),
+  occurredAt: z.number(),
+  turnId: z.string().nullable(),
+  chatUserId: z.string(),
+  model: z.string(),
+  modelRole: z.enum(['main', 'small', 'embedding']),
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  stepCount: z.number(),
+  toolCallCount: z.number(),
+  messageCount: z.number(),
+  durationMs: z.number(),
+  finishReason: z.string().nullable(),
+  error: z.string().nullable(),
+})
+
+const BillingWindowSchema = z.enum(['24h', '7d', '30d', 'all'])
+
+const BillingSubjectsResponseSchema = z.object({
+  window: BillingWindowSchema,
+  subjects: z.array(BillingSubjectSchema),
+})
+
+const BillingDetailResponseSchema = z.object({
+  window: BillingWindowSchema,
+  subject: BillingSubjectSchema,
+  requests: z.array(BillingRequestRowSchema),
+  truncated: z.boolean(),
+})
+
+const StatsContextTypeSchema = z.enum(['dm', 'group', 'unknown'])
+
+const SubjectStatsSchema = z.object({
+  storageContextId: z.string(),
+  chatUserId: z.string().nullable(),
+  contextType: StatsContextTypeSchema,
+  displayName: z.string().nullable(),
+  memos: z.object({
+    total: z.number(),
+    byStatus: z.record(z.string(), z.number()),
+    tagCardinality: z.object({ distinct: z.number(), meanPerMemo: z.number() }),
+    contentBytesTotal: z.number(),
+    embeddingBytesTotal: z.number(),
+    withEmbedding: z.number(),
+    oldestCreatedAt: z.number().nullable(),
+    newestCreatedAt: z.number().nullable(),
+  }),
+  scheduledPrompts: z.object({
+    total: z.number(),
+    byStatus: z.record(z.string(), z.number()),
+    distinctDeliveryTargets: z.number(),
+  }),
+  alertPrompts: z.object({ total: z.number(), byStatus: z.record(z.string(), z.number()) }),
+  recurringTasks: z.object({
+    total: z.number(),
+    enabled: z.number(),
+    disabled: z.number(),
+    distinctProjects: z.number(),
+    nextRunWithin7d: z.number(),
+    distinctRrulePatterns: z.number(),
+  }),
+  userInstructions: z.object({ total: z.number(), textBytesTotal: z.number() }),
+  attachments: z.object({
+    total: z.number(),
+    byStatus: z.record(z.string(), z.number()),
+    bySourceProvider: z.record(z.string(), z.number()),
+    storedBytesTotal: z.number(),
+    active: z.number(),
+    byExtension: z.record(z.string(), z.number()),
+  }),
+  messageMetadata: z.object({
+    total: z.number(),
+    authoredBySubject: z.number(),
+    oldestTimestamp: z.number().nullable(),
+    newestTimestamp: z.number().nullable(),
+    textBytesTotal: z.number(),
+  }),
+  conversationHistory: z.object({ turnCount: z.number(), summaryPresent: z.boolean() }),
+  userIdentityMappings: z.record(z.string(), z.number()),
+  stagedFiles: z.object({
+    total: z.number(),
+    byStatus: z.record(z.string(), z.number()),
+    bytesTotal: z.number(),
+  }),
+  userBlock: z
+    .object({
+      addedAt: z.string().nullable(),
+      addedByPresent: z.boolean(),
+      kaneoWorkspacePresent: z.boolean(),
+    })
+    .nullable(),
+  groupBlock: z
+    .object({ memberCount: z.number(), distinctAddedBy: z.number(), observationCount: z.number() })
+    .nullable(),
+  webFetches: z.object({ totalRequests: z.number() }),
+  llmUsage: z.object({
+    rowCount: z.number(),
+    inputTokensTotal: z.number(),
+    outputTokensTotal: z.number(),
+  }),
+  toolCalls: z.object({
+    total: z.number(),
+    success: z.number(),
+    failure: z.number(),
+    topTools: z.array(z.object({ toolName: z.string(), count: z.number() })),
+    errorTypeCounts: z.record(z.string(), z.number()),
+  }),
+})
 
 const AdminLlmKeyStateSchema = z.object({
   value: z.string().nullable(),
@@ -46,6 +182,38 @@ export type SubmitAdminLlmInput = {
 }
 
 export type SubmitAdminLlmResult = z.infer<typeof SubmitAdminLlmResponseSchema>
+
+export type FetchBillingSubjectsResult = {
+  readonly window: BillingWindow
+  readonly subjects: BillingSubject[]
+}
+
+export type FetchBillingDetailResult = BillingDetail & { readonly window: BillingWindow }
+
+export const fetchBillingSubjects = async (window: BillingWindow): Promise<FetchBillingSubjectsResult> => {
+  const res = await fetch(`/billing/subjects?window=${encodeURIComponent(window)}`)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return BillingSubjectsResponseSchema.parse(body)
+}
+
+export const fetchBillingDetail = async (
+  storageContextId: string,
+  window: BillingWindow,
+): Promise<FetchBillingDetailResult> => {
+  const path = `/billing/subject/${encodeURIComponent(storageContextId)}?window=${encodeURIComponent(window)}`
+  const res = await fetch(path)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return BillingDetailResponseSchema.parse(body)
+}
+
+export const fetchStatsSubject = async (storageContextId: string): Promise<SubjectStats> => {
+  const res = await fetch(`/stats/subject/${encodeURIComponent(storageContextId)}`)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return SubjectStatsSchema.parse(body) as SubjectStats
+}
 
 export const fetchAdminLlm = async (): Promise<AdminLlmSnapshot> => {
   const res = await fetch('/admin/llm')

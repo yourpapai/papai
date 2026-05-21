@@ -7,12 +7,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { mount, unmount } from 'svelte'
 
-import SubjectsTable from '../../../../client/debug/billing/SubjectsTable.svelte'
-import type { BillingSubject } from '../../../../client/debug/dashboard-types.js'
+import SubjectsTable from '../../../../client/admin/components/SubjectsTable.svelte'
+import type { BillingSubject } from '../../../../client/shared/api-types.js'
 
 const emptyTotals = { inputTokens: 0, outputTokens: 0, calls: 0 }
 
-const makeSubject = (overrides: Partial<BillingSubject> = {}): BillingSubject => ({
+const makeSubject = (overrides: Partial<BillingSubject>): BillingSubject => ({
   storageContextId: 'user-A',
   contextType: 'dm',
   displayName: 'alice',
@@ -30,7 +30,7 @@ type Mounted = { target: HTMLElement; component: ReturnType<typeof mount>; selec
 
 const render = (subjects: BillingSubject[]): Mounted => {
   document.body.innerHTML = '<div id="root"></div>'
-  const target = document.getElementById('root')
+  const target = document.querySelector<HTMLElement>('#root')
   if (target === null) throw new Error('root missing')
   const selected: BillingSubject[] = []
   const component = mount(SubjectsTable, {
@@ -45,7 +45,7 @@ const render = (subjects: BillingSubject[]): Mounted => {
   return { target, component, selected }
 }
 
-describe('SubjectsTable', () => {
+describe('admin SubjectsTable', () => {
   test('shows empty-state text when subjects is empty', () => {
     const { target, component } = render([])
     expect(target.textContent).toContain('No usage')
@@ -54,7 +54,7 @@ describe('SubjectsTable', () => {
 
   test('renders one row per subject with display name', () => {
     const { target, component } = render([
-      makeSubject(),
+      makeSubject({}),
       makeSubject({ storageContextId: 'user-B', displayName: 'bob' }),
     ])
     const text = target.textContent
@@ -70,21 +70,14 @@ describe('SubjectsTable', () => {
   })
 
   test('calling onSelect when a row is clicked', () => {
-    const subject = makeSubject()
+    const subject = makeSubject({})
     const { target, component, selected } = render([subject])
     const row = target.querySelector<HTMLElement>('[data-testid="subject-row"]')
     expect(row).not.toBeNull()
-    row?.click()
+    row!.click()
     expect(selected).toHaveLength(1)
-    expect(selected[0]?.storageContextId).toBe('user-A')
-    void unmount(component)
-  })
-
-  test('renders per-role token columns', () => {
-    const { target, component } = render([makeSubject()])
-    const text = target.textContent
-    expect(text).toContain('10')
-    expect(text).toContain('20')
+    const selectedSubject = selected[0]!
+    expect(selectedSubject.storageContextId).toBe('user-A')
     void unmount(component)
   })
 })

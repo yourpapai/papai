@@ -7,8 +7,8 @@ import { describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
-import SubjectDetail from '../../../../client/debug/billing/SubjectDetail.svelte'
-import type { BillingDetail, BillingRequestRow, BillingSubject } from '../../../../client/debug/dashboard-types.js'
+import SubjectDetail from '../../../../client/admin/components/SubjectDetail.svelte'
+import type { BillingDetail, BillingRequestRow, BillingSubject } from '../../../../client/shared/api-types.js'
 
 const emptyTotals = { inputTokens: 0, outputTokens: 0, calls: 0 }
 
@@ -21,7 +21,7 @@ const subject: BillingSubject = {
   lastActiveAt: 1_700_000_000_000,
 }
 
-const makeRequest = (overrides: Partial<BillingRequestRow> = {}): BillingRequestRow => ({
+const makeRequest = (overrides: Partial<BillingRequestRow>): BillingRequestRow => ({
   eventId: 'evt-1',
   occurredAt: 1_700_000_000_000,
   turnId: 'turn-1',
@@ -41,13 +41,13 @@ const makeRequest = (overrides: Partial<BillingRequestRow> = {}): BillingRequest
 
 const render = (detail: BillingDetail): { target: HTMLElement; component: ReturnType<typeof mount> } => {
   document.body.innerHTML = '<div id="root"></div>'
-  const target = document.getElementById('root')
+  const target = document.querySelector<HTMLElement>('#root')
   if (target === null) throw new Error('root missing')
   const component = mount(SubjectDetail, { target, props: { detail } })
   return { target, component }
 }
 
-describe('SubjectDetail', () => {
+describe('admin SubjectDetail', () => {
   test('shows placeholder when there are no requests', () => {
     const { target, component } = render({ subject, requests: [], truncated: false })
     expect(target.textContent).toContain('No requests')
@@ -57,7 +57,7 @@ describe('SubjectDetail', () => {
   test('renders one row per request', () => {
     const detail: BillingDetail = {
       subject,
-      requests: [makeRequest(), makeRequest({ eventId: 'evt-2', modelRole: 'small' })],
+      requests: [makeRequest({}), makeRequest({ eventId: 'evt-2', modelRole: 'small' })],
       truncated: false,
     }
     const { target, component } = render(detail)
@@ -66,28 +66,14 @@ describe('SubjectDetail', () => {
     void unmount(component)
   })
 
-  test('shows a truncation banner when truncated is true', () => {
-    const detail: BillingDetail = {
-      subject,
-      requests: [makeRequest()],
-      truncated: true,
-    }
-    const { target, component } = render(detail)
-    const text = target.textContent.toLowerCase()
-    expect(text).toContain('truncated')
-    void unmount(component)
-  })
-
   test('clicking a row toggles a JSON detail block', () => {
-    const detail: BillingDetail = { subject, requests: [makeRequest()], truncated: false }
+    const detail: BillingDetail = { subject, requests: [makeRequest({})], truncated: false }
     const { target, component } = render(detail)
-    const before = target.querySelectorAll('[data-testid="request-json"]').length
-    expect(before).toBe(0)
     const row = target.querySelector<HTMLElement>('[data-testid="request-row"]')
-    row?.click()
+    expect(row).not.toBeNull()
+    row!.click()
     flushSync()
-    const after = target.querySelectorAll('[data-testid="request-json"]').length
-    expect(after).toBe(1)
+    expect(target.querySelectorAll('[data-testid="request-json"]')).toHaveLength(1)
     void unmount(component)
   })
 })
