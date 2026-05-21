@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Dashboard / Admin Split Design
 
 **Date:** 2026-05-21  
-**Status:** Draft  
+**Status:** Approved  
 **Source notes:**
 
 - [Detailed design note](../notes/dashboard-admin-split-design.md)

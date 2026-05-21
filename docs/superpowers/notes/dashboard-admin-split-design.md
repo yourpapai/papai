@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Dashboard / Admin Split — Design Spec
 
-Status: draft
+Status: approved
 Owner: admin (`ADMIN_USER_ID`)
 Last updated: 2026-05-20
 Branch: `claude/split-dashboard-admin-zaoys`
@@ -470,26 +470,12 @@ Keeping these three in lockstep (and using Zod at the boundary, as
 `fetchers.ts` already does) is what lets us regenerate any section
 without scanning the whole codebase.
 
-## 6. Open questions
+## 6. Open questions (Resolved & Aligned)
 
-1. **`/dashboard` redirect duration.** One release? Two? Tests today
-   assert against `GET /dashboard` returning HTML; we'll need to flip
-   them to assert a 301.
-2. **Admin SSE.** If we later want a live "new memo created" toast in
-   `/admin`, we'd open `/events` with a server-side filter. Out of scope
-   here; mentioned so the navigation layout leaves room for an indicator
-   dot.
-3. **Auth scope.** Today `DEBUG_TOKEN` gates everything uniformly. If we
-   ever want "engineer can see /debug without seeing /admin", we'd add a
-   second token. Keep parity with today for v1; flag it in the plan so
-   the routing helper is structured to allow a second token without a
-   rewrite.
-4. **Tests directory layout.** Today `tests/client/debug/` mirrors
-   `client/debug/`. After the split, mirror that pattern:
-   `tests/client/debug/` + `tests/client/admin/` + `tests/client/shared/`.
-   Existing tests for `components/`, `billing/`, `stats/` will move
-   accordingly; the test files themselves shouldn't need rewrites beyond
-   import paths.
+1. **`/dashboard` redirect duration.** Keep as a 301 redirect to `/debug` for at least two minor releases to ensure smooth transition of existing bookmarks. Server and smoke tests are updated in lock-step to assert 301.
+2. **Admin SSE.** v1 remains strictly REST-polling. To prevent unnecessary SSE load, the `/admin` bundle does not establish an event stream connection. Toasts or indicators will be added in a future phase using filtered SSE if required.
+3. **Auth scope.** For v1, parity is maintained. A single `DEBUG_TOKEN` gates both `/debug` and `/admin` routes uniformly.
+4. **Tests directory layout.** Follow the mirrored pattern: `tests/client/debug/`, `tests/client/admin/`, and `tests/client/shared/`. Existing client test files are ported to these mirrored directories as panels are moved.
 
 ## 7. Risks
 
