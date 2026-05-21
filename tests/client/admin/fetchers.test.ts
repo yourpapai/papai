@@ -189,17 +189,22 @@ describe('fetchDeferredPrompts', () => {
 describe('fetchAdminIdentity', () => {
   test('GETs /identity with userId and provider', async () => {
     installFetch(200, {
-      userId: 'user-1',
-      provider: 'kaneo',
+      contextId: 'user-1',
+      providerName: 'kaneo',
       providerUserId: 'provider-1',
       providerUserLogin: 'ki',
       displayName: 'Ki',
+      matchedAt: '2026-05-21T00:00:00.000Z',
+      matchMethod: 'auto',
+      confidence: 0.9,
     })
 
     const result = await fetchAdminIdentity('user-1', 'kaneo')
     const mapping = expectDefined(result, 'missing identity mapping')
 
     expect(firstCaptured().url).toBe('/identity?userId=user-1&provider=kaneo')
+    expect(mapping.contextId).toBe('user-1')
+    expect(mapping.providerName).toBe('kaneo')
     expect(mapping.providerUserId).toBe('provider-1')
   })
 
@@ -210,7 +215,7 @@ describe('fetchAdminIdentity', () => {
   })
 
   test('rejects malformed identity payloads', async () => {
-    installFetch(200, { userId: 'user-1', provider: 'kaneo' })
+    installFetch(200, { contextId: 'user-1', providerName: 'kaneo' })
 
     await expect(fetchAdminIdentity('user-1', 'kaneo')).rejects.toThrow()
   })

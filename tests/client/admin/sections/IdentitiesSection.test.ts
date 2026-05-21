@@ -40,11 +40,14 @@ describe('IdentitiesSection', () => {
       [
         '/identity?userId=user-1&provider=kaneo',
         Response.json({
-          userId: 'user-1',
-          provider: 'kaneo',
+          contextId: 'user-1',
+          providerName: 'kaneo',
           providerUserId: 'provider-1',
           providerUserLogin: 'ki',
           displayName: 'Ki',
+          matchedAt: '2026-05-21T00:00:00.000Z',
+          matchMethod: 'manual_nl',
+          confidence: 0.75,
         }),
       ],
     ])
@@ -66,8 +69,12 @@ describe('IdentitiesSection', () => {
     await drain()
 
     expect(calls).toEqual(['/identity?userId=user-1&provider=kaneo'])
+    expect(target.textContent).toContain('user-1')
+    expect(target.textContent).toContain('kaneo')
     expect(target.textContent).toContain('provider-1')
     expect(target.textContent).toContain('Ki')
+    expect(target.textContent).toContain('manual_nl')
+    expect(target.textContent).toContain('0.75')
 
     void unmount(component)
   })

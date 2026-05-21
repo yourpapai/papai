@@ -163,11 +163,14 @@ describe('api-types', () => {
     }
 
     const identityMapping: IdentityMappingEntry = {
-      userId: 'user123',
-      provider: 'kaneo',
+      contextId: 'user123',
+      providerName: 'kaneo',
       providerUserId: 'pk123',
       providerUserLogin: 'pk_user',
       displayName: 'PK User',
+      matchedAt: '2026-05-21T00:00:00.000Z',
+      matchMethod: 'auto',
+      confidence: 0.95,
     }
 
     const authorizedGroup: AuthorizedGroupEntry = {
@@ -250,7 +253,7 @@ describe('api-types', () => {
     expect(recurringTask.id).toBe('rec1')
     expect(deferredPrompt.id).toBe('def1')
     expect(memo.id).toBe('memo1')
-    expect(identityMapping.userId).toBe('user123')
+    expect(identityMapping.contextId).toBe('user123')
     expect(authorizedGroup.group_id).toBe('group123')
     expect(billingWindow).toBe('30d')
     expect(billingTotals.calls).toBe(15)

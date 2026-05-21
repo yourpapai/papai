@@ -241,11 +241,14 @@ export const MemoSchema = z.object({
 })
 
 export const IdentityMappingEntrySchema = z.object({
-  userId: z.string(),
-  provider: z.string(),
+  contextId: z.string(),
+  providerName: z.string(),
   providerUserId: z.string().nullable(),
   providerUserLogin: z.string().nullable(),
   displayName: z.string().nullable(),
+  matchedAt: z.string(),
+  matchMethod: z.enum(['auto', 'manual_nl', 'unmatched']).nullable(),
+  confidence: z.number().nullable(),
 })
 
 export const AuthorizedGroupEntrySchema = z.object({

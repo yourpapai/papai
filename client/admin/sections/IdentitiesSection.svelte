@@ -64,11 +64,14 @@
     <p class="placeholder">No identity mapping found</p>
   {:else if mapping !== null}
     <dl class="admin-key-value-list">
-      <div><dt>User ID</dt><dd>{mapping.userId}</dd></div>
-      <div><dt>Provider</dt><dd>{mapping.provider}</dd></div>
+      <div><dt>Context ID</dt><dd>{mapping.contextId}</dd></div>
+      <div><dt>Provider</dt><dd>{mapping.providerName}</dd></div>
       <div><dt>Provider user ID</dt><dd>{mapping.providerUserId ?? 'Unmatched'}</dd></div>
       <div><dt>Login</dt><dd>{mapping.providerUserLogin ?? 'Unknown'}</dd></div>
       <div><dt>Display name</dt><dd>{mapping.displayName ?? 'Unknown'}</dd></div>
+      <div><dt>Matched at</dt><dd>{mapping.matchedAt}</dd></div>
+      <div><dt>Match method</dt><dd>{mapping.matchMethod ?? 'Unknown'}</dd></div>
+      <div><dt>Confidence</dt><dd>{mapping.confidence ?? 'Unknown'}</dd></div>
     </dl>
   {/if}
 </section>

@@ -86,11 +86,14 @@ export type Memo = {
 }
 
 export type IdentityMappingEntry = {
-  userId: string
-  provider: string
+  contextId: string
+  providerName: string
   providerUserId: string | null
   providerUserLogin: string | null
   displayName: string | null
+  matchedAt: string
+  matchMethod: 'auto' | 'manual_nl' | 'unmatched' | null
+  confidence: number | null
 }
 
 export type AuthorizedGroupEntry = {
