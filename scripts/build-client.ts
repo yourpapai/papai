@@ -24,12 +24,12 @@ export interface BundleConfig {
 const BUNDLES: BundleConfig[] = [
   {
     entry: 'client/debug/index.ts',
-    htmlSrc: 'client/debug/dashboard.html',
-    jsName: 'dashboard.js',
-    htmlName: 'dashboard.html',
-    cssName: 'dashboard.css',
+    htmlSrc: 'client/debug/debug.html',
+    jsName: 'debug.js',
+    htmlName: 'debug.html',
+    cssName: 'debug.css',
     baseCssPath: 'client/shared/base.css',
-    localCssPath: 'client/debug/dashboard.css',
+    localCssPath: 'client/debug/debug.css',
   },
 ]
 

@@ -27,7 +27,7 @@ const TEST_PORT = 19100
 const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
 
 function ensurePublicBuilt(): void {
-  const required = ['dashboard.js', 'dashboard.html', 'dashboard.css']
+  const required = ['debug.js', 'debug.html', 'debug.css']
   const missing = required.some((f) => !fs.existsSync(path.join(PUBLIC_DIR, f)))
   if (!missing) return
 
@@ -126,8 +126,8 @@ describe('debug-server', () => {
     delete process.env['DEBUG_PORT']
   })
 
-  test('GET /dashboard returns dashboard HTML', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`)
+  test('GET /debug returns debug HTML', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('text/html')
@@ -136,8 +136,8 @@ describe('debug-server', () => {
     expect(body).toContain('papai debug')
   })
 
-  test('GET /dashboard.css returns CSS', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.css`)
+  test('GET /debug.css returns CSS', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/debug.css`)
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('text/css')
@@ -145,13 +145,20 @@ describe('debug-server', () => {
     expect(body).toContain('#log-explorer')
   })
 
-  test('GET /dashboard.js returns JavaScript bundle from public/', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.js`)
+  test('GET /debug.js returns JavaScript bundle from public/', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('javascript')
     const body = await res.text()
     expect(body.length).toBeGreaterThan(0)
+  })
+
+  test('GET /dashboard returns 301 redirect to /debug', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`, { redirect: 'manual' })
+    expect(res.status).toBe(301)
+    expect(res.headers.get('location')).toBe('/debug')
+    await res.body?.cancel()
   })
 
   test('GET /dashboard-state.js returns 404 (legacy route removed)', async () => {

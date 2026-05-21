@@ -5,9 +5,9 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { LOG_CAP, dashboard as state } from '../../../client/debug/dashboard.svelte.js'
+import { LOG_CAP, dashboard as state } from '../../../client/debug/debug.svelte.js'
 
-describe('dashboard.svelte', () => {
+describe('debug.svelte', () => {
   test('exposes LOG_CAP constant', () => {
     expect(LOG_CAP).toBe(65535)
   })

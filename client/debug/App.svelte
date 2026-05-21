@@ -1,6 +1,6 @@
 <script lang="ts">
   import DebugApp from './DebugApp.svelte'
-  import { dashboard } from './dashboard.svelte.js'
+  import { dashboard } from './debug.svelte.js'
 </script>
 
 <DebugApp {dashboard} />

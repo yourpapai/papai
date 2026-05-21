@@ -94,19 +94,19 @@ function handleLogs(url: URL): Response {
 
 let server: ReturnType<typeof Bun.serve> | null = null
 
-function handleDashboardFile(pathname: string): Response {
-  if (pathname === '/dashboard') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'dashboard.html')))
+function handleDebugFile(pathname: string): Response {
+  if (pathname === '/debug') {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.html')))
   }
 
-  if (pathname === '/dashboard.js') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'dashboard.js')), {
+  if (pathname === '/debug.js') {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.js')), {
       headers: { 'Content-Type': 'text/javascript' },
     })
   }
 
-  if (pathname === '/dashboard.css') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'dashboard.css')))
+  if (pathname === '/debug.css') {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.css')))
   }
 
   return new Response('Not found', { status: 404 })
@@ -210,12 +210,14 @@ function routeRequest(req: Request): Response | Promise<Response> {
     if (req.method === 'POST') return handleAdminLlmPost(req)
     return new Response('Method not allowed', { status: 405 })
   }
-  if (
-    url.pathname === '/dashboard' ||
-    url.pathname.startsWith('/dashboard.') ||
-    url.pathname.startsWith('/dashboard-')
-  ) {
-    return handleDashboardFile(url.pathname)
+  if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname === '/debug.css') {
+    return handleDebugFile(url.pathname)
+  }
+  if (url.pathname === '/dashboard') {
+    return new Response(null, { status: 301, headers: { Location: '/debug' } })
+  }
+  if (url.pathname.startsWith('/dashboard.') || url.pathname.startsWith('/dashboard-')) {
+    return new Response('Not found', { status: 404 })
   }
 
   return new Response('Not found', { status: 404 })

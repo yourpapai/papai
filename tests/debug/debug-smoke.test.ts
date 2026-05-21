@@ -15,7 +15,7 @@ const TEST_PORT = 19101
 const PUBLIC_DIR = path.resolve(import.meta.dir, '../../public')
 
 function ensurePublicBuilt(): void {
-  const required = ['dashboard.js', 'dashboard.html', 'dashboard.css']
+  const required = ['debug.js', 'debug.html', 'debug.css']
   const missing = required.some((f) => !fs.existsSync(path.join(PUBLIC_DIR, f)))
   if (!missing) return
 
@@ -29,7 +29,7 @@ function ensurePublicBuilt(): void {
   }
 }
 
-describe('dashboard-smoke', () => {
+describe('debug-smoke', () => {
   beforeAll(() => {
     ensurePublicBuilt()
     restoreFetch()
@@ -43,9 +43,9 @@ describe('dashboard-smoke', () => {
     delete process.env['DEBUG_PORT']
   })
 
-  describe('dashboard.js', () => {
+  describe('debug.js', () => {
     test('returns single IIFE bundle with JavaScript content type', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toContain('javascript')
 
@@ -61,7 +61,7 @@ describe('dashboard-smoke', () => {
     })
 
     test('contains dashboard initialization code', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
       const body = await res.text()
 
       // Should mount the Svelte app and render the top-level panels
@@ -72,7 +72,7 @@ describe('dashboard-smoke', () => {
     })
 
     test('contains state management and SSE setup', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
       const body = await res.text()
 
       // Should have EventSource for SSE and handle state events
@@ -82,15 +82,15 @@ describe('dashboard-smoke', () => {
     })
   })
 
-  describe('dashboard.html', () => {
-    test('loads the dashboard page with a Svelte mount point and bundle reference', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`)
+  describe('debug.html', () => {
+    test('loads the debug page with a Svelte mount point and bundle reference', async () => {
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
       expect(res.status).toBe(200)
 
       const body = await res.text()
 
       // Should reference the single bundle and not the legacy split files
-      expect(body).toContain('dashboard.js')
+      expect(body).toContain('debug.js')
       expect(body).not.toContain('dashboard-ui.js')
       expect(body).not.toContain('dashboard-state.js')
 
@@ -99,7 +99,7 @@ describe('dashboard-smoke', () => {
     })
 
     test('includes Content-Security-Policy meta tag', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
       const body = await res.text()
 
       expect(body).toContain('http-equiv="Content-Security-Policy"')
@@ -107,9 +107,9 @@ describe('dashboard-smoke', () => {
     })
   })
 
-  describe('dashboard.css', () => {
+  describe('debug.css', () => {
     test('returns CSS styling', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.css`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.css`)
       expect(res.status).toBe(200)
 
       const body = await res.text()
@@ -121,8 +121,8 @@ describe('dashboard-smoke', () => {
   })
 
   describe('JavaScript syntax validation', () => {
-    test('dashboard.js can be parsed without syntax errors', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.js`)
+    test('debug.js can be parsed without syntax errors', async () => {
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
       const body = await res.text()
 
       // Should be an IIFE (starts with `(` or `!`)
