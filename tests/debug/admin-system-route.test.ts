@@ -77,4 +77,19 @@ describe('debug-server admin/system route', () => {
     expect(pick(body, 'adminUserSet')).toBe(true)
     expect(Object.keys(body).sort()).toEqual(['adminUserSet', 'chatProvider', 'debugServer', 'taskProvider'])
   })
+
+  test('GET /admin/system maps unsupported providers to unknown', async () => {
+    process.env['CHAT_PROVIDER'] = 'custom-chat-secret'
+    process.env['TASK_PROVIDER'] = 'custom-task-secret'
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`, { headers: authHeaders })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(text).not.toContain('custom-chat-secret')
+    expect(text).not.toContain('custom-task-secret')
+
+    const body = parseJsonObject(text)
+    expect(pick(body, 'chatProvider')).toBe('unknown')
+    expect(pick(body, 'taskProvider')).toBe('unknown')
+  })
 })

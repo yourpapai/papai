@@ -11,6 +11,7 @@ import { getIdentityMapping } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { listMemos } from '../memos.js'
 import { listRecurringTasks } from '../recurring.js'
+import { handleAdminSystem } from './admin-system.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
@@ -197,18 +198,6 @@ function handleAuthGroups(): Response {
   return new Response(JSON.stringify(groups), {
     headers: { 'Content-Type': 'application/json' },
   })
-}
-
-function handleAdminSystem(): Response {
-  return new Response(
-    JSON.stringify({
-      chatProvider: process.env['CHAT_PROVIDER'] ?? null,
-      taskProvider: process.env['TASK_PROVIDER'] ?? null,
-      debugServer: process.env['DEBUG_SERVER'] === 'true',
-      adminUserSet: (process.env['ADMIN_USER_ID'] ?? '') !== '',
-    }),
-    { headers: { 'Content-Type': 'application/json' } },
-  )
 }
 
 function routeRequest(req: Request): Response | Promise<Response> {

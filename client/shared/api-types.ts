@@ -157,9 +157,12 @@ export type AdminLlmSnapshot = {
   embedding_model: AdminLlmKeyState
 }
 
+export type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
+export type AdminTaskProvider = 'kaneo' | 'youtrack' | 'unknown'
+
 export type AdminSystemSummary = {
-  chatProvider: string | null
-  taskProvider: string | null
+  chatProvider: AdminChatProvider
+  taskProvider: AdminTaskProvider
   debugServer: boolean
   adminUserSet: boolean
 }

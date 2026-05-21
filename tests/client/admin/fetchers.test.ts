@@ -66,4 +66,15 @@ describe('fetchAdminSystem', () => {
     expect(captured[0]?.url).toBe('/admin/system')
     expect(result.chatProvider).toBe('telegram')
   })
+
+  test('rejects raw provider strings outside the safe enums', async () => {
+    installFetch(200, {
+      chatProvider: 'custom-chat-secret',
+      taskProvider: 'kaneo',
+      debugServer: true,
+      adminUserSet: true,
+    })
+
+    await expect(fetchAdminSystem()).rejects.toThrow()
+  })
 })

@@ -22,9 +22,12 @@ const AdminLlmSnapshotSchema = z.object({
   embedding_model: AdminLlmKeyStateSchema,
 })
 
+const AdminChatProviderSchema = z.enum(['telegram', 'mattermost', 'discord', 'unknown'])
+const AdminTaskProviderSchema = z.enum(['kaneo', 'youtrack', 'unknown'])
+
 const AdminSystemSummarySchema = z.object({
-  chatProvider: z.string().nullable(),
-  taskProvider: z.string().nullable(),
+  chatProvider: AdminChatProviderSchema,
+  taskProvider: AdminTaskProviderSchema,
   debugServer: z.boolean(),
   adminUserSet: z.boolean(),
 })
