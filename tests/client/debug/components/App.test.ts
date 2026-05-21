@@ -10,7 +10,7 @@ import { mount, unmount } from 'svelte'
 import App from '../../../../client/debug/App.svelte'
 
 describe('App.svelte', () => {
-  test('renders header, panels, and log explorer', () => {
+  test('renders debug-only panels and log explorer through DebugApp', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.getElementById('root')!
     const component = mount(App, { target })
@@ -21,9 +21,14 @@ describe('App.svelte', () => {
     expect(html).toContain('log-explorer')
     expect(html).toContain('Turns')
     expect(html).toContain('Notifications')
+    expect(html).toContain('Tool Failures')
+    expect(html).toContain('Live Context')
     expect(html).toContain('Sessions')
     expect(html).toContain('LLM Trace')
-    expect(html).toContain('Billing')
+    expect(html).not.toContain('Billing')
+    expect(html).not.toContain('Stats')
+    expect(html).not.toContain('Memos')
+    expect(html).not.toContain('Reminders')
 
     void unmount(component)
   })
@@ -37,7 +42,7 @@ describe('App.svelte', () => {
     expect(html).toContain('No turns')
     expect(html).toContain('No notifications')
     expect(html).toContain('No failures')
-    expect(html).toContain('No reminders')
+    expect(html).toContain('No active sessions')
 
     void unmount(component)
   })
