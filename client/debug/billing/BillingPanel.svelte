@@ -1,15 +1,13 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
-  import type { AdminLlmSnapshot, BillingSubject, BillingWindow } from '../../shared/api-types.js'
-  import CredentialsForm from './CredentialsForm.svelte'
+  import type { BillingSubject, BillingWindow } from '../../shared/api-types.js'
   import SubjectsTable from './SubjectsTable.svelte'
-  import { fetchAdminLlm, fetchBillingSubjects } from './fetchers.js'
+  import { fetchBillingSubjects } from './fetchers.js'
 
   interface BillingState {
     billingWindow: BillingWindow
     billingSubjects: BillingSubject[]
-    adminLlm: AdminLlmSnapshot | null
   }
 
   interface Props {
@@ -33,19 +31,11 @@
     }
   }
 
-  async function loadAdmin(): Promise<void> {
-    try {
-      dashboard.adminLlm = await fetchAdminLlm()
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    }
-  }
-
   async function refreshAll(): Promise<void> {
     error = null
     fetching = true
     try {
-      await Promise.all([loadSubjects(), loadAdmin()])
+      await loadSubjects()
     } finally {
       fetching = false
     }
@@ -94,6 +84,5 @@
     {/if}
   </header>
 
-  <CredentialsForm snapshot={dashboard.adminLlm} onRefresh={loadAdmin} />
   <SubjectsTable subjects={dashboard.billingSubjects} onSelect={onSelectSubject} />
 </section>

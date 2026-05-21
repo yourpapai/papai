@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
-import CredentialsForm from '../../../../client/debug/billing/CredentialsForm.svelte'
-import type { AdminLlmSnapshot } from '../../../../client/debug/dashboard-types.js'
+import CredentialsForm from '../../../../client/admin/components/CredentialsForm.svelte'
+import type { AdminLlmSnapshot } from '../../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const emptyKey = { value: null, updatedAt: null, updatedBy: null }

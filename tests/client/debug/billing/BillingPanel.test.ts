@@ -8,17 +8,10 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { flushSync, mount, unmount } from 'svelte'
 
 import BillingPanel from '../../../../client/debug/billing/BillingPanel.svelte'
-import type {
-  AdminLlmSnapshot,
-  BillingSubject,
-  BillingWindow,
-  DashboardState,
-} from '../../../../client/debug/dashboard-types.js'
+import type { BillingSubject, BillingWindow, DashboardState } from '../../../../client/debug/dashboard-types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const emptyTotals = { inputTokens: 0, outputTokens: 0, calls: 0 }
-
-const emptyAdminKey = { value: null, updatedAt: null, updatedBy: null }
 
 const subject = (id: string): BillingSubject => ({
   storageContextId: id,
@@ -32,7 +25,6 @@ const subject = (id: string): BillingSubject => ({
 type BillingPanelState = DashboardState & {
   billingWindow: BillingWindow
   billingSubjects: BillingSubject[]
-  adminLlm: AdminLlmSnapshot | null
 }
 
 const freshState = (): BillingPanelState => ({
@@ -54,7 +46,6 @@ const freshState = (): BillingPanelState => ({
   activeLogFilter: {},
   billingWindow: '30d',
   billingSubjects: [],
-  adminLlm: null,
 })
 
 const installFetch = (handlers: { subjects?: BillingSubject[]; adminEmpty?: boolean }): string[] => {
@@ -67,20 +58,6 @@ const installFetch = (handlers: { subjects?: BillingSubject[]; adminEmpty?: bool
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
-      )
-    }
-    if (url === '/admin/llm') {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            llm_apikey: emptyAdminKey,
-            llm_baseurl: emptyAdminKey,
-            main_model: emptyAdminKey,
-            small_model: emptyAdminKey,
-            embedding_model: emptyAdminKey,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
       )
     }
     return Promise.resolve(new Response('not mocked', { status: 500 }))
@@ -112,13 +89,13 @@ describe('BillingPanel', () => {
     void unmount(component)
   })
 
-  test('on mount, calls /billing/subjects and /admin/llm', async () => {
+  test('on mount, calls /billing/subjects without fetching admin credentials', async () => {
     const calls = installFetch({ subjects: [subject('ctx-A')] })
     const { component } = render(freshState())
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
     expect(calls.some((url) => url.startsWith('/billing/subjects'))).toBe(true)
-    expect(calls.some((url) => url === '/admin/llm')).toBe(true)
+    expect(calls.some((url) => url === '/admin/llm')).toBe(false)
     void unmount(component)
   })
 

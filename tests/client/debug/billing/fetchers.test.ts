@@ -5,12 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import {
-  fetchAdminLlm,
-  fetchBillingDetail,
-  fetchBillingSubjects,
-  submitAdminLlm,
-} from '../../../../client/debug/billing/fetchers.js'
+import { fetchBillingDetail, fetchBillingSubjects } from '../../../../client/debug/billing/fetchers.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const captured: Array<{ url: string; init: RequestInit }> = []
@@ -77,44 +72,5 @@ describe('fetchBillingDetail', () => {
   test('throws on 404 with the response error message', async () => {
     installFetch(404, { error: 'subject not found' })
     await expect(fetchBillingDetail('missing', '30d')).rejects.toThrow('subject not found')
-  })
-})
-
-describe('fetchAdminLlm', () => {
-  test('GETs /admin/llm', async () => {
-    const empty = { value: null, updatedAt: null, updatedBy: null }
-    installFetch(200, {
-      llm_apikey: empty,
-      llm_baseurl: empty,
-      main_model: empty,
-      small_model: empty,
-      embedding_model: empty,
-    })
-    const snap = await fetchAdminLlm()
-    expect(captured[0]?.url).toBe('/admin/llm')
-    expect(snap.llm_apikey.value).toBeNull()
-  })
-})
-
-describe('submitAdminLlm', () => {
-  test('POSTs JSON body to /admin/llm', async () => {
-    installFetch(200, { ok: true, key: 'main_model', updatedAt: 123 })
-    const result = await submitAdminLlm({ key: 'main_model', value: 'gpt-6' })
-    expect(captured[0]?.url).toBe('/admin/llm')
-    expect(captured[0]?.init.method).toBe('POST')
-    expect(captured[0]?.init.body).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-6' }))
-    expect(result.key).toBe('main_model')
-  })
-
-  test('throws on 400 with the server message', async () => {
-    installFetch(400, { error: 'value must be a non-empty string' })
-    await expect(submitAdminLlm({ key: 'main_model', value: '' })).rejects.toThrow('value must be a non-empty string')
-  })
-
-  test('throws on 401 with the server message', async () => {
-    installFetch(401, { error: 'credentials API requires DEBUG_TOKEN' })
-    await expect(submitAdminLlm({ key: 'main_model', value: 'x' })).rejects.toThrow(
-      'credentials API requires DEBUG_TOKEN',
-    )
   })
 })

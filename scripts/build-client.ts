@@ -114,4 +114,6 @@ async function buildAll(): Promise<void> {
   await Promise.all(BUNDLES.map(buildBundle))
 }
 
-await buildAll()
+if (import.meta.main) {
+  await buildAll()
+}

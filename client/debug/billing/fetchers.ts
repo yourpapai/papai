@@ -6,7 +6,7 @@
 import { z } from 'zod'
 
 import { readBody, requireOk } from '../../shared/fetcher-helpers.js'
-import type { AdminLlmSnapshot, BillingDetail, BillingSubject, BillingWindow } from '../dashboard-types.js'
+import type { BillingDetail, BillingSubject, BillingWindow } from '../dashboard-types.js'
 
 const BillingRoleTotalsSchema = z.object({
   inputTokens: z.number(),
@@ -58,26 +58,6 @@ const BillingDetailResponseSchema = z.object({
   truncated: z.boolean(),
 })
 
-const AdminLlmKeyStateSchema = z.object({
-  value: z.string().nullable(),
-  updatedAt: z.number().nullable(),
-  updatedBy: z.string().nullable(),
-})
-
-const AdminLlmSnapshotSchema = z.object({
-  llm_apikey: AdminLlmKeyStateSchema,
-  llm_baseurl: AdminLlmKeyStateSchema,
-  main_model: AdminLlmKeyStateSchema,
-  small_model: AdminLlmKeyStateSchema,
-  embedding_model: AdminLlmKeyStateSchema,
-})
-
-const SubmitAdminLlmResponseSchema = z.object({
-  ok: z.literal(true),
-  key: z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']),
-  updatedAt: z.number(),
-})
-
 export type FetchBillingSubjectsResult = {
   window: BillingWindow
   subjects: BillingSubject[]
@@ -101,29 +81,4 @@ export const fetchBillingDetail = async (
   const body = await readBody(res)
   requireOk(res, body)
   return BillingDetailResponseSchema.parse(body)
-}
-
-export const fetchAdminLlm = async (): Promise<AdminLlmSnapshot> => {
-  const res = await fetch('/admin/llm')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return AdminLlmSnapshotSchema.parse(body)
-}
-
-export type SubmitAdminLlmInput = {
-  key: 'llm_apikey' | 'llm_baseurl' | 'main_model' | 'small_model' | 'embedding_model'
-  value: string
-}
-
-export type SubmitAdminLlmResult = z.infer<typeof SubmitAdminLlmResponseSchema>
-
-export const submitAdminLlm = async (input: SubmitAdminLlmInput): Promise<SubmitAdminLlmResult> => {
-  const res = await fetch('/admin/llm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return SubmitAdminLlmResponseSchema.parse(body)
 }

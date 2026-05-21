@@ -199,6 +199,18 @@ function handleAuthGroups(): Response {
   })
 }
 
+function handleAdminSystem(): Response {
+  return new Response(
+    JSON.stringify({
+      chatProvider: process.env['CHAT_PROVIDER'] ?? null,
+      taskProvider: process.env['TASK_PROVIDER'] ?? null,
+      debugServer: process.env['DEBUG_SERVER'] === 'true',
+      adminUserSet: (process.env['ADMIN_USER_ID'] ?? '') !== '',
+    }),
+    { headers: { 'Content-Type': 'application/json' } },
+  )
+}
+
 function routeRequest(req: Request): Response | Promise<Response> {
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
@@ -223,6 +235,10 @@ function routeRequest(req: Request): Response | Promise<Response> {
   if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
   if (url.pathname === '/stats/global') return handleStatsGlobal(url)
   if (url.pathname.startsWith('/stats/subject/')) return handleStatsSubject(url)
+  if (url.pathname === '/admin/system') {
+    if (req.method === 'GET') return handleAdminSystem()
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/admin/llm') {
     if (req.method === 'GET') return handleAdminLlmGet()
     if (req.method === 'POST') return handleAdminLlmPost(req)

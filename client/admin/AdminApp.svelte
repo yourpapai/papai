@@ -8,6 +8,7 @@
 
   import { adminState, sectionLabel, syncSectionFromLocation } from './admin.svelte.js'
   import NavSidebar from './components/NavSidebar.svelte'
+  import SystemSection from './sections/SystemSection.svelte'
 
   onMount(() => {
     syncSectionFromLocation()
@@ -27,10 +28,14 @@
   <div class="admin-body">
     <NavSidebar currentSection={adminState.currentSection} />
     <main class="admin-pane" aria-live="polite">
-      <section>
+      {#if adminState.currentSection === 'system'}
+        <SystemSection />
+      {:else}
+        <section>
         <p class="eyebrow">Section</p>
         <h2 data-testid="admin-section-title">{sectionLabel(adminState.currentSection)}</h2>
       </section>
+      {/if}
     </main>
   </div>
 </div>

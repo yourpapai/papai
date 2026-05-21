@@ -1,6 +1,11 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
 <script lang="ts">
-  import type { AdminLlmKeyState, AdminLlmSnapshot } from '../dashboard-types.js'
-  import { submitAdminLlm, type SubmitAdminLlmInput } from './fetchers.js'
+  import type { AdminLlmKeyState, AdminLlmSnapshot } from '../../shared/api-types.js'
+  import { submitAdminLlm, type SubmitAdminLlmInput } from '../fetchers.js'
 
   type Key = SubmitAdminLlmInput['key']
 
@@ -55,7 +60,7 @@
 <section class="credentials-form">
   <h3>LLM credentials</h3>
   {#if snapshot === null}
-    <span class="placeholder">Loading…</span>
+    <span class="placeholder">Loading...</span>
   {:else}
     <table>
       <thead>

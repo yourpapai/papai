@@ -156,3 +156,10 @@ export type AdminLlmSnapshot = {
   small_model: AdminLlmKeyState
   embedding_model: AdminLlmKeyState
 }
+
+export type AdminSystemSummary = {
+  chatProvider: string | null
+  taskProvider: string | null
+  debugServer: boolean
+  adminUserSet: boolean
+}
