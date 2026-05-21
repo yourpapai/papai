@@ -5,8 +5,6 @@
 
 import type { DashboardState } from './dashboard-types.js'
 
-export const LOG_CAP = 65535
-
 export const dashboard = $state<DashboardState>({
   connected: false,
   stats: { startedAt: Date.now(), totalMessages: 0, totalLlmCalls: 0, totalToolCalls: 0 },

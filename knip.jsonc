@@ -5,6 +5,7 @@
   "entry": [
     "src/scripts/*.ts!",
     "scripts/build-client.ts!",
+    "client/admin/index.ts!",
     "client/debug/index.ts!",
     "tests/commands/context-tool-catalog.test.ts!",
     "tests/debug/admin-visibility.test.ts!",
@@ -92,8 +93,13 @@
     "client/debug/log-filter.ts": ["exports"],
     "client/debug/sse.ts": ["exports"],
     "client/debug/types.ts": ["types"],
-    "client/debug/billing/fetchers.ts": ["exports"],
-    "client/debug/stats/fetchers.ts": ["exports"],
+    "client/admin/admin.svelte.ts": ["files", "exports", "types"],
+    "client/admin/fetcher-schemas.ts": ["files", "exports"],
+    "client/admin/fetchers.ts": ["files", "exports", "types"],
+    "client/admin/index.ts": ["files", "exports"],
+    "client/shared/fetcher-helpers.ts": ["files", "exports"],
+    "client/shared/helpers.ts": ["exports"],
+    "client/shared/api-types.ts": ["types"],
   },
 
   // Report unused exports even in entry files

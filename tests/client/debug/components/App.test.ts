@@ -7,13 +7,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { mount, unmount } from 'svelte'
 
-import App from '../../../../client/debug/App.svelte'
+import { dashboard } from '../../../../client/debug/debug.svelte.js'
+import DebugApp from '../../../../client/debug/DebugApp.svelte'
 
-describe('App.svelte', () => {
+describe('DebugApp.svelte', () => {
   test('renders debug-only panels and log explorer through DebugApp', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.getElementById('root')!
-    const component = mount(App, { target })
+    const component = mount(DebugApp, { target, props: { dashboard } })
 
     const html = target.innerHTML
     expect(html).toContain('papai debug')
@@ -36,7 +37,7 @@ describe('App.svelte', () => {
   test('shows placeholder messages when all collections are empty', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.getElementById('root')!
-    const component = mount(App, { target })
+    const component = mount(DebugApp, { target, props: { dashboard } })
 
     const html = target.innerHTML
     expect(html).toContain('No turns')
@@ -51,7 +52,7 @@ describe('App.svelte', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.getElementById('root')!
     expect(() => {
-      const c = mount(App, { target })
+      const c = mount(DebugApp, { target, props: { dashboard } })
       void unmount(c)
     }).not.toThrow()
   })

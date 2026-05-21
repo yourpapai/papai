@@ -5,13 +5,9 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { LOG_CAP, dashboard as state } from '../../../client/debug/debug.svelte.js'
+import { dashboard as state } from '../../../client/debug/debug.svelte.js'
 
 describe('debug.svelte', () => {
-  test('exposes LOG_CAP constant', () => {
-    expect(LOG_CAP).toBe(65535)
-  })
-
   test('initial state has expected shape', () => {
     expect(state.connected).toBe(false)
     expect(state.sessions).toBeInstanceOf(Map)

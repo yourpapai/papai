@@ -6,6 +6,10 @@
 import { describe, expect, test } from 'bun:test'
 
 describe('debug/admin split boundaries', () => {
+  test('legacy debug entry wrapper was removed after direct DebugApp mount', async () => {
+    expect(await Bun.file('client/debug/App.svelte').exists()).toBe(false)
+  })
+
   test('legacy debug-only admin panels were removed after admin split', async () => {
     expect(await Bun.file('client/debug/components/RemindersPanel.svelte').exists()).toBe(false)
     expect(await Bun.file('client/debug/components/MemosPanel.svelte').exists()).toBe(false)

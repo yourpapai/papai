@@ -5,13 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  CAPS,
-  isValidTurnStatus,
-  parseScope,
-  pickString,
-  pickStringOrNull,
-} from '../../../client/debug/handlers-helpers.js'
+import { CAPS, isValidTurnStatus, parseScope, pickString } from '../../../client/debug/handlers-helpers.js'
 
 describe('parseScope', () => {
   test('parses user scope', () => {
@@ -46,15 +40,10 @@ describe('isValidTurnStatus', () => {
   })
 })
 
-describe('pickString and pickStringOrNull', () => {
+describe('pickString', () => {
   test('pickString returns the string or empty fallback', () => {
     expect(pickString({ a: 'hello' }, 'a')).toBe('hello')
     expect(pickString({ a: 42 }, 'a')).toBe('')
-  })
-
-  test('pickStringOrNull returns the string or null', () => {
-    expect(pickStringOrNull({ a: 'hello' }, 'a')).toBe('hello')
-    expect(pickStringOrNull({}, 'a')).toBeNull()
   })
 })
 
