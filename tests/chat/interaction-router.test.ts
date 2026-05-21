@@ -271,7 +271,7 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(replies).toEqual([
-      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add <group-id>` in DM, then run /config or /setup again.',
+      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add group-9` in DM, then run /config or /setup again.',
     ])
     expect(getActiveGroupSettingsTarget(interaction.user.id)).toBeNull()
   })

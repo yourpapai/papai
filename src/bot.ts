@@ -51,16 +51,16 @@ const checkAuthorization = (userId: string, username: string | null | undefined)
   return false
 }
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
-function getUnauthorizedReplyText(auth: AuthorizationResult): string | null {
+function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
   if (auth.reason === 'group_not_allowed')
-    return 'This group is not authorized to use this bot. Ask the bot admin to run `/group add <group-id>` in a DM with the bot.'
+    return `This group is not authorized to use this bot. Ask the bot admin to run \`/group add ${groupId}\` in a DM with the bot.`
   if (auth.reason === 'group_member_not_allowed')
     return "You're not authorized to use this bot in this group. Ask a group admin to add you with `/group adduser <user-id|@username>`"
   if (auth.reason === 'dm_not_allowed') return 'You are not authorized to use this bot.'
   return null
 }
-async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult): Promise<void> {
-  const message = getUnauthorizedReplyText(auth)
+async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult, groupId: string): Promise<void> {
+  const message = getUnauthorizedReplyText(auth, groupId)
   if (message !== null) await reply.text(message)
 }
 function shouldDeferUnauthorizedDmCommand(commandName: string, msg: IncomingMessage): boolean {
@@ -90,7 +90,7 @@ function createObservedCommandHandler(
     const auth = resolveMessageAuth(msg)
     if (!auth.allowed) {
       if (shouldDeferUnauthorizedDmCommand(commandName, msg)) await handler(msg, tracked.reply, auth)
-      else await replyToUnauthorized(tracked.reply, auth)
+      else await replyToUnauthorized(tracked.reply, auth, msg.contextId)
       emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
       return
     }
@@ -175,7 +175,7 @@ async function handleMessage(
   deps: BotDeps,
 ): Promise<void> {
   if (!auth.allowed) {
-    if (msg.isMentioned) await replyToUnauthorized(reply, auth)
+    if (msg.isMentioned) await replyToUnauthorized(reply, auth, msg.contextId)
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
@@ -262,7 +262,7 @@ async function routeIncomingInteraction(interaction: IncomingInteraction, reply:
       interaction.user.isAdmin,
     )
     if (!auth.allowed) {
-      await replyToUnauthorized(reply, auth)
+      await replyToUnauthorized(reply, auth, interaction.contextId)
       return
     }
     await routeInteraction(interaction, reply, auth)

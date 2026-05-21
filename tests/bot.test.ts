@@ -770,7 +770,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(groupMessage, reply)
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group add <group-id>')
+    expect(textCalls[0]).toContain('/group add group-blocked')
     expect(listManageableGroups('group-admin')).toHaveLength(0)
   })
 
@@ -964,7 +964,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(createDmMessage('dm-admin', 'timezone'), reply)
 
     expect(textCalls).toEqual([
-      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add <group-id>` in DM, then run /config or /setup again.',
+      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add group-ops` in DM, then run /config or /setup again.',
     ])
     expect(getActiveGroupSettingsTarget('dm-admin')).toBeNull()
   })
@@ -1019,7 +1019,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await setupHandler!(groupMessage, reply, createAuth('group-user', { isGroupAdmin: true }))
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group add <group-id>')
+    expect(textCalls[0]).toContain('/group add group-denied')
   })
 
   test('denies group command execution when group is allowlisted but user is not permitted', async () => {
@@ -1192,7 +1192,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(processMessageCallCount).toBe(0)
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('not authorized')
-    expect(textCalls[0]).toContain('/group add <group-id>')
+    expect(textCalls[0]).toContain('/group add group-auth')
   })
 
   test('replies with member-level hint for unauthorized user in allowlisted mentioned group', async () => {
@@ -1399,7 +1399,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await interactionHandler!(interaction, reply)
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group add <group-id>')
+    expect(textCalls[0]).toContain('/group add group-missing')
   })
 
   test('interaction handler replies with member hint for allowlisted groups', async () => {

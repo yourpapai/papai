@@ -21,9 +21,9 @@ const GROUP_SETUP_ADMIN_ONLY =
 const NO_DELETE_WARNING =
   '⚠️ This platform does not support automatic deletion of messages containing secrets. Please manually delete your messages after entering API keys and tokens.\n\n'
 
-function getUnauthorizedReplyText(auth: AuthorizationResult): string {
+function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string {
   if (auth.reason === 'group_not_allowed') {
-    return 'This group is not authorized to use this bot. Ask the bot admin to run `/group add <group-id>` in a DM with the bot.'
+    return `This group is not authorized to use this bot. Ask the bot admin to run \`/group add ${groupId}\` in a DM with the bot.`
   }
   if (auth.reason === 'group_member_not_allowed') {
     return "You're not authorized to use this bot in this group. Ask a group admin to add you with `/group adduser <user-id|@username>`"
@@ -105,7 +105,9 @@ export async function startSetupForTarget(
   const isGroupTarget = targetContextId !== userId
 
   if (isGroupTarget && !resolvedDeps.isAuthorizedGroup(targetContextId)) {
-    await reply.text('This group is not authorized yet. Ask the bot admin to run `/group add <group-id>` in DM first.')
+    await reply.text(
+      `This group is not authorized yet. Ask the bot admin to run \`/group add ${targetContextId}\` in DM first.`,
+    )
     return
   }
 
@@ -152,7 +154,7 @@ export function registerSetupCommand(
 ): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) {
-      await reply.text(getUnauthorizedReplyText(auth))
+      await reply.text(getUnauthorizedReplyText(auth, msg.contextId))
       return
     }
 
