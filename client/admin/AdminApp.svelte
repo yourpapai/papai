@@ -9,6 +9,7 @@
   import { adminState, sectionLabel, syncSectionFromLocation } from './admin.svelte.js'
   import NavSidebar from './components/NavSidebar.svelte'
   import BillingSection from './sections/BillingSection.svelte'
+  import StatsSection from './sections/StatsSection.svelte'
   import SystemSection from './sections/SystemSection.svelte'
 
   onMount(() => {
@@ -33,6 +34,8 @@
         <SystemSection />
       {:else if adminState.currentSection === 'billing'}
         <BillingSection />
+      {:else if adminState.currentSection === 'stats'}
+        <StatsSection />
       {:else}
         <section>
           <p class="eyebrow">Section</p>

@@ -9,7 +9,7 @@ import { flushSync, mount, unmount } from 'svelte'
 
 import AdminApp from '../../../client/admin/AdminApp.svelte'
 
-const sections = ['System', 'Billing', 'Memos', 'Reminders', 'Identities', 'Groups'] as const
+const sections = ['System', 'Billing', 'Stats', 'Memos', 'Reminders', 'Identities', 'Groups'] as const
 
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
@@ -34,7 +34,7 @@ const trimmedText = (item: Element): string => {
 }
 
 describe('AdminApp.svelte', () => {
-  test('renders six navigation items', () => {
+  test('renders seven navigation items', () => {
     const component = mountAdminApp()
 
     const navItems = Array.from(document.querySelectorAll('[data-testid="admin-nav-item"]')).map((item) =>
@@ -55,15 +55,15 @@ describe('AdminApp.svelte', () => {
     void unmount(component)
   })
 
-  test('falls back to System when the hash targets hidden stats', () => {
+  test('renders Stats when the hash targets stats', () => {
     const component = mountAdminApp()
 
     location.hash = '#stats'
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     flushSync()
 
-    expect(textOf('[aria-current="page"]').trim()).toBe('System')
-    expect(textOf('[data-testid="admin-section-title"]')).toContain('System')
+    expect(textOf('[aria-current="page"]').trim()).toBe('Stats')
+    expect(textOf('[data-testid="admin-section-title"]')).toContain('Stats')
 
     void unmount(component)
   })

@@ -1,8 +1,13 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
 <script lang="ts">
   import { untrack } from 'svelte'
 
   import type { GlobalStats, StatsWindow } from '../../shared/api-types.js'
-  import { fetchStatsGlobal } from './fetchers.js'
+  import { fetchStatsGlobal } from '../fetchers.js'
 
   interface StatsState {
     statsWindow: StatsWindow
@@ -58,7 +63,10 @@
 
 <section class="panel stats-panel">
   <header class="stats-header">
-    <h2>Stats</h2>
+    <div>
+      <p class="eyebrow">Anonymous analytics</p>
+      <h2 data-testid="admin-section-title">Stats</h2>
+    </div>
     <label>
       Window:
       <select

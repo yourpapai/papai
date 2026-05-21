@@ -6,6 +6,7 @@
 export const adminSections = [
   { id: 'system', label: 'System' },
   { id: 'billing', label: 'Billing' },
+  { id: 'stats', label: 'Stats' },
   { id: 'memos', label: 'Memos' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'identities', label: 'Identities' },

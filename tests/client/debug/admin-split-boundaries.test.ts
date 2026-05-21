@@ -6,7 +6,6 @@
 import { describe, expect, test } from 'bun:test'
 
 const files = [
-  'client/debug/stats/StatsPanel.svelte',
   'client/debug/components/RemindersPanel.svelte',
   'client/debug/components/MemosPanel.svelte',
   'client/debug/components/ContextPanel.svelte',
@@ -25,11 +24,9 @@ describe('debug/admin split boundaries', () => {
     expect(source).not.toContain('../debug/handlers-helpers.js')
   })
 
-  test('debug no longer owns per-subject stats UI or subject fetcher after task 9', async () => {
+  test('debug no longer owns stats UI or stats fetchers after task 10', async () => {
+    expect(await Bun.file('client/debug/stats/StatsPanel.svelte').exists()).toBe(false)
     expect(await Bun.file('client/debug/stats/SubjectStatsPanel.svelte').exists()).toBe(false)
-
-    const fetchers = await Bun.file('client/debug/stats/fetchers.ts').text()
-    expect(fetchers).not.toContain('SubjectStatsSchema')
-    expect(fetchers).not.toContain('fetchStatsSubject')
+    expect(await Bun.file('client/debug/stats/fetchers.ts').exists()).toBe(false)
   })
 })

@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { fetchStatsGlobal } from '../../../../client/debug/stats/fetchers.js'
+import { fetchStatsGlobal } from '../../../../client/admin/fetchers.js'
 import type { StatsWindow } from '../../../../src/stats/types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 

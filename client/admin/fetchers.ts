@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import type { SubjectStats } from '../../src/stats/types.js'
+import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/types.js'
 import type {
   AdminLlmSnapshot,
   AdminSystemSummary,
@@ -19,6 +19,50 @@ const BillingRoleTotalsSchema = z.object({
   inputTokens: z.number(),
   outputTokens: z.number(),
   calls: z.number(),
+})
+
+const PercentilesSchema = z.object({
+  count: z.number(),
+  min: z.number(),
+  p50: z.number(),
+  p90: z.number(),
+  p99: z.number(),
+  max: z.number(),
+  mean: z.number(),
+})
+
+const StatsWindowSchema = z.enum(['1d', '7d', '30d', 'all'])
+
+const GlobalStatsSchema = z.object({
+  generatedAt: z.number(),
+  window: StatsWindowSchema,
+  subjects: z.object({
+    dmTotal: z.number(),
+    groupTotal: z.number(),
+    growthLast30d: z.array(z.object({ date: z.string(), dmAdded: z.number(), groupAdded: z.number() })),
+  }),
+  active: z.object({ activeIn1d: z.number(), activeIn7d: z.number(), activeIn30d: z.number() }),
+  distributions: z.object({
+    memosPerSubject: PercentilesSchema,
+    recurringTasksPerSubject: PercentilesSchema,
+    messageMetadataPerSubject: PercentilesSchema,
+    attachmentBytesPerSubject: PercentilesSchema,
+  }),
+  storage: z.object({ sqliteBytes: z.number(), s3AttachmentBytes: z.number() }),
+  identityMix: z.object({ byProvider: z.record(z.string(), z.number()), kaneoWorkspaces: z.number() }),
+  surfaceMix: z.object({
+    subjectsWithRecurring: z.number(),
+    subjectsWithDeferred: z.number(),
+    subjectsWithMemos: z.number(),
+    subjectsWithInstructions: z.number(),
+  }),
+  webFetches: z.object({
+    topHosts: z.array(z.object({ hostHash: z.string(), count: z.number() })),
+  }),
+  toolMix: z.object({
+    topTools: z.array(z.object({ toolName: z.string(), count: z.number(), successRate: z.number() })),
+    errorTypeCounts: z.record(z.string(), z.number()),
+  }),
 })
 
 const BillingSubjectSchema = z.object({
@@ -189,6 +233,14 @@ export type FetchBillingSubjectsResult = {
 }
 
 export type FetchBillingDetailResult = BillingDetail & { readonly window: BillingWindow }
+
+export const fetchStatsGlobal = async (window: StatsWindow | undefined): Promise<GlobalStats> => {
+  const path = window === undefined ? '/stats/global' : `/stats/global?window=${encodeURIComponent(window)}`
+  const res = await fetch(path)
+  const body = await readBody(res)
+  requireOk(res, body)
+  return GlobalStatsSchema.parse(body) as GlobalStats
+}
 
 export const fetchBillingSubjects = async (window: BillingWindow): Promise<FetchBillingSubjectsResult> => {
   const res = await fetch(`/billing/subjects?window=${encodeURIComponent(window)}`)
