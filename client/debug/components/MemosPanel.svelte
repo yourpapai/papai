@@ -1,9 +1,13 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
-  import type { DashboardState } from '../dashboard-types.js'
+  import type { Memo } from '../../shared/api-types.js'
+
+  interface MemosState {
+    memos: Memo[]
+  }
 
   interface Props {
-    dashboard: DashboardState
+    dashboard: MemosState
   }
 
   let { dashboard }: Props = $props()

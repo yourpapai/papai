@@ -1,11 +1,16 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
-  import type { DashboardState, StatsWindow } from '../dashboard-types.js'
+  import type { GlobalStats, StatsWindow } from '../../shared/api-types.js'
   import { fetchStatsGlobal } from './fetchers.js'
 
+  interface StatsState {
+    statsWindow: StatsWindow
+    globalStats: GlobalStats | null
+  }
+
   interface Props {
-    dashboard: DashboardState
+    dashboard: StatsState
   }
 
   let { dashboard }: Props = $props()

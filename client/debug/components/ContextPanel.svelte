@@ -1,8 +1,16 @@
 <script lang="ts">
-  import type { DashboardState } from '../dashboard-types.js'
+  import type { AuthorizedGroupEntry, IdentityMappingEntry } from '../../shared/api-types.js'
+  import type { DashboardWizard } from '../dashboard-types.js'
+
+  interface ContextState {
+    identityMappings: Map<string, IdentityMappingEntry>
+    activeConfigEditors: Set<string>
+    wizards: Map<string, DashboardWizard>
+    authorizedGroups: AuthorizedGroupEntry[]
+  }
 
   interface Props {
-    dashboard: DashboardState
+    dashboard: ContextState
   }
 
   let { dashboard }: Props = $props()

@@ -1,9 +1,14 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
-  import type { DashboardState } from '../dashboard-types.js'
+  import type { DeferredPrompt, RecurringTask } from '../../shared/api-types.js'
+
+  interface RemindersState {
+    recurringTasks: RecurringTask[]
+    deferredPrompts: DeferredPrompt[]
+  }
 
   interface Props {
-    dashboard: DashboardState
+    dashboard: RemindersState
   }
 
   let { dashboard }: Props = $props()

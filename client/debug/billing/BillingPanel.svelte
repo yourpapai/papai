@@ -1,13 +1,19 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
-  import type { BillingSubject, BillingWindow, DashboardState } from '../dashboard-types.js'
+  import type { AdminLlmSnapshot, BillingSubject, BillingWindow } from '../../shared/api-types.js'
   import CredentialsForm from './CredentialsForm.svelte'
   import SubjectsTable from './SubjectsTable.svelte'
   import { fetchAdminLlm, fetchBillingSubjects } from './fetchers.js'
 
+  interface BillingState {
+    billingWindow: BillingWindow
+    billingSubjects: BillingSubject[]
+    adminLlm: AdminLlmSnapshot | null
+  }
+
   interface Props {
-    dashboard: DashboardState
+    dashboard: BillingState
     onSelectSubject: (subject: BillingSubject) => void
   }
 

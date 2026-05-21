@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { CAPS, pickString, pickStringOrNull } from '../debug/handlers-helpers.js'
 import type {
   AuthorizedGroupEntry,
   DeferredPrompt,
@@ -11,6 +10,22 @@ import type {
   Memo,
   RecurringTask,
 } from '../shared/api-types.js'
+
+const CAPS = {
+  RECURRING: 512,
+  DEFERRED: 512,
+  MEMO: 1024,
+} as const
+
+function pickString(d: Record<string, unknown>, key: string): string {
+  const v = d[key]
+  return typeof v === 'string' ? v : ''
+}
+
+function pickStringOrNull(d: Record<string, unknown>, key: string): string | null {
+  const v = d[key]
+  return typeof v === 'string' ? v : null
+}
 
 interface DashboardState {
   recurringTasks: RecurringTask[]
