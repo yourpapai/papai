@@ -21,8 +21,12 @@ const pick = (obj: object, key: string): unknown => Reflect.get(obj, key)
 
 const parseJsonObject = (text: string): object => {
   const parsed: unknown = JSON.parse(text)
-  assert(typeof parsed === 'object' && parsed !== null, 'expected JSON object')
+  assert.ok(typeof parsed === 'object' && parsed !== null, 'expected JSON object')
   return parsed
+}
+
+const cancelBody = async (body: ReadableStream<Uint8Array> | null): Promise<void> => {
+  if (body !== null) await body.cancel()
 }
 
 describe('debug-server admin/system route', () => {
@@ -60,7 +64,7 @@ describe('debug-server admin/system route', () => {
   test('GET /admin/system requires the bearer token', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`)
     expect(res.status).toBe(401)
-    await res.body?.cancel()
+    await cancelBody(res.body)
   })
 
   test('GET /admin/system returns only safe system summary fields', async () => {
@@ -75,7 +79,7 @@ describe('debug-server admin/system route', () => {
     expect(pick(body, 'taskProvider')).toBe('kaneo')
     expect(pick(body, 'debugServer')).toBe(true)
     expect(pick(body, 'adminUserSet')).toBe(true)
-    expect(Object.keys(body).sort()).toEqual(['adminUserSet', 'chatProvider', 'debugServer', 'taskProvider'])
+    expect(Object.keys(body).toSorted()).toEqual(['adminUserSet', 'chatProvider', 'debugServer', 'taskProvider'])
   })
 
   test('GET /admin/system maps unsupported providers to unknown', async () => {

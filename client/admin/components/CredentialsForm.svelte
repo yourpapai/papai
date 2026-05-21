@@ -55,6 +55,11 @@
     if (state.value === null) return '(not set)'
     return state.value
   }
+
+  function updatedByDisplay(state: AdminLlmKeyState): string {
+    if (state.updatedBy === null) return '-'
+    return state.updatedBy
+  }
 </script>
 
 <section class="credentials-form">
@@ -84,7 +89,7 @@
                 <span>{display(snapshot[key])}</span>
               {/if}
             </td>
-            <td>{snapshot[key].updatedBy ?? '-'}</td>
+            <td>{updatedByDisplay(snapshot[key])}</td>
             <td>
               {#if editing === key}
                 <button

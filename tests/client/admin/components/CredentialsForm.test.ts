@@ -47,7 +47,7 @@ type Mounted = {
 
 const render = (snapshot: AdminLlmSnapshot | null): Mounted => {
   document.body.innerHTML = '<div id="root"></div>'
-  const target = document.getElementById('root')
+  const target = document.querySelector<HTMLElement>('#root')
   if (target === null) throw new Error('root missing')
   let refreshes = 0
   const component = mount(CredentialsForm, {
@@ -67,6 +67,18 @@ const render = (snapshot: AdminLlmSnapshot | null): Mounted => {
       return refreshes
     },
   }
+}
+
+const requiredElement = (target: HTMLElement, selector: string): Element => {
+  const element = target.querySelector(selector)
+  if (element === null) throw new Error(`${selector} missing`)
+  return element
+}
+
+const clickButton = (target: HTMLElement, selector: string): void => {
+  const button = target.querySelector<HTMLButtonElement>(selector)
+  if (button === null) throw new Error(`${selector} missing`)
+  button.click()
 }
 
 beforeEach(() => {
@@ -93,9 +105,8 @@ describe('CredentialsForm', () => {
 
   test('renders sensitive key values in a masked-value element with a "hidden" hint', () => {
     const { target, component } = render(populated)
-    const masked = target.querySelector('[data-testid="masked-value-llm_apikey"]')
-    expect(masked).not.toBeNull()
-    expect(masked?.textContent).toContain('****1234')
+    const masked = requiredElement(target, '[data-testid="masked-value-llm_apikey"]')
+    expect(masked.textContent).toContain('****1234')
     expect(target.textContent.toLowerCase()).toContain('hidden')
     void unmount(component)
   })
@@ -123,8 +134,7 @@ describe('CredentialsForm', () => {
 
   test('clicking Edit reveals an input', () => {
     const { target, component } = render(populated)
-    const editBtn = target.querySelector<HTMLButtonElement>('[data-testid="edit-main_model"]')
-    editBtn?.click()
+    clickButton(target, '[data-testid="edit-main_model"]')
     flushSync()
     const input = target.querySelector<HTMLInputElement>('[data-testid="input-main_model"]')
     expect(input).not.toBeNull()
@@ -136,8 +146,7 @@ describe('CredentialsForm', () => {
     setMockFetch((url, init) => respondToPost(url, init, recorded))
 
     const m = render(populated)
-    const editBtn = m.target.querySelector<HTMLButtonElement>('[data-testid="edit-main_model"]')
-    editBtn?.click()
+    clickButton(m.target, '[data-testid="edit-main_model"]')
     flushSync()
     const input = m.target.querySelector<HTMLInputElement>('[data-testid="input-main_model"]')
     expect(input).not.toBeNull()
@@ -145,8 +154,7 @@ describe('CredentialsForm', () => {
     inputEl.value = 'gpt-99'
     inputEl.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
-    const submit = m.target.querySelector<HTMLButtonElement>('[data-testid="submit-main_model"]')
-    submit?.click()
+    clickButton(m.target, '[data-testid="submit-main_model"]')
     // Drain the async submit + onRefresh chain. Two microtask ticks cover
     // fetch().then().then() and the awaited onRefresh callback below it.
     for (let i = 0; i < 10; i++) await Promise.resolve()

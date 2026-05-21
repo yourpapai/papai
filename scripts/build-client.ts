@@ -111,7 +111,7 @@ export async function buildBundle(config: BundleConfig): Promise<void> {
 async function buildAll(): Promise<void> {
   fs.mkdirSync(PUBLIC_DIR, { recursive: true })
 
-  await Promise.all(BUNDLES.map(buildBundle))
+  await Promise.all(BUNDLES.map((bundle) => buildBundle(bundle)))
 }
 
 if (import.meta.main) {

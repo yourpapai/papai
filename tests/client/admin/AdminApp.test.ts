@@ -14,7 +14,23 @@ const sections = ['System', 'Billing', 'Stats', 'Memos', 'Reminders', 'Identitie
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
   history.replaceState(null, '', '/admin')
-  return mount(AdminApp, { target: document.getElementById('root')! })
+  const target = document.querySelector<HTMLElement>('#root')
+  if (target === null) throw new Error('root missing')
+  return mount(AdminApp, { target })
+}
+
+const textOf = (selector: string): string => {
+  const element = document.querySelector(selector)
+  if (element === null) throw new Error(`${selector} missing`)
+  const text = element.textContent
+  if (text === null) throw new Error(`${selector} has no text`)
+  return text
+}
+
+const trimmedText = (item: Element): string => {
+  const text = item.textContent
+  if (text === null) throw new Error('element has no text')
+  return text.trim()
 }
 
 describe('AdminApp.svelte', () => {
@@ -22,7 +38,7 @@ describe('AdminApp.svelte', () => {
     const component = mountAdminApp()
 
     const navItems = Array.from(document.querySelectorAll('[data-testid="admin-nav-item"]')).map((item) =>
-      item.textContent?.trim(),
+      trimmedText(item),
     )
 
     expect(navItems).toEqual([...sections])
@@ -33,8 +49,8 @@ describe('AdminApp.svelte', () => {
   test('selects System by default', () => {
     const component = mountAdminApp()
 
-    expect(document.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('System')
-    expect(document.querySelector('[data-testid="admin-section-title"]')?.textContent).toContain('System')
+    expect(textOf('[aria-current="page"]').trim()).toBe('System')
+    expect(textOf('[data-testid="admin-section-title"]')).toContain('System')
 
     void unmount(component)
   })
@@ -46,8 +62,8 @@ describe('AdminApp.svelte', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     flushSync()
 
-    expect(document.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Stats')
-    expect(document.querySelector('[data-testid="admin-section-title"]')?.textContent).toContain('Stats')
+    expect(textOf('[aria-current="page"]').trim()).toBe('Stats')
+    expect(textOf('[data-testid="admin-section-title"]')).toContain('Stats')
 
     void unmount(component)
   })

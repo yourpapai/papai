@@ -18,13 +18,18 @@ const safeChatProvider = (): AdminChatProvider => safeProviderValue(process.env[
 
 const safeTaskProvider = (): AdminTaskProvider => safeProviderValue(process.env['TASK_PROVIDER'], TASK_PROVIDERS)
 
+const adminUserSet = (): boolean => {
+  const adminUserId = process.env['ADMIN_USER_ID']
+  return adminUserId !== undefined && adminUserId !== ''
+}
+
 export const handleAdminSystem = (): Response =>
   new Response(
     JSON.stringify({
       chatProvider: safeChatProvider(),
       taskProvider: safeTaskProvider(),
       debugServer: process.env['DEBUG_SERVER'] === 'true',
-      adminUserSet: (process.env['ADMIN_USER_ID'] ?? '') !== '',
+      adminUserSet: adminUserSet(),
     }),
     { headers: { 'Content-Type': 'application/json' } },
   )

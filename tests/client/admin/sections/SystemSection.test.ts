@@ -29,10 +29,33 @@ const systemSummary = {
 
 const render = (): { readonly component: ReturnType<typeof mount>; readonly target: HTMLElement } => {
   document.body.innerHTML = '<div id="root"></div>'
-  const target = document.getElementById('root')
+  const target = document.querySelector<HTMLElement>('#root')
   if (target === null) throw new Error('root missing')
   const component = mount(SystemSection, { target })
   return { component, target }
+}
+
+const requestMethod = (init: RequestInit): string => {
+  if (init.method === undefined) return 'GET'
+  return init.method
+}
+
+const responseFor = (responses: ReadonlyMap<string, Response>, call: string): Response => {
+  const response = responses.get(call)
+  if (response === undefined) return new Response('not mocked', { status: 500 })
+  return response
+}
+
+const responseFrom = (responses: ReadonlyMap<string, () => Response>, call: string): Response => {
+  const response = responses.get(call)
+  if (response === undefined) return new Response('not mocked', { status: 500 })
+  return response()
+}
+
+const clickButton = (target: HTMLElement, selector: string): void => {
+  const button = target.querySelector<HTMLButtonElement>(selector)
+  if (button === null) throw new Error(`${selector} missing`)
+  button.click()
 }
 
 const drain = async (): Promise<void> => {
@@ -47,9 +70,7 @@ const installReadFetch = (): void => {
     ['GET /admin/system', jsonResponse(systemSummary)],
     ['GET /admin/llm', jsonResponse(llmSnapshot)],
   ])
-  setMockFetch((url, init) =>
-    Promise.resolve(responses.get(`${init.method ?? 'GET'} ${url}`) ?? new Response('not mocked', { status: 500 })),
-  )
+  setMockFetch((url, init) => Promise.resolve(responseFor(responses, `${requestMethod(init)} ${url}`)))
 }
 
 const installEditFetch = (recorded: { body: string | null; calls: string[] }): void => {
@@ -59,10 +80,10 @@ const installEditFetch = (recorded: { body: string | null; calls: string[] }): v
     ['POST /admin/llm', (): Response => jsonResponse({ ok: true, key: 'main_model', updatedAt: 99 })],
   ])
   setMockFetch((url, init) => {
-    const call = `${init.method ?? 'GET'} ${url}`
+    const call = `${requestMethod(init)} ${url}`
     recorded.calls = [...recorded.calls, call]
     recorded.body = call === 'POST /admin/llm' && typeof init.body === 'string' ? init.body : recorded.body
-    return Promise.resolve(responses.get(call)?.() ?? new Response('not mocked', { status: 500 }))
+    return Promise.resolve(responseFrom(responses, call))
   })
 }
 
@@ -95,7 +116,7 @@ describe('SystemSection', () => {
     const { component, target } = render()
     await drain()
 
-    target.querySelector<HTMLButtonElement>('[data-testid="edit-main_model"]')?.click()
+    clickButton(target, '[data-testid="edit-main_model"]')
     flushSync()
     const input = target.querySelector<HTMLInputElement>('[data-testid="input-main_model"]')
     expect(input).not.toBeNull()
@@ -103,7 +124,7 @@ describe('SystemSection', () => {
     inputEl.value = 'gpt-updated'
     inputEl.dispatchEvent(new Event('input', { bubbles: true }))
     flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="submit-main_model"]')?.click()
+    clickButton(target, '[data-testid="submit-main_model"]')
     await drain()
 
     expect(recorded.body).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-updated' }))

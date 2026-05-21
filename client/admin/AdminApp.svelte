@@ -13,7 +13,7 @@
   onMount(() => {
     syncSectionFromLocation()
     window.addEventListener('hashchange', syncSectionFromLocation)
-    return () => window.removeEventListener('hashchange', syncSectionFromLocation)
+    return (): void => window.removeEventListener('hashchange', syncSectionFromLocation)
   })
 </script>
 
@@ -32,9 +32,9 @@
         <SystemSection />
       {:else}
         <section>
-        <p class="eyebrow">Section</p>
-        <h2 data-testid="admin-section-title">{sectionLabel(adminState.currentSection)}</h2>
-      </section>
+          <p class="eyebrow">Section</p>
+          <h2 data-testid="admin-section-title">{sectionLabel(adminState.currentSection)}</h2>
+        </section>
       {/if}
     </main>
   </div>

@@ -27,6 +27,12 @@ const installFetch = (status: number, payload: unknown): void => {
   })
 }
 
+const firstCaptured = (): { readonly url: string; readonly init: RequestInit } => {
+  const first = captured[0]
+  if (first === undefined) throw new Error('missing captured fetch call')
+  return first
+}
+
 describe('fetchAdminLlm', () => {
   test('GETs /admin/llm', async () => {
     const empty = { value: null, updatedAt: null, updatedBy: null }
@@ -38,7 +44,7 @@ describe('fetchAdminLlm', () => {
       embedding_model: empty,
     })
     const snap = await fetchAdminLlm()
-    expect(captured[0]?.url).toBe('/admin/llm')
+    expect(firstCaptured().url).toBe('/admin/llm')
     expect(snap.llm_apikey.value).toBeNull()
   })
 })
@@ -47,9 +53,10 @@ describe('submitAdminLlm', () => {
   test('POSTs JSON body to /admin/llm', async () => {
     installFetch(200, { ok: true, key: 'main_model', updatedAt: 123 })
     const result = await submitAdminLlm({ key: 'main_model', value: 'gpt-6' })
-    expect(captured[0]?.url).toBe('/admin/llm')
-    expect(captured[0]?.init.method).toBe('POST')
-    expect(captured[0]?.init.body).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-6' }))
+    const call = firstCaptured()
+    expect(call.url).toBe('/admin/llm')
+    expect(call.init.method).toBe('POST')
+    expect(call.init.body).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-6' }))
     expect(result.key).toBe('main_model')
   })
 
@@ -63,7 +70,7 @@ describe('fetchAdminSystem', () => {
   test('GETs /admin/system and validates the summary', async () => {
     installFetch(200, { chatProvider: 'telegram', taskProvider: 'kaneo', debugServer: true, adminUserSet: true })
     const result = await fetchAdminSystem()
-    expect(captured[0]?.url).toBe('/admin/system')
+    expect(firstCaptured().url).toBe('/admin/system')
     expect(result.chatProvider).toBe('telegram')
   })
 

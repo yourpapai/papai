@@ -16,7 +16,6 @@
   let fetching = $state(false)
 
   const boolLabel = (value: boolean): string => (value ? 'Enabled' : 'Disabled')
-  const providerLabel = (value: string | null): string => value ?? '(not set)'
 
   async function loadSystem(): Promise<void> {
     system = await fetchAdminSystem()
@@ -69,8 +68,8 @@
       <span class="placeholder">Loading...</span>
     {:else}
       <dl data-testid="system-summary">
-        <div><dt>Chat provider</dt><dd>{providerLabel(system.chatProvider)}</dd></div>
-        <div><dt>Task provider</dt><dd>{providerLabel(system.taskProvider)}</dd></div>
+        <div><dt>Chat provider</dt><dd>{system.chatProvider}</dd></div>
+        <div><dt>Task provider</dt><dd>{system.taskProvider}</dd></div>
         <div><dt>Debug server</dt><dd>{boolLabel(system.debugServer)}</dd></div>
         <div><dt>Admin user</dt><dd>{system.adminUserSet ? 'Configured' : 'Missing'}</dd></div>
       </dl>
