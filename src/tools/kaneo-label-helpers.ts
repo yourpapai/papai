@@ -9,17 +9,18 @@ export function isKaneoProvider(provider: Readonly<TaskProvider>): boolean {
   return provider.name === 'kaneo'
 }
 
-export async function listVisibleWorkspaceLabels(
+export function listVisibleWorkspaceLabels(
   provider: Readonly<TaskProvider>,
-  labelName?: string,
+  labelName: string | undefined,
 ): Promise<Label[]> {
   if (provider.getLabelByName !== undefined && labelName !== undefined) {
-    return await provider.getLabelByName(labelName)
+    return provider.getLabelByName(labelName)
   }
-  return (await provider.listLabels?.()) ?? []
+  if (provider.listLabels === undefined) return Promise.resolve([])
+  return provider.listLabels()
 }
 
-export async function listTaskLabels(provider: Readonly<TaskProvider>, taskId: string): Promise<TaskLabel[]> {
-  if (!isKaneoProvider(provider) || provider.listTaskLabels === undefined) return []
-  return await provider.listTaskLabels(taskId)
+export function listTaskLabels(provider: Readonly<TaskProvider>, taskId: string): Promise<TaskLabel[]> {
+  if (!isKaneoProvider(provider) || provider.listTaskLabels === undefined) return Promise.resolve([])
+  return provider.listTaskLabels(taskId)
 }

@@ -14,7 +14,7 @@ import { removeLabel } from '../remove-label.js'
 import { removeTaskLabel } from '../remove-task-label.js'
 import { updateLabel } from '../update-label.js'
 
-const mapTaskLabel = (label: { id: string; name: string; color?: string }): TaskLabel => ({
+const mapTaskLabel = (label: { id: string; name: string; color: string | undefined }): TaskLabel => ({
   id: label.id,
   name: label.name,
   color: label.color,
@@ -22,12 +22,12 @@ const mapTaskLabel = (label: { id: string; name: string; color?: string }): Task
 
 export async function kaneoListLabels(config: KaneoConfig, workspaceId: string): Promise<Label[]> {
   const results = await listLabels({ config, workspaceId })
-  return results.filter((label) => label.taskId === null).map(mapLabel)
+  return results.filter((label) => label.taskId === null).map((label) => mapLabel(label))
 }
 
 export async function kaneoListTaskLabels(config: KaneoConfig, taskId: string): Promise<TaskLabel[]> {
   const results = await listTaskLabels({ config, taskId })
-  return results.map(mapTaskLabel)
+  return results.map((label) => mapTaskLabel(label))
 }
 
 export async function kaneoCreateLabel(

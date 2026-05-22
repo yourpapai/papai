@@ -16,6 +16,7 @@ import type {
   RelationType,
   SetTaskVisibilityParams,
   Task,
+  TaskLabel,
   TaskCommandResult,
   TaskListItem,
   TaskSearchResult,

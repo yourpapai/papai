@@ -29,45 +29,53 @@ const labelTargetSchema = z
     path: ['labelId'],
   })
 
-const resolveTaskLabelId = async (
+type AlreadyAbsentResult = {
+  status: 'already_absent'
+  taskId: string
+  labelName: string
+  message: string
+}
+
+const alreadyAbsent = (taskId: string, labelName: string, message: string): AlreadyAbsentResult => ({
+  status: 'already_absent',
+  taskId,
+  labelName,
+  message,
+})
+
+const resolveKaneoTaskLabelId = async (
   provider: Readonly<TaskProvider>,
   taskId: string,
   labelId: string | undefined,
   labelName: string | undefined,
-): Promise<string | { status: 'already_absent'; taskId: string; labelName: string; message: string }> => {
-  if (isKaneoProvider(provider)) {
-    const taskLabels = await listTaskLabels(provider, taskId)
+): Promise<string | AlreadyAbsentResult> => {
+  const taskLabels = await listTaskLabels(provider, taskId)
 
-    if (labelId !== undefined) {
-      const direct = taskLabels.find((label) => label.id === labelId)
-      if (direct !== undefined) return direct.id
-      return {
-        status: 'already_absent',
-        taskId,
-        labelName: labelId,
-        message: `Task does not currently have label id "${labelId}". No action was taken.`,
-      }
-    }
-
-    if (labelName === undefined) {
-      throw new Error('Provide exactly one of labelId or labelName')
-    }
-
-    const matches = taskLabels.filter((label) => label.name === labelName)
-    if (matches.length === 0) {
-      return {
-        status: 'already_absent',
-        taskId,
-        labelName,
-        message: `Task does not currently have label "${labelName}". No action was taken.`,
-      }
-    }
-    if (matches.length > 1) {
-      throw new Error(`Multiple task labels found: ${labelName}`)
-    }
-    return matches[0]!.id
+  if (labelId !== undefined) {
+    const direct = taskLabels.find((label) => label.id === labelId)
+    if (direct !== undefined) return direct.id
+    return alreadyAbsent(taskId, labelId, `Task does not currently have label id "${labelId}". No action was taken.`)
   }
 
+  if (labelName === undefined) {
+    throw new Error('Provide exactly one of labelId or labelName')
+  }
+
+  const matches = taskLabels.filter((label) => label.name === labelName)
+  if (matches.length === 0) {
+    return alreadyAbsent(taskId, labelName, `Task does not currently have label "${labelName}". No action was taken.`)
+  }
+  if (matches.length > 1) {
+    throw new Error(`Multiple task labels found: ${labelName}`)
+  }
+  return matches[0]!.id
+}
+
+const resolveWorkspaceLabelId = async (
+  provider: Readonly<TaskProvider>,
+  labelId: string | undefined,
+  labelName: string | undefined,
+): Promise<string> => {
   if (labelId !== undefined) return labelId
   if (labelName === undefined) {
     throw new Error('Provide exactly one of labelId or labelName')
@@ -81,6 +89,19 @@ const resolveTaskLabelId = async (
     throw new Error(`Multiple labels found: ${labelName}`)
   }
   return matches[0]!.id
+}
+
+const resolveTaskLabelId = (
+  provider: Readonly<TaskProvider>,
+  taskId: string,
+  labelId: string | undefined,
+  labelName: string | undefined,
+): Promise<string | AlreadyAbsentResult> => {
+  if (isKaneoProvider(provider)) {
+    return resolveKaneoTaskLabelId(provider, taskId, labelId, labelName)
+  }
+
+  return resolveWorkspaceLabelId(provider, labelId, labelName)
 }
 
 export function makeRemoveTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
