@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * plan-adr-workflow-helpers.ts
  *
@@ -103,10 +108,10 @@ export async function discoverPlanFiles(filter: string | null, plansDir: string)
 // ─── Spec Reference Extraction ────────────────────────────────────────────────
 
 const SPEC_PATTERNS: readonly RegExp[] = [
-  /\*\*Spec:\*\*\s*`([^`]+docs\/superpowers\/specs\/[^`]+)`/i,
-  /\*\*Spec(?:ification)?:\*\*\s*`([^`]+)`/i,
-  /\*\*Design(?:\s+Doc)?:\*\*\s*`([^`]+)`/i,
-  /^Spec:\s*`([^`]+)`/im,
+  /\*\*Spec:\*\*\s*`([^`]+docs\/superpowers\/specs\/[^`]+)`/iu,
+  /\*\*Spec(?:ification)?:\*\*\s*`([^`]+)`/iu,
+  /\*\*Design(?:\s+Doc)?:\*\*\s*`([^`]+)`/iu,
+  /^Spec:\s*`([^`]+)`/imu,
 ]
 
 export function extractSpecReference(content: string): string | null {
@@ -167,7 +172,7 @@ export async function archiveFile(absolutePath: string, dryRun: boolean): Promis
 }
 
 function buildRemainingWorkContent(planFile: string, status: PlanStatus, work: RemainingWork): string {
-  const title = planFile.replace(/\.md$/, '').replace(/-/g, ' ')
+  const title = planFile.replace(/\.md$/u, '').replace(/-/gu, ' ')
   const date = new Date().toISOString().slice(0, 10)
 
   const completedSection =

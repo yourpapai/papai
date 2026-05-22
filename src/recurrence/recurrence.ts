@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { RRuleTemporal } from 'rrule-temporal'
 
 import { logger } from '../logger.js'
@@ -11,14 +16,14 @@ export type CompiledRecurrence = {
   timezone: string
 }
 
-export const recurrenceSpecToRrule = (spec: RecurrenceSpec): CompiledRecurrence => {
-  log.debug({ freq: spec.freq, timezone: spec.timezone }, 'recurrenceSpecToRrule called')
+export const recurrenceSpecToRrule = (spec: RecurrenceSpec, timezone: string): CompiledRecurrence => {
+  log.debug({ freq: spec.freq, timezone }, 'recurrenceSpecToRrule called')
 
   const parts: string[] = [`FREQ=${spec.freq}`]
   if (spec.interval !== undefined) parts.push(`INTERVAL=${spec.interval}`)
   if (spec.count !== undefined) parts.push(`COUNT=${spec.count}`)
   if (spec.until !== undefined) {
-    const until = spec.until.replace(/[-:]/g, '').replace(/\.\d+/, '')
+    const until = spec.until.replace(/[-:]/gu, '').replace(/\.\d+/u, '')
     parts.push(`UNTIL=${until}`)
   }
   if (spec.byMonth !== undefined) parts.push(`BYMONTH=${spec.byMonth.join(',')}`)
@@ -30,7 +35,7 @@ export const recurrenceSpecToRrule = (spec: RecurrenceSpec): CompiledRecurrence 
   return {
     rrule: parts.join(';'),
     dtstartUtc: spec.dtstart,
-    timezone: spec.timezone,
+    timezone,
   }
 }
 

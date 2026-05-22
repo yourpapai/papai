@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
@@ -385,7 +390,7 @@ describe('behavior-audit phase 3 incremental selection', () => {
     const finishEvent = expectDoneFinishEvent(events[1])
     expect(typeof finishEvent.outcome.elapsedMs).toBe('number')
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/^\[Phase 3\] \[tools\] \[1\/1\] "Selected case" — 2 tools, 300 tok in .+ ✓$/)
+    expect(lines[0]).toMatch(/^\[Phase 3\] \[tools\] \[1\/1\] "Selected case" — 2 tools, 300 tok in .+ ✓$/u)
   })
 
   test('runPhase3 emits failed reporter events without split writes', async () => {

@@ -1,44 +1,19 @@
 services:
-  # One-shot service that patches a missing Kaneo DB migration:
-  # migration 0008 created `user_id text NOT NULL` on the apikey table
-  # but the @better-auth/api-key plugin only writes `reference_id`, never
-  # `user_id`, so every API key creation returns 500. This drops the NOT
-  # NULL constraint idempotently after Kaneo has run its own migrations.
-  kaneo-db-fix:
-    image: postgres:16-alpine
-    environment:
-      PGPASSWORD: ${KANEO_POSTGRES_PASSWORD:?KANEO_POSTGRES_PASSWORD is required}
-    command:
-      - sh
-      - -c
-      - >-
-        until psql -v ON_ERROR_STOP=1
-        -h kaneo-postgres
-        -U ${KANEO_POSTGRES_USER:-kaneo}
-        -d ${KANEO_POSTGRES_DB:-kaneo}
-        -c 'ALTER TABLE apikey ALTER COLUMN user_id DROP NOT NULL';
-        do echo 'Waiting for Kaneo migrations...'; sleep 3; done
-    depends_on:
-      kaneo-api:
-        condition: service_healthy
-
   papai:
-    image: ${IMAGE:-ghcr.io/wkich/papai:latest}
+    image: ${IMAGE:-ghcr.io/yourpapai/papai:latest}
     restart: unless-stopped
     env_file:
       - .env
     environment:
       DB_PATH: /data/papai.db
-      KANEO_INTERNAL_URL: ${KANEO_INTERNAL_URL:-http://kaneo-api:1337}
+      KANEO_INTERNAL_URL: ${KANEO_INTERNAL_URL:-http://kaneo:5173}
     expose:
       - '9100'
     volumes:
       - papai-data:/data
     depends_on:
-      kaneo-api:
+      kaneo:
         condition: service_healthy
-      kaneo-db-fix:
-        condition: service_completed_successfully
 
   kaneo-postgres:
     image: postgres:16-alpine
@@ -55,34 +30,18 @@ services:
     volumes:
       - kaneo-postgres-data:/var/lib/postgresql/data
 
-  kaneo-api:
-    image: ghcr.io/usekaneo/api:2.3.11
+  kaneo:
+    image: ghcr.io/usekaneo/kaneo:2.7.2
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${KANEO_POSTGRES_USER:-kaneo}:${KANEO_POSTGRES_PASSWORD}@kaneo-postgres:5432/${KANEO_POSTGRES_DB:-kaneo}
       AUTH_SECRET: ${KANEO_AUTH_SECRET:?KANEO_AUTH_SECRET is required}
       KANEO_CLIENT_URL: ${KANEO_CLIENT_URL:?KANEO_CLIENT_URL is required}
-      KANEO_API_URL: ${KANEO_CLIENT_URL:?KANEO_CLIENT_URL is required}/api
       DISABLE_REGISTRATION: ${KANEO_DISABLE_REGISTRATION:-false}
       DISABLE_GUEST_ACCESS: ${KANEO_DISABLE_GUEST_ACCESS:-true}
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:1337/api/health']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
     depends_on:
       kaneo-postgres:
         condition: service_healthy
-
-  kaneo-web:
-    image: ghcr.io/usekaneo/web:2.3.11
-    restart: unless-stopped
-    environment:
-      KANEO_API_URL: ${KANEO_CLIENT_URL:?KANEO_CLIENT_URL is required}/api
-      KANEO_CLIENT_URL: ${KANEO_CLIENT_URL:?KANEO_CLIENT_URL is required}
-    depends_on:
-      - kaneo-api
 
   caddy:
     image: caddy:2-alpine
@@ -98,8 +57,7 @@ services:
     environment:
       KANEO_CLIENT_URL: ${KANEO_CLIENT_URL:?KANEO_CLIENT_URL is required}
     depends_on:
-      - kaneo-web
-      - kaneo-api
+      - kaneo
 
 volumes:
   papai-data:

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { Database } from 'bun:sqlite'
 
 import { drizzle } from 'drizzle-orm/bun-sqlite'
@@ -29,7 +34,7 @@ export const closeDrizzleDb = (): void => {
  * Reset the Drizzle DB instance. Useful for testing.
  * @internal
  */
-export const _resetDrizzleDb = (): void => {
+export const resetDrizzleDbForTesting = (): void => {
   dbInstance = undefined
 }
 
@@ -37,6 +42,6 @@ export const _resetDrizzleDb = (): void => {
  * Set a custom Drizzle DB instance. Useful for testing with in-memory DB.
  * @internal
  */
-export const _setDrizzleDb = (db: ReturnType<typeof drizzle<typeof schema>>): void => {
+export const setDrizzleDbForTesting = (db: ReturnType<typeof drizzle<typeof schema>>): void => {
   dbInstance = db
 }

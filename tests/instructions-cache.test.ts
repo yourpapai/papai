@@ -1,6 +1,11 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, test, expect, beforeEach } from 'bun:test'
 
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
 import { getCachedInstructions, addCachedInstruction, deleteCachedInstruction } from '../src/cache.js'
 import { userInstructions } from '../src/db/schema.js'
 import { mockLogger, setupTestDb, getTestDb } from './utils/test-helpers.js'
@@ -8,7 +13,7 @@ import { mockLogger, setupTestDb, getTestDb } from './utils/test-helpers.js'
 describe('instructions cache', () => {
   beforeEach(async () => {
     mockLogger()
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -52,7 +57,7 @@ describe('instructions cache', () => {
     db.insert(userInstructions)
       .values({ id: 'db-1', contextId: 'ctx-db', text: 'From DB', createdAt: new Date().toISOString() })
       .run()
-    _userCaches.clear()
+    userCachesForTesting.clear()
 
     const result = getCachedInstructions('ctx-db')
     expect(result).toHaveLength(1)

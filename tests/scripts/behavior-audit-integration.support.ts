@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type * as ClassifiedStoreModule from '../../scripts/behavior-audit/classified-store.js'
 import type * as ClassifyAgentModule from '../../scripts/behavior-audit/classify-agent.js'
 import type * as ConsolidateKeywordsModule from '../../scripts/behavior-audit/consolidate-keywords.js'

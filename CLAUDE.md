@@ -43,10 +43,6 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun check` — run lint/typecheck/format checks for staged files
 - `bun check:full` — run the broader full check suite via `scripts/check.sh`
 - `bun check:verbose` — run lint, typecheck, format:check, knip, test, and duplicates in parallel
-- `bun codeindex:test` — run the codeindex workspace test suite
-- `bun codeindex:typecheck` — run codeindex workspace TypeScript checks
-- `bun codeindex:lint` — lint the codeindex workspace
-- `bun codeindex:format:check` — check codeindex workspace formatting
 - `bun review-loop:test` — run the review-loop workspace test suite
 - `bun review-loop:typecheck` — run review-loop workspace TypeScript checks
 - `bun review-loop:lint` — lint the review-loop workspace
@@ -130,6 +126,20 @@ Required at startup:
 - `ADMIN_USER_ID`
 - `TASK_PROVIDER`
 
+The bot also needs central LLM credentials before it can serve any message.
+They live in the admin-owned `system_config` SQLite table, seeded once from
+environment variables on first start and from the DB on subsequent starts:
+
+- `LLM_API_KEY` (seeded into `system_config.llm_apikey`)
+- `LLM_BASE_URL` (seeded into `system_config.llm_baseurl`)
+- `MAIN_MODEL` (seeded into `system_config.main_model`)
+- `SMALL_MODEL` — optional; callsites fall back to `main_model`
+- `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
+
+If `system_config` is missing any of the three required entries at runtime,
+the bot logs `WARN` at startup and replies "the bot is not fully configured"
+to incoming messages until the admin restarts with the env vars set.
+
 `ADMIN_USER_ID` is stored as the initial authorized `platform_user_id`, so it must match the user ID string the active chat adapter sees. For Telegram this is numeric; for Mattermost and Discord it is the platform user ID string, not a display name.
 
 Chat-provider requirements:
@@ -150,6 +160,34 @@ Optional but important runtime flags include:
 - `DEMO_MODE`
 - `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
 
+When `DEBUG_SERVER=true`, the dashboard at `/dashboard` exposes a
+Billing panel with a credentials form. The `POST /admin/llm` route
+requires `DEBUG_TOKEN` to be set in env (the route returns 401 if it
+is unset, so production-style deployments behind a reverse proxy
+keep the write surface closed by default).
+
+The same dashboard exposes a Stats panel and a per-subject stats view
+backed by `GET /stats/global` and `GET /stats/subject/:id`. Both
+routes require `DEBUG_TOKEN`.
+
+#### Anonymity contract for `/stats/*`
+
+`/stats/global` and `/stats/subject/:id` are constrained to anonymous,
+aggregate-shaped data only:
+
+- Allowed: counts, byte sizes, oldest/newest timestamps, enum
+  distributions (e.g. `byStatus`, `byProvider`, `byExtension`), and
+  hashed/keyed identifiers for high-cardinality strings (rrule
+  patterns, web-fetch hostnames). The keying salt is the
+  `stats_anonymity_salt` row in `system_config`, seeded lazily on
+  first read and never rotated automatically.
+- Never returned: message text, memo bodies, observation text,
+  attachment filenames, raw URLs/paths, usernames or display names,
+  workspace names, tags, project names, status names, RRULE text,
+  any other free-form content.
+
+Any leak of content from these routes is a release-blocking defect.
+
 The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
 
 ### File Attachments (S3-compatible Object Storage)
@@ -166,16 +204,15 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 | `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
 | `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
 
-Common runtime config keys:
+Common runtime config keys (per-user, set via `/setup` or `/config`):
 
-- `llm_apikey`
-- `llm_baseurl`
-- `main_model`
-- `small_model`
-- `embedding_model`
 - `timezone`
 
-Provider-specific runtime keys:
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`,
+`embedding_model`) are admin-owned and live in `system_config`, not in
+`user_config` — see the "Required Environment Variables" section above.
+
+Provider-specific per-user runtime keys:
 
 - Kaneo: `kaneo_apikey`
 - YouTrack: `youtrack_token`
@@ -213,7 +250,9 @@ Optional: debug server + dashboard client
 - `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
 - `src/providers/` — Kaneo and YouTrack normalized provider implementations
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
-- `src/debug/` and `client/debug/` — optional debug server and dashboard UI
+- `src/debug/` and `client/debug/` — optional debug server and dashboard UI. The Billing panel reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The Credentials form (`src/debug/admin-llm.ts`, `POST /admin/llm`) writes through `setSystemConfig()` and masks `llm_apikey` values server-side.
+- `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
+- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the dashboard Stats panel through `/stats/*` (DEBUG_TOKEN-gated). All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 
 ## Available Tools
 
@@ -299,8 +338,9 @@ Detailed conventions live in path-scoped `CLAUDE.md` files:
 | `src/commands/CLAUDE.md`  | command handler rules and DM/group setup flow                          |
 | `src/chat/CLAUDE.md`      | chat provider interface, capabilities, context rendering, interactions |
 | `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |
-| `codeindex/CLAUDE.md`     | codeindex workspace structure, scripts, storage, and indexing rules    |
 | `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, and TDD rules       |
+
+The `codeindex` MCP server now lives in a separate project at `~/Projects/papai/codeindex/`. See its `CLAUDE.md` for structure and scripts.
 
 ## Pi Workflow
 
@@ -340,7 +380,7 @@ When working inside this project, prefer the `codeindex` MCP server tools for st
 - Do NOT use `grep` to search for symbol definitions or usage inside `src/` or `client/`.
 - Do NOT use `glob` with `src/**/*.ts` to discover symbols by filename.
 - Do NOT use `task explore` for structural codebase navigation when the repository is indexed.
-- Do NOT run `bun run codeindex/src/cli.ts ...` directly in conversation; use the MCP tools instead.
+- Do NOT run the codeindex CLI directly in conversation; use the MCP tools instead.
 
 ### Auto-reindexing
 

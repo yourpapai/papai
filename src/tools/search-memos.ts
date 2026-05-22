@@ -1,12 +1,17 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { tool, cosineSimilarity } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { getConfig } from '../config.js'
 import { tryGetEmbedding } from '../embeddings.js'
 import { logger } from '../logger.js'
 import type { Memo } from '../memos.js'
 import { keywordSearchMemos, loadEmbeddingsForUser, getMemo } from '../memos.js'
+import { getSystemConfig } from '../system-config.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
@@ -82,12 +87,16 @@ async function trySemanticMode(
   query: string,
   limit: number,
 ): Promise<{ available: true; result: SearchResult } | { available: false }> {
-  const apiKey = getConfig(userId, 'llm_apikey')
-  const baseUrl = getConfig(userId, 'llm_baseurl')
-  const embeddingModel = getConfig(userId, 'embedding_model')
+  const apiKey = getSystemConfig('llm_apikey')
+  const baseUrl = getSystemConfig('llm_baseurl')
+  const embeddingModel = getSystemConfig('embedding_model')
   if (apiKey === null || baseUrl === null || embeddingModel === null) return { available: false }
 
-  const queryVec = await tryGetEmbedding(query, apiKey, baseUrl, embeddingModel)
+  const queryVec = await tryGetEmbedding(query, apiKey, baseUrl, embeddingModel, {
+    storageContextId: userId,
+    contextType: 'dm',
+    chatUserId: userId,
+  })
   if (queryVec === null) return { available: false }
 
   const results = trySemanticSearch(userId, queryVec, limit)

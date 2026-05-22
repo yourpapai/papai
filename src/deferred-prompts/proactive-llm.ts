@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from 'ai'
 
@@ -10,6 +15,7 @@ import { logger } from '../logger.js'
 import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
+import { getSystemConfig } from '../system-config.js'
 import { buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
 import { makeTools } from '../tools/index.js'
@@ -60,16 +66,16 @@ export type BuildProviderFn = (userId: string) => TaskProvider | null
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
 
-function getLlmConfig(userId: string): LlmConfig | string {
-  const apiKey = getConfig(userId, 'llm_apikey')
-  const baseURL = getConfig(userId, 'llm_baseurl')
-  const mainModel = getConfig(userId, 'main_model')
+function getLlmConfigFromSystem(): LlmConfig | string {
+  const apiKey = getSystemConfig('llm_apikey')
+  const baseURL = getSystemConfig('llm_baseurl')
+  const mainModel = getSystemConfig('main_model')
   if (apiKey === null || baseURL === null || mainModel === null) {
     log.warn(
-      { userId, hasApiKey: apiKey !== null, hasBaseUrl: baseURL !== null, hasModel: mainModel !== null },
-      'Missing LLM config for deferred prompt',
+      { hasApiKey: apiKey !== null, hasBaseUrl: baseURL !== null, hasModel: mainModel !== null },
+      'Missing LLM system_config for deferred prompt',
     )
-    return 'Deferred prompt skipped: missing LLM configuration. Use /setup to configure llm_apikey, llm_baseurl, and main_model.'
+    return 'Deferred prompt skipped: the bot is not fully configured. The administrator has been notified.'
   }
   return { apiKey, baseURL, mainModel }
 }
@@ -114,10 +120,10 @@ async function invokeLightweight(
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
   log.debug({ userId: createdByUserId, mode: 'lightweight' }, 'invokeLightweight called')
-  const config = getLlmConfig(createdByUserId)
+  const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return config
 
-  const smallModel = getConfig(createdByUserId, 'small_model')
+  const smallModel = getSystemConfig('small_model')
   const modelId = modelIdForLightweight(smallModel, config.mainModel)
   const model = deps.buildModel(config, modelId)
   const messages: ModelMessage[] = [...buildMetadataMessages(metadata), { role: 'user', content: wrapPrompt(prompt) }]
@@ -155,7 +161,7 @@ async function invokeWithContext(
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
   log.debug({ userId: createdByUserId, mode: 'context' }, 'invokeWithContext called')
-  const config = getLlmConfig(createdByUserId)
+  const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return config
 
   const model = deps.buildModel(config, config.mainModel)
@@ -239,7 +245,7 @@ async function invokeFull(
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
   log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
-  const config = getLlmConfig(createdByUserId)
+  const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return config
 
   const provider = buildProviderFn(createdByUserId)

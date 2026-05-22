@@ -1,60 +1,34 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Config Editor handlers
  * Button callback and message handlers for standalone config editing
  */
 
 import { getConfig, isSensitiveKey, maskValue, setConfig } from '../config.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
-import { isConfigKey, type ConfigKey } from '../types/config.js'
+import type { ConfigKey } from '../types/config.js'
 import { createEditorSession, deleteEditorSession, getEditorSession, updateEditorSession } from './state.js'
 import type { EditorButton, EditorProcessResult } from './types.js'
 import { validateConfigValue } from './validation.js'
 
+export { parseCallbackData, serializeCallbackData } from './callback-data.js'
+
 const log = logger.child({ scope: 'config-editor:handlers' })
 
 const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
-  llm_apikey: 'LLM API Key',
-  llm_baseurl: 'Base URL',
-  main_model: 'Main Model',
-  small_model: 'Small Model',
-  embedding_model: 'Embedding Model',
   kaneo_apikey: 'Kaneo API Key',
   kaneo_workspace_id: 'Kaneo Workspace ID',
   youtrack_token: 'YouTrack Token',
   timezone: 'Timezone',
 }
 
-const encodeContextId = (id: string): string => Buffer.from(id).toString('base64url')
-const decodeContextId = (encoded: string): string => Buffer.from(encoded, 'base64url').toString('utf8')
-
-function appendContext(base: string, targetContextId: string | undefined): string {
-  return targetContextId === undefined ? base : `${base}@${encodeContextId(targetContextId)}`
-}
-
-export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key'>, targetContextId?: string): string {
-  switch (button.action) {
-    case 'edit':
-      return appendContext(button.key === undefined ? 'cfg:back' : `cfg:edit:${button.key}`, targetContextId)
-    case 'save':
-      return appendContext(button.key === undefined ? 'cfg:back' : `cfg:save:${button.key}`, targetContextId)
-    case 'cancel':
-      return appendContext('cfg:cancel', targetContextId)
-    case 'back':
-      return appendContext('cfg:back', targetContextId)
-    case 'setup':
-      return appendContext('cfg:setup', targetContextId)
-    default:
-      return appendContext('cfg:back', targetContextId)
-  }
-}
-
 function getFieldEmoji(key: ConfigKey): string {
   const emojiMap: Record<ConfigKey, string> = {
-    llm_apikey: '🔑',
-    llm_baseurl: '🌐',
-    main_model: '🤖',
-    small_model: '⚡',
-    embedding_model: '📊',
     kaneo_apikey: '🔐',
     kaneo_workspace_id: '📁',
     youtrack_token: '🔐',
@@ -79,16 +53,7 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
   const lines = ['⚙️ **Configuration**\n']
   const buttons: EditorButton[] = []
 
-  const configKeys: ConfigKey[] = [
-    'llm_apikey',
-    'llm_baseurl',
-    'main_model',
-    'small_model',
-    'embedding_model',
-    'kaneo_apikey',
-    'youtrack_token',
-    'timezone',
-  ]
+  const configKeys: ConfigKey[] = ['kaneo_apikey', 'youtrack_token', 'timezone']
 
   for (const key of configKeys) {
     const value = getConfig(storageContextId, key)
@@ -137,6 +102,8 @@ export function startEditor(userId: string, storageContextId: string, key: Confi
 
   log.info({ userId, storageContextId, key }, 'Started config editor')
 
+  emitUser('config_editor:opened', userId, { userId })
+
   return {
     handled: true,
     response: lines.join('\n'),
@@ -159,6 +126,8 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
   const displayName = FIELD_DISPLAY_NAMES[session.editingKey]
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value saved')
 
+  emitUser('config_editor:closed', userId, { userId })
+
   return {
     handled: true,
     response: `✅ **${displayName}** saved successfully.`,
@@ -169,6 +138,8 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
 function handleCancelAction(userId: string, storageContextId: string): EditorProcessResult {
   deleteEditorSession(userId, storageContextId)
   log.info({ userId, storageContextId }, 'Config editor cancelled')
+
+  emitUser('config_editor:closed', userId, { userId })
 
   return {
     handled: true,
@@ -249,6 +220,8 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
 
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value entered, awaiting confirmation')
 
+  emitUser('config_editor:step', userId, { userId, step: 'value_entered' })
+
   return {
     handled: true,
     response: `✏️ **${displayName}**\n\nNew value: \`${maskedOrRaw}\`\n\nSave this value?`,
@@ -259,41 +232,4 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
     ],
     isSensitiveKey: sensitiveKey,
   }
-}
-
-/**
- * Parse callback data and extract action/key
- */
-export function parseCallbackData(data: string): {
-  action: 'edit' | 'save' | 'cancel' | 'back' | 'setup' | null
-  key: ConfigKey | null
-  targetContextId?: string
-} {
-  let targetContextId: string | undefined
-  let core = data
-  const atIdx = data.indexOf('@')
-  if (atIdx !== -1) {
-    try {
-      targetContextId = decodeContextId(data.slice(atIdx + 1))
-    } catch {
-      /* invalid encoding — treat as legacy */
-    }
-    core = data.slice(0, atIdx)
-  }
-
-  if (core === 'cfg:cancel') return { action: 'cancel', key: null, targetContextId }
-  if (core === 'cfg:back') return { action: 'back', key: null, targetContextId }
-  if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
-
-  if (core.startsWith('cfg:edit:')) {
-    const key = core.replace('cfg:edit:', '')
-    return isConfigKey(key) ? { action: 'edit', key, targetContextId } : { action: null, key: null }
-  }
-
-  if (core.startsWith('cfg:save:')) {
-    const key = core.replace('cfg:save:', '')
-    return isConfigKey(key) ? { action: 'save', key, targetContextId } : { action: null, key: null }
-  }
-
-  return { action: null, key: null }
 }

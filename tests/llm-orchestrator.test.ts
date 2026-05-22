@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { mock, describe, expect, test, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -11,7 +16,7 @@ import { processMessage } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
-import { mockLogger, createMockReply, setupTestDb } from './utils/test-helpers.js'
+import { createMockReply, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
@@ -105,11 +110,13 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
-import { getCachedConfig, setCachedConfig } from '../src/cache.js'
-import { getCachedFacts, getCachedHistory, _userCaches } from '../src/cache.js'
+import { setCachedConfig } from '../src/cache.js'
+import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
+import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
+import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
 import { setKaneoWorkspace } from '../src/users.js'
@@ -134,11 +141,15 @@ describe('processMessage', () => {
   // generateText returns a result object with direct values
   let generateTextImpl: (args: GenerateTextArgs) => Promise<GenerateTextResult>
 
-  /** Seed the config/workspace values that processMessage -> callLlm needs. */
+  /** Seed the central LLM config used by every orchestrator call. */
+  const seedSystemLlmConfig = (): void => {
+    setSystemConfig('llm_apikey', 'test-key', 'env')
+    setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
+    setSystemConfig('main_model', 'test-model', 'env')
+  }
+
+  /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
   const seedConfigForContext = (ctxId: string): void => {
-    setCachedConfig(ctxId, 'llm_apikey', 'test-key')
-    setCachedConfig(ctxId, 'llm_baseurl', 'http://localhost:11434')
-    setCachedConfig(ctxId, 'main_model', 'test-model')
     setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
     setCachedConfig(ctxId, 'timezone', 'UTC')
     setKaneoWorkspace(ctxId, 'workspace-1')
@@ -197,8 +208,11 @@ describe('processMessage', () => {
     await setupTestDb()
 
     // Clear caches to ensure clean state
-    _userCaches.clear()
+    userCachesForTesting.clear()
+    resetSystemConfigCacheForTesting()
+    resetBotMisconfiguredNotifiedForTesting()
 
+    seedSystemLlmConfig()
     seedConfig()
 
     // Reset demo mode env vars
@@ -219,7 +233,7 @@ describe('processMessage', () => {
   // ---------------------------------------------------------------------------
 
   describe('missing configuration', () => {
-    test('group context does not call maybeProvisionKaneo before missing-config handling', async () => {
+    test('group context does not call maybeProvisionKaneo before missing-provider-config handling', async () => {
       let maybeProvisionCalls = 0
       const freshGroupCtx = 'group-1:thread-1'
       const deps: LlmOrchestratorDeps = {
@@ -241,58 +255,29 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('/setup')
     })
 
-    test('missing LLM config keys replies with key names and /setup', async () => {
-      // Use a fresh user ID that has no config at all, then seed only partial config
-      const freshCtx = 'missing-config-1'
-      setCachedConfig(freshCtx, 'llm_baseurl', 'http://localhost:11434')
-      setCachedConfig(freshCtx, 'main_model', 'test-model')
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
-      setKaneoWorkspace(freshCtx, 'workspace-1')
-      // llm_apikey deliberately NOT set
+    test('replies with bot-misconfigured when system_config is incomplete', async () => {
+      resetSystemConfigCacheForTesting()
 
       const { reply, textCalls } = createMockReply()
-      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm')
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm')
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('llm_apikey')
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls[0]).toContain('not fully configured')
+      expect(textCalls[0]).not.toContain('/setup')
     })
 
-    test('missing configuration does not send typing', async () => {
-      const freshCtx = 'missing-config-no-typing'
-      setCachedConfig(freshCtx, 'llm_baseurl', 'http://localhost:11434')
-      setCachedConfig(freshCtx, 'main_model', 'test-model')
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
-      setKaneoWorkspace(freshCtx, 'workspace-1')
+    test('bot-misconfigured path does not send typing', async () => {
+      resetSystemConfigCacheForTesting()
 
       const { reply, textCalls, typingCalls } = createReplyWithTypingSpy()
-      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm')
+      await processMessage(reply, CTX_ID, 'user-1', null, 'hello', 'dm')
 
       expect(typingCalls).toHaveLength(0)
-      expect(textCalls[0]).toContain('/setup')
-    })
-
-    test('missing multiple config keys lists all in reply', async () => {
-      // Use a fresh user ID with only partial config
-      const freshCtx = 'missing-config-2'
-      setCachedConfig(freshCtx, 'llm_baseurl', 'http://localhost:11434')
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
-      setKaneoWorkspace(freshCtx, 'workspace-1')
-      // llm_apikey and main_model deliberately NOT set
-
-      const { reply, textCalls } = createMockReply()
-      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm')
-
-      expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('llm_apikey')
-      expect(textCalls[0]).toContain('main_model')
+      expect(textCalls[0]).toContain('not fully configured')
     })
 
     test('missing Kaneo workspace is handled as setup-remediable missing configuration', async () => {
       const freshCtx = 'missing-kaneo-workspace'
-      setCachedConfig(freshCtx, 'llm_apikey', 'test-key')
-      setCachedConfig(freshCtx, 'llm_baseurl', 'http://localhost:11434')
-      setCachedConfig(freshCtx, 'main_model', 'test-model')
       setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
 
       const deps: LlmOrchestratorDeps = {
@@ -789,46 +774,11 @@ describe('processMessage', () => {
     })
   })
 
-  describe('demo mode LLM config copy', () => {
-    const ADMIN_CTX = 'admin-ctx'
-    const DEMO_CTX = 'demo-ctx'
-
-    test('copies admin LLM config to demo user after Kaneo provisioning', async () => {
-      process.env['DEMO_MODE'] = 'true'
-      process.env['ADMIN_USER_ID'] = ADMIN_CTX
-
-      // Seed admin with full LLM config
-      seedConfigForContext(ADMIN_CTX)
-
-      // Demo user has only kaneo_apikey + workspace (no LLM keys)
-      setCachedConfig(DEMO_CTX, 'kaneo_apikey', 'demo-kaneo-key')
-      setKaneoWorkspace(DEMO_CTX, 'demo-workspace')
-
-      const { reply } = createMockReply()
-      await processMessage(reply, DEMO_CTX, 'user-1', null, 'hello', 'dm')
-
-      // Verify admin's LLM config was copied
-      expect(getCachedConfig(DEMO_CTX, 'llm_apikey')).toBe('test-key')
-      expect(getCachedConfig(DEMO_CTX, 'llm_baseurl')).toBe('http://localhost:11434')
-      expect(getCachedConfig(DEMO_CTX, 'main_model')).toBe('test-model')
-    })
-
-    test('does not copy config when DEMO_MODE is off', async () => {
-      // Seed admin with full LLM config
-      seedConfigForContext(ADMIN_CTX)
-      process.env['ADMIN_USER_ID'] = ADMIN_CTX
-
-      // Demo user has only kaneo_apikey + workspace
-      setCachedConfig(DEMO_CTX, 'kaneo_apikey', 'demo-kaneo-key')
-      setKaneoWorkspace(DEMO_CTX, 'demo-workspace')
-
-      const { reply } = createMockReply()
-      await processMessage(reply, DEMO_CTX, 'user-1', null, 'hello', 'dm')
-
-      // LLM config should NOT be copied
-      expect(getCachedConfig(DEMO_CTX, 'llm_apikey')).toBeNull()
-    })
-  })
+  // Phase 1 (central LLM): per-user LLM config copy is gone. LLM credentials
+  // live in system_config and are seeded once at startup, so no copy ever
+  // happens regardless of DEMO_MODE. The behavioral coverage that used to
+  // live here is implicit: the seeded system_config in beforeEach is enough
+  // for any user to reach the LLM call without per-user provisioning.
 
   describe('auto-link flow', () => {
     const GROUP_CTX = 'group-123'
@@ -1017,7 +967,7 @@ describe('processMessage', () => {
       const { persistIncomingAttachments } = await import('../src/attachments/index.js')
       const attachmentCtx = 'attachment-ctx-multimodal'
       seedConfigForContext(attachmentCtx)
-      setCachedConfig(attachmentCtx, 'main_model', 'gpt-4o')
+      setSystemConfig('main_model', 'gpt-4o', 'env')
 
       const refs = await persistIncomingAttachments({
         contextId: attachmentCtx,
@@ -1062,7 +1012,7 @@ describe('processMessage', () => {
       const { persistIncomingAttachments } = await import('../src/attachments/index.js')
       const ctx = 'attachment-ctx-textmodel'
       seedConfigForContext(ctx)
-      setCachedConfig(ctx, 'main_model', 'llama-3.1-instruct')
+      setSystemConfig('main_model', 'llama-3.1-instruct', 'env')
 
       const refs = await persistIncomingAttachments({
         contextId: ctx,

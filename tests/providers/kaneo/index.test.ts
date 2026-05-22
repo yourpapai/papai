@@ -1,8 +1,57 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { z } from 'zod'
+
 import { KaneoProvider } from '../../../src/providers/kaneo/index.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+
+const RequestBodySchema = z.record(z.string(), z.unknown())
+
+function parseOptionalRecordBody(options: RequestInit): Record<string, unknown> | undefined {
+  return typeof options.body === 'string' ? RequestBodySchema.parse(JSON.parse(options.body)) : undefined
+}
+
+function createCreateTaskFetchHandler(
+  setRequestBody: (body: Record<string, unknown> | undefined) => void,
+): (url: string, options: RequestInit) => Promise<Response> {
+  return (url, options) => {
+    if (url.includes('/column/')) {
+      return Promise.resolve(
+        new Response(JSON.stringify([{ id: 'to-do', name: 'To Do', icon: null, color: null, isFinal: false }]), {
+          status: 200,
+        }),
+      )
+    }
+
+    setRequestBody(parseOptionalRecordBody(options))
+
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'task-1',
+          projectId: 'proj-1',
+          position: 0,
+          number: 1,
+          userId: null,
+          title: 'Test Task',
+          description: '',
+          status: 'to-do',
+          priority: 'medium',
+          startDate: '2026-03-01T00:00:00.000Z',
+          dueDate: null,
+          createdAt: '2026-03-01T00:00:00.000Z',
+        }),
+        { status: 200 },
+      ),
+    )
+  }
+}
 
 describe('KaneoProvider', () => {
   const provider = new KaneoProvider(
@@ -25,6 +74,78 @@ describe('KaneoProvider', () => {
   describe('identity', () => {
     test('has correct name', () => {
       expect(provider.name).toBe('kaneo')
+    })
+
+    test('does not expose labels.delete capability', () => {
+      expect(provider.capabilities.has('labels.delete')).toBe(false)
+    })
+  })
+
+  describe('labels', () => {
+    test('listLabels returns reusable workspace labels only', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'label-1', name: 'Feature', color: '#ff0000', taskId: null },
+              { id: 'label-2', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'label-3', name: 'archived', color: '#6b7280', taskId: null },
+            ]),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const result = await provider.listLabels()
+
+      expect(result).toEqual([
+        { id: 'label-1', name: 'Feature', color: '#ff0000' },
+        { id: 'label-3', name: 'archived', color: '#6b7280' },
+      ])
+    })
+
+    test('listLabels keeps reusable workspace labels when taskId is omitted', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'label-1', name: 'Feature', color: '#ff0000' },
+              { id: 'label-2', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'label-3', name: 'archived', color: '#6b7280', taskId: null },
+            ]),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const result = await provider.listLabels()
+
+      expect(result).toEqual([
+        { id: 'label-1', name: 'Feature', color: '#ff0000' },
+        { id: 'label-3', name: 'archived', color: '#6b7280' },
+      ])
+    })
+
+    test('listTaskLabels returns labels currently attached to a task', async () => {
+      setMockFetch((url) => {
+        expect(url).toContain('/api/label/task/task-1')
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'task-label-1', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'task-label-2', name: 'archived', color: '#6b7280', taskId: 'task-1' },
+            ]),
+            { status: 200 },
+          ),
+        )
+      })
+
+      const result = await provider.listTaskLabels('task-1')
+
+      expect(result).toEqual([
+        { id: 'task-label-1', name: 'Feature', color: '#ff0000' },
+        { id: 'task-label-2', name: 'archived', color: '#6b7280' },
+      ])
     })
   })
 
@@ -101,13 +222,13 @@ describe('KaneoProvider', () => {
   describe('normalizeDueDateInput', () => {
     test('converts date+time to UTC', () => {
       const result = provider.normalizeDueDateInput({ date: '2024-03-15', time: '14:30' }, 'America/New_York')
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u)
       expect(result).toContain('Z')
     })
 
     test('converts date-only to UTC with midnight', () => {
       const result = provider.normalizeDueDateInput({ date: '2024-03-15' }, 'UTC')
-      expect(result).toMatch(/^2024-03-15/)
+      expect(result).toMatch(/^2024-03-15/u)
     })
 
     test('returns undefined when no dueDate', () => {
@@ -126,9 +247,11 @@ describe('KaneoProvider', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              results: [],
-              totalCount: 0,
-              searchQuery: 'bug',
+              tasks: [],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
             }),
             { status: 200 },
           ),
@@ -146,12 +269,78 @@ describe('KaneoProvider', () => {
       expect(requestUrl.pathname).toBe('/api/search')
       expect(requestUrl.searchParams.get('offset')).toBe('40')
     })
+
+    test('returns flattened task results from the grouped search response', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              tasks: [
+                {
+                  id: 'task-2',
+                  projectId: 'proj-1',
+                  position: null,
+                  number: 2,
+                  userId: null,
+                  title: 'Search task',
+                  description: null,
+                  status: 'todo',
+                  priority: 'medium',
+                  createdAt: '2026-03-01T00:00:00.000Z',
+                },
+              ],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const result = await provider.searchTasks({ query: 'search' })
+
+      expect(result).toEqual([
+        {
+          id: 'task-2',
+          title: 'Search task',
+          number: 2,
+          status: 'todo',
+          priority: 'medium',
+          projectId: 'proj-1',
+          url: 'https://api.test.com/dashboard/workspace/workspace-1/project/proj-1/task/task-2',
+        },
+      ])
+    })
+  })
+
+  describe('createTask', () => {
+    test('passes startDate through the provider create path', async () => {
+      let requestBody: Record<string, unknown> | undefined
+      let createdTask: Awaited<ReturnType<KaneoProvider['createTask']>> | undefined
+
+      setMockFetch(
+        createCreateTaskFetchHandler((body) => {
+          requestBody = body
+        }),
+      )
+
+      createdTask = await provider.createTask({
+        projectId: 'proj-1',
+        title: 'Test Task',
+        startDate: '2026-03-01T00:00:00.000Z',
+      })
+
+      expect(requestBody?.['startDate']).toBe('2026-03-01T00:00:00.000Z')
+      expect(createdTask.startDate).toBe('2026-03-01T00:00:00.000Z')
+    })
   })
 
   describe('formatDueDateOutput', () => {
     test('converts UTC to local timezone', () => {
       const result = provider.formatDueDateOutput('2024-03-15T18:30:00.000Z', 'America/New_York')
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u)
     })
 
     test('returns null when null', () => {

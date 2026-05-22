@@ -1,9 +1,16 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ContextType } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
-import { getConfig } from '../config.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
+import type { RecurrenceSpec } from '../types/recurrence.js'
+import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildScheduleUpdates, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
@@ -85,6 +92,14 @@ export type ListInput = { type?: 'scheduled' | 'alert'; status?: 'active' | 'com
 
 // --- Handlers ---
 
+function validateFutureFireAt(date: string, time: string, timezone: string): string | { error: string } {
+  const utcStr = localDatetimeToUtc(date, time, timezone)
+  const fireDate = new Date(utcStr)
+  if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
+  if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+  return utcStr
+}
+
 function createScheduled(
   userId: string,
   prompt: string,
@@ -94,24 +109,21 @@ function createScheduled(
 ): CreateResult {
   const hasFireAt = schedule.fire_at !== undefined
   const hasRrule = schedule.rrule !== undefined
-  const timezone = getConfig(userId, 'timezone') ?? 'UTC'
+  const timezone = getUserTimezoneOrError(userId)
+  if (typeof timezone !== 'string') return timezone
 
   if (hasFireAt) {
     const { date, time } = schedule.fire_at!
-    const utcStr = localDatetimeToUtc(date, time, timezone)
-    const fireDate = new Date(utcStr)
-    if (Number.isNaN(fireDate.getTime())) return { error: `Invalid fire_at date/time: '${date}T${time}'` }
-    if (fireDate.getTime() <= Date.now()) return { error: 'fire_at must be a future date and time.' }
+    const validatedFireAt = validateFutureFireAt(date, time, timezone)
+    if (typeof validatedFireAt !== 'string') return validatedFireAt
   }
 
   let cronCompiled: CompiledRecurrence | undefined
   if (hasRrule) {
     const { startDate, startTime, ...scheduleRest } = schedule.rrule!
     const dtstart =
-      startDate === undefined
-        ? midnightUtcForTimezone(scheduleRest.timezone)
-        : localDatetimeToUtc(startDate, startTime, scheduleRest.timezone)
-    cronCompiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart })
+      startDate === undefined ? midnightUtcForTimezone(timezone) : localDatetimeToUtc(startDate, startTime, timezone)
+    cronCompiled = recurrenceSpecToRrule({ ...scheduleRest, dtstart } as Omit<RecurrenceSpec, 'timezone'>, timezone)
   }
 
   let fireAt: string
@@ -174,8 +186,14 @@ export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: 
   const executionMetadata = parseExecution(input.execution)
   const delivery = deliveryCtx === undefined ? undefined : buildDeliveryInput(deliveryCtx, input.delivery)
 
-  if (hasSchedule) return createScheduled(userId, input.prompt, input.schedule!, executionMetadata, delivery)
-  return createAlert(userId, input.prompt, input.condition, input.cooldown_minutes, executionMetadata, delivery)
+  if (hasSchedule) {
+    const result = createScheduled(userId, input.prompt, input.schedule!, executionMetadata, delivery)
+    if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
+    return result
+  }
+  const result = createAlert(userId, input.prompt, input.condition, input.cooldown_minutes, executionMetadata, delivery)
+  if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
+  return result
 }
 
 export function executeList(
@@ -248,19 +266,29 @@ function updateAlertFields(id: string, userId: string, input: UpdateInput): Upda
 
 export function executeUpdate(userId: string, input: UpdateInput): UpdateResult {
   log.debug({ userId, id: input.id }, 'update_deferred_prompt called')
-  if (getScheduledPrompt(input.id, userId) !== null) return updateScheduledFields(input.id, userId, input)
-  if (getAlertPrompt(input.id, userId) !== null) return updateAlertFields(input.id, userId, input)
-  return { error: 'Deferred prompt not found.' }
+  const scheduled = getScheduledPrompt(input.id, userId)
+  if (scheduled === null) {
+    const alert = getAlertPrompt(input.id, userId)
+    if (alert === null) return { error: 'Deferred prompt not found.' }
+    const result = updateAlertFields(input.id, userId, input)
+    if ('id' in result && !('error' in result)) emitUser('deferred:updated', userId, { promptId: result.id })
+    return result
+  }
+  const result = updateScheduledFields(input.id, userId, input)
+  if ('id' in result && !('error' in result)) emitUser('deferred:updated', userId, { promptId: result.id })
+  return result
 }
 
 export function executeCancel(userId: string, input: { id: string }): CancelResult {
   log.debug({ userId, id: input.id }, 'cancel_deferred_prompt called')
   if (cancelScheduledPrompt(input.id, userId) !== null) {
     log.info({ id: input.id, userId, type: 'scheduled' }, 'Deferred prompt cancelled')
+    emitUser('deferred:cancelled', userId, { promptId: input.id })
     return { status: 'cancelled', id: input.id }
   }
   if (cancelAlertPrompt(input.id, userId) !== null) {
     log.info({ id: input.id, userId, type: 'alert' }, 'Deferred prompt cancelled')
+    emitUser('deferred:cancelled', userId, { promptId: input.id })
     return { status: 'cancelled', id: input.id }
   }
   return { error: 'Deferred prompt not found.' }

@@ -1,66 +1,24 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
- * Wizard save and validation logic
+ * Wizard save logic. After Phase 1, the wizard only collects task-provider
+ * credentials + timezone — LLM credentials are admin-owned in `system_config`,
+ * not per-user — so no live LLM validation runs here.
  */
 
 import { isConfigKey, setConfig } from '../config.js'
 import { logger } from '../logger.js'
 import { deleteWizardSession, getWizardSession } from './state.js'
-import { validateWizardConfig, type ValidationSummary } from './validation.js'
 
 const log = logger.child({ scope: 'wizard:save' })
-
-interface ValidationErrorDetail {
-  field: string
-  message: string
-}
 
 interface SaveWizardResult {
   readonly success: boolean
   readonly message: string
   readonly buttons?: Array<{ text: string; action: string }>
-  readonly errors?: ValidationErrorDetail[]
-}
-
-interface ConfigValidationInput {
-  apiKey: string
-  baseUrl: string
-  mainModel: string
-  smallModel: string
-}
-
-function performConfigValidation(input: ConfigValidationInput): Promise<ValidationSummary> {
-  return validateWizardConfig(input)
-}
-
-interface ValidationMessageResult {
-  message: string
-  buttons: Array<{ text: string; action: string }>
-  errors: ValidationErrorDetail[]
-}
-
-function formatValidationMessage(summary: ValidationSummary): ValidationMessageResult {
-  const fieldDisplayNames: Record<string, string> = {
-    llm_apikey: 'API Key',
-    llm_baseurl: 'Base URL',
-    main_model: 'Main Model',
-    small_model: 'Small Model',
-  }
-
-  const lines = ['❌ Configuration validation failed:', '', 'Please fix these issues:', '']
-
-  for (const error of summary.errors) {
-    const displayName = fieldDisplayNames[error.field] ?? error.field
-    lines.push(`  • ${displayName}: ${error.message}`)
-  }
-
-  return {
-    message: lines.join('\n'),
-    buttons: [
-      { text: '🔧 Edit Configuration', action: 'wizard_edit' },
-      { text: '❌ Cancel', action: 'wizard_cancel' },
-    ],
-    errors: summary.errors.map((e) => ({ field: e.field, message: e.message })),
-  }
 }
 
 function saveValidatedConfig(
@@ -85,31 +43,11 @@ function saveValidatedConfig(
   }
 }
 
-export async function validateAndSaveWizardConfig(userId: string, storageContextId: string): Promise<SaveWizardResult> {
+export function validateAndSaveWizardConfig(userId: string, storageContextId: string): Promise<SaveWizardResult> {
   const session = getWizardSession(userId, storageContextId)
   if (session === null) {
-    return { success: false, message: 'Error: Wizard session not found' }
+    return Promise.resolve({ success: false, message: 'Error: Wizard session not found' })
   }
 
-  const data = session.data
-  const input: ConfigValidationInput = {
-    apiKey: data['llm_apikey'] ?? '',
-    baseUrl: data['llm_baseurl'] ?? '',
-    mainModel: data['main_model'] ?? '',
-    smallModel: data['small_model'] ?? '',
-  }
-
-  const validationResult = await performConfigValidation(input)
-
-  if (!validationResult.isValid) {
-    const formatted = formatValidationMessage(validationResult)
-    return {
-      success: false,
-      message: formatted.message,
-      buttons: formatted.buttons,
-      errors: formatted.errors,
-    }
-  }
-
-  return saveValidatedConfig(session, userId, storageContextId)
+  return Promise.resolve(saveValidatedConfig(session, userId, storageContextId))
 }

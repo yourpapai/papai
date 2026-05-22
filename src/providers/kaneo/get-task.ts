@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from '../../logger.js'
+import type { TaskRelation } from '../types.js'
 import { classifyKaneoError } from './classify-error.js'
 import type { KaneoConfig } from './client.js'
-import type { TaskRelation } from './frontmatter.js'
 import { KaneoClient } from './kaneo-client.js'
 
 const log = logger.child({ scope: 'kaneo:get-task' })
@@ -13,6 +18,7 @@ export interface TaskDetails {
   number: number
   status: string
   priority: string
+  startDate: string | null
   dueDate: string | null
   createdAt: string
   projectId: string

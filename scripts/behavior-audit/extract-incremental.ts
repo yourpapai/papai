@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -10,7 +15,7 @@ import { buildPhase1Fingerprint, buildPhase2Fingerprint, hashText } from './incr
 import type { ParsedTestFile, TestCase } from './test-parser.js'
 
 function deriveImplPath(testPath: string): string {
-  return testPath.replace(/^tests\//, 'src/').replace(/\.test\.ts$/, '.ts')
+  return testPath.replace(/^tests\//u, 'src/').replace(/\.test\.ts$/u, '.ts')
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

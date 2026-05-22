@@ -38,8 +38,8 @@ export function verifyTestImport(ctx) {
       const testDir = path.dirname(testAbsPath)
       const expectedImport = path
         .relative(testDir, implAbsPath)
-        .replace(/\\/g, '/')
-        .replace(/\.(ts|tsx)$/, '.js')
+        .replace(/\\/gu, '/')
+        .replace(/\.(ts|tsx)$/u, '.js')
       return {
         decision: 'block',
         reason:

@@ -1,6 +1,11 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ChatProvider } from './chat/types.js'
 import { getConfig } from './config.js'
-import { emit } from './debug/event-bus.js'
+import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { isKaneoSessionCookie } from './providers/kaneo/client.js'
 import { createProvider as defaultCreateProvider } from './providers/registry.js'
@@ -164,7 +169,7 @@ export function tick(...args: [] | [deps: SchedulerDeps]): Promise<void> {
     try {
       const dueTasks = getDueRecurringTasks()
       tickCount++
-      emit('scheduler:tick', { tickCount, dueTaskCount: dueTasks.length })
+      emitGlobal('scheduler:tick', { tickCount, dueTaskCount: dueTasks.length })
 
       if (dueTasks.length === 0) {
         if (tickCount % HEARTBEAT_INTERVAL === 0) {

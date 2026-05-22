@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { Database } from 'bun:sqlite'
 import { mock } from 'bun:test'
 
@@ -20,7 +25,7 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../../src/chat/types.js'
-import { _resetDrizzleDb, _setDrizzleDb } from '../../src/db/drizzle.js'
+import { resetDrizzleDbForTesting, setDrizzleDbForTesting } from '../../src/db/drizzle.js'
 import { MIGRATIONS } from '../../src/db/index.js'
 import * as schema from '../../src/db/schema.js'
 import type { AppError } from '../../src/errors.js'
@@ -29,6 +34,7 @@ import { getUserMessage, isAppError } from '../../src/errors.js'
 // MESSAGE CACHE TEST HELPERS
 // ============================================================================
 import type { CachedMessage } from '../../src/message-cache/types.js'
+import { systemConfigCacheForTesting } from '../../src/system-config.js'
 
 // Test-local message cache — fully isolated from production
 const testMessageCache = new Map<string, CachedMessage>()
@@ -104,15 +110,15 @@ export async function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof sc
   const { runMigrations } = await import('../../src/db/migrate.js')
 
   // Clear the in-memory user cache to prevent config/session bleed between tests
-  const { _userCaches } = await import('../../src/cache.js')
-  _userCaches.clear()
+  const { userCachesForTesting } = await import('../../src/cache.js')
+  userCachesForTesting.clear()
 
   testSqlite = new Database(':memory:')
   testSqlite.run('PRAGMA foreign_keys=ON')
   testDb = drizzle(testSqlite, { schema })
 
   runMigrations(testSqlite, MIGRATIONS)
-  _setDrizzleDb(testDb)
+  setDrizzleDbForTesting(testDb)
   return testDb
 }
 
@@ -133,14 +139,23 @@ export function getTestDb(): ReturnType<typeof drizzle<typeof schema>> {
  * (e.g. without full migrations). For full-migration setup, use setupTestDb().
  */
 export function setTestDrizzleDb(db: ReturnType<typeof drizzle<typeof schema>>): void {
-  _setDrizzleDb(db)
+  setDrizzleDbForTesting(db)
 }
 
 /**
  * Reset the drizzle singleton back to its default (lazy-init) behavior.
  */
 export function restoreDrizzle(): void {
-  _resetDrizzleDb()
+  resetDrizzleDbForTesting()
+}
+
+/**
+ * Clear the in-process system_config cache so tests start from a known state
+ * without going through a process restart. Mirrors the cache-reset escape
+ * hatch that `setupTestDb()` performs on `userCachesForTesting`.
+ */
+export function resetSystemConfigCacheForTesting(): void {
+  systemConfigCacheForTesting.clear()
 }
 
 // Re-export logger mocks from dedicated file (no src/ imports to avoid mock timing issues)
@@ -274,7 +289,7 @@ export function createGroupMessage(
     contextType: 'group',
     isMentioned: text.includes('@bot'),
     text,
-    commandMatch: text.replace(/^\//, ''),
+    commandMatch: text.replace(/^\//u, ''),
   }
 }
 
@@ -678,7 +693,7 @@ import type { z } from 'zod'
 
 import type { CreateLabelResponseSchema } from '../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema } from '../../src/providers/kaneo/schemas/create-task.js'
-import type { ActivityItemSchema } from '../../src/providers/kaneo/schemas/get-activities.js'
+import { ActivityItemSchema } from '../../src/providers/kaneo/schemas/global-search.js'
 
 type CreateTaskResponse = z.infer<typeof TaskSchema>
 type CreateProjectResponse = {

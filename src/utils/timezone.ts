@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Normalizes a user-supplied timezone string to a valid IANA timezone identifier.
  *
@@ -9,7 +14,7 @@
  * Returns null for invalid or unrecognizable values.
  */
 
-const UTC_OFFSET_PATTERN = /^UTC([+-])(\d{1,2})$/
+const UTC_OFFSET_PATTERN = /^UTC([+-])(\d{1,2})$/u
 
 const isValidIana = (value: string): boolean => {
   try {
@@ -33,4 +38,11 @@ export const normalizeTimezone = (value: string): string | null => {
   }
 
   return isValidIana(value) ? value : null
+}
+
+export const normalizeTimezoneValue = (value: string | null | undefined): string | null => {
+  if (value === null || value === undefined) return null
+  const trimmedValue = value.trim()
+  if (trimmedValue === '') return null
+  return normalizeTimezone(trimmedValue)
 }

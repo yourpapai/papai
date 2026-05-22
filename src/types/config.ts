@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Configuration types shared between production and tests.
  */
@@ -6,14 +11,12 @@
 // Note: kaneo_workspace_id is auto-provisioned and not user-visible in CONFIG_KEYS
 export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
 
-// LLM config keys (always available)
-export type LlmConfigKey = 'llm_apikey' | 'llm_baseurl' | 'main_model' | 'small_model' | 'embedding_model'
-
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
 
-// All config keys
-export type ConfigKey = TaskProviderConfigKey | LlmConfigKey | PreferenceConfigKey
+// All per-user config keys. LLM credentials live in `system_config` (see
+// `src/system-config.ts`) and are owned by the bot admin, not per-user.
+export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
 
 // Get the task provider from env
 const TASK_PROVIDER = process.env['TASK_PROVIDER'] ?? 'kaneo'
@@ -23,14 +26,12 @@ const TASK_PROVIDER = process.env['TASK_PROVIDER'] ?? 'kaneo'
 const PREFERENCE_KEYS: readonly PreferenceConfigKey[] = ['timezone']
 
 function getConfigKeysForProvider(provider: string): readonly ConfigKey[] {
-  const llmKeys: readonly LlmConfigKey[] = ['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']
-
   if (provider === 'youtrack') {
-    return [...llmKeys, 'youtrack_token', ...PREFERENCE_KEYS]
+    return ['youtrack_token', ...PREFERENCE_KEYS]
   }
 
   // Default to kaneo - note: kaneo_workspace_id is auto-provisioned, not user-visible
-  return [...llmKeys, 'kaneo_apikey', ...PREFERENCE_KEYS]
+  return ['kaneo_apikey', ...PREFERENCE_KEYS]
 }
 
 // Config keys available for the current task provider (user-visible only)
@@ -39,11 +40,6 @@ export const CONFIG_KEYS: readonly ConfigKey[] = getConfigKeysForProvider(TASK_P
 // All valid config keys (not filtered by provider)
 // Note: kaneo_workspace_id is auto-provisioned and stored separately
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
-  'llm_apikey',
-  'llm_baseurl',
-  'main_model',
-  'small_model',
-  'embedding_model',
   'kaneo_apikey',
   'kaneo_workspace_id',
   'youtrack_token',

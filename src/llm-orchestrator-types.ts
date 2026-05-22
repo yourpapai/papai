@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { generateText, stepCountIs, ModelMessage, ToolSet } from 'ai'
 
@@ -49,6 +54,8 @@ type ToolRoutingInfo = {
 
 export type InvokeModelArgs = {
   contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
   mainModel: string
   model: ReturnType<ReturnType<typeof createOpenAICompatible>>
   provider: TaskProvider

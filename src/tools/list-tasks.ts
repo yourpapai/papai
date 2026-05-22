@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -12,7 +17,7 @@ const log = logger.child({ scope: 'tool:list-tasks' })
 const dueDateFilterSchema = z
   .string()
   .refine(
-    (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) || z.iso.datetime({ offset: true }).safeParse(value).success,
+    (value) => /^\d{4}-\d{2}-\d{2}$/u.test(value) || z.iso.datetime({ offset: true }).safeParse(value).success,
     'Expected YYYY-MM-DD or ISO datetime with offset',
   )
 

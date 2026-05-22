@@ -1,10 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ListTasksParams, Task, TaskListItem, TaskSearchResult } from '../../types.js'
 import type { KaneoConfig } from '../client.js'
 import { createTask } from '../create-task.js'
 import { deleteTask } from '../delete-task.js'
 import { getTask } from '../get-task.js'
 import { listTasks } from '../list-tasks.js'
-import { mapCreateTaskResponse, mapTaskDetails, mapTaskListItem, mapTaskSearchResult } from '../mappers.js'
+import { mapCreateTaskResponse, mapGlobalSearchTaskResults, mapTaskDetails, mapTaskListItem } from '../mappers.js'
 import { searchTasks } from '../search-tasks.js'
 import { updateTask } from '../update-task.js'
 import { buildTaskUrl } from '../url-builder.js'
@@ -18,11 +23,12 @@ export async function kaneoCreateTask(
     description?: string
     priority?: string
     status?: string
+    startDate?: string
     dueDate?: string
     assignee?: string
   },
 ): Promise<Task> {
-  const { projectId, title, description, priority, status, dueDate, assignee } = params
+  const { projectId, title, description, priority, status, startDate, dueDate, assignee } = params
   const result = await createTask({
     config,
     projectId,
@@ -30,6 +36,7 @@ export async function kaneoCreateTask(
     description,
     priority,
     status,
+    startDate,
     dueDate,
     userId: assignee,
   })
@@ -50,12 +57,13 @@ export async function kaneoUpdateTask(
     description?: string
     status?: string
     priority?: string
+    startDate?: string
     dueDate?: string
     projectId?: string
     assignee?: string
   },
 ): Promise<Task> {
-  const { title, description, status, priority, dueDate, projectId, assignee } = params
+  const { title, description, status, priority, startDate, dueDate, projectId, assignee } = params
   const result = await updateTask({
     config,
     taskId,
@@ -63,6 +71,7 @@ export async function kaneoUpdateTask(
     description,
     status,
     priority,
+    startDate,
     dueDate,
     projectId,
     userId: assignee,
@@ -85,7 +94,7 @@ export async function kaneoSearchTasks(
   workspaceId: string,
   params: { query: string; projectId?: string; assigneeId?: string; limit?: number; offset?: number },
 ): Promise<TaskSearchResult[]> {
-  const results = await searchTasks({
+  const result = await searchTasks({
     config,
     query: params.query,
     workspaceId,
@@ -94,7 +103,10 @@ export async function kaneoSearchTasks(
     limit: params.limit,
     offset: params.offset,
   })
-  return results.map((t) => mapTaskSearchResult(t, buildTaskUrl(config.baseUrl, workspaceId, t.projectId ?? '', t.id)))
+
+  return mapGlobalSearchTaskResults(result, (task) =>
+    buildTaskUrl(config.baseUrl, workspaceId, task.projectId, task.id),
+  )
 }
 
 export async function kaneoDeleteTask(config: KaneoConfig, taskId: string): Promise<{ id: string }> {

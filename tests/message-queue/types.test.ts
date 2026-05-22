@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import type { QueueItem, CoalescedItem } from '../../src/message-queue/types.js'
@@ -35,6 +40,7 @@ describe('CoalescedItem interface', () => {
       contextType: 'dm',
       newAttachmentIds: [],
       reply: mockReply,
+      turnId: 'test-turn-id',
     }
     expect(item.text).toBe('Hello')
     expect(item.reply).toBe(mockReply)

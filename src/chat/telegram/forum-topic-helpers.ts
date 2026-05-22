@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from '../../logger.js'
 
 const log = logger.child({ scope: 'chat:telegram' })
@@ -9,7 +14,7 @@ const forumStatusCache = new Map<number, boolean>()
  * Clear the forum status cache. Used for testing.
  * @internal
  */
-export function _clearForumStatusCache(): void {
+export function clearForumStatusCacheForTesting(): void {
   forumStatusCache.clear()
 }
 

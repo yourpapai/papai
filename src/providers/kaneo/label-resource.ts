@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { z } from 'zod'
 
 import { providerError } from '../../errors.js'
@@ -62,6 +67,29 @@ export class LabelResource {
     }
   }
 
+  async listForTask(taskId: string): Promise<z.infer<typeof CreateLabelResponseSchema>[]> {
+    this.log.debug({ taskId }, 'Listing task labels')
+
+    try {
+      const labels = await kaneoFetch(
+        this.config,
+        'GET',
+        `/label/task/${taskId}`,
+        undefined,
+        undefined,
+        z.array(CreateLabelResponseSchema),
+      )
+      this.log.info({ taskId, count: labels.length }, 'Task labels listed')
+      return labels
+    } catch (error) {
+      this.log.error(
+        { error: error instanceof Error ? error.message : String(error), taskId },
+        'Failed to list task labels',
+      )
+      throw classifyKaneoError(error)
+    }
+  }
+
   async update(
     labelId: string,
     params: { name?: string; color?: string },
@@ -101,19 +129,6 @@ export class LabelResource {
     this.log.debug({ labelId }, 'Removing label')
 
     try {
-      await kaneoFetch(this.config, 'DELETE', `/label/${labelId}`, undefined, undefined, z.unknown())
-      this.log.info({ labelId }, 'Label removed')
-      return { id: labelId, success: true }
-    } catch (error) {
-      this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to remove label')
-      throw classifyKaneoError(error)
-    }
-  }
-
-  async addToTask(taskId: string, labelId: string, workspaceId: string): Promise<{ taskId: string; labelId: string }> {
-    this.log.debug({ taskId, labelId }, 'Adding label to task')
-
-    try {
       const label = await kaneoFetch(
         this.config,
         'GET',
@@ -123,19 +138,27 @@ export class LabelResource {
         CreateLabelResponseSchema,
       )
 
-      await kaneoFetch(
-        this.config,
-        'POST',
-        '/label',
-        {
-          name: label.name,
-          color: label.color,
-          workspaceId,
-          taskId,
-        },
-        undefined,
-        KaneoLabelWithTaskSchema,
-      )
+      if (label.taskId === null) {
+        throw new KaneoClassifiedError(
+          `Label ${labelId} cannot be deleted because Kaneo only deletes labels that are attached to a task`,
+          providerError.unsupportedOperation('remove unattached Kaneo label'),
+        )
+      }
+
+      await kaneoFetch(this.config, 'DELETE', `/label/${labelId}`, undefined, undefined, z.unknown())
+      this.log.info({ labelId }, 'Label removed')
+      return { id: labelId, success: true }
+    } catch (error) {
+      this.log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to remove label')
+      throw classifyKaneoError(error)
+    }
+  }
+
+  async addToTask(taskId: string, labelId: string, _workspaceId: string): Promise<{ taskId: string; labelId: string }> {
+    this.log.debug({ taskId, labelId }, 'Adding label to task')
+
+    try {
+      await kaneoFetch(this.config, 'PUT', `/label/${labelId}/task`, { taskId }, undefined, KaneoLabelWithTaskSchema)
 
       this.log.info({ taskId, labelId }, 'Label added to task')
       return { taskId, labelId }
@@ -149,37 +172,7 @@ export class LabelResource {
     this.log.debug({ taskId, labelId }, 'Removing label from task')
 
     try {
-      // Resolve workspace label name first — task-scoped copies are created with a
-      // new ID (different from the workspace label ID), but preserve the same name.
-      const workspaceLabel = await kaneoFetch(
-        this.config,
-        'GET',
-        `/label/${labelId}`,
-        undefined,
-        undefined,
-        CreateLabelResponseSchema,
-      )
-
-      const taskLabels = await kaneoFetch(
-        this.config,
-        'GET',
-        `/label/task/${taskId}`,
-        undefined,
-        undefined,
-        z.array(CreateLabelResponseSchema),
-      )
-
-      // Match by name because addToTask creates a task-scoped copy with a new ID
-      const matchingLabel = taskLabels.find((l) => l.name === workspaceLabel.name)
-
-      if (matchingLabel === undefined) {
-        throw new KaneoClassifiedError(
-          `Label ${labelId} not found on task ${taskId}`,
-          providerError.labelNotFound(labelId),
-        )
-      }
-
-      await kaneoFetch(this.config, 'DELETE', `/label/${matchingLabel.id}`, undefined, undefined, z.unknown())
+      await kaneoFetch(this.config, 'DELETE', `/label/${labelId}/task`, { taskId }, undefined, KaneoLabelWithTaskSchema)
 
       this.log.info({ taskId, labelId }, 'Label removed from task')
       return { taskId, labelId, success: true }

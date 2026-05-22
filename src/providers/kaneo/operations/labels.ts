@@ -1,16 +1,39 @@
-import type { Label } from '../../types.js'
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { Label, TaskLabel } from '../../types.js'
 import { addTaskLabel } from '../add-task-label.js'
 import type { KaneoConfig } from '../client.js'
 import { createLabel } from '../create-label.js'
 import { listLabels } from '../list-labels.js'
+import { listTaskLabels } from '../list-task-labels.js'
 import { mapLabel } from '../mappers.js'
 import { removeLabel } from '../remove-label.js'
 import { removeTaskLabel } from '../remove-task-label.js'
 import { updateLabel } from '../update-label.js'
 
+const mapTaskLabel = (label: { id: string; name: string; color: string | undefined }): TaskLabel => ({
+  id: label.id,
+  name: label.name,
+  color: label.color,
+})
+
+const isReusableWorkspaceLabel = (label: { taskId?: string | null }): boolean => {
+  if (label.taskId === null) return true
+  if (label.taskId === undefined) return true
+  return false
+}
+
 export async function kaneoListLabels(config: KaneoConfig, workspaceId: string): Promise<Label[]> {
   const results = await listLabels({ config, workspaceId })
-  return results.map(mapLabel)
+  return results.filter(isReusableWorkspaceLabel).map(mapLabel)
+}
+
+export async function kaneoListTaskLabels(config: KaneoConfig, taskId: string): Promise<TaskLabel[]> {
+  const results = await listTaskLabels({ config, taskId })
+  return results.map((label) => mapTaskLabel(label))
 }
 
 export async function kaneoCreateLabel(

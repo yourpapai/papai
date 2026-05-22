@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
+
+import { z } from 'zod'
 
 setDefaultTimeout(10000)
 
@@ -8,7 +15,24 @@ import { getTask } from '../../src/providers/kaneo/get-task.js'
 import { listTasks } from '../../src/providers/kaneo/list-tasks.js'
 import { searchTasks } from '../../src/providers/kaneo/search-tasks.js'
 import { updateTask } from '../../src/providers/kaneo/update-task.js'
+import { getCurrentKaneoUserId, kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
+
+const NullableStringSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
+
+const RawTaskDatesSchema = z.object({
+  startDate: NullableStringSchema,
+  dueDate: NullableStringSchema,
+  userId: NullableStringSchema,
+})
+
+const RawTaskStartDateSchema = z.object({
+  startDate: NullableStringSchema,
+})
 
 describe('E2E: Task Lifecycle', () => {
   let testClient: KaneoTestClient
@@ -20,9 +44,12 @@ describe('E2E: Task Lifecycle', () => {
     testClient = createTestClient()
     kaneoConfig = testClient.getKaneoConfig()
     workspaceId = testClient.getWorkspaceId()
-    await testClient.cleanup()
     const project = await testClient.createTestProject(`E2E Test ${Date.now()}`)
     projectId = project.id
+  })
+
+  afterEach(async () => {
+    await testClient.cleanup()
   })
 
   test('creates and retrieves a task', async () => {
@@ -127,9 +154,8 @@ describe('E2E: Task Lifecycle', () => {
       projectId,
     })
 
-    expect(results.length).toBeGreaterThan(0)
-    const firstResult = results[0]!
-    expect(firstResult.id).toBe(task.id)
+    expect(results.tasks.length).toBeGreaterThan(0)
+    expect(results.tasks.some((result) => result.id === task.id)).toBe(true)
   })
 
   test('creates task with all properties', async () => {
@@ -158,5 +184,97 @@ describe('E2E: Task Lifecycle', () => {
     expect(retrieved.description).toBe(description)
     expect(retrieved.priority).toBe(priority)
     expect(retrieved.status).toBe(status)
+  })
+
+  test('creates and retrieves a task with startDate, dueDate, and assignee', async () => {
+    const assigneeId = await getCurrentKaneoUserId()
+    const startDate = '2026-05-20T09:00:00.000Z'
+    const dueDate = '2026-05-21T17:00:00.000Z'
+
+    const task = await createTask({
+      config: kaneoConfig,
+      projectId,
+      title: `Dated Task ${Date.now()}`,
+      startDate,
+      dueDate,
+      userId: assigneeId,
+    })
+    testClient.trackTask(task.id)
+
+    const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskDatesSchema)
+
+    expect(retrieved.startDate).toBe(startDate)
+    expect(retrieved.dueDate).toBe(dueDate)
+    expect(retrieved.userId).toBe(assigneeId)
+    expect(rawTask.startDate).toBe(startDate)
+    expect(rawTask.dueDate).toBe(dueDate)
+    expect(rawTask.userId).toBe(assigneeId)
+  })
+
+  test('preserves startDate when updating only the title', async () => {
+    const startDate = '2026-05-22T09:00:00.000Z'
+
+    const task = await createTask({
+      config: kaneoConfig,
+      projectId,
+      title: `Preserve Start ${Date.now()}`,
+      startDate,
+    })
+    testClient.trackTask(task.id)
+
+    await updateTask({
+      config: kaneoConfig,
+      taskId: task.id,
+      title: `Renamed ${Date.now()}`,
+    })
+
+    const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskStartDateSchema)
+
+    expect(retrieved.startDate).toBe(startDate)
+    expect(rawTask.startDate).toBe(startDate)
+  })
+
+  test('overrides startDate when updating it explicitly', async () => {
+    const originalStartDate = '2026-05-23T09:00:00.000Z'
+    const replacementStartDate = '2026-05-24T12:30:00.000Z'
+
+    const task = await createTask({
+      config: kaneoConfig,
+      projectId,
+      title: `Override Start ${Date.now()}`,
+      startDate: originalStartDate,
+    })
+    testClient.trackTask(task.id)
+
+    await updateTask({
+      config: kaneoConfig,
+      taskId: task.id,
+      startDate: replacementStartDate,
+    })
+
+    const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskStartDateSchema)
+
+    expect(retrieved.startDate).toBe(replacementStartDate)
+    expect(rawTask.startDate).toBe(replacementStartDate)
+  })
+
+  test('returns null dates when a task is created without startDate and dueDate', async () => {
+    const task = await createTask({
+      config: kaneoConfig,
+      projectId,
+      title: `Null Dates ${Date.now()}`,
+    })
+    testClient.trackTask(task.id)
+
+    const retrieved = await getTask({ config: kaneoConfig, taskId: task.id })
+    const rawTask = await kaneoApiJsonParsed(`/task/${task.id}`, RawTaskDatesSchema)
+
+    expect(retrieved.startDate).toBeNull()
+    expect(retrieved.dueDate).toBeNull()
+    expect(rawTask.startDate).toBeNull()
+    expect(rawTask.dueDate).toBeNull()
   })
 })

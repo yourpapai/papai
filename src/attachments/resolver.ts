@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { AttachmentRef } from './types.js'
 
 const MULTIMODAL_MODEL_PREFIXES = [
@@ -29,7 +34,7 @@ export function buildAttachmentManifest(attachments: readonly AttachmentRef[]): 
   return `[Available attachments: ${attachments.map(renderRef).join('; ')}]`
 }
 
-const ATTACHMENT_ID_RE = /\batt_[a-z0-9-]+\b/gi
+const ATTACHMENT_ID_RE = /\batt_[a-z0-9-]+\b/giu
 
 export function selectAttachmentsForTurn(params: {
   text: string

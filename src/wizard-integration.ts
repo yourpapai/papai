@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ChatButton, ReplyFn } from './chat/types.js'
 import { logger } from './logger.js'
 import { hasActiveWizard, processWizardMessage } from './wizard/index.js'
@@ -10,9 +15,6 @@ const SENSITIVE_DELETE_WARNING =
 const getWizardButtonStyle = (action: string): 'primary' | 'secondary' | 'danger' => {
   if (action === 'cancel') {
     return 'danger'
-  }
-  if (action === 'skip_small_model' || action === 'skip_embedding') {
-    return 'secondary'
   }
   return 'primary'
 }

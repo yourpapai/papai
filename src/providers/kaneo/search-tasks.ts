@@ -1,12 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { z } from 'zod'
 
 import { logger } from '../../logger.js'
 import { classifyKaneoError } from './classify-error.js'
 import type { KaneoConfig } from './client.js'
 import { KaneoClient } from './kaneo-client.js'
-// GlobalSearchResponseCompatSchema matches the real flat API response — see api-compat.ts.
-import { GlobalSearchResponseCompatSchema } from './schemas/api-compat.js'
-import { SearchTaskSchema } from './schemas/global-search.js'
+import { GlobalSearchResponseSchema, SearchTaskSchema, type GlobalSearchResponse } from './schemas/global-search.js'
 
 const log = logger.child({ scope: 'kaneo:search-tasks' })
 
@@ -22,10 +25,41 @@ export const TaskResultSchema = SearchTaskSchema.pick({
   userId: z.string(),
 })
 
-// Real API returns flat { results, totalCount, searchQuery } — not per-type arrays.
-export const KaneoSearchResponseSchema = GlobalSearchResponseCompatSchema
+export const KaneoSearchResponseSchema = GlobalSearchResponseSchema
 
 export type TaskResult = z.infer<typeof TaskResultSchema>
+
+export function flattenGroupedTaskSearchResults(result: GlobalSearchResponse): TaskResult[] {
+  return result.tasks.map((task) => {
+    const priorityParsed = TaskResultSchema.shape.priority.safeParse(task.priority)
+
+    return {
+      id: task.id,
+      title: task.title,
+      number: task.number ?? 0,
+      status: task.status,
+      priority: priorityParsed.success ? priorityParsed.data : 'no-priority',
+      projectId: task.projectId,
+      userId: task.userId ?? '',
+    }
+  })
+}
+
+function filterAndPaginateTaskSearchResults(
+  tasks: readonly TaskResult[],
+  assigneeId: string | undefined,
+  limit: number | undefined,
+  offset: number | undefined,
+): TaskResult[] {
+  if (assigneeId === undefined) {
+    return [...tasks]
+  }
+
+  const filteredTasks = tasks.filter((task) => task.userId === assigneeId)
+  const start = offset ?? 0
+
+  return limit === undefined ? filteredTasks.slice(start) : filteredTasks.slice(start, start + limit)
+}
 
 export async function searchTasks({
   config,
@@ -43,14 +77,25 @@ export async function searchTasks({
   assigneeId?: string
   limit?: number
   offset?: number
-}): Promise<TaskResult[]> {
+}): Promise<GlobalSearchResponse> {
   log.debug({ query, workspaceId, projectId, assigneeId, limit, offset }, 'searchTasks called')
 
   try {
     const client = new KaneoClient(config)
-    const tasks = await client.tasks.search({ query, workspaceId, projectId, assigneeId, limit, offset })
-    log.info({ query, resultCount: tasks.length, assigneeId }, 'Tasks searched')
-    return tasks
+    const result = await client.tasks.search({ query, workspaceId, projectId, assigneeId, limit, offset })
+    const filteredTasks = filterAndPaginateTaskSearchResults(
+      flattenGroupedTaskSearchResults(result),
+      assigneeId,
+      limit,
+      offset,
+    )
+    const filteredTaskIds = new Set(filteredTasks.map((task) => task.id))
+    const filteredResult = {
+      ...result,
+      tasks: result.tasks.filter((task) => filteredTaskIds.has(task.id)),
+    }
+    log.info({ query, resultCount: filteredResult.tasks.length, assigneeId }, 'Tasks searched')
+    return filteredResult
   } catch (error) {
     log.error({ error: error instanceof Error ? error.message : String(error), query }, 'searchTasks failed')
     throw classifyKaneoError(error)

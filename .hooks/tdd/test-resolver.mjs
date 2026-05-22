@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const IMPL_PATTERN = /\.(?:ts|js|tsx|jsx)$/
-const TEST_PATTERN = /\.(?:test|spec)\.(?:ts|js|tsx|jsx)$/
+const IMPL_PATTERN = /\.(?:ts|js|tsx|jsx)$/u
+const TEST_PATTERN = /\.(?:test|spec)\.(?:ts|js|tsx|jsx)$/u
 
 /**
  * Check if a file is a test file
@@ -20,13 +20,12 @@ export function isTestFile(filePath) {
  * @returns {boolean} True if this is a gateable implementation file
  */
 export function isGateableImplFile(filePath, projectRoot) {
-  // Must be under src/, client/, or codeindex/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
+  // Must be under src/, client/, or review-loop/src/, match IMPL_PATTERN, and NOT match TEST_PATTERN
   const rel = path.relative(projectRoot, path.resolve(projectRoot, filePath))
   const isSrc = rel.startsWith('src/') || rel.startsWith('src\\')
   const isClient = rel.startsWith('client/') || rel.startsWith('client\\')
-  const isCodeindex = rel.startsWith('codeindex/src/') || rel.startsWith('codeindex\\src\\')
   const isReviewLoop = rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')
-  if (!isSrc && !isClient && !isCodeindex && !isReviewLoop) return false
+  if (!isSrc && !isClient && !isReviewLoop) return false
   if (!IMPL_PATTERN.test(rel)) return false
   if (TEST_PATTERN.test(rel)) return false
   return true
@@ -44,22 +43,15 @@ export function suggestTestPath(implRelPath) {
     const base = implRelPath.slice(0, -ext.length)
     return path.join('tests', `${base}.test${ext}`)
   }
-  // codeindex/src/foo/bar.ts → tests/codeindex/foo/bar.test.ts (strip codeindex/src/ prefix)
-  if (implRelPath.startsWith('codeindex/src/') || implRelPath.startsWith('codeindex\\src\\')) {
-    const withoutCodeindexSrc = implRelPath.replace(/^codeindex[/\\]src[/\\]/, '')
-    const ext = path.extname(withoutCodeindexSrc)
-    const base = withoutCodeindexSrc.slice(0, -ext.length)
-    return path.join('tests', 'codeindex', `${base}.test${ext}`)
-  }
   // review-loop/src/foo.ts → tests/review-loop/foo.test.ts
   if (implRelPath.startsWith('review-loop/src/') || implRelPath.startsWith('review-loop\\src\\')) {
-    const withoutPrefix = implRelPath.replace(/^review-loop[/\\]src[/\\]/, '')
+    const withoutPrefix = implRelPath.replace(/^review-loop[/\\]src[/\\]/u, '')
     const ext = path.extname(withoutPrefix)
     const base = withoutPrefix.slice(0, -ext.length)
     return path.join('tests', 'review-loop', `${base}.test${ext}`)
   }
   // src/foo/bar.ts → tests/foo/bar.test.ts (strip src/ prefix)
-  const withoutSrc = implRelPath.replace(/^src[/\\]/, '')
+  const withoutSrc = implRelPath.replace(/^src[/\\]/u, '')
   const ext = path.extname(withoutSrc)
   const base = withoutSrc.slice(0, -ext.length)
   return path.join('tests', `${base}.test${ext}`)
@@ -85,21 +77,9 @@ export function findTestFile(implAbsPath, projectRoot) {
     }
   }
 
-  // codeindex/src/foo/bar.ts → tests/codeindex/foo/bar.test.ts
-  if (rel.startsWith('codeindex/src/') || rel.startsWith('codeindex\\src\\')) {
-    const withoutCodeindexSrc = rel.replace(/^codeindex[/\\]src[/\\]/, '')
-    const ext = path.extname(withoutCodeindexSrc)
-    const base = withoutCodeindexSrc.slice(0, -ext.length)
-
-    for (const suffix of ['.test', '.spec']) {
-      const candidate = path.join(projectRoot, 'tests', 'codeindex', `${base}${suffix}${ext}`)
-      if (fs.existsSync(candidate)) return candidate
-    }
-  }
-
   // review-loop/src/foo.ts → tests/review-loop/foo.test.ts
   if (rel.startsWith('review-loop/src/') || rel.startsWith('review-loop\\src\\')) {
-    const withoutPrefix = rel.replace(/^review-loop[/\\]src[/\\]/, '')
+    const withoutPrefix = rel.replace(/^review-loop[/\\]src[/\\]/u, '')
     const ext = path.extname(withoutPrefix)
     const base = withoutPrefix.slice(0, -ext.length)
 
@@ -111,7 +91,7 @@ export function findTestFile(implAbsPath, projectRoot) {
 
   // Primary: parallel tests/ directory (src/foo/bar.ts → tests/foo/bar.test.ts)
   if (rel.startsWith('src/') || rel.startsWith('src\\')) {
-    const withoutSrc = rel.replace(/^src[/\\]/, '')
+    const withoutSrc = rel.replace(/^src[/\\]/u, '')
     const ext = path.extname(withoutSrc)
     const base = withoutSrc.slice(0, -ext.length)
 
@@ -141,10 +121,10 @@ export function findTestFile(implAbsPath, projectRoot) {
  */
 export function resolveImplPath(testRelPath) {
   const ext = path.extname(testRelPath)
-  const base = path.basename(testRelPath, ext).replace(/\.(test|spec)$/, '')
+  const base = path.basename(testRelPath, ext).replace(/\.(test|spec)$/u, '')
 
   if (testRelPath.startsWith('tests/') || testRelPath.startsWith('tests\\')) {
-    const dir = path.dirname(testRelPath).replace(/^tests[/\\]?/, '')
+    const dir = path.dirname(testRelPath).replace(/^tests[/\\]?/u, '')
     // tests/client/debug/helpers.test.ts → client/debug/helpers.ts (client/ stays)
     if (dir.startsWith('client/') || dir.startsWith('client\\') || dir === 'client') {
       return path.join(dir, `${base}${ext}`)
@@ -155,13 +135,8 @@ export function resolveImplPath(testRelPath) {
     }
     // tests/review-loop/foo.test.ts → review-loop/src/foo.ts
     if (dir === 'review-loop' || dir.startsWith('review-loop/') || dir.startsWith('review-loop\\')) {
-      const withoutReviewLoop = dir.replace(/^review-loop[/\\]?/, '')
+      const withoutReviewLoop = dir.replace(/^review-loop[/\\]?/u, '')
       return path.join('review-loop', 'src', withoutReviewLoop, `${base}${ext}`)
-    }
-    // tests/codeindex/foo/bar.test.ts → codeindex/src/foo/bar.ts
-    if (dir.startsWith('codeindex/') || dir.startsWith('codeindex\\') || dir === 'codeindex') {
-      const withoutCodeindex = dir.replace(/^codeindex[/\\]?/, '')
-      return path.join('codeindex', 'src', withoutCodeindex, `${base}${ext}`)
     }
     // tests/foo/bar.test.ts → src/foo/bar.ts (prepend src/)
     return path.join('src', dir, `${base}${ext}`)
@@ -182,8 +157,8 @@ export function testFileImportsImpl(testAbsPath, implAbsPath) {
   const testDir = path.dirname(testAbsPath)
 
   // Calculate relative path from test dir to impl file
-  const relToImpl = path.relative(testDir, implAbsPath).replace(/\\/g, '/')
-  const noExt = relToImpl.replace(/\.(ts|tsx|js|jsx)$/, '')
+  const relToImpl = path.relative(testDir, implAbsPath).replace(/\\/gu, '/')
+  const noExt = relToImpl.replace(/\.(ts|tsx|js|jsx)$/u, '')
   const withJs = noExt + '.js'
 
   // Check for the impl path as a string literal (covers import, require, mock.module, dynamic import)

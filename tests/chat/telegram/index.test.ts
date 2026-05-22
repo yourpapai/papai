@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Tests for Telegram chat provider
  */
@@ -6,7 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
+import { TelegramChatProvider, getTelegramFileFetcher } from '../../../src/chat/telegram/index.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -68,6 +73,14 @@ function getProviderBot(provider: TelegramChatProvider): {
   return value
 }
 
+function isBotWithLifecycleMethods(value: unknown): value is {
+  on: (filter: string | string[], handler: (...args: unknown[]) => unknown) => unknown
+  start: (options?: { onStart?: (botInfo: { username: string }) => void }) => Promise<void>
+  stop: () => Promise<void>
+} {
+  return typeof value === 'object' && value !== null && 'on' in value && 'start' in value && 'stop' in value
+}
+
 // Mock the auth module to provide getThreadScopedStorageContextId
 void mock.module('../../../src/auth.js', () => ({
   getThreadScopedStorageContextId: (
@@ -89,6 +102,15 @@ describe('TelegramChatProvider', () => {
   test('provider has correct name', () => {
     // We can't instantiate without TELEGRAM_BOT_TOKEN, but we can verify the class exists
     expect(typeof TelegramChatProvider).toBe('function')
+  })
+
+  test('eagerly initializes module-level file fetcher on construction', () => {
+    process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
+    const provider = new TelegramChatProvider()
+    expect(provider).toBeDefined()
+    const fetcher = getTelegramFileFetcher()
+    expect(typeof fetcher).toBe('function')
+    delete process.env['TELEGRAM_BOT_TOKEN']
   })
 
   describe('thread capabilities', () => {
@@ -499,6 +521,35 @@ describe('TelegramChatProvider', () => {
     expect(typeof provider.onInteraction).toBe('function')
 
     delete process.env['TELEGRAM_BOT_TOKEN']
+  })
+
+  describe('start lifecycle', () => {
+    test('does not register callback query middleware during start', async () => {
+      process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
+      const provider = new TelegramChatProvider()
+      const botValue = Reflect.get(provider as object, 'bot') as unknown
+      assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
+
+      const onCalls: Array<{ filter: string | string[]; handler: (...args: unknown[]) => unknown }> = []
+      let startCalls = 0
+
+      botValue.on = (filter, handler): void => {
+        onCalls.push({ filter, handler })
+      }
+      botValue.start = (options): Promise<void> => {
+        startCalls += 1
+        options?.onStart?.({ username: 'testbot' })
+        return Promise.resolve()
+      }
+
+      await provider.start()
+      await provider.start()
+
+      expect(startCalls).toBe(2)
+      expect(onCalls).toHaveLength(0)
+
+      delete process.env['TELEGRAM_BOT_TOKEN']
+    })
   })
 
   describe('resolveUserId', () => {

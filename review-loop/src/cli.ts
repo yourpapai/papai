@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -127,7 +132,7 @@ function getRequiredSlashCommand(prefix: string | null, required: boolean): stri
   if (!required || prefix === null || !prefix.startsWith('/')) {
     return null
   }
-  return prefix.slice(1).split(/\s+/, 1)[0] ?? null
+  return prefix.slice(1).split(/\s+/u, 1)[0] ?? null
 }
 
 async function waitForRequiredCommand(

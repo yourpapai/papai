@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { mkdir, rename } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
@@ -9,8 +14,8 @@ export function normalizeKeywordSlug(slug: string): string {
   return slug
     .trim()
     .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '')
+    .replaceAll(/[^a-z0-9]+/gu, '-')
+    .replaceAll(/^-+|-+$/gu, '')
 }
 
 export const KeywordVocabularyEntryCoreSchema = z.object({

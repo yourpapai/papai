@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -53,7 +58,7 @@ function writeVocab(vocabPath: string, entries: KeywordVocabularyEntry[]): void 
 }
 
 function writeExtracted(extractedDir: string, testFile: string, records: ExtractedBehaviorRecord[]): void {
-  const artifactPath = path.join(extractedDir, testFile.replace(/\.test\.ts$/, '.json'))
+  const artifactPath = path.join(extractedDir, testFile.replace(/\.test\.ts$/u, '.json'))
   mkdirSync(path.dirname(artifactPath), { recursive: true })
   writeFileSync(artifactPath, JSON.stringify(records, null, 2) + '\n')
 }

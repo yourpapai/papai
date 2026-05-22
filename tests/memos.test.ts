@@ -1,7 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { _userCaches } from '../src/cache.js'
+import { userCachesForTesting } from '../src/cache.js'
+import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
 import {
   saveMemo,
   getMemo,
@@ -14,13 +20,22 @@ import {
 } from '../src/memos.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
+function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => void } {
+  const events: DebugEvent[] = []
+  const handler = (e: DebugEvent): void => {
+    if (e.type === type) events.push(e)
+  }
+  subscribe(handler)
+  return { events, cleanup: () => unsubscribe(handler) }
+}
+
 beforeEach(() => {
   mockLogger()
 })
 
 describe('saveMemo', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -54,7 +69,7 @@ describe('saveMemo', () => {
 
 describe('listMemos', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -109,7 +124,7 @@ describe('keywordSearchMemos (FTS5)', () => {
   let testDb: Awaited<ReturnType<typeof setupTestDb>>
 
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     testDb = await setupTestDb()
   })
 
@@ -170,7 +185,7 @@ describe('keywordSearchMemos (FTS5)', () => {
 
 describe('updateMemoEmbedding and loadEmbeddingsForUser', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -209,7 +224,7 @@ describe('updateMemoEmbedding and loadEmbeddingsForUser', () => {
 
 describe('archiveMemos', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -249,7 +264,7 @@ describe('archiveMemos', () => {
 
 describe('addMemoLink', () => {
   beforeEach(async () => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -260,5 +275,57 @@ describe('addMemoLink', () => {
     expect(link.sourceMemoId).toBe(memo.id)
     expect(link.targetTaskId).toBe('task-123')
     expect(link.relationType).toBe('action_for')
+  })
+})
+
+describe('memo lifecycle events', () => {
+  beforeEach(async () => {
+    userCachesForTesting.clear()
+    await setupTestDb()
+  })
+
+  test('saveMemo emits memo:created with memoId and content', () => {
+    const { events, cleanup } = collectEvents('memo:created')
+    try {
+      const memo = saveMemo('user1', 'test content', ['tag1'])
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['memoId']).toBe(memo.id)
+      expect(events[0]!.data['content']).toBe('test content')
+      expect(events[0]!.data['userId']).toBeUndefined()
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: 'user1' })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('archiveMemos emits memo:archived with memoIds', () => {
+    const memo1 = saveMemo('user1', 'note one', [])
+    saveMemo('user1', 'note two', [])
+    const { events, cleanup } = collectEvents('memo:archived')
+    try {
+      const count = archiveMemos('user1', { memoIds: [memo1.id] })
+      expect(count).toBe(1)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['memoIds']).toEqual([memo1.id])
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: 'user1' })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('keywordSearchMemos emits memo:searched with query and resultCount', () => {
+    saveMemo('user1', 'lease renewal deadline', ['landlord'])
+    saveMemo('user1', 'buy groceries', ['shopping'])
+    const { events, cleanup } = collectEvents('memo:searched')
+    try {
+      const results = keywordSearchMemos('user1', 'lease')
+      expect(results).toHaveLength(1)
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['query']).toBe('lease')
+      expect(events[0]!.data['resultCount']).toBe(1)
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: 'user1' })
+    } finally {
+      cleanup()
+    }
   })
 })

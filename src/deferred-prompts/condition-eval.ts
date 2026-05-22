@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
 import type { AlertCondition, LeafCondition } from './types.js'
@@ -72,7 +77,7 @@ export const evaluateCondition = (
 
 const sanitizeValue = (value: string | number): string => {
   const str = String(value)
-  const clean = str.replaceAll(/[\n\r]/g, ' ').slice(0, 200)
+  const clean = str.replaceAll(/[\n\r]/gu, ' ').slice(0, 200)
   return `"${clean}"`
 }
 

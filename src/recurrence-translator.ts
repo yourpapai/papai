@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'recurrence-translator' })
@@ -24,7 +29,7 @@ const parseField = (field: string, min: number, max: number): CronField => {
   if (field === '*') return { type: 'any', values: [] }
   const values: number[] = []
   for (const part of field.split(',')) {
-    const stepMatch = part.match(/^(.+)\/(\d+)$/)
+    const stepMatch = part.match(/^(.+)\/(\d+)$/u)
     if (stepMatch !== null) {
       const [, range, stepStr] = stepMatch
       const step = Number.parseInt(stepStr!, 10)
@@ -50,7 +55,7 @@ const parseField = (field: string, min: number, max: number): CronField => {
 }
 
 const parseCron = (expression: string): ParsedCron | null => {
-  const fields = expression.trim().split(/\s+/)
+  const fields = expression.trim().split(/\s+/u)
   if (fields.length !== 5) {
     log.warn({ expression }, 'Invalid cron expression: expected 5 fields')
     return null

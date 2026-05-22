@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import path from 'node:path'
 
 export interface InventoryPackageJson {
@@ -38,13 +43,13 @@ export const resolveOutputRoot = (repoRoot: string, outputDir: string): string =
 }
 
 export const extractCapabilityStrings = (source: string): readonly string[] =>
-  [...source.matchAll(/'([a-zA-Z]+\.[a-zA-Z]+)'/g)].flatMap((match) => {
+  [...source.matchAll(/'([a-zA-Z]+\.[a-zA-Z]+)'/gu)].flatMap((match) => {
     const value = match[1]
     return value === undefined || value.length === 0 ? [] : [value]
   })
 
 export const extractToolKeys = (source: string): readonly string[] =>
-  [...source.matchAll(/tools\[(?:'|")([a-z_]+)(?:'|")\]\s*=|tools\.([a-z_]+)\s*=/g)].flatMap((match) => {
+  [...source.matchAll(/tools\[(?:'|")([a-z_]+)(?:'|")\]\s*=|tools\.([a-z_]+)\s*=/gu)].flatMap((match) => {
     const bracketKey = match[1]
     if (bracketKey !== undefined) {
       return bracketKey.includes('_') ? [bracketKey] : []

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -11,13 +16,13 @@ const log = logger.child({ scope: 'tool:apply-youtrack-command' })
 
 const NON_EMPTY_STRING = z.string().trim().min(1)
 
-const normalizeCommand = (query: string): string => query.trim().replace(/\s+/g, ' ').toLowerCase()
+const normalizeCommand = (query: string): string => query.trim().replace(/\s+/gu, ' ').toLowerCase()
 
 // YouTrack commands are space-delimited and tag values may contain spaces, so only
 // exact commands or the single-token assignee form can bypass confirmation safely.
 const SAFE_COMMANDS = new Set<string>(['for me', 'vote', 'unvote', 'star', 'unstar'])
 
-const SINGLE_ASSIGNEE_COMMAND = /^for\s+\S+$/i
+const SINGLE_ASSIGNEE_COMMAND = /^for\s+\S+$/iu
 
 const requiresConfirmation = (query: string, comment: string | undefined, silent: boolean | undefined): boolean => {
   if (comment !== undefined || silent === true) return true

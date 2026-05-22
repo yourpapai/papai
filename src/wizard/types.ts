@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Wizard state types for interactive configuration setup
  */
@@ -39,7 +44,7 @@ export interface WizardStep {
  */
 export interface WizardButton {
   text: string
-  action: 'edit' | 'cancel' | 'skip_small_model' | 'skip_embedding' | 'skip_keep_existing'
+  action: 'edit' | 'cancel' | 'skip_keep_existing'
   style?: 'primary' | 'secondary' | 'danger'
 }
 

@@ -1,6 +1,6 @@
-const FILE_PATH_PATTERN = /(?:^|✗ )((?:src|tests|client)\/[^\s:,(]+)/m
+const FILE_PATH_PATTERN = /(?:^|✗ )((?:src|tests|client)\/[^\s:,(]+)/mu
 
-const SECTION_RE = /^✗ (\S+) failed \(exit code \d+\):\n---\n([\s\S]*?)\n---/gm
+const SECTION_RE = /^✗ (\S+) failed \(exit code \d+\):\n---\n([\s\S]*?)\n---/gmu
 
 export function parseCheckOutput(output) {
   if (!output) return null

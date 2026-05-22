@@ -1,6 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { _resetBlobStore, _setBlobStore, _createInMemoryBlobStore } from '../src/attachments/blob-store.js'
+import {
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
+  createInMemoryBlobStoreForTesting,
+} from '../src/attachments/blob-store.js'
 import { buildUserTurnMessages } from '../src/llm-orchestrator-attachments.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -8,11 +17,11 @@ describe('llm-orchestrator-attachments', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    _setBlobStore(_createInMemoryBlobStore())
+    setBlobStoreForTesting(createInMemoryBlobStoreForTesting())
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
     delete process.env['S3_BUCKET']
     delete process.env['S3_ACCESS_KEY_ID']
     delete process.env['S3_SECRET_ACCESS_KEY']

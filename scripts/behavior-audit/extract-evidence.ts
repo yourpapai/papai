@@ -1,10 +1,12 @@
-import path from 'node:path'
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
 
-import { loadCodeindexConfig } from '../../codeindex/src/config.js'
-import { findSymbolCandidates, findIncomingReferences } from '../../codeindex/src/search.js'
-import type { ImpactResult } from '../../codeindex/src/search.js'
-import { openDatabase } from '../../codeindex/src/storage/db.js'
-import type { RankedSearchResult } from '../../codeindex/src/types.js'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+import { resolveCodeindexModulePaths } from '../codeindex-cli-support.js'
 import type { EvidenceRef, CodeindexProvenance, CodeindexQueryProvenance } from './extract-trust-types.js'
 import type { TestCase } from './test-parser.js'
 
@@ -23,8 +25,109 @@ export interface CollectEvidenceInput {
   readonly manifestDependencyPaths: readonly string[]
 }
 
+type RankedSearchResult = Readonly<{
+  filePath: string
+  startLine: number
+  endLine: number
+  snippet: string
+  symbolKey: string
+  qualifiedName: string
+}>
+
+type ImpactResult = Readonly<{
+  sourceFilePath: string
+  lineNumber: number
+  edgeType: string
+  sourceQualifiedName: string | null
+}>
+
+type CodeindexConfigLoader = (input: { readonly configPath: string; readonly repoRoot: string }) => Promise<{
+  readonly dbPath: string
+}>
+
+type CodeindexSearchDeps = Readonly<{
+  readonly findSymbolCandidates: (
+    db: import('bun:sqlite').Database,
+    name: string,
+    limit: number,
+  ) => RankedSearchResult[]
+  readonly findIncomingReferences: (
+    db: import('bun:sqlite').Database,
+    input: { readonly qualifiedName: string; readonly limit: number },
+  ) => ImpactResult[]
+}>
+
+type CodeindexDbDeps = Readonly<{
+  readonly openDatabase: (dbPath: string) => import('bun:sqlite').Database
+}>
+
+type CodeindexConfigModule = Readonly<{
+  readonly loadCodeindexConfig: CodeindexConfigLoader
+}>
+
+type CodeindexSearchModule = Readonly<{
+  readonly findSymbolCandidates: CodeindexSearchDeps['findSymbolCandidates']
+  readonly findIncomingReferences: CodeindexSearchDeps['findIncomingReferences']
+}>
+
+type CodeindexDbModule = Readonly<{
+  readonly openDatabase: CodeindexDbDeps['openDatabase']
+}>
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && value !== undefined && typeof value === 'object'
+
+const isCodeindexConfigModule = (value: unknown): value is CodeindexConfigModule =>
+  isRecord(value) && typeof value['loadCodeindexConfig'] === 'function'
+
+const isCodeindexSearchModule = (value: unknown): value is CodeindexSearchModule =>
+  isRecord(value) &&
+  typeof value['findSymbolCandidates'] === 'function' &&
+  typeof value['findIncomingReferences'] === 'function'
+
+const isCodeindexDbModule = (value: unknown): value is CodeindexDbModule =>
+  isRecord(value) && typeof value['openDatabase'] === 'function'
+
+const loadCodeindexDeps = async (
+  repoRoot: string,
+): Promise<
+  Readonly<{
+    readonly loadCodeindexConfig: CodeindexConfigLoader
+    readonly search: CodeindexSearchDeps
+    readonly db: CodeindexDbDeps
+  }>
+> => {
+  const modulePaths = resolveCodeindexModulePaths({ repoRoot })
+  const [configModule, searchModule, dbModule]: [unknown, unknown, unknown] = await Promise.all([
+    import(pathToFileURL(modulePaths.configModulePath).href).then((module): unknown => module),
+    import(pathToFileURL(modulePaths.searchModulePath).href).then((module): unknown => module),
+    import(pathToFileURL(modulePaths.storageDbModulePath).href).then((module): unknown => module),
+  ])
+
+  if (!isCodeindexConfigModule(configModule)) {
+    throw new TypeError(`Invalid codeindex config module: ${modulePaths.configModulePath}`)
+  }
+  if (!isCodeindexSearchModule(searchModule)) {
+    throw new TypeError(`Invalid codeindex search module: ${modulePaths.searchModulePath}`)
+  }
+  if (!isCodeindexDbModule(dbModule)) {
+    throw new TypeError(`Invalid codeindex db module: ${modulePaths.storageDbModulePath}`)
+  }
+
+  return {
+    loadCodeindexConfig: configModule.loadCodeindexConfig,
+    search: {
+      findSymbolCandidates: searchModule.findSymbolCandidates,
+      findIncomingReferences: searchModule.findIncomingReferences,
+    },
+    db: {
+      openDatabase: dbModule.openDatabase,
+    },
+  }
+}
+
 function extractImportedNames(source: string): readonly string[] {
-  const pattern = /import\s*\{([^}]+)\}\s*from/g
+  const pattern = /import\s*\{([^}]+)\}\s*from/gu
   const names: string[] = []
   let match: RegExpExecArray | null = null
   while ((match = pattern.exec(source)) !== null) {
@@ -33,7 +136,7 @@ function extractImportedNames(source: string): readonly string[] {
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && s !== 'type')
-      .map((s) => s.replace(/^type\s+/, ''))
+      .map((s) => s.replace(/^type\s+/u, ''))
       .filter((s) => s.length > 0)
     names.push(...parsed)
   }
@@ -98,7 +201,12 @@ interface CodeindexEvidence {
   readonly indexStatus: CodeindexProvenance['indexStatus']
 }
 
-const collectCodeindexEvidence = (db: import('bun:sqlite').Database, testSource: string): CodeindexEvidence => {
+const collectCodeindexEvidence = (
+  db: import('bun:sqlite').Database,
+  testSource: string,
+  findSymbolCandidates: CodeindexSearchDeps['findSymbolCandidates'],
+  findIncomingReferences: CodeindexSearchDeps['findIncomingReferences'],
+): CodeindexEvidence => {
   const indexStatus = checkIndexFreshness(db)
   const importedNames = extractImportedNames(testSource)
   const queries: CodeindexQueryProvenance[] = []
@@ -143,13 +251,19 @@ export const collectEvidence = async (input: Readonly<CollectEvidenceInput>): Pr
 
   try {
     const repoRoot = path.resolve(import.meta.dir, '../..')
-    const config = await loadCodeindexConfig({
+    const codeindex = await loadCodeindexDeps(repoRoot)
+    const config = await codeindex.loadCodeindexConfig({
       configPath: path.join(repoRoot, '.codeindex.json'),
       repoRoot,
     })
-    db = openDatabase(config.dbPath)
+    db = codeindex.db.openDatabase(config.dbPath)
 
-    const ciEvidence = collectCodeindexEvidence(db, input.testCase.source)
+    const ciEvidence = collectCodeindexEvidence(
+      db,
+      input.testCase.source,
+      codeindex.search.findSymbolCandidates,
+      codeindex.search.findIncomingReferences,
+    )
     const uniqueNewFiles = ciEvidence.additionalFiles.filter((f) => !evidenceFilesRead.includes(f))
     evidenceFilesRead.push(...uniqueNewFiles)
 

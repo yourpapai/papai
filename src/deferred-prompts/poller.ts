@@ -1,13 +1,19 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import pLimit from 'p-limit'
 
 import type { ChatProvider } from '../chat/types.js'
-import { getConfig } from '../config.js'
-import { emit } from '../debug/event-bus.js'
+import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
+import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { describeCondition, evaluateCondition, getEligibleAlertPrompts, updateAlertTriggerTime } from './alerts.js'
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
+import { groupScheduledPromptsByDelivery } from './poller-groups.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getScheduledPromptsDue } from './scheduled.js'
@@ -32,32 +38,12 @@ function logSettledErrors(results: PromiseSettledResult<void>[], context: string
   }
 }
 
-function deliveryGroupKey(prompt: ScheduledPrompt): string {
-  const t = prompt.deliveryTarget
-  const mentionKey = t.audience === 'shared' ? '' : [...t.mentionUserIds].sort().join(',')
-  return [
-    prompt.createdByUserId,
-    t.contextId,
-    t.contextType,
-    t.threadId ?? '',
-    t.audience,
-    t.createdByUsername ?? '',
-    mentionKey,
-  ].join('|')
-}
-
 function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
-  return {
-    createdByUserId: prompt.createdByUserId,
-    deliveryTarget: prompt.deliveryTarget,
-  }
+  return { createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget }
 }
 
 function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
-  return {
-    createdByUserId: alert.createdByUserId,
-    deliveryTarget: alert.deliveryTarget,
-  }
+  return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
 }
 
 async function executeScheduledPromptsForGroup(
@@ -67,7 +53,7 @@ async function executeScheduledPromptsForGroup(
   buildProviderFn: BuildProviderFn,
 ): Promise<void> {
   const { createdByUserId } = execCtx
-  const timezone = getConfig(createdByUserId, 'timezone') ?? 'UTC'
+  const timezone = getUserTimezoneOrDefault(createdByUserId)
   const metadata = mergeExecutionMetadata(prompts)
   const mergedPrompt =
     prompts.length === 1 ? prompts[0]!.prompt : prompts.map((p, i) => `${String(i + 1)}. "${p.prompt}"`).join('\n')
@@ -93,28 +79,24 @@ async function executeScheduledPromptsForGroup(
 
   await chat.sendMessage(execCtx.deliveryTarget, response)
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
+  for (const prompt of prompts) {
+    emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })
+  }
 }
 
 export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
   log.debug('pollScheduledOnce called')
 
   const duePrompts = getScheduledPromptsDue().filter((p) => !inFlightPrompts.has(p.id))
-  emit('poller:scheduled', { dueCount: duePrompts.length })
+  emitGlobal('poller:scheduled', { dueCount: duePrompts.length })
   log.debug({ count: duePrompts.length }, 'Due scheduled prompts found')
 
   if (duePrompts.length === 0) return
 
-  const byGroup = new Map<string, ScheduledPrompt[]>()
   for (const prompt of duePrompts) {
     inFlightPrompts.add(prompt.id)
-    const key = deliveryGroupKey(prompt)
-    const existing = byGroup.get(key)
-    if (existing === undefined) {
-      byGroup.set(key, [prompt])
-    } else {
-      existing.push(prompt)
-    }
   }
+  const byGroup = groupScheduledPromptsByDelivery(duePrompts)
 
   const limit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   try {
@@ -175,6 +157,8 @@ async function executeSingleAlert(
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
+  emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
+  emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
 }
 
 async function executeAlertsForUser(
@@ -213,7 +197,7 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   log.debug('pollAlertsOnce called')
 
   const eligibleAlerts = getEligibleAlertPrompts()
-  emit('poller:alerts', { eligibleCount: eligibleAlerts.length })
+  emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
 
   if (eligibleAlerts.length === 0) return
 

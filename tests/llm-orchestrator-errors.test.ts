@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import { getUserMessage, providerError, systemError } from '../src/errors.js'
@@ -66,7 +71,7 @@ describe('Error handling in llm-orchestrator', () => {
     test('network-error has user-friendly message', () => {
       const error = systemError.networkError('Connection refused')
       const message = getUserMessage(error)
-      expect(message.toLowerCase()).toMatch(/unavailable|connection/)
+      expect(message.toLowerCase()).toMatch(/unavailable|connection/u)
     })
   })
 

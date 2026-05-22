@@ -1,6 +1,11 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ModelMessage, ToolSet } from 'ai'
 
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { buildStepsDetail } from './llm-orchestrator-steps.js'
 import { logger } from './logger.js'
 
@@ -65,9 +70,14 @@ export type ResolvedStreamTextResult = {
 function stringifySingleToolSchema(toolName: string, value: unknown): string {
   log.debug({ toolName }, 'stringifySingleToolSchema')
   try {
+    const seen = new WeakSet<object>()
     return JSON.stringify(value, (key, nestedValue: unknown) => {
       if (key === '') return nestedValue
       if (typeof nestedValue === 'function') return '[function]'
+      if (nestedValue !== null && typeof nestedValue === 'object') {
+        if (seen.has(nestedValue)) return undefined
+        seen.add(nestedValue)
+      }
       return nestedValue
     })
   } catch (error) {
@@ -118,49 +128,58 @@ export function emitLlmStart(
   ...args:
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet]
     | [contextId: string, mainModel: string, messages: ModelMessage[], tools: ToolSet, routing: ToolRoutingTelemetry]
+    | [
+        contextId: string,
+        mainModel: string,
+        messages: ModelMessage[],
+        tools: ToolSet,
+        routing: ToolRoutingTelemetry | undefined,
+        turnId: string,
+      ]
 ): void {
-  const [contextId, mainModel, messages, tools, routing] = args
-  emit('llm:start', {
-    userId: contextId,
-    model: mainModel,
-    messageCount: messages.length,
-    ...buildToolTelemetry(tools, routing),
-  })
+  const [contextId, mainModel, messages, tools, routing, turnId] = args
+  emitUser(
+    'llm:start',
+    contextId,
+    {
+      model: mainModel,
+      messageCount: messages.length,
+      ...buildToolTelemetry(tools, routing),
+    },
+    turnId,
+  )
 }
 
 export function emitLlmEnd(
-  ...args:
-    | [
-        contextId: string,
-        mainModel: string,
-        result: ResolvedStreamTextResult,
-        startTime: number,
-        messages: ModelMessage[],
-        tools: ToolSet,
-      ]
-    | [
-        contextId: string,
-        mainModel: string,
-        result: ResolvedStreamTextResult,
-        startTime: number,
-        messages: ModelMessage[],
-        tools: ToolSet,
-        routing: ToolRoutingTelemetry,
-      ]
+  contextId: string,
+  chatUserId: string,
+  contextType: 'dm' | 'group',
+  mainModel: string,
+  result: ResolvedStreamTextResult,
+  startTime: number,
+  messages: ModelMessage[],
+  tools: ToolSet,
+  routing: ToolRoutingTelemetry | undefined,
+  turnId: string,
 ): void {
-  const [contextId, mainModel, result, startTime, messages, tools, routing] = args
-  emit('llm:end', {
-    userId: contextId,
-    model: mainModel,
-    steps: result.steps.length,
-    totalDuration: Date.now() - startTime,
-    tokenUsage: result.usage,
-    responseId: result.response.id,
-    actualModel: result.response.modelId,
-    finishReason: result.finishReason,
-    messageCount: messages.length,
-    ...buildToolTelemetry(tools, routing),
-    generatedText: result.text,
-    stepsDetail: buildStepsDetail(result.steps),
-  })
+  emitUser(
+    'llm:end',
+    contextId,
+    {
+      model: mainModel,
+      steps: result.steps.length,
+      totalDuration: Date.now() - startTime,
+      tokenUsage: result.usage,
+      responseId: result.response.id,
+      actualModel: result.response.modelId,
+      finishReason: result.finishReason,
+      messageCount: messages.length,
+      chatUserId,
+      contextType,
+      ...buildToolTelemetry(tools, routing),
+      generatedText: result.text,
+      stepsDetail: buildStepsDetail(result.steps),
+    },
+    turnId,
+  )
 }

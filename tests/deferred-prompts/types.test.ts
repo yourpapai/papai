@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -205,17 +210,8 @@ describe('rruleInputSchema', () => {
       freq: 'DAILY',
       byHour: [9],
       byMinute: [0],
-      timezone: 'UTC',
     })
     expect(result.success).toBe(true)
-  })
-
-  test('rejects invalid IANA timezone', () => {
-    const result = rruleInputSchema.safeParse({
-      freq: 'DAILY',
-      timezone: 'Not/A_Zone',
-    })
-    expect(result.success).toBe(false)
   })
 
   test('rejects conflicting until and count', () => {
@@ -223,7 +219,6 @@ describe('rruleInputSchema', () => {
       freq: 'DAILY',
       until: '2026-12-31T00:00:00Z',
       count: 2,
-      timezone: 'UTC',
     })
     expect(result.success).toBe(false)
   })
@@ -231,7 +226,6 @@ describe('rruleInputSchema', () => {
   test('accepts startDate without startTime', () => {
     const result = rruleInputSchema.safeParse({
       freq: 'DAILY',
-      timezone: 'UTC',
       startDate: '2026-05-01',
     })
     expect(result.success).toBe(true)
@@ -240,7 +234,6 @@ describe('rruleInputSchema', () => {
   test('accepts startDate and startTime together', () => {
     const result = rruleInputSchema.safeParse({
       freq: 'DAILY',
-      timezone: 'UTC',
       startDate: '2026-05-01',
       startTime: '09:00',
     })
@@ -250,31 +243,30 @@ describe('rruleInputSchema', () => {
   test('rejects startTime without startDate', () => {
     const result = rruleInputSchema.safeParse({
       freq: 'DAILY',
-      timezone: 'UTC',
       startTime: '09:00',
     })
     expect(result.success).toBe(false)
   })
 
   test('rejects empty byDay array', () => {
-    const result = rruleInputSchema.safeParse({ freq: 'WEEKLY', byDay: [], timezone: 'UTC' })
+    const result = rruleInputSchema.safeParse({ freq: 'WEEKLY', byDay: [] })
     expect(result.success).toBe(false)
   })
 
   test('rejects empty byHour array', () => {
-    const result = rruleInputSchema.safeParse({ freq: 'DAILY', byHour: [], timezone: 'UTC' })
+    const result = rruleInputSchema.safeParse({ freq: 'DAILY', byHour: [] })
     expect(result.success).toBe(false)
   })
 
   test('rejects empty byMinute array', () => {
-    const result = rruleInputSchema.safeParse({ freq: 'DAILY', byMinute: [], timezone: 'UTC' })
+    const result = rruleInputSchema.safeParse({ freq: 'DAILY', byMinute: [] })
     expect(result.success).toBe(false)
   })
 })
 
 describe('scheduleSchema', () => {
   const validFireAt = { date: '2026-12-01', time: '09:00' }
-  const validRrule = { freq: 'DAILY' as const, byHour: [9], byMinute: [0], timezone: 'UTC' }
+  const validRrule = { freq: 'DAILY' as const, byHour: [9], byMinute: [0] }
 
   test('accepts fire_at only', () => {
     expect(scheduleSchema.safeParse({ fire_at: validFireAt }).success).toBe(true)

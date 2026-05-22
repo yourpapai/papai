@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Tests for config-editor chat integration
  */
@@ -34,7 +39,7 @@ describe('config-editor chat integration', () => {
 
   test('handles message when editor is active', async () => {
     // Start an editor session
-    startEditor(userId, storageContextId, 'main_model')
+    startEditor(userId, storageContextId, 'timezone')
 
     let buttonsCalled = false
     const reply = {
@@ -48,13 +53,13 @@ describe('config-editor chat integration', () => {
       },
     }
 
-    const result = await handleConfigEditorMessage(userId, storageContextId, 'gpt-4', reply)
+    const result = await handleConfigEditorMessage(userId, storageContextId, 'UTC', reply)
     expect(result).toBe(true)
     expect(buttonsCalled).toBe(true)
   })
 
   test('sets isSensitiveKey flag for sensitive key', async () => {
-    startEditor(userId, storageContextId, 'llm_apikey')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
     const { reply, buttonCalls } = createMockReply()
 
     const result = await handleConfigEditorMessage(userId, storageContextId, 'sk-test-api-key-12345', reply)
@@ -64,7 +69,7 @@ describe('config-editor chat integration', () => {
   })
 
   test('calls deleteMessage when available and key is sensitive', async () => {
-    startEditor(userId, storageContextId, 'llm_apikey')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
     const deletedIds: string[] = []
     const reply: ReplyFn = {
       text: async (): Promise<void> => {},
@@ -84,7 +89,7 @@ describe('config-editor chat integration', () => {
   })
 
   test('appends warning when deleteMessage unavailable and key is sensitive', async () => {
-    startEditor(userId, storageContextId, 'llm_apikey')
+    startEditor(userId, storageContextId, 'kaneo_apikey')
     const { reply, buttonCalls } = createMockReply()
 
     const result = await handleConfigEditorMessage(userId, storageContextId, 'sk-key', reply, 'msg-123')
@@ -94,7 +99,7 @@ describe('config-editor chat integration', () => {
   })
 
   test('does not delete or warn for non-sensitive key', async () => {
-    startEditor(userId, storageContextId, 'main_model')
+    startEditor(userId, storageContextId, 'timezone')
     const deletedIds: string[] = []
     const reply: ReplyFn = {
       text: async (): Promise<void> => {},
@@ -108,7 +113,7 @@ describe('config-editor chat integration', () => {
       },
     }
 
-    const result = await handleConfigEditorMessage(userId, storageContextId, 'gpt-4', reply, 'msg-456')
+    const result = await handleConfigEditorMessage(userId, storageContextId, 'UTC', reply, 'msg-456')
     expect(result).toBe(true)
     expect(deletedIds).toEqual([])
   })

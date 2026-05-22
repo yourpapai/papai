@@ -1,4 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -78,10 +83,29 @@ function seedLogBuffer(): void {
   logBuffer.push({ level: 50, time: '2026-03-28T10:00:01.000Z', scope: 'bot', msg: 'Something failed' })
 }
 
+function mockDebugServerDependencies(): void {
+  void mock.module('../../src/recurring.js', () => ({
+    listRecurringTasks: (): unknown[] => [],
+  }))
+  void mock.module('../../src/deferred-prompts/scheduled.js', () => ({
+    listScheduledPrompts: (): unknown[] => [],
+  }))
+  void mock.module('../../src/memos.js', () => ({
+    listMemos: (): unknown[] => [],
+  }))
+  void mock.module('../../src/identity/mapping.js', () => ({
+    getIdentityMapping: (): null => null,
+  }))
+  void mock.module('../../src/authorized-groups.js', () => ({
+    listAuthorizedGroups: (): unknown[] => [],
+  }))
+}
+
 describe('debug-server', () => {
   let capturedLogLevel: string
 
   beforeAll(() => {
+    mockDebugServerDependencies()
     ensurePublicBuilt()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
@@ -91,7 +115,12 @@ describe('debug-server', () => {
     seedLogBuffer()
   })
 
+  beforeEach(() => {
+    mockDebugServerDependencies()
+  })
+
   afterAll(() => {
+    mock.restore()
     stopDebugServer()
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
@@ -203,6 +232,17 @@ describe('debug-server', () => {
     expect(entries).toHaveLength(1)
   })
 
+  test('GET /logs supports turnId filter', async () => {
+    logBuffer.push({ level: 30, time: '2026-03-28T10:00:02.000Z', msg: 'turn msg', turnId: 'turn-test-123' })
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?turnId=turn-test-123`)
+    expect(res.status).toBe(200)
+    const entries = assertArray(JSON.parse(await res.text()))
+    expect(entries.length).toBeGreaterThan(0)
+    for (const entry of entries) {
+      expect(assertLogEntryKey(entry, 'turnId')).toBe('turn-test-123')
+    }
+  })
+
   test('GET /logs/stats returns buffer metadata', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/logs/stats`)
     expect(res.status).toBe(200)
@@ -248,5 +288,85 @@ describe('debug-server', () => {
     const text = chunks.join('')
     expect(text).toContain('event: state:init')
     expect(text).toContain('"type":"state:init"')
+  })
+
+  test('GET /turns/:id returns 404 for unknown turnId', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/nonexistent`)
+    expect(res.status).toBe(404)
+    await res.body?.cancel()
+  })
+
+  test('GET /recurring returns 400 when userId is missing', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/recurring`)
+    expect(res.status).toBe(400)
+    const body = await res.text()
+    expect(body).toContain('userId')
+  })
+
+  test('GET /recurring returns JSON array for valid userId', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/recurring?userId=test-user`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json')
+    const entries = assertArray(JSON.parse(await res.text()))
+    expect(entries).toBeArray()
+  })
+
+  test('GET /deferred returns 400 when userId is missing', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/deferred`)
+    expect(res.status).toBe(400)
+    const body = await res.text()
+    expect(body).toContain('userId')
+  })
+
+  test('GET /deferred returns JSON array for valid userId', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/deferred?userId=test-user`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json')
+    const entries = assertArray(JSON.parse(await res.text()))
+    expect(entries).toBeArray()
+  })
+
+  test('GET /memos returns 400 when userId is missing', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/memos`)
+    expect(res.status).toBe(400)
+    const body = await res.text()
+    expect(body).toContain('userId')
+  })
+
+  test('GET /memos returns JSON array for valid userId', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json')
+    const entries = assertArray(JSON.parse(await res.text()))
+    expect(entries).toBeArray()
+  })
+
+  test('GET /memos supports state parameter', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user&state=archived`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json')
+    const entries = assertArray(JSON.parse(await res.text()))
+    expect(entries).toBeArray()
+  })
+
+  test('GET /identity returns 400 when userId is missing', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/identity`)
+    expect(res.status).toBe(400)
+    const body = await res.text()
+    expect(body).toContain('userId')
+  })
+
+  test('GET /identity returns 404 for unknown user', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/identity?userId=nonexistent-user`)
+    expect(res.status).toBe(404)
+    await res.body?.cancel()
+  })
+
+  test('GET /auth/groups returns JSON array', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth/groups`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/json')
+    const entries = assertArray(JSON.parse(await res.text()))
+    expect(entries).toBeArray()
   })
 })

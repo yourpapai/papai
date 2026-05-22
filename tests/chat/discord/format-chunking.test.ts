@@ -1,9 +1,14 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import { chunkForDiscord } from '../../../src/chat/discord/format-chunking.js'
 
 const countFenceMarkers = (chunk: string): number => {
-  const matches = chunk.match(/```/g)
+  const matches = chunk.match(/```/gu)
   return matches === null || matches === undefined ? 0 : matches.length
 }
 
@@ -73,7 +78,7 @@ describe('chunkForDiscord', () => {
     const chunks = chunkForDiscord(sentence1 + sentence2, 2000)
     expect(chunks.length).toBeGreaterThanOrEqual(1)
     expect(chunks.every((c) => c.length <= 2000)).toBe(true)
-    expect(chunks.join('').replace(/\s+/g, '')).toBe((sentence1 + sentence2).replace(/\s+/g, ''))
+    expect(chunks.join('').replace(/\s+/gu, '')).toBe((sentence1 + sentence2).replace(/\s+/gu, ''))
   })
 
   test('preserves language tag when splitting code blocks', () => {

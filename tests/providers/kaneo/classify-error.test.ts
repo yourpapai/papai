@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import { providerError } from '../../../src/errors.js'
@@ -51,6 +56,12 @@ describe('classifyKaneoError', () => {
     const error = new KaneoApiError('GET /api/activity/abc returned 404', 404, { error: 'Not found' })
     const result = classifyKaneoError(error)
     expect(result.appError.code).toBe('comment-not-found')
+  })
+
+  test('returns relationNotFound for 404 with task-relation path', () => {
+    const error = new KaneoApiError('GET /api/task-relation/task-1 returned 404', 404, { error: 'Not found' })
+    const result = classifyKaneoError(error, { taskId: 'task-1' })
+    expect(result.appError.code).toBe('relation-not-found')
   })
 
   test('returns unknown for 404 without recognisable resource context', () => {

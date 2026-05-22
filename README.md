@@ -7,9 +7,9 @@
 <p align="center">Natural language task management for Telegram, Mattermost, and Discord</p>
 
 <p align="center">
-  <a href="https://github.com/wKich/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wKich/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
-  <a href="https://github.com/wKich/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/wKich/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/wKich/papai?style=flat-square" alt="License"></a>
+  <a href="https://github.com/yourpapai/papai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CI&style=flat-square" alt="CI Status"></a>
+  <a href="https://github.com/yourpapai/papai/security"><img src="https://img.shields.io/github/actions/workflow/status/yourpapai/papai/ci.yml?branch=master&label=CodeQL&style=flat-square&logo=github" alt="CodeQL"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-0f766e?style=flat-square" alt="License: BSL 1.1"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/bun-1.3%2B-black?style=flat-square&logo=bun" alt="Bun Runtime"></a>
 </p>
 
@@ -97,7 +97,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 ### 30-Second Setup
 
 ```bash
-git clone https://github.com/wKich/papai.git
+git clone https://github.com/yourpapai/papai.git
 cd papai
 bun install
 cp .env.example .env
@@ -110,6 +110,13 @@ Edit `.env`:
 CHAT_PROVIDER=telegram          # or: mattermost, discord
 TASK_PROVIDER=kaneo             # or: youtrack
 ADMIN_USER_ID=123456789         # Your platform user ID
+
+# Central LLM credentials (seeded once into system_config on first start)
+LLM_API_KEY=sk-...
+LLM_BASE_URL=https://api.openai.com/v1
+MAIN_MODEL=gpt-4o-mini
+# SMALL_MODEL=gpt-4o-mini       # optional, falls back to MAIN_MODEL
+# EMBEDDING_MODEL=text-embedding-3-small  # optional, disables memo semantic search if unset
 
 # Platform-specific
 TELEGRAM_BOT_TOKEN=your_token_here
@@ -127,10 +134,12 @@ bun start
 Then configure runtime settings in chat:
 
 1. DM the bot and run `/setup`
-2. Complete the wizard for personal settings
+2. Complete the wizard for personal settings (task provider credentials, timezone)
 3. Use `/config` later to review or edit settings
 
 For groups, run `/setup` or `/config` in DM and choose either personal settings or one of the groups you manage.
+
+> LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via the debug dashboard's Billing → Credentials form without restarting the bot.
 
 ---
 
@@ -184,6 +193,23 @@ flowchart TD
 | `CHAT_PROVIDER` | Chat platform                     | `telegram`, `mattermost`, or `discord`             |
 | `ADMIN_USER_ID` | Initial authorized admin identity | Platform user ID string seen by the active adapter |
 | `TASK_PROVIDER` | Task tracker backend              | `kaneo` or `youtrack`                              |
+
+</details>
+
+<details>
+<summary><b>Central LLM Credentials</b></summary>
+
+LLM credentials are admin-owned and live in the `system_config` SQLite table. They are seeded from the env vars below on the first start that finds the corresponding `system_config` row missing. After seeding, the bot reads them from the database on every startup; rotation happens either by editing the env and restarting, or by using the debug dashboard's Billing → Credentials form (no restart needed).
+
+| Variable          | Required | Description                                                                               |
+| ----------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `LLM_API_KEY`     | Yes      | API key for the OpenAI-compatible provider (seeds `system_config.llm_apikey`)             |
+| `LLM_BASE_URL`    | Yes      | OpenAI-compatible base URL (seeds `system_config.llm_baseurl`)                            |
+| `MAIN_MODEL`      | Yes      | Main model used for orchestration (seeds `system_config.main_model`)                      |
+| `SMALL_MODEL`     | No       | Smaller helper model; callsites fall back to `main_model` when unset                      |
+| `EMBEDDING_MODEL` | No       | Embedding model for semantic memo search; when unset memo search degrades to keyword-only |
+
+If `system_config` is missing any of the three required entries at runtime, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin sets them (via env + restart, or via the dashboard).
 
 </details>
 
@@ -247,12 +273,19 @@ Runtime setup still requires a per-user `youtrack_token`, configured through the
 <details>
 <summary><b>Optional Debug Server</b></summary>
 
-| Variable         | Description                                        |
-| ---------------- | -------------------------------------------------- |
-| `DEBUG_SERVER`   | Set to `true` to start the local debug server      |
-| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)       |
-| `DEBUG_PORT`     | Debug server bind port (default `9100`)            |
-| `DEBUG_TOKEN`    | Optional bearer token required for debug endpoints |
+| Variable         | Description                                                          |
+| ---------------- | -------------------------------------------------------------------- |
+| `DEBUG_SERVER`   | Set to `true` to start the local debug server                        |
+| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                         |
+| `DEBUG_PORT`     | Debug server bind port (default `9100`)                              |
+| `DEBUG_TOKEN`    | Bearer token required for debug, billing, stats, and admin endpoints |
+
+When the debug server is enabled, the dashboard at `/dashboard` exposes admin-only panels in addition to the live runtime view:
+
+- **Billing** — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows), drill-down by request, and a credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
+- **Stats** — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only — never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
+
+`/billing/*`, `/stats/*`, and `/admin/llm` all require `DEBUG_TOKEN` to be set; the routes return 401 when it is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
 
 </details>
 
@@ -286,16 +319,13 @@ Use the bot’s DM-based configuration flow:
 
 Runtime keys shown by `/setup` and `/config` include:
 
-| Key               | Description                                                 |
-| ----------------- | ----------------------------------------------------------- |
-| `llm_apikey`      | LLM provider API key                                        |
-| `llm_baseurl`     | OpenAI-compatible base URL                                  |
-| `main_model`      | Main model used for task orchestration                      |
-| `small_model`     | Smaller model used by features such as group-history lookup |
-| `embedding_model` | Embedding model for semantic memo search                    |
-| `kaneo_apikey`    | Kaneo API key or session token                              |
-| `youtrack_token`  | YouTrack permanent token                                    |
-| `timezone`        | User timezone for local date/time interpretation            |
+| Key              | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `kaneo_apikey`   | Kaneo API key or session token                   |
+| `youtrack_token` | YouTrack permanent token                         |
+| `timezone`       | User timezone for local date/time interpretation |
+
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or the debug dashboard's Billing → Credentials form — not through `/setup` or `/config`.
 
 ---
 
@@ -461,7 +491,7 @@ Minimal example:
 ```yaml
 services:
   papai:
-    image: ghcr.io/wkich/papai:latest
+    image: ghcr.io/yourpapai/papai:latest
     environment:
       CHAT_PROVIDER: telegram
       TASK_PROVIDER: kaneo
@@ -484,7 +514,7 @@ Current deployment automation is opinionated for the Telegram + Kaneo production
 ### Manual (Bare Metal)
 
 ```bash
-git clone https://github.com/wKich/papai.git
+git clone https://github.com/yourpapai/papai.git
 cd papai
 bun install
 cp .env.example .env
@@ -518,4 +548,4 @@ bun start:debug
 
 ## License
 
-[MIT](LICENSE) © 2026 Dmitriy Lazarev
+[Business Source License](LICENSE) © 2026 Dmitriy Lazarev

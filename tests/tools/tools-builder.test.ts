@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { persistIncomingAttachments } from '../../src/attachments/index.js'
@@ -112,6 +117,16 @@ describe('buildTools', () => {
     expect(tools).toHaveProperty('remove_comment')
     expect(tools).toHaveProperty('add_comment_reaction')
     expect(tools).toHaveProperty('remove_comment_reaction')
+  })
+
+  it('should expose remove_label when labels.delete capability is present', () => {
+    const provider = createMockProvider({
+      capabilities: new Set(['labels.delete']),
+    } as Partial<TaskProvider>)
+
+    const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
+
+    expect(tools).toHaveProperty('remove_label')
   })
 
   it('should conditionally add deferred prompt tools in normal mode', () => {

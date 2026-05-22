@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import pLimit from 'p-limit'
 
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
@@ -131,7 +136,7 @@ async function handleGroupMemberCommand(chat: ChatProvider, msg: IncomingMessage
     return
   }
 
-  const [subcommand, ...args] = match.split(/\s+/)
+  const [subcommand, ...args] = match.split(/\s+/u)
   const targetUser = args[0]
 
   switch (subcommand) {
@@ -169,7 +174,7 @@ async function handleAuthorizedGroupCommand(
     return
   }
 
-  const [subcommand, groupId] = match.split(/\s+/, 2)
+  const [subcommand, groupId] = match.split(/\s+/u, 2)
 
   if (groupId === undefined || groupId === '') {
     await reply.text(DM_ADMIN_USAGE)
@@ -282,7 +287,7 @@ async function extractUserId(
     }
     return { kind: 'resolved', userId: resolved }
   }
-  if (/^\d+$/.test(input) || /^[a-zA-Z0-9_-]+$/.test(input)) {
+  if (/^\d+$/u.test(input) || /^[a-zA-Z0-9_-]+$/u.test(input)) {
     return { kind: 'resolved', userId: input }
   }
   return { kind: 'error', message: 'Please provide a valid user mention or ID.' }

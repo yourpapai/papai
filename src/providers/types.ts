@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { AppError } from '../errors.js'
 import type {
   Attachment,
@@ -11,6 +16,7 @@ import type {
   RelationType,
   SetTaskVisibilityParams,
   Task,
+  TaskLabel,
   TaskCommandResult,
   TaskListItem,
   TaskSearchResult,
@@ -130,6 +136,7 @@ export interface TaskProvider extends TaskProviderPhaseFive {
     description?: string
     priority?: string
     status?: string
+    startDate?: string
     dueDate?: string
     assignee?: string
     customFields?: Array<{ name: string; value: string }>
@@ -144,6 +151,7 @@ export interface TaskProvider extends TaskProviderPhaseFive {
       description?: string
       status?: string
       priority?: string
+      startDate?: string
       dueDate?: string
       projectId?: string
       assignee?: string
@@ -191,6 +199,7 @@ export interface TaskProvider extends TaskProviderPhaseFive {
   ): Promise<{ id: string; taskId: string; commentId: string }>
 
   listLabels?(): Promise<Label[]>
+  listTaskLabels?(taskId: string): Promise<TaskLabel[]>
   getLabelByName?(labelName: string): Promise<Label[]>
   createLabel?(params: { name: string; color?: string }): Promise<Label>
   updateLabel?(labelId: string, params: { name?: string; color?: string }): Promise<Label>

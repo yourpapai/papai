@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 07 — Memory and context engineering
 
 Covers: the `=== Memory context ===` block, the `TRIM_PROMPT` summariser, the custom instructions block, and how to budget the context window so the model stays on task without burning tokens. The raw material is in [`01-current-state-audit.md`](./01-current-state-audit.md) §1.3, §1.5.

@@ -1,8 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ContextType } from '../types.js'
 
 /** Strip the leading `<@botId>` or `<@!botId>` mention from a Discord message content and trim. */
 export function stripBotMention(content: string, botId: string): string {
-  const pattern = new RegExp(`^<@!?${RegExp.escape(botId)}>\\s*`)
+  const pattern = new RegExp(`^<@!?${RegExp.escape(botId)}>\\s*`, 'u')
   return content.replace(pattern, '').trim()
 }
 

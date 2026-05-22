@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { isAppError, systemError, type AppError, webFetchError } from '../errors.js'
 import { logger } from '../logger.js'
 import { getCachedWebFetch, putCachedWebFetch } from './cache.js'
@@ -17,6 +22,7 @@ export const DEFAULT_TTL_MS = 15 * 60 * 1000
 type FetchAndExtractInput = {
   storageContextId: string
   actorUserId?: string
+  contextType?: 'dm' | 'group'
   url: string
   goal?: string
   abortSignal?: AbortSignal
@@ -185,6 +191,8 @@ async function distillProcessedContent(
       title: processed.title,
       content: processed.content,
       goal: input.goal,
+      ...(input.contextType === undefined ? {} : { contextType: input.contextType }),
+      ...(input.actorUserId === undefined ? {} : { chatUserId: input.actorUserId }),
     })
   } catch (error) {
     if (isAppError(error)) {

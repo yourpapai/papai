@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { PieceCandidate, PieceRecord, PieceSource } from './architecture-inventory-model.js'
 import { slugifyPieceName } from './architecture-inventory-model.js'
 
@@ -132,7 +137,7 @@ const isEntrypoint = (relativePath: string): boolean => {
     return true
   }
 
-  return ['src/index.ts', 'src/bot.ts', 'codeindex/src/cli.ts'].includes(relativePath)
+  return ['src/index.ts', 'src/bot.ts', 'scripts/codeindex-cli.ts'].includes(relativePath)
 }
 
 const inferEntrypoints = (piece: PieceRecord, assets: Readonly<RepositoryAssetMap>): readonly string[] =>

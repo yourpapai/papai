@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 // Import implementation to satisfy TDD hook requirement
@@ -11,63 +16,28 @@ function parseRequestBody(options: RequestInit): unknown {
   return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
 }
 
-function makeAddRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
-  let callCount = 0
-  return (_url: string, _options: RequestInit): Promise<Response> => {
-    callCount += 1
-    if (callCount === 1) {
-      // First call: get related task
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-2',
-            title: 'Related Task',
-            description: '',
-            number: 2,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
+function getRequestMethod(options: RequestInit): string {
+  return options.method ?? 'GET'
+}
+
+function makeTaskRelationFetchHandler(
+  requests: Array<{ url: string; method: string; body?: unknown }>,
+  relationsResponse: unknown,
+): (_url: string, options: RequestInit) => Promise<Response> {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    requests.push({ url, method: getRequestMethod(options), body: parseRequestBody(options) })
+
+    if (url.includes('/api/task-relation/task-1')) {
+      return Promise.resolve(new Response(JSON.stringify(relationsResponse), { status: 200 }))
     }
-    if (callCount === 2) {
-      // Second call: get source task
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-1',
-            title: 'Task 1',
-            description: '',
-            number: 1,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    // Third call: update description with relation
+
     return Promise.resolve(
       new Response(
         JSON.stringify({
-          id: 'task-1',
-          title: 'Task 1',
-          description: '---\nblocks: task-2\n---',
-          number: 1,
-          status: 'todo',
-          priority: 'medium',
-          projectId: 'proj-1',
-          position: 0,
-          userId: null,
+          id: 'rel-1',
+          sourceTaskId: 'task-1',
+          targetTaskId: 'task-2',
+          relationType: 'blocks',
           createdAt: new Date().toISOString(),
         }),
         { status: 200 },
@@ -76,94 +46,16 @@ function makeAddRelationFetchHandler(): (_url: string, options: RequestInit) => 
   }
 }
 
-function makeRemoveRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
-  let callCount = 0
-  return (_url: string, _options: RequestInit): Promise<Response> => {
-    callCount += 1
-    if (callCount === 1) {
-      // First call: get task with relation
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-1',
-            title: 'Task 1',
-            description: '---\nblocks: task-2\n---',
-            number: 1,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    // Second call: update description without relation
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          id: 'task-1',
-          title: 'Task 1',
-          description: '',
-          number: 1,
-          status: 'todo',
-          priority: 'medium',
-          projectId: 'proj-1',
-          position: 0,
-          userId: null,
-          createdAt: new Date().toISOString(),
-        }),
-        { status: 200 },
-      ),
+function createTaskDetailsFetchHandler(
+  taskPayload: unknown,
+  relationsResponse: unknown,
+): (url: string) => Promise<Response> {
+  return (url) =>
+    Promise.resolve(
+      new Response(JSON.stringify(url.includes('/api/task-relation/task-1') ? relationsResponse : taskPayload), {
+        status: 200,
+      }),
     )
-  }
-}
-
-function makeUpdateRelationFetchHandler(): (_url: string, options: RequestInit) => Promise<Response> {
-  let callCount = 0
-  return (_url: string, _options: RequestInit): Promise<Response> => {
-    callCount += 1
-    if (callCount === 1) {
-      // First call: get task with existing relation
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: 'task-1',
-            title: 'Task 1',
-            description: '---\nblocks: task-2\n---',
-            number: 1,
-            status: 'todo',
-            priority: 'medium',
-            projectId: 'proj-1',
-            position: 0,
-            userId: null,
-            createdAt: new Date().toISOString(),
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    // Second call: update description with new relation type
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          id: 'task-1',
-          title: 'Task 1',
-          description: '---\nduplicate: task-2\n---',
-          number: 1,
-          status: 'todo',
-          priority: 'medium',
-          projectId: 'proj-1',
-          position: 0,
-          userId: null,
-          createdAt: new Date().toISOString(),
-        }),
-        { status: 200 },
-      ),
-    )
-  }
 }
 
 describe('TaskResource', () => {
@@ -233,7 +125,7 @@ describe('TaskResource', () => {
                 number: 1,
                 priority: 'high',
                 description: 'Description',
-                dueDate: '2026-03-15',
+                dueDate: '2026-03-15T00:00:00.000Z',
                 userId: 'user-1',
               }),
             ),
@@ -248,7 +140,7 @@ describe('TaskResource', () => {
         title: 'Test',
         description: 'Description',
         priority: 'high',
-        dueDate: '2026-03-15',
+        dueDate: '2026-03-15T00:00:00.000Z',
         status: 'in-progress',
       })
 
@@ -256,8 +148,43 @@ describe('TaskResource', () => {
         title: 'Test',
         description: 'Description',
         priority: 'high',
-        dueDate: '2026-03-15',
+        dueDate: '2026-03-15T00:00:00.000Z',
         status: 'in-progress',
+      })
+    })
+
+    test('includes startDate in create requests', async () => {
+      let requestBody: unknown
+      setMockFetch((_url: string, options: RequestInit) => {
+        requestBody = parseRequestBody(options)
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...createMockTask({
+                id: 'task-1',
+                title: 'Test',
+                number: 1,
+                priority: 'high',
+                description: 'Description',
+              }),
+              startDate: '2026-03-01T00:00:00.000Z',
+            }),
+            { status: 200 },
+          ),
+        )
+      })
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await resource.create({
+        projectId: 'proj-1',
+        title: 'Test',
+        description: 'Description',
+        priority: 'high',
+        startDate: '2026-03-01T00:00:00.000Z',
+      })
+
+      expect(requestBody).toMatchObject({
+        startDate: '2026-03-01T00:00:00.000Z',
       })
     })
 
@@ -406,19 +333,18 @@ describe('TaskResource', () => {
 
   describe('get', () => {
     test('fetches task with details', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify(
-              createMockTask({
-                id: 'task-1',
-                title: 'Test',
-                number: 1,
-                description: 'Details',
-              }),
-            ),
-            { status: 200 },
-          ),
+      setMockFetch(
+        createTaskDetailsFetchHandler(
+          {
+            ...createMockTask({
+              id: 'task-1',
+              title: 'Test',
+              number: 1,
+              description: 'Details',
+            }),
+            startDate: '2026-03-01T00:00:00.000Z',
+          },
+          [],
         ),
       )
 
@@ -426,22 +352,53 @@ describe('TaskResource', () => {
       const result = await resource.get('task-1')
       expect(result.id).toBe('task-1')
       expect(result.description).toBe('Details')
+      expect(result.startDate).toBe('2026-03-01T00:00:00.000Z')
     })
 
-    test('parses relations from description frontmatter', async () => {
+    test('rejects non-date-time timestamps in task responses', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
-            JSON.stringify(
-              createMockTask({
+            JSON.stringify({
+              ...createMockTask({
                 id: 'task-1',
                 title: 'Test',
                 number: 1,
-                description: '---\nblocks: task-2\nrelated: task-3\n---\nTask details',
+                description: 'Details',
               }),
-            ),
+              startDate: '2026-03-01',
+              dueDate: '2026-03-15',
+              createdAt: '2026-03-01',
+            }),
             { status: 200 },
           ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await expect(resource.get('task-1')).rejects.toThrow()
+    })
+
+    test('reads first-class task relations from /task-relation/{taskId}', async () => {
+      setMockFetch(
+        createTaskDetailsFetchHandler(
+          createMockTask({ id: 'task-1', title: 'Test', number: 1, description: 'Task details' }),
+          [
+            {
+              id: 'rel-1',
+              sourceTaskId: 'task-1',
+              targetTaskId: 'task-2',
+              relationType: 'blocks',
+              createdAt: '2026-05-14T09:00:00.000Z',
+            },
+            {
+              id: 'rel-2',
+              sourceTaskId: 'task-3',
+              targetTaskId: 'task-1',
+              relationType: 'subtask',
+              createdAt: '2026-05-14T09:00:00.000Z',
+            },
+          ],
         ),
       )
 
@@ -450,23 +407,13 @@ describe('TaskResource', () => {
       expect(result.relations).toHaveLength(2)
       expect(result.relations[0]!.type).toBe('blocks')
       expect(result.relations[0]!.taskId).toBe('task-2')
+      expect(result.relations[1]!.type).toBe('child')
+      expect(result.relations[1]!.taskId).toBe('task-3')
     })
 
     test('handles task with empty description', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify(
-              createMockTask({
-                id: 'task-1',
-                title: 'Test',
-                number: 1,
-                description: '',
-              }),
-            ),
-            { status: 200 },
-          ),
-        ),
+      setMockFetch(
+        createTaskDetailsFetchHandler(createMockTask({ id: 'task-1', title: 'Test', number: 1, description: '' }), []),
       )
 
       const resource = new TaskResource(mockConfig, statusDeps)
@@ -556,6 +503,7 @@ describe('TaskResource', () => {
         description: 'Existing desc',
         priority: 'medium',
         status: 'col-2',
+        startDate: '2026-02-01T00:00:00.000Z',
       })
 
       const resource = new TaskResource(mockConfig, statusDeps)
@@ -568,6 +516,26 @@ describe('TaskResource', () => {
         status: 'col-2',
         projectId: 'proj-1',
         position: 3,
+        startDate: '2026-02-01T00:00:00.000Z',
+      })
+    })
+
+    test('allows overriding startDate in the full PUT body', async () => {
+      const requests = mockGetThenPut({
+        startDate: '2026-02-01T00:00:00.000Z',
+      })
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await resource.update('task-1', { startDate: '2026-04-01T00:00:00.000Z' })
+
+      expect(requests[1]?.body).toMatchObject({
+        title: 'Test',
+        description: '',
+        status: 'col-1',
+        priority: 'no-priority',
+        projectId: 'proj-1',
+        position: 3,
+        startDate: '2026-04-01T00:00:00.000Z',
       })
     })
   })
@@ -589,30 +557,63 @@ describe('TaskResource', () => {
         Promise.resolve(
           new Response(
             JSON.stringify({
-              id: 'proj-1',
-              name: 'Project 1',
-              columns: [
-                {
-                  id: 'col-1',
-                  name: 'Todo',
-                  icon: null,
-                  color: null,
-                  isFinal: false,
-                  tasks: [
-                    { id: 'task-1', title: 'Task 1', number: 1, status: 'todo', priority: 'medium', dueDate: null },
-                    {
-                      id: 'task-2',
-                      title: 'Task 2',
-                      number: 2,
-                      status: 'done',
-                      priority: 'high',
-                      dueDate: '2026-12-31',
-                    },
-                  ],
-                },
-              ],
-              archivedTasks: [],
-              plannedTasks: [],
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                slug: 'project-1',
+                icon: '',
+                description: null,
+                isPublic: false,
+                workspaceId: 'ws-1',
+                columns: [
+                  {
+                    id: 'col-1',
+                    slug: 'to-do',
+                    name: 'Todo',
+                    icon: null,
+                    color: null,
+                    isFinal: false,
+                    tasks: [
+                      {
+                        id: 'task-1',
+                        title: 'Task 1',
+                        number: 1,
+                        status: 'col-1',
+                        priority: 'medium',
+                        dueDate: null,
+                        position: 1,
+                        createdAt: '2026-03-01T00:00:00.000Z',
+                        userId: null,
+                        projectId: 'proj-1',
+                        labels: [],
+                        externalLinks: [],
+                      },
+                      {
+                        id: 'task-2',
+                        title: 'Task 2',
+                        number: 2,
+                        status: 'col-1',
+                        priority: 'high',
+                        dueDate: '2026-12-31T00:00:00.000Z',
+                        position: 2,
+                        createdAt: '2026-03-01T00:00:00.000Z',
+                        userId: null,
+                        projectId: 'proj-1',
+                        labels: [],
+                        externalLinks: [],
+                      },
+                    ],
+                  },
+                ],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
+              pagination: {
+                total: 2,
+                page: 1,
+                pageSize: 50,
+                totalPages: 1,
+              },
             }),
             { status: 200 },
           ),
@@ -625,16 +626,144 @@ describe('TaskResource', () => {
       expect(result[0]!.title).toBe('Task 1')
     })
 
+    test('reads runtime-compatible task list envelopes', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                slug: 'project-1',
+                icon: '',
+                description: null,
+                isPublic: false,
+                workspaceId: 'ws-1',
+                columns: [
+                  {
+                    id: 'to-do',
+                    slug: 'to-do',
+                    name: 'To Do',
+                    isFinal: false,
+                    tasks: [
+                      {
+                        id: 'task-1',
+                        title: 'Task 1',
+                        number: 1,
+                        status: 'to-do',
+                        priority: 'medium',
+                        dueDate: null,
+                        position: 1,
+                        createdAt: '2026-03-01T00:00:00Z',
+                        userId: null,
+                        assigneeId: null,
+                        assigneeName: null,
+                        assigneeImage: null,
+                        projectId: 'proj-1',
+                        labels: [],
+                        externalLinks: [],
+                      },
+                    ],
+                  },
+                ],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
+              pagination: {
+                total: 1,
+                page: 1,
+                pageSize: 1,
+                totalPages: 1,
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      const result = await resource.list('proj-1')
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        id: 'task-1',
+        title: 'Task 1',
+        status: 'to-do',
+      })
+    })
+
+    test('rejects invalid list task priority values', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: 'proj-1',
+                name: 'Project 1',
+                columns: [
+                  {
+                    id: 'to-do',
+                    name: 'To Do',
+                    isFinal: false,
+                    tasks: [
+                      {
+                        id: 'task-1',
+                        title: 'Task 1',
+                        number: 1,
+                        status: 'to-do',
+                        priority: 'critical',
+                        dueDate: null,
+                        createdAt: '2026-03-01T00:00:00Z',
+                      },
+                    ],
+                  },
+                ],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await expect(resource.list('proj-1')).rejects.toThrow()
+    })
+
+    test('rejects top-level grouped task lists', async () => {
+      // Deliberate drift-log choice: papai follows the real runtime envelope here.
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'proj-1',
+              name: 'Project 1',
+              columns: [],
+              archivedTasks: [],
+              plannedTasks: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      await expect(resource.list('proj-1')).rejects.toThrow()
+    })
+
     test('returns empty array when no tasks', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify({
-              id: 'empty-proj',
-              name: 'Empty Project',
-              columns: [],
-              archivedTasks: [],
-              plannedTasks: [],
+              data: {
+                id: 'empty-proj',
+                name: 'Empty Project',
+                columns: [],
+                archivedTasks: [],
+                plannedTasks: [],
+              },
             }),
             { status: 200 },
           ),
@@ -649,40 +778,40 @@ describe('TaskResource', () => {
 
   describe('search', () => {
     test('searches tasks by keyword', async () => {
-      // API returns flat { results, totalCount, searchQuery } — not per-type arrays.
-      // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/search/controllers/global-search.ts
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify({
-              results: [
+              tasks: [
                 {
                   id: 'task-1',
-                  type: 'task',
-                  title: 'Fix bug',
-                  description: null,
                   projectId: 'proj-1',
-                  taskNumber: 1,
+                  position: 1,
+                  userId: null,
+                  title: 'Fix bug',
+                  number: 1,
+                  description: null,
                   status: 'todo',
                   priority: 'high',
-                  relevanceScore: 3,
                   createdAt: '2026-01-01T00:00:00Z',
                 },
                 {
                   id: 'task-2',
-                  type: 'task',
-                  title: 'Bug report',
-                  description: null,
                   projectId: 'proj-1',
-                  taskNumber: 2,
+                  position: 2,
+                  userId: null,
+                  title: 'Bug report',
+                  number: 2,
+                  description: null,
                   status: 'done',
                   priority: 'medium',
-                  relevanceScore: 2,
                   createdAt: '2026-01-02T00:00:00Z',
                 },
               ],
-              totalCount: 2,
-              searchQuery: 'bug',
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
             }),
             { status: 200 },
           ),
@@ -694,7 +823,7 @@ describe('TaskResource', () => {
         query: 'bug',
         workspaceId: 'ws-1',
       })
-      expect(result).toHaveLength(2)
+      expect(result.tasks).toHaveLength(2)
     })
 
     test('filters by projectId when provided', async () => {
@@ -702,7 +831,9 @@ describe('TaskResource', () => {
       setMockFetch((url: string) => {
         requestUrl = url
         return Promise.resolve(
-          new Response(JSON.stringify({ results: [], totalCount: 0, searchQuery: 'test' }), { status: 200 }),
+          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
+            status: 200,
+          }),
         )
       })
 
@@ -719,7 +850,9 @@ describe('TaskResource', () => {
     test('returns empty array when no matches', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ results: [], totalCount: 0, searchQuery: 'nonexistent' }), { status: 200 }),
+          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
+            status: 200,
+          }),
         ),
       )
 
@@ -728,7 +861,121 @@ describe('TaskResource', () => {
         query: 'nonexistent',
         workspaceId: 'ws-1',
       })
-      expect(result).toEqual([])
+      expect(result.tasks).toEqual([])
+    })
+
+    test('returns grouped task results and ignores non-task groups at this layer', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              tasks: [
+                {
+                  id: 'task-9',
+                  projectId: 'proj-1',
+                  position: null,
+                  number: 9,
+                  userId: null,
+                  title: 'Grouped result',
+                  description: null,
+                  status: 'done',
+                  priority: 'low',
+                  createdAt: '2026-01-09T00:00:00Z',
+                },
+              ],
+              projects: [
+                {
+                  id: 'proj-1',
+                  workspaceId: 'ws-1',
+                  slug: 'proj-1',
+                  icon: null,
+                  name: 'Project 1',
+                  description: null,
+                  createdAt: '2026-01-01T00:00:00Z',
+                  isPublic: false,
+                  archivedAt: null,
+                },
+              ],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      const result = await resource.search({ query: 'grouped', workspaceId: 'ws-1' })
+
+      expect(result.tasks).toEqual([
+        {
+          id: 'task-9',
+          projectId: 'proj-1',
+          position: null,
+          number: 9,
+          userId: null,
+          title: 'Grouped result',
+          description: null,
+          status: 'done',
+          priority: 'low',
+          createdAt: '2026-01-09T00:00:00Z',
+        },
+      ])
+      expect(result.projects).toHaveLength(1)
+    })
+
+    test('accepts live Kaneo runtime search envelope with results array', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  id: 'task-live-1',
+                  type: 'task',
+                  title: 'Live result',
+                  projectId: 'proj-1',
+                  projectName: 'Project 1',
+                  projectSlug: 'project-1',
+                  workspaceId: 'ws-1',
+                  workspaceName: 'Workspace 1',
+                  createdAt: '2026-01-09T00:00:00.000Z',
+                  relevanceScore: 3,
+                  taskNumber: 9,
+                  priority: 'low',
+                  status: 'done',
+                },
+              ],
+              totalCount: 1,
+              searchQuery: 'live',
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const resource = new TaskResource(mockConfig, statusDeps)
+      const result = await resource.search({ query: 'live', workspaceId: 'ws-1' })
+
+      expect(result.tasks).toEqual([
+        {
+          id: 'task-live-1',
+          projectId: 'proj-1',
+          position: null,
+          number: 9,
+          userId: null,
+          title: 'Live result',
+          description: null,
+          status: 'done',
+          priority: 'low',
+          createdAt: '2026-01-09T00:00:00.000Z',
+        },
+      ])
+      expect(result.projects).toEqual([])
+      expect(result.workspaces).toEqual([])
+      expect(result.comments).toEqual([])
+      expect(result.activities).toEqual([])
     })
   })
 
@@ -751,22 +998,32 @@ describe('TaskResource', () => {
 
     test('search returns empty results for empty query string', async () => {
       setMockFetch(() =>
-        Promise.resolve(new Response(JSON.stringify({ results: [], totalCount: 0, searchQuery: '' }), { status: 200 })),
+        Promise.resolve(
+          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
+            status: 200,
+          }),
+        ),
       )
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.search({ query: '', workspaceId: 'ws-1' })
-      expect(result).toEqual([])
+      expect(result.tasks).toEqual([])
     })
   })
 
   describe('addRelation', () => {
     test('adds relation between tasks', async () => {
-      setMockFetch(makeAddRelationFetchHandler())
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(makeTaskRelationFetchHandler(requests, []))
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.addRelation('task-1', 'task-2', 'blocks')
 
+      expect(requests[0]).toMatchObject({
+        url: 'https://api.test.com/api/task-relation',
+        method: 'POST',
+        body: { sourceTaskId: 'task-1', targetTaskId: 'task-2', relationType: 'blocks' },
+      })
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
       expect(result.type).toBe('blocks')
@@ -775,36 +1032,31 @@ describe('TaskResource', () => {
 
   describe('removeRelation', () => {
     test('removes relation between tasks', async () => {
-      setMockFetch(makeRemoveRelationFetchHandler())
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(
+        makeTaskRelationFetchHandler(requests, [
+          {
+            id: 'rel-1',
+            sourceTaskId: 'task-1',
+            targetTaskId: 'task-2',
+            relationType: 'blocks',
+            createdAt: '2026-05-14T09:00:00.000Z',
+          },
+        ]),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const result = await resource.removeRelation('task-1', 'task-2')
 
+      expect(requests.map((request) => request.method)).toEqual(['GET', 'DELETE'])
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
       expect(result.success).toBe(true)
     })
 
     test('throws error when relation not found', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        ),
-      )
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(makeTaskRelationFetchHandler(requests, []))
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const promise = resource.removeRelation('task-1', 'task-2')
@@ -814,36 +1066,31 @@ describe('TaskResource', () => {
 
   describe('updateRelation', () => {
     test('updates relation type', async () => {
-      setMockFetch(makeUpdateRelationFetchHandler())
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(
+        makeTaskRelationFetchHandler(requests, [
+          {
+            id: 'rel-1',
+            sourceTaskId: 'task-1',
+            targetTaskId: 'task-2',
+            relationType: 'related',
+            createdAt: '2026-05-14T09:00:00.000Z',
+          },
+        ]),
+      )
 
       const resource = new TaskResource(mockConfig, statusDeps)
-      const result = await resource.updateRelation('task-1', 'task-2', 'duplicate')
+      const result = await resource.updateRelation('task-1', 'task-2', 'blocks')
 
+      expect(requests.map((request) => request.method)).toEqual(['GET', 'DELETE', 'POST'])
       expect(result.taskId).toBe('task-1')
       expect(result.relatedTaskId).toBe('task-2')
-      expect(result.type).toBe('duplicate')
+      expect(result.type).toBe('blocks')
     })
 
     test('throws error when relation not found', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 'task-1',
-              title: 'Task 1',
-              description: '',
-              number: 1,
-              status: 'todo',
-              priority: 'medium',
-              projectId: 'proj-1',
-              position: 0,
-              userId: null,
-              createdAt: new Date().toISOString(),
-            }),
-            { status: 200 },
-          ),
-        ),
-      )
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+      setMockFetch(makeTaskRelationFetchHandler(requests, []))
 
       const resource = new TaskResource(mockConfig, statusDeps)
       const promise = resource.updateRelation('task-1', 'task-2', 'related')

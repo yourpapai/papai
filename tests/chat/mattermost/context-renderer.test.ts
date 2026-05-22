@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -45,6 +50,6 @@ describe('renderMattermostContext', () => {
   test('notes approximate counts when applicable', () => {
     const result = renderMattermostContext({ ...standardContextSnapshot, approximate: true })
     assert(result.method === 'formatted')
-    expect(result.content).toMatch(/_token counts are approximate_/i)
+    expect(result.content).toMatch(/_token counts are approximate_/iu)
   })
 })

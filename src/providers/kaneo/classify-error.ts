@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { type AppError, providerError, systemError } from '../../errors.js'
 import { KaneoApiError, KaneoValidationError } from './errors.js'
 
@@ -15,6 +20,7 @@ interface ClassificationContext {
   taskId?: string
   projectId?: string
   commentId?: string
+  relatedTaskId?: string
   labelName?: string
 }
 
@@ -29,16 +35,22 @@ const classifyApiError = (error: KaneoApiError, context?: ClassificationContext)
     return new KaneoClassifiedError(message, providerError.rateLimited())
   }
   if (statusCode === 404) {
+    if (messageLower.includes('label') || messageLower.includes('/label/')) {
+      return new KaneoClassifiedError(message, providerError.labelNotFound(context?.labelName ?? 'unknown'))
+    }
+    if (messageLower.includes('task-relation') || messageLower.includes('/task-relation/')) {
+      return new KaneoClassifiedError(
+        message,
+        providerError.relationNotFound(context?.taskId ?? 'unknown', context?.relatedTaskId ?? 'unknown'),
+      )
+    }
     if (messageLower.includes('task') || messageLower.includes('/task/')) {
       return new KaneoClassifiedError(message, providerError.taskNotFound(context?.taskId ?? 'unknown'))
     }
     if (messageLower.includes('project') || messageLower.includes('/project/')) {
       return new KaneoClassifiedError(message, providerError.projectNotFound(context?.projectId ?? 'unknown'))
     }
-    if (messageLower.includes('label') || messageLower.includes('/label/')) {
-      return new KaneoClassifiedError(message, providerError.labelNotFound(context?.labelName ?? 'unknown'))
-    }
-    if (messageLower.includes('comment') || messageLower.includes('/activity/')) {
+    if (messageLower.includes('comment') || messageLower.includes('/activity/') || messageLower.includes('/comment/')) {
       return new KaneoClassifiedError(message, providerError.commentNotFound(context?.commentId ?? 'unknown'))
     }
     // Unknown resource type — avoid misreporting as task-not-found

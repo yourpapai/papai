@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'attachments:blob-store' })
@@ -19,7 +24,7 @@ export interface InMemoryBlobStore extends BlobStore {
  * In-memory BlobStore implementation. Useful for tests with no S3 backend.
  * @internal
  */
-export function _createInMemoryBlobStore(): InMemoryBlobStore {
+export function createInMemoryBlobStoreForTesting(): InMemoryBlobStore {
   const map = new Map<string, Buffer>()
   return {
     put(key, content) {
@@ -111,7 +116,7 @@ export function getBlobStore(): BlobStore {
  * Test/DI hook: install a custom blob store.
  * @internal
  */
-export function _setBlobStore(store: BlobStore): void {
+export function setBlobStoreForTesting(store: BlobStore): void {
   active = store
 }
 
@@ -119,12 +124,12 @@ export function _setBlobStore(store: BlobStore): void {
  * Test/DI hook: clear the cached blob store and force re-creation on next access.
  * @internal
  */
-export function _resetBlobStore(): void {
+export function resetBlobStoreForTesting(): void {
   active = null
 }
 
 export function buildBlobKey(contextId: string, attachmentId: string): string {
   const prefix = process.env['S3_PREFIX'] ?? ''
-  const head = prefix === '' ? '' : `${prefix.replace(/\/+$/, '')}/`
+  const head = prefix === '' ? '' : `${prefix.replace(/\/+$/u, '')}/`
   return `${head}${contextId}/${attachmentId}`
 }

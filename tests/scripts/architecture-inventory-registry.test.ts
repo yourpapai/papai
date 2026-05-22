@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import type { PieceCandidate, PieceRecord } from '../../scripts/architecture-inventory-model.js'
@@ -55,7 +60,7 @@ describe('architecture inventory registry', () => {
       aliases: ['tool registry'],
       primaryPaths: ['src/tools', 'src/tools/index.ts'],
     })
-    expect(pieces[0]?.sources).toHaveLength(2)
+    expect(pieces[0]!.sources).toHaveLength(2)
   })
 
   test('keeps same-named candidates separate when ownership boundaries do not align', () => {
@@ -96,7 +101,7 @@ describe('architecture inventory registry', () => {
       }),
     ])
 
-    expect(piece?.status).toBe('unclear')
+    expect(piece!.status).toBe('unclear')
   })
 
   test('keeps same-name candidates separate when neither side has boundary evidence', () => {
@@ -142,8 +147,8 @@ describe('architecture inventory registry', () => {
     ])
 
     expect(pieces).toHaveLength(1)
-    expect(pieces[0]?.primaryPaths).toEqual(['scripts/tool-surface-benchmark.ts'])
-    expect(pieces[0]?.status).toBe('unclear')
+    expect(pieces[0]!.primaryPaths).toEqual(['scripts/tool-surface-benchmark.ts'])
+    expect(pieces[0]!.status).toBe('unclear')
   })
 
   test('does not assign a pathless mention to one concrete variant when multiple variants exist', () => {
@@ -279,7 +284,7 @@ describe('architecture inventory registry', () => {
       },
     )
 
-    expect(piece?.entrypoints).toEqual(['scripts/build-client.ts'])
+    expect(piece!.entrypoints).toEqual(['scripts/build-client.ts'])
   })
 
   test('does not attach unrelated assets through generic token collisions', () => {

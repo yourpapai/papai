@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Tests for config-editor types
  */
@@ -18,13 +23,13 @@ describe('config-editor types', () => {
       userId: 'user123',
       storageContextId: 'ctx456',
       startedAt: new Date(),
-      editingKey: 'llm_apikey',
+      editingKey: 'kaneo_apikey',
       pendingValue: 'sk-test',
       originalMessageId: 'msg789',
     }
 
     expect(session.userId).toBe('user123')
-    expect(session.editingKey).toBe('llm_apikey')
+    expect(session.editingKey).toBe('kaneo_apikey')
     expect(session.pendingValue).toBe('sk-test')
   })
 
@@ -33,7 +38,7 @@ describe('config-editor types', () => {
       userId: 'user123',
       storageContextId: 'ctx456',
       startedAt: new Date(),
-      editingKey: 'main_model',
+      editingKey: 'youtrack_token',
     }
 
     expect(session.pendingValue).toBeUndefined()
@@ -44,17 +49,17 @@ describe('config-editor types', () => {
     const params: CreateEditorSessionParams = {
       userId: 'user123',
       storageContextId: 'ctx456',
-      editingKey: 'llm_baseurl',
+      editingKey: 'timezone',
     }
 
-    expect(params.editingKey).toBe('llm_baseurl')
+    expect(params.editingKey).toBe('timezone')
   })
 
   test('EditorButton interface works', () => {
     const button: EditorButton = {
       text: 'Save',
       action: 'save',
-      key: 'llm_apikey',
+      key: 'kaneo_apikey',
       style: 'primary',
     }
 

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { appendFile, mkdir, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -32,7 +37,7 @@ const defaultParams = (): BenchmarkParams => ({
   linkage: 'average',
   gapThreshold: 0,
   sizes: [500, 1000, 2000, 4000, 7697],
-  outputPath: 'docs/superpowers/plans/2026-04-29-embedding-clustering-profile-results.md',
+  outputPath: 'docs/archive/embedding-clustering-profile-results.md',
 })
 
 function parseFiniteNumber(flag: string, value: string): number {

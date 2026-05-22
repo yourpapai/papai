@@ -40,7 +40,7 @@ export const CodeindexReindex: Plugin = async ({ directory }) => {
 
       const timeout = setTimeout(() => {
         debounceMap.delete(sessionID)
-        const child = spawn('bun', ['run', 'codeindex/src/cli.ts', 'reindex'], {
+        const child = spawn('bun', ['run', 'scripts/codeindex-cli.ts', 'reindex'], {
           cwd: directory,
           stdio: ['ignore', 'pipe', 'pipe'],
           detached: true,

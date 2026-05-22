@@ -3,97 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'" />
     <title>papai debug</title>
     <link rel="stylesheet" href="/dashboard.css" />
   </head>
   <body>
-    <header id="header">
-      <div class="header-top">
-        <h1>papai debug</h1>
-        <span id="connection-status" class="status-dot disconnected">disconnected</span>
-        <span id="uptime" class="header-stat"></span>
-        <span id="stat-messages" class="header-stat"></span>
-        <span id="stat-llm" class="header-stat"></span>
-        <span id="stat-tools" class="header-stat"></span>
-      </div>
-      <div class="header-infra">
-        <span id="infra-scheduler"></span>
-        <span class="infra-sep"></span>
-        <span id="infra-pollers"></span>
-        <span class="infra-sep"></span>
-        <span id="infra-msgcache"></span>
-      </div>
-    </header>
-
-    <main>
-      <aside id="left-panel">
-        <section id="sessions">
-          <h2>Sessions <span id="session-count" class="count-badge">0</span></h2>
-          <div id="session-list"></div>
-        </section>
-        <section id="llm-trace">
-          <h2>LLM Trace <span id="trace-count" class="count-badge">0</span></h2>
-          <div id="trace-list"></div>
-        </section>
-      </aside>
-
-      <section id="log-explorer">
-        <div class="log-toolbar">
-          <h2>Log Explorer <span id="log-count" class="count-badge">0</span></h2>
-          <div class="log-filters">
-            <select id="log-level-filter">
-              <option value="0">all levels</option>
-              <option value="10">trace</option>
-              <option value="20">debug</option>
-              <option value="30">info</option>
-              <option value="40">warn</option>
-              <option value="50">error</option>
-            </select>
-            <select id="log-scope-filter">
-              <option value="">all scopes</option>
-            </select>
-            <input id="log-search" type="text" placeholder="search..." />
-            <button id="log-clear" type="button">clear</button>
-          </div>
-        </div>
-        <div id="log-entries"></div>
-        <button id="log-autoscroll" type="button" hidden>&#9660; auto-scroll</button>
-      </section>
-    </main>
-
-    <!-- Session Detail Modal -->
-    <div id="session-modal" class="modal" hidden>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 id="session-modal-title">Session Details</h3>
-          <button id="session-modal-close" class="modal-close">&times;</button>
-        </div>
-        <div id="session-modal-body" class="modal-body"></div>
-      </div>
-    </div>
-
-    <!-- Log Detail Modal -->
-    <div id="log-modal" class="modal" hidden>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 id="log-modal-title">Log Entry Details</h3>
-          <button id="log-modal-close" class="modal-close">&times;</button>
-        </div>
-        <div id="log-modal-body" class="modal-body"></div>
-      </div>
-    </div>
-
-    <!-- Trace Detail Modal -->
-    <div id="trace-modal" class="modal" hidden>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 id="trace-modal-title">LLM Trace Details</h3>
-          <button id="trace-modal-close" class="modal-close">&times;</button>
-        </div>
-        <div id="trace-modal-body" class="modal-body"></div>
-      </div>
-    </div>
-
+    <div id="app"></div>
     <script src="/dashboard.js" defer></script>
   </body>
 </html>

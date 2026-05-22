@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -39,11 +44,11 @@ describe('build-client', () => {
     const content = fs.readFileSync(jsPath, 'utf8')
     expect(content.length).toBeGreaterThan(0)
     // IIFE format: starts with ( or !
-    expect(content).toMatch(/^[(!]/)
+    expect(content).toMatch(/^[(!]/u)
     // No ES module syntax
     expect(content).not.toContain('export *')
     expect(content).not.toContain('export {')
-    expect(content).not.toMatch(/^import /m)
+    expect(content).not.toMatch(/^import /mu)
   })
 
   test('copies dashboard.html', () => {

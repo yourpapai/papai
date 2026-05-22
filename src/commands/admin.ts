@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import pLimit from 'p-limit'
 
 import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
@@ -27,9 +32,9 @@ const parseUserIdentifier = (
   const trimmed = input.trim()
   if (trimmed.startsWith('@')) return { type: 'username', value: trimmed.slice(1) }
   // Numeric string ID
-  if (/^\d+$/.test(trimmed)) return { type: 'id', value: trimmed }
+  if (/^\d+$/u.test(trimmed)) return { type: 'id', value: trimmed }
   // Alphanumeric username without @
-  if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return { type: 'username', value: trimmed }
+  if (/^[a-zA-Z0-9_-]+$/u.test(trimmed)) return { type: 'username', value: trimmed }
   return null
 }
 
@@ -91,7 +96,7 @@ async function handleUserCommand(
   deps: AdminCommandsDeps,
 ): Promise<void> {
   const matchStr = msg.commandMatch ?? ''
-  const args = matchStr.trim().split(/\s+/)
+  const args = matchStr.trim().split(/\s+/u)
   const subcommand = args[0]
   const identifier = args[1]
   if (subcommand === 'add') {

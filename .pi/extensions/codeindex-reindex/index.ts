@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import path from 'node:path'
 
 type TimeoutToken = ReturnType<typeof setTimeout>
 
@@ -37,20 +38,28 @@ export type ReindexDeps = {
 const INDEXED_ROOTS = ['src', 'client']
 const INDEXED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
 
+const isWindowsAbsolutePath = (filePath: string): boolean =>
+  /^[A-Za-z]:[\\/]/u.test(filePath) || filePath.startsWith('\\\\')
+
+const isAbsolutePath = (filePath: string): boolean => path.isAbsolute(filePath) || isWindowsAbsolutePath(filePath)
+
 const defaultDeps: ReindexDeps = {
   schedule: (delayMs, run) => setTimeout(run, delayMs),
   cancel: (token) => {
     clearTimeout(token)
   },
   spawnReindex: (cwd) => {
-    const child = spawn('bun', ['run', 'codeindex/src/cli.ts', 'reindex'], {
+    const child = spawn('bun', ['run', 'scripts/codeindex-cli.ts', 'reindex'], {
       cwd,
       stdio: 'ignore',
       detached: true,
     })
     child.unref()
   },
-  toRelativePath: (filePath, cwd) => (filePath.startsWith('/') ? filePath.slice(`${cwd}/`.length) : filePath),
+  toRelativePath: (filePath, cwd) => {
+    if (!isAbsolutePath(filePath)) return filePath
+    return isWindowsAbsolutePath(filePath) ? path.win32.relative(cwd, filePath) : path.relative(cwd, filePath)
+  },
   getExtension: (filePath) => {
     const dotIndex = filePath.lastIndexOf('.')
     if (dotIndex < 0) return ''
@@ -75,8 +84,8 @@ export const shouldReindexPath = (
   return !relPath.includes('.test.') && !relPath.includes('.spec.')
 }
 
-const isWritableToolName = (toolName: string): toolName is 'write' | 'edit' =>
-  toolName === 'write' || toolName === 'edit'
+const isWritableToolName = (toolName: string): toolName is 'write' | 'edit' | 'multiedit' =>
+  toolName === 'write' || toolName === 'edit' || toolName === 'multiedit'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && value !== undefined && typeof value === 'object'

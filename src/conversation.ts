@@ -1,10 +1,16 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, ModelMessage } from 'ai'
 
-import { getCachedConfig, getCachedHistory, setCachedHistory } from './cache.js'
-import { emit } from './debug/event-bus.js'
+import { getCachedHistory, setCachedHistory } from './cache.js'
+import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 import { buildMemoryContextMessage, loadFacts, loadSummary, saveSummary, trimWithMemoryModel } from './memory.js'
+import { getSystemConfig } from './system-config.js'
 
 const log = logger.child({ scope: 'conversation' })
 
@@ -49,12 +55,12 @@ export const runTrimInBackground = async (
   const reason =
     history.length >= WORKING_MEMORY_CAP ? 'hard cap reached' : `periodic (${userMessageCount} user messages)`
   log.warn({ userId, historyLength: history.length, reason }, 'Smart trim triggered (running in background)')
-  emit('trim:start', { userId, historyLength: history.length, reason })
+  emitUser('trim:start', userId, { historyLength: history.length, reason })
 
-  const llmApiKey = getCachedConfig(userId, 'llm_apikey')
-  const llmBaseUrl = getCachedConfig(userId, 'llm_baseurl')
-  const mainModel = getCachedConfig(userId, 'main_model')
-  const smallModel = getCachedConfig(userId, 'small_model') ?? mainModel
+  const llmApiKey = getSystemConfig('llm_apikey')
+  const llmBaseUrl = getSystemConfig('llm_baseurl')
+  const mainModel = getSystemConfig('main_model')
+  const smallModel = getSystemConfig('small_model') ?? mainModel
 
   if (llmApiKey !== null && llmBaseUrl !== null && smallModel !== null) {
     try {
@@ -67,8 +73,7 @@ export const runTrimInBackground = async (
       saveSummary(userId, summary)
       setCachedHistory(userId, [...trimmedMessages, ...newMessages])
       log.info({ userId, retained: trimmedMessages.length, preserved: newMessages.length }, 'Smart trim complete')
-      emit('trim:end', {
-        userId,
+      emitUser('trim:end', userId, {
         kept: trimmedMessages.length,
         dropped: history.length - trimmedMessages.length,
         success: true,
@@ -78,7 +83,7 @@ export const runTrimInBackground = async (
         { userId, error: error instanceof Error ? error.message : String(error) },
         'Smart trim failed in background',
       )
-      emit('trim:end', { userId, error: error instanceof Error ? error.message : String(error), success: false })
+      emitUser('trim:end', userId, { error: error instanceof Error ? error.message : String(error), success: false })
     }
   } else {
     log.warn({ userId }, 'LLM config not available for background trim')

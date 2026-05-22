@@ -1,6 +1,11 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ModelMessage } from 'ai'
 
-import { _userCaches } from './cache.js'
+import { userCachesForTesting } from './cache.js'
 
 export type SessionSnapshot = {
   userId: string
@@ -101,7 +106,7 @@ function buildSnapshot(id: string, cache: UserCacheEntry): SessionSnapshot {
 
 export function getSessionSnapshots(userId: string): SessionSnapshot[] {
   const snapshots: SessionSnapshot[] = []
-  for (const [id, cache] of _userCaches) {
+  for (const [id, cache] of userCachesForTesting) {
     if (id !== userId) continue
     snapshots.push(buildSnapshot(id, cache as UserCacheEntry))
   }

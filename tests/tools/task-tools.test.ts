@@ -1,9 +1,14 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, mock, beforeEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { setCachedConfig, _userCaches } from '../../src/cache.js'
+import { setCachedConfig, userCachesForTesting } from '../../src/cache.js'
 import { makeCreateTaskTool } from '../../src/tools/create-task.js'
 import { makeDeleteTaskTool } from '../../src/tools/delete-task.js'
 import { makeGetTaskTool } from '../../src/tools/get-task.js'
@@ -71,7 +76,7 @@ describe('Task Tools', () => {
   })
 
   afterAll(() => {
-    _userCaches.delete('user-1')
+    userCachesForTesting.delete('user-1')
   })
 
   describe('makeCreateTaskTool', () => {

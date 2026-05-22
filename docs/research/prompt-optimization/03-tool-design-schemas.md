@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 03 — Tool design, descriptions, and input schemas
 
 Focus: every string that the model sees for each tool — the `description:` passed to `tool()`, the top-level `.describe()` on each input field, and the Zod shape itself. The raw audit of today's tool layer is in [`01-current-state-audit.md`](./01-current-state-audit.md) §2.

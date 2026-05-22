@@ -1,12 +1,25 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ModelMessage } from 'ai'
-import type { Tokenizer as TokenizerType } from 'ai-tokenizer'
 
 import type { ContextSection, ContextSnapshot } from '../chat/types.js'
 import { logger } from '../logger.js'
+import type { ToolRoutingIntent } from '../tools/tool-router.js'
+
+export { defaultCountTokens, prepareDefaultCountTokens, type EncodingName } from './context-tokenizer.js'
 
 const log = logger.child({ scope: 'commands:context-collector' })
 
 type Fact = { identifier: string; title: string; url: string; last_seen: string }
+
+export type ToolRoutingInfo = {
+  intent: ToolRoutingIntent
+  fullToolCount: number
+  exposedToolCount: number
+}
 
 export interface ContextCollectorDeps {
   getMainModel: () => string | null
@@ -19,6 +32,7 @@ export interface ContextCollectorDeps {
   getFacts: () => readonly Fact[]
   getActiveToolDefinitions: () => Record<string, unknown>
   getProviderName: () => string
+  getToolRoutingInfo?: () => ToolRoutingInfo | undefined
   countTokens: (text: string) => number
 }
 
@@ -76,17 +90,17 @@ const MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [prefix: string, tokens: num
 export const resolveEncodingName = (modelName: string): 'o200k_base' | 'cl100k_base' => {
   // Match specific OpenAI model families exactly
   // gpt-4o family: gpt-4o, gpt-4o-mini, etc.
-  if (/^gpt-4o/.test(modelName)) return 'o200k_base'
+  if (/^gpt-4o/u.test(modelName)) return 'o200k_base'
   // gpt-4.1 family: gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, etc.
-  if (/^gpt-4\.1/.test(modelName)) return 'o200k_base'
+  if (/^gpt-4\.1/u.test(modelName)) return 'o200k_base'
   // o-series models with specific allowed patterns only
   // Match: o1, o1-preview, o1-mini, o3-mini, o4-mini (exact or with dash suffix for known variants)
   // Do NOT match: o1-custom, o3-other, etc.
   // o1 requires exact match or -preview/-mini suffix only
   if (modelName === 'o1') return 'o200k_base'
-  if (/^(o1-preview|o1-mini)(-|$)/.test(modelName)) return 'o200k_base'
+  if (/^(o1-preview|o1-mini)(-|$)/u.test(modelName)) return 'o200k_base'
   // o3-mini and o4-mini require exact match or known suffix pattern
-  if (/^(o3-mini|o4-mini)(-|$)/.test(modelName)) return 'o200k_base'
+  if (/^(o3-mini|o4-mini)(-|$)/u.test(modelName)) return 'o200k_base'
 
   return 'cl100k_base'
 }
@@ -107,7 +121,15 @@ const serializeHistory = (history: readonly ModelMessage[]): string => history.m
 
 const serializeTools = (tools: Record<string, unknown>): string => {
   try {
-    return JSON.stringify(tools)
+    const seen = new WeakSet<object>()
+    return JSON.stringify(tools, (_key, value: unknown) => {
+      if (typeof value === 'function') return '[function]'
+      if (value !== null && typeof value === 'object') {
+        if (seen.has(value)) return undefined
+        seen.add(value)
+      }
+      return value
+    })
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to serialize tools')
     return Object.keys(tools).join(',')
@@ -192,11 +214,19 @@ const buildToolsSection = (deps: ContextCollectorDeps, counter: SafeCounter): Co
   const count = Object.keys(tools).length
   const providerName = deps.getProviderName()
   const tokens = counter.count(serializeTools(tools))
+  const routing = deps.getToolRoutingInfo?.()
   return {
     label: 'Tools',
     tokens,
-    detail: `${String(count)} active, gated by ${providerName}`,
+    detail: buildToolsDetail(count, providerName, routing),
   }
+}
+
+const buildToolsDetail = (exposedCount: number, providerName: string, routing: ToolRoutingInfo | undefined): string => {
+  if (routing === undefined) {
+    return `${String(exposedCount)} active, gated by ${providerName}`
+  }
+  return `${String(routing.exposedToolCount)} of ${String(routing.fullToolCount)} active, gated by ${providerName} · routed for ${routing.intent}`
 }
 
 export const collectContext = (contextId: string, deps: ContextCollectorDeps): ContextSnapshot => {
@@ -227,42 +257,4 @@ export const collectContext = (contextId: string, deps: ContextCollectorDeps): C
   )
 
   return { modelName, sections, totalTokens, maxTokens, approximate: counter.approximate }
-}
-
-type EncodingName = 'o200k_base' | 'cl100k_base'
-
-const tokenizerCache = new Map<EncodingName, TokenizerType>()
-
-const loadTokenizer = async (encoding: EncodingName): Promise<TokenizerType> => {
-  const cached = tokenizerCache.get(encoding)
-  if (cached !== undefined) return cached
-  const { Tokenizer } = await import('ai-tokenizer')
-  const encodingModule =
-    encoding === 'o200k_base'
-      ? await import('ai-tokenizer/encoding/o200k_base')
-      : await import('ai-tokenizer/encoding/cl100k_base')
-  const tokenizer = new Tokenizer(encodingModule)
-  tokenizerCache.set(encoding, tokenizer)
-  return tokenizer
-}
-
-/**
- * Synchronous wrapper used by the collector. On first call per encoding,
- * throws with a special marker so the caller can lazy-load via `prepareDefaultCountTokens`.
- */
-export const defaultCountTokens = (text: string, encoding: EncodingName): number => {
-  if (text.length === 0) return 0
-  const tokenizer = tokenizerCache.get(encoding)
-  if (tokenizer === undefined) {
-    throw new Error(`tokenizer not loaded: ${encoding}`)
-  }
-  return tokenizer.count(text)
-}
-
-/**
- * Preload a tokenizer for the given encoding. Must be called before `collectContext`
- * uses the synchronous `defaultCountTokens`.
- */
-export const prepareDefaultCountTokens = async (encoding: EncodingName): Promise<void> => {
-  await loadTokenizer(encoding)
 }

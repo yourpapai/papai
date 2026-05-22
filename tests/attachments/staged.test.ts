@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
@@ -50,7 +55,7 @@ describe('staged file cache', () => {
         sourceProvider: 'telegram',
       })
 
-      expect(ref.stagedId).toMatch(/^stg_[0-9a-f-]+$/)
+      expect(ref.stagedId).toMatch(/^stg_[0-9a-f-]+$/u)
     })
 
     test('updates existing entry when same platformFileId + contextId pair appears', async () => {
@@ -335,7 +340,7 @@ describe('staged file cache', () => {
       // First resolve succeeds
       const first = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))
       expect(first).toMatchObject({ status: 'available', filename: 'report.pdf', contextId: 'ctx-1' })
-      expect((first as Record<string, unknown>)['attachmentId']).toMatch(/^att_[0-9a-f-]+$/)
+      expect((first as Record<string, unknown>)['attachmentId']).toMatch(/^att_[0-9a-f-]+$/u)
 
       // Second resolve returns already_resolved
       const second = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))

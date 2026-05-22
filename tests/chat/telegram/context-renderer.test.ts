@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -16,7 +21,7 @@ describe('renderTelegramContext', () => {
     expect(result.content).toContain('gpt-4o')
     expect(result.content).toContain('6,770')
     expect(result.content).toContain('128,000')
-    expect(result.content).toMatch(/5\.\d%/)
+    expect(result.content).toMatch(/5\.\d%/u)
   })
 
   test('contains the emoji grid', () => {
@@ -39,13 +44,13 @@ describe('renderTelegramContext', () => {
   test('omits percentage when maxTokens is null', () => {
     const result = renderTelegramContext({ ...standardContextSnapshot, maxTokens: null })
     assert(result.method === 'text')
-    expect(result.content).not.toMatch(/%/)
+    expect(result.content).not.toMatch(/%/u)
     expect(result.content).toContain('6,770 tokens')
   })
 
   test('notes approximate counts when applicable', () => {
     const result = renderTelegramContext({ ...standardContextSnapshot, approximate: true })
     assert(result.method === 'text')
-    expect(result.content).toMatch(/approximate/i)
+    expect(result.content).toMatch(/approximate/iu)
   })
 })

@@ -1,7 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { eq, and, sql, desc } from 'drizzle-orm'
 
 import { getDrizzleDb } from './db/drizzle.js'
 import { memos, memoLinks } from './db/schema.js'
+import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'memos' })
@@ -72,6 +78,7 @@ export function saveMemo(userId: string, content: string, tags: readonly string[
     })
     .run()
   log.info({ userId, memoId: id }, 'Memo saved')
+  emitUser('memo:created', userId, { memoId: id, content })
   return { id, userId, content, summary: summary ?? null, tags, status: 'active', createdAt: now, updatedAt: now }
 }
 
@@ -116,7 +123,7 @@ export function updateMemoEmbedding(userId: string, memoId: string, embedding: F
 }
 
 function sanitizeFtsQuery(query: string): string {
-  return `"${query.replace(/"/g, '""')}"`
+  return `"${query.replace(/"/gu, '""')}"`
 }
 
 export function keywordSearchMemos(userId: string, query: string, limit: number = 5): readonly Memo[] {
@@ -146,6 +153,7 @@ export function keywordSearchMemos(userId: string, query: string, limit: number 
     .limit(limit)
     .all()
   log.info({ userId, query, resultCount: rows.length }, 'Keyword search completed')
+  emitUser('memo:searched', userId, { query, resultCount: rows.length })
   return rows.map(drizzleRowToMemo)
 }
 
@@ -220,9 +228,23 @@ function archiveByDate(userId: string, beforeDate: string): number {
  */
 export function archiveMemos(userId: string, filter: ArchiveFilter): number {
   log.debug({ userId, filter }, 'archiveMemos called')
-  if (filter.memoIds !== undefined && filter.memoIds.length > 0) return archiveByIds(userId, filter.memoIds)
-  if (filter.tag !== undefined) return archiveByTag(userId, filter.tag)
-  if (filter.beforeDate !== undefined) return archiveByDate(userId, filter.beforeDate)
+  let archivedMemoIds: readonly string[] = []
+  if (filter.memoIds !== undefined && filter.memoIds.length > 0) {
+    const count = archiveByIds(userId, filter.memoIds)
+    archivedMemoIds = filter.memoIds
+    if (count > 0) emitUser('memo:archived', userId, { memoIds: [...archivedMemoIds] })
+    return count
+  }
+  if (filter.tag !== undefined) {
+    const count = archiveByTag(userId, filter.tag)
+    if (count > 0) emitUser('memo:archived', userId, { memoIds: [] })
+    return count
+  }
+  if (filter.beforeDate !== undefined) {
+    const count = archiveByDate(userId, filter.beforeDate)
+    if (count > 0) emitUser('memo:archived', userId, { memoIds: [] })
+    return count
+  }
   log.warn({ userId }, 'archiveMemos called with no filter')
   return 0
 }

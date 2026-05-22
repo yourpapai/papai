@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import {
@@ -73,42 +78,42 @@ describe('extractedArtifactPathForTestFile', () => {
   describe('backward compatibility — files in known domains are unchanged', () => {
     test('tools domain: single-level file keeps plain basename', () => {
       const result = extractedArtifactPathForTestFile('tests/tools/search-tasks.test.ts')
-      expect(result).toMatch(/\/tools\/search-tasks\.test\.json$/)
+      expect(result).toMatch(/\/tools\/search-tasks\.test\.json$/u)
     })
 
     test('tools domain: sample test file keeps plain basename', () => {
       const result = extractedArtifactPathForTestFile('tests/tools/sample.test.ts')
-      expect(result).toMatch(/\/tools\/sample\.test\.json$/)
+      expect(result).toMatch(/\/tools\/sample\.test\.json$/u)
     })
 
     test('commands domain: keeps plain basename', () => {
       const result = extractedArtifactPathForTestFile('tests/commands/index.test.ts')
-      expect(result).toMatch(/\/commands\/index\.test\.json$/)
+      expect(result).toMatch(/\/commands\/index\.test\.json$/u)
     })
 
     test('chat-telegram domain: keeps plain basename', () => {
       const result = extractedArtifactPathForTestFile('tests/chat/telegram/index.test.ts')
-      expect(result).toMatch(/\/chat-telegram\/index\.test\.json$/)
+      expect(result).toMatch(/\/chat-telegram\/index\.test\.json$/u)
     })
 
     test('providers-kaneo domain: keeps plain basename', () => {
       const result = extractedArtifactPathForTestFile('tests/providers/kaneo/index.test.ts')
-      expect(result).toMatch(/\/providers-kaneo\/index\.test\.json$/)
+      expect(result).toMatch(/\/providers-kaneo\/index\.test\.json$/u)
     })
 
     test('core domain — root-level file keeps plain basename', () => {
       const result = extractedArtifactPathForTestFile('tests/config.test.ts')
-      expect(result).toMatch(/\/core\/config\.test\.json$/)
+      expect(result).toMatch(/\/core\/config\.test\.json$/u)
     })
 
     test('core domain — subdirectory file encodes the subdirectory in the filename', () => {
       const result = extractedArtifactPathForTestFile('tests/codeindex/config.test.ts')
-      expect(result).toMatch(/\/core\/codeindex_config\.test\.json$/)
+      expect(result).toMatch(/\/core\/codeindex_config\.test\.json$/u)
     })
 
     test('core domain — deeply nested file encodes all subdirectory segments', () => {
       const result = extractedArtifactPathForTestFile('tests/codeindex/indexer/discover.test.ts')
-      expect(result).toMatch(/\/core\/codeindex_indexer_discover\.test\.json$/)
+      expect(result).toMatch(/\/core\/codeindex_indexer_discover\.test\.json$/u)
     })
   })
 })
@@ -122,6 +127,6 @@ describe('classifiedArtifactPathForTestFile', () => {
 
   test('known-domain classified path keeps plain basename', () => {
     const result = classifiedArtifactPathForTestFile('tests/tools/sample.test.ts')
-    expect(result).toMatch(/\/tools\/sample\.test\.json$/)
+    expect(result).toMatch(/\/tools\/sample\.test\.json$/u)
   })
 })

@@ -1,10 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { APICallError } from '@ai-sdk/provider'
 
 import type { ReplyFn } from './chat/types.js'
-import { getConfig } from './config.js'
-import { emit } from './debug/event-bus.js'
+import { emitGlobal, emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
-import { resolveConfigId } from './llm-orchestrator-config.js'
 import { logger } from './logger.js'
 import { buildToolFailureResult, isToolFailureResult, type ToolFailureResult } from './tool-failure.js'
 
@@ -29,7 +32,7 @@ export interface LlmOrchestratorSupportDeps {
   }
 }
 
-const defaultDeps: LlmOrchestratorSupportDeps = { emit, log }
+const defaultDeps: LlmOrchestratorSupportDeps = { emit: emitGlobal, log }
 
 const resolveSupportDeps = (deps: LlmOrchestratorSupportDeps | undefined): LlmOrchestratorSupportDeps => {
   if (deps === undefined) {
@@ -154,16 +157,27 @@ export async function handleOrchestratorMessageError(
   await reply.text(getUserMessage(appError))
 }
 
-export const emitLlmError = (contextId: string, configContextId: string | undefined, error: unknown): void => {
-  const cfgId = resolveConfigId(contextId, configContextId)
-  const model = getConfig(cfgId, 'main_model')
-  let emittedModel = 'unknown'
-  if (model !== null) {
-    emittedModel = model
-  }
-  emit('llm:error', {
-    userId: contextId,
-    error: error instanceof Error ? error.message : String(error),
-    model: emittedModel,
-  })
+export const emitLlmError = (
+  contextId: string,
+  chatUserId: string,
+  contextType: 'dm' | 'group',
+  mainModel: string,
+  startTime: number,
+  messageCount: number,
+  error: unknown,
+  turnId?: string,
+): void => {
+  emitUser(
+    'llm:error',
+    contextId,
+    {
+      error: error instanceof Error ? error.message : String(error),
+      model: mainModel,
+      chatUserId,
+      contextType,
+      durationMs: Date.now() - startTime,
+      messageCount,
+    },
+    turnId,
+  )
 }

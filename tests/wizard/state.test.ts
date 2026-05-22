@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Tests for wizard state management
  */
@@ -122,11 +127,11 @@ describe('Wizard State Management', () => {
 
       await updateWizardSession(userId, storageContextId, {
         currentStep: 2,
-        data: { llm_apikey: 'sk-test123' },
+        data: { kaneo_apikey: 'sk-test123' },
       })
 
       expect(session.currentStep).toBe(2)
-      expect(session.data).toEqual({ llm_apikey: 'sk-test123' })
+      expect(session.data).toEqual({ kaneo_apikey: 'sk-test123' })
     })
 
     test('merges data with existing values', async () => {
@@ -138,7 +143,7 @@ describe('Wizard State Management', () => {
       })
 
       await updateWizardSession(userId, storageContextId, {
-        data: { llm_apikey: 'sk-test123' },
+        data: { kaneo_apikey: 'sk-test123' },
       })
 
       await updateWizardSession(userId, storageContextId, {
@@ -146,7 +151,7 @@ describe('Wizard State Management', () => {
       })
 
       expect(session.data).toEqual({
-        llm_apikey: 'sk-test123',
+        kaneo_apikey: 'sk-test123',
         timezone: 'UTC',
       })
     })

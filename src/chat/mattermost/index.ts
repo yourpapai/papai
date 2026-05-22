@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { getThreadScopedStorageContextId } from '../../auth.js'
 import { logger } from '../../logger.js'
 import type {
@@ -69,7 +74,7 @@ export class MattermostChatProvider implements ChatProvider {
     if (token === undefined || token.trim() === '') {
       throw new Error('MATTERMOST_BOT_TOKEN environment variable is required')
     }
-    this.baseUrl = url.replace(/\/+$/, '')
+    this.baseUrl = url.replace(/\/+$/u, '')
     this.token = token
   }
 
@@ -119,7 +124,7 @@ export class MattermostChatProvider implements ChatProvider {
   }
 
   private connectWebSocket(): void {
-    const wsUrl = this.baseUrl.replace(/^http/, 'ws') + '/api/v4/websocket'
+    const wsUrl = this.baseUrl.replace(/^http/u, 'ws') + '/api/v4/websocket'
     log.debug({ wsUrl }, 'Connecting to Mattermost WebSocket')
     const ws = new WebSocket(wsUrl)
     this.ws = ws

@@ -1,11 +1,16 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
-import { getConfig } from '../config.js'
 import { tryGetEmbedding } from '../embeddings.js'
 import { logger } from '../logger.js'
 import { saveMemo, updateMemoEmbedding } from '../memos.js'
+import { getSystemConfig } from '../system-config.js'
 
 const log = logger.child({ scope: 'tool:memo' })
 
@@ -26,11 +31,15 @@ export function makeSaveMemoTool(userId: string): ToolSet[string] {
       const memo = saveMemo(userId, content, tags ?? [], summary)
       log.info({ userId, memoId: memo.id, tags: memo.tags }, 'Memo saved via tool')
 
-      const apiKey = getConfig(userId, 'llm_apikey')
-      const baseUrl = getConfig(userId, 'llm_baseurl')
-      const embeddingModel = getConfig(userId, 'embedding_model')
+      const apiKey = getSystemConfig('llm_apikey')
+      const baseUrl = getSystemConfig('llm_baseurl')
+      const embeddingModel = getSystemConfig('embedding_model')
       if (apiKey !== null && baseUrl !== null && embeddingModel !== null) {
-        void tryGetEmbedding(content, apiKey, baseUrl, embeddingModel)
+        void tryGetEmbedding(content, apiKey, baseUrl, embeddingModel, {
+          storageContextId: userId,
+          contextType: 'dm',
+          chatUserId: userId,
+        })
           .then((embedding) => {
             if (embedding !== null) {
               updateMemoEmbedding(userId, memo.id, new Float32Array(embedding))

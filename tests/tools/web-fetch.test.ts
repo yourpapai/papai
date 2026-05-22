@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { makeWebFetchTool } from '../../src/tools/web-fetch.js'
@@ -24,7 +29,7 @@ describe('makeWebFetchTool', () => {
       }),
     )
 
-    const tool = makeWebFetchTool('group-123', 'user-456', { fetchAndExtract })
+    const tool = makeWebFetchTool('group-123', 'user-456', 'group', { fetchAndExtract })
     const result = await getToolExecutor(tool)(
       { url: 'https://example.com/article', goal: 'Summarize the release notes' },
       { toolCallId: '1', messages: [], abortSignal: abortController.signal },
@@ -33,6 +38,7 @@ describe('makeWebFetchTool', () => {
     expect(fetchAndExtract).toHaveBeenCalledWith({
       storageContextId: 'group-123',
       actorUserId: 'user-456',
+      contextType: 'group',
       url: 'https://example.com/article',
       goal: 'Summarize the release notes',
       abortSignal: abortController.signal,
@@ -64,7 +70,7 @@ describe('makeWebFetchTool', () => {
     const expectedError = new Error('fetch failed')
     const fetchAndExtract = mock(() => Promise.reject(expectedError))
 
-    const tool = makeWebFetchTool('group-123', 'user-456', { fetchAndExtract })
+    const tool = makeWebFetchTool('group-123', 'user-456', 'group', { fetchAndExtract })
 
     await expect(
       getToolExecutor(tool)(

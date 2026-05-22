@@ -1,13 +1,18 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ModelMessage } from 'ai'
 
 import type { ChatProvider, ContextRendered, ContextSnapshot } from '../chat/types.js'
-import { getConfig } from '../config.js'
 import { buildMessagesWithMemory } from '../conversation.js'
 import { loadHistory } from '../history.js'
 import { buildInstructionsBlock } from '../instructions.js'
 import { logger } from '../logger.js'
 import { loadFacts, loadSummary } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
+import { getSystemConfig } from '../system-config.js'
 import { buildSystemPrompt as buildSystemPromptImpl } from '../system-prompt.js'
 import {
   collectContext,
@@ -15,9 +20,9 @@ import {
   defaultCountTokens,
   prepareDefaultCountTokens,
   resolveEncodingName,
+  type ToolRoutingInfo,
 } from './context-collector.js'
 import {
-  buildDirectToolCatalogPages,
   buildInvocationToolSet,
   resolveActiveToolDefinitions,
   resolveContextToolSurface,
@@ -33,13 +38,13 @@ export interface ContextCommandDeps {
   buildProvider: (contextId: string) => TaskProvider | null
   buildLiveToolSet: BuildLiveToolSet
   resolveActiveToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
-  buildToolCatalogPages: (resolvedToolSurface: ResolvedContextToolSurface) => readonly string[]
   resolveToolSurface: (
     storageContextId: string,
     actorUserId: string,
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
+    lastUserText?: string,
   ) => ResolvedContextToolSurface
 }
 
@@ -48,7 +53,6 @@ const defaultDeps: ContextCommandDeps = {
   buildProvider: safeBuildProvider,
   buildLiveToolSet: buildInvocationToolSet,
   resolveActiveToolDefinitions,
-  buildToolCatalogPages: buildDirectToolCatalogPages,
   resolveToolSurface: resolveContextToolSurface,
 }
 function resolveModelName(modelName: string | null | undefined): string {
@@ -69,13 +73,36 @@ function buildMemoryMessageText(contextId: string, history: readonly ModelMessag
   return memoryMsg === null ? null : memoryMsg.content
 }
 
+function extractTextFromUserContent(content: ModelMessage['content']): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const part of content) {
+    if (typeof part === 'object' && part !== null && 'type' in part && part.type === 'text' && 'text' in part) {
+      const text = (part as { text: unknown }).text
+      if (typeof text === 'string') parts.push(text)
+    }
+  }
+  return parts.join(' ')
+}
+
+export function getLastUserText(history: readonly ModelMessage[]): string | undefined {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const message = history[i]
+    if (message === undefined || message.role !== 'user') continue
+    const text = extractTextFromUserContent(message.content).trim()
+    if (text.length > 0) return text
+  }
+  return undefined
+}
+
 async function buildCollectorDeps(
   storageContextId: string,
   provider: TaskProvider | null,
   resolvedToolSurface: ResolvedContextToolSurface,
   deps: ContextCommandDeps,
 ): Promise<ContextCollectorDeps> {
-  const modelName = getConfig(storageContextId, 'main_model')
+  const modelName = getSystemConfig('main_model')
   const resolvedModelName = resolveModelName(modelName)
   const encoding = resolveEncodingName(resolvedModelName)
   const resolvedEncoding = resolveEncoding(encoding)
@@ -95,6 +122,7 @@ async function buildCollectorDeps(
     getFacts: () => loadFacts(storageContextId),
     getActiveToolDefinitions: (): Record<string, unknown> => deps.resolveActiveToolDefinitions(resolvedToolSurface),
     getProviderName: () => providerName,
+    getToolRoutingInfo: (): ToolRoutingInfo | undefined => resolvedToolSurface.routing,
     countTokens: (text: string): number => defaultCountTokens(text, resolvedEncoding),
   }
 }
@@ -165,12 +193,14 @@ async function handleContextCommand(
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
   const provider = deps.buildProvider(auth.storageContextId)
+  const lastUserText = getLastUserText(loadHistory(auth.storageContextId))
   const resolvedToolSurface = deps.resolveToolSurface(
     auth.storageContextId,
     msg.user.id,
     msg.contextType,
     provider,
     deps.buildLiveToolSet,
+    lastUserText,
   )
   let snapshot: ContextSnapshot
   try {
@@ -190,11 +220,6 @@ async function handleContextCommand(
 
   const rendered = chat.renderContext(snapshot)
   await sendContextResponse(reply, rendered)
-  const toolCatalogPages = deps.buildToolCatalogPages(resolvedToolSurface)
-  await toolCatalogPages.reduce<Promise<void>>(
-    (pending, page) => pending.then(() => reply.formatted(page)),
-    Promise.resolve(),
-  )
   logContextExecuted(msg.user.id, auth.storageContextId, snapshot, rendered.method)
 }
 

@@ -1,20 +1,34 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import fs from 'node:fs'
 import path from 'node:path'
+
+import { sveltePlugin } from './svelte-plugin.js'
 
 const ROOT = path.resolve(import.meta.dir, '..')
 const CLIENT_DIR = path.join(ROOT, 'client', 'debug')
 export const PUBLIC_DIR = path.join(ROOT, 'public')
 
 async function build(): Promise<void> {
-  // Ensure output directory exists
   fs.mkdirSync(PUBLIC_DIR, { recursive: true })
 
-  // Build client JS bundle
+  const collectedCss: string[] = []
+
   const result = await Bun.build({
     entrypoints: [path.join(CLIENT_DIR, 'index.ts')],
     outdir: PUBLIC_DIR,
     format: 'iife',
     naming: 'dashboard.js',
+    plugins: [
+      sveltePlugin({
+        collectCss: (_filename, css) => {
+          if (css.length > 0) collectedCss.push(css)
+        },
+      }),
+    ],
   })
 
   if (!result.success) {
@@ -24,7 +38,6 @@ async function build(): Promise<void> {
     process.exit(1)
   }
 
-  // Verify output is non-empty
   const jsOutput = path.join(PUBLIC_DIR, 'dashboard.js')
   const stat = fs.statSync(jsOutput)
   if (stat.size === 0) {
@@ -32,9 +45,12 @@ async function build(): Promise<void> {
     process.exit(1)
   }
 
-  // Copy static assets
   fs.copyFileSync(path.join(CLIENT_DIR, 'dashboard.html'), path.join(PUBLIC_DIR, 'dashboard.html'))
-  fs.copyFileSync(path.join(CLIENT_DIR, 'dashboard.css'), path.join(PUBLIC_DIR, 'dashboard.css'))
+
+  const baseCss = fs.readFileSync(path.join(CLIENT_DIR, 'dashboard.css'), 'utf8')
+  const componentCss = collectedCss.join('\n')
+  const finalCss = componentCss.length > 0 ? `${baseCss}\n\n/* component-scoped styles */\n${componentCss}` : baseCss
+  fs.writeFileSync(path.join(PUBLIC_DIR, 'dashboard.css'), finalCss)
 
   console.log(`Build complete: ${PUBLIC_DIR}`)
 }

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -31,7 +36,7 @@ describe('/config Command', () => {
     })
 
     test('shows all config keys with values and masked secrets', async () => {
-      setConfig(USER_ID, 'llm_apikey', 'sk-abc1234')
+      setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
       expect(buttonCalls[0]).toContain('****1234')
@@ -94,7 +99,7 @@ describe('/config Command', () => {
     })
 
     test('falls back to plain text with config output', async () => {
-      setConfig(USER_ID, 'llm_apikey', 'sk-abc1234')
+      setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
       const { reply, textCalls, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, false)
       expect(buttonCalls).toHaveLength(0)

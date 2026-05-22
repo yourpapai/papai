@@ -1,39 +1,20 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { createMockActivity, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { CommentResource } from './test-resources.js'
-
-type ActivityOverrides = Exclude<Parameters<typeof createMockActivity>[0], undefined>
 
 function parseRequestBody(options: RequestInit): unknown {
   return typeof options.body === 'string' ? (JSON.parse(options.body) as unknown) : undefined
 }
 
-function makeAddCommentFetchHandler(
-  onPost: (body: unknown) => void,
-  activityOverrides: ActivityOverrides,
-): (_url: string, options: RequestInit) => Promise<Response> {
-  return (_url: string, options: RequestInit): Promise<Response> => {
-    if (options.method === 'POST') {
-      onPost(parseRequestBody(options))
-      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-    }
-    return Promise.resolve(new Response(JSON.stringify([createMockActivity(activityOverrides)]), { status: 200 }))
-  }
-}
-
-function makeUpdateCommentFetchHandler(
-  onPut: (body: unknown) => void,
-  activityOverrides: ActivityOverrides,
-): (_url: string, options: RequestInit) => Promise<Response> {
-  return (_url: string, options: RequestInit): Promise<Response> => {
-    if (options.method === 'PUT') {
-      onPut(parseRequestBody(options))
-      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
-    }
-    return Promise.resolve(new Response(JSON.stringify([createMockActivity(activityOverrides)]), { status: 200 }))
-  }
+function getRequestMethod(options: RequestInit): string {
+  return options.method ?? 'GET'
 }
 
 describe('CommentResource', () => {
@@ -52,41 +33,65 @@ describe('CommentResource', () => {
   })
 
   describe('add', () => {
-    test('adds comment to task', async () => {
-      // POST /activity/comment returns {} due to Kaneo bug (missing .returning() on Drizzle insert).
-      // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/create-comment.ts
-      // Code does POST then GET /activity/:taskId to retrieve the actual created comment.
-      let capturedBody: unknown
-      setMockFetch(
-        makeAddCommentFetchHandler(
-          (body) => {
-            capturedBody = body
-          },
-          { id: 'comment-1', taskId: 'task-1', type: 'comment', userId: 'user-1', content: 'New comment' },
-        ),
-      )
+    test('adds comment through POST /comment/{taskId} and returns created comment object', async () => {
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+
+      setMockFetch((url, options) => {
+        requests.push({
+          url,
+          method: getRequestMethod(options),
+          body: parseRequestBody(options),
+        })
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'comment-1',
+              taskId: 'task-1',
+              userId: 'user-1',
+              content: 'New comment',
+              createdAt: '2026-05-14T09:00:00.000Z',
+              updatedAt: '2026-05-14T09:00:00.000Z',
+              user: { name: 'Test User', image: null },
+            }),
+            { status: 200 },
+          ),
+        )
+      })
 
       const resource = new CommentResource(mockConfig)
       const result = await resource.add('task-1', 'New comment')
 
-      expect(capturedBody).toMatchObject({
-        taskId: 'task-1',
+      expect(requests).toEqual([
+        {
+          url: 'https://api.test.com/api/comment/task-1',
+          method: 'POST',
+          body: { content: 'New comment' },
+        },
+      ])
+      expect(result).toEqual({
+        id: 'comment-1',
         comment: 'New comment',
+        createdAt: '2026-05-14T09:00:00.000Z',
       })
-      expect(result.id).toBe('comment-1')
-      expect(result.comment).toBe('New comment')
-      expect(result.createdAt).toBe('2026-03-01T00:00:00Z')
     })
 
     test('handles empty comment', async () => {
-      setMockFetch(
-        makeAddCommentFetchHandler(() => {}, {
-          id: 'comment-2',
-          taskId: 'task-1',
-          type: 'comment',
-          userId: 'user-1',
-          content: '',
-        }),
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'comment-2',
+              taskId: 'task-1',
+              userId: 'user-1',
+              content: '',
+              createdAt: '2026-05-14T09:00:00.000Z',
+              updatedAt: '2026-05-14T09:00:00.000Z',
+              user: { name: 'Test User', image: null },
+            }),
+            { status: 200 },
+          ),
+        ),
       )
 
       const resource = new CommentResource(mockConfig)
@@ -94,19 +99,26 @@ describe('CommentResource', () => {
 
       expect(result.comment).toBe('')
       expect(result.id).toBe('comment-2')
-      expect(result.createdAt).toBe('2026-03-01T00:00:00Z')
+      expect(result.createdAt).toBe('2026-05-14T09:00:00.000Z')
     })
 
     test('handles long comment', async () => {
       const longComment = 'a'.repeat(1000)
-      setMockFetch(
-        makeAddCommentFetchHandler(() => {}, {
-          id: 'comment-3',
-          taskId: 'task-1',
-          type: 'comment',
-          userId: 'user-1',
-          content: longComment,
-        }),
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'comment-3',
+              taskId: 'task-1',
+              userId: 'user-1',
+              content: longComment,
+              createdAt: '2026-05-14T09:00:00.000Z',
+              updatedAt: '2026-05-14T09:00:00.000Z',
+              user: { name: 'Test User', image: null },
+            }),
+            { status: 200 },
+          ),
+        ),
       )
 
       const resource = new CommentResource(mockConfig)
@@ -114,7 +126,7 @@ describe('CommentResource', () => {
 
       expect(result.comment).toBe(longComment)
       expect(result.id).toBe('comment-3')
-      expect(result.createdAt).toBe('2026-03-01T00:00:00Z')
+      expect(result.createdAt).toBe('2026-05-14T09:00:00.000Z')
     })
 
     test('throws taskNotFound for 404', async () => {
@@ -129,29 +141,20 @@ describe('CommentResource', () => {
   })
 
   describe('list', () => {
-    test('filters only comment activities', async () => {
+    test('lists comments through GET /comment/{taskId}', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify([
-              createMockActivity({
-                id: 'act-1',
-                type: 'comment',
-                content: 'Comment 1',
-                createdAt: '2026-03-01T00:00:00Z',
-              }),
-              createMockActivity({
-                id: 'act-2',
-                type: 'status_changed',
-                content: 'Status changed',
-                createdAt: '2026-03-01T00:00:00Z',
-              }),
-              createMockActivity({
-                id: 'act-3',
-                type: 'comment',
-                content: 'Comment 2',
-                createdAt: '2026-03-02T00:00:00Z',
-              }),
+              {
+                id: 'comment-1',
+                taskId: 'task-1',
+                userId: 'user-1',
+                content: 'First',
+                createdAt: '2026-05-14T09:00:00.000Z',
+                updatedAt: '2026-05-14T09:00:00.000Z',
+                user: { name: 'Test User', image: null },
+              },
             ]),
             { status: 200 },
           ),
@@ -161,75 +164,23 @@ describe('CommentResource', () => {
       const resource = new CommentResource(mockConfig)
       const result = await resource.list('task-1')
 
-      expect(result).toHaveLength(2)
-      expect(result[0]?.comment).toBe('Comment 1')
-      expect(result[1]?.comment).toBe('Comment 2')
+      expect(result).toEqual([{ id: 'comment-1', comment: 'First', createdAt: '2026-05-14T09:00:00.000Z' }])
     })
 
-    test('excludes activities with null content', async () => {
+    test('maps listed comments to simplified structure', async () => {
       setMockFetch(() =>
         Promise.resolve(
           new Response(
             JSON.stringify([
-              createMockActivity({
-                id: 'act-1',
-                type: 'comment',
-                content: 'Valid comment',
-                createdAt: '2026-03-01T00:00:00Z',
-              }),
-              createMockActivity({
-                id: 'act-2',
-                type: 'comment',
-                content: null,
-                createdAt: '2026-03-01T00:00:00Z',
-              }),
-            ]),
-            { status: 200 },
-          ),
-        ),
-      )
-
-      const resource = new CommentResource(mockConfig)
-      const result = await resource.list('task-1')
-
-      expect(result).toHaveLength(1)
-      expect(result[0]?.comment).toBe('Valid comment')
-    })
-
-    test('returns empty array when no comments', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify([
-              createMockActivity({
-                id: 'act-1',
-                type: 'status_changed',
-                content: 'Changed',
-                createdAt: '2026-03-01T00:00:00Z',
-              }),
-            ]),
-            { status: 200 },
-          ),
-        ),
-      )
-
-      const resource = new CommentResource(mockConfig)
-      const result = await resource.list('task-1')
-
-      expect(result).toHaveLength(0)
-    })
-
-    test('maps to simplified structure', async () => {
-      setMockFetch(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify([
-              createMockActivity({
-                id: 'act-1',
-                type: 'comment',
+              {
+                id: 'comment-2',
+                taskId: 'task-1',
+                userId: 'user-1',
                 content: 'Test',
-                createdAt: '2026-03-01T12:00:00Z',
-              }),
+                createdAt: '2026-03-01T12:00:00.000Z',
+                updatedAt: '2026-03-01T12:00:00.000Z',
+                user: { name: 'Test User', image: null },
+              },
             ]),
             { status: 200 },
           ),
@@ -240,9 +191,9 @@ describe('CommentResource', () => {
       const result = await resource.list('task-1')
 
       expect(result[0]).toMatchObject({
-        id: 'act-1',
+        id: 'comment-2',
         comment: 'Test',
-        createdAt: '2026-03-01T12:00:00Z',
+        createdAt: '2026-03-01T12:00:00.000Z',
       })
     })
 
@@ -258,30 +209,42 @@ describe('CommentResource', () => {
   })
 
   describe('update', () => {
-    test('updates existing comment', async () => {
-      // PUT /activity/comment returns {} due to Kaneo bug (missing .returning() on Drizzle update).
-      // See: https://github.com/usekaneo/kaneo/blob/main/apps/api/src/activity/controllers/update-comment.ts
-      // Code does PUT then GET /activity/:taskId to retrieve the actual updated comment.
-      let capturedBody: unknown
-      setMockFetch(
-        makeUpdateCommentFetchHandler(
-          (body) => {
-            capturedBody = body
-          },
-          { id: 'comment-1', taskId: 'task-1', type: 'comment', content: 'Updated' },
-        ),
-      )
+    test('updates comment through PUT /comment/{id}', async () => {
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+
+      setMockFetch((url, options) => {
+        requests.push({
+          url,
+          method: getRequestMethod(options),
+          body: parseRequestBody(options),
+        })
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'comment-1',
+              taskId: 'task-1',
+              userId: 'user-1',
+              content: 'Updated text',
+              createdAt: '2026-05-14T09:00:00.000Z',
+              updatedAt: '2026-05-14T10:00:00.000Z',
+              user: { name: 'Test User', image: null },
+            }),
+            { status: 200 },
+          ),
+        )
+      })
 
       const resource = new CommentResource(mockConfig)
-      const result = await resource.update('task-1', 'comment-1', 'Updated')
+      const result = await resource.update('task-1', 'comment-1', 'Updated text')
 
-      expect(capturedBody).toMatchObject({
-        activityId: 'comment-1',
-        comment: 'Updated',
+      expect(requests[0]).toMatchObject({
+        url: 'https://api.test.com/api/comment/comment-1',
+        method: 'PUT',
+        body: { content: 'Updated text' },
       })
       expect(result.id).toBe('comment-1')
-      expect(result.comment).toBe('Updated')
-      expect(result.createdAt).toBe('2026-03-01T00:00:00Z')
+      expect(result.comment).toBe('Updated text')
     })
 
     test('throws commentNotFound for 404', async () => {
@@ -296,12 +259,42 @@ describe('CommentResource', () => {
   })
 
   describe('remove', () => {
-    test('removes comment successfully', async () => {
-      setMockFetch(() => Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 })))
+    test('removes comment through DELETE /comment/{id}', async () => {
+      const requests: Array<{ url: string; method: string; body?: unknown }> = []
+
+      setMockFetch((url, options) => {
+        requests.push({
+          url,
+          method: getRequestMethod(options),
+          body: parseRequestBody(options),
+        })
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'comment-1',
+              taskId: 'task-1',
+              userId: 'user-1',
+              content: 'To be deleted',
+              createdAt: '2026-05-14T09:00:00.000Z',
+              updatedAt: '2026-05-14T09:00:00.000Z',
+              user: { name: 'Test User', image: null },
+            }),
+            { status: 200 },
+          ),
+        )
+      })
 
       const resource = new CommentResource(mockConfig)
       const result = await resource.remove('comment-1')
 
+      expect(requests).toEqual([
+        {
+          url: 'https://api.test.com/api/comment/comment-1',
+          method: 'DELETE',
+          body: undefined,
+        },
+      ])
       expect(result.id).toBe('comment-1')
       expect(result.success).toBe(true)
     })

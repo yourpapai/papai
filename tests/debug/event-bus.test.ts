@@ -1,6 +1,11 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
-import { emit, subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
+import { emitGlobal, emitUser, subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
 
 describe('event-bus', () => {
   const listeners: Array<(event: DebugEvent) => void> = []
@@ -15,11 +20,11 @@ describe('event-bus', () => {
     return fn
   }
 
-  test('emit with no listeners is a no-op', () => {
-    expect(() => emit('test', { key: 'value' })).not.toThrow()
+  test('emitGlobal with no listeners is a no-op', () => {
+    expect(() => emitGlobal('test', { key: 'value' })).not.toThrow()
   })
 
-  test('subscribe + emit delivers event to listener', () => {
+  test('subscribe + emitGlobal delivers event to listener', () => {
     let received: DebugEvent | null = null
     subscribe(
       track((e) => {
@@ -27,11 +32,12 @@ describe('event-bus', () => {
       }),
     )
 
-    emit('test:event', { foo: 'bar' })
+    emitGlobal('test:event', { foo: 'bar' })
 
     expect(received).not.toBeNull()
     expect(received!.type).toBe('test:event')
     expect(received!.data).toEqual({ foo: 'bar' })
+    expect(received!.scope).toEqual({ kind: 'global' })
   })
 
   test('event has correct shape with auto-populated timestamp', () => {
@@ -43,7 +49,7 @@ describe('event-bus', () => {
     )
 
     const before = Date.now()
-    emit('shape:test', { x: 1 })
+    emitGlobal('shape:test', { x: 1 })
     const after = Date.now()
 
     expect(captured).not.toBeNull()
@@ -59,7 +65,7 @@ describe('event-bus', () => {
     subscribe(track(listener1))
     subscribe(track(listener2))
 
-    emit('multi', {})
+    emitGlobal('multi', {})
 
     expect(listener1).toHaveBeenCalledTimes(1)
     expect(listener2).toHaveBeenCalledTimes(1)
@@ -69,11 +75,41 @@ describe('event-bus', () => {
     const listener = mock(() => {})
     subscribe(listener)
 
-    emit('before', {})
+    emitGlobal('before', {})
     expect(listener).toHaveBeenCalledTimes(1)
 
     unsubscribe(listener)
-    emit('after', {})
+    emitGlobal('after', {})
     expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  test('emitUser creates user-scoped event', () => {
+    let received: DebugEvent | null = null
+    subscribe(
+      track((e) => {
+        received = e
+      }),
+    )
+
+    emitUser('identity:set', 'user-123', { provider: 'test' })
+
+    expect(received).not.toBeNull()
+    expect(received!.type).toBe('identity:set')
+    expect(received!.scope).toEqual({ kind: 'user', userId: 'user-123' })
+  })
+
+  test('emitUser includes turnId when provided', () => {
+    let received: DebugEvent | null = null
+    subscribe(
+      track((e) => {
+        received = e
+      }),
+    )
+
+    emitUser('test:event', 'user-1', { x: 1 }, 'turn-abc')
+
+    expect(received).not.toBeNull()
+    expect(received!.turnId).toBe('turn-abc')
+    expect(received!.scope).toEqual({ kind: 'user', userId: 'user-1' })
   })
 })

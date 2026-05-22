@@ -1,8 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { EvidenceRef } from './extract-trust-types.js'
 import type { TestCase } from './test-parser.js'
 
 function deriveImplPath(testPath: string): string {
-  return testPath.replace(/^tests\//, 'src/').replace(/\.test\.ts$/, '.ts')
+  return testPath.replace(/^tests\//u, 'src/').replace(/\.test\.ts$/u, '.ts')
 }
 
 export interface EvidencePromptInput {

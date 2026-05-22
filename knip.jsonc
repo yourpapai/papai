@@ -6,9 +6,10 @@
     "src/scripts/*.ts!",
     "scripts/build-client.ts!",
     "client/debug/index.ts!",
+    "tests/commands/context-tool-catalog.test.ts!",
+    "tests/debug/admin-visibility.test.ts!",
+    "tests/debug/turn-assembly.test.ts!",
     "tests/providers/youtrack/test-helpers.ts!",
-    "codeindex/src/cli.ts!",
-    "tests/codeindex/**/*.test.ts!",
     "review-loop/src/cli.ts!",
     "tests/review-loop/**/*.test.ts!",
     "scripts/behavior-audit/index.ts!",
@@ -21,13 +22,7 @@
   ],
 
   // All source files (production only)
-  "project": [
-    "src/**/*.ts!",
-    "client/**/*.ts!",
-    "codeindex/src/**/*.ts!",
-    "review-loop/src/**/*.ts!",
-    "scripts/behavior-audit/**/*.ts!",
-  ],
+  "project": ["src/**/*.ts!", "client/**/*.ts!", "review-loop/src/**/*.ts!", "scripts/behavior-audit/**/*.ts!"],
 
   // All issue types treated as hard errors
   "rules": {
@@ -47,17 +42,58 @@
     "catalog": "error",
   },
 
-  // Ignore Stryker plugin (loaded at runtime, not imported)
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker"],
+  // Ignore Stryker plugin (loaded at runtime, not imported) and codeindex (linked via `bun link`).
+  // svelte is imported by client/debug/index.ts but knip can't follow .svelte file imports.
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex", "svelte"],
 
   "ignoreIssues": {
     "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
     "scripts/behavior-audit/phase-stats.ts": ["exports"],
     "src/attachments/workspace.ts": ["exports"],
+    "src/debug/state-collector.ts": ["exports"],
+    "src/debug/turn-assembly.ts": ["exports"],
+    // src/usage/query.ts and src/usage/types.ts ship the public query surface
+    // that the Phase 3 billing dashboard will consume; nothing in src/ imports
+    // them yet, but the recorder tests in tests/usage/ exercise the queries.
+    "src/usage/query.ts": ["files", "exports"],
+    "src/usage/types.ts": ["types"],
+    "src/usage/index.ts": ["exports"],
+    // src/stats/* lands incrementally for Phase 5; the per-table helpers and
+    // orchestrator wire into the dashboard later in the plan. Until those
+    // consumers ship, knip can't trace the type-only and pure helper modules.
+    "src/stats/index.ts": ["files", "exports"],
+    "src/stats/types.ts": ["files", "types"],
+    "src/stats/aggregate.ts": ["files", "exports"],
+    "src/stats/hashing.ts": ["files", "exports"],
+    "src/stats/per-table.ts": ["files", "exports"],
+    "src/stats/per-table-content.ts": ["files", "exports"],
+    "src/stats/per-table-subject.ts": ["files", "exports"],
+    "src/stats/per-table-usage.ts": ["files", "exports"],
+    "src/stats/global-subjects.ts": ["files", "exports"],
+    "src/stats/global-distributions.ts": ["files", "exports"],
+    "src/stats/global-mix.ts": ["files", "exports"],
+    "src/stats/global-web-tools.ts": ["files", "exports"],
+    "src/stats/internal/util.ts": ["files", "exports"],
+    // systemConfigCacheForTesting is the cache-reset escape hatch for tests
+    // (consumed by tests/utils/test-helpers.ts). Mirrors the userCachesForTesting
+    // pattern in src/cache.ts, but unlike that one no production code currently
+    // consumes it, so knip can't trace it through to a project entry.
+    "src/system-config.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
     "tests/scripts/behavior-audit/test-fixtures.ts": ["exports", "types"],
+    // The dashboard client uses Svelte components that knip can't parse, so most of these
+    // exports look orphaned even though .svelte files consume them.
+    "client/debug/dashboard.svelte.ts": ["exports"],
+    "client/debug/handlers.ts": ["exports"],
+    "client/debug/helpers.ts": ["exports"],
+    "client/debug/log-bootstrap.ts": ["exports"],
+    "client/debug/log-filter.ts": ["exports"],
+    "client/debug/sse.ts": ["exports"],
+    "client/debug/types.ts": ["types"],
+    "client/debug/billing/fetchers.ts": ["exports"],
+    "client/debug/stats/fetchers.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
@@ -68,5 +104,5 @@
   "ignoreExportsUsedInFile": true,
 
   // Ignore migration files and generated/runtime-only code that knip should not analyze as files
-  "ignore": ["src/db/migrations/**", "codeindex/.codeindex/**", "codeindex/test-preload.ts"],
+  "ignore": ["src/db/migrations/**"],
 }

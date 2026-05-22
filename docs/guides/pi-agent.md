@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Papai Pi Guide
 
 Pi is the target replacement for the repo's OpenCode-specific agent setup. This guide documents the shared project wiring and the daily command equivalents the team should use.

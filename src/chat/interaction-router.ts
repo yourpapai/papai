@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { handleEditorCallback, parseCallbackData, serializeCallbackData } from '../config-editor/index.js'
 import { listManageableGroups } from '../group-settings/access.js'
 import { dispatchGroupSelectorResult } from '../group-settings/dispatch.js'
@@ -5,7 +10,7 @@ import { handleGroupSettingsSelectorCallback } from '../group-settings/selector.
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
-import { cancelWizard, getNextPrompt, processWizardMessage } from '../wizard/engine.js'
+import { cancelWizard, getNextPrompt } from '../wizard/engine.js'
 import { validateAndSaveWizardConfig } from '../wizard/save.js'
 import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
@@ -190,19 +195,6 @@ function parseWizardContextId(callbackData: string): { action: string; targetCon
   }
 }
 
-async function handleWizardSkip(
-  action: 'wizard_skip_small_model' | 'wizard_skip_embedding',
-  userId: string,
-  storageContextId: string,
-  reply: ReplyFn,
-): Promise<boolean> {
-  const skipValue = action === 'wizard_skip_small_model' ? 'same' : 'skip'
-  const result = await processWizardMessage(userId, storageContextId, skipValue)
-  if (!result.handled) return true
-  await replyWithWizardButtons(reply, result.response, result.buttons, storageContextId)
-  return true
-}
-
 async function defaultHandleWizardInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
   const { callbackData, user } = interaction
   if (!callbackData.startsWith('wizard_')) return false
@@ -245,9 +237,6 @@ async function defaultHandleWizardInteraction(interaction: IncomingInteraction, 
     }
     case 'wizard_edit':
       return handleWizardEdit(userId, storageContextId, reply)
-    case 'wizard_skip_small_model':
-    case 'wizard_skip_embedding':
-      return handleWizardSkip(action, userId, storageContextId, reply)
     default:
       return false
   }

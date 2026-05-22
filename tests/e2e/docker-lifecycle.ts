@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { spawn } from 'child_process'
 
 import { logger } from '../../src/logger.js'
@@ -16,7 +21,7 @@ export function startKaneoServer(): Promise<void> {
 
   const dockerUp = spawn(
     'docker',
-    ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.test.yml', 'up', '-d'],
+    ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.test.yml', 'up', '-d', 'kaneo'],
     {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],

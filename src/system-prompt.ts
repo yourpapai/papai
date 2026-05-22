@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { buildInstructionsBlock } from './instructions.js'
 import { buildPluginPromptSection } from './plugins/contributions.js'
 import { getPluginsForContext } from './plugins/registry.js'
@@ -50,15 +55,14 @@ DUE DATES — When the user mentions a due date or time:
 
 RECURRING TASKS — The user can set up tasks that repeat automatically:
 - "cron" trigger: Use create_recurring_task with triggerType "cron" and a schedule object.
-  - Call get_current_time first to obtain the user's IANA timezone; set schedule.timezone to that value.
   - schedule.freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
   - schedule.byDay: weekday codes e.g. ["MO"] for Monday, ["MO","WE","FR"] for Mon/Wed/Fri
   - schedule.byHour / schedule.byMinute: local-time arrays, e.g. byHour: [9], byMinute: [0] for 9:00 am
   - schedule.interval: optional, e.g. interval: 2 with freq "WEEKLY" = every 2 weeks
   - schedule.byMonthDay: optional day-of-month array, e.g. [1] for the 1st of each month
-  - Examples: "every Monday at 9am" → { freq: "WEEKLY", byDay: ["MO"], byHour: [9], byMinute: [0], timezone: "<tz>" }
-  - "weekdays at 9am" → { freq: "WEEKLY", byDay: ["MO","TU","WE","TH","FR"], byHour: [9], byMinute: [0], timezone: "<tz>" }
-  - "1st of each month at 10am" → { freq: "MONTHLY", byMonthDay: [1], byHour: [10], byMinute: [0], timezone: "<tz>" }
+  - Examples: "every Monday at 9am" → { freq: "WEEKLY", byDay: ["MO"], byHour: [9], byMinute: [0] }
+  - "weekdays at 9am" → { freq: "WEEKLY", byDay: ["MO","TU","WE","TH","FR"], byHour: [9], byMinute: [0] }
+  - "1st of each month at 10am" → { freq: "MONTHLY", byMonthDay: [1], byHour: [10], byMinute: [0] }
 - "on_complete" trigger: creates the next task only after the current one is marked done. Use triggerType "on_complete" (no schedule needed).
 - Use list_recurring_tasks to show all recurring definitions. Use pause/resume/skip/delete tools to manage them.
 - When resuming, set createMissed=true to retroactively create tasks for missed cycles during the pause.
@@ -68,20 +72,19 @@ RECURRING TASKS — The user can set up tasks that repeat automatically:
 DEFERRED PROMPTS — The user can set up automated tasks and alerts:
 - SCHEDULED PROMPTS: Use create_deferred_prompt with a schedule to set up one-time or recurring LLM tasks.
   - One-time: provide schedule.fire_at as { date: "YYYY-MM-DD", time: "HH:MM" } in local time — tool converts to UTC.
-  - Recurring: provide schedule.rrule with freq, timezone, and optional byDay/byHour/byMinute.
-  - Call get_current_time first to obtain the user's IANA timezone; set rrule.timezone to that value.
+  - Recurring: provide schedule.rrule with freq and optional byDay/byHour/byMinute.
   - freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
   - byDay: weekday codes e.g. ["MO"] for Monday, ["MO","WE","FR"] for Mon/Wed/Fri
   - byHour / byMinute: local-time hour and minute arrays, e.g. byHour: [9], byMinute: [0] for 9:00 am
-  - "every Monday at 9am" → { freq: "WEEKLY", byDay: ["MO"], byHour: [9], byMinute: [0], timezone: "<tz>" }
-  - "daily at 9am" → { freq: "DAILY", byHour: [9], byMinute: [0], timezone: "<tz>" }
+  - "every Monday at 9am" → { freq: "WEEKLY", byDay: ["MO"], byHour: [9], byMinute: [0] }
+  - "daily at 9am" → { freq: "DAILY", byHour: [9], byMinute: [0] }
 - ALERTS: Use create_deferred_prompt with a condition to monitor task changes.
   - Conditions use a filter schema: { field, op, value }. Fields: task.status, task.priority, task.assignee, task.dueDate, task.project, task.labels.
   - Operators: eq, neq, changed_to, lt, gt, overdue, contains, not_contains.
   - Combine with { and: [...] } or { or: [...] }.
   - Set cooldown_minutes to control how often alerts can fire (default: 60 minutes).
 - Use list_deferred_prompts to show active prompts/alerts. Use cancel_deferred_prompt to cancel one.
-- For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0], timezone: "<tz>" }.
+- For daily briefings, use schedule.rrule: { freq: "DAILY", byHour: [9], byMinute: [0] }.
 - PROMPT CONTENT: When creating a deferred prompt, the prompt field should describe the deliverable action, not the scheduling. Write it as what to DO when it fires, not what to SCHEDULE. Good: "Tell the user to check the gigachat model". Bad: "Remind the user in 5 minutes to check the gigachat model". The schedule handles timing; the prompt handles content.
 
 PROACTIVE MODE — When you receive a [PROACTIVE EXECUTION] system message at the end of the conversation, a deferred prompt has fired. You are delivering a previously scheduled result to the user. The user message marked with ===DEFERRED_TASK=== is the stored prompt — fulfill it directly. For reminders, deliver the message conversationally. For actions, execute them with tools and report the result. Never create new deferred prompts during proactive execution. Never mention triggers, cron jobs, or scheduling internals. Be warm and concise.

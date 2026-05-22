@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -35,7 +40,7 @@ const SessionPointerSchema = z.object({
 })
 
 function makeRunId(): string {
-  return new Date().toISOString().replace(/[:.]/g, '-')
+  return new Date().toISOString().replace(/[:.]/gu, '-')
 }
 
 export async function createRunState(config: ReviewLoopConfig, planPath: string): Promise<RunState> {

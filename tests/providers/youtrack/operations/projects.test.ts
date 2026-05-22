@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -265,35 +270,35 @@ describe('listYouTrackProjects', () => {
 describe('generateShortName', () => {
   test('converts ASCII name to uppercase alphanumeric', () => {
     const result = generateShortName('My Cool Project')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
-    expect(result).toMatch(/^MYCOOLP/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
+    expect(result).toMatch(/^MYCOOLP/u)
     expect(result.length).toBeLessThanOrEqual(10)
   })
 
   test('removes special characters', () => {
     const result = generateShortName('Project!@#$%^&*()')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
-    expect(result).toMatch(/^PROJECT/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
+    expect(result).toMatch(/^PROJECT/u)
   })
 
   test('normalizes Unicode diacritics (e → e)', () => {
     const result = generateShortName('Café Project')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
-    expect(result).toMatch(/^CAFEP/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
+    expect(result).toMatch(/^CAFEP/u)
   })
 
   test('handles non-ASCII characters with fallback', () => {
     const result = generateShortName('日本語プロジェクト')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
     // Falls back to PROJECT prefix
-    expect(result).toMatch(/^PROJECT/)
+    expect(result).toMatch(/^PROJECT/u)
   })
 
   test('handles mixed ASCII and non-ASCII', () => {
     const result = generateShortName('日本語Project')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
     // Uses fallback since only ASCII is kept
-    expect(result).toMatch(/^PROJECT/)
+    expect(result).toMatch(/^PROJECT/u)
   })
 
   test('limits length to 10 characters', () => {
@@ -312,19 +317,19 @@ describe('generateShortName', () => {
 
   test('handles empty string with fallback', () => {
     const result = generateShortName('')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
-    expect(result).toMatch(/^PROJECT/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
+    expect(result).toMatch(/^PROJECT/u)
   })
 
   test('handles whitespace-only with fallback', () => {
     const result = generateShortName('   \t\n  ')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
-    expect(result).toMatch(/^PROJECT/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
+    expect(result).toMatch(/^PROJECT/u)
   })
 
   test('preserves numbers in name when within 7-char base limit', () => {
     const result = generateShortName('Proj 2024 Alpha')
-    expect(result).toMatch(/^[A-Z0-9]+$/)
+    expect(result).toMatch(/^[A-Z0-9]+$/u)
     // Base is first 7 chars: PROJ202 -> plus 3-char suffix = 10 total
     expect(result.slice(0, 7)).toBe('PROJ202')
   })
@@ -359,10 +364,10 @@ describe('createYouTrackProject', () => {
     assert(typeof shortNameValue === 'string', 'Expected shortName to be a string')
     const shortName = shortNameValue
     // Should start with cleaned name, be uppercase alphanumeric, max 10 chars
-    expect(shortName).toMatch(/^[A-Z0-9]+$/)
+    expect(shortName).toMatch(/^[A-Z0-9]+$/u)
     expect(shortName.length).toBeLessThanOrEqual(10)
     // Starts with base name
-    expect(shortName).toMatch(/^MYCOOLP/)
+    expect(shortName).toMatch(/^MYCOOLP/u)
     expect(body['name']).toBe('My Cool Project!')
   })
 

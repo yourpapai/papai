@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 01 — Current-state audit (verbatim)
 
 This file is a reference snapshot of what the bot actually sends to the LLM today. Nothing here is a proposal. All other files in this report cite back to paths and line ranges listed below.

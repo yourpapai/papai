@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { AppError } from '../../errors.js'
 import { logger } from '../../logger.js'
 import { localDatetimeToUtc, utcToLocal } from '../../utils/datetime.js'
@@ -9,6 +14,7 @@ import type {
   Project,
   RelationType,
   Task,
+  TaskLabel,
   TaskListItem,
   TaskProvider,
   TaskSearchResult,
@@ -22,6 +28,7 @@ import {
   kaneoAddTaskLabel,
   kaneoCreateLabel,
   kaneoListLabels,
+  kaneoListTaskLabels,
   kaneoRemoveLabel,
   kaneoRemoveTaskLabel,
   kaneoUpdateLabel,
@@ -69,6 +76,7 @@ export class KaneoProvider implements TaskProvider {
     description?: string
     priority?: string
     status?: string
+    startDate?: string
     dueDate?: string
     assignee?: string
     customFields?: Array<{ name: string; value: string }>
@@ -87,6 +95,7 @@ export class KaneoProvider implements TaskProvider {
       description?: string
       status?: string
       priority?: string
+      startDate?: string
       dueDate?: string
       projectId?: string
       assignee?: string
@@ -147,6 +156,10 @@ export class KaneoProvider implements TaskProvider {
 
   listLabels(): Promise<Label[]> {
     return kaneoListLabels(this.config, this.workspaceId)
+  }
+
+  listTaskLabels(taskId: string): Promise<TaskLabel[]> {
+    return kaneoListTaskLabels(this.config, taskId)
   }
 
   createLabel(params: { name: string; color?: string }): Promise<Label> {

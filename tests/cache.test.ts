@@ -1,13 +1,18 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { getCachedHistory, _userCaches } from '../src/cache.js'
+import { getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { appendHistory, saveHistory } from '../src/history.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 beforeEach(async () => {
   mockLogger()
   await setupTestDb()
-  _userCaches.clear()
+  userCachesForTesting.clear()
 })
 
 describe('getCachedHistory', () => {

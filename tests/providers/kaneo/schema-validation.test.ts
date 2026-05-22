@@ -1,14 +1,21 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
 import { ColumnCompatSchema as KaneoColumnSchema } from '../../../src/providers/kaneo/schemas/api-compat.js'
+import { CreateCommentResponseSchema } from '../../../src/providers/kaneo/schemas/create-comment.js'
 import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
 import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
 import { TaskSchema as CreateTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
-import { ActivityItemSchema } from '../../../src/providers/kaneo/schemas/get-activities.js'
 import { GetProjectResponseSchema as KaneoProjectFullSchema } from '../../../src/providers/kaneo/schemas/get-project.js'
+import { ActivityItemSchema, GlobalSearchResponseSchema } from '../../../src/providers/kaneo/schemas/global-search.js'
+import { ListTasksResponseSchema } from '../../../src/providers/kaneo/schemas/list-tasks.js'
 import {
   createMockActivity,
   createMockColumn,
@@ -75,21 +82,10 @@ function makeColumnOrTaskRouter(columnPayload: object[], taskPayload: object): (
     if (url.includes('/column/')) {
       return Promise.resolve(new Response(JSON.stringify(columnPayload), { status: 200 }))
     }
-    return Promise.resolve(new Response(JSON.stringify(taskPayload), { status: 200 }))
-  }
-}
-
-/**
- * Routes PUT requests to an empty-object response; all other methods
- * return the given list payload. Matches the Kaneo CommentResource.update
- * behaviour where PUT returns {} and the follow-up GET returns the list.
- */
-function makePutOrGetRouter(listPayload: object[]): (_url: string, options: RequestInit) => Promise<Response> {
-  return (_url, options) => {
-    if (options.method === 'PUT') {
-      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    if (url.includes('/task-relation/')) {
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     }
-    return Promise.resolve(new Response(JSON.stringify(listPayload), { status: 200 }))
+    return Promise.resolve(new Response(JSON.stringify(taskPayload), { status: 200 }))
   }
 }
 
@@ -127,6 +123,11 @@ describe('Schema Validation', () => {
       projectId: 'proj-1',
       userId: null,
     })
+
+    const validTaskFullResponseWithStartDate = {
+      ...validTaskFullResponse,
+      startDate: '2026-02-20T00:00:00.000Z',
+    }
 
     test('MinimalTaskSchema validates correct task structure', () => {
       const result = MinimalTaskSchema.safeParse(validTaskResponse)
@@ -166,6 +167,24 @@ describe('Schema Validation', () => {
       expect(result.data.dueDate).toBeNull()
       expect(result.data.projectId).toBe('proj-1')
       expect(result.data.userId).toBeNull()
+    })
+
+    test('KaneoTaskResponseSchema preserves documented startDate', () => {
+      const result = KaneoTaskResponseSchema.safeParse(validTaskFullResponseWithStartDate)
+      expect(result.success).toBe(true)
+      assert(result.success)
+      expect(result.data.startDate).toBe('2026-02-20T00:00:00.000Z')
+    })
+
+    test('KaneoTaskResponseSchema rejects non-date-time task timestamps', () => {
+      const result = KaneoTaskResponseSchema.safeParse({
+        ...validTaskFullResponseWithStartDate,
+        startDate: '2026-02-20',
+        dueDate: '2026-03-01',
+        createdAt: '2026-03-01',
+      })
+
+      expect(result.success).toBe(false)
     })
 
     test('TaskWithProjectIdSchema validates projectId field', () => {
@@ -247,25 +266,46 @@ describe('Schema Validation', () => {
     describe('TaskResource.list', () => {
       test('validates array response schema', async () => {
         const validTaskListResponse = {
-          id: 'proj-1',
-          name: 'Test Project',
-          columns: [
-            {
-              id: 'col-1',
-              name: 'To Do',
-              icon: null,
-              color: null,
-              isFinal: false,
-              tasks: [
-                {
-                  ...validTaskResponse,
-                  dueDate: null,
-                },
-              ],
-            },
-          ],
-          archivedTasks: [],
-          plannedTasks: [],
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            slug: 'test-project',
+            icon: '',
+            description: null,
+            isPublic: false,
+            workspaceId: 'ws-1',
+            columns: [
+              {
+                id: 'col-1',
+                slug: 'to-do',
+                name: 'To Do',
+                icon: null,
+                color: null,
+                isFinal: false,
+                tasks: [
+                  {
+                    ...validTaskResponse,
+                    status: 'col-1',
+                    dueDate: null,
+                    position: 1,
+                    createdAt: '2026-03-01T00:00:00Z',
+                    userId: null,
+                    projectId: 'proj-1',
+                    labels: [],
+                    externalLinks: [],
+                  },
+                ],
+              },
+            ],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
+          pagination: {
+            total: 1,
+            page: 1,
+            pageSize: 1,
+            totalPages: 1,
+          },
         }
         setMockFetch(() => Promise.resolve(new Response(JSON.stringify(validTaskListResponse), { status: 200 })))
 
@@ -280,6 +320,94 @@ describe('Schema Validation', () => {
         expect(result[0]).toHaveProperty('status')
         expect(result[0]).toHaveProperty('priority')
         expect(result[0]).toHaveProperty('dueDate')
+      })
+
+      test('ListTasksResponseSchema accepts runtime-compatible task-list envelopes', () => {
+        const result = ListTasksResponseSchema.safeParse({
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            slug: 'test-project',
+            icon: '',
+            description: null,
+            isPublic: false,
+            workspaceId: 'ws-1',
+            columns: [
+              {
+                id: 'to-do',
+                slug: 'to-do',
+                name: 'To Do',
+                isFinal: false,
+                tasks: [
+                  {
+                    ...validTaskResponse,
+                    status: 'to-do',
+                    dueDate: null,
+                    position: 1,
+                    createdAt: '2026-03-01T00:00:00Z',
+                    userId: null,
+                    assigneeId: null,
+                    assigneeName: null,
+                    assigneeImage: null,
+                    projectId: 'proj-1',
+                    labels: [],
+                    externalLinks: [],
+                  },
+                ],
+              },
+            ],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
+          pagination: {
+            total: 1,
+            page: 1,
+            pageSize: 1,
+            totalPages: 1,
+          },
+        })
+
+        expect(result.success).toBe(true)
+      })
+
+      test('ListTasksResponseSchema rejects invalid task priority values', () => {
+        const result = ListTasksResponseSchema.safeParse({
+          data: {
+            id: 'proj-1',
+            name: 'Test Project',
+            columns: [
+              {
+                id: 'to-do',
+                name: 'To Do',
+                isFinal: false,
+                tasks: [
+                  {
+                    ...validTaskResponse,
+                    priority: 'critical',
+                    createdAt: '2026-03-01T00:00:00Z',
+                  },
+                ],
+              },
+            ],
+            archivedTasks: [],
+            plannedTasks: [],
+          },
+        })
+
+        expect(result.success).toBe(false)
+      })
+
+      test('ListTasksResponseSchema rejects top-level grouped task-list payloads', () => {
+        // Deliberate drift-log choice: papai follows the real runtime envelope here.
+        const result = ListTasksResponseSchema.safeParse({
+          id: 'proj-1',
+          name: 'Test Project',
+          columns: [],
+          archivedTasks: [],
+          plannedTasks: [],
+        })
+
+        expect(result.success).toBe(false)
       })
     })
 
@@ -512,6 +640,22 @@ describe('Schema Validation', () => {
       expect(result.data.content).toBe('Test comment')
     })
 
+    test('ActivityItemSchema accepts newer created activity payloads', () => {
+      const result = ActivityItemSchema.safeParse(
+        createMockActivity({
+          id: 'act-created',
+          type: 'created',
+          content: null,
+          eventData: {},
+          updatedAt: '2026-03-01T00:00:00Z',
+        }),
+      )
+
+      expect(result.success).toBe(true)
+      assert(result.success)
+      expect(result.data.type).toBe('created')
+    })
+
     test('KaneoActivityWithTypeSchema validates activity array', () => {
       const result = KaneoActivityWithTypeSchema.safeParse([validActivityWithTypeResponse])
       expect(result.success).toBe(true)
@@ -519,6 +663,23 @@ describe('Schema Validation', () => {
       assert(result.data.length > 0)
       assert(result.data[0] !== undefined)
       expect(result.data[0].type).toBe('comment')
+    })
+
+    test('CreateCommentResponseSchema validates the published /comment payload', () => {
+      const result = CreateCommentResponseSchema.safeParse({
+        id: 'comment-1',
+        taskId: 'task-1',
+        userId: 'user-1',
+        content: 'Test comment',
+        createdAt: '2026-05-14T09:00:00.000Z',
+        updatedAt: '2026-05-14T09:00:00.000Z',
+        user: {
+          name: 'Test User',
+          image: null,
+        },
+      })
+
+      expect(result.success).toBe(true)
     })
 
     test('ActivityItemSchema fails on missing required fields', () => {
@@ -532,7 +693,23 @@ describe('Schema Validation', () => {
       test('validates array response schema', async () => {
         setMockFetch(() =>
           Promise.resolve(
-            new Response(JSON.stringify([createMockActivity(validActivityWithTypeResponse)]), { status: 200 }),
+            new Response(
+              JSON.stringify([
+                {
+                  id: 'comment-1',
+                  taskId: 'task-1',
+                  userId: 'user-1',
+                  content: 'Test comment',
+                  createdAt: '2026-05-14T09:00:00.000Z',
+                  updatedAt: '2026-05-14T09:00:00.000Z',
+                  user: {
+                    name: 'Test User',
+                    image: null,
+                  },
+                },
+              ]),
+              { status: 200 },
+            ),
           ),
         )
 
@@ -549,8 +726,25 @@ describe('Schema Validation', () => {
 
     describe('CommentResource.update', () => {
       test('validates response schema on update', async () => {
-        // PUT returns {} (Kaneo bug), then GET returns array — differentiate by method
-        setMockFetch(makePutOrGetRouter([createMockActivity(validActivityResponse)]))
+        setMockFetch(() =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'act-1',
+                taskId: 'task-1',
+                userId: 'user-1',
+                content: 'Updated',
+                createdAt: '2026-05-14T09:00:00.000Z',
+                updatedAt: '2026-05-14T10:00:00.000Z',
+                user: {
+                  name: 'Test User',
+                  image: null,
+                },
+              }),
+              { status: 200 },
+            ),
+          ),
+        )
 
         const resource = new CommentResource(mockConfig)
         const result = await resource.update('task-1', 'act-1', 'Updated')
@@ -602,6 +796,146 @@ describe('Schema Validation', () => {
         expect(result[0]).toHaveProperty('color')
         expect(result[0]).toHaveProperty('isFinal')
       })
+    })
+  })
+
+  describe('Search Schemas', () => {
+    test('GlobalSearchResponseSchema validates the published grouped search response', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
+        tasks: [
+          {
+            id: 'task-1',
+            projectId: 'proj-1',
+            position: null,
+            number: 1,
+            userId: null,
+            title: 'Task 1',
+            description: null,
+            status: 'todo',
+            priority: 'medium',
+            startDate: '2026-03-01T00:00:00.000Z',
+            dueDate: '2026-03-05T00:00:00.000Z',
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        projects: [
+          {
+            id: 'proj-1',
+            workspaceId: 'ws-1',
+            slug: 'proj-1',
+            icon: null,
+            name: 'Project 1',
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+            isPublic: false,
+            archivedAt: null,
+          },
+        ],
+        workspaces: [
+          {
+            id: 'ws-1',
+            name: 'Workspace 1',
+            slug: 'workspace-1',
+            logo: null,
+            metadata: null,
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        comments: [
+          {
+            id: 'comment-1',
+            taskId: 'task-1',
+            type: 'comment',
+            createdAt: '2026-02-28T00:00:00.000Z',
+            userId: null,
+            content: 'hello',
+            eventData: null,
+            externalUserName: null,
+            externalUserAvatar: null,
+            externalSource: null,
+            externalUrl: null,
+          },
+        ],
+        activities: [
+          {
+            id: 'activity-1',
+            taskId: 'task-1',
+            type: 'create',
+            createdAt: '2026-02-28T00:00:00.000Z',
+            userId: null,
+            content: null,
+            eventData: null,
+            externalUserName: null,
+            externalUserAvatar: null,
+            externalSource: null,
+            externalUrl: null,
+          },
+        ],
+      })
+
+      expect(result.success).toBe(true)
+    })
+
+    test('GlobalSearchResponseSchema accepts archived project timestamps', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
+        tasks: [],
+        projects: [
+          {
+            id: 'proj-archived',
+            workspaceId: 'ws-1',
+            slug: 'proj-archived',
+            icon: null,
+            name: 'Archived Project',
+            description: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+            isPublic: false,
+            archivedAt: '2026-03-01T00:00:00.000Z',
+          },
+        ],
+        workspaces: [],
+        comments: [],
+        activities: [],
+      })
+
+      expect(result.success).toBe(true)
+    })
+
+    test('GlobalSearchResponseSchema accepts null grouped task dates', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
+        tasks: [
+          {
+            id: 'task-null-dates',
+            projectId: 'proj-1',
+            position: null,
+            number: 2,
+            userId: null,
+            title: 'Task with null dates',
+            description: null,
+            status: 'todo',
+            priority: 'medium',
+            startDate: null,
+            dueDate: null,
+            createdAt: '2026-02-28T00:00:00.000Z',
+          },
+        ],
+        projects: [],
+        workspaces: [],
+        comments: [],
+        activities: [],
+      })
+
+      expect(result.success).toBe(true)
+    })
+
+    test('GlobalSearchResponseSchema rejects the legacy flat search response', () => {
+      const result = GlobalSearchResponseSchema.safeParse({
+        results: [],
+        totalCount: 0,
+        searchQuery: 'bug',
+      })
+
+      expect(result.success).toBe(false)
     })
   })
 

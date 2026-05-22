@@ -21,11 +21,11 @@ const FULL_SUITE_TIMEOUT = 120_000
 function parseLcov(lcovPath, implAbsPath) {
   const content = fs.readFileSync(lcovPath, 'utf8')
   for (const section of content.split('end_of_record')) {
-    const sfMatch = section.match(/^SF:(.+)$/m)
+    const sfMatch = section.match(/^SF:(.+)$/mu)
     if (!sfMatch) continue
     if (path.resolve(sfMatch[1]) !== implAbsPath) continue
-    const lhMatch = section.match(/^LH:(\d+)$/m)
-    const lfMatch = section.match(/^LF:(\d+)$/m)
+    const lhMatch = section.match(/^LH:(\d+)$/mu)
+    const lfMatch = section.match(/^LF:(\d+)$/mu)
     if (!lhMatch || !lfMatch) continue
     return { covered: parseInt(lhMatch[1]), total: parseInt(lfMatch[1]) }
   }
@@ -41,10 +41,10 @@ function parseAllLcov(lcovPath) {
   const content = fs.readFileSync(lcovPath, 'utf8')
   const result = {}
   for (const section of content.split('end_of_record')) {
-    const sfMatch = section.match(/^SF:(.+)$/m)
+    const sfMatch = section.match(/^SF:(.+)$/mu)
     if (!sfMatch) continue
-    const lhMatch = section.match(/^LH:(\d+)$/m)
-    const lfMatch = section.match(/^LF:(\d+)$/m)
+    const lhMatch = section.match(/^LH:(\d+)$/mu)
+    const lfMatch = section.match(/^LF:(\d+)$/mu)
     if (!lhMatch || !lfMatch) continue
     result[path.resolve(sfMatch[1].trim())] = {
       covered: parseInt(lhMatch[1]),

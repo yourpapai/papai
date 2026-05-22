@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 02 — System-prompt flaws and proposed rewrite
 
 This file analyses the prompt in `src/system-prompt.ts` line-by-line, names the flaws using vocabulary from the external sources, and proposes a rewrite that is (a) structured with delimiters, (b) capability-aware, and (c) enriched with compact few-shot examples. Verbatim of the current prompt is in [`01-current-state-audit.md`](./01-current-state-audit.md).

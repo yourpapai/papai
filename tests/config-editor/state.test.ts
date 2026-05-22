@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Tests for config-editor state management
  */
@@ -28,12 +33,12 @@ describe('config-editor state', () => {
       const session = createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'llm_apikey',
+        editingKey: 'kaneo_apikey',
       })
 
       expect(session).not.toBeNull()
       expect(session.userId).toBe(userId)
-      expect(session.editingKey).toBe('llm_apikey')
+      expect(session.editingKey).toBe('kaneo_apikey')
       expect(session.startedAt).toBeInstanceOf(Date)
     })
 
@@ -41,17 +46,17 @@ describe('config-editor state', () => {
       const first = createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'llm_apikey',
+        editingKey: 'kaneo_apikey',
       })
 
       const second = createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'main_model',
+        editingKey: 'timezone',
       })
 
       expect(second).toBe(first)
-      expect(second.editingKey).toBe('llm_apikey')
+      expect(second.editingKey).toBe('kaneo_apikey')
     })
 
     test('stores optional fields when provided', () => {
@@ -69,17 +74,17 @@ describe('config-editor state', () => {
       const session1 = createEditorSession({
         userId: 'user1',
         storageContextId,
-        editingKey: 'llm_apikey',
+        editingKey: 'kaneo_apikey',
       })
 
       const session2 = createEditorSession({
         userId: 'user2',
         storageContextId,
-        editingKey: 'main_model',
+        editingKey: 'timezone',
       })
 
-      expect(session1.editingKey).toBe('llm_apikey')
-      expect(session2.editingKey).toBe('main_model')
+      expect(session1.editingKey).toBe('kaneo_apikey')
+      expect(session2.editingKey).toBe('timezone')
     })
   })
 
@@ -111,7 +116,7 @@ describe('config-editor state', () => {
       createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'llm_baseurl',
+        editingKey: 'youtrack_token',
       })
 
       expect(hasActiveEditor(userId, storageContextId)).toBe(true)
@@ -123,7 +128,7 @@ describe('config-editor state', () => {
       createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'llm_apikey',
+        editingKey: 'kaneo_apikey',
       })
 
       updateEditorSession(userId, storageContextId, { pendingValue: 'sk-newkey' })
@@ -144,7 +149,7 @@ describe('config-editor state', () => {
       createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'main_model',
+        editingKey: 'timezone',
       })
 
       expect(hasActiveEditor(userId, storageContextId)).toBe(true)
@@ -163,7 +168,7 @@ describe('config-editor state', () => {
       createEditorSession({
         userId,
         storageContextId,
-        editingKey: 'small_model',
+        editingKey: 'kaneo_workspace_id',
       })
 
       const result = deleteEditorSession(userId, storageContextId)

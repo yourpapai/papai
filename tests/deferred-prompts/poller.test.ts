@@ -1,21 +1,34 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { mock, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
+import { setCachedConfig } from '../../src/cache.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { createMockChatWithSentMessages, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  createMockChatWithSentMessages,
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 function setupUserConfig(userId: string): void {
-  setConfig(userId, 'llm_apikey', 'test-key')
-  setConfig(userId, 'llm_baseurl', 'http://localhost:11434/v1')
-  setConfig(userId, 'main_model', 'test-model')
   setConfig(userId, 'timezone', 'UTC')
+  resetSystemConfigCacheForTesting()
+  setSystemConfig('llm_apikey', 'test-key', 'env')
+  setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
+  setSystemConfig('main_model', 'test-model', 'env')
 }
 
 const USER_ID = 'poller-user-1'
@@ -178,17 +191,35 @@ describe('pollScheduledOnce', () => {
     expect(sentMessages).toHaveLength(2)
   })
 
-  test('skips prompt when LLM config is missing', async () => {
-    // Create a user without LLM config
+  test('normalizes legacy timezone config before advancing recurring prompts without stored timezone', async () => {
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    setCachedConfig(USER_ID, 'timezone', 'UTC+5')
+    const created = createScheduledPrompt(USER_ID, 'Legacy timezone prompt', {
+      fireAt: pastTime,
+      cronCompiled: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0', dtstartUtc: pastTime },
+    })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    const updated = getScheduledPrompt(created.id, USER_ID)
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('active')
+    expect(updated!.fireAt).toMatch(/T04:00:\d{2}\.000Z$/u)
+  })
+
+  test('skips prompt when central LLM config is missing (Phase 1)', async () => {
+    // Reset the system_config cache so getSystemConfig returns null and
+    // the deferred prompt path bails out with the misconfigured message.
+    resetSystemConfigCacheForTesting()
+
     const unconfiguredUser = 'unconfigured-user'
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     createScheduledPrompt(unconfiguredUser, 'No config', { fireAt: pastTime })
 
     await pollScheduledOnce(chat, () => provider)
 
-    // Should still send the fallback message
     expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]!.text).toContain('missing LLM configuration')
+    expect(sentMessages[0]!.text).toContain('not fully configured')
   })
 })
 

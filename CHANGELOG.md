@@ -5,6 +5,526 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.2] - 2026-05-22
+
+### Documentation
+
+- Convert design specs to superpowers format with notes
+- Sync design docs and superpowers specs/notes
+- **design:** Verify, align design spec and write implementation plan for dashboard-admin split
+- Add Kaneo label semantics plan
+
+### Fixed
+
+- **telegram:** Eagerly initialize file fetcher for group chat staged files
+- **kaneo:** Distinguish reusable and task labels
+- **tools:** Prevent duplicate Kaneo label creation
+- **tools:** Add Kaneo task-label status handling
+- **tools:** Clarify Kaneo already-absent label results
+- **kaneo:** Resolve task label removal from workspace ids
+- **kaneo:** Keep reusable labels when taskId is omitted
+- **kaneo:** Detect already-present labels by workspace id
+- Satisfy full check after Kaneo label changes
+
+### Miscellaneous
+
+- **sql:** Add Kaneo label dedup scripts
+- **tools:** Tighten Kaneo label helper usage
+- **sql:** Drop uncommitted Kaneo dedup scripts
+
+### Testing
+
+- Verify Kaneo label semantics changes
+
+### License
+
+- Add BUSL-1.1 headers to docs and extend tooling for markdown files
+## [5.6.1] - 2026-05-21
+
+### Documentation
+
+- **design:** LLM rate limiting and plans spec + phase decomposition
+- **design:** Rework quotas — day/week/month windows, refill algo, attachment storage, 80% notice, deferred-prompt fallback
+- **design:** Align phase decomposition with reworked quota spec
+- **design:** Rework deferred-prompt fallback — fire time is sacred, proactive small-model degrade at notify_pct, per-type templates
+- **design:** Split /dashboard into /debug and /admin — design + phase plan
+
+### Fixed
+
+- **auth:** Include actual group id in unauthorized-group hints
+
+### Miscellaneous
+
+- Format
+
+### Styling
+
+- **docs:** Oxfmt pass on rate-limiting design + phases
+## [5.6.0] - 2026-05-20
+
+### Added
+
+- **billing:** Central LLM credentials in system_config (Phase 1)
+- **billing:** Migration 035 + usage recorder + query module (Phase 2)
+- **billing:** Thread chatUserId and contextType into llm:end and llm:error
+- **billing:** Subscribe usage recorder to the debug event bus
+- **billing:** Record embedding usage from tryGetEmbedding callsites
+- **billing:** Record web/distill usage with modelRole='small'
+- **billing:** Server helpers for Phase 3 billing dashboard
+- **billing:** Wire /billing and /admin/llm routes (Phase 3)
+- **billing:** Client state types and fetchers (Phase 3)
+- **billing:** Billing dashboard panel and components (Phase 3)
+- **billing:** Drizzle schema for tool_call_events + outbox fields
+- **billing:** Deterministic SHA-256 event_id for usage rows
+- **orchestrator:** Extend tool lifecycle event payloads
+- **billing:** Tool-call recorder + bus subscriber
+- **billing:** Tool-call query helpers (read surface)
+- **stats:** Types + aggregate helpers (Phase 5)
+- **stats:** Keyed hashing with lazy salt (Phase 5)
+- **stats:** Per-subject helpers — batch A (Phase 5)
+- **stats:** Per-subject content helpers — batch B (Phase 5)
+- **stats:** Per-subject identity/staged/user+group helpers — batch C (Phase 5)
+- **stats:** Per-subject web/usage/tool-call helpers — batch D (Phase 5)
+- **stats:** Global query helpers (Phase 5)
+- **stats:** Orchestrator + 60s global-view cache (Phase 5)
+- **stats:** /stats routes behind DEBUG_TOKEN (Phase 5)
+- **stats:** Client fetchers + types (Phase 5)
+- **stats:** SubjectStatsPanel + StatsTab + dashboard wiring (Phase 5)
+
+### Changed
+
+- **debug:** Extract resolveDmDisplayNames helper (Phase 5)
+
+### Documentation
+
+- **billing:** Design initial migration from BYOK to central LLM + usage telemetry
+- **billing:** Split central-llm rollout into three phases
+- **billing:** Add phase 5 — anonymous DB-wide statistics
+- **billing:** Add Phase 1 brainstorm, per-phase design, and plan
+- **billing:** Add Phase 2 brainstorm, per-phase design, and plan
+- **billing:** Phase 3 brainstorm + design + plan
+- Note Phase 3 dashboard credentials surface in CLAUDE.md
+- **billing:** Phase 4 brainstorm — tool-call rows + idempotency
+- **billing:** Phase 4 design + implementation plan
+- **billing:** Note Phase 4 tool_call_events + outbox slots in CLAUDE.md
+- **billing:** Phase 5 brainstorm — anonymous DB-wide stats
+- **billing:** Phase 5 design + implementation plan
+- **stats:** Document /stats anonymity contract + src/stats module (Phase 5)
+- Align README, .env.example, CLAUDE.md with central-llm rollout
+
+### Fixed
+
+- **/context:** Apply tool routing to reflect actual exposed surface
+- **billing:** Include occurredAt in usage event_id hash
+- **billing:** Resolve group display names + mark masked credentials
+
+### Miscellaneous
+
+- **billing:** Mark usage module exports as Phase-3-pending in knip
+- **billing:** Ignore .svelte-only exports in client/debug/billing/fetchers.ts
+- **billing:** Migrations 037 + 038 for Phase 4 tables
+- **docs:** Apply oxfmt formatting to Phase 4 doc set
+- **cleanup:** Clear pre-existing knip orphans
+
+### Testing
+
+- **stats:** Forbidden-substring anonymity contract (Phase 5)
+- **stats:** 1k subjects + 100k messages perf bench (Phase 5)
+
+### Ci
+
+- Verify docker image build in build job
+- Tag docker build validation image
+- **deploy:** Propagate S3 + central LLM env to deployed .env
+## [5.5.3] - 2026-05-19
+
+### Fixed
+
+- **deps:** Install devDependencies in Docker build stage for Svelte dashboard
+
+## [5.5.2] - 2026-05-19
+
+### Added
+
+- Normalize timezone config and scheduling reads
+- **dashboard:** Migrate debug dashboard from vanilla HTML to Svelte 5
+- **dashboard:** Apply review recommendations from Svelte 5 migration
+
+### Documentation
+
+- **adr:** Add ADR-0087 for debug dashboard expansion
+- Remove debug dashboard expansion spec and plan from active directories
+- **adr:** Add ADR-0088 for Kaneo doc-first API migration
+- **adr:** Add ADR-0089 for codeindex portability and test isolation
+- **adr:** Decline /context tool catalog emission; document completed knip cleanup
+- ADR-0091 for staged attachments and archive spec/plan
+- **adr:** Archive architecture inventory spec/plan; add ADR-0092
+- **adr:** ADR-0093 for tool surface benchmark implementation
+- **adr:** Add ADR-0094 for single proxy tool deprecation; archive design and plan
+- **archive:** Move stale 2026-05-09-bun-check-full-remediation plan to archive
+- **adr:** ADR-0095 telegram-specific group and user label resolution
+- **adr:** ADR-0096 for opencode TPS meter local removal; archive spec and plan
+- **adr:** ADR-0097 for Pi migration partial implementation; archive plan and document divergences
+- **adr:** Add ADR-0098 for RRULE library adoption, archive spec and plan
+- **adr:** Add ADR-0099 for embedding clustering linkage-mode improvements
+- **adr:** Add ADR-0100 for embedding clustering profiling and acceleration
+- Add ADR-0101 for compact-tools pi extension, archive spec+plan
+- **adr-0102:** Add ADR for behavior audit progress reporting with structured events
+- **adr:** Add ADR-0103 for behavior-audit keyword consolidation
+- **adr:** ADR-0105 — fix check:verbose SIGINT cascade remediation
+- **adr:** ADR-0106 for DRY duplicate test code refactoring
+- **adr:** Archive behavior-audit progress UX plan and add ADR-0107
+- **adr:** Add ADR-0108 for behavior-audit JSON extraction cleanup, archive plan and remaining tracker
+- **adr:** Add ADR-0109 for behavior-audit artifact model migration
+- **adr:** Add ADR-0110 for behavior-audit legacy cleanup; archive plan
+- **adr:** Add ADR-0111 for behavior-audit mock.module cleanup; archive plan
+- **adr:** Add review-loop enhancements ADR, archive spec and plan
+- **adr:** Write ADR-0113 for OpenCode TPS Meter security hardening, archive plan and spec
+- **adr:** Add ADR-0114 for behavior audit phase 2 redesign
+- Archive superseded 3-phase behavior-audit plan
+- **adr:** Add ADR-0115 for readable group and user labels; archive spec and plan
+- **adr:** Add ADR-0116 for deferred prompt delivery redesign with same-context delivery
+- **archive:** Relocate deferred prompt delivery design spec and implementation plan
+- **adr:** Archive superseded proactive group messaging spec/plan, add divergence notes
+- ADR-0117 — YouTrack tool parity closure
+- **adr:** Add ADR-0118 for codeindex Tier 1 completion, archive spec+plan, add future tiers note
+- **adr:** Add ADR-0119 for shared attachment pipeline completion
+- Add execution order recommendation for provider abstraction, architecture violations, and plugin system plans
+
+### Fixed
+
+- **checks:** Resolve all failing checks from check:full
+
+### Miscellaneous
+
+- **docs:** Move embedding clustering profile results to archive, update ADR-0100 references and index
+- **adr:** Add ADR-0104 for codeindex lint fix, archive plan
+
+### Testing
+
+- Cover timezone normalization regressions
+
+## [5.5.1] - 2026-05-16
+
+### Documentation
+
+- **adr:** Add ADR-0086 for Kaneo E2E compatibility gap coverage
+
+### Fixed
+
+- **kaneo:** Rely on upstream image healthcheck
+
+## [5.5.0] - 2026-05-16
+
+### Added
+
+- **debug:** Add Scope type and typed emit helpers to event-bus
+- **debug:** Add AdminVisibility type and isVisibleToAdmin filter
+- **debug:** Replace isAdminEvent with scope-based isVisibleToAdmin
+- **debug:** Migrate all emit sites to typed helpers
+- **debug:** Mint turnId, emit turn:start/end and queue:\* events
+- **debug:** Thread turnId through orchestrator, add tool/reply/typing/notify events
+- **debug:** Add Turn assembly, ring buffers, and /turns/:id endpoint
+- **debug:** Add context switcher, panel grid, Turns/Notifications/Tool-failures panels
+- **debug:** Add recurring:_, deferred:_, memo:\* lifecycle events
+- **debug:** Add recurring/deferred/memo REST endpoints and Reminders/Memos panels
+- **debug:** Add Context panel, turnId log filter, remove bare emit()
+
+### Changed
+
+- **message-queue:** Replace mock.module() with DI for event-bus deps
+
+### Documentation
+
+- Capture verified implementation plans
+- Align README license badge with BSL 1.1
+
+### Fixed
+
+- Avoid pulling papai image during E2E setup
+- **/context:** Remove tool catalog follow-up from context command output
+- Resolve lint and knip failures in debug-dashboard-expansion
+- **debug:** Unblock lint and knip after dashboard expansion
+- Expand Kaneo E2E compatibility coverage
+- Restore full check suite
+- Tolerate null Kaneo session in E2E helper
+- Add BUSL-1.1 license headers and extract llm-trace-collector
+- **tests:** Restore mock.module state after debug-server tests
+- Resolve codeindex worktree path resolution
+
+### Miscellaneous
+
+- Relicense from MIT to Business Source License 1.1
+- Add BUSL-1.1 SPDX license headers to all source files
+- Enforce BUSL license headers across the repo
+- Bump .opencode plugin dependency
+- **deps:** Update oxlint, ai SDK, and fix all new lint errors
+
+### Styling
+
+- Format remaining docs and tests
+- Add spacing after license headers
+
+### Testing
+
+- Isolate debug server module mocks
+
+## [5.4.2] - 2026-05-14
+
+### Fixed
+
+- Restore GHCR deploy access after repo move
+- Prevent duplicate Telegram handler registration
+
+## [5.4.1] - 2026-05-14
+
+### Documentation
+
+- Add codeindex portability design and plan
+- Add Paper & Papaya landing-page design system
+- Shift design palette away from Anthropic warm-cream signature
+
+### Fixed
+
+- Restore lint and test checks
+- Align codeindex references with external repo layout
+- Align Kaneo task schemas with latest docs
+- Tighten Kaneo task timestamp schemas
+- Restore Kaneo task list envelope support
+- Validate Kaneo list task priorities
+- Pass Kaneo start dates through provider tasks
+- Add startDate to shared task provider contract
+- Preserve Kaneo start dates in normalized tasks
+- Align Kaneo search with grouped API contract
+- Accept null Kaneo search task dates
+- Move Kaneo search grouped adaptation upstream
+- Align Kaneo provider with verified runtime behavior
+- Restore Kaneo check suite
+
+### Styling
+
+- Format codeindex portability files
+
+### Testing
+
+- Restore message queue preload mocks
+
+### Build
+
+- Add portable codeindex wrapper
+- Handle codeindex wrapper spawn failures
+- Make codeindex integration portable
+- Fix pi codeindex reindex parity
+- Finish portable codeindex resolution
+
+## [5.4.0] - 2026-05-14
+
+### Changed
+
+- Extract codeindex workspace into standalone project
+
+### Fixed
+
+- **telegram:** Register bot handlers before startup
+- **kaneo:** Align self-hosted stack with single-image deploy
+
+## [5.3.0] - 2026-05-13
+
+### Added
+
+- **attachments:** Add attachment workspace schema and migration 028
+- **attachments:** Add S3-backed blob store and durable attachment store
+- **attachments:** Add workspace ingest and clear helpers
+- **attachments:** Add resolver and prompt manifest
+- **llm:** Add multimodal attachment input
+- **behavior-audit:** Add embedding cache module
+- **behavior-audit:** Add EMBEDDING_CACHE_PATH config
+- **behavior-audit:** Use embedding cache in Phase 1b
+- **behavior-audit:** Use embedding cache in tune-embedding script
+- **skills:** Add syncing-plan-with-code skill
+- **behavior-audit:** Add average and complete linkage similarity helpers
+- **behavior-audit:** Add buildClustersAdvanced with average and complete linkage
+- **behavior-audit:** Add subdivideOversizedClusters for iterative threshold increase
+- **behavior-audit:** Add gap threshold to buildClustersAdvanced
+- **behavior-audit:** Add linkage, maxClusterSize, gapThreshold config
+- **behavior-audit:** Wire linkage, maxClusterSize, gapThreshold into tune-embedding CLI
+- **behavior-audit:** Wire new clustering params into consolidation pipeline
+- Instrument embedding clustering profiles
+- Expose clustering profile output
+- Add tool schema formatting
+- Add tool metadata extraction
+- Add papai tool proxy modes
+- Expose papai tools through single proxy
+- Add Pi project scaffold, extensions, and tooling config
+- Add compact-tools pi extension
+- Add cached group user observations
+- Record observed group user labels
+- Add telegram group display resolver
+- Use cached telegram labels in group commands
+- Add staged_files migration, schema, and tests
+- Add staged file types and IncomingFileCandidate for metadata-only group files
+- Add staged file cache module (stage, search, resolve, purge)
+- Add staged download factory with platform-specific delegation
+- Stage group files before auth gate, use thread-scoped context IDs for lookups
+- Telegram adapter produces file candidates for groups (no eager download)
+- Mattermost adapter produces file candidates for groups (no eager download)
+- Add search_staged_files and resolve_staged_file LLM tools
+- Wire platform-specific staged downloader through orchestrator to tools
+- Register hourly staged files purge background job
+- Make S3 storage optional — disable file capabilities when S3 env vars are missing
+- **attachments:** Add S3 docs, workspace-files tool, and update /clear command
+- **behavior-audit:** Add average and complete linkage similarity helpers
+- Add tool surface benchmark scenarios
+- Add tool surface benchmark runner
+- Add architecture inventory tooling
+- Surface live tool definitions in context output
+
+### Changed
+
+- **bot:** Persist incoming files into the workspace and queue stable IDs
+- **attachments:** Replace file-relay with workspace lookups
+- Add trust-aware behavior audit extraction
+- **behavior-audit:** Add pre-normalized clustering with Float64Array dot product
+- **behavior-audit:** Add condensed distance helpers for advanced clustering
+- **behavior-audit:** Limit advanced clustering helper visibility
+- **behavior-audit:** Replace non-single linkage clustering with nearest-neighbor chain
+- **plan-adr-workflow:** Extract AI helpers and add remaining-work doc generation
+- Remove OpenCode instruction files, add Pi workflow to CLAUDE.md
+- Replace sorted nearest-neighbor scans
+- Remove string blocked-pair keys
+- Reuse active cluster snapshots
+
+### Documentation
+
+- **attachments:** Switch design to S3-compatible blob storage
+- **attachments:** Update plan to use S3-compatible storage and migration 028
+- **attachments:** Reformat plan/design after lint pass
+- Add single proxy tool design
+- Add single proxy tool implementation plan
+- Record clustering profile evidence
+- Add clustering acceleration plan
+- Add telegram group label resolution design spec
+- Update remediation and clustering plans
+- Add tool surface benchmark design
+- Update tool surface benchmark plan status
+- Mark tool introspection cleanup plan complete
+
+### Fixed
+
+- **behavior-audit:** Update EMBEDDING_MODEL default in config test
+- **behavior-audit:** Clamp recluster threshold ceiling
+- **behavior-audit:** Keep scanning after rejected gap merge
+- **behavior-audit:** Preserve gap-aware reclustering in tune-embedding
+- **behavior-audit:** Isolate tune-embedding wiring regression
+- **behavior-audit:** Invalidate phase1b on clustering config changes
+- **behavior-audit:** Migrate legacy v5 phase1b progress
+- **behavior-audit:** Persist phase1b clustering settings
+- **behavior-audit:** Invalidate phase1b when embedding identity changes
+- **behavior-audit:** Include embedding base url in phase1b identity
+- **behavior-audit:** Include embedding provider identity in cache validation
+- **behavior-audit:** Enforce pairwise gap checks for single linkage
+- Accumulate clustering timings
+- Wire tune clustering profile flags
+- Separate tune profiling samples
+- Avoid duplicate tune profile runs
+- Persist clustering profile runs incrementally
+- Validate profile runner flag values
+- Report unknown profile flags correctly
+- Satisfy strict schema formatter lint
+- Handle unrepresentable tool schemas
+- Accept schema-like formatter inputs
+- Satisfy strict tool metadata lint
+- Refine papai tool proxy search
+- Validate tool proxy benchmark scenarios
+- Harden tool proxy benchmark validation
+- Reject empty benchmark default models
+- Honor empty benchmark model env
+- Let benchmark CLI models override env
+- Validate proxied tool arguments
+- Execute proxied tools with parsed args
+- Preserve proxied tool behavior
+- Persist facts from multi-step tool calls
+- Exclude pi extension from project typecheck and lint
+- Stop trimming bash tool output in compact-tools extension
+- Add 1-char left padding to all interaction containers
+- Move compact-tools extension to .pi/extensions for auto-discovery
+- Remove project-local compact-tools, fix codeindex-reindex bun import
+- Preserve nearest-cluster NaN ordering
+- Preserve nearest-cluster sort barriers
+- Handle infinite nearest distances
+- Preserve Bun nearest sort semantics for non-finite distances
+- Keep infinite nearest distances on fast path
+- Restore active snapshot profiling counters
+- Scope cached group observations by provider
+- **attachments:** Drop unreliable changes() and $client usage in purgeExpiredStagedFiles
+- **attachments:** Handle missing staged_files table in purgeExpiredStagedFiles
+- **tools:** Strengthen resolve_staged_file type guard and clean up lint
+- **attachments:** Eliminate staged downloader singleton, atomic upserts, Discord docs
+- Clean routing branch lint and scope drift
+- Verify tool surface benchmark
+- Align context tool catalog with degraded tool state
+- Prefer live context tool catalogs
+- Tighten context catalog fallback behavior
+- Fall back to cached context tools
+- Keep degraded context tools cache-only
+- Align context summary tool wiring
+- Align context tool snapshot state
+- Clean up context tool resolution seams
+- Avoid context tool rebuild fallback
+- Align context tool surface resolution
+- Isolate youtrack bundle cache tests
+- Narrow behavior audit exports
+- Trim helper barrel exports
+- Finish behavior-audit task 3 cleanup
+- Align advanced clustering test imports
+- Wait for review-loop command advertisements
+- Update YouTrack tools integration test for direct tool surface
+- Default behavior audit linkage to complete
+- **codeindex:** Reuse parser runtime initialization
+
+### Miscellaneous
+
+- **attachments:** Underscore-prefix the test-only blob-store DI hooks
+- Remove local opencode TPS meter integration
+- Add clustering profile runner
+- Commit all current changes
+- Add tool proxy benchmark
+- Bump opencode plugin version, format compact-tools spec
+- Format telegram group label plan
+- Format telegram group label plan
+- Configure knip for behavior audit entrypoints
+- Format knip config
+- Satisfy registry lint rules
+- Align knip with production tool surfaces
+- Simplify knip workspace config
+
+### Testing
+
+- **behavior-audit:** Cover complete linkage conservatism
+- **behavior-audit:** Cover gapThreshold wiring in tune-embedding
+- **behavior-audit:** Cover provider-matched embedding cache reuse
+- Add clustering profiling primitives
+- Cover clustering profile defaults
+- Update makeTools proxy expectations
+- Add Pi extension tests for codeindex-reindex and tdd-enforcement
+- Update youtrack tools integration for proxy tool
+- Cover telegram resolver live user precedence
+- **attachments:** Lock down staged file resolution edge cases
+- Isolate context command cache state
+- Pin hyphenated context tool ordering
+
+### Merge
+
+- Origin/master into copilot/research-tools-pollution-reduction
+
+### Plan
+
+- Compact tools extension implementation
+
+### Spec
+
+- Compact tools extension design
+
 ## [5.2.0] - 2026-04-28
 
 ### Added
@@ -191,6 +711,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Guardrails
 
 - Block git checkout -- in both Claude Code and OpenCode hooks
+
 ## [5.1.3] - 2026-04-20
 
 ### Added
@@ -228,6 +749,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Merge
 
 - Sync readable-labels branch with origin/master
+
 ## [5.1.2] - 2026-04-18
 
 ### Changed
@@ -243,6 +765,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace unsafe object cloning with Proxy for observed chat provider
 - Address PR #95 review comments
+
 ## [5.1.1] - 2026-04-18
 
 ### Added
@@ -256,6 +779,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Delete or warn after sensitive wizard input
 - Pass messageId to setup flow integration functions
 - Add upfront warning on platforms without message deletion
+
 ## [5.1.0] - 2026-04-18
 
 ### Added
@@ -286,6 +810,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - **behavior-audit:** Narrow task 3 startup coverage
+
 ## [5.0.1] - 2026-04-16
 
 ### Added
@@ -324,6 +849,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **chat:** Specify reply replacement semantics
 - **discord:** Cover replacement fallback behavior
 - **interactions:** Verify menu replacement flows
+
 ## [5.0.0] - 2026-04-15
 
 ### Added
@@ -576,6 +1102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Review-loop
 
 - Harden permission policy, skip terminal issues, and cleanup
+
 ## [4.9.0] - 2026-04-09
 
 ### Added
@@ -632,6 +1159,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix pre-existing failing tests in llm-orchestrator and tool tests
 - Create test helper for clearBundleCache, update bundle-cache.test.ts import
 - Update index.test.ts to use test helper for clearBundleCache
+
 ## [4.8.7] - 2026-04-08
 
 ### Added
@@ -653,31 +1181,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Revert
 
 - Migrate back from streamText to generateText
+
 ## [4.8.6] - 2026-04-07
 
 ### Changed
 
 - Migrate deferred prompts and proactive LLM from generateText to streamText
+
 ## [4.8.5] - 2026-04-07
 
 ### Changed
 
 - Extract LLM event functions to reduce file size
+
 ## [4.8.4] - 2026-04-07
 
 ### Added
 
 - Add get_current_time tool for KV cache efficiency
+
 ## [4.8.3] - 2026-04-07
 
 ### Changed
 
 - Simplify LLM timeouts to flat 20-minute totalMs
+
 ## [4.8.2] - 2026-04-07
 
 ### Added
 
 - Add LLM timeout limits to proactive and memory generateText calls
+
 ## [4.8.1] - 2026-04-07
 
 ### Added
@@ -691,6 +1225,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Ci
 
 - Disable mutation testing in CI
+
 ## [4.8.0] - 2026-04-06
 
 ### Added
@@ -736,6 +1271,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add build job for client assets
 - Drop unused build artifact dependency from e2e and mutation jobs
+
 ## [4.7.8] - 2026-04-05
 
 ### Added
@@ -778,11 +1314,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move complex multi-mock files to beforeEach pattern
 - Move remaining inline mock.module calls to beforeEach
 - Extract duplicated mock setup to file-level beforeEach
-- **helpers:** Replace mockDrizzle mock.module with _setDrizzleDb setter
+- **helpers:** Replace mockDrizzle mock.module with \_setDrizzleDb setter
 - Remove mockDrizzle calls (setupTestDb auto-sets drizzle)
-- Replace drizzle mock.module with _setDrizzleDb in all test files
+- Replace drizzle mock.module with \_setDrizzleDb in all test files
 - Remove drizzle from mock-reset (DI migration complete for drizzle)
 - Remove vestigial db/index mock.module (exports don't exist)
+
 ## [4.7.7] - 2026-04-04
 
 ### Documentation
@@ -796,6 +1333,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **debug:** Fix dashboard browser errors and add smoke tests
 - **debug:** Improve dashboard initialization and update tests
 - Send welcome message after demo mode auto-provisioning
+
 ## [4.7.6] - 2026-04-04
 
 ### Added
@@ -817,16 +1355,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - **commands:** Update admin tests for unique email format
+
 ## [4.7.5] - 2026-04-03
 
 ### Changed
 
 - **announce:** Remove auth.allowed check, add p-limit, extract test helper
+
 ## [4.7.4] - 2026-04-02
 
 ### Fixed
 
 - **deploy:** Add DEMO_MODE to CI workflow .env generation
+
 ## [4.7.3] - 2026-04-02
 
 ### Fixed
@@ -834,6 +1375,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **wizard:** Single-step edit confirmation was broken
 - Skip wizard auto-start for demo users
 - **deploy:** Transfer CADDY_ADDITIONAL_CONFIG via SCP instead of heredoc
+
 ## [4.7.2] - 2026-04-02
 
 ### Added
@@ -859,7 +1401,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Single field edit from /config and skip to keep existing values
 - **plan:** Address 7 issues in demo auto-provision implementation plan
+
 ## [4.7.1] - 2026-03-31
+
 ## [4.7.0] - 2026-03-31
 
 ### Added
@@ -986,6 +1530,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **debug:** Add log buffer unit tests (red)
 - **debug:** Add log route integration tests (red)
 - **scheduler:** Add integration tests for central scheduler
+
 ## [4.6.0] - 2026-03-27
 
 ### Added
@@ -1081,6 +1626,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Types
 
 - Add CachedMessage and MessageMetadataRow types
+
 ## [Unreleased]
 
 ### Added
@@ -1129,6 +1675,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - **utils:** Add DST transition tests for localDatetimeToUtc
+
 ## [4.5.0] - 2026-03-25
 
 ### Added
@@ -1176,6 +1723,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Finalize workflow improvements and documentation
 - Remove unused LocalDatetime type export
 - Disable max-lines lint rule for scripts directory
+
 ## [4.4.0] - 2026-03-24
 
 ### Added
@@ -1239,6 +1787,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Sanitize condition values in describeCondition for LLM prompts
+
 ## [4.3.0] - 2026-03-23
 
 ### Added
@@ -1297,6 +1846,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Ci
 
 - Disable mutation testing on pull requests
+
 ## [4.2.0] - 2026-03-21
 
 ### Added
@@ -1322,13 +1872,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Apply bun format and add CI concurrency group by commit SHA
 - Apply PR review feedback - propagate labelId and projectId context in YouTrack error classification
-- Rename unused reply param to _reply in bot-auth.test.ts (TS6133)
+- Rename unused reply param to \_reply in bot-auth.test.ts (TS6133)
 - Complete logger mock in recurring and cron tests to fix failing logger tests
 - Simplify test command to use bun test auto-discovery
 - Remove tests from ignorePatterns so tests are copied to sandbox
 - **scripts:** Fix shell escaping in detect-duplicates.ts
 - Await rejects assertion in propagates provider errors test
-- **cron:** Validate step > 0 to prevent infinite loop on */0
+- **cron:** Validate step > 0 to prevent infinite loop on \*/0
 - **recurring:** Address PR review feedback
 - Address Phase 8 verification gaps
 
@@ -1347,27 +1897,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tests for archive and relation methods in task-resource
 - Fix exception assertion patterns in task-resource tests
-- **cron:** Add test for negative step value (*/-1)
+- **cron:** Add test for negative step value (\*/-1)
 
 ### Ci
 
 - Add mutation testing job with incremental cache
 - Restrict push trigger to master branch only
+
 ## [4.1.5] - 2026-03-20
 
 ### Ci
 
 - Separate security scan job from check script
+
 ## [4.1.4] - 2026-03-20
 
 ### Fixed
 
 - **ci:** Escape variables in deploy script heredoc
+
 ## [4.1.3] - 2026-03-20
 
 ### Documentation
 
 - Redesign README with enterprise-grade standards
+
 ## [4.1.2] - 2026-03-20
 
 ### Added
@@ -1377,11 +1931,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Add missing migration008GroupMembers import
+
 ## [4.1.1] - 2026-03-20
 
 ### Fixed
 
 - Remove non-existent schemas directory from Dockerfile
+
 ## [4.1.0] - 2026-03-20
 
 ### Added
@@ -1443,12 +1999,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deps
 
 - Add drizzle-orm and drizzle-kit
+
 ## [4.0.4] - 2026-03-19
 
 ### Fixed
 
 - Add entrypoint script to fix /data permissions with su-exec dropping to bun user
 - **docker:** Run as non-root bun user to satisfy security scanner
+
 ## [4.0.3] - 2026-03-19
 
 ### Fixed
@@ -1459,6 +2017,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add typecheck and unit tests to pre-commit hook
 - Upgrade codeql-action to v4 and add required permissions for SARIF upload
+
 ## [4.0.2] - 2026-03-19
 
 ### Fixed
@@ -1468,7 +2027,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Ci
 
 - Add typecheck and unit tests to pre-commit hook
+
 ## [4.0.1] - 2026-03-19
+
 ## [4.0.0] - 2026-03-19
 
 ### Added
@@ -1542,17 +2103,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Revert
 
 - Restore queueMicrotask in cache-db.ts (accidentally included in youtrack schema migration)
+
 ## [3.2.3] - 2026-03-17
 
 ### Fixed
 
 - Use inputMessageCount to correctly slice assistant messages from LLM response
 - Append all response.messages to history without slicing
+
 ## [3.2.2] - 2026-03-17
 
 ### Added
 
 - Improve /context command output format
+
 ## [3.2.1] - 2026-03-17
 
 ### Added
@@ -1580,6 +2144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Styling
 
 - Condense error logging to fix max-lines warning
+
 ## [3.2.0] - 2026-03-16
 
 ### Added
@@ -1661,6 +2226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update task resource mocks to include to-do column
 - Update comment resource tests for pending ID behavior
 - Fix comment order in E2E test (newest first)
+
 ## [3.1.1] - 2026-03-13
 
 ### Added
@@ -1674,6 +2240,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add missing projectId assertions in e2e test
 - Move testClient initialization to beforeAll
+
 ## [3.1.0] - 2026-03-13
 
 ### Added
@@ -1687,16 +2254,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Per-tool verification — fix bugs and improve test coverage
+
 ## [3.0.17] - 2026-03-12
 
 ### Fixed
 
 - Fall back to JSON token when sign-up response has no session cookie
+
 ## [3.0.16] - 2026-03-12
 
 ### Added
 
 - Allow specifying backup path in /migrate rollback
+
 ## [3.0.15] - 2026-03-12
 
 ### Fixed
@@ -1953,11 +2523,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ignore .worktrees directory
 
-[3.0.3]: https://github.com/wKich/papai/compare/v3.0.2...v3.0.3
-[3.0.2]: https://github.com/wKich/papai/compare/v3.0.1...v3.0.2
-[3.0.1]: https://github.com/wKich/papai/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/wKich/papai/compare/v2.0.0...v3.0.0
-[2.0.0]: https://github.com/wKich/papai/compare/v1.0...v2.0.0
-[1.0]: https://github.com/wKich/papai/compare/v0.9...v1.0
-[0.9]: https://github.com/wKich/papai/compare/v0.8...v0.9
-[0.1]: https://github.com/wKich/papai/compare/v0.0.0...v0.1
+[3.0.3]: https://github.com/yourpapai/papai/compare/v3.0.2...v3.0.3
+[3.0.2]: https://github.com/yourpapai/papai/compare/v3.0.1...v3.0.2
+[3.0.1]: https://github.com/yourpapai/papai/compare/v3.0.0...v3.0.1
+[3.0.0]: https://github.com/yourpapai/papai/compare/v2.0.0...v3.0.0
+[2.0.0]: https://github.com/yourpapai/papai/compare/v1.0...v2.0.0
+[1.0]: https://github.com/yourpapai/papai/compare/v0.9...v1.0
+[0.9]: https://github.com/yourpapai/papai/compare/v0.8...v0.9
+[0.1]: https://github.com/yourpapai/papai/compare/v0.0.0...v0.1

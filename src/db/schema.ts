@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { sql } from 'drizzle-orm'
 import { blob, sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
 
@@ -19,6 +24,10 @@ export const userConfig = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.key] }), index('idx_user_config_user_id').on(table.userId)],
 )
+
+export { systemConfig } from './system-config-schema.js'
+export { llmUsageEvents, type LlmUsageEventRow } from './llm-usage-events-schema.js'
+export { toolCallEvents, type ToolCallEventRow } from './tool-call-events-schema.js'
 
 export const conversationHistory = sqliteTable('conversation_history', {
   userId: text('user_id').primaryKey(),
@@ -288,7 +297,6 @@ export const attachments = sqliteTable(
   ],
 )
 export type AttachmentRow = typeof attachments.$inferSelect
-export { stagedFiles } from './staged-schema.js'
-export type { StagedFileRow } from './staged-schema.js'
+export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
 export type { PluginAdminStateRow, PluginContextStateRow, PluginKvRow, PluginRuntimeEventRow } from './plugin-schema.js'

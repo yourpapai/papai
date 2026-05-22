@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { JSONValue } from 'ai'
 
 import {
@@ -27,6 +32,17 @@ export interface ToolFailureResult {
   recovered?: boolean
   details?: Record<string, JSONValue | undefined>
 }
+
+export interface ToolFailureClassifyEvent {
+  toolName: string
+  toolCallId: string
+  errorType: ToolFailureType
+  errorCode: ToolFailureCode
+  retryable: boolean
+  recovered: boolean
+}
+
+export type EmitFailureClassifiedFn = (event: ToolFailureClassifyEvent) => void
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -61,12 +77,29 @@ export function isToolFailureResult(value: unknown): value is ToolFailureResult 
   )
 }
 
-export function buildToolFailureResult(error: unknown, toolName: string, toolCallId: string): ToolFailureResult {
+function maybeEmitClassified(emitFn: EmitFailureClassifiedFn | undefined, result: ToolFailureResult): void {
+  if (emitFn === undefined) return
+  emitFn({
+    toolName: result.toolName,
+    toolCallId: result.toolCallId,
+    errorType: result.errorType,
+    errorCode: result.errorCode,
+    retryable: result.retryable,
+    recovered: result.recovered ?? false,
+  })
+}
+
+export function buildToolFailureResult(
+  ...args:
+    | [error: unknown, toolName: string, toolCallId: string]
+    | [error: unknown, toolName: string, toolCallId: string, emitFailureClassified: EmitFailureClassifiedFn]
+): ToolFailureResult {
+  const [error, toolName, toolCallId, emitFailureClassified] = args
   const errorMessage = getErrorMessage(error)
   const appError = extractAppError(error)
 
   if (appError !== null) {
-    return {
+    const result: ToolFailureResult = {
       success: false,
       error: errorMessage,
       toolName,
@@ -79,9 +112,11 @@ export function buildToolFailureResult(error: unknown, toolName: string, toolCal
       retryable: isRetryableAppError(appError),
       details: getAppErrorDetails(appError),
     }
+    maybeEmitClassified(emitFailureClassified, result)
+    return result
   }
 
-  return {
+  const result: ToolFailureResult = {
     success: false,
     error: errorMessage,
     toolName,
@@ -93,6 +128,8 @@ export function buildToolFailureResult(error: unknown, toolName: string, toolCal
     agentMessage: `The tool failed without a classified AppError. Raw error: ${errorMessage}. Inspect the debug trace or logs before retrying.`,
     retryable: false,
   }
+  maybeEmitClassified(emitFailureClassified, result)
+  return result
 }
 
 export function createInterruptedToolFailureResult(toolName: string, toolCallId: string): ToolFailureResult {

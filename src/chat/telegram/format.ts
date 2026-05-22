@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { markdownToFormattable } from '@gramio/format/markdown'
 import type { TelegramMessageEntity } from '@gramio/types'
 import type { MessageEntity } from '@grammyjs/types'
@@ -14,7 +19,7 @@ const createBaseEntity = (entity: TelegramMessageEntity): { offset: number; leng
 
 const isValidDateTimeFormat = (value: string): value is MessageEntity.DateTimeMessageEntity['date_time_format'] => {
   // Valid patterns: "r" or combinations of optional "w", "d"/"D", "t"/"T"
-  return /^[rwdDtT]*$/.test(value) && (value === 'r' || value.length <= 3)
+  return /^[rwdDtT]*$/u.test(value) && (value === 'r' || value.length <= 3)
 }
 
 const mapPreEntity = (entity: TelegramMessageEntity, base: { offset: number; length: number }): MessageEntity | null =>
@@ -164,7 +169,7 @@ const preprocessTables = (markdown: string): string =>
 const preprocessLists = (markdown: string): string =>
   // Add blank line before list items when preceded by non-list text
   // Matches: text followed by single newline followed by list marker (-, *, +, or number.)
-  markdown.replace(/([^\n])\n([-*+]|\d+\.)\s/g, '$1\n\n$2 ')
+  markdown.replace(/([^\n])\n([-*+]|\d+\.)\s/gu, '$1\n\n$2 ')
 
 /**
  * Converts LLM Markdown response to Telegram-compatible format with grammy MessageEntity types

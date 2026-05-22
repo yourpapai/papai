@@ -1,8 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { z } from 'zod'
 
-import { _userCaches, clearCachedTools } from '../../cache.js'
+import { userCachesForTesting, clearCachedTools } from '../../cache.js'
 import type { ReplyFn } from '../../chat/types.js'
-import { copyAdminLlmConfig, getConfig, isMissingLlmConfig, setConfig } from '../../config.js'
+import { getConfig, setConfig } from '../../config.js'
 import { logger } from '../../logger.js'
 import { getKaneoWorkspace, setKaneoWorkspace } from '../../users.js'
 
@@ -39,7 +44,7 @@ function isRegistrationDisabledErrorMessage(message: string): boolean {
 function clearProvisionedContextToolCaches(contextId: string): void {
   clearCachedTools(contextId)
   const groupScopedPrefix = `${contextId}:`
-  for (const cacheKey of _userCaches.keys()) {
+  for (const cacheKey of userCachesForTesting.keys()) {
     if (cacheKey.startsWith(groupScopedPrefix)) {
       clearCachedTools(cacheKey)
     }
@@ -219,12 +224,6 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
   }
 
   if (getKaneoWorkspace(contextId) !== null && getConfig(contextId, 'kaneo_apikey') !== null) {
-    if (process.env['DEMO_MODE'] === 'true') {
-      const adminUserId = process.env['ADMIN_USER_ID']
-      if (adminUserId !== undefined && adminUserId !== '' && isMissingLlmConfig(contextId)) {
-        copyAdminLlmConfig(contextId, adminUserId)
-      }
-    }
     return
   }
 
@@ -232,12 +231,6 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
   const outcome = await provisionAndConfigure(contextId, username)
 
   if (outcome.status === 'provisioned') {
-    if (process.env['DEMO_MODE'] === 'true') {
-      const adminUserId = process.env['ADMIN_USER_ID']
-      if (adminUserId !== undefined && adminUserId !== '' && isMissingLlmConfig(contextId)) {
-        copyAdminLlmConfig(contextId, adminUserId)
-      }
-    }
     await reply.text(
       `✅ Your Kaneo account has been created!\n🌐 ${outcome.kaneoUrl}\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n\nThe bot is already configured and ready to use.`,
     )

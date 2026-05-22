@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { WizardProcessResult } from './types.js'
+
+export function buildPendingWizardResponse(
+  _userId: string,
+  _storageContextId: string,
+  prompt: string,
+  stepIsSensitive: boolean,
+): WizardProcessResult {
+  return { handled: true, response: prompt, requiresInput: true, isSensitiveKey: stepIsSensitive }
+}

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import type { ReindexDeps } from '../../.pi/extensions/codeindex-reindex/index.js'
@@ -78,6 +83,51 @@ const fakeDeps = (
 })
 
 describe('registerCodeindexReindex', () => {
+  test('treats Windows absolute implementation paths as indexed files', async () => {
+    const { shouldReindexPath } = await loadCodeindexModule()
+
+    expect(shouldReindexPath('C:\\repo\\src\\bot.ts', 'C:\\repo')).toBe(true)
+  })
+
+  test('schedules a reindex after qualifying multiedit operations', async () => {
+    const { registerCodeindexReindex } = await loadCodeindexModule()
+    const fakeApi = createFakeApi()
+    const scheduledTasks: ScheduledTask[] = []
+    const spawnCalls: string[] = []
+
+    registerCodeindexReindex(fakeApi.api, fakeDeps(scheduledTasks, spawnCalls))
+
+    const ctx = createContext('session-multiedit')
+    const toolCallHandler = fakeApi.handlers['tool_call']!
+    const toolEndHandler = fakeApi.handlers['tool_execution_end']!
+
+    toolCallHandler(
+      {
+        toolCallId: 'call-multiedit',
+        toolName: 'multiedit',
+        input: {
+          path: 'src/bot.ts',
+          edits: [{ oldText: 'before', newText: 'after' }],
+        },
+      },
+      ctx,
+    )
+    toolEndHandler(
+      {
+        toolCallId: 'call-multiedit',
+        toolName: 'multiedit',
+        result: null,
+        isError: false,
+      },
+      ctx,
+    )
+
+    expect(scheduledTasks.map((task) => task.delayMs)).toEqual([600])
+
+    scheduledTasks[0]?.run()
+    expect(spawnCalls).toEqual(['/repo'])
+  })
+
   test('schedules a reindex after qualifying implementation edits', async () => {
     const { registerCodeindexReindex } = await loadCodeindexModule()
     const fakeApi = createFakeApi()

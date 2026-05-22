@@ -27,5 +27,5 @@
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true
   },
-  "exclude": [".pi", "docs/superpowers/extensions"]
+  "exclude": [".pi", "docs/superpowers/extensions", "public"]
 }

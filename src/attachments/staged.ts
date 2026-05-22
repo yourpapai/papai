@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { randomUUID } from 'node:crypto'
 
 import { and, eq, or, sql } from 'drizzle-orm'
@@ -120,7 +125,7 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
 
 export function searchStagedFiles(contextId: string, query: string, limit: number = 10): StagedFileRef[] {
   const db = getDrizzleDb()
-  const escaped = query.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&')
+  const escaped = query.replace(/\\/gu, '\\\\').replace(/[%_]/gu, '\\$&')
   const pattern = `%${escaped}%`
 
   return db

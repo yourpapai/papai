@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 08 — User-facing UX and reply formatting
 
 The prompt currently says: `"When referencing tasks or projects, format them as Markdown links: [Task title](url). Never output raw IDs. Keep replies short and friendly. Don't use tables."` That's 25 words for cross-platform reply formatting. This file expands it into concrete rules per platform, covers progress signals, empty/error states, transparency, and when to show the model's reasoning.

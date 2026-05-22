@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 // Length of fence markers for chunk budget calculations
 // FENCE_CLOSE_LEN represents the length of newline + three backticks
 const FENCE_CLOSE_LEN = 4
@@ -36,12 +41,12 @@ export function chunkForDiscord(input: string, maxLen: number): string[] {
       carriedLanguage = null
     }
 
-    const fenceMatch = chunk.match(/```(\w+)?/g)
+    const fenceMatch = chunk.match(/```(\w+)?/gu)
     const fenceCount = fenceMatch?.length ?? 0
     if (fenceCount % 2 === 1) {
       // Extract language tag from opening fence if present
       const lastFence = fenceMatch![fenceMatch!.length - 1]
-      const langMatch = lastFence!.match(/```(\w+)/)
+      const langMatch = lastFence!.match(/```(\w+)/u)
       carriedLanguage = langMatch?.[1] ?? null
       chunk = chunk + '\n```'
       carriedOpenFence = true

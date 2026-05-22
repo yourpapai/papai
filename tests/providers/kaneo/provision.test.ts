@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { _userCaches, getCachedTools, setCachedTools } from '../../../src/cache.js'
+import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
 import { isKaneoSessionCookie } from '../../../src/providers/kaneo/client.js'
 import {
   maybeProvisionKaneo,
@@ -235,8 +240,8 @@ describe('provisionKaneoUser - unique email generation', () => {
     expect(capturedEmails[1]).toContain('999')
 
     // Both should end with @pap.ai
-    expect(capturedEmails[0]).toMatch(/999-[a-z0-9]{8}@pap\.ai$/i)
-    expect(capturedEmails[1]).toMatch(/999-[a-z0-9]{8}@pap\.ai$/i)
+    expect(capturedEmails[0]).toMatch(/999-[a-z0-9]{8}@pap\.ai$/iu)
+    expect(capturedEmails[1]).toMatch(/999-[a-z0-9]{8}@pap\.ai$/iu)
 
     // Should have captured two different slugs
     expect(capturedSlugs).toHaveLength(2)
@@ -254,7 +259,7 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     await provisionKaneoUser('https://kaneo.test', 'https://kaneo.test', '123', 'alice')
 
-    expect(capturedEmail).toMatch(/alice-[a-z0-9]{8}@pap\.ai$/i)
+    expect(capturedEmail).toMatch(/alice-[a-z0-9]{8}@pap\.ai$/iu)
   })
 
   test('successful provisioning returns workspace and credentials', async () => {
@@ -264,7 +269,7 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     expect(result.workspaceId).toBe('ws-abc')
     expect(result.kaneoKey).toBe('test-api-key')
-    expect(result.email).toMatch(/999-[a-z0-9]{8}@pap\.ai$/i)
+    expect(result.email).toMatch(/999-[a-z0-9]{8}@pap\.ai$/iu)
   })
 
   test('preserves __Secure session cookie fallback from Set-Cookie for downstream use', async () => {
@@ -388,7 +393,7 @@ describe('maybeProvisionKaneo', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    _userCaches.clear()
+    userCachesForTesting.clear()
     textCalls = []
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
   })

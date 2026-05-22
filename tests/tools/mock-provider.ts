@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { mock } from 'bun:test'
 
 import type { ListTasksParams, TaskCapability, TaskProvider, ToolDueDateInput } from '../../src/providers/types.js'
@@ -70,7 +75,7 @@ const normalizeYouTrackMockDueDateInput = (dueDate: ToolDueDateInput | undefined
 
 const formatYouTrackMockDueDateOutput = (dueDate: string | null | undefined): string | null | undefined => {
   if (dueDate === undefined || dueDate === null) return dueDate
-  return /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : dueDate
+  return /^\d{4}-\d{2}-\d{2}$/u.test(dueDate) ? dueDate : dueDate
 }
 
 const normalizeYouTrackMockListTaskParams = (params: Readonly<ListTasksParams>): ListTasksParams => ({
@@ -78,13 +83,13 @@ const normalizeYouTrackMockListTaskParams = (params: Readonly<ListTasksParams>):
   dueAfter:
     params.dueAfter === undefined
       ? undefined
-      : /^\d{4}-\d{2}-\d{2}$/.test(params.dueAfter)
+      : /^\d{4}-\d{2}-\d{2}$/u.test(params.dueAfter)
         ? params.dueAfter
         : params.dueAfter.slice(0, 10),
   dueBefore:
     params.dueBefore === undefined
       ? undefined
-      : /^\d{4}-\d{2}-\d{2}$/.test(params.dueBefore)
+      : /^\d{4}-\d{2}-\d{2}$/u.test(params.dueBefore)
         ? params.dueBefore
         : params.dueBefore.slice(0, 10),
 })
@@ -134,6 +139,7 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
       Promise.resolve({ id: reactionId, taskId, commentId }),
     ),
     listLabels: mock(() => Promise.resolve([])),
+    listTaskLabels: mock(() => Promise.resolve([])),
     createLabel: mock(() => Promise.resolve({ id: 'label-1', name: 'test' })),
     updateLabel: mock(() => Promise.resolve({ id: 'label-1', name: 'test' })),
     removeLabel: mock(() => Promise.resolve({ id: 'label-1' })),

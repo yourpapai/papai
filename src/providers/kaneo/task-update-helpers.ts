@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from '../../logger.js'
 import { type KaneoConfig, kaneoFetch } from './client.js'
 import { TaskSchema, type CreateTaskResponse } from './schemas/create-task.js'
@@ -11,6 +16,7 @@ type TaskUpdateParams = {
   status?: string
   priority?: string
   dueDate?: string
+  startDate?: string
   projectId?: string
   userId?: string
 }
@@ -23,6 +29,7 @@ type FullUpdateBody = {
   projectId: string
   position: number
   dueDate?: string
+  startDate?: string
   userId?: string
 }
 
@@ -58,6 +65,11 @@ function buildFullTaskUpdateBody(existing: CreateTaskResponse, patch: TaskUpdate
   const dueDate = patch.dueDate ?? existingDueDate
   if (dueDate !== undefined) {
     body.dueDate = dueDate
+  }
+
+  const startDate = patch.startDate ?? existing.startDate ?? undefined
+  if (startDate !== undefined) {
+    body.startDate = startDate
   }
 
   const userId = patch.userId ?? existing.userId ?? undefined

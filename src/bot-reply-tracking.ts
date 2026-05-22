@@ -1,5 +1,10 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ButtonReplyOptions, ChatFile, EmbedOptions, ReplyFn, ReplyOptions } from './chat/types.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 
 export type TrackedReply = { reply: ReplyFn; didReply: () => boolean }
 
@@ -102,8 +107,9 @@ export function trackReplyUsage(reply: ReplyFn, supportsFiles: boolean): Tracked
   }
 }
 
-function emitReplyCompleted(userId: string, contextId: string, start: number): void {
-  emit('message:replied', { userId, contextId, duration: Date.now() - start })
+function emitReplyCompleted(userId: string, contextId: string, start: number, turnId?: string): void {
+  emitUser('reply:sent', userId, { contextId, duration: Date.now() - start }, turnId)
+  emitUser('message:replied', userId, { contextId, duration: Date.now() - start }, turnId)
 }
 
 export function emitReplyCompletedIfNeeded(
@@ -111,6 +117,7 @@ export function emitReplyCompletedIfNeeded(
   userId: string,
   contextId: string,
   start: number,
+  turnId?: string,
 ): void {
-  if (tracked.didReply()) emitReplyCompleted(userId, contextId, start)
+  if (tracked.didReply()) emitReplyCompleted(userId, contextId, start, turnId)
 }

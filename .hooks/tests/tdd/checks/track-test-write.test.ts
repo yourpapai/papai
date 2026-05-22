@@ -357,7 +357,7 @@ describe('trackTestWrite', () => {
         }))
 
         const trackTestWrite = await importTrackTestWrite()
-        const sessionId = `pattern-${description.replace(/[^a-z0-9]/g, '-')}`
+        const sessionId = `pattern-${description.replace(/[^a-z0-9]/gu, '-')}`
 
         const result = trackTestWrite({
           tool_input: { file_path: pattern },

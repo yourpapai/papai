@@ -1,12 +1,17 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   buildBlobKey,
-  _createInMemoryBlobStore,
+  createInMemoryBlobStoreForTesting,
   getBlobStore,
   isS3Configured,
-  _resetBlobStore,
-  _setBlobStore,
+  resetBlobStoreForTesting,
+  setBlobStoreForTesting,
 } from '../../src/attachments/blob-store.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
@@ -16,7 +21,7 @@ describe('blob-store DI', () => {
   })
 
   afterEach(() => {
-    _resetBlobStore()
+    resetBlobStoreForTesting()
     delete process.env['S3_PREFIX']
     delete process.env['S3_BUCKET']
     delete process.env['S3_ACCESS_KEY_ID']
@@ -24,8 +29,8 @@ describe('blob-store DI', () => {
   })
 
   test('round-trips bytes through the in-memory store and supports delete', async () => {
-    const store = _createInMemoryBlobStore()
-    _setBlobStore(store)
+    const store = createInMemoryBlobStoreForTesting()
+    setBlobStoreForTesting(store)
 
     await getBlobStore().put('ctx/key-1', Buffer.from('hello'), 'text/plain')
     expect((await getBlobStore().get('ctx/key-1')).toString('utf8')).toBe('hello')
@@ -35,8 +40,8 @@ describe('blob-store DI', () => {
   })
 
   test('deleteMany removes a batch of keys at once', async () => {
-    const store = _createInMemoryBlobStore()
-    _setBlobStore(store)
+    const store = createInMemoryBlobStoreForTesting()
+    setBlobStoreForTesting(store)
 
     await store.put('a', Buffer.from('1'))
     await store.put('b', Buffer.from('2'))

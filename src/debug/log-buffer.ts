@@ -1,9 +1,15 @@
-import { emit } from './event-bus.js'
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { emitGlobal } from './event-bus.js'
 
 export type LogEntry = {
   level: number
   time: string
   scope?: string
+  turnId?: string
   msg: string
   [key: string]: unknown
 }
@@ -11,6 +17,7 @@ export type LogEntry = {
 type SearchParams = {
   level?: number
   scope?: string
+  turnId?: string
   q?: string
   limit?: number
 }
@@ -50,7 +57,7 @@ export class LogRingBuffer {
       this.buffer[this.head] = entry
       this.head = (this.head + 1) % this.capacity
     }
-    emit('log:entry', entry as Record<string, unknown>)
+    emitGlobal('log:entry', entry as Record<string, unknown>)
   }
 
   entries(): LogEntry[] {
@@ -65,6 +72,9 @@ export class LogRingBuffer {
     }
     if (params.scope !== undefined) {
       results = results.filter((e) => e.scope === params.scope)
+    }
+    if (params.turnId !== undefined) {
+      results = results.filter((e) => e.turnId === params.turnId)
     }
     if (params.q !== undefined) {
       const lower = params.q.toLowerCase()

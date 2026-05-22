@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { Database } from 'bun:sqlite'
 
 import { logger } from '../logger.js'
@@ -39,7 +44,12 @@ import { migration030AttachmentWorkspace } from './migrations/030_attachment_wor
 import { migration031StagedFiles } from './migrations/031_staged_files.js'
 import { migration032StagedAttachmentId } from './migrations/032_staged_attachment_id.js'
 import { migration033StagedFilesUniquePlatformContext } from './migrations/033_staged_files_unique_platform_context.js'
-import { migration034Plugins } from './migrations/034_plugins.js'
+import { migration034SystemConfig } from './migrations/034_system_config.js'
+import { migration035LlmUsageEvents } from './migrations/035_llm_usage_events.js'
+import { migration036DropUserLlmConfig } from './migrations/036_drop_user_llm_config.js'
+import { migration037ToolCallEvents } from './migrations/037_tool_call_events.js'
+import { migration038LlmUsageEventsOutbox } from './migrations/038_llm_usage_events_outbox.js'
+import { migration039Plugins } from './migrations/039_plugins.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -108,7 +118,12 @@ export const MIGRATIONS: readonly Migration[] = [
   migration031StagedFiles,
   migration032StagedAttachmentId,
   migration033StagedFilesUniquePlatformContext,
-  migration034Plugins,
+  migration034SystemConfig,
+  migration035LlmUsageEvents,
+  migration036DropUserLlmConfig,
+  migration037ToolCallEvents,
+  migration038LlmUsageEventsOutbox,
+  migration039Plugins,
 ]
 
 export const initDb = (): void => {

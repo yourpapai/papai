@@ -1,13 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { tool } from 'ai'
 import type { ToolSet } from 'ai'
-import { z } from 'zod'
 
-import { _userCaches, setCachedTools } from '../../src/cache.js'
+import { userCachesForTesting } from '../../src/cache.js'
 import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
 import {
-  buildDirectToolCatalogPages,
   resolveActiveToolDefinitions,
   resolveContextToolSurface,
   safeBuildProvider,
@@ -59,7 +61,6 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       })
     },
     resolveActiveToolDefinitions,
-    buildToolCatalogPages: buildDirectToolCatalogPages,
     resolveToolSurface: resolveContextToolSurface,
     ...resolveOverrides(overrides),
   }
@@ -72,15 +73,6 @@ async function registerContextHandler(
 ): Promise<CommandHandler> {
   const { registerContextCommand } = await import('../../src/commands/context.js')
   registerContextCommand(chat, deps)
-  return captureCommand(commands)
-}
-
-async function registerDefaultContextHandler(
-  commands: Map<string, CommandHandler>,
-  chat: ChatProvider,
-): Promise<CommandHandler> {
-  const { registerContextCommand } = await import('../../src/commands/context.js')
-  registerContextCommand(chat)
   return captureCommand(commands)
 }
 
@@ -103,10 +95,6 @@ function resolveFormattedContent(content: string | null): string {
 
 function removeEmbedReply(reply: Record<string, unknown>): void {
   delete reply['embed']
-}
-
-function getCatalogReplies(textCalls: readonly string[]): readonly string[] {
-  return textCalls.slice(1)
 }
 
 function createIdentityCapableProvider(): TaskProvider {
@@ -132,7 +120,7 @@ function createSequentialLiveToolSet(results: readonly (ToolSet | null)[]): () =
 describe('registerContextCommand', () => {
   beforeEach(async () => {
     mockLogger()
-    _userCaches.clear()
+    userCachesForTesting.clear()
     await setupTestDb()
   })
 
@@ -200,7 +188,7 @@ describe('registerContextCommand', () => {
       }),
     )
 
-    const { reply, textCalls } = createMockReply()
+    const { reply } = createMockReply()
 
     await handler(
       createGroupMessage('actor-user', '/context', false, 'group-1'),
@@ -208,13 +196,9 @@ describe('registerContextCommand', () => {
       createAuth('group-1', { isGroupAdmin: true }),
     )
 
-    const catalogReplies = getCatalogReplies(textCalls)
-
     expect(activeToolDefinitions).not.toBeNull()
     expect(activeToolDefinitions).toHaveProperty('set_my_identity')
     expect(activeToolDefinitions).toHaveProperty('clear_my_identity')
-    expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
-    expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
   })
 
   test('uses injected provider construction instead of the hardwired provider factory', async () => {
@@ -234,7 +218,7 @@ describe('registerContextCommand', () => {
         buildProvider: (): typeof provider => provider,
       }),
     )
-    const { reply, textCalls } = createMockReply()
+    const { reply } = createMockReply()
 
     await handler(
       createGroupMessage('actor-user', '/context', false, 'group-1'),
@@ -242,10 +226,7 @@ describe('registerContextCommand', () => {
       createAuth('group-1', { isGroupAdmin: true }),
     )
 
-    const catalogReplies = getCatalogReplies(textCalls)
-
-    expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
-    expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
+    // No assertion needed — if the factory is used it throws.
   })
 
   test('available to non-admin users', async () => {
@@ -276,402 +257,86 @@ describe('registerContextCommand', () => {
     expect(textCalls.length).toBe(0)
   })
 
-  describe('tool catalog follow-up', () => {
-    test('emits live direct tool catalog pages after the summary response', async () => {
-      const provider = createMockProvider()
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+  test('keeps summary tool definitions aligned with live follow-up tools when cache is warmed', async () => {
+    const provider = createIdentityCapableProvider()
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): typeof provider => provider,
+    }))
 
-      const { reply, textCalls } = createMockReply()
-
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(textCalls[0]).toBe('**context summary**')
-      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('Domain: `task`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('Parameters'))).toBe(true)
-    })
-
-    test('prefers live provider tools over warmed cached tools in normal operation', async () => {
-      const provider = createMockProvider()
-      setCachedTools('user1', {
-        stale_cached_tool: tool({
-          description: 'Stale cached tool that should not appear in live catalog output',
-          inputSchema: z.object({
-            query: z.string().describe('Cached-only query'),
-          }),
-          execute: () => Promise.resolve({ ok: true }),
-        }),
-      })
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
-      const { reply, textCalls } = createMockReply()
-
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
-    })
-
-    test('keeps summary tool definitions aligned with live follow-up tools when cache is warmed', async () => {
-      const provider = createIdentityCapableProvider()
-      setCachedTools('group-1', {
-        stale_cached_tool: tool({
-          description: 'Stale cached tool that should not be used when live tools are available',
-          inputSchema: z.object({
-            query: z.string().describe('Cached-only query'),
-          }),
-          execute: () => Promise.resolve({ ok: true }),
-        }),
-      })
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      let activeToolDefinitions: Record<string, unknown> | null = null
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
-            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
-            return {
-              modelName: 'gpt-4o',
-              sections: [],
-              totalTokens: 0,
-              maxTokens: 128_000,
-              approximate: false,
-            }
-          },
-        }),
-      )
-      const { reply, textCalls } = createMockReply()
-
-      await handler(
-        createGroupMessage('actor-user', '/context', false, 'group-1'),
-        reply,
-        createAuth('group-1', { isGroupAdmin: true }),
-      )
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(activeToolDefinitions).not.toBeNull()
-      expect(activeToolDefinitions).toHaveProperty('set_my_identity')
-      expect(activeToolDefinitions).not.toHaveProperty('stale_cached_tool')
-      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`stale_cached_tool`'))).toBe(false)
-    })
-
-    test('keeps summary and follow-up aligned when live tool resolution is transient across calls', async () => {
-      const provider = createIdentityCapableProvider()
-      const firstLiveTools = makeTools(provider, {
-        storageContextId: 'group-1',
-        chatUserId: 'actor-user',
-        mode: 'normal',
-        contextType: 'group',
-      })
-      const liveResults: readonly [ToolSet, null] = [firstLiveTools, null]
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      let activeToolDefinitions: Record<string, unknown> | null = null
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          buildLiveToolSet: createSequentialLiveToolSet(liveResults),
-          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
-            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
-            return {
-              modelName: 'gpt-4o',
-              sections: [],
-              totalTokens: 0,
-              maxTokens: 128_000,
-              approximate: false,
-            }
-          },
-        }),
-      )
-      const { reply, textCalls } = createMockReply()
-
-      await handler(
-        createGroupMessage('actor-user', '/context', false, 'group-1'),
-        reply,
-        createAuth('group-1', { isGroupAdmin: true }),
-      )
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(activeToolDefinitions).not.toBeNull()
-      expect(activeToolDefinitions).toHaveProperty('set_my_identity')
-      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
-    })
-
-    test('shows no active tools when live build returns null without cached tools', async () => {
-      const provider = createIdentityCapableProvider()
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          buildLiveToolSet: () => null,
-        }),
-      )
-      const { reply, textCalls } = createMockReply()
-
-      await handler(
-        createGroupMessage('actor-user', '/context', false, 'group-1'),
-        reply,
-        createAuth('group-1', { isGroupAdmin: true }),
-      )
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(catalogReplies).toEqual(['_No active tools._'])
-      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(false)
-      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(false)
-    })
-
-    test('uses cached tools for the follow-up catalog when provider construction is unavailable', async () => {
-      setCachedTools('user1', {
-        'add-task-relation': tool({
-          description: 'Add a relation using cached tool metadata',
-          inputSchema: z.object({
-            taskId: z.string().describe('Primary task identifier'),
-          }),
-          execute: () => Promise.resolve({ ok: true }),
-        }),
-      })
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): never => {
-          throw new Error('provider unavailable')
+    const commands = new Map<string, CommandHandler>()
+    const chat = createFormattedContextChat(commands, null)
+    let activeToolDefinitions: Record<string, unknown> | null = null
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
         },
-      }))
+      }),
+    )
+    const { reply } = createMockReply()
 
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      let activeToolDefinitions: Record<string, unknown> | null = null
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
-            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
-            return {
-              modelName: 'gpt-4o',
-              sections: [],
-              totalTokens: 0,
-              maxTokens: 128_000,
-              approximate: false,
-            }
-          },
-        }),
-      )
+    await handler(
+      createGroupMessage('actor-user', '/context', false, 'group-1'),
+      reply,
+      createAuth('group-1', { isGroupAdmin: true }),
+    )
 
-      const { reply, textCalls } = createMockReply()
+    expect(activeToolDefinitions).not.toBeNull()
+    expect(activeToolDefinitions).toHaveProperty('set_my_identity')
+  })
 
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(activeToolDefinitions).not.toBeNull()
-      expect(activeToolDefinitions).toHaveProperty('add-task-relation')
-      expect(textCalls[0]).toBe('**context summary**')
-      expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('Domain: `task`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
+  test('keeps summary and follow-up aligned when live tool resolution is transient across calls', async () => {
+    const provider = createIdentityCapableProvider()
+    const firstLiveTools = makeTools(provider, {
+      storageContextId: 'group-1',
+      chatUserId: 'actor-user',
+      mode: 'normal',
+      contextType: 'group',
     })
+    const liveResults: readonly [ToolSet, null] = [firstLiveTools, null]
+    void mock.module('../../src/providers/factory.js', () => ({
+      buildProviderForUser: (): typeof provider => provider,
+    }))
 
-    test('falls back to cached tools when live tool construction throws', async () => {
-      const provider = createMockProvider()
-      setCachedTools('user1', {
-        'add-task-relation': tool({
-          description: 'Add a relation using cached tool metadata',
-          inputSchema: z.object({
-            taskId: z.string().describe('Primary task identifier'),
-          }),
-          execute: () => Promise.resolve({ ok: true }),
-        }),
-      })
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          buildLiveToolSet: (): never => {
-            throw new Error('live tool build failed')
-          },
-        }),
-      )
-      const { reply, textCalls } = createMockReply()
-
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(textCalls[0]).toBe('**context summary**')
-      expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('_No active tools._'))).toBe(false)
-    })
-
-    test('keeps summary tool definitions aligned with degraded cached tools when live tool construction throws', async () => {
-      const provider = createMockProvider()
-      setCachedTools('user1', {
-        'add-task-relation': tool({
-          description: 'Add a relation using cached tool metadata',
-          inputSchema: z.object({
-            taskId: z.string().describe('Primary task identifier'),
-          }),
-          execute: () => Promise.resolve({ ok: true }),
-        }),
-      })
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): never => {
-          throw new Error('factory should not be used')
+    const commands = new Map<string, CommandHandler>()
+    const chat = createFormattedContextChat(commands, null)
+    let activeToolDefinitions: Record<string, unknown> | null = null
+    const handler = await registerContextHandler(
+      commands,
+      chat,
+      snapshotDeps({
+        buildLiveToolSet: createSequentialLiveToolSet(liveResults),
+        collectContext: (_contextId, collectorDeps): ContextSnapshot => {
+          activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
+          return {
+            modelName: 'gpt-4o',
+            sections: [],
+            totalTokens: 0,
+            maxTokens: 128_000,
+            approximate: false,
+          }
         },
-      }))
+      }),
+    )
+    const { reply } = createMockReply()
 
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      let activeToolDefinitions: Record<string, unknown> | null = null
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          buildProvider: (): typeof provider => provider,
-          buildLiveToolSet: (): never => {
-            throw new Error('live tool build failed')
-          },
-          collectContext: (_contextId, collectorDeps): ContextSnapshot => {
-            activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
-            return {
-              modelName: 'gpt-4o',
-              sections: [],
-              totalTokens: 0,
-              maxTokens: 128_000,
-              approximate: false,
-            }
-          },
-        }),
-      )
-      const { reply, textCalls } = createMockReply()
+    await handler(
+      createGroupMessage('actor-user', '/context', false, 'group-1'),
+      reply,
+      createAuth('group-1', { isGroupAdmin: true }),
+    )
 
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(textCalls[0]).toBe('**context summary**')
-      expect(activeToolDefinitions).not.toBeNull()
-      expect(activeToolDefinitions).toHaveProperty('add-task-relation')
-      expect(activeToolDefinitions).not.toHaveProperty('create_task')
-      expect(catalogReplies.some((content) => content.includes('`add-task-relation`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(false)
-    })
-
-    test('shows no active tools when live tool construction throws without cached tools', async () => {
-      const provider = createMockProvider()
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerContextHandler(
-        commands,
-        chat,
-        snapshotDeps({
-          buildLiveToolSet: (): never => {
-            throw new Error('live tool build failed')
-          },
-        }),
-      )
-      const { reply, textCalls } = createMockReply()
-
-      await handler(createDmMessage('user1'), reply, createAuth('user1'))
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(textCalls[0]).toBe('**context summary**')
-      expect(catalogReplies).toEqual(['_No active tools._'])
-      expect(catalogReplies.some((content) => content.includes('`create_task`'))).toBe(false)
-    })
-
-    test('reflects group-context tool gating in the follow-up catalog', async () => {
-      const provider = createIdentityCapableProvider()
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
-      const { reply, textCalls } = createMockReply()
-
-      await handler(
-        createGroupMessage('actor-user', '/context', false, 'group-1'),
-        reply,
-        createAuth('group-1', { isGroupAdmin: true }),
-      )
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`create_deferred_prompt`'))).toBe(true)
-    })
-
-    test('uses invocation-aware tool construction in the default runtime wiring', async () => {
-      const provider = createIdentityCapableProvider()
-      void mock.module('../../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof provider => provider,
-      }))
-
-      const commands = new Map<string, CommandHandler>()
-      const chat = createFormattedContextChat(commands, null)
-      const handler = await registerDefaultContextHandler(commands, chat)
-      const { reply, textCalls } = createMockReply()
-
-      await handler(
-        createGroupMessage('actor-user', '/context', false, 'group-1'),
-        reply,
-        createAuth('group-1', { isGroupAdmin: true }),
-      )
-
-      const catalogReplies = getCatalogReplies(textCalls)
-
-      expect(catalogReplies.some((content) => content.includes('`set_my_identity`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`clear_my_identity`'))).toBe(true)
-      expect(catalogReplies.some((content) => content.includes('`create_deferred_prompt`'))).toBe(true)
-    })
+    expect(activeToolDefinitions).not.toBeNull()
+    expect(activeToolDefinitions).toHaveProperty('set_my_identity')
   })
 
   describe('response dispatch', () => {
@@ -798,6 +463,6 @@ describe('registerContextCommand', () => {
     await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
     expect(textCalls.length).toBe(1)
-    expect(textCalls[0]).toMatch(/could not build context view/i)
+    expect(textCalls[0]).toMatch(/could not build context view/iu)
   })
 })

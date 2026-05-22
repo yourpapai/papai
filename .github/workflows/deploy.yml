@@ -72,6 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
     needs: build-and-push
     environment: production
     steps:
@@ -97,6 +98,15 @@ jobs:
           LOG_LEVEL: ${{ vars.LOG_LEVEL || 'info' }}
           DEMO_MODE: ${{ vars.DEMO_MODE || 'false' }}
           CADDY_ADDITIONAL_CONFIG: ${{ vars.CADDY_ADDITIONAL_CONFIG }}
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          MAIN_MODEL: ${{ vars.MAIN_MODEL }}
+          SMALL_MODEL: ${{ vars.SMALL_MODEL }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
@@ -129,6 +139,15 @@ jobs:
             [ -n "${DEBUG_TOKEN}" ] && printf 'DEBUG_TOKEN=%s\n' "${DEBUG_TOKEN}"
             printf 'LOG_LEVEL=%s\n' "${LOG_LEVEL}"
             [ "${DEMO_MODE}" = "true" ] && printf 'DEMO_MODE=true\n'
+            [ -n "${S3_BUCKET}" ] && printf 'S3_BUCKET=%s\n' "${S3_BUCKET}"
+            [ -n "${S3_ENDPOINT}" ] && printf 'S3_ENDPOINT=%s\n' "${S3_ENDPOINT}"
+            [ -n "${S3_ACCESS_KEY_ID}" ] && printf 'S3_ACCESS_KEY_ID=%s\n' "${S3_ACCESS_KEY_ID}"
+            [ -n "${S3_SECRET_ACCESS_KEY}" ] && printf 'S3_SECRET_ACCESS_KEY=%s\n' "${S3_SECRET_ACCESS_KEY}"
+            [ -n "${LLM_API_KEY}" ] && printf 'LLM_API_KEY=%s\n' "${LLM_API_KEY}"
+            [ -n "${LLM_BASE_URL}" ] && printf 'LLM_BASE_URL=%s\n' "${LLM_BASE_URL}"
+            [ -n "${MAIN_MODEL}" ] && printf 'MAIN_MODEL=%s\n' "${MAIN_MODEL}"
+            [ -n "${SMALL_MODEL}" ] && printf 'SMALL_MODEL=%s\n' "${SMALL_MODEL}"
+            [ -n "${EMBEDDING_MODEL}" ] && printf 'EMBEDDING_MODEL=%s\n' "${EMBEDDING_MODEL}"
           } > .env
           chmod 600 .env
 
@@ -164,18 +183,18 @@ jobs:
           docker image prune -f
           echo "Waiting for services to become healthy..."
           for i in \$(seq 1 18); do
-            status=\$(docker inspect \$(docker compose ps -q kaneo-api 2>/dev/null) --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)
+            status=\$(docker inspect \$(docker compose ps -q kaneo 2>/dev/null) --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)
             if [ "\$status" = "healthy" ]; then
-              echo "kaneo-api is healthy"
+              echo "kaneo is healthy"
               break
             fi
             if [ "\$i" -eq 18 ]; then
               echo "Health check timed out after 3 minutes" >&2
               docker compose ps >&2
-              docker compose logs --tail=50 kaneo-api >&2
+              docker compose logs --tail=50 kaneo >&2
               exit 1
             fi
-            echo "  kaneo-api status: \$status (\$i/18, waiting 10s...)"
+            echo "  kaneo status: \$status (\$i/18, waiting 10s...)"
             sleep 10
           done
           docker compose ps papai | grep -qiE "running|up" || {

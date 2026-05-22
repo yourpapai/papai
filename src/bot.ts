@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
@@ -18,7 +23,7 @@ import {
   registerStartCommand,
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
-import { emit } from './debug/event-bus.js'
+import { emitUser } from './debug/event-bus.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -29,11 +34,14 @@ import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
 
 type ProcessMessageFn = typeof defaultProcessMessage
+type EnqueueMessageFn = typeof enqueueMessage
+const initializedChats = new WeakSet<ChatProvider>()
 export interface BotDeps {
   processMessage: ProcessMessageFn
   stagedDownloadFn?: StagedFileDownloadFn
+  enqueueMessage?: EnqueueMessageFn
 }
-const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage }
+const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
 const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
   log.debug({ userId }, 'Checking authorization')
@@ -43,16 +51,16 @@ const checkAuthorization = (userId: string, username: string | null | undefined)
   return false
 }
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
-function getUnauthorizedReplyText(auth: AuthorizationResult): string | null {
+function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
   if (auth.reason === 'group_not_allowed')
-    return 'This group is not authorized to use this bot. Ask the bot admin to run `/group add <group-id>` in a DM with the bot.'
+    return `This group is not authorized to use this bot. Ask the bot admin to run \`/group add ${groupId}\` in a DM with the bot.`
   if (auth.reason === 'group_member_not_allowed')
     return "You're not authorized to use this bot in this group. Ask a group admin to add you with `/group adduser <user-id|@username>`"
   if (auth.reason === 'dm_not_allowed') return 'You are not authorized to use this bot.'
   return null
 }
-async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult): Promise<void> {
-  const message = getUnauthorizedReplyText(auth)
+async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult, groupId: string): Promise<void> {
+  const message = getUnauthorizedReplyText(auth, groupId)
   if (message !== null) await reply.text(message)
 }
 function shouldDeferUnauthorizedDmCommand(commandName: string, msg: IncomingMessage): boolean {
@@ -82,7 +90,7 @@ function createObservedCommandHandler(
     const auth = resolveMessageAuth(msg)
     if (!auth.allowed) {
       if (shouldDeferUnauthorizedDmCommand(commandName, msg)) await handler(msg, tracked.reply, auth)
-      else await replyToUnauthorized(tracked.reply, auth)
+      else await replyToUnauthorized(tracked.reply, auth, msg.contextId)
       emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
       return
     }
@@ -148,6 +156,7 @@ async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps:
       coalescedItem.configContextId,
       { ...defaultDeps, stagedDownloadFn: deps.stagedDownloadFn },
       coalescedItem.newAttachmentIds,
+      coalescedItem.turnId,
     )
   } finally {
     emitReplyCompletedIfNeeded(tracked, coalescedItem.userId, coalescedItem.storageContextId, start)
@@ -166,12 +175,13 @@ async function handleMessage(
   deps: BotDeps,
 ): Promise<void> {
   if (!auth.allowed) {
-    if (msg.isMentioned) await replyToUnauthorized(reply, auth)
+    if (msg.isMentioned) await replyToUnauthorized(reply, auth, msg.contextId)
     return
   }
   if (shouldIgnoreGroupMessage(msg)) return
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  enqueueMessage(
+  const queueMessage = deps.enqueueMessage ?? enqueueMessage
+  queueMessage(
     {
       text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
       userId: msg.user.id,
@@ -216,8 +226,7 @@ async function onIncomingMessage(
 ): Promise<void> {
   const start = Date.now()
   const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
-  emit('message:received', {
-    userId: msg.user.id,
+  emitUser('message:received', msg.user.id, {
     contextId: msg.contextId,
     contextType: msg.contextType,
     threadId: msg.threadId,
@@ -225,8 +234,7 @@ async function onIncomingMessage(
     isCommand: msg.text.startsWith('/'),
   })
   const auth = resolveMessageAuth(msg)
-  emit('auth:check', {
-    userId: msg.user.id,
+  emitUser('auth:check', msg.user.id, {
     allowed: auth.allowed,
     isBotAdmin: auth.isBotAdmin,
     isGroupAdmin: auth.isGroupAdmin,
@@ -254,7 +262,7 @@ async function routeIncomingInteraction(interaction: IncomingInteraction, reply:
       interaction.user.isAdmin,
     )
     if (!auth.allowed) {
-      await replyToUnauthorized(reply, auth)
+      await replyToUnauthorized(reply, auth, interaction.contextId)
       return
     }
     await routeInteraction(interaction, reply, auth)
@@ -274,8 +282,10 @@ export function setupBot(chat: ChatProvider, adminUserId: string): void
 export function setupBot(chat: ChatProvider, adminUserId: string, depsInput: BotDeps): void
 export function setupBot(chat: ChatProvider, adminUserId: string, ...rest: [] | [BotDeps]): void {
   const deps = rest.length === 0 ? defaultBotDeps : rest[0]
+  if (initializedChats.has(chat)) return
   registerCommands(chat, adminUserId)
   chat.onMessage((msg, reply): Promise<void> => onIncomingMessage(chat, msg, reply, deps))
   if (chat.onInteraction !== undefined)
     chat.onInteraction((interaction, reply): Promise<void> => routeIncomingInteraction(interaction, reply))
+  initializedChats.add(chat)
 }

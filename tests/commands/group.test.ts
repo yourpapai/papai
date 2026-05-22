@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
@@ -114,7 +119,7 @@ describe('group commands', () => {
         const clean = username.startsWith('@') ? username.slice(1) : username
         if (clean === 'user1') return Promise.resolve('user1_id')
         if (clean === 'user2') return Promise.resolve('user2_id')
-        if (/^\d+$/.test(clean)) return Promise.resolve(clean)
+        if (/^\d+$/u.test(clean)) return Promise.resolve(clean)
         return Promise.resolve(null)
       },
     })

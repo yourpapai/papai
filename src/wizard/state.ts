@@ -1,9 +1,14 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Wizard state management
  * In-memory store for active wizard sessions
  */
 
-import { emit } from '../debug/event-bus.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { WizardSession, WizardData } from './types.js'
 
@@ -63,7 +68,7 @@ export const createWizardSession = (params: CreateWizardSessionParams): WizardSe
   }
 
   activeSessions.set(key, session)
-  emit('wizard:created', { userId, storageContextId, totalSteps, taskProvider })
+  emitUser('wizard:created', userId, { storageContextId, totalSteps, taskProvider })
 
   log.info(
     { userId, storageContextId, totalSteps, taskProvider, hasInitialData: initialData !== undefined },
@@ -125,7 +130,7 @@ export const updateWizardSession = (userId: string, storageContextId: string, up
     session.skippedSteps = [...session.skippedSteps, ...skippedSteps]
   }
 
-  emit('wizard:updated', { userId, storageContextId, currentStep: session.currentStep })
+  emitUser('wizard:updated', userId, { storageContextId, currentStep: session.currentStep })
 
   log.info(
     { userId, storageContextId, currentStep, hasData: data !== undefined, hasSkipped: skippedSteps !== undefined },
@@ -148,7 +153,7 @@ export const resetWizardSession = (userId: string, storageContextId: string): bo
 
   session.currentStep = 0
   session.skippedSteps = []
-  emit('wizard:updated', { userId, storageContextId, currentStep: 0 })
+  emitUser('wizard:updated', userId, { storageContextId, currentStep: 0 })
   log.info(
     { userId, storageContextId, preservedKeys: Object.keys(session.data).length },
     'Wizard session reset to step 0',
@@ -167,7 +172,7 @@ export const deleteWizardSession = (userId: string, storageContextId: string): b
 
   if (existed) {
     activeSessions.delete(key)
-    emit('wizard:deleted', { userId, storageContextId })
+    emitUser('wizard:deleted', userId, { storageContextId })
     log.info({ userId, storageContextId }, 'Wizard session deleted')
   } else {
     log.warn({ userId, storageContextId }, 'Attempted to delete non-existent wizard session')

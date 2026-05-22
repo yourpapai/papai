@@ -3,7 +3,11 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json bun.lock ./
-COPY codeindex/package.json ./codeindex/
+COPY review-loop/package.json ./review-loop/
+RUN bun install --frozen-lockfile
+
+FROM base AS prod-deps
+COPY package.json bun.lock ./
 COPY review-loop/package.json ./review-loop/
 RUN bun install --frozen-lockfile --production
 
@@ -17,9 +21,10 @@ RUN bun scripts/build-client.ts
 
 FROM base AS final
 COPY --from=build /app/public ./public
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY src ./src
 COPY package.json tsconfig.json CHANGELOG.md ./
+COPY LICENSE ./LICENSE
 
 ENV NODE_ENV=production
 

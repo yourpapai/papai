@@ -1,10 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 
-import { getCachedHistory, _userCaches } from '../src/cache.js'
+import { getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import * as schema from '../src/db/schema.js'
 import { appendHistory, loadHistory, saveHistory, clearHistory } from '../src/history.js'
 import { flushMicrotasks, mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -83,7 +88,7 @@ describe('loadHistory', () => {
       { role: 'user', content: 'what tasks do I have?' },
       {
         role: 'assistant',
-        content: [{ type: 'tool-call', toolCallId: 'tc1', toolName: 'list_tasks', args: {} }],
+        content: [{ type: 'tool-call', toolCallId: 'tc1', toolName: 'list_tasks', input: {} }],
       },
       {
         role: 'tool',
@@ -212,7 +217,7 @@ describe('clearHistory', () => {
 describe('appendHistory', () => {
   beforeEach(async () => {
     await setupTestDb()
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('appends messages to empty history', () => {
@@ -260,7 +265,7 @@ describe('getCachedHistory cold-cache behavior', () => {
   beforeEach(async () => {
     testDb = await setupTestDb()
     // Clear all caches to ensure cold state
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('loads messages from DB when cache is cold and DB has data', () => {
@@ -322,7 +327,7 @@ describe('getCachedHistory cold-cache behavior', () => {
     await flushMicrotasks()
 
     // Simulate session end: clear cache (simulating bot restart)
-    _userCaches.clear()
+    userCachesForTesting.clear()
 
     // Simulate new session: load history
     const loadedMessages = loadHistory(userId)

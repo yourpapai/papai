@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # codeindex Verification Checklist
 
 **Project:** papai  
@@ -16,7 +23,7 @@
 ### Verify Database
 
 ```bash
-bun codeindex/src/cli.ts stats
+bun run scripts/codeindex-cli.ts stats
 ```
 
 Expected output:
@@ -41,8 +48,10 @@ Expected output:
 
 ### Verify Server Health
 
+On standard macOS shells, `timeout` is usually not installed unless GNU coreutils is present. Use the direct command below, then stop it with `Ctrl-C` after the initialize response prints. If you have GNU coreutils installed, `gtimeout 5` is a drop-in substitute.
+
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | timeout 5 bun codeindex/src/cli.ts mcp
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | bun run scripts/codeindex-cli.ts mcp
 ```
 
 Expected: `{"result":{"protocolVersion":"2024-11-05",...,"serverInfo":{"name":"codeindex","version":"0.1.0"}}...}`
@@ -72,7 +81,7 @@ codeindex      local    stdio  enabled
 #### Test Command
 
 ```bash
-bun codeindex/src/cli.ts symbol "makeCreateTaskTool"
+bun run scripts/codeindex-cli.ts symbol "makeCreateTaskTool"
 ```
 
 Expected: Returns `src/tools/create-task.ts` with kind `function_declaration`, scopeTier `exported`, exportNames `["makeCreateTaskTool"]`.
@@ -88,8 +97,8 @@ Expected: Returns `src/tools/create-task.ts` with kind `function_declaration`, s
 #### Test Commands
 
 ```bash
-bun codeindex/src/cli.ts search "create_task"
-bun codeindex/src/cli.ts search "web fetch"
+bun run scripts/codeindex-cli.ts search "create_task"
+bun run scripts/codeindex-cli.ts search "web fetch"
 ```
 
 Expected for `web fetch`:
@@ -113,7 +122,7 @@ Compare with `grep -rn "web fetch" src/` — `grep` returns only **2 log message
 #### Test Command
 
 ```bash
-bun codeindex/src/cli.ts impact "src/tools/create-task#makeCreateTaskTool"
+bun run scripts/codeindex-cli.ts impact "src/tools/create-task#makeCreateTaskTool"
 ```
 
 Expected:
@@ -138,8 +147,8 @@ Compare with `grep -rn "makeCreateTaskTool" src/` — `grep` returns raw lines w
 #### Test Commands
 
 ```bash
-bun codeindex/src/cli.ts reindex
-bun codeindex/src/cli.ts stats
+bun run scripts/codeindex-cli.ts reindex
+bun run scripts/codeindex-cli.ts stats
 ```
 
 Expected: Same `files` count, faster elapsed time than `index`.
@@ -184,32 +193,34 @@ Run these prompts in OpenCode and observe tool calls via `OPENCODE_DEBUG=1` or T
 - [x] Plugin listens to `tool.execute.after` for `write`, `edit`, `multiedit`
 - [x] Plugin filters to `src/` and `client/` `.ts/.tsx/.js/.jsx` files only
 - [x] Plugin debounces per session (600 ms)
-- [x] Plugin spawns `bun codeindex/src/cli.ts reindex` in background
+- [x] Plugin spawns `bun run scripts/codeindex-cli.ts reindex` in background
 
 #### Test
 
+On standard macOS shells, prefer a simple `pgrep` polling loop because `watch` is typically not installed by default.
+
 ```bash
-# Terminal 1: watch for reindex process
-watch -n 0.5 "ps aux | grep 'codeindex/src/cli' | grep -v grep"
+# Terminal 1: poll for the short-lived reindex process
+while true; do pgrep -fl 'scripts/codeindex-cli.ts reindex'; sleep 0.5; done
 
 # Terminal 2: trigger write
 bun -e "require('fs').writeFileSync('src/bot.ts', require('fs').readFileSync('src/bot.ts', 'utf8'))"
 ```
 
-Expected: After ~600 ms, a `bun codeindex/src/cli.ts reindex` process appears briefly.
+Expected: After ~600 ms, a `bun run scripts/codeindex-cli.ts reindex` process appears briefly.
 
 ---
 
 ## 6. Failure Scenarios & Remedies
 
-| Symptom                                      | Root Cause                                                  | Fix                                                                                                    |
-| -------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `codeindex` not in `opencode mcp list`       | `opencode.json` missing `mcp.codeindex` or path typo        | Verify `"command": ["bun", "run", "/Users/ki/Projects/experiments/papai/codeindex/src/cli.ts", "mcp"]` |
-| `opencode mcp tools codeindex` shows nothing | Server crashes on startup                                   | Run `bun codeindex/src/cli.ts mcp` directly; check for missing `.codeindex.json` or parse error        |
-| Agent still uses `grep`                      | Instructions were added to wrong config (global vs project) | Ensure `CLAUDE.md` is in repo root, not just `~/.config/opencode/AGENTS.md`                            |
-| `codeindex_code_search` returns empty        | DB stale or file not indexed                                | Run `codeindex_code_index incremental`; verify file is in `.codeindex.json` roots                      |
-| Reindex plugin not triggering                | Plugin not loaded                                           | Verify `opencode.json` `"plugin"` array includes `"./.opencode/plugins/codeindex-reindex.ts"`          |
-| Reindex plugin runs too often                | Debounce configured at 600 ms but sessions not isolated     | Check `debounceMap` uses `sessionID` key                                                               |
+| Symptom                                      | Root Cause                                                  | Fix                                                                                                                             |
+| -------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `codeindex` not in `opencode mcp list`       | `opencode.json` missing `mcp.codeindex` or path typo        | Verify `"command": ["bun", "run", "scripts/codeindex-cli.ts", "mcp"]` and that the wrapper resolves the repo path               |
+| `opencode mcp tools codeindex` shows nothing | Server crashes on startup                                   | Run `bun run scripts/codeindex-cli.ts mcp` directly; if needed, set `CODEINDEX_DIR` or clone the sibling repo at `../codeindex` |
+| Agent still uses `grep`                      | Instructions were added to wrong config (global vs project) | Ensure `CLAUDE.md` is in repo root, not just `~/.config/opencode/AGENTS.md`                                                     |
+| `codeindex_code_search` returns empty        | DB stale or file not indexed                                | Run `codeindex_code_index incremental`; verify file is in `.codeindex.json` roots                                               |
+| Reindex plugin not triggering                | Plugin not loaded                                           | Verify `opencode.json` `"plugin"` array includes `"./.opencode/plugins/codeindex-reindex.ts"`                                   |
+| Reindex plugin runs too often                | Debounce configured at 600 ms but sessions not isolated     | Check `debounceMap` uses `sessionID` key                                                                                        |
 
 ---
 
@@ -230,16 +241,16 @@ Expected: After ~600 ms, a `bun codeindex/src/cli.ts reindex` process appears br
 
 ## 8. Maintenance
 
-### Before Merging PRs That Touch `codeindex/`
+### Before Merging PRs That Touch `codeindex` Integration
 
-1. Run `bun codeindex/src/cli.ts index` (full rebuild if schema changed)
-2. Run `bun codeindex/src/cli.ts stats` — compare against baseline
+1. Run `bun run scripts/codeindex-cli.ts index` (full rebuild if schema changed)
+2. Run `bun run scripts/codeindex-cli.ts stats` — compare against baseline
 3. Run smoke test (all test commands above)
 
 ### Weekly
 
-1. `bun codeindex/src/cli.ts reindex` — catch any missed file changes
-2. `bun codeindex/src/cli.ts stats` — watch for symbol drift
+1. `bun run scripts/codeindex-cli.ts reindex` — catch any missed file changes
+2. `bun run scripts/codeindex-cli.ts stats` — watch for symbol drift
 3. Review any `parse_failed` or `unsupported` file counts
 
 ---
@@ -247,7 +258,16 @@ Expected: After ~600 ms, a `bun codeindex/src/cli.ts reindex` process appears br
 ## 9. One-Line Smoke Test
 
 ```bash
-echo -e "=== MCP Init ===" && printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | timeout 5 bun codeindex/src/cli.ts mcp | grep -q codeindex && echo "OK" && echo -e "=== Stats ===" && bun codeindex/src/cli.ts stats && echo -e "=== Symbol ===" && bun codeindex/src/cli.ts symbol "makeCreateTaskTool" | head -5 && echo -e "=== Impact ===" && bun codeindex/src/cli.ts impact "src/tools/create-task#makeCreateTaskTool"
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}\n' | bun run scripts/codeindex-cli.ts mcp
+bun run scripts/codeindex-cli.ts stats
+bun run scripts/codeindex-cli.ts symbol "makeCreateTaskTool"
+bun run scripts/codeindex-cli.ts impact "src/tools/create-task#makeCreateTaskTool"
 ```
+
+On macOS, stop the MCP command with `Ctrl-C` after the initialize response prints unless you already have GNU `gtimeout` installed.
+
+If the wrapper cannot find the sibling checkout automatically, set `CODEINDEX_DIR` or clone the sibling repo at ../codeindex.
+
+That same `CODEINDEX_DIR` override now covers the behavior-audit evidence extraction path too; `papai` no longer depends on a local `codeindex` package install for that script.
 
 Expected: All sections print JSON without error.

@@ -1,7 +1,11 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { z } from 'zod'
 
 import type { ContextType, DeferredAudience } from '../chat/types.js'
-import { isValidTimezone } from '../types/recurrence.js'
 
 // --- Delivery domain types ---
 
@@ -146,14 +150,13 @@ export const rruleInputSchema = z
     byMinute: z.array(z.number().int().min(0).max(59)).min(1).optional().describe('Minutes (0–59).'),
     until: z.iso.datetime().optional().describe('End datetime in UTC ISO 8601. Mutually exclusive with count.'),
     count: z.number().int().min(1).optional().describe('Total occurrences. Mutually exclusive with until.'),
-    timezone: z.string().describe('IANA timezone (e.g. "America/New_York"). Call get_current_time to obtain it.'),
     startDate: z.iso
       .date()
       .optional()
       .describe("Series anchor date in YYYY-MM-DD (user's local date). Defaults to today when omitted."),
     startTime: z
       .string()
-      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/u, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
       .optional()
       .describe(
         "Series anchor time in HH:MM 24-hour format (user's local time). Requires startDate. Defaults to 00:00 when omitted.",
@@ -162,10 +165,6 @@ export const rruleInputSchema = z
   .refine((v) => !(v.until !== undefined && v.count !== undefined), {
     message: 'until and count are mutually exclusive',
     path: ['count'],
-  })
-  .refine((v) => isValidTimezone(v.timezone), {
-    message: 'invalid IANA timezone',
-    path: ['timezone'],
   })
   .refine((v) => !(v.startTime !== undefined && v.startDate === undefined), {
     message: 'startDate is required when startTime is provided',
@@ -182,7 +181,7 @@ export const scheduleSchema = z
         date: z.iso.date().describe("Date in YYYY-MM-DD format (user's local date)"),
         time: z
           .string()
-          .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
+          .regex(/^([01]\d|2[0-3]):[0-5]\d$/u, 'must be HH:MM with valid hour (0-23) and minute (0-59)')
           .describe("Time in HH:MM 24-hour format (user's local time)"),
       })
       .optional()

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Tests for config-editor public API
  */
@@ -27,7 +32,7 @@ describe('config-editor public API', () => {
   const storageContextId = 'ctx456'
 
   test('exports startEditor function', () => {
-    const result = startEditor(userId, storageContextId, 'llm_apikey')
+    const result = startEditor(userId, storageContextId, 'kaneo_apikey')
     expect(result.handled).toBe(true)
   })
 
@@ -49,8 +54,8 @@ describe('config-editor public API', () => {
     expect(parseCallbackData('cfg:cancel')).toEqual({ action: 'cancel', key: null })
     expect(parseCallbackData('cfg:back')).toEqual({ action: 'back', key: null })
     expect(parseCallbackData('cfg:setup')).toEqual({ action: 'setup', key: null })
-    expect(parseCallbackData('cfg:edit:llm_apikey')).toEqual({ action: 'edit', key: 'llm_apikey' })
-    expect(parseCallbackData('cfg:save:main_model')).toEqual({ action: 'save', key: 'main_model' })
+    expect(parseCallbackData('cfg:edit:kaneo_apikey')).toEqual({ action: 'edit', key: 'kaneo_apikey' })
+    expect(parseCallbackData('cfg:save:timezone')).toEqual({ action: 'save', key: 'timezone' })
     expect(parseCallbackData('invalid')).toEqual({ action: null, key: null })
   })
 
@@ -58,8 +63,8 @@ describe('config-editor public API', () => {
     expect(serializeCallbackData({ action: 'cancel' })).toBe('cfg:cancel')
     expect(serializeCallbackData({ action: 'back' })).toBe('cfg:back')
     expect(serializeCallbackData({ action: 'setup' })).toBe('cfg:setup')
-    expect(serializeCallbackData({ action: 'edit', key: 'llm_apikey' })).toBe('cfg:edit:llm_apikey')
-    expect(serializeCallbackData({ action: 'save', key: 'main_model' })).toBe('cfg:save:main_model')
+    expect(serializeCallbackData({ action: 'edit', key: 'kaneo_apikey' })).toBe('cfg:edit:kaneo_apikey')
+    expect(serializeCallbackData({ action: 'save', key: 'timezone' })).toBe('cfg:save:timezone')
   })
 
   test('serializeCallbackData encodes targetContextId when provided', () => {

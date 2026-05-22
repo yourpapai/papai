@@ -1,4 +1,9 @@
-import { emit } from '../debug/event-bus.js'
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { emitGlobal } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import {
   getPendingWritesCount,
@@ -32,7 +37,7 @@ export function sweepExpiredMessages(): void {
     }
   }
   if (swept > 0) {
-    emit('msgcache:sweep', { swept, remaining: messageCache.size })
+    emitGlobal('msgcache:sweep', { swept, remaining: messageCache.size })
     log.info({ swept, remaining: messageCache.size }, 'Swept expired message cache entries')
   }
 }

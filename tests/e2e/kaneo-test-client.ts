@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { z } from 'zod'
+
 import { logger } from '../../src/logger.js'
 import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
 import { createProject } from '../../src/providers/kaneo/create-project.js'
@@ -8,6 +15,8 @@ import { getE2EConfigSync, type E2EConfig } from './global-setup.js'
 import { generateUniqueSuffix } from './test-helpers.js'
 
 const log = logger.child({ scope: 'e2e:client' })
+const WorkspaceLabelSchema = z.object({ id: z.string(), taskId: z.string().nullable() })
+const WorkspaceLabelListSchema = z.array(WorkspaceLabelSchema)
 
 export class KaneoTestClient {
   private readonly config: E2EConfig
@@ -93,8 +102,15 @@ export class KaneoTestClient {
     // Remove all labels
     for (const labelId of this.createdLabelIds) {
       try {
-        await removeLabel({ config: this.kaneoConfig, labelId })
-        log.debug({ labelId }, 'Label removed during cleanup')
+        const labels = await fetch(`${this.kaneoConfig.baseUrl}/api/label/workspace/${this.config.workspaceId}`, {
+          headers: { Authorization: `Bearer ${this.kaneoConfig.apiKey}` },
+        }).then(async (response) => (response.ok ? WorkspaceLabelListSchema.parse(await response.json()) : []))
+
+        const matchingLabel = labels.find((label) => label.id === labelId)
+        if (matchingLabel?.taskId !== undefined && matchingLabel.taskId !== null) {
+          await removeLabel({ config: this.kaneoConfig, labelId })
+          log.debug({ labelId }, 'Label removed during cleanup')
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         log.warn({ labelId, error: message }, 'Failed to remove label during cleanup')

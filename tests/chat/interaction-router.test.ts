@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
@@ -270,7 +275,7 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(replies).toEqual([
-      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add <group-id>` in DM, then run /config or /setup again.',
+      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add group-9` in DM, then run /config or /setup again.',
     ])
     expect(getActiveGroupSettingsTarget(interaction.user.id)).toBeNull()
   })

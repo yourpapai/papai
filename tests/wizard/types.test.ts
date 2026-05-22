@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 /**
  * Type tests for wizard types
  */
@@ -21,7 +26,7 @@ describe('Wizard Types', () => {
       currentStep: 1,
       totalSteps: 3,
       data: {
-        llm_apikey: 'sk-test',
+        kaneo_apikey: 'sk-test',
         timezone: 'UTC',
       },
       skippedSteps: [2],
@@ -30,34 +35,31 @@ describe('Wizard Types', () => {
 
     expect(session.userId).toBe('user123')
     expect(session.currentStep).toBe(1)
-    expect(session.data.llm_apikey).toBe('sk-test')
+    expect(session.data.kaneo_apikey).toBe('sk-test')
     expect(session.skippedSteps).toEqual([2])
   })
 
   test('WizardData type compatibility with ConfigKey', () => {
     const validData: WizardData = {
-      llm_apikey: 'sk-abc',
-      llm_baseurl: 'https://api.example.com',
-      main_model: 'gpt-4',
-      small_model: 'gpt-3.5',
-      embedding_model: 'text-embedding-3',
+      kaneo_apikey: 'sk-abc',
+      youtrack_token: 'perm:token',
       timezone: 'America/New_York',
     }
 
-    expect(Object.keys(validData).length).toBe(6)
+    expect(Object.keys(validData).length).toBe(3)
   })
 
   test('WizardStep interface structure', async () => {
     const step: WizardStep = {
       id: 'step-1',
-      key: 'llm_apikey',
-      prompt: 'Please enter your LLM API key:',
+      key: 'kaneo_apikey',
+      prompt: 'Please enter your Kaneo API key:',
       validate: validateApiKey,
       isOptional: false,
     }
 
     expect(step.id).toBe('step-1')
-    expect(step.key).toBe('llm_apikey')
+    expect(step.key).toBe('kaneo_apikey')
     expect(step.isOptional).toBe(false)
 
     const validationResult = await step.validate('invalid')
@@ -99,7 +101,7 @@ describe('Wizard Types', () => {
 
   test('WizardData restricts keys to ConfigKey', () => {
     // This test verifies at compile time that WizardData uses ConfigKey
-    const configKey: ConfigKey = 'llm_apikey'
+    const configKey: ConfigKey = 'kaneo_apikey'
     const data: WizardData = {
       [configKey]: 'test-value',
     }

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 export const PIECE_TYPES = [
   'runtime-subsystem',
   'product-feature',
@@ -284,6 +289,6 @@ export const MANDATORY_SCOPE_FAMILIES: readonly PieceCandidate[] = [
 export const slugifyPieceName = (name: string): string =>
   name
     .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+/g, '')
-    .replaceAll(/-+$/g, '')
+    .replaceAll(/[^a-z0-9]+/gu, '-')
+    .replaceAll(/^-+/gu, '')
+    .replaceAll(/-+$/gu, '')

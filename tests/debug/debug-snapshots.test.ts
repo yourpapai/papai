@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { getSessionSnapshots } from '../../src/cache-snapshots.js'
-import { _userCaches } from '../../src/cache.js'
+import { userCachesForTesting } from '../../src/cache.js'
 import { getPollerSnapshot } from '../../src/deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../../src/message-cache/cache.js'
 import { getPendingWritesCount, getIsFlushScheduled } from '../../src/message-cache/persistence.js'
@@ -115,7 +120,7 @@ describe('getWizardSnapshots', () => {
 
 describe('getSessionSnapshots', () => {
   afterEach(() => {
-    _userCaches.clear()
+    userCachesForTesting.clear()
   })
 
   test('returns empty array when no sessions exist', () => {
@@ -124,7 +129,7 @@ describe('getSessionSnapshots', () => {
   })
 
   test('returns only sessions for requested userId', () => {
-    _userCaches.set('admin-1', {
+    userCachesForTesting.set('admin-1', {
       history: [{ role: 'user', content: 'hello' }],
       summary: 'test summary',
       facts: [{ identifier: 'TASK-1', title: 'Fix bug', url: 'http://example.com', last_seen: '2026-03-28' }],
@@ -137,7 +142,7 @@ describe('getSessionSnapshots', () => {
       tools: {},
       lastAccessed: Date.now(),
     })
-    _userCaches.set('other-user', {
+    userCachesForTesting.set('other-user', {
       history: [],
       summary: null,
       facts: [],
@@ -163,7 +168,7 @@ describe('getSessionSnapshots', () => {
   })
 
   test('exposes config values for debug dashboard', () => {
-    _userCaches.set('admin-1', {
+    userCachesForTesting.set('admin-1', {
       history: [],
       summary: null,
       facts: [],
@@ -182,7 +187,7 @@ describe('getSessionSnapshots', () => {
   })
 
   test('filters out internal _loaded flags from configKeys', () => {
-    _userCaches.set('admin-1', {
+    userCachesForTesting.set('admin-1', {
       history: [],
       summary: null,
       facts: [],

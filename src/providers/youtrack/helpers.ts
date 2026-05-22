@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { z } from 'zod'
 
 import { youtrackFetch } from './client.js'
@@ -18,7 +23,7 @@ export function parseDuration(input: string): string {
   }
 
   // Already ISO-8601 duration
-  if (/^PT/i.test(trimmed)) {
+  if (/^PT/iu.test(trimmed)) {
     const normalized = trimmed.toUpperCase()
     void isoToMinutes(normalized)
     return normalized
@@ -27,8 +32,8 @@ export function parseDuration(input: string): string {
   let totalMinutes = 0
 
   // Match "Xh Ym" or "Xh" or "Ym" with optional decimal on hours
-  const combined = trimmed.replace(/\s+/g, '')
-  const hoursMinutesMatch = combined.match(/^(\d+(?:\.\d+)?)[hH](?:(\d+)[mM])?$/)
+  const combined = trimmed.replace(/\s+/gu, '')
+  const hoursMinutesMatch = combined.match(/^(\d+(?:\.\d+)?)[hH](?:(\d+)[mM])?$/u)
   if (hoursMinutesMatch !== null) {
     const hours = parseFloat(hoursMinutesMatch[1] ?? '0')
     const minutes = parseInt(hoursMinutesMatch[2] ?? '0', 10)
@@ -37,7 +42,7 @@ export function parseDuration(input: string): string {
   }
 
   // Match pure minutes "Xm"
-  const minutesOnlyMatch = combined.match(/^(\d+)[mM]$/)
+  const minutesOnlyMatch = combined.match(/^(\d+)[mM]$/u)
   if (minutesOnlyMatch !== null) {
     totalMinutes = parseInt(minutesOnlyMatch[1] ?? '0', 10)
     return minutesToIso(totalMinutes)
@@ -63,7 +68,7 @@ export function minutesToIso(minutes: number): string {
  * e.g. "PT2H30M" → 150, "PT1H" → 60, "PT30M" → 30
  */
 export function isoToMinutes(iso: string): number {
-  const match = iso.toUpperCase().match(/^PT(?:(\d+)H)?(?:(\d+)M)?$/)
+  const match = iso.toUpperCase().match(/^PT(?:(\d+)H)?(?:(\d+)M)?$/u)
   if (match === null || (match[1] === undefined && match[2] === undefined)) {
     throw new Error(`Invalid ISO-8601 duration: "${iso}"`)
   }

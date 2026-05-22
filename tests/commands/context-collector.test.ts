@@ -1,7 +1,14 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ModelMessage } from 'ai'
+import { tool } from 'ai'
+import { z } from 'zod'
 
 import type { ContextSection } from '../../src/chat/types.js'
 import type { ContextCollectorDeps } from '../../src/commands/context-collector.js'
@@ -12,6 +19,7 @@ import {
   defaultCountTokens,
   prepareDefaultCountTokens,
 } from '../../src/commands/context-collector.js'
+import { alertConditionSchema } from '../../src/deferred-prompts/types.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextCollectorDeps {
@@ -128,6 +136,17 @@ describe('collectContext', () => {
     const snapshot = collectContext('user1', deps)
     const tools = requireSection(snapshot.sections, 'Tools')
     expect(tools.detail).toBe('3 active, gated by kaneo')
+  })
+
+  test('Tools detail includes routing info when last user message routed to a subset', () => {
+    const deps = makeDeps({
+      getActiveToolDefinitions: () => ({ save_memo: {}, search_memos: {} }),
+      getProviderName: () => 'kaneo',
+      getToolRoutingInfo: () => ({ intent: 'memo', fullToolCount: 49, exposedToolCount: 2 }),
+    })
+    const snapshot = collectContext('user1', deps)
+    const tools = requireSection(snapshot.sections, 'Tools')
+    expect(tools.detail).toBe('2 of 49 active, gated by kaneo · routed for memo')
   })
 
   test('returns maxTokens=null for unknown model', () => {
@@ -272,5 +291,27 @@ describe('encoding-sensitive collection', () => {
 
     expect(systemPrompt.tokens).toBe(o200kTokens)
     expect(systemPrompt.tokens).not.toBe(cl100kTokens)
+  })
+
+  test('Tools section tokens >0 even with cyclic/recursive zod schemas after toJSONSchema', () => {
+    const cyclicAlertSchema = alertConditionSchema
+    cyclicAlertSchema.toJSONSchema()
+
+    // Empty description so that tool token count comes from the schema alone
+    const cyclicTool = tool({
+      description: '',
+      inputSchema: z.object({ condition: cyclicAlertSchema.optional() }),
+      execute: (input) => input,
+    })
+
+    const deps = makeDeps({
+      getActiveToolDefinitions: () => ({ x: cyclicTool }),
+      countTokens: (text: string) => text.length,
+    })
+    const snapshot = collectContext('user1', deps)
+    const toolsSection = requireSection(snapshot.sections, 'Tools')
+    // If serialisation fails silently the section would be 0; a few chars name
+    // plus even a truncated schema gives >0 on a real fix.
+    expect(toolsSection.tokens).toBeGreaterThan(50)
   })
 })

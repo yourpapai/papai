@@ -297,7 +297,7 @@ export function enforceWritePolicy(ctx) {
     if (typeof filePath !== 'string' || filePath.length === 0) return null
 
     const absPath = path.resolve(cwd, filePath)
-    const relPath = path.relative(cwd, absPath).replace(/\\/g, '/')
+    const relPath = path.relative(cwd, absPath).replace(/\\/gu, '/')
 
     if (isProtectedLintConfig(absPath, cwd)) {
       return {

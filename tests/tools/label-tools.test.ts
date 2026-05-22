@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test, mock, beforeEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
@@ -164,6 +169,48 @@ describe('Label Tools', () => {
       await tool.execute({ name: 'test-label' }, { toolCallId: '1', messages: [] })
 
       expect(createLabel).toHaveBeenCalledWith({ name: 'test-label', color: undefined })
+    })
+
+    test('returns already_exists for Kaneo when reusable workspace label already exists', async () => {
+      const createLabel = mock(() => Promise.resolve({ id: 'label-new', name: 'Feature', color: '#ff0000' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listLabels: mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }])),
+        createLabel,
+      })
+
+      const tool = makeCreateLabelTool(provider)
+      assert(tool.execute, 'Tool execute is undefined')
+      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      expect(result).toMatchObject({
+        status: 'already_exists',
+        labelName: 'Feature',
+        existingLabelIds: ['label-1'],
+      })
+      expect(createLabel).not.toHaveBeenCalled()
+    })
+
+    test('keeps existing create behavior for non-Kaneo providers', async () => {
+      const createLabel = mock((params: { name: string; color?: string }) =>
+        Promise.resolve({
+          id: 'label-1',
+          name: params.name,
+          color: params.color,
+        }),
+      )
+      const provider = createMockProvider({
+        name: 'youtrack',
+        listLabels: mock(() => Promise.resolve([{ id: 'label-existing', name: 'Feature', color: '#ff0000' }])),
+        createLabel,
+      })
+
+      const tool = makeCreateLabelTool(provider)
+      assert(tool.execute, 'Tool execute is undefined')
+      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      expect(result).toMatchObject({ id: 'label-1', name: 'Feature', color: undefined })
+      expect(createLabel).toHaveBeenCalledWith({ name: 'Feature', color: undefined })
     })
 
     test('propagates API errors', async () => {

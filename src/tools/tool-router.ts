@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ToolSet } from 'ai'
 
 import { logger } from '../logger.js'
@@ -32,16 +37,16 @@ export type ToolRoutingResult = {
 // Route only when deterministic keyword evidence is strong; otherwise keep all tools as a safe fallback.
 const HIGH_CONFIDENCE = 0.65
 
-const TRIVIAL_RE = /^(?:thanks|thank you|thx|ok|okay|cool|great|nice|hi|hello|hey)[!. ]*$/i
-const URL_RE = /\bhttps?:\/\/\S+/i
-const MEMO_RE = /\b(?:remember|memo|note that|personal note|save (?:this )?(?:note|memo))\b/i
+const TRIVIAL_RE = /^(?:thanks|thank you|thx|ok|okay|cool|great|nice|hi|hello|hey)[!. ]*$/iu
+const URL_RE = /\bhttps?:\/\/\S+/iu
+const MEMO_RE = /\b(?:remember|memo|note that|personal note|save (?:this )?(?:note|memo))\b/iu
 const RECURRING_RE =
-  /\b(?:recurring|repeat|repeating|every day|every week|every month|daily|weekly|monthly|pause recurring|resume recurring|skip recurring)\b/i
-const DEFERRED_RE = /\b(?:remind me|notify me|alert me|later|tomorrow|briefing|daily brief|scheduled prompt)\b/i
-const IDENTITY_RE = /\b(?:i am|i'm|my login is|link me|my username is|identity)\b/i
+  /\b(?:recurring|repeat|repeating|every day|every week|every month|daily|weekly|monthly|pause recurring|resume recurring|skip recurring)\b/iu
+const DEFERRED_RE = /\b(?:remind me|notify me|alert me|later|tomorrow|briefing|daily brief|scheduled prompt)\b/iu
+const IDENTITY_RE = /\b(?:i am|i'm|my login is|link me|my username is|identity)\b/iu
 const MUTATION_RE =
-  /\b(?:create|add|make|update|move|set|assign|delete|remove|close|resolve|reopen|comment|attach|upload|log work|vote|watch)\b/i
-const READ_RE = /\b(?:list|show|find|search|what|which|status|details|comments?|history|who|where)\b/i
+  /\b(?:create|add|make|update|move|set|assign|delete|remove|close|resolve|reopen|comment|attach|upload|log work|vote|watch)\b/iu
+const READ_RE = /\b(?:list|show|find|search|what|which|status|details|comments?|history|who|where)\b/iu
 
 const READ_DOMAINS = new Set<ToolDomain>([
   'task',

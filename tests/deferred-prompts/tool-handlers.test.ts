@@ -1,9 +1,25 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert'
 
+import { setCachedConfig } from '../../src/cache.js'
 import { setConfig } from '../../src/config.js'
-import { executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
+import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
+import { executeCancel, executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => void } {
+  const events: DebugEvent[] = []
+  const handler = (e: DebugEvent): void => {
+    if (e.type === type) events.push(e)
+  }
+  subscribe(handler)
+  return { events, cleanup: () => unsubscribe(handler) }
+}
 
 const USER_ID = 'user-tz-test'
 
@@ -18,7 +34,7 @@ describe('executeCreate — rrule timezone', () => {
     setConfig(USER_ID, 'timezone', 'Asia/Karachi')
     const result = executeCreate(USER_ID, {
       prompt: 'Daily',
-      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'Asia/Karachi' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
 
     expect(result).not.toHaveProperty('error')
@@ -33,13 +49,32 @@ describe('executeCreate — rrule timezone', () => {
     setConfig(USER_ID, 'timezone', 'UTC')
     const result = executeCreate(USER_ID, {
       prompt: 'Daily',
-      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
     expect(result).not.toHaveProperty('error')
     assert(typeof result === 'object')
     assert(result !== null)
     assert('fireAt' in result)
     expect(result.fireAt).toContain('09:')
+  })
+
+  test('legacy UTC offset config is normalized before fire_at conversion', () => {
+    setCachedConfig(USER_ID, 'timezone', 'UTC+5')
+    const result = executeCreate(USER_ID, {
+      prompt: 'Morning reminder',
+      schedule: { fire_at: { date: '2030-01-10', time: '09:00' } },
+    })
+
+    expect(result).not.toHaveProperty('error')
+    assert(typeof result === 'object')
+    assert(result !== null)
+    assert('fireAt' in result)
+    expect(result.fireAt).toBe('2030-01-10T09:00:00')
+
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const prompt = prompts[0]!
+    assert(prompt.type === 'scheduled')
+    expect(prompt.fireAt).toBe('2030-01-10T04:00:00.000Z')
   })
 })
 
@@ -49,7 +84,7 @@ describe('executeUpdate — rrule timezone', () => {
 
     executeCreate(USER_ID, {
       prompt: 'Daily',
-      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'Asia/Karachi' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
     const { prompts } = executeList(USER_ID, { type: 'scheduled' })
     expect(prompts).toHaveLength(1)
@@ -57,7 +92,7 @@ describe('executeUpdate — rrule timezone', () => {
 
     const updated = executeUpdate(USER_ID, {
       id,
-      schedule: { rrule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'Asia/Karachi' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [10], byMinute: [0] } },
     })
     expect(updated).not.toHaveProperty('error')
     assert(typeof updated === 'object')
@@ -71,7 +106,7 @@ describe('executeUpdate — rrule timezone', () => {
 
     executeCreate(USER_ID, {
       prompt: 'Daily',
-      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
     const { prompts: before } = executeList(USER_ID, { type: 'scheduled' })
     const existing = before[0]!
@@ -80,7 +115,7 @@ describe('executeUpdate — rrule timezone', () => {
 
     const updated = executeUpdate(USER_ID, {
       id: existing.id,
-      schedule: { rrule: { freq: 'DAILY', byHour: [22], byMinute: [0], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [22], byMinute: [0] } },
     })
     expect(updated).not.toHaveProperty('error')
     assert(typeof updated === 'object')
@@ -95,13 +130,13 @@ describe('executeUpdate — rrule timezone', () => {
     setConfig(USER_ID, 'timezone', 'UTC')
     executeCreate(USER_ID, {
       prompt: 'Weekly on Monday',
-      schedule: { rrule: { freq: 'WEEKLY', byDay: ['MO'], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'WEEKLY', byDay: ['MO'] } },
     })
     const { prompts } = executeList(USER_ID, { type: 'scheduled' })
     expect(prompts).toHaveLength(1)
     const prompt = prompts[0]!
     assert(prompt.type === 'scheduled')
-    expect(prompt.dtstartUtc).toMatch(/T00:00:00\.000Z$/)
+    expect(prompt.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 
   test('update rrule preserves original dtstartUtc series anchor', () => {
@@ -109,7 +144,7 @@ describe('executeUpdate — rrule timezone', () => {
 
     executeCreate(USER_ID, {
       prompt: 'Daily',
-      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
     const { prompts: before } = executeList(USER_ID, { type: 'scheduled' })
     const existing = before[0]!
@@ -118,12 +153,72 @@ describe('executeUpdate — rrule timezone', () => {
 
     executeUpdate(USER_ID, {
       id: existing.id,
-      schedule: { rrule: { freq: 'DAILY', byHour: [10], byMinute: [0], timezone: 'UTC' } },
+      schedule: { rrule: { freq: 'DAILY', byHour: [10], byMinute: [0] } },
     })
     const { prompts: after } = executeList(USER_ID, { type: 'scheduled' })
     const afterFirst = after[0]!
     assert(afterFirst.type === 'scheduled')
     // dtstartUtc must equal the original series anchor, not the edit timestamp
     expect(afterFirst.dtstartUtc).toBe(originalDtstartUtc)
+  })
+})
+
+describe('deferred lifecycle events', () => {
+  test('executeCreate emits deferred:created with promptId', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    const { events, cleanup } = collectEvents('deferred:created')
+    try {
+      const result = executeCreate(USER_ID, {
+        prompt: 'Test prompt',
+        schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
+      })
+      expect(result).not.toHaveProperty('error')
+      expect(result).toHaveProperty('id')
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(Reflect.get(result, 'id'))
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('executeUpdate emits deferred:updated with promptId', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'Original',
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const id = prompts[0]!.id
+
+    const { events, cleanup } = collectEvents('deferred:updated')
+    try {
+      executeUpdate(USER_ID, { id, prompt: 'Updated prompt' })
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(id)
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
+  })
+
+  test('executeCancel emits deferred:cancelled with promptId', () => {
+    setConfig(USER_ID, 'timezone', 'UTC')
+    executeCreate(USER_ID, {
+      prompt: 'Will cancel',
+      schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
+    })
+    const { prompts } = executeList(USER_ID, { type: 'scheduled' })
+    const id = prompts[0]!.id
+
+    const { events, cleanup } = collectEvents('deferred:cancelled')
+    try {
+      executeCancel(USER_ID, { id })
+      expect(events).toHaveLength(1)
+      expect(events[0]!.data['promptId']).toBe(id)
+      expect(events[0]!.scope).toEqual({ kind: 'user', userId: USER_ID })
+    } finally {
+      cleanup()
+    }
   })
 })

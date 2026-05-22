@@ -1,7 +1,13 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { desc, eq } from 'drizzle-orm'
 
 import { getDrizzleDb } from './db/drizzle.js'
 import { authorizedGroups } from './db/schema.js'
+import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'authorized-groups' })
@@ -24,6 +30,8 @@ export function addAuthorizedGroup(groupId: string, addedBy: string): void {
   }
 
   log.info({ groupId, addedBy }, 'Authorized group added')
+
+  emitGlobal('auth:group_authorized', { groupId })
 }
 
 export function removeAuthorizedGroup(groupId: string): boolean {
@@ -39,6 +47,10 @@ export function removeAuthorizedGroup(groupId: string): boolean {
   const removed = deletedRows.length > 0
 
   log.info({ groupId, removed }, 'Authorized group removal completed')
+
+  if (removed) {
+    emitGlobal('auth:group_revoked', { groupId })
+  }
 
   return removed
 }

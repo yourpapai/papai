@@ -90,7 +90,7 @@ export default function (pi: ExtensionAPI) {
       const content = result.content[0]
       const output = content?.type === 'text' ? content.text : ''
 
-      const exitMatch = output.match(/exit code: (\d+)/)
+      const exitMatch = output.match(/exit code: (\d+)/u)
       const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : null
       const lineCount = output.split('\n').filter((l) => l.trim()).length
 

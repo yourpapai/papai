@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
@@ -102,7 +107,7 @@ describe('/setup command', () => {
     )
 
     expect(textCalls[0]).toBe(
-      'This group is not authorized to use this bot. Ask the bot admin to run `/group add <group-id>` in a DM with the bot.',
+      'This group is not authorized to use this bot. Ask the bot admin to run `/group add group-1` in a DM with the bot.',
     )
   })
 
@@ -204,6 +209,6 @@ describe('/setup command', () => {
 
     await startSetupForTarget('admin-1', reply, 'group-1', deps)
 
-    expect(textCalls[0]).toContain('/group add <group-id>')
+    expect(textCalls[0]).toContain('/group add group-1')
   })
 })

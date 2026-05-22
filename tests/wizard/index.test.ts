@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import {
@@ -9,9 +14,6 @@ import {
   processWizardMessage,
   resetWizardSession,
   validateAndSaveWizardConfig,
-  validateLlmApiKey,
-  validateLlmBaseUrl,
-  validateModelExists,
 } from '../../src/wizard/index.js'
 
 describe('wizard/index exports', () => {
@@ -29,10 +31,5 @@ describe('wizard/index exports', () => {
 
     // Save exports
     expect(typeof validateAndSaveWizardConfig).toBe('function')
-
-    // Validation exports
-    expect(typeof validateLlmApiKey).toBe('function')
-    expect(typeof validateLlmBaseUrl).toBe('function')
-    expect(typeof validateModelExists).toBe('function')
   })
 })

@@ -70,18 +70,18 @@ set_registration() {
   else
     echo "KANEO_DISABLE_REGISTRATION=${value}" >> .env
   fi
-  $COMPOSE_CMD up -d --force-recreate --no-deps kaneo-api
-  info "Waiting for kaneo-api to be healthy..."
+  $COMPOSE_CMD up -d --force-recreate --no-deps kaneo
+  info "Waiting for kaneo to be healthy..."
   local retries=20
   while [[ $retries -gt 0 ]]; do
-    if docker inspect --format='{{.State.Health.Status}}' "$(docker compose ps -q kaneo-api)" 2>/dev/null | grep -q healthy; then
+    if docker inspect --format='{{.State.Health.Status}}' "$(docker compose ps -q kaneo)" 2>/dev/null | grep -q healthy; then
       break
     fi
     sleep 3
     retries=$((retries - 1))
   done
   if [[ $retries -eq 0 ]]; then
-    die "kaneo-api did not become healthy after restarting"
+    die "kaneo did not become healthy after restarting"
   fi
 }
 

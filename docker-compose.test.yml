@@ -1,10 +1,10 @@
 # Overlay for local integration tests.
-# Exposes kaneo-api to the host on KANEO_API_PORT (default 11337) so test
+# Exposes Kaneo to the host on KANEO_API_PORT (default 11337) so test
 # scripts (test-provision.ts, test-migration.ts) can reach it at localhost.
 services:
-  kaneo-api:
+  kaneo:
     ports:
-      - '${KANEO_API_PORT:-11337}:1337'
+      - '${KANEO_API_PORT:-11337}:5173'
     # Limit memory to prevent OOM on the host system
     deploy:
       resources:
@@ -12,11 +12,6 @@ services:
           memory: 512M
         reservations:
           memory: 256M
-
-  # Disable non-essential services in tests to conserve memory
-  kaneo-web:
-    deploy:
-      replicas: 0
 
   caddy:
     deploy:

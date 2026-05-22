@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { logger } from '../../../logger.js'
 import { providerError } from '../../../providers/errors.js'
 import type { Activity } from '../../types.js'
@@ -12,7 +17,7 @@ const log = logger.child({ scope: 'provider:youtrack:activities' })
 
 const parseActivityBoundaryTimestamp = (field: 'start' | 'end', value: string): string => {
   const parsedValue = value.trim()
-  const timezoneAwareIsoDatetime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/
+  const timezoneAwareIsoDatetime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/u
   if (!timezoneAwareIsoDatetime.test(parsedValue)) {
     throw new YouTrackClassifiedError(
       `Invalid ${field}: ${value}`,

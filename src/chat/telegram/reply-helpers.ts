@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { MessageEntity } from '@grammyjs/types/message.js'
 import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
@@ -33,7 +38,7 @@ type TelegramMentionTarget = {
 }
 
 const parseTelegramUserId = (value: string): number | null => {
-  if (!/^\d+$/.test(value)) {
+  if (!/^\d+$/u.test(value)) {
     return null
   }
 

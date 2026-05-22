@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # 05 — Error handling and recovery
 
 The raw envelope is described in [`01-current-state-audit.md`](./01-current-state-audit.md) §2.4. This file evaluates it against external best practice, proposes small changes (the `recovery` discriminated union, a retry policy, and a self-correction loop), and lists every error code with the recommended `userMessage` / `agentMessage` / `recovery` triple.

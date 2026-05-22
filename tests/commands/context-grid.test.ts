@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import type { ContextSnapshot } from '../../src/chat/types.js'
@@ -77,7 +82,7 @@ describe('buildContextGrid', () => {
       sections: [],
     })
     const grid = buildContextGrid(snapshot)
-    const cells = Array.from(grid.replace(/\n/g, ''))
+    const cells = Array.from(grid.replace(/\n/gu, ''))
     expect(cells.every((c) => c === '⬜')).toBe(true)
   })
 
@@ -87,7 +92,7 @@ describe('buildContextGrid', () => {
       sections: [{ label: 'System prompt', tokens: 200_000 }],
     })
     const grid = buildContextGrid(snapshot)
-    const cells = Array.from(grid.replace(/\n/g, ''))
+    const cells = Array.from(grid.replace(/\n/gu, ''))
     expect(cells.every((c) => c === '🟦')).toBe(true)
   })
 })

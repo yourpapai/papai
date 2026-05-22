@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { handleEditorMessage, hasActiveEditor, serializeCallbackData } from '../config-editor/index.js'
 import { logger } from '../logger.js'
 import type { ChatButton, ReplyFn } from './types.js'

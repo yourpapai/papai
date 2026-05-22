@@ -1,10 +1,38 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, it, beforeEach, mock } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ReplyFn } from '../../src/chat/types.js'
-import { MessageQueue } from '../../src/message-queue/queue.js'
+import { MessageQueue, type QueueEmitDeps } from '../../src/message-queue/queue.js'
 import type { CoalescedItem, QueueItem } from '../../src/message-queue/types.js'
 import { mockLogger } from '../utils/logger-mock.js'
+
+interface CapturedEvent {
+  type: string
+  data: Record<string, unknown>
+  turnId?: string
+}
+
+function createMockEmitDeps(events: CapturedEvent[]): QueueEmitDeps {
+  return {
+    emitUser: (type: string, _userId: string, data: Record<string, unknown>, turnId?: string): void => {
+      events.push({ type, data, turnId })
+    },
+    emitGroup: (
+      type: string,
+      _groupId: string,
+      data: Record<string, unknown>,
+      turnId?: string,
+      _threadId?: string,
+    ): void => {
+      events.push({ type, data, turnId })
+    },
+  }
+}
 
 /**
  * Creates a handler that records execution order and blocks item 'A' until
@@ -644,6 +672,195 @@ describe('MessageQueue', () => {
       // not from the first message (user1/alice)
       expect(flushed.userId).toBe('user2')
       expect(flushed.username).toBe('bob')
+    })
+  })
+
+  describe('turnId', () => {
+    it('should mint a unique turnId on the coalesced item', () => {
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+
+      const flushed = queue.forceFlush()
+      expect(flushed).not.toBeNull()
+      assert(flushed !== null)
+      expect(flushed.turnId).toBeString()
+      expect(flushed.turnId.length).toBeGreaterThan(0)
+    })
+
+    it('should mint different turnIds for separate flushes', () => {
+      queue.enqueue(
+        {
+          text: 'First',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+      const first = queue.forceFlush()
+      assert(first !== null)
+
+      queue.enqueue(
+        {
+          text: 'Second',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+      const second = queue.forceFlush()
+      assert(second !== null)
+
+      expect(first.turnId).not.toBe(second.turnId)
+    })
+  })
+
+  describe('debug events', () => {
+    let events: CapturedEvent[]
+
+    beforeEach(() => {
+      events = []
+      queue = new MessageQueue('user123', createMockEmitDeps(events))
+    })
+
+    it('should emit queue:enqueue when message is buffered', () => {
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+
+      const enqueueEvent = events.find((e) => e.type === 'queue:enqueue')
+      expect(enqueueEvent).toBeDefined()
+      assert(enqueueEvent !== undefined)
+      expect(enqueueEvent.data['storageContextId']).toBe('user123')
+      expect(enqueueEvent.data['userId']).toBe('user123')
+      expect(enqueueEvent.data['bufferedCount']).toBe(1)
+    })
+
+    it('should emit queue:coalesce on flush', () => {
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: ['att_1'],
+        },
+        mockReply,
+      )
+      queue.forceFlush()
+
+      const coalesceEvent = events.find((e) => e.type === 'queue:coalesce')
+      expect(coalesceEvent).toBeDefined()
+      assert(coalesceEvent !== undefined)
+      expect(coalesceEvent.data['storageContextId']).toBe('user123')
+      expect(coalesceEvent.data['itemCount']).toBe(1)
+      expect(coalesceEvent.data['attachmentCount']).toBe(1)
+    })
+
+    it('should emit turn:start with scope and turnId on flush', () => {
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+      queue.forceFlush()
+
+      const turnStartEvent = events.find((e) => e.type === 'turn:start')
+      expect(turnStartEvent).toBeDefined()
+      assert(turnStartEvent !== undefined)
+      expect(turnStartEvent.turnId).toBeString()
+      expect(turnStartEvent.turnId!.length).toBeGreaterThan(0)
+      expect(turnStartEvent.data['contextType']).toBe('dm')
+      expect(turnStartEvent.data['incomingMessageCount']).toBe(1)
+    })
+
+    it('should emit turn:end with status ok on successful handler', async () => {
+      const handler = async (_coalesced: CoalescedItem): Promise<void> => {
+        await Promise.resolve()
+      }
+
+      queue.setHandler(handler)
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+
+      await new Promise<void>((r) => {
+        setTimeout(r, 550)
+      })
+
+      const turnEndEvent = events.find((e) => e.type === 'turn:end')
+      expect(turnEndEvent).toBeDefined()
+      assert(turnEndEvent !== undefined)
+      expect(turnEndEvent.turnId).toBeString()
+      expect(turnEndEvent.data['status']).toBe('ok')
+      expect(turnEndEvent.data['duration']).toBeNumber()
+    })
+
+    it('should emit turn:end with status error on handler failure', async () => {
+      const handler = (_coalesced: CoalescedItem): Promise<void> => {
+        throw new Error('handler boom')
+      }
+
+      queue.setHandler(handler)
+      queue.enqueue(
+        {
+          text: 'Hello',
+          userId: 'user123',
+          username: 'alice',
+          storageContextId: 'user123',
+          contextType: 'dm',
+          newAttachmentIds: [],
+        },
+        mockReply,
+      )
+
+      await new Promise<void>((r) => {
+        setTimeout(r, 550)
+      })
+
+      const turnEndEvent = events.find((e) => e.type === 'turn:end')
+      expect(turnEndEvent).toBeDefined()
+      assert(turnEndEvent !== undefined)
+      expect(turnEndEvent.turnId).toBeString()
+      expect(turnEndEvent.data['status']).toBe('error')
+      expect(turnEndEvent.data['error']).toBe('handler boom')
     })
   })
 })

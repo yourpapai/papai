@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import { formatLlmOutput } from '../../../src/chat/discord/format.js'
@@ -33,7 +38,7 @@ describe('formatLlmOutput (Discord)', () => {
     expect(chunks[0]).toContain('col1 | col2')
     expect(chunks[0]).toContain('a | b')
     expect(chunks[0]).toContain('c | d')
-    expect(chunks[0]).not.toMatch(/^\|\s*-/m)
+    expect(chunks[0]).not.toMatch(/^\|\s*-/mu)
   })
 
   test('chunks output longer than 2000 chars into multiple strings', () => {
