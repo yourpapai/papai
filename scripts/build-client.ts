@@ -85,7 +85,8 @@ function bundleCSS(config: BundleConfig, collectedCss: string[]): void {
 
   const componentCss = collectedCss.join('\n')
 
-  const cssParts = []
+  const tokensCss = fs.readFileSync(path.join(ROOT, 'client/shared/tokens.css'), 'utf8')
+  const cssParts = [tokensCss]
   if (baseCss) cssParts.push(baseCss)
   if (localCss) cssParts.push(localCss)
   if (componentCss.length > 0) {
