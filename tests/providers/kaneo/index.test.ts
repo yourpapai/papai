@@ -81,6 +81,52 @@ describe('KaneoProvider', () => {
     })
   })
 
+  describe('labels', () => {
+    test('listLabels returns reusable workspace labels only', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'label-1', name: 'Feature', color: '#ff0000', taskId: null },
+              { id: 'label-2', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'label-3', name: 'archived', color: '#6b7280', taskId: null },
+            ]),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const result = await provider.listLabels()
+
+      expect(result).toEqual([
+        { id: 'label-1', name: 'Feature', color: '#ff0000' },
+        { id: 'label-3', name: 'archived', color: '#6b7280' },
+      ])
+    })
+
+    test('listTaskLabels returns labels currently attached to a task', async () => {
+      setMockFetch((url) => {
+        expect(url).toContain('/api/label/task/task-1')
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'task-label-1', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'task-label-2', name: 'archived', color: '#6b7280', taskId: 'task-1' },
+            ]),
+            { status: 200 },
+          ),
+        )
+      })
+
+      const result = await provider.listTaskLabels!('task-1')
+
+      expect(result).toEqual([
+        { id: 'task-label-1', name: 'Feature', color: '#ff0000' },
+        { id: 'task-label-2', name: 'archived', color: '#6b7280' },
+      ])
+    })
+  })
+
   describe('listStatuses', () => {
     test('returns columns from project', async () => {
       setMockFetch(() =>

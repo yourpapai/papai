@@ -14,6 +14,7 @@ import type {
   Project,
   RelationType,
   Task,
+  TaskLabel,
   TaskListItem,
   TaskProvider,
   TaskSearchResult,
@@ -27,6 +28,7 @@ import {
   kaneoAddTaskLabel,
   kaneoCreateLabel,
   kaneoListLabels,
+  kaneoListTaskLabels,
   kaneoRemoveLabel,
   kaneoRemoveTaskLabel,
   kaneoUpdateLabel,
@@ -154,6 +156,10 @@ export class KaneoProvider implements TaskProvider {
 
   listLabels(): Promise<Label[]> {
     return kaneoListLabels(this.config, this.workspaceId)
+  }
+
+  listTaskLabels(taskId: string): Promise<TaskLabel[]> {
+    return kaneoListTaskLabels(this.config, taskId)
   }
 
   createLabel(params: { name: string; color?: string }): Promise<Label> {

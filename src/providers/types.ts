@@ -198,6 +198,7 @@ export interface TaskProvider extends TaskProviderPhaseFive {
   ): Promise<{ id: string; taskId: string; commentId: string }>
 
   listLabels?(): Promise<Label[]>
+  listTaskLabels?(taskId: string): Promise<TaskLabel[]>
   getLabelByName?(labelName: string): Promise<Label[]>
   createLabel?(params: { name: string; color?: string }): Promise<Label>
   updateLabel?(labelId: string, params: { name?: string; color?: string }): Promise<Label>

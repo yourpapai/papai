@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
+import { LabelResource } from '../../../src/providers/kaneo/label-resource.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
-import { LabelResource } from './test-resources.js'
 
 // ---------------------------------------------------------------------------
 // Helpers (defined outside all test/describe blocks)
@@ -209,6 +209,37 @@ describe('LabelResource', () => {
       const resource = new LabelResource(mockConfig)
       const promise = resource.list('invalid-ws')
       await expect(promise).rejects.toThrow()
+    })
+  })
+
+  describe('listForTask', () => {
+    test('returns all labels attached to a task', async () => {
+      const requests: Array<{ url: string; method: string }> = []
+      setMockFetch((url, options) => {
+        requests.push({ url, method: getRequestMethod(options) })
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'label-1', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'label-2', name: 'archived', color: '#6b7280', taskId: 'task-1' },
+            ]),
+            { status: 200 },
+          ),
+        )
+      })
+
+      const resource = new LabelResource(mockConfig)
+      const result = await resource.listForTask('task-1')
+
+      expect(requests).toEqual([
+        {
+          url: 'https://api.test.com/api/label/task/task-1',
+          method: 'GET',
+        },
+      ])
+      expect(result).toHaveLength(2)
+      expect(result[0]).toMatchObject({ id: 'label-1', name: 'Feature', taskId: 'task-1' })
+      expect(result[1]).toMatchObject({ id: 'label-2', name: 'archived', taskId: 'task-1' })
     })
   })
 

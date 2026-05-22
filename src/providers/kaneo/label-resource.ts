@@ -67,6 +67,26 @@ export class LabelResource {
     }
   }
 
+  async listForTask(taskId: string): Promise<z.infer<typeof CreateLabelResponseSchema>[]> {
+    this.log.debug({ taskId }, 'Listing task labels')
+
+    try {
+      const labels = await kaneoFetch(
+        this.config,
+        'GET',
+        `/label/task/${taskId}`,
+        undefined,
+        undefined,
+        z.array(CreateLabelResponseSchema),
+      )
+      this.log.info({ taskId, count: labels.length }, 'Task labels listed')
+      return labels
+    } catch (error) {
+      this.log.error({ error: error instanceof Error ? error.message : String(error), taskId }, 'Failed to list task labels')
+      throw classifyKaneoError(error)
+    }
+  }
+
   async update(
     labelId: string,
     params: { name?: string; color?: string },

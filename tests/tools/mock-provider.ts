@@ -139,6 +139,7 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
       Promise.resolve({ id: reactionId, taskId, commentId }),
     ),
     listLabels: mock(() => Promise.resolve([])),
+    listTaskLabels: mock(() => Promise.resolve([])),
     createLabel: mock(() => Promise.resolve({ id: 'label-1', name: 'test' })),
     updateLabel: mock(() => Promise.resolve({ id: 'label-1', name: 'test' })),
     removeLabel: mock(() => Promise.resolve({ id: 'label-1' })),
