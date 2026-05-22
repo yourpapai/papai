@@ -95,6 +95,7 @@
     "client/debug/sse.ts": ["exports"],
     "client/debug/types.ts": ["types"],
     "client/admin/admin.svelte.ts": ["files", "exports", "types"],
+    "client/admin/global-stats.svelte.ts": ["types"],
     "client/admin/fetcher-schemas.ts": ["files", "exports"],
     "client/admin/fetchers.ts": ["files", "exports", "types"],
     "client/admin/index.ts": ["files", "exports"],
