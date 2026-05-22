@@ -171,6 +171,48 @@ describe('Label Tools', () => {
       expect(createLabel).toHaveBeenCalledWith({ name: 'test-label', color: undefined })
     })
 
+    test('returns already_exists for Kaneo when reusable workspace label already exists', async () => {
+      const createLabel = mock(() => Promise.resolve({ id: 'label-new', name: 'Feature', color: '#ff0000' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listLabels: mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }])),
+        createLabel,
+      })
+
+      const tool = makeCreateLabelTool(provider)
+      assert(tool.execute, 'Tool execute is undefined')
+      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      expect(result).toMatchObject({
+        status: 'already_exists',
+        labelName: 'Feature',
+        existingLabelIds: ['label-1'],
+      })
+      expect(createLabel).not.toHaveBeenCalled()
+    })
+
+    test('keeps existing create behavior for non-Kaneo providers', async () => {
+      const createLabel = mock((params: { name: string; color?: string }) =>
+        Promise.resolve({
+          id: 'label-1',
+          name: params.name,
+          color: params.color,
+        }),
+      )
+      const provider = createMockProvider({
+        name: 'youtrack',
+        listLabels: mock(() => Promise.resolve([{ id: 'label-existing', name: 'Feature', color: '#ff0000' }])),
+        createLabel,
+      })
+
+      const tool = makeCreateLabelTool(provider)
+      assert(tool.execute, 'Tool execute is undefined')
+      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      expect(result).toMatchObject({ id: 'label-1', name: 'Feature', color: undefined })
+      expect(createLabel).toHaveBeenCalledWith({ name: 'Feature', color: undefined })
+    })
+
     test('propagates API errors', async () => {
       const provider = createMockProvider({
         createLabel: mock(() => Promise.reject(new Error('API Error'))),
