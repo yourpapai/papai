@@ -22,7 +22,9 @@ const mapTaskLabel = (label: { id: string; name: string; color: string | undefin
 
 export async function kaneoListLabels(config: KaneoConfig, workspaceId: string): Promise<Label[]> {
   const results = await listLabels({ config, workspaceId })
-  return results.filter((label) => label.taskId === null).map((label) => mapLabel(label))
+  return results
+    .filter((label) => label.taskId === null || label.taskId === undefined)
+    .map((label) => mapLabel(label))
 }
 
 export async function kaneoListTaskLabels(config: KaneoConfig, taskId: string): Promise<TaskLabel[]> {

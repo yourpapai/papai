@@ -46,6 +46,28 @@ describe('kaneo label operations', () => {
         { id: 'label-3', name: 'archived', color: '#6b7280' },
       ])
     })
+
+    test('keeps reusable workspace labels when taskId is omitted', async () => {
+      setMockFetch(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { id: 'label-1', name: 'Feature', color: '#ff0000' },
+              { id: 'label-2', name: 'Feature', color: '#ff0000', taskId: 'task-1' },
+              { id: 'label-3', name: 'archived', color: '#6b7280', taskId: null },
+            ]),
+            { status: 200 },
+          ),
+        ),
+      )
+
+      const result = await kaneoListLabels(mockConfig, 'workspace-1')
+
+      expect(result).toEqual([
+        { id: 'label-1', name: 'Feature', color: '#ff0000' },
+        { id: 'label-3', name: 'archived', color: '#6b7280' },
+      ])
+    })
   })
 
   describe('kaneoListTaskLabels', () => {
