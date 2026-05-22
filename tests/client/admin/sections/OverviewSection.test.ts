@@ -19,21 +19,67 @@ describe('OverviewSection.svelte', () => {
     target = document.body.querySelector<HTMLElement>('#root')!
   })
 
-  test('renders an empty state when adminGlobals.data is null', () => {
+  test('renders em-dash placeholders when adminGlobals.data is null', () => {
     const component = mount(OverviewSection, { target, props: {} })
     expect(target.textContent).toContain('—')
     void unmount(component)
   })
 
-  test('renders active 30d from nested active block', () => {
+  test('renders subjects total + dm/group sub-label', () => {
     adminGlobals.data = {
       subjects: { dmTotal: 18, groupTotal: 14, growthLast30d: [] },
+      active: { activeIn1d: 4, activeIn7d: 12, activeIn30d: 24 },
+      storage: { sqliteBytes: 12_345_678, s3AttachmentBytes: 9_876_543 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.textContent).toContain('32')
+    expect(target.textContent).toContain('18 dm · 14 group')
+    void unmount(component)
+  })
+
+  test('renders active 30d total + 1d/7d sub-label', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
       active: { activeIn1d: 4, activeIn7d: 12, activeIn30d: 24 },
       storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
       toolMix: { topTools: [], errorTypeCounts: {} },
     }
     const component = mount(OverviewSection, { target, props: {} })
     expect(target.textContent).toContain('24')
+    expect(target.textContent).toContain('4 1d · 12 7d')
+    void unmount(component)
+  })
+
+  test('renders tool calls total + ok/fail sub-label from toolMix', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: {
+        topTools: [
+          { toolName: 'create_task', count: 1000, successRate: 0.97 },
+          { toolName: 'search_tasks', count: 500, successRate: 0.9 },
+        ],
+        errorTypeCounts: {},
+      },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.textContent).toContain('1500')
+    expect(target.textContent).toContain('1420 ok · 80 fail')
+    void unmount(component)
+  })
+
+  test('renders storage total + sqlite/s3 sub-label', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 12_000_000, s3AttachmentBytes: 8_000_000 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.textContent).toContain('20.0 MB')
+    expect(target.textContent).toContain('12.0 MB sqlite · 8.0 MB s3')
     void unmount(component)
   })
 })

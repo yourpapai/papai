@@ -11,20 +11,77 @@
 
   import { adminGlobals } from '../global-stats.svelte.js'
 
+  const subjectsTotal = $derived(
+    adminGlobals.data?.subjects === undefined
+      ? '—'
+      : adminGlobals.data.subjects.dmTotal + adminGlobals.data.subjects.groupTotal,
+  )
+  const subjectsSub = $derived(
+    adminGlobals.data?.subjects === undefined
+      ? undefined
+      : `${adminGlobals.data.subjects.dmTotal} dm · ${adminGlobals.data.subjects.groupTotal} group`,
+  )
+
+  const activeTotal = $derived(adminGlobals.data?.active?.activeIn30d ?? '—')
+  const activeSub = $derived(
+    adminGlobals.data?.active === undefined
+      ? undefined
+      : `${adminGlobals.data.active.activeIn1d} 1d · ${adminGlobals.data.active.activeIn7d} 7d`,
+  )
+
+  const toolTotals = $derived.by(() => {
+    const tools = adminGlobals.data?.toolMix?.topTools
+    if (tools === undefined) return null
+    let total = 0
+    let ok = 0
+    for (const t of tools) {
+      total += t.count
+      ok += Math.round(t.count * t.successRate)
+    }
+    return { total, ok, fail: total - ok }
+  })
+  const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total)
+  const toolSub = $derived(toolTotals === null ? undefined : `${toolTotals.ok} ok · ${toolTotals.fail} fail`)
+
+  function formatBytes(n: number): string {
+    if (n < 1_000) return `${n} B`
+    if (n < 1_000_000) return `${(n / 1_000).toFixed(1)} KB`
+    if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)} MB`
+    return `${(n / 1_000_000_000).toFixed(1)} GB`
+  }
+
+  const storageTotal = $derived(
+    adminGlobals.data?.storage === undefined
+      ? '—'
+      : formatBytes(
+          adminGlobals.data.storage.sqliteBytes + adminGlobals.data.storage.s3AttachmentBytes,
+        ),
+  )
+  const storageSub = $derived(
+    adminGlobals.data?.storage === undefined
+      ? undefined
+      : `${formatBytes(adminGlobals.data.storage.sqliteBytes)} sqlite · ${formatBytes(adminGlobals.data.storage.s3AttachmentBytes)} s3`,
+  )
+
   const sparkData = $derived(
     adminGlobals.data?.subjects?.growthLast30d?.map((p) => p.dmAdded + p.groupAdded) ?? [],
   )
-  const barsData: number[] = []
+
+  const barsData = $derived.by(() => {
+    const tools = adminGlobals.data?.toolMix?.topTools
+    if (tools === undefined) return []
+    return tools.slice(0, 8).map((t) => Math.round(t.count * t.successRate))
+  })
 </script>
 
 <section id="overview" class="admin-section">
   <Panel title="overview">
     {#snippet body()}
       <div class="admin-overview__kpis">
-        <KV k="subjects" v="—" />
-        <KV k="active 30d" v={adminGlobals.data?.active?.activeIn30d ?? '—'} />
-        <KV k="tool calls" v="—" />
-        <KV k="storage" v="—" />
+        <KV k="subjects" v={subjectsTotal} sub={subjectsSub} />
+        <KV k="active 30d" v={activeTotal} sub={activeSub} />
+        <KV k="tool calls" v={toolTotal} sub={toolSub} />
+        <KV k="storage" v={storageTotal} sub={storageSub} />
       </div>
       <div class="admin-overview__charts">
         <div class="admin-overview__spark">
