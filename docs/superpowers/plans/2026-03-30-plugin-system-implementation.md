@@ -7,334 +7,600 @@ See LICENSE in the project root for details.
 
 # Plugin System Implementation Plan
 
-> **Status:** Revised 2026-04-25 to align with the current papai codebase.
-> **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
-
-## Goal
-
-Add a robust first-party plugin framework for papai that lets approved local plugins contribute LLM tools, prompt fragments, commands, scheduled jobs, and scoped storage without weakening provider capability checks, user/group authorization, config isolation, or operational reliability.
-
-The original plan referenced `docs/plans/2026-03-30-plugin-system-design.md`, but that file is not present in the current repository. Treat this document as the source of truth until a formal ADR/design document is added.
-
-## Current project state to align with
-
-- There is no `src/plugins/**`, `tests/plugins/**`, or top-level `plugins/` directory today.
-- Provider capability surfaces already exist: `TaskCapability` in `src/providers/types.ts` and `ChatCapability` in `src/chat/types.ts`.
-- `makeTools(provider, options?)` is implemented in `src/tools/index.ts` and delegates to `buildTools(...)` in `src/tools/tools-builder.ts`; it no longer accepts `(provider, userId, mode)` positional arguments.
-- Tool execution is centrally wrapped in `src/tools/index.ts` through `wrapToolExecution`, so plugin tools must be merged before wrapping or wrapped through the same helper.
-- `buildSystemPrompt(provider, contextId)` is synchronous in `src/system-prompt.ts`; prompt fragment support must remain synchronous unless a separate async prompt-building migration is done.
-- Migrations currently run through `src/db/index.ts`; the latest migration is `027_scheduled_prompt_timezone`, so the first plugin migration must be numbered `028` unless newer migrations land first.
-- `src/db/schema.ts` already imports `integer`, `primaryKey`, and `index`; plugin tables should follow the current Drizzle style and add query indexes.
-- Interactive callbacks route through `src/chat/interaction-router.ts` with namespaced prefixes (`gsel:`, `cfg:`, `wizard_`). Plugin callbacks need a namespaced route there, not ad-hoc parsing in `bot.ts`.
-- `/config` uses `serializeCallbackData()` from `src/config-editor/index.ts` and can target either the user context or a managed group context. Plugin opt-in must respect that target context.
-- Startup/shutdown flows live in `src/index.ts`; shutdown is promise-chained through `flushOnShutdown(...)` and should deactivate plugins before provider/database teardown.
-- Tests follow the repo's TDD conventions. Prefer dependency injection over broad top-level `mock.module()` usage.
-
-## Gaps and flaws in the previous plan
-
-1. It referenced nonexistent design docs, stale line numbers, old tool signatures, and outdated migration numbering.
-2. It implied arbitrary local TypeScript dynamic imports without defining trust boundaries, dependency policy, path restrictions, or failure containment.
-3. It advertised secret storage while storing plaintext with an `encrypted` flag.
-4. It allowed async prompt fragments even though system prompt construction is currently synchronous.
-5. It mentioned provider compatibility but did not tie it to current capability sets, app API compatibility, or state transitions.
-6. It routed plugin callbacks outside the current interaction router pattern.
-7. It lacked activation timeouts, partial-activation cleanup, duplicate registration protection, and deterministic deactivation.
-8. It persisted only coarse plugin state and omitted manifest hashes, compatibility reasons, config status, and version-change handling.
-9. It did not fully prevent tool/command collisions with built-in contributions or other plugins.
-10. It lacked resource limits, observability, and a clear support boundary for untrusted third-party plugins.
-
-## Design decisions
-
-- **Trust boundary:** MVP plugins are trusted, local, first-party extensions loaded from repository-controlled `plugins/` subdirectories. Do not present this as a sandbox for arbitrary third-party code. Third-party marketplace support needs a separate ADR.
-- **Default-disabled:** Discovered plugins are inert until a bot admin approves them. Users or managed group contexts then opt in unless an approved plugin explicitly declares `defaultEnabled: true`.
-- **Compatibility as state:** A plugin can be approved but inactive because task/chat capabilities, app API version, required config, or manifest hash approval are missing.
-- **Context-scoped data:** Opt-in, config, and storage must key by `contextId`, not just user ID, to support personal and group-targeted `/config` flows.
-- **No plaintext secrets:** Secret storage is deferred from the MVP. Plugin config may mark fields as sensitive for display masking, but sensitive values must use the existing config editor/storage path until a dedicated encrypted plugin secret store is designed and implemented.
-- **Synchronous prompt MVP:** Prompt fragments are strings or synchronous functions only.
-- **Narrow service facades:** Plugins receive constrained framework services, not raw `TaskProvider` or `ChatProvider` instances, except through explicit context-bound facades.
-
-## Target architecture
-
-```text
-plugins/<plugin-id>/plugin.json
-plugins/<plugin-id>/index.ts
-        │
-        ▼
-src/plugins/discovery.ts      validate manifests and filesystem boundaries
-src/plugins/registry.ts       persist admin/context state and compatibility status
-src/plugins/loader.ts         import approved compatible plugins and control lifecycle
-src/plugins/context.ts        provide frozen registration/service facades
-src/plugins/store.ts          context-scoped KV storage with no cross-plugin access
-        │
-        ├─ tools    → merged into makeTools() before wrapToolExecution()
-        ├─ prompts  → appended by buildSystemPrompt() for active context
-        ├─ commands → registered through ChatProvider command registration
-        └─ jobs     → registered through scheduler with ownership and cleanup
-```
-
-## Manifest model
-
-Create `src/plugins/types.ts` with a Zod schema and exported types.
-
-Required manifest fields:
-
-- `id`: lowercase kebab-case and equal to the containing directory name.
-- `name`
-- `version`: semantic version.
-- `description`
-- `apiVersion`: initially `1`.
-- `main`: relative entry point, default `index.ts`; must stay inside the plugin directory.
-- `contributes`: declared contribution names for tools, prompt fragments, commands, jobs, and config keys.
-- `permissions`: framework permissions requested by the plugin.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Status:** Re-baselined 2026-05-22 against the current `copilot/implement-plugin-system-implementation` worktree after merging `origin/master`.
 
-Optional manifest fields:
+**Goal:** Finish the trusted-local plugin-system MVP so approved plugins can safely contribute tools, prompt fragments, bot commands, scheduled jobs, and context-scoped storage without weakening authorization, provider capability checks, context isolation, or startup reliability.
 
-- `author`
-- `homepage`
-- `license`
-- `defaultEnabled`: only honored after admin approval.
-- `requiredTaskCapabilities: TaskCapability[]`
-- `requiredChatCapabilities: ChatCapability[]`
-- `configRequirements`: context-scoped config fields with labels, required flags, and sensitivity metadata.
-- `activationTimeoutMs`: bounded by framework defaults and maximums.
-
-Validation rules:
-
-- Reject unknown permissions and unknown capability strings.
-- Reject contribution names that are not snake_case or kebab-case as appropriate for their namespace.
-- Reject `main` paths that are absolute, contain `..`, resolve through symlinks outside the plugin directory, or do not end in `.ts` or `.js`.
-- Reject duplicate plugin IDs and duplicate contribution names after namespacing.
-- Persist a manifest hash and require re-approval when a previously approved plugin's manifest or entry point changes.
-
-## Permission model
+**Architecture:** Keep plugins as trusted, repository-local extensions discovered from `plugins/<plugin-id>/plugin.json`, approved by the bot admin, and enabled per personal or managed-group context. Persist admin approval and context opt-in in SQLite; keep runtime activation/compatibility as recomputed process state. Expose plugins through narrow framework facades and merge eligible contributions into existing tool, prompt, command, scheduler, and `/config` paths.
 
-Use two layers of control:
+**Tech Stack:** Bun, TypeScript, Zod v4, Drizzle SQLite, Vercel AI SDK `ToolSet`, existing papai chat/task provider capability types, pino logging, existing scheduler and config-editor flows.
 
-1. **Admin approval:** controls whether a discovered plugin may be loaded at all.
-2. **Context opt-in:** controls whether a plugin is available for a user or managed group context.
+---
 
-Initial permissions:
+## Source documents and current baseline
 
-- `storage`: context-scoped KV access for the plugin.
-- `scheduler`: ability to register owned scheduled jobs.
-- `commands`: ability to register declared commands.
-- `chat.send`: ability to send messages through a narrow chat service.
-- `tasks.read`: read-only task provider facade.
-- `tasks.write`: write-capable task provider facade, still limited by provider capabilities.
-- `web.fetch`: optional future permission for public network access through the existing safe web subsystem only.
+- Approved design spec: `docs/superpowers/specs/2026-03-30-plugin-system-design.md`.
+- Developer docs to keep synchronized: `docs/plugins/developer-guide.md` and `docs/plugins/examples/hello-world/`.
+- Current implementation already includes:
+  - `src/plugins/types.ts`, `discovery.ts`, `store.ts`, `registry.ts`, `context.ts`, `contributions.ts`, `loader.ts`.
+  - `src/db/plugin-schema.ts` and registered migration `src/db/migrations/039_plugins.ts`.
+  - Plugin integration in `src/tools/index.ts`, `src/system-prompt.ts`, `src/commands/config.ts`, `src/commands/plugin.ts`, `src/chat/plugin-interaction-handler.ts`, `src/chat/interaction-router.ts`, and `src/index.ts`.
+  - `plugins/.gitkeep` and example docs under `docs/plugins/examples/hello-world/`.
 
-Permissions must be enforced when building the plugin context and again at execution time for context-bound services.
+## Spec alignment decisions
 
-## Persistence model
+The approved design aimed at both first-party modularity and future third-party extensibility. The current MVP must narrow that safely:
 
-Check `src/db/index.ts` for the highest registered migration and add the plugin migration with the next available immutable ID. At the time of this revision, the next migration is `028_plugins`.
+| Design topic        | Refined MVP decision                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trust model         | Trusted local first-party plugins only. No sandbox, marketplace, npm package installation, arbitrary third-party loading, or permission-based process isolation.                                                             |
+| Entry contract      | Canonical contract is a default-exported factory function returning a plugin instance with `activate(ctx)` and optional `deactivate(ctx)`. Existing object-export code must be migrated or explicitly compatibility-wrapped. |
+| Runtime state       | Approval state is persisted; active/error/incompatible/config-missing eligibility is recomputed each startup or per context. Do not persist runtime `active` as a startup terminal state.                                    |
+| Secrets             | No plugin KV secrets in MVP. Sensitive plugin config uses the existing config editor/storage masking path only. Encrypted plugin secret storage requires a later security design.                                            |
+| Config missing      | Required config is context-specific. Treat it as an eligibility reason for a selected context, not a global plugin activation state that blocks all contexts.                                                                |
+| Provider access     | Plugins do not receive raw chat/task providers. Tool executions receive context-bound facades derived from the active user/context/provider.                                                                                 |
+| Prompt fragments    | Synchronous only. No async prompt builder migration in this plan.                                                                                                                                                            |
+| Jobs and commands   | Still in MVP because the spec and manifest already advertise them, but they are not complete in the current implementation and need explicit phases below.                                                                   |
+| Migration numbering | `039_plugins` is canonical in this branch because migrations `034`-`038` landed from `origin/master`. Do not renumber it. The unregistered `028_plugins` file is stale and must be removed or marked obsolete.               |
+| Hot reload          | Out of scope. Admin approval and rejection affect the next startup unless a later explicit reload design is added. Per-context enable/disable takes effect on the next tool/prompt assembly.                                 |
+| Provider-as-plugin  | Out of scope. The manifest can evolve later, but chat/task providers remain core code.                                                                                                                                       |
 
-- `plugin_admin_state`
-  - `plugin_id`, `state`, `approved_by`, `approved_manifest_hash`, `last_seen_manifest_hash`, `compatibility_reason`, `updated_at`.
-- `plugin_context_state`
-  - `plugin_id`, `context_id`, `enabled`, `updated_at`.
-- `plugin_kv`
-  - `plugin_id`, `context_id`, `key`, `value`, `created_at`, `updated_at`.
-  - Add indexes for `(plugin_id, context_id)` and prefix/list query patterns.
-- `plugin_runtime_events` (optional for MVP if logs are sufficient)
-  - compact activation/deactivation/error history for admin diagnostics.
+## Current implementation status by phase
 
-Do not store secrets in `plugin_kv`. Adding `setSecret()`/`getSecret()` requires a separate task that adds authenticated encryption, key-management documentation, migration tests, and explicit security review.
+| Original phase                         | Status         | Evidence / gap                                                                                                                                                    |
+| -------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1: types and manifest validation | Mostly present | `src/plugins/types.ts` exists, but tests need directory mismatch, duplicate contributions, and contract coverage.                                                 |
+| Phase 2: database schema and storage   | Mostly present | `039_plugins` is the canonical registered migration; Task 1 re-baselines docs and removes the stale unregistered `028_plugins.ts` file.                           |
+| Phase 3: discovery                     | Partial        | Discovery exists, but tests cover only the happy path. Missing invalid JSON, missing dir, symlink/path escape, duplicate ID, and deterministic ordering coverage. |
+| Phase 4: registry/compatibility        | Partial        | Approval and capability checks exist, but runtime states are persisted and can strand plugins across restarts. Required config is not evaluated.                  |
+| Phase 5: context/services              | Partial        | KV/log/tool/prompt registration exist. Jobs, commands, task/chat facades, strict thrown rejection, and deep freezing are incomplete.                              |
+| Phase 6: loader/lifecycle              | Partial        | Import, timeout, failure isolation, and reverse deactivation exist. Success path, cleanup, factory shape, timeout, and reverse-order tests are incomplete.        |
+| Phase 7: tool integration              | Partial        | Tools are merged for active context, but plugin tool execution lacks context-bound provider/user facades.                                                         |
+| Phase 8: prompt integration            | Mostly present | Prompt fragments are appended with budgets/delimiters; tests do not cover active/inactive context behavior.                                                       |
+| Phase 9: commands/interactions         | Partial        | `/plugin` and `plg:` route exist. Admin UX, restart messaging, list/info details, and callback tests are thin.                                                    |
+| Phase 10: `/config` opt-in/config      | Partial        | Active plugin toggles appear; plugin config requirements, sensitive masking, and missing-config gating are not implemented.                                       |
+| Phase 11: startup/shutdown             | Partial        | Discovery/activation/deactivation are wired in `src/index.ts`; runtime-state re-evaluation semantics need correction.                                             |
+| Phase 12: docs/examples                | Partial        | Developer guide and example exist but drift from code and spec.                                                                                                   |
+| Phase 13: lifecycle tests              | Missing        | No end-to-end discover → approve → activate → opt-in → tool/prompt → deactivate test.                                                                             |
 
-## Implementation phases
+## Critical correctness gaps to fix before real plugin use
 
-### Phase 1: Types and manifest validation
+1. **Persisted runtime state breaks restarts.** `plugin_admin_state.state` currently stores runtime values such as `active`, `error`, and `incompatible`; startup restores them and only activates `approved` entries. A previously active plugin can therefore be skipped after restart.
+2. **Plugin API drift.** The approved spec describes a default factory returning an instance. Current runtime accepts a default object with `activate()`. Developer docs and example are also inconsistent about where `PluginFactory` is exported from.
+3. **Global plugin tools lack execution context.** Activation stores process-global tool functions. Tool execution does not receive the active task provider, storage context, chat user ID, or context-bound service facades.
+4. **Advertised manifest surface is larger than runtime support.** `commands`, `jobs`, `scheduler`, `chat.send`, `tasks.read`, and `tasks.write` are declared but not implemented or meaningfully denied beyond storage.
+5. **Required config is parsed but unused.** Active plugins can expose tools/prompts for contexts that are missing required plugin config.
+6. **Test coverage does not match the risk.** Discovery, loader lifecycle, prompt/config/tool eligibility, plugin interactions, and end-to-end lifecycle tests are insufficient.
 
-- Add plugin manifest and runtime types in `src/plugins/types.ts`.
-- Add tests for valid minimal/full manifests, invalid IDs, invalid capabilities, invalid permissions, unsafe `main` paths, and directory-name mismatch.
-- Add an explicit `PLUGIN_API_VERSION` constant.
+---
 
-Validation:
+## Task 1: Re-baseline docs and canonical migration state
 
-- `bun test tests/plugins/types.test.ts`
-- `bun typecheck`
+**Status:** Completed 2026-05-22.
 
-### Phase 2: Database schema and state storage
+**Files:**
 
-- Add migration `028_plugins` and Drizzle schema exports.
-- Add repository functions for admin state, context state, manifest hashes, and KV operations.
-- Ensure migration IDs are immutable once committed.
+- Modify: `docs/superpowers/remaining/2026-03-30-plugin-system-implementation.md`
+- Modify: `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md`
+- Delete or explicitly obsolete: `src/db/migrations/028_plugins.ts`
+- Keep: `src/db/migrations/039_plugins.ts`
+- Test: `tests/db/migrations/039_plugins.test.ts`
 
-Validation:
+- [x] **Step 1: Update remaining-work status**
 
-- DB migration unit tests.
-- `bun test tests/db tests/plugins`
-- `bun typecheck`
+  Replace the stale `not_implemented` summary with a phase matrix matching the table in this plan:
+  - completed/mostly present: phases 1, 2, parts of 8, base docs
+  - partial: phases 3-11
+  - missing: phase 13 and several targeted tests
 
-### Phase 3: Discovery
+- [x] **Step 2: Remove ambiguity around `028_plugins`**
 
-- Discover direct children of `plugins/` that contain `plugin.json`.
-- Resolve real paths and reject symlink/path traversal escapes.
-- Validate manifests with the schema.
-- Record invalid discoveries as diagnostics without loading code.
-- Keep discovery deterministic by sorting directory entries.
+  Keep `039_plugins` as the canonical registered migration. Do not renumber it. Remove stale `028_plugins.ts` unless there is an explicit compatibility reason to keep an unregistered migration file. If kept, add a header comment saying it is obsolete and not registered, but deletion is preferred to avoid future accidental imports.
 
-Validation:
+- [x] **Step 3: Verify migration list**
 
-- Discovery tests for missing directory, invalid JSON, duplicate IDs, unsafe paths, directory mismatch, and deterministic ordering.
+  Run:
 
-### Phase 4: Registry and compatibility evaluation
+  ```bash
+  bun test tests/db/migrations/039_plugins.test.ts tests/db/index.test.ts
+  ```
 
-- Implement `src/plugins/registry.ts`.
-- Track states: `discovered`, `approved`, `rejected`, `incompatible`, `config_missing`, `active`, `error`.
-- Evaluate compatibility against current task provider capabilities, chat provider capabilities, plugin API version, manifest hash approval, and required config.
-- Persist admin/context decisions separately from runtime state.
+  Expected: all tests pass and `MIGRATIONS` includes `039_plugins` exactly once.
 
-Valid state transitions:
+- [x] **Step 4: Commit**
 
-| From                       | To               | Trigger                                                     |
-| -------------------------- | ---------------- | ----------------------------------------------------------- |
-| none                       | `discovered`     | Manifest is discovered and validates.                       |
-| `discovered`               | `approved`       | Bot admin approves current manifest hash.                   |
-| `discovered`               | `rejected`       | Bot admin rejects plugin.                                   |
-| `rejected`                 | `approved`       | Bot admin explicitly re-approves plugin.                    |
-| `approved`                 | `incompatible`   | Required task/chat capability or API version is missing.    |
-| `approved`                 | `config_missing` | Required plugin config is absent for the target context.    |
-| `approved`                 | `active`         | Plugin loads and activates successfully.                    |
-| `active`                   | `approved`       | Plugin deactivates cleanly during shutdown/reload.          |
-| `active`                   | `error`          | Runtime activation or contribution registration fails.      |
-| any approved-derived state | `discovered`     | Manifest or entry point hash changes and needs re-approval. |
-| any state                  | `rejected`       | Bot admin rejects or disables plugin globally.              |
+  ```bash
+  git add docs/superpowers/remaining/2026-03-30-plugin-system-implementation.md \
+    docs/superpowers/plans/2026-03-30-plugin-system-implementation.md \
+    src/db/migrations/028_plugins.ts src/db/migrations/039_plugins.ts \
+    tests/db/migrations/039_plugins.test.ts
+  git commit -m "docs: rebaseline plugin system implementation plan"
+  ```
 
-Validation:
+## Task 2: Fix persisted approval state vs runtime state
 
-- Registry tests for approvals, rejections, manifest hash changes, context opt-in, compatibility reasons, and config-missing state.
+**Files:**
 
-### Phase 5: Context builder and service facades
+- Modify: `src/plugins/registry.ts`
+- Modify: `src/plugins/store.ts`
+- Modify: `src/index.ts`
+- Test: `tests/plugins/registry.test.ts`
+- Consider create: `src/plugins/runtime.ts`
 
-- Build a frozen `PluginContext` with registration APIs for declared contributions only.
-- Reject undeclared tools, prompts, jobs, commands, and config keys.
-- Provide plugin-scoped logger metadata: `{ scope: 'plugin', pluginId }`.
-- Implement a context-scoped KV store; do not include secret methods until encrypted storage exists.
-- Provide task/chat facades only when permissions allow them.
+- [ ] **Step 1: Write failing restart-state tests**
 
-Validation:
+  Add tests proving these behaviors:
+  - an entry persisted as `active` with a matching approved manifest hash is treated as eligible for activation on the next startup
+  - an entry persisted as `error` with a matching approved manifest hash is reconsidered on the next startup, not permanently skipped
+  - an `incompatible` plugin can recover to eligible when required capabilities later become available
+  - a changed manifest hash still reverts to `discovered` and clears approval
 
-- Context tests for permission denial, declaration enforcement, frozen objects, scoped storage, and service facade behavior.
+- [ ] **Step 2: Normalize persisted state on discovery**
 
-### Phase 6: Loader and lifecycle
+  Implement a pure helper, for example:
 
-- Load only approved and compatible plugins.
-- Import entry points only after path validation.
-- Require a default factory that returns an object with `activate(ctx)` and optional `deactivate(ctx)`.
-- Apply activation timeout and fail one plugin without aborting startup.
-- On partial activation failure, unregister contributions and mark the plugin `error`.
-- Deactivate active plugins in reverse activation order during shutdown.
+  ```typescript
+  const resolveStartupState = (state: PluginState, hasApprovedHash: boolean): PluginState => {
+    if (state === 'rejected') return 'rejected'
+    if (state === 'discovered') return 'discovered'
+    if (hasApprovedHash) return 'approved'
+    return 'discovered'
+  }
+  ```
 
-Validation:
+  Use this during `registerDiscovered()` so runtime states from previous processes do not block activation.
 
-- Loader tests for activation success, activation failure, timeout, cleanup, rejected/incompatible skip, and reverse deactivation.
+- [ ] **Step 3: Stop persisting transient `active` as the durable admin decision**
 
-### Phase 7: Tool integration
+  Either:
+  1. move active/error/incompatible to an in-memory runtime map in `src/plugins/runtime.ts`, or
+  2. keep writing diagnostics to `plugin_runtime_events` and keep `plugin_admin_state.state` as `approved`/`discovered`/`rejected` only.
 
-- Add a small plugin contribution collector that can be injected into `buildTools`/`makeTools` for tests.
-- Merge plugin tools for the active `storageContextId`/`chatUserId` only.
-- Namespace tool names as `plugin_<pluginId>__<toolName>` or another deterministic safe format that cannot collide with built-ins.
-- Wrap plugin tool execute functions with `wrapToolExecution` and include plugin metadata in errors/logs.
-- Enforce provider capability requirements again at tool build/execution time.
+  The preferred shape is option 1 if `/plugin list` needs to show runtime status separately from durable approval.
 
-Validation:
+- [ ] **Step 4: Re-evaluate compatibility every startup**
 
-- Tests that active opted-in plugins add tools, inactive plugins do not, built-in tools remain, collisions are rejected, and thrown plugin errors are wrapped.
-- `bun test tests/tools tests/plugins`
+  Ensure `src/index.ts` calls compatibility evaluation for every plugin whose durable state is approved, not only plugins restored as literal `approved` after previous runtime states.
 
-### Phase 8: Prompt integration
+- [ ] **Step 5: Verify**
 
-- Append prompt fragments from active opted-in plugins in `buildSystemPrompt(provider, contextId)`.
-- Keep fragments synchronous for MVP.
-- Add delimiters and plugin IDs around fragments for diagnostics.
-- Enforce a maximum fragment length per plugin and a maximum total plugin prompt budget.
+  Run:
 
-Validation:
+  ```bash
+  bun test tests/plugins/registry.test.ts
+  bun typecheck
+  ```
 
-- Tests for active/inactive fragments, ordering, length limits, and provider addendum preservation.
+  Expected: registry tests pass and no TypeScript errors.
 
-### Phase 9: Commands and interactions
+- [ ] **Step 6: Commit**
 
-- Add `src/commands/plugin.ts` for bot-admin plugin management.
-- Register `/plugin` through `src/commands/index.ts` and `setupBot()`.
-- Add plugin callback handling to `src/chat/interaction-router.ts` under a namespaced prefix such as `plg:`.
-- Require bot-admin authorization for admin actions.
-- Prefer capability-aware buttons and formatted fallback text.
+  ```bash
+  git add src/plugins/registry.ts src/plugins/store.ts src/index.ts tests/plugins/registry.test.ts src/plugins/runtime.ts
+  git commit -m "fix: separate plugin approval from runtime state"
+  ```
 
-Validation:
+## Task 3: Align the plugin entry contract and context API
 
-- Command tests for no plugins, list, approve, reject, incompatibility display, manifest-change reapproval, and non-admin denial.
-- Interaction-router tests for the `plg:` prefix.
+**Files:**
 
-### Phase 10: `/config` context opt-in and plugin config
+- Modify: `src/plugins/types.ts`
+- Modify: `src/plugins/context.ts`
+- Modify: `src/plugins/loader.ts`
+- Modify: `docs/plugins/developer-guide.md`
+- Modify: `docs/plugins/examples/hello-world/index.ts`
+- Test: `tests/plugins/types.test.ts`
+- Test: `tests/plugins/loader.test.ts`
+- Create: `tests/plugins/context.test.ts`
 
-- Extend config rendering to show approved compatible plugins for the selected target context.
-- Add enable/disable buttons using the current config callback serialization patterns or the new `plg:` route with explicit target context encoding.
-- Show plugin config requirements with masking for sensitive values.
-- Respect group-target validation exactly like existing `/config` fields.
+- [ ] **Step 1: Write failing contract tests**
 
-Validation:
+  Cover:
+  - default export function returning `{ activate, deactivate? }` is accepted
+  - default export object is rejected or explicitly compatibility-wrapped; choose one behavior and document it
+  - `activate(ctx)` returning contributions is not required; registration APIs are authoritative
+  - undeclared tool/prompt registration throws an explicit error rather than only logging
+  - `ctx`, `ctx.registration`, `ctx.kv`, and `ctx.log` are frozen or otherwise non-replaceable
+  - storage permission denial throws when `ctx.kv` is used without `storage`
 
-- Config tests for personal target, managed group target, inaccessible group target, no-button fallback, and sensitive masking.
+- [ ] **Step 2: Define the canonical plugin types**
 
-### Phase 11: Startup and shutdown
+  Use this public shape unless a later design update explicitly changes it:
 
-- Create `plugins/.gitkeep`.
-- Initialize discovery, registry, compatibility evaluation, and loading in `src/index.ts` after chat/task providers and scheduler services are available.
-- Set the plugin registry/contribution provider before LLM message processing can build tools.
-- Deactivate plugins during graceful shutdown before scheduler/database closure.
+  ```typescript
+  export type PluginInstance = {
+    activate(ctx: PluginContext): Promise<void> | void
+    deactivate?(ctx: PluginContext): Promise<void> | void
+  }
 
-Validation:
+  export type PluginFactory = () => PluginInstance
+  ```
 
-- Startup tests where feasible through dependency-injected helpers.
-- `bun typecheck`
+- [ ] **Step 3: Update the loader import path**
 
-### Phase 12: Documentation and examples
+  `importPluginModule()` should import the module, extract `default`, require it to be a function, call it once, and validate that the returned instance has an `activate` function.
 
-- Add developer docs explaining the trust model, manifest schema, permissions, context scoping, and supported APIs.
-- Add one minimal example plugin under docs or tests, not enabled at runtime by default.
-- Document that untrusted third-party plugins are not supported by the MVP.
+- [ ] **Step 4: Keep `PluginContext` intentionally narrow**
 
-Validation:
+  For this task, keep the already-supported MVP context surface:
+  - `pluginId`
+  - `contextId`
+  - `permissions`
+  - `kv`
+  - `log`
+  - `registration.registerTool()`
+  - `registration.registerPromptFragment()`
 
-- `bun format:check`
+  Jobs, commands, task facades, and chat facades are added in later tasks so this task stays reviewable.
 
-### Phase 13: End-to-end lifecycle tests
+- [ ] **Step 5: Sync developer docs and example**
 
-- Add a lifecycle test that covers discover → approve → compatibility check → activate → context opt-in → tool/prompt availability → deactivate.
-- Add failure-path tests for manifest changes, missing config, missing provider capabilities, and activation failure.
+  Update `docs/plugins/developer-guide.md` and `docs/plugins/examples/hello-world/index.ts` so the example imports `PluginFactory` from `src/plugins/types.js`, exports a function, and uses only supported context properties.
 
-Validation:
+- [ ] **Step 6: Verify**
 
-- `bun test tests/plugins`
-- `bun test`
-- `bun typecheck`
-- `bun lint`
-- `bun format:check`
+  Run:
 
-## Security and operational checklist
+  ```bash
+  bun test tests/plugins/types.test.ts tests/plugins/loader.test.ts tests/plugins/context.test.ts
+  bun lint
+  bun typecheck
+  ```
 
-- Do not load unapproved plugins.
-- Do not load plugins with changed manifests or entry points until re-approved.
-- Do not follow symlinks outside the plugin directory.
-- Do not expose raw DB, raw chat provider, raw task provider, process env, or arbitrary network helpers in plugin context.
-- Do not store plugin secrets in plaintext.
-- Do not allow plugin contribution names to collide with built-in or other plugin contributions.
-- Enforce activation and tool execution timeouts.
-- Use `p-limit` or equivalent bounded concurrency for batch plugin operations.
-- Log plugin failures with plugin ID and contribution name, never with secrets.
-- Keep plugin failures isolated: one failing plugin must not prevent papai startup unless explicitly configured as required.
+- [ ] **Step 7: Commit**
 
-## Final verification before merging implementation
+  ```bash
+  git add src/plugins/types.ts src/plugins/context.ts src/plugins/loader.ts \
+    docs/plugins/developer-guide.md docs/plugins/examples/hello-world/index.ts \
+    tests/plugins/types.test.ts tests/plugins/loader.test.ts tests/plugins/context.test.ts
+  git commit -m "fix: align plugin entry contract with design"
+  ```
 
-Run the smallest relevant checks after each phase, then before merge run:
+## Task 4: Complete discovery hardening and diagnostics
+
+**Files:**
+
+- Modify: `src/plugins/discovery.ts`
+- Test: `tests/plugins/discovery.test.ts`
+
+- [ ] **Step 1: Write missing discovery tests**
+
+  Add tests for:
+  - missing `plugins/` directory returns no plugins and no errors
+  - invalid JSON reports a discovery error without throwing
+  - manifest `id` mismatch with directory name reports an error
+  - unsafe `main` path with `..` or absolute path is rejected
+  - symlinked plugin directory is rejected
+  - symlinked entry point resolving outside the plugin dir is rejected
+  - duplicate plugin IDs are reported deterministically
+  - discovered plugins are sorted by ID/directory order
+
+- [ ] **Step 2: Fix implementation only where tests expose gaps**
+
+  Keep discovery synchronous if that remains simpler for startup. Preserve the existing `DiscoveryResult` shape and structured warning logs.
+
+- [ ] **Step 3: Verify**
+
+  Run:
+
+  ```bash
+  bun test tests/plugins/discovery.test.ts
+  bun lint
+  ```
+
+- [ ] **Step 4: Commit**
+
+  ```bash
+  git add src/plugins/discovery.ts tests/plugins/discovery.test.ts
+  git commit -m "test: harden plugin discovery coverage"
+  ```
+
+## Task 5: Implement context-bound plugin tool execution
+
+**Files:**
+
+- Modify: `src/plugins/types.ts`
+- Modify: `src/plugins/contributions.ts`
+- Modify: `src/tools/index.ts`
+- Modify: `src/plugins/context.ts`
+- Test: `tests/plugins/contributions.test.ts`
+- Test: `tests/tools/tools-builder.test.ts`
+
+- [ ] **Step 1: Write failing tool eligibility and runtime-context tests**
+
+  Cover:
+  - built-in tools remain present when no plugin is active
+  - an approved, active, context-enabled plugin contributes namespaced tools
+  - disabled plugins do not contribute tools
+  - a plugin tool receives the active `storageContextId`, `chatUserId`, provider-derived task facade, and plugin KV facade
+  - plugin tools requiring `tasks.read` or `tasks.write` fail closed without that permission
+  - collisions with built-in or other plugin names are rejected deterministically
+
+- [ ] **Step 2: Introduce a runtime tool context**
+
+  Add a type similar to:
+
+  ```typescript
+  export type PluginToolRuntimeContext = {
+    pluginId: string
+    storageContextId: string
+    chatUserId: string
+    taskProvider: TaskProviderFacade
+    kv: PluginKvStore
+  }
+  ```
+
+  The facade should expose only operations allowed by plugin permissions. If a complete task facade is too large, start with no raw provider exposure and make task facades a separate subtask before enabling `tasks.read`/`tasks.write` permissions.
+
+- [ ] **Step 3: Build plugin tools per tool assembly**
+
+  `makeTools(provider, options)` should build plugin tools for the active context using current `provider`, `storageContextId`, and `chatUserId`, not rely on globally bound execution state from activation.
+
+- [ ] **Step 4: Preserve wrapping and attribution**
+
+  Plugin tool executions must continue to flow through `wrapToolExecution()` and include the namespaced tool name in logs/errors.
+
+- [ ] **Step 5: Verify**
+
+  Run:
+
+  ```bash
+  bun test tests/plugins/contributions.test.ts tests/tools/tools-builder.test.ts
+  bun typecheck
+  ```
+
+- [ ] **Step 6: Commit**
+
+  ```bash
+  git add src/plugins/types.ts src/plugins/contributions.ts src/tools/index.ts src/plugins/context.ts \
+    tests/plugins/contributions.test.ts tests/tools/tools-builder.test.ts
+  git commit -m "feat: bind plugin tools to active execution context"
+  ```
+
+## Task 6: Make required plugin config part of context eligibility
+
+**Files:**
+
+- Modify: `src/plugins/registry.ts`
+- Modify: `src/commands/config.ts`
+- Modify: `src/chat/plugin-interaction-handler.ts`
+- Modify: `src/config.ts` only if existing helpers are insufficient
+- Test: `tests/plugins/registry.test.ts`
+- Test: `tests/commands/config.test.ts`
+- Test: `tests/chat/plugin-interaction-handler.test.ts`
+- Test: `tests/tools/tools-builder.test.ts`
+- Test: `tests/system-prompt.test.ts`
+
+- [ ] **Step 1: Write failing eligibility tests**
+
+  Cover:
+  - active plugin with missing required config is shown as unavailable/missing config for that target context
+  - missing required config prevents tool and prompt exposure for that context
+  - optional config does not block exposure
+  - sensitive config values are masked with existing `maskValue()` behavior or an explicit plugin-sensitive mask
+  - managed-group target validation matches existing `/config` group-target rules
+
+- [ ] **Step 2: Add an eligibility helper**
+
+  Add a helper such as:
+
+  ```typescript
+  export type PluginContextEligibility =
+    | { eligible: true }
+    | { eligible: false; reason: 'inactive' | 'disabled' | 'config_missing'; missingKeys?: readonly string[] }
+  ```
+
+  Use it from tools, prompt, config rendering, and interaction responses so all surfaces agree.
+
+- [ ] **Step 3: Render plugin config requirements in `/config`**
+
+  For the selected target context, show plugin config rows under the plugin entry. Required missing fields should be visible and actionable. Sensitive values must never be printed raw.
+
+- [ ] **Step 4: Verify**
+
+  Run:
+
+  ```bash
+  bun test tests/plugins/registry.test.ts tests/commands/config.test.ts \
+    tests/chat/plugin-interaction-handler.test.ts tests/tools/tools-builder.test.ts tests/system-prompt.test.ts
+  bun lint
+  bun typecheck
+  ```
+
+- [ ] **Step 5: Commit**
+
+  ```bash
+  git add src/plugins/registry.ts src/commands/config.ts src/chat/plugin-interaction-handler.ts \
+    tests/plugins/registry.test.ts tests/commands/config.test.ts tests/chat/plugin-interaction-handler.test.ts \
+    tests/tools/tools-builder.test.ts tests/system-prompt.test.ts
+  git commit -m "feat: gate plugins by context config"
+  ```
+
+## Task 7: Implement command and scheduler job contributions or remove them from MVP manifest
+
+**Files:**
+
+- Modify: `src/plugins/types.ts`
+- Modify: `src/plugins/context.ts`
+- Modify: `src/plugins/contributions.ts`
+- Modify: `src/plugins/loader.ts`
+- Modify: `src/bot.ts`
+- Modify: `src/scheduler-instance.ts` or the existing scheduler integration point
+- Test: `tests/plugins/context.test.ts`
+- Test: `tests/plugins/contributions.test.ts`
+- Test: `tests/plugins/loader.test.ts`
+- Test: command/scheduler tests as needed
+
+- [ ] **Step 1: Decide the MVP surface**
+
+  Because the approved design and manifest currently include commands and jobs, the preferred path is to implement them. If implementation is intentionally deferred, remove `commands`, `jobs`, `scheduler`, and `commands` permission from the MVP schema/docs in one explicit commit and record the deferral.
+
+- [ ] **Step 2: Write failing tests for the chosen path**
+
+  If implementing:
+  - declared plugin command registers under a safe namespaced command or explicit plugin command namespace
+  - undeclared command registration throws
+  - declared scheduled job registers with a namespaced owner such as `plugin:<pluginId>:<jobName>`
+  - job execution is scoped to contexts where the plugin is enabled
+  - deactivation unregisters commands/jobs owned by that plugin
+
+- [ ] **Step 3: Implement framework-owned registration and cleanup**
+
+  Track all command/job registrations by plugin ID in `contributionRegistry` or a companion registry. Deactivation must remove every contribution even if plugin `deactivate()` throws.
+
+- [ ] **Step 4: Verify**
+
+  Run:
+
+  ```bash
+  bun test tests/plugins/context.test.ts tests/plugins/contributions.test.ts tests/plugins/loader.test.ts
+  bun typecheck
+  ```
+
+- [ ] **Step 5: Commit**
+
+  ```bash
+  git add src/plugins/types.ts src/plugins/context.ts src/plugins/contributions.ts src/plugins/loader.ts \
+    src/bot.ts src/scheduler-instance.ts tests/plugins/context.test.ts tests/plugins/contributions.test.ts tests/plugins/loader.test.ts
+  git commit -m "feat: support plugin command and job contributions"
+  ```
+
+## Task 8: Tighten loader lifecycle, admin UX, and diagnostics
+
+**Files:**
+
+- Modify: `src/plugins/loader.ts`
+- Modify: `src/plugins/store.ts`
+- Modify: `src/commands/plugin.ts`
+- Modify: `src/index.ts`
+- Test: `tests/plugins/loader.test.ts`
+- Test: `tests/commands/plugin.test.ts`
+
+- [ ] **Step 1: Expand loader tests**
+
+  Cover:
+  - successful activation registers contributions and runtime event
+  - import failure marks runtime error and records diagnostic
+  - activation timeout cleans partial contributions
+  - activation failure cleans partial contributions
+  - deactivation runs in reverse activation order
+  - deactivation error still cleans framework-owned contributions
+
+- [ ] **Step 2: Fix lifecycle behavior**
+
+  Use bounded concurrency only where ordering does not matter. If reverse deactivation order is required, deactivation should execute deterministically rather than concurrently reversing a list and then racing all tasks.
+
+- [ ] **Step 3: Expand `/plugin` command tests**
+
+  Cover list/info/approve/reject/enable/disable, non-admin denial, group-context denial, manifest-change reapproval message, incompatible diagnostics, runtime error diagnostics, and restart-required messaging.
+
+- [ ] **Step 4: Verify**
+
+  Run:
+
+  ```bash
+  bun test tests/plugins/loader.test.ts tests/commands/plugin.test.ts
+  bun lint
+  ```
+
+- [ ] **Step 5: Commit**
+
+  ```bash
+  git add src/plugins/loader.ts src/plugins/store.ts src/commands/plugin.ts src/index.ts \
+    tests/plugins/loader.test.ts tests/commands/plugin.test.ts
+  git commit -m "fix: harden plugin lifecycle diagnostics"
+  ```
+
+## Task 9: Add end-to-end lifecycle coverage and final documentation sync
+
+**Files:**
+
+- Create: `tests/plugins/integration.test.ts`
+- Modify: `tests/plugins/discovery.test.ts`
+- Modify: `docs/plugins/developer-guide.md`
+- Modify: `docs/plugins/examples/hello-world/index.ts`
+- Modify: `docs/plugins/examples/hello-world/plugin.json`
+- Modify: `docs/superpowers/remaining/2026-03-30-plugin-system-implementation.md`
+
+- [ ] **Step 1: Write the lifecycle integration test**
+
+  Cover the complete happy path:
+  1. create a temporary plugin directory with a valid manifest and entry point
+  2. discover the plugin
+  3. register it as discovered
+  4. approve the manifest hash
+  5. evaluate compatibility
+  6. activate it
+  7. enable it for a target context
+  8. verify its tool appears in `makeTools()` only for that context
+  9. verify its prompt fragment appears in `buildSystemPrompt()` only for that context
+  10. deactivate it and verify contributions are gone
+
+- [ ] **Step 2: Add failure lifecycle tests**
+
+  Cover manifest hash changes, missing provider capabilities, missing required config, activation failure, and context opt-out.
+
+- [ ] **Step 3: Sync docs to the finished MVP**
+
+  The developer guide must accurately state:
+  - trusted local plugin boundary
+  - canonical factory contract
+  - supported manifest fields
+  - supported permissions and explicitly unsupported permissions
+  - context-scoped enablement and config
+  - no secrets in plugin KV
+  - approval/restart behavior
+  - validation commands for plugin developers
+
+- [ ] **Step 4: Update remaining-work doc**
+
+  Mark completed phases and list only true follow-ups such as sandboxing, encrypted secrets, provider-as-plugin migration, and hot reload.
+
+- [ ] **Step 5: Final verification**
+
+  Run:
+
+  ```bash
+  bun check:full
+  bun security
+  ```
+
+  Expected: `bun check:full` passes 12/12 checks. `bun security` has no new plugin-loading, path traversal, secret exposure, or unsafe-network findings.
+
+- [ ] **Step 6: Commit**
+
+  ```bash
+  git add tests/plugins/integration.test.ts tests/plugins/discovery.test.ts \
+    docs/plugins/developer-guide.md docs/plugins/examples/hello-world/index.ts \
+    docs/plugins/examples/hello-world/plugin.json \
+    docs/superpowers/remaining/2026-03-30-plugin-system-implementation.md
+  git commit -m "test: cover plugin lifecycle end to end"
+  ```
+
+---
+
+## Final verification before merge
+
+Run these after all tasks are complete:
 
 ```bash
-bun lint
-bun typecheck
-bun format:check
-bun test
+bun check:full
+bun security
 ```
 
-Run `bun security` if plugin implementation touches loading, path handling, storage, secrets, network access, or execution boundaries.
+Expected:
+
+- `bun check:full`: 12/12 checks passed.
+- `bun security`: no findings related to plugin loading/path traversal/secret exposure/network access.
+
+## Non-goals for this plan
+
+- Untrusted third-party sandboxing.
+- Marketplace or npm-based plugin distribution.
+- Encrypted plugin secret storage.
+- Hot reload or restartless admin approval.
+- Migrating chat or task providers into plugins.
+- Async prompt fragment support.
+- Raw DB, raw chat provider, raw task provider, raw process env, or arbitrary network access in plugin context.
