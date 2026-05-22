@@ -82,4 +82,25 @@ describe('OverviewSection.svelte', () => {
     expect(target.textContent).toContain('12.0 MB sqlite · 8.0 MB s3')
     void unmount(component)
   })
+
+  test('Spark receives growth points summed across dm+group', () => {
+    adminGlobals.data = {
+      subjects: {
+        dmTotal: 0,
+        groupTotal: 0,
+        growthLast30d: [
+          { date: '2026-04-22', dmAdded: 1, groupAdded: 0 },
+          { date: '2026-04-23', dmAdded: 0, groupAdded: 2 },
+          { date: '2026-04-24', dmAdded: 3, groupAdded: 1 },
+        ],
+      },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.querySelector('.admin-overview__spark')).not.toBeNull()
+    expect(target.querySelector('.admin-overview__spark > *')).not.toBeNull()
+    void unmount(component)
+  })
 })
