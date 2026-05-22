@@ -1,0 +1,97 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
+<script lang="ts">
+  import type { Snippet } from 'svelte'
+
+  type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
+  type Size = 'sm' | 'md' | 'lg'
+
+  interface Props {
+    children: Snippet
+    variant?: Variant
+    size?: Size
+    onClick?: () => void
+    type?: 'button' | 'submit'
+    disabled?: boolean
+  }
+
+  let {
+    children,
+    variant = 'secondary',
+    size = 'md',
+    onClick,
+    type = 'button',
+    disabled = false,
+  }: Props = $props()
+</script>
+
+<button
+  class="ui-btn ui-btn--{variant} ui-btn--{size}"
+  {type}
+  {disabled}
+  onclick={onClick}
+>
+  {@render children()}
+</button>
+
+<style>
+  .ui-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 2px;
+    border: 1px solid transparent;
+  }
+  .ui-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .ui-btn--primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+  .ui-btn--secondary {
+    background: var(--raised);
+    color: var(--fg);
+    border-color: var(--border);
+  }
+  .ui-btn--outline {
+    background: transparent;
+    color: var(--fg);
+    border-color: var(--border);
+  }
+  .ui-btn--ghost {
+    background: transparent;
+    color: var(--fg2);
+    border-color: transparent;
+  }
+  .ui-btn--danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: rgba(232, 92, 92, 0.3);
+  }
+
+  .ui-btn--sm {
+    padding: 3px 8px;
+    font-size: 11px;
+    height: 22px;
+  }
+  .ui-btn--md {
+    padding: 5px 12px;
+    font-size: 12px;
+    height: 28px;
+  }
+  .ui-btn--lg {
+    padding: 8px 16px;
+    font-size: 13px;
+    height: 34px;
+  }
+</style>
