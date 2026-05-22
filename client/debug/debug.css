@@ -5,7 +5,6 @@
   min-height: 0;
 }
 
-
 #log-explorer {
   grid-area: logs;
   display: flex;

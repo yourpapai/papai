@@ -63,10 +63,9 @@ describe('DebugTopBar.svelte', () => {
       stats: { startedAt: Date.now(), totalMessages: 42, totalLlmCalls: 7, totalToolCalls: 13 },
     })
     const component = mount(DebugTopBar, { target, props: { dashboard } })
-    const text = target.textContent ?? ''
-    expect(text).toContain('42')
-    expect(text).toContain('7')
-    expect(text).toContain('13')
+    expect(target.textContent).toContain('42')
+    expect(target.textContent).toContain('7')
+    expect(target.textContent).toContain('13')
     void unmount(component)
   })
 

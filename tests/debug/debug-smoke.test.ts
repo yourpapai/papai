@@ -66,8 +66,9 @@ describe('debug-smoke', () => {
 
       // Should mount the Svelte app and render the top-level panels
       expect(body).toContain('getElementById')
-      expect(body).toContain('papai debug')
-      expect(body).toContain('panel-grid')
+      expect(body).toContain('papai')
+      expect(body).toContain('ui-topbar')
+      expect(body).toContain('debug-grid')
       expect(body).toContain('log-explorer')
     })
 
