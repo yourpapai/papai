@@ -123,6 +123,46 @@ describe('Task Label Tools', () => {
       await expect(promise).rejects.toThrow('Multiple labels found: blocked')
     })
 
+    test('returns already_present for Kaneo when task already has label by visible name', async () => {
+      const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
+        listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
+        addTaskLabel,
+      })
+
+      const tool = makeAddTaskLabelTool(provider)
+      assertToolExecute(tool)
+      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      expect(result).toMatchObject({
+        status: 'already_present',
+        taskId: 'task-1',
+        labelName: 'Feature',
+        taskLabelIds: ['task-label-1'],
+      })
+      expect(addTaskLabel).not.toHaveBeenCalled()
+    })
+
+    test('Kaneo still resolves reusable workspace label when task does not already have it', async () => {
+      const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([])),
+        listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
+        addTaskLabel,
+      })
+
+      const tool = makeAddTaskLabelTool(provider)
+      assertToolExecute(tool)
+      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      assertTaskLabel(result)
+      expect(result).toEqual({ taskId: 'task-1', labelId: 'workspace-label-1' })
+      expect(addTaskLabel).toHaveBeenCalledWith('task-1', 'workspace-label-1')
+    })
+
     test('propagates task not found error', async () => {
       const provider = createMockProvider({
         addTaskLabel: mock(() => Promise.reject(new Error('Task not found'))),
@@ -276,6 +316,45 @@ describe('Task Label Tools', () => {
       )
 
       await expect(promise).rejects.toThrow('Multiple labels found: blocked')
+    })
+
+    test('returns already_absent for Kaneo when task does not currently have label by visible name', async () => {
+      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([])),
+        removeTaskLabel,
+      })
+
+      const tool = makeRemoveTaskLabelTool(provider)
+      const result: unknown = await getToolExecutor(tool)(
+        { taskId: 'task-1', labelName: 'Feature' },
+        { toolCallId: '1', messages: [] },
+      )
+
+      expect(result).toMatchObject({
+        status: 'already_absent',
+        taskId: 'task-1',
+        labelName: 'Feature',
+      })
+      expect(removeTaskLabel).not.toHaveBeenCalled()
+    })
+
+    test('Kaneo removes task label by task-scoped label id resolved from task labels', async () => {
+      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
+        removeTaskLabel,
+      })
+
+      const tool = makeRemoveTaskLabelTool(provider)
+      assertToolExecute(tool)
+      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+
+      assertTaskLabel(result)
+      expect(result).toEqual({ taskId: 'task-1', labelId: 'task-label-1' })
+      expect(removeTaskLabel).toHaveBeenCalledWith('task-1', 'task-label-1')
     })
 
     test('propagates task not found error', async () => {

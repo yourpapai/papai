@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
+import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:add-task-label' })
 
@@ -28,7 +29,7 @@ const labelTargetSchema = z
     path: ['labelId'],
   })
 
-const resolveLabelId = async (
+const resolveWorkspaceLabelId = async (
   provider: Readonly<TaskProvider>,
   labelId: string | undefined,
   labelName: string | undefined,
@@ -37,30 +38,38 @@ const resolveLabelId = async (
   if (labelName === undefined) {
     throw new Error('Provide exactly one of labelId or labelName')
   }
-  const labels =
-    provider.getLabelByName === undefined ? await provider.listLabels?.() : await provider.getLabelByName(labelName)
-  const matches = (labels ?? []).filter((label) => label.name === labelName)
+  const labels = await listVisibleWorkspaceLabels(provider, labelName)
+  const matches = labels.filter((label) => label.name === labelName)
   if (matches.length === 0) {
     throw new Error(`Label not found: ${labelName}`)
   }
   if (matches.length > 1) {
     throw new Error(`Multiple labels found: ${labelName}`)
   }
-  const [match] = matches
-  if (match === undefined) {
-    throw new Error(`Label not found: ${labelName}`)
-  }
-  return match.id
+  return matches[0]!.id
 }
 
 export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
   return tool({
     description:
-      'Add a label to a task. Prefer labelName for natural-language tagging flows, or use labelId when you already have an exact ID from list_labels.',
+      'Add a label to a task. For Kaneo, labelName resolves against reusable workspace labels and returns already_present when the task already has that visible label.',
     inputSchema: labelTargetSchema,
     execute: async ({ taskId, labelId, labelName }) => {
       try {
-        const resolvedLabelId = await resolveLabelId(provider, labelId, labelName)
+        if (isKaneoProvider(provider) && labelName !== undefined) {
+          const taskMatches = (await listTaskLabels(provider, taskId)).filter((label) => label.name === labelName)
+          if (taskMatches.length > 0) {
+            return {
+              status: 'already_present' as const,
+              taskId,
+              labelName,
+              taskLabelIds: taskMatches.map((label) => label.id),
+              message: `Task already has label "${labelName}". No action was taken.`,
+            }
+          }
+        }
+
+        const resolvedLabelId = await resolveWorkspaceLabelId(provider, labelId, labelName)
         return await provider.addTaskLabel!(taskId, resolvedLabelId)
       } catch (error) {
         log.error(
