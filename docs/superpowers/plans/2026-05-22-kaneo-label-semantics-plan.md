@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Kaneo Label Semantics Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -13,6 +20,7 @@
 ## Task 1: Add Kaneo provider support for reusable labels and task labels
 
 **Files:**
+
 - Modify: `src/providers/types.ts:200-206`
 - Modify: `src/providers/kaneo/label-resource.ts:50-164`
 - Create: `src/providers/kaneo/list-task-labels.ts`
@@ -272,6 +280,7 @@ git commit -m "fix(kaneo): distinguish reusable and task labels"
 ## Task 2: Add Kaneo-only `already_exists` handling to `create_label`
 
 **Files:**
+
 - Create: `src/tools/kaneo-label-helpers.ts`
 - Modify: `src/tools/create-label.ts:1-34`
 - Modify: `tests/tools/label-tools.test.ts:113-193`
@@ -281,43 +290,43 @@ git commit -m "fix(kaneo): distinguish reusable and task labels"
 Add these tests inside `describe('makeCreateLabelTool', ...)` in `tests/tools/label-tools.test.ts`:
 
 ```typescript
-    test('returns already_exists for Kaneo when reusable workspace label already exists', async () => {
-      const createLabel = mock(() => Promise.resolve({ id: 'label-new', name: 'Feature', color: '#ff0000' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
-        listLabels: mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }])),
-        createLabel,
-      })
+test('returns already_exists for Kaneo when reusable workspace label already exists', async () => {
+  const createLabel = mock(() => Promise.resolve({ id: 'label-new', name: 'Feature', color: '#ff0000' }))
+  const provider = createMockProvider({
+    name: 'kaneo',
+    listLabels: mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }])),
+    createLabel,
+  })
 
-      const tool = makeCreateLabelTool(provider)
-      assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+  const tool = makeCreateLabelTool(provider)
+  assert(tool.execute, 'Tool execute is undefined')
+  const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
 
-      expect(result).toMatchObject({
-        status: 'already_exists',
-        labelName: 'Feature',
-        existingLabelIds: ['label-1'],
-      })
-      expect(createLabel).not.toHaveBeenCalled()
-    })
+  expect(result).toMatchObject({
+    status: 'already_exists',
+    labelName: 'Feature',
+    existingLabelIds: ['label-1'],
+  })
+  expect(createLabel).not.toHaveBeenCalled()
+})
 
-    test('keeps existing create behavior for non-Kaneo providers', async () => {
-      const createLabel = mock((params: { name: string; color?: string }) =>
-        Promise.resolve({ id: 'label-1', name: params.name, color: params.color }),
-      )
-      const provider = createMockProvider({
-        name: 'youtrack',
-        listLabels: mock(() => Promise.resolve([{ id: 'label-existing', name: 'Feature', color: '#ff0000' }])),
-        createLabel,
-      })
+test('keeps existing create behavior for non-Kaneo providers', async () => {
+  const createLabel = mock((params: { name: string; color?: string }) =>
+    Promise.resolve({ id: 'label-1', name: params.name, color: params.color }),
+  )
+  const provider = createMockProvider({
+    name: 'youtrack',
+    listLabels: mock(() => Promise.resolve([{ id: 'label-existing', name: 'Feature', color: '#ff0000' }])),
+    createLabel,
+  })
 
-      const tool = makeCreateLabelTool(provider)
-      assert(tool.execute, 'Tool execute is undefined')
-      const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
+  const tool = makeCreateLabelTool(provider)
+  assert(tool.execute, 'Tool execute is undefined')
+  const result: unknown = await tool.execute({ name: 'Feature' }, { toolCallId: '1', messages: [] })
 
-      expect(result).toMatchObject({ id: 'label-1', name: 'Feature', color: undefined })
-      expect(createLabel).toHaveBeenCalledWith({ name: 'Feature', color: undefined })
-    })
+  expect(result).toMatchObject({ id: 'label-1', name: 'Feature', color: undefined })
+  expect(createLabel).toHaveBeenCalledWith({ name: 'Feature', color: undefined })
+})
 ```
 
 - [ ] **Step 2: Run the create-label tests to verify they fail**
@@ -346,7 +355,10 @@ export function isKaneoProvider(provider: Readonly<TaskProvider>): boolean {
   return provider.name === 'kaneo'
 }
 
-export async function listVisibleWorkspaceLabels(provider: Readonly<TaskProvider>, labelName?: string): Promise<Label[]> {
+export async function listVisibleWorkspaceLabels(
+  provider: Readonly<TaskProvider>,
+  labelName?: string,
+): Promise<Label[]> {
   if (provider.getLabelByName !== undefined && labelName !== undefined) {
     return await provider.getLabelByName(labelName)
   }
@@ -429,6 +441,7 @@ git commit -m "fix(tools): prevent duplicate Kaneo label creation"
 ## Task 3: Add Kaneo-only `already_present` / `already_absent` handling to task-label tools
 
 **Files:**
+
 - Modify: `src/tools/add-task-label.ts:1-80`
 - Modify: `src/tools/remove-task-label.ts:1-80`
 - Modify: `tests/tools/task-label-tools.test.ts:1-335`
@@ -440,88 +453,97 @@ Add these tests to `tests/tools/task-label-tools.test.ts`.
 Inside `describe('makeAddTaskLabelTool', ...)`, add:
 
 ```typescript
-    test('returns already_present for Kaneo when task already has label by visible name', async () => {
-      const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
-        listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
-        listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
-        addTaskLabel,
-      })
+test('returns already_present for Kaneo when task already has label by visible name', async () => {
+  const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
+  const provider = createMockProvider({
+    name: 'kaneo',
+    listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
+    listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
+    addTaskLabel,
+  })
 
-      const tool = makeAddTaskLabelTool(provider)
-      assertToolExecute(tool)
-      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+  const tool = makeAddTaskLabelTool(provider)
+  assertToolExecute(tool)
+  const result: unknown = await tool.execute(
+    { taskId: 'task-1', labelName: 'Feature' },
+    { toolCallId: '1', messages: [] },
+  )
 
-      expect(result).toMatchObject({
-        status: 'already_present',
-        taskId: 'task-1',
-        labelName: 'Feature',
-        taskLabelIds: ['task-label-1'],
-      })
-      expect(addTaskLabel).not.toHaveBeenCalled()
-    })
+  expect(result).toMatchObject({
+    status: 'already_present',
+    taskId: 'task-1',
+    labelName: 'Feature',
+    taskLabelIds: ['task-label-1'],
+  })
+  expect(addTaskLabel).not.toHaveBeenCalled()
+})
 
-    test('Kaneo still resolves reusable workspace label when task does not already have it', async () => {
-      const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
-        listTaskLabels: mock(() => Promise.resolve([])),
-        listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
-        addTaskLabel,
-      })
+test('Kaneo still resolves reusable workspace label when task does not already have it', async () => {
+  const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
+  const provider = createMockProvider({
+    name: 'kaneo',
+    listTaskLabels: mock(() => Promise.resolve([])),
+    listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
+    addTaskLabel,
+  })
 
-      const tool = makeAddTaskLabelTool(provider)
-      assertToolExecute(tool)
-      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+  const tool = makeAddTaskLabelTool(provider)
+  assertToolExecute(tool)
+  const result: unknown = await tool.execute(
+    { taskId: 'task-1', labelName: 'Feature' },
+    { toolCallId: '1', messages: [] },
+  )
 
-      assertTaskLabel(result)
-      expect(result).toEqual({ taskId: 'task-1', labelId: 'workspace-label-1' })
-      expect(addTaskLabel).toHaveBeenCalledWith('task-1', 'workspace-label-1')
-    })
+  assertTaskLabel(result)
+  expect(result).toEqual({ taskId: 'task-1', labelId: 'workspace-label-1' })
+  expect(addTaskLabel).toHaveBeenCalledWith('task-1', 'workspace-label-1')
+})
 ```
 
 Inside `describe('makeRemoveTaskLabelTool', ...)`, add:
 
 ```typescript
-    test('returns already_absent for Kaneo when task does not currently have label by visible name', async () => {
-      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
-        listTaskLabels: mock(() => Promise.resolve([])),
-        removeTaskLabel,
-      })
+test('returns already_absent for Kaneo when task does not currently have label by visible name', async () => {
+  const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+  const provider = createMockProvider({
+    name: 'kaneo',
+    listTaskLabels: mock(() => Promise.resolve([])),
+    removeTaskLabel,
+  })
 
-      const tool = makeRemoveTaskLabelTool(provider)
-      const result: unknown = await getToolExecutor(tool)(
-        { taskId: 'task-1', labelName: 'Feature' },
-        { toolCallId: '1', messages: [] },
-      )
+  const tool = makeRemoveTaskLabelTool(provider)
+  const result: unknown = await getToolExecutor(tool)(
+    { taskId: 'task-1', labelName: 'Feature' },
+    { toolCallId: '1', messages: [] },
+  )
 
-      expect(result).toMatchObject({
-        status: 'already_absent',
-        taskId: 'task-1',
-        labelName: 'Feature',
-      })
-      expect(removeTaskLabel).not.toHaveBeenCalled()
-    })
+  expect(result).toMatchObject({
+    status: 'already_absent',
+    taskId: 'task-1',
+    labelName: 'Feature',
+  })
+  expect(removeTaskLabel).not.toHaveBeenCalled()
+})
 
-    test('Kaneo removes task label by task-scoped label id resolved from task labels', async () => {
-      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
-        listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
-        removeTaskLabel,
-      })
+test('Kaneo removes task label by task-scoped label id resolved from task labels', async () => {
+  const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+  const provider = createMockProvider({
+    name: 'kaneo',
+    listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
+    removeTaskLabel,
+  })
 
-      const tool = makeRemoveTaskLabelTool(provider)
-      assertToolExecute(tool)
-      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+  const tool = makeRemoveTaskLabelTool(provider)
+  assertToolExecute(tool)
+  const result: unknown = await tool.execute(
+    { taskId: 'task-1', labelName: 'Feature' },
+    { toolCallId: '1', messages: [] },
+  )
 
-      assertTaskLabel(result)
-      expect(result).toEqual({ taskId: 'task-1', labelId: 'task-label-1' })
-      expect(removeTaskLabel).toHaveBeenCalledWith('task-1', 'task-label-1')
-    })
+  assertTaskLabel(result)
+  expect(result).toEqual({ taskId: 'task-1', labelId: 'task-label-1' })
+  expect(removeTaskLabel).toHaveBeenCalledWith('task-1', 'task-label-1')
+})
 ```
 
 - [ ] **Step 2: Run the task-label tests to verify they fail**
@@ -722,6 +744,7 @@ git commit -m "fix(tools): add Kaneo task-label status handling"
 ## Task 4: Add safe Kaneo label deduplication SQL scripts
 
 **Files:**
+
 - Create: `scripts/sql/kaneo-label-dedup-preview.sql`
 - Create: `scripts/sql/kaneo-label-dedup-apply.sql`
 
@@ -851,6 +874,7 @@ git commit -m "chore(sql): add Kaneo label dedup scripts"
 ## Task 5: Final verification sweep
 
 **Files:**
+
 - Modify: none
 - Verify: `src/providers/types.ts`
 - Verify: `src/providers/kaneo/label-resource.ts`

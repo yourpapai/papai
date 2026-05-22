@@ -20,11 +20,15 @@ const mapTaskLabel = (label: { id: string; name: string; color: string | undefin
   color: label.color,
 })
 
+const isReusableWorkspaceLabel = (label: { taskId?: string | null }): boolean => {
+  if (label.taskId === null) return true
+  if (label.taskId === undefined) return true
+  return false
+}
+
 export async function kaneoListLabels(config: KaneoConfig, workspaceId: string): Promise<Label[]> {
   const results = await listLabels({ config, workspaceId })
-  return results
-    .filter((label) => label.taskId === null || label.taskId === undefined)
-    .map((label) => mapLabel(label))
+  return results.filter(isReusableWorkspaceLabel).map(mapLabel)
 }
 
 export async function kaneoListTaskLabels(config: KaneoConfig, taskId: string): Promise<TaskLabel[]> {

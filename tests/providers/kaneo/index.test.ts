@@ -140,7 +140,7 @@ describe('KaneoProvider', () => {
         )
       })
 
-      const result = await provider.listTaskLabels!('task-1')
+      const result = await provider.listTaskLabels('task-1')
 
       expect(result).toEqual([
         { id: 'task-label-1', name: 'Feature', color: '#ff0000' },
