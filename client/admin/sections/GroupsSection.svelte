@@ -4,8 +4,6 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { untrack } from 'svelte'
-
   import type { AuthorizedGroupEntry } from '../../shared/api-types.js'
   import { fetchAdminGroups } from '../fetchers.js'
 
@@ -13,6 +11,8 @@
   let loading = $state(false)
   let error: string | null = $state(null)
   let hasLoaded = $state(false)
+  let rootEl: HTMLElement | undefined = $state()
+  let loaded = $state(false)
 
   async function loadGroups(): Promise<void> {
     loading = true
@@ -29,14 +29,32 @@
     }
   }
 
+  async function loadInitial(): Promise<void> {
+    if (loaded) return
+    loaded = true
+    await loadGroups()
+  }
+
   $effect(() => {
-    untrack(() => {
-      void loadGroups()
-    })
+    if (rootEl === undefined) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            void loadInitial()
+            observer.disconnect()
+            return
+          }
+        }
+      },
+      { rootMargin: '0px' },
+    )
+    observer.observe(rootEl)
+    return () => observer.disconnect()
   })
 </script>
 
-<section class="panel admin-data-section">
+<section class="panel admin-data-section" bind:this={rootEl}>
   <header class="admin-section-header">
     <div>
       <p class="eyebrow">Access</p>

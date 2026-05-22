@@ -13,6 +13,8 @@
   let hasLoaded = $state(false)
   let loading = $state(false)
   let error: string | null = $state(null)
+  let rootEl: HTMLElement | undefined = $state()
+  let loaded = $state(false)
 
   async function loadMemos(): Promise<void> {
     if (userId.trim() === '') return
@@ -30,13 +32,36 @@
     }
   }
 
+  async function loadInitial(): Promise<void> {
+    if (loaded) return
+    loaded = true
+  }
+
+  $effect(() => {
+    if (rootEl === undefined) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            void loadInitial()
+            observer.disconnect()
+            return
+          }
+        }
+      },
+      { rootMargin: '0px' },
+    )
+    observer.observe(rootEl)
+    return () => observer.disconnect()
+  })
+
   function submit(event: SubmitEvent): void {
     event.preventDefault()
     void loadMemos()
   }
 </script>
 
-<section class="panel admin-data-section">
+<section class="panel admin-data-section" bind:this={rootEl}>
   <header class="admin-section-header">
     <div>
       <p class="eyebrow">Records</p>

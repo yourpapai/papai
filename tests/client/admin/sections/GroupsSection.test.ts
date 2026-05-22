@@ -34,7 +34,7 @@ const responseFor = (responses: ReadonlyMap<string, Response>, url: string): Pro
 }
 
 describe('GroupsSection', () => {
-  test('loads authorized groups on mount', async () => {
+  test('loads authorized groups via refresh button', async () => {
     const responses = new Map<string, Response>([
       [
         '/auth/groups',
@@ -44,6 +44,7 @@ describe('GroupsSection', () => {
     setMockFetch((url) => responseFor(responses, url))
 
     const { target, component } = render()
+    target.querySelector<HTMLButtonElement>('button[type="button"]')!.click()
     await drain()
 
     expect(target.textContent).toContain('group-1')
@@ -57,6 +58,7 @@ describe('GroupsSection', () => {
     setMockFetch((url) => responseFor(responses, url))
 
     const { target, component } = render()
+    target.querySelector<HTMLButtonElement>('button[type="button"]')!.click()
     await drain()
 
     expect(target.textContent).toContain('No authorized groups found')
@@ -71,6 +73,7 @@ describe('GroupsSection', () => {
     setMockFetch((url) => responseFor(responses, url))
 
     const { target, component } = render()
+    target.querySelector<HTMLButtonElement>('button[type="button"]')!.click()
     await drain()
 
     expect(target.textContent).toContain('groups failed')
