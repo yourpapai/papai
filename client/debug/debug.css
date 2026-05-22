@@ -8,8 +8,8 @@
 /* --- Header --- */
 
 header {
-  background: #111111;
-  border-bottom: 1px solid #222222;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   padding: 8px 16px;
   flex: 0 0 auto;
 }
@@ -24,11 +24,11 @@ header {
 .header-top h1 {
   font-size: 14px;
   font-weight: 600;
-  color: #00ff88;
+  color: var(--accent);
 }
 
 .header-stat {
-  color: #666666;
+  color: var(--fg3);
 }
 
 .status-dot {
@@ -36,12 +36,12 @@ header {
 }
 
 .status-dot.connected {
-  color: #00ff88;
+  color: var(--accent);
   animation: pulse 2s ease-in-out infinite;
 }
 
 .status-dot.disconnected {
-  color: #ff4444;
+  color: var(--danger);
 }
 
 @keyframes pulse {
@@ -58,14 +58,14 @@ header {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #555555;
+  color: var(--fg4);
   font-size: 11px;
 }
 
 .infra-sep {
   width: 1px;
   height: 12px;
-  background: #333333;
+  background: var(--border);
 }
 
 /* --- Context chips --- */
@@ -74,15 +74,15 @@ header {
   display: flex;
   gap: 6px;
   padding: 8px 16px;
-  border-bottom: 1px solid #222222;
+  border-bottom: 1px solid var(--border);
   overflow-x: auto;
   flex: 0 0 auto;
 }
 
 .chip {
-  background: #1a1a1a;
-  border: 1px solid #333333;
-  color: #888888;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  color: var(--fg2);
   border-radius: 2px;
   cursor: pointer;
   font-family: inherit;
@@ -92,12 +92,12 @@ header {
 }
 
 .chip:hover {
-  background: #222222;
+  background: var(--border);
 }
 
 .chip.active {
-  color: #00ff88;
-  border-color: #00ff88;
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* --- Main grid: sidebar | panels (top right) / logs (bottom right) --- */
@@ -117,7 +117,7 @@ main {
   grid-area: sidebar;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #222222;
+  border-right: 1px solid var(--border);
   min-height: 0;
 }
 
@@ -138,18 +138,18 @@ main {
   flex-direction: column;
   min-height: 0;
   position: relative;
-  border-top: 1px solid #222222;
+  border-top: 1px solid var(--border);
 }
 
 .placeholder {
-  color: #333333;
+  color: var(--border);
   font-style: italic;
 }
 
 /* --- Turn rows --- */
 
 .turn-row {
-  border-left: 2px solid #333333;
+  border-left: 2px solid var(--border);
   padding: 6px 8px;
   margin-bottom: 4px;
   cursor: pointer;
@@ -158,23 +158,23 @@ main {
 }
 
 .turn-row:hover {
-  background: #1a1a1a;
+  background: var(--raised);
 }
 
 .turn-row.status-running {
-  border-left-color: #0088ff;
+  border-left-color: var(--info);
 }
 
 .turn-row.status-ok {
-  border-left-color: #00ff88;
+  border-left-color: var(--accent);
 }
 
 .turn-row.status-error {
-  border-left-color: #ff4444;
+  border-left-color: var(--danger);
 }
 
 .turn-row.status-cancelled {
-  border-left-color: #ffaa00;
+  border-left-color: var(--warn);
 }
 
 .turn-summary {
@@ -182,53 +182,53 @@ main {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: #888888;
+  color: var(--fg2);
 }
 
 .turn-summary .turn-time {
-  color: #666666;
+  color: var(--fg3);
 }
 
 .turn-summary .turn-scope.scope-user {
-  color: #0088ff;
+  color: var(--info);
 }
 
 .turn-summary .turn-scope.scope-group {
-  color: #ffaa00;
+  color: var(--warn);
 }
 
 .turn-summary .turn-scope.scope-global {
-  color: #888888;
+  color: var(--fg2);
 }
 
 .turn-summary .turn-status.status-running {
-  color: #0088ff;
+  color: var(--info);
 }
 
 .turn-summary .turn-status.status-ok {
-  color: #00ff88;
+  color: var(--accent);
 }
 
 .turn-summary .turn-status.status-error {
-  color: #ff4444;
+  color: var(--danger);
 }
 
 .turn-summary .turn-status.status-cancelled {
-  color: #ffaa00;
+  color: var(--warn);
 }
 
 .turn-summary .turn-duration {
-  color: #ffaa00;
+  color: var(--warn);
 }
 
 .turn-summary .turn-tools {
-  color: #555555;
+  color: var(--fg4);
 }
 
 /* --- Notification rows --- */
 
 .notification-row {
-  border-left: 2px solid #333333;
+  border-left: 2px solid var(--border);
   padding: 6px 8px;
   margin-bottom: 4px;
   font-size: 11px;
@@ -236,29 +236,29 @@ main {
 }
 
 .notification-row:nth-child(even) {
-  background: #131313;
+  background: var(--surface);
 }
 
 .notification-time {
-  color: #666666;
+  color: var(--fg3);
   margin-right: 8px;
 }
 
 .notification-type {
-  color: #00ff88;
+  color: var(--accent);
   margin-right: 8px;
   font-weight: 600;
 }
 
 .notification-text {
-  color: #888888;
+  color: var(--fg2);
   word-break: break-word;
 }
 
 /* --- Failure rows --- */
 
 .failure-row {
-  border-left: 2px solid #ff4444;
+  border-left: 2px solid var(--danger);
   padding: 6px 8px;
   margin-bottom: 4px;
   cursor: pointer;
@@ -267,7 +267,7 @@ main {
 }
 
 .failure-row:hover {
-  background: #1a1a1a;
+  background: var(--raised);
 }
 
 .failure-summary {
@@ -275,29 +275,29 @@ main {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: #888888;
+  color: var(--fg2);
 }
 
 .failure-time {
-  color: #666666;
+  color: var(--fg3);
 }
 
 .failure-tool {
-  color: #ff4444;
+  color: var(--danger);
   font-weight: 600;
 }
 
 .failure-error {
-  color: #cccccc;
+  color: var(--fg);
   word-break: break-word;
 }
 
 .failure-retriable.retriable {
-  color: #ffaa00;
+  color: var(--warn);
 }
 
 .failure-retriable.non-retriable {
-  color: #ff4444;
+  color: var(--danger);
 }
 
 /* --- Left panel children --- */
@@ -306,7 +306,7 @@ main {
   flex: 0 0 auto;
   max-height: 40%;
   overflow-y: auto;
-  border-bottom: 1px solid #222222;
+  border-bottom: 1px solid var(--border);
   padding: 8px;
 }
 
@@ -322,7 +322,7 @@ main {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #666666;
+  color: var(--fg3);
   margin-bottom: 8px;
   letter-spacing: 0.05em;
 }
@@ -330,7 +330,7 @@ main {
 /* --- Session cards --- */
 
 .session-card {
-  border-left: 2px solid #333333;
+  border-left: 2px solid var(--border);
   padding: 6px 8px;
   margin-bottom: 6px;
   font-size: 11px;
@@ -340,31 +340,31 @@ main {
 }
 
 .session-card:hover {
-  background: #1a1a1a;
+  background: var(--raised);
 }
 
 .session-card.active {
-  border-left-color: #00ff88;
+  border-left-color: var(--accent);
 }
 
 .session-card .user-id {
-  color: #cccccc;
+  color: var(--fg);
   font-weight: 600;
 }
 
 .session-card .session-detail {
-  color: #555555;
+  color: var(--fg4);
 }
 
 .session-card .wizard-badge {
-  color: #ffaa00;
+  color: var(--warn);
   font-size: 10px;
 }
 
 /* --- LLM trace rows --- */
 
 .trace-row {
-  border-left: 2px solid #333333;
+  border-left: 2px solid var(--border);
   padding: 6px 8px;
   margin-bottom: 4px;
   cursor: pointer;
@@ -373,34 +373,34 @@ main {
 }
 
 .trace-row:hover {
-  background: #1a1a1a;
+  background: var(--raised);
 }
 
 .trace-row.error {
-  border-left-color: #ff4444;
+  border-left-color: var(--danger);
 }
 
 .trace-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  color: #888888;
+  color: var(--fg2);
 }
 
 .trace-summary .trace-time {
-  color: #666666;
+  color: var(--fg3);
 }
 
 .trace-summary .trace-user {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 .trace-summary .trace-model {
-  color: #00ff88;
+  color: var(--accent);
 }
 
 .trace-summary .trace-duration {
-  color: #ffaa00;
+  color: var(--warn);
 }
 
 /* --- Log Explorer --- */
@@ -408,7 +408,7 @@ main {
 .log-toolbar {
   flex: 0 0 auto;
   padding: 8px;
-  border-bottom: 1px solid #222222;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -419,7 +419,7 @@ main {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #666666;
+  color: var(--fg3);
   letter-spacing: 0.05em;
   margin-right: 8px;
 }
@@ -434,9 +434,9 @@ main {
 .log-filters select,
 .log-filters input,
 .log-filters button {
-  background: #1a1a1a;
-  color: #cccccc;
-  border: 1px solid #333333;
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
   padding: 3px 6px;
   font-family: inherit;
   font-size: 11px;
@@ -445,7 +445,7 @@ main {
 
 .log-filters select:focus,
 .log-filters input:focus {
-  border-color: #00ff88;
+  border-color: var(--accent);
   outline: none;
 }
 
@@ -454,7 +454,7 @@ main {
 }
 
 .log-filters button:hover {
-  background: #222222;
+  background: var(--border);
 }
 
 #log-entries {
@@ -473,15 +473,15 @@ main {
 }
 
 .log-entry:nth-child(even) {
-  background: #131313;
+  background: var(--surface);
 }
 
 .log-entry:hover {
-  background: #1a1a1a;
+  background: var(--raised);
 }
 
 .log-entry:nth-child(even):hover {
-  background: #181818;
+  background: var(--raised);
 }
 
 .log-entry .log-meta {
@@ -496,37 +496,37 @@ main {
 
 .log-debug .log-meta,
 .log-debug .log-msg {
-  color: #555555;
+  color: var(--fg4);
 }
 
 .log-info .log-meta {
-  color: #00ff88;
+  color: var(--accent);
 }
 .log-info .log-msg {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 .log-warn .log-meta {
-  color: #ffaa00;
+  color: var(--warn);
 }
 .log-warn .log-msg {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 .log-error .log-meta {
-  color: #ff4444;
+  color: var(--danger);
 }
 .log-error .log-msg {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 #log-autoscroll {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  background: #1a1a1a;
-  color: #00ff88;
-  border: 1px solid #333333;
+  background: var(--raised);
+  color: var(--accent);
+  border: 1px solid var(--border);
   padding: 4px 8px;
   font-family: inherit;
   font-size: 11px;
@@ -536,7 +536,7 @@ main {
 }
 
 #log-autoscroll:hover {
-  background: #222222;
+  background: var(--border);
 }
 
 /* Session detail sections */
@@ -548,7 +548,7 @@ main {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #00ff88;
+  color: var(--accent);
   margin-bottom: 8px;
   letter-spacing: 0.05em;
 }
@@ -560,25 +560,25 @@ main {
 }
 
 .session-detail-item {
-  background: #131313;
+  background: var(--surface);
   padding: 8px 12px;
   border-radius: 2px;
 }
 
 .session-detail-item .label {
-  color: #666666;
+  color: var(--fg3);
   font-size: 10px;
   margin-bottom: 2px;
 }
 
 .session-detail-item .value {
-  color: #cccccc;
+  color: var(--fg);
   font-size: 11px;
   word-break: break-all;
 }
 
 .session-detail-item .value.null {
-  color: #555555;
+  color: var(--fg4);
   font-style: italic;
 }
 
@@ -590,21 +590,21 @@ main {
 }
 
 .instruction-item {
-  background: #131313;
+  background: var(--surface);
   padding: 8px 12px;
   border-radius: 2px;
-  border-left: 2px solid #ffaa00;
+  border-left: 2px solid var(--warn);
 }
 
 .instruction-item .instruction-text {
-  color: #cccccc;
+  color: var(--fg);
   font-size: 11px;
   white-space: pre-wrap;
   margin-bottom: 4px;
 }
 
 .instruction-item .instruction-meta {
-  color: #666666;
+  color: var(--fg3);
   font-size: 10px;
 }
 
@@ -619,16 +619,16 @@ main {
 .config-table td {
   padding: 6px 8px;
   text-align: left;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--border);
 }
 
 .config-table th {
-  color: #666666;
+  color: var(--fg3);
   font-weight: 600;
 }
 
 .config-table td {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 .config-table td.value {
@@ -637,7 +637,7 @@ main {
 }
 
 .config-table td.value.null {
-  color: #555555;
+  color: var(--fg4);
   font-style: italic;
 }
 
@@ -649,38 +649,38 @@ main {
 }
 
 .history-item {
-  background: #131313;
+  background: var(--surface);
   padding: 10px 12px;
   border-radius: 2px;
   border-left: 2px solid transparent;
 }
 
 .history-item.user {
-  border-left-color: #0088ff;
+  border-left-color: var(--info);
 }
 
 .history-item.assistant {
-  border-left-color: #00ff88;
+  border-left-color: var(--accent);
 }
 
 .history-item.system {
-  border-left-color: #ffaa00;
+  border-left-color: var(--warn);
 }
 
 .history-item.tool {
-  border-left-color: #ff6666;
+  border-left-color: var(--danger);
 }
 
 .history-item .history-role {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #666666;
+  color: var(--fg3);
   margin-bottom: 4px;
 }
 
 .history-item .history-content {
-  color: #cccccc;
+  color: var(--fg);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -689,9 +689,9 @@ main {
 .history-item .history-meta {
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px solid #333333;
+  border-top: 1px solid var(--border);
   font-size: 10px;
-  color: #555555;
+  color: var(--fg4);
 }
 
 /* Log entry details */
@@ -703,7 +703,7 @@ main {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #00ff88;
+  color: var(--accent);
   margin-bottom: 8px;
   letter-spacing: 0.05em;
 }
@@ -716,30 +716,30 @@ main {
 }
 
 .log-detail-meta-item {
-  background: #131313;
+  background: var(--surface);
   padding: 8px 12px;
   border-radius: 2px;
 }
 
 .log-detail-meta-item .label {
-  color: #666666;
+  color: var(--fg3);
   font-size: 10px;
   margin-bottom: 2px;
 }
 
 .log-detail-meta-item .value {
-  color: #cccccc;
+  color: var(--fg);
   font-size: 11px;
 }
 
 .log-detail-msg {
-  background: #131313;
+  background: var(--surface);
   padding: 12px;
   border-radius: 2px;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 11px;
-  color: #cccccc;
+  color: var(--fg);
 }
 
 /* --- Tree View --- */
@@ -758,22 +758,22 @@ main {
 .tree-table td {
   padding: 6px 8px;
   vertical-align: top;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--border);
 }
 
 .tree-key-cell {
-  color: #666666;
+  color: var(--fg3);
   width: 150px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .tree-value-cell {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 .tree-empty {
-  color: #555555;
+  color: var(--fg4);
   font-style: italic;
   padding: 12px;
 }
@@ -786,15 +786,15 @@ main {
   text-align: center;
   cursor: pointer;
   user-select: none;
-  color: #888888;
+  color: var(--fg2);
   font-size: 10px;
   margin-right: 4px;
 }
 
 .tree-toggle:hover,
 .tree-toggle:focus-visible {
-  color: #00ff88;
-  background: #222222;
+  color: var(--accent);
+  background: var(--border);
   border-radius: 2px;
   outline: none;
 }
@@ -805,34 +805,34 @@ main {
 }
 
 .tree-bracket {
-  color: #888888;
+  color: var(--fg2);
 }
 
 .tree-key {
-  color: #00ff88;
+  color: var(--accent);
 }
 
 .tree-string {
-  color: #cccccc;
+  color: var(--fg);
 }
 
 .tree-number {
-  color: #ffaa00;
+  color: var(--warn);
 }
 
 .tree-boolean {
-  color: #0088ff;
+  color: var(--info);
 }
 
 .tree-null,
 .tree-undefined {
-  color: #555555;
+  color: var(--fg4);
   font-style: italic;
 }
 
 .tree-array,
 .tree-object {
-  color: #888888;
+  color: var(--fg2);
 }
 
 /* Trace Detail Modal */
@@ -842,7 +842,7 @@ main {
 
 .trace-detail-section h4 {
   margin: 0 0 12px 0;
-  color: #00ff88;
+  color: var(--accent);
   font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -855,26 +855,26 @@ main {
 }
 
 .trace-detail-item {
-  background: #1a1a1a;
+  background: var(--raised);
   padding: 10px 12px;
   border-radius: 2px;
 }
 
 .trace-detail-item .label {
-  color: #666666;
+  color: var(--fg3);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .trace-detail-item .value {
-  color: #cccccc;
+  color: var(--fg);
   font-size: 13px;
   word-break: break-word;
 }
 
 .trace-detail-item .value.error {
-  color: #ff4444;
+  color: var(--danger);
 }
 
 /* Tool calls */
@@ -885,13 +885,13 @@ main {
 }
 
 .tool-call-item {
-  background: #1a1a1a;
-  border-left: 3px solid #00ff88;
+  background: var(--raised);
+  border-left: 3px solid var(--accent);
   padding: 12px;
 }
 
 .tool-call-item.error {
-  border-left-color: #ff4444;
+  border-left-color: var(--danger);
 }
 
 .tool-call-summary {
@@ -904,19 +904,19 @@ main {
 
 .tool-call-summary .tool-name {
   font-weight: bold;
-  color: #00ff88;
+  color: var(--accent);
 }
 
 .tool-call-summary .tool-status.success {
-  color: #00ff88;
+  color: var(--accent);
 }
 
 .tool-call-summary .tool-status.error {
-  color: #ff4444;
+  color: var(--danger);
 }
 
 .tool-call-id {
-  color: #666666;
+  color: var(--fg3);
   font-size: 11px;
   margin-bottom: 8px;
   word-break: break-all;
@@ -927,25 +927,25 @@ main {
 }
 
 .tool-section .label {
-  color: #666666;
+  color: var(--fg3);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .tool-json {
-  background: #131313;
+  background: var(--surface);
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
-  color: #cccccc;
+  color: var(--fg);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .tool-json.error {
-  color: #ff4444;
+  color: var(--danger);
 }
 
 /* Steps */
@@ -956,22 +956,22 @@ main {
 }
 
 .step-item {
-  background: #1a1a1a;
+  background: var(--raised);
   padding: 12px;
   border-radius: 2px;
 }
 
 .step-header {
   font-weight: bold;
-  color: #00ff88;
+  color: var(--accent);
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--border);
 }
 
 .step-finish-reason {
   font-weight: normal;
-  color: #888888;
+  color: var(--fg2);
   font-size: 11px;
   margin-left: 6px;
 }
@@ -981,19 +981,19 @@ main {
 }
 
 .step-section .label {
-  color: #666666;
+  color: var(--fg3);
   font-size: 11px;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 
 .step-text {
-  background: #131313;
+  background: var(--surface);
   padding: 8px;
   border-radius: 2px;
   font-size: 11px;
   line-height: 1.5;
-  color: #cccccc;
+  color: var(--fg);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 300px;
@@ -1009,13 +1009,13 @@ main {
 
 .step-tool-call {
   padding: 8px;
-  background: #131313;
-  border-left: 2px solid #333333;
+  background: var(--surface);
+  border-left: 2px solid var(--border);
   border-radius: 2px;
 }
 
 .step-tool-call.step-tool-error {
-  border-left-color: #ff4444;
+  border-left-color: var(--danger);
 }
 
 .step-tool-call-header {
@@ -1027,12 +1027,12 @@ main {
 }
 
 .step-tool-call-header .tool-name {
-  color: #00ff88;
+  color: var(--accent);
   font-weight: 600;
 }
 
 .step-tool-call-header .tool-id {
-  color: #666666;
+  color: var(--fg3);
   font-size: 10px;
   word-break: break-all;
 }
@@ -1040,19 +1040,19 @@ main {
 .step-usage {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #333333;
-  color: #666666;
+  border-top: 1px solid var(--border);
+  color: var(--fg3);
   font-size: 12px;
 }
 
 /* Generated text */
 .generated-text {
-  background: #1a1a1a;
+  background: var(--raised);
   padding: 16px;
   border-radius: 2px;
   font-size: 13px;
   line-height: 1.6;
-  color: #cccccc;
+  color: var(--fg);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 400px;
@@ -1071,7 +1071,7 @@ main {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #00ff88;
+  color: var(--accent);
   margin-bottom: 6px;
   letter-spacing: 0.05em;
 }
@@ -1092,16 +1092,16 @@ main {
 }
 
 .context-key {
-  color: #cccccc;
+  color: var(--fg);
   font-weight: 600;
 }
 
 .context-value {
-  color: #888888;
+  color: var(--fg2);
 }
 
 .context-meta {
-  color: #555555;
+  color: var(--fg4);
   font-size: 10px;
 }
 
@@ -1109,8 +1109,8 @@ main {
 
 .turn-log-link {
   background: none;
-  border: 1px solid #333333;
-  color: #0088ff;
+  border: 1px solid var(--border);
+  color: var(--info);
   cursor: pointer;
   font-family: inherit;
   font-size: 10px;
@@ -1120,16 +1120,16 @@ main {
 }
 
 .turn-log-link:hover {
-  background: #222222;
-  border-color: #0088ff;
+  background: var(--border);
+  border-color: var(--info);
 }
 
 /* --- Log turnId filter badge --- */
 
 .log-turnid-badge {
-  background: #0088ff22;
-  border: 1px solid #0088ff;
-  color: #0088ff;
+  background: var(--info-soft);
+  border: 1px solid var(--info);
+  color: var(--info);
   padding: 2px 6px;
   border-radius: 2px;
   font-size: 10px;
@@ -1141,7 +1141,7 @@ main {
 .log-turnid-badge button {
   background: none;
   border: none;
-  color: #0088ff;
+  color: var(--info);
   cursor: pointer;
   font-size: 12px;
   padding: 0;
