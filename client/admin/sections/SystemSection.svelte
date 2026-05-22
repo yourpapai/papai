@@ -76,5 +76,17 @@
     {/if}
   </section>
 
+  <p class="admin-system__note">POST /admin/llm requires DEBUG_TOKEN</p>
   <CredentialsForm snapshot={adminLlm} onRefresh={loadAdmin} />
 </section>
+
+<style>
+  .admin-system__note {
+    color: var(--fg3);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    margin: 8px 12px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+</style>
