@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.2] - 2026-05-22
+
+### Documentation
+
+- Convert design specs to superpowers format with notes
+- Sync design docs and superpowers specs/notes
+- **design:** Verify, align design spec and write implementation plan for dashboard-admin split
+- Add Kaneo label semantics plan
+
+### Fixed
+
+- **telegram:** Eagerly initialize file fetcher for group chat staged files
+- **kaneo:** Distinguish reusable and task labels
+- **tools:** Prevent duplicate Kaneo label creation
+- **tools:** Add Kaneo task-label status handling
+- **tools:** Clarify Kaneo already-absent label results
+- **kaneo:** Resolve task label removal from workspace ids
+- **kaneo:** Keep reusable labels when taskId is omitted
+- **kaneo:** Detect already-present labels by workspace id
+- Satisfy full check after Kaneo label changes
+
+### Miscellaneous
+
+- **sql:** Add Kaneo label dedup scripts
+- **tools:** Tighten Kaneo label helper usage
+- **sql:** Drop uncommitted Kaneo dedup scripts
+
+### Testing
+
+- Verify Kaneo label semantics changes
+
+### License
+
+- Add BUSL-1.1 headers to docs and extend tooling for markdown files
 ## [5.6.1] - 2026-05-21
 
 ### Documentation
