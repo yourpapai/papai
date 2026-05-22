@@ -46,8 +46,9 @@ describe('DebugApp.svelte', () => {
     const html = target.innerHTML
 
     // Presence checks (live engineering panels)
-    expect(html).toContain('papai debug')
-    expect(html).toContain('panel-grid')
+    expect(html).toContain('papai')
+    expect(html).toContain('::debug')
+    expect(html).toContain('debug-grid')
     expect(html).toContain('log-explorer')
     expect(html).toContain('Turns')
     expect(html).toContain('Notifications')

@@ -1,21 +1,22 @@
+<!-- SPDX-License-Identifier: BUSL-1.1 -->
+<!-- Copyright (c) 2026 Dmitriy Lazarev -->
+<!-- Use of this software is governed by the Business Source License 1.1. -->
+<!-- See LICENSE in the project root for details. -->
+
 <script lang="ts">
-  import ContextChips from './components/ContextChips.svelte'
-  import FailureDetail from './components/FailureDetail.svelte'
-  import Header from './components/Header.svelte'
+  import Shell from '../shared/ui/Shell.svelte'
+
+  import DebugDetailRail from './components/DebugDetailRail.svelte'
+  import DebugTopBar from './components/DebugTopBar.svelte'
   import LiveContextCard from './components/LiveContextCard.svelte'
-  import LogDetail from './components/LogDetail.svelte'
   import LogExplorer from './components/LogExplorer.svelte'
-  import Modal from '../shared/Modal.svelte'
   import NotificationsPanel from './components/NotificationsPanel.svelte'
-  import SessionDetail from './components/SessionDetail.svelte'
   import SessionsList from './components/SessionsList.svelte'
   import ToolFailuresPanel from './components/ToolFailuresPanel.svelte'
-  import TraceDetail from './components/TraceDetail.svelte'
   import TraceList from './components/TraceList.svelte'
-  import TurnDetail from './components/TurnDetail.svelte'
   import TurnsPanel from './components/TurnsPanel.svelte'
 
-  import type { DashboardState, LlmTrace, LogEntry, Session, ToolFailure, Turn } from './dashboard-types.js'
+  import type { DashboardState } from './dashboard-types.js'
   import { fetchInitialLogs, parseLogsArray, collectScopes } from './log-bootstrap.js'
   import { setupEventSource } from './sse.js'
 
@@ -24,12 +25,6 @@
   }
 
   let { dashboard }: Props = $props()
-
-  let selectedSession: { userId: string; session: Session } | null = $state(null)
-  let selectedTrace: LlmTrace | null = $state(null)
-  let selectedLog: { entry: LogEntry; index: number } | null = $state(null)
-  let selectedTurn: Turn | null = $state(null)
-  let selectedFailure: ToolFailure | null = $state(null)
 
   $effect(() => {
     void (async () => {
@@ -56,67 +51,43 @@
   }
 </script>
 
-<Header {dashboard} />
-<ContextChips {dashboard} />
-
-<main>
-  <aside id="left-panel">
-    <SessionsList {dashboard} onSelect={(userId, session) => (selectedSession = { userId, session })} />
-    <TraceList {dashboard} onSelect={(trace) => (selectedTrace = trace)} />
-  </aside>
-
-  <div class="panel-grid">
-    <TurnsPanel
-      {dashboard}
-      onShowTurn={(turn) => (selectedTurn = turn)}
-      onShowLogsForTurn={showLogsForTurn} />
-    <NotificationsPanel {dashboard} />
-    <ToolFailuresPanel {dashboard} onShowFailure={(failure) => (selectedFailure = failure)} />
-    <LiveContextCard {dashboard} />
-  </div>
-
-  <LogExplorer {dashboard} onSelectLog={(entry, index) => (selectedLog = { entry, index })} />
-</main>
-
-<Modal open={selectedSession !== null} title={selectedSession === null ? '' : `Session: ${selectedSession.userId}`} onClose={() => (selectedSession = null)}>
-  {#snippet body()}
-    {#if selectedSession !== null}
-      <SessionDetail userId={selectedSession.userId} session={selectedSession.session} />
-    {/if}
+<Shell>
+  {#snippet topBar()}
+    <DebugTopBar {dashboard} />
   {/snippet}
-</Modal>
+  {#snippet children()}
+    <div class="debug-grid">
+      <aside class="debug-grid__left">
+        <SessionsList
+          {dashboard}
+          onSelect={(userId, session) => (dashboard.selectedDetail = { kind: 'session', payload: { userId, session } })} />
+        <TraceList
+          {dashboard}
+          onSelect={(trace) => (dashboard.selectedDetail = { kind: 'trace', payload: trace })} />
+      </aside>
 
-<Modal open={selectedTrace !== null} title={selectedTrace === null ? '' : `LLM Trace: ${selectedTrace.model}`} onClose={() => (selectedTrace = null)}>
-  {#snippet body()}
-    {#if selectedTrace !== null}
-      <TraceDetail trace={selectedTrace} />
-    {/if}
-  {/snippet}
-</Modal>
+      <section class="debug-grid__center">
+        <TurnsPanel
+          {dashboard}
+          onShowTurn={(turn) => (dashboard.selectedDetail = { kind: 'turn', payload: turn })}
+          onShowLogsForTurn={showLogsForTurn} />
+        <div class="debug-grid__center-row">
+          <NotificationsPanel {dashboard} />
+          <ToolFailuresPanel
+            {dashboard}
+            onShowFailure={(failure) => (dashboard.selectedDetail = { kind: 'failure', payload: failure })} />
+        </div>
+        <LogExplorer
+          {dashboard}
+          onSelectLog={(entry, index) => (dashboard.selectedDetail = { kind: 'log', payload: { entry, index } })} />
+      </section>
 
-<Modal open={selectedLog !== null} title={selectedLog === null ? '' : `Log Entry #${selectedLog.index + 1}`} onClose={() => (selectedLog = null)}>
-  {#snippet body()}
-    {#if selectedLog !== null}
-      <LogDetail entry={selectedLog.entry} />
-    {/if}
+      <aside class="debug-grid__right">
+        <DebugDetailRail
+          selected={dashboard.selectedDetail}
+          onClear={() => (dashboard.selectedDetail = null)} />
+        <LiveContextCard {dashboard} />
+      </aside>
+    </div>
   {/snippet}
-</Modal>
-
-<Modal open={selectedTurn !== null} title={selectedTurn === null ? '' : `Turn: ${selectedTurn.turnId}`} onClose={() => (selectedTurn = null)}>
-  {#snippet body()}
-    {#if selectedTurn !== null}
-      <TurnDetail turn={selectedTurn} />
-    {/if}
-  {/snippet}
-</Modal>
-
-<Modal
-  open={selectedFailure !== null}
-  title={selectedFailure === null ? '' : `Tool Failure: ${typeof selectedFailure.data['toolName'] === 'string' ? selectedFailure.data['toolName'] : 'unknown'}`}
-  onClose={() => (selectedFailure = null)}>
-  {#snippet body()}
-    {#if selectedFailure !== null}
-      <FailureDetail failure={selectedFailure} />
-    {/if}
-  {/snippet}
-</Modal>
+</Shell>
