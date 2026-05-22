@@ -258,3 +258,20 @@ export const AuthorizedGroupEntrySchema = z.object({
 })
 
 export type SubmitAdminLlmKey = z.infer<typeof AdminLlmKeySchema>
+
+export const RecentRequestRowSchema = z.object({
+  ts: z.number(),
+  modelLabel: z.string(),
+  role: z.string(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  finishStatus: z.string(),
+})
+
+export const RecentRequestsResponseSchema = z.object({
+  subjectId: z.string(),
+  limit: z.number(),
+  requests: z.array(RecentRequestRowSchema),
+})
+
+export type RecentRequestRow = z.infer<typeof RecentRequestRowSchema>

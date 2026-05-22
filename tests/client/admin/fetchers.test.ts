@@ -12,6 +12,7 @@ import {
   fetchAdminSystem,
   fetchDeferredPrompts,
   fetchMemos,
+  fetchRecentRequests,
   fetchRecurringTasks,
   submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
@@ -242,6 +243,34 @@ describe('fetchAdminIdentity', () => {
     installFetch(200, { contextId: 'user-1', providerName: 'kaneo' })
 
     await expect(fetchAdminIdentity('user-1', 'kaneo')).rejects.toThrow()
+  })
+})
+
+describe('fetchRecentRequests', () => {
+  test('GETs /admin/subjects/:id/recent-requests and returns parsed rows', async () => {
+    installFetch(200, {
+      subjectId: 'user-A',
+      limit: 25,
+      requests: [
+        { ts: 1_700_000_000_000, modelLabel: 'gpt-4o', role: 'main', inputTokens: 100, outputTokens: 200, finishStatus: 'stop' },
+      ],
+    })
+    const result = await fetchRecentRequests('user-A')
+    expect(firstCaptured().url).toBe('/admin/subjects/user-A/recent-requests?limit=25')
+    expect(result).toHaveLength(1)
+    expect(result[0]?.modelLabel).toBe('gpt-4o')
+  })
+
+  test('returns empty array on non-ok response', async () => {
+    installFetch(500, { error: 'internal error' })
+    const result = await fetchRecentRequests('user-A')
+    expect(result).toHaveLength(0)
+  })
+
+  test('returns empty array when parse fails', async () => {
+    installFetch(200, { unexpected: 'shape' })
+    const result = await fetchRecentRequests('user-A')
+    expect(result).toHaveLength(0)
   })
 })
 

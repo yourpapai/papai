@@ -3,12 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
 
 import SubjectDetail from '../../../../client/admin/components/SubjectDetail.svelte'
 import type { BillingDetail, BillingRequestRow, BillingSubject } from '../../../../client/shared/api-types.js'
+import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 const emptyTotals = { inputTokens: 0, outputTokens: 0, calls: 0 }
 
@@ -37,6 +38,23 @@ const makeRequest = (overrides: Partial<BillingRequestRow>): BillingRequestRow =
   finishReason: 'stop',
   error: null,
   ...overrides,
+})
+
+const emptyRecentRequests = { subjectId: 'user-A', limit: 25, requests: [] }
+
+beforeEach(() => {
+  setMockFetch(() =>
+    Promise.resolve(
+      new Response(JSON.stringify(emptyRecentRequests), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
+  )
+})
+
+afterEach(() => {
+  restoreFetch()
 })
 
 const render = (detail: BillingDetail): { target: HTMLElement; component: ReturnType<typeof mount> } => {

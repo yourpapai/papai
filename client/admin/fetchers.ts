@@ -29,9 +29,11 @@ import {
   GlobalStatsSchema,
   IdentityMappingEntrySchema,
   MemoSchema,
+  RecentRequestsResponseSchema,
   RecurringTaskSchema,
   SubjectStatsSchema,
   SubmitAdminLlmResponseSchema,
+  type RecentRequestRow,
   type SubmitAdminLlmKey,
 } from './fetcher-schemas.js'
 
@@ -136,6 +138,17 @@ export const fetchAdminIdentity = async (userId: string, provider: string): Prom
   if (res.status === 404) return null
   requireOk(res, body)
   return IdentityMappingEntrySchema.parse(body) as IdentityMappingEntry
+}
+
+export const fetchRecentRequests = async (subjectId: string, limit = 25): Promise<RecentRequestRow[]> => {
+  const res = await fetch(
+    `/admin/subjects/${encodeURIComponent(subjectId)}/recent-requests?limit=${limit}`,
+    { headers: { Accept: 'application/json' } },
+  )
+  if (!res.ok) return []
+  const body = await readBody(res)
+  const parsed = RecentRequestsResponseSchema.safeParse(body)
+  return parsed.success ? parsed.data.requests : []
 }
 
 export const fetchAdminGroups = async (): Promise<AuthorizedGroupEntry[]> => {
