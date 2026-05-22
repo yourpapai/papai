@@ -82,7 +82,10 @@ export class LabelResource {
       this.log.info({ taskId, count: labels.length }, 'Task labels listed')
       return labels
     } catch (error) {
-      this.log.error({ error: error instanceof Error ? error.message : String(error), taskId }, 'Failed to list task labels')
+      this.log.error(
+        { error: error instanceof Error ? error.message : String(error), taskId },
+        'Failed to list task labels',
+      )
       throw classifyKaneoError(error)
     }
   }

@@ -29,17 +29,33 @@ const labelTargetSchema = z
     path: ['labelId'],
   })
 
-type AlreadyAbsentResult = {
+type AlreadyAbsentByNameResult = {
   status: 'already_absent'
   taskId: string
   labelName: string
   message: string
 }
 
-const alreadyAbsent = (taskId: string, labelName: string, message: string): AlreadyAbsentResult => ({
+type AlreadyAbsentByIdResult = {
+  status: 'already_absent'
+  taskId: string
+  labelId: string
+  message: string
+}
+
+type AlreadyAbsentResult = AlreadyAbsentByNameResult | AlreadyAbsentByIdResult
+
+const alreadyAbsentByName = (taskId: string, labelName: string, message: string): AlreadyAbsentByNameResult => ({
   status: 'already_absent',
   taskId,
   labelName,
+  message,
+})
+
+const alreadyAbsentById = (taskId: string, labelId: string, message: string): AlreadyAbsentByIdResult => ({
+  status: 'already_absent',
+  taskId,
+  labelId,
   message,
 })
 
@@ -54,7 +70,11 @@ const resolveKaneoTaskLabelId = async (
   if (labelId !== undefined) {
     const direct = taskLabels.find((label) => label.id === labelId)
     if (direct !== undefined) return direct.id
-    return alreadyAbsent(taskId, labelId, `Task does not currently have label id "${labelId}". No action was taken.`)
+    return alreadyAbsentById(
+      taskId,
+      labelId,
+      `Task does not currently have label id "${labelId}". No action was taken.`,
+    )
   }
 
   if (labelName === undefined) {
@@ -63,7 +83,11 @@ const resolveKaneoTaskLabelId = async (
 
   const matches = taskLabels.filter((label) => label.name === labelName)
   if (matches.length === 0) {
-    return alreadyAbsent(taskId, labelName, `Task does not currently have label "${labelName}". No action was taken.`)
+    return alreadyAbsentByName(
+      taskId,
+      labelName,
+      `Task does not currently have label "${labelName}". No action was taken.`,
+    )
   }
   if (matches.length > 1) {
     throw new Error(`Multiple task labels found: ${labelName}`)

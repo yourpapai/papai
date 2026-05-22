@@ -21,7 +21,10 @@ describe('makeAddTaskLabelTool direct', () => {
 
     const tool = makeAddTaskLabelTool(provider)
     assert(tool.execute, 'Tool execute is undefined')
-    const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+    const result: unknown = await tool.execute(
+      { taskId: 'task-1', labelName: 'Feature' },
+      { toolCallId: '1', messages: [] },
+    )
 
     expect(result).toMatchObject({
       status: 'already_present',

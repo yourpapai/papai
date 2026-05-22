@@ -134,7 +134,10 @@ describe('Task Label Tools', () => {
 
       const tool = makeAddTaskLabelTool(provider)
       assertToolExecute(tool)
-      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', labelName: 'Feature' },
+        { toolCallId: '1', messages: [] },
+      )
 
       expect(result).toMatchObject({
         status: 'already_present',
@@ -156,7 +159,10 @@ describe('Task Label Tools', () => {
 
       const tool = makeAddTaskLabelTool(provider)
       assertToolExecute(tool)
-      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', labelName: 'Feature' },
+        { toolCallId: '1', messages: [] },
+      )
 
       assertTaskLabel(result)
       expect(result).toEqual({ taskId: 'task-1', labelId: 'workspace-label-1' })
@@ -337,6 +343,30 @@ describe('Task Label Tools', () => {
         taskId: 'task-1',
         labelName: 'Feature',
       })
+      expect(result).not.toHaveProperty('labelId')
+      expect(removeTaskLabel).not.toHaveBeenCalled()
+    })
+
+    test('returns already_absent for Kaneo when task does not currently have label by id', async () => {
+      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([])),
+        removeTaskLabel,
+      })
+
+      const tool = makeRemoveTaskLabelTool(provider)
+      const result: unknown = await getToolExecutor(tool)(
+        { taskId: 'task-1', labelId: 'missing-label-id' },
+        { toolCallId: '1', messages: [] },
+      )
+
+      expect(result).toMatchObject({
+        status: 'already_absent',
+        taskId: 'task-1',
+        labelId: 'missing-label-id',
+      })
+      expect(result).not.toHaveProperty('labelName')
       expect(removeTaskLabel).not.toHaveBeenCalled()
     })
 
@@ -350,7 +380,10 @@ describe('Task Label Tools', () => {
 
       const tool = makeRemoveTaskLabelTool(provider)
       assertToolExecute(tool)
-      const result: unknown = await tool.execute({ taskId: 'task-1', labelName: 'Feature' }, { toolCallId: '1', messages: [] })
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', labelName: 'Feature' },
+        { toolCallId: '1', messages: [] },
+      )
 
       assertTaskLabel(result)
       expect(result).toEqual({ taskId: 'task-1', labelId: 'task-label-1' })
