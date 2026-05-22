@@ -2,3 +2,4 @@
 docs/superpowers/extensions/
 *.svelte
 public/
+client/assets/
