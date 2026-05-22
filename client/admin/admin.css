@@ -7,26 +7,26 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #0b0d10;
+  background: var(--bg);
 }
 
 .admin-topbar {
   flex: 0 0 auto;
   padding: 16px 20px;
-  border-bottom: 1px solid #20252d;
-  background: #11151b;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .admin-topbar h1,
 .admin-pane h2 {
-  color: #f2f5f8;
+  color: var(--fg);
   font-size: 18px;
   font-weight: 600;
 }
 
 .eyebrow {
   margin-bottom: 4px;
-  color: #778292;
+  color: var(--fg3);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -44,23 +44,23 @@
   flex-direction: column;
   gap: 4px;
   padding: 14px;
-  border-right: 1px solid #20252d;
-  background: #0f1318;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .admin-sidebar a {
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 4px;
-  color: #aab3c0;
+  border-radius: 2px;
+  color: var(--fg2);
   text-decoration: none;
 }
 
 .admin-sidebar a:hover,
 .admin-sidebar a.active {
-  border-color: #2b3543;
-  background: #18202a;
-  color: #ffffff;
+  border-color: var(--strong);
+  background: var(--raised);
+  color: var(--fg);
 }
 
 .admin-pane {
@@ -71,9 +71,9 @@
 
 .panel {
   padding: 20px;
-  border: 1px solid #20252d;
-  border-radius: 8px;
-  background: #11151b;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
 }
 
 .admin-section-header {
@@ -86,7 +86,7 @@
 
 .admin-data-section,
 .admin-subsection-grid section {
-  color: #d9e0e7;
+  color: var(--fg);
 }
 
 .admin-filter-form {
@@ -107,7 +107,7 @@
 .admin-subsection-grid h3,
 .admin-table th,
 .admin-key-value-list dt {
-  color: #aab3c0;
+  color: var(--fg2);
 }
 
 .admin-filter-form input,
@@ -115,10 +115,10 @@
 .admin-filter-form button,
 .admin-section-header button {
   padding: 10px 12px;
-  border: 1px solid #2b3543;
-  border-radius: 6px;
-  background: #0b0d10;
-  color: #f2f5f8;
+  border: 1px solid var(--strong);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 .admin-filter-form button:disabled {
@@ -137,7 +137,7 @@
 .admin-table th,
 .admin-table td {
   padding: 10px 12px;
-  border-top: 1px solid #20252d;
+  border-top: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
 }
@@ -156,17 +156,17 @@
   display: grid;
   gap: 4px;
   padding: 12px;
-  border: 1px solid #20252d;
-  border-radius: 6px;
-  background: #0f1318;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
 }
 
 .status-error {
-  color: #ff8f8f;
+  color: var(--danger);
 }
 
 .placeholder {
-  color: #aab3c0;
+  color: var(--fg2);
 }
 
 @media (max-width: 720px) {
@@ -177,7 +177,7 @@
   .admin-sidebar {
     flex-flow: row wrap;
     border-right: 0;
-    border-bottom: 1px solid #20252d;
+    border-bottom: 1px solid var(--border);
   }
 
   .admin-section-header {
