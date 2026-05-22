@@ -38,8 +38,3 @@ export function pickString(d: Record<string, unknown>, key: string): string {
   const v = d[key]
   return typeof v === 'string' ? v : ''
 }
-
-export function pickStringOrNull(d: Record<string, unknown>, key: string): string | null {
-  const v = d[key]
-  return typeof v === 'string' ? v : null
-}

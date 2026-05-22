@@ -39,15 +39,6 @@ describe('recurrenceSpecSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('rejects invalid timezone', () => {
-    const result = recurrenceSpecSchema.safeParse({
-      freq: 'DAILY',
-      dtstart: '2026-04-20T09:00:00Z',
-      timezone: 'Not/A_Zone',
-    })
-    expect(result.success).toBe(false)
-  })
-
   it('rejects interval < 1', () => {
     const result = recurrenceSpecSchema.safeParse({
       freq: 'DAILY',

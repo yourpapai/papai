@@ -32,10 +32,10 @@ function pluginSpecifier(tempDir: string): string {
   return `./${relativePath}`
 }
 
-function runRule(ruleName: string, source: string): LintResult {
+function runRule(ruleName: string, source: string, filename: string): LintResult {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'papai-policy-'))
   const configPath = path.join(tempDir, '.oxlintrc.json')
-  const filePath = path.join(tempDir, 'input.ts')
+  const filePath = path.join(tempDir, filename)
 
   try {
     fs.writeFileSync(
@@ -69,7 +69,7 @@ function runRule(ruleName: string, source: string): LintResult {
 
 describe('papai policy oxlint plugin', () => {
   test('rejects files without a BUSL license header', () => {
-    const result = runRule('papai-policy/require-license-header', 'export const value = 1\n')
+    const result = runRule('papai-policy/require-license-header', 'export const value = 1\n', 'input.ts')
 
     expect(result.exitCode).toBe(1)
     expect(result.output).toContain('papai-policy(require-license-header)')
@@ -86,6 +86,26 @@ describe('papai policy oxlint plugin', () => {
         '',
         'export const value = 1',
       ].join('\n'),
+      'input.ts',
+    )
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  test('allows Svelte files with an HTML BUSL license header', () => {
+    const result = runRule(
+      'papai-policy/require-license-header',
+      [
+        '<!-- SPDX-License-Identifier: BUSL-1.1 -->',
+        `<!-- Copyright (c) ${currentYear} Dmitriy Lazarev -->`,
+        '<!-- Use of this software is governed by the Business Source License 1.1. -->',
+        '<!-- See LICENSE in the project root for details. -->',
+        '',
+        '<script lang="ts">',
+        '  export const value = 1',
+        '</script>',
+      ].join('\n'),
+      'Component.svelte',
     )
 
     expect(result.exitCode).toBe(0)
@@ -102,6 +122,7 @@ describe('papai policy oxlint plugin', () => {
         '',
         'export const value = 1',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(0)
@@ -117,6 +138,7 @@ describe('papai policy oxlint plugin', () => {
         '',
         'export const value = 1',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(1)
@@ -135,6 +157,7 @@ describe('papai policy oxlint plugin', () => {
         '',
         'console.log("ok")',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(0)
@@ -150,6 +173,7 @@ describe('papai policy oxlint plugin', () => {
         `// ${tsNoCheckDirective}`,
         'export const value = 1',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(1)
@@ -160,6 +184,7 @@ describe('papai policy oxlint plugin', () => {
     const result = runRule(
       'papai-policy/no-inline-suppression-comments',
       ['// regular comment', 'export const value = 1'].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(0)
@@ -174,6 +199,7 @@ describe('papai policy oxlint plugin', () => {
         '  return String(name)',
         '}',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(1)
@@ -184,6 +210,7 @@ describe('papai policy oxlint plugin', () => {
     const result = runRule(
       'papai-policy/no-default-value-syntax',
       ["export function render(mode = 'safe'): string {", '  return mode', '}'].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(1)
@@ -202,6 +229,7 @@ describe('papai policy oxlint plugin', () => {
         '  return preferred + stable + String(next)',
         '}',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(1)
@@ -220,6 +248,7 @@ describe('papai policy oxlint plugin', () => {
         '  return false',
         '}',
       ].join('\n'),
+      'input.ts',
     )
 
     expect(result.exitCode).toBe(0)

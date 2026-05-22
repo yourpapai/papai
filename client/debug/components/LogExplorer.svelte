@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
 
-  import { formatTime, levelClass, levelName } from '../helpers.js'
+  import { formatTime, levelClass, levelName } from '../../shared/helpers.js'
   import { filterLogsWithIndex, updateFuseIndex } from '../log-filter.js'
   import type { LogEntry, DashboardState } from '../dashboard-types.js'
 

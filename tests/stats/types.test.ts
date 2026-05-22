@@ -113,6 +113,14 @@ describe('stats types', () => {
       },
       webFetches: { topHosts: [] },
       toolMix: { topTools: [], errorTypeCounts: {} },
+      llmUsage: {
+        totalCalls: 0,
+        mainCalls: 0,
+        smallCalls: 0,
+        embeddingCalls: 0,
+        inputTokensTotal: 0,
+        outputTokensTotal: 0,
+      },
     }
 
     const expectedKeys = [
@@ -126,6 +134,7 @@ describe('stats types', () => {
       'surfaceMix',
       'webFetches',
       'toolMix',
+      'llmUsage',
     ]
     expect(Object.keys(sample).sort()).toEqual(expectedKeys.sort())
   })

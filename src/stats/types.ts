@@ -183,6 +183,15 @@ export interface ToolMixGlobal {
   errorTypeCounts: Record<string, number>
 }
 
+export interface LlmUsageGlobal {
+  totalCalls: number
+  mainCalls: number
+  smallCalls: number
+  embeddingCalls: number
+  inputTokensTotal: number
+  outputTokensTotal: number
+}
+
 export interface GlobalSubjects {
   dmTotal: number
   groupTotal: number
@@ -200,4 +209,5 @@ export interface GlobalStats {
   surfaceMix: SurfaceMixStats
   webFetches: WebFetchHostsGlobal
   toolMix: ToolMixGlobal
+  llmUsage: LlmUsageGlobal
 }

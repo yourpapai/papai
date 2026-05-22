@@ -6,12 +6,15 @@
 /// <reference lib="dom" />
 import { mount } from 'svelte'
 
-import App from './App.svelte'
+import { dashboard } from './debug.svelte.js'
+import DebugApp from './DebugApp.svelte'
 
 export function mountApp(target: Element): ReturnType<typeof mount> {
-  return mount(App, { target })
+  return mount(DebugApp, { target, props: { dashboard } })
 }
 
-if (typeof document !== 'undefined' && document.getElementById('app') !== null) {
-  mountApp(document.getElementById('app')!)
+const appTarget = typeof document === 'undefined' ? null : document.querySelector('#app')
+
+if (appTarget !== null) {
+  mountApp(appTarget)
 }

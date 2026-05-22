@@ -25,21 +25,10 @@ function freshState(turns: Turn[] = []): DashboardState {
     turns,
     notifications: [],
     toolFailures: [],
-    recurringTasks: [],
-    deferredPrompts: [],
-    memos: [],
-    identityMappings: new Map(),
     activeConfigEditors: new Set(),
-    authorizedGroups: [],
-    activeContext: 'all',
+    scopeFilter: 'all',
+    selectedDetail: null,
     activeLogFilter: {},
-    billingWindow: '30d',
-    billingSubjects: [],
-    billingDetail: null,
-    adminLlm: null,
-    statsWindow: '30d',
-    globalStats: null,
-    subjectStats: null,
   }
 }
 
@@ -84,7 +73,7 @@ describe('TurnsPanel', () => {
       makeTurn({ turnId: 'in-dm', scope: { kind: 'user', userId: 'u1' } }),
       makeTurn({ turnId: 'in-group', scope: { kind: 'group', groupId: 'g1' } }),
     ])
-    state.activeContext = 'dm'
+    state.scopeFilter = 'dm'
     const { target, component } = render(state)
     expect(target.innerHTML).not.toContain('No turns')
     // Only one row should render

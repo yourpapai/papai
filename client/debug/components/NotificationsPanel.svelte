@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { formatTime } from '../helpers.js'
-  import type { Notification, DashboardState } from '../dashboard-types.js'
+  import { formatTime } from '../../shared/helpers.js'
+  import type { Notification, DashboardState, ScopeFilter } from '../dashboard-types.js'
 
   interface Props {
     dashboard: DashboardState
@@ -8,14 +8,10 @@
 
   let { dashboard }: Props = $props()
 
-  function matchesContext(scope: Notification['scope'], activeContext: string): boolean {
-    if (activeContext === 'all') return true
-    if (activeContext === 'dm') return scope.kind === 'user'
-    if (activeContext.startsWith('group:')) {
-      const groupId = activeContext.slice('group:'.length)
-      return scope.kind === 'group' && scope.groupId === groupId
-    }
-    return true
+  function matchesScope(scope: Notification['scope'], filter: ScopeFilter): boolean {
+    if (filter === 'all') return true
+    if (filter === 'dm') return scope.kind === 'user'
+    return scope.kind === 'group'
   }
 
   function truncate(text: string, max: number): string {
@@ -32,7 +28,7 @@
     return ''
   }
 
-  const filtered = $derived(dashboard.notifications.filter((n) => matchesContext(n.scope, dashboard.activeContext)))
+  const filtered = $derived(dashboard.notifications.filter((n) => matchesScope(n.scope, dashboard.scopeFilter)))
 </script>
 
 <section class="panel">
