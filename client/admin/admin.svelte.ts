@@ -3,6 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { adminGlobals, refreshGlobals } from './global-stats.svelte.js'
+import type { StatsWindow } from './global-stats.svelte.js'
+
 export const adminSections = [
   { id: 'system', label: 'System' },
   { id: 'billing', label: 'Billing' },
@@ -39,7 +42,22 @@ export function sectionLabel(sectionId: AdminSectionId): string {
 
 export const adminState = $state({
   currentSection: sectionFromHash(typeof location === 'undefined' ? '' : location.hash),
+  lastRefreshedAt: null as number | null,
 })
+
+export function setSection(id: AdminSectionId): void {
+  adminState.currentSection = id
+}
+
+export function setWindow(next: StatsWindow): void {
+  adminGlobals.window = next
+  void refreshGlobals()
+}
+
+export async function refreshAll(): Promise<void> {
+  await refreshGlobals()
+  adminState.lastRefreshedAt = Date.now()
+}
 
 export function syncSectionFromLocation(): void {
   adminState.currentSection = sectionFromHash(location.hash)
