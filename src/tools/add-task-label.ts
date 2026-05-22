@@ -29,6 +29,22 @@ const labelTargetSchema = z
     path: ['labelId'],
   })
 
+type AlreadyPresentResult = {
+  status: 'already_present'
+  taskId: string
+  labelName: string
+  taskLabelIds: string[]
+  message: string
+}
+
+const alreadyPresent = (taskId: string, labelName: string, taskLabelIds: string[]): AlreadyPresentResult => ({
+  status: 'already_present',
+  taskId,
+  labelName,
+  taskLabelIds,
+  message: `Task already has label "${labelName}". No action was taken.`,
+})
+
 const resolveWorkspaceLabelId = async (
   provider: Readonly<TaskProvider>,
   labelId: string | undefined,
@@ -49,6 +65,38 @@ const resolveWorkspaceLabelId = async (
   return matches[0]!.id
 }
 
+const resolveKaneoAlreadyPresent = async (
+  provider: Readonly<TaskProvider>,
+  taskId: string,
+  labelId: string | undefined,
+  labelName: string | undefined,
+): Promise<AlreadyPresentResult | null> => {
+  const taskMatches = await listTaskLabels(provider, taskId)
+
+  if (labelName !== undefined) {
+    const matchingByName = taskMatches.filter((label) => label.name === labelName)
+    if (matchingByName.length > 0) {
+      return alreadyPresent(taskId, labelName, matchingByName.map((label) => label.id))
+    }
+    return null
+  }
+
+  if (labelId === undefined) return null
+
+  const directMatch = taskMatches.find((label) => label.id === labelId)
+  if (directMatch !== undefined) {
+    return alreadyPresent(taskId, directMatch.name, [directMatch.id])
+  }
+
+  const workspaceLabel = (await listVisibleWorkspaceLabels(provider, undefined)).find((label) => label.id === labelId)
+  if (workspaceLabel === undefined) return null
+
+  const matchingByName = taskMatches.filter((label) => label.name === workspaceLabel.name)
+  if (matchingByName.length === 0) return null
+
+  return alreadyPresent(taskId, workspaceLabel.name, matchingByName.map((label) => label.id))
+}
+
 export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
   return tool({
     description:
@@ -56,17 +104,9 @@ export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[
     inputSchema: labelTargetSchema,
     execute: async ({ taskId, labelId, labelName }) => {
       try {
-        if (isKaneoProvider(provider) && labelName !== undefined) {
-          const taskMatches = (await listTaskLabels(provider, taskId)).filter((label) => label.name === labelName)
-          if (taskMatches.length > 0) {
-            return {
-              status: 'already_present' as const,
-              taskId,
-              labelName,
-              taskLabelIds: taskMatches.map((label) => label.id),
-              message: `Task already has label "${labelName}". No action was taken.`,
-            }
-          }
+        if (isKaneoProvider(provider)) {
+          const existing = await resolveKaneoAlreadyPresent(provider, taskId, labelId, labelName)
+          if (existing !== null) return existing
         }
 
         const resolvedLabelId = await resolveWorkspaceLabelId(provider, labelId, labelName)

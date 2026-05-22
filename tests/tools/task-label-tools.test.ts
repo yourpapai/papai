@@ -148,6 +148,52 @@ describe('Task Label Tools', () => {
       expect(addTaskLabel).not.toHaveBeenCalled()
     })
 
+    test('returns already_present for Kaneo when reusable workspace labelId matches a task label by visible name', async () => {
+      const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
+        listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
+        addTaskLabel,
+      })
+
+      const tool = makeAddTaskLabelTool(provider)
+      assertToolExecute(tool)
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', labelId: 'workspace-label-1' },
+        { toolCallId: '1', messages: [] },
+      )
+
+      expect(result).toMatchObject({
+        status: 'already_present',
+        taskId: 'task-1',
+        labelName: 'Feature',
+        taskLabelIds: ['task-label-1'],
+      })
+      expect(addTaskLabel).not.toHaveBeenCalled()
+    })
+
+    test('Kaneo still adds reusable workspace label by labelId when task does not already have it', async () => {
+      const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-2', name: 'Other', color: '#00ff00' }])),
+        listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
+        addTaskLabel,
+      })
+
+      const tool = makeAddTaskLabelTool(provider)
+      assertToolExecute(tool)
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', labelId: 'workspace-label-1' },
+        { toolCallId: '1', messages: [] },
+      )
+
+      assertTaskLabel(result)
+      expect(result).toEqual({ taskId: 'task-1', labelId: 'workspace-label-1' })
+      expect(addTaskLabel).toHaveBeenCalledWith('task-1', 'workspace-label-1')
+    })
+
     test('Kaneo still resolves reusable workspace label when task does not already have it', async () => {
       const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
       const provider = createMockProvider({
