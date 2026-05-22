@@ -100,11 +100,10 @@ afterEach(() => {
 })
 
 describe('BillingSection', () => {
-  test('renders title, refresh control, and window selector', () => {
+  test('renders title and refresh control', () => {
     installFetch([])
     const { target, component } = render()
     expect(target.textContent).toContain('Billing')
-    expect(target.querySelector('[data-testid="billing-window-select"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="billing-refresh"]')).not.toBeNull()
     void unmount(component)
   })
@@ -120,7 +119,7 @@ describe('BillingSection', () => {
     void unmount(component)
   })
 
-  test('opens detail modal with per-subject stats when a subject is selected', async () => {
+  test('shows inline detail with per-subject stats when a subject is selected', async () => {
     const calls = installFetch([subject('ctx-A')])
     const { target, component } = render()
     for (let i = 0; i < 10; i++) await Promise.resolve()
@@ -132,6 +131,7 @@ describe('BillingSection', () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
 
+    expect(target.querySelector('.billing-inline-detail')).not.toBeNull()
     expect(target.textContent).toContain('Requests for ctx-A')
     expect(target.textContent).toContain('Anonymous stats')
     expect(calls.some((url) => url.startsWith('/billing/subject/ctx-A'))).toBe(true)
@@ -139,11 +139,11 @@ describe('BillingSection', () => {
     void unmount(component)
   })
 
-  test('shows the visible error when a window change fetch fails', async () => {
+  test('shows the visible error when a refresh fetch fails', async () => {
     const calls: string[] = []
     const responses = [
       Response.json({ window: '30d', subjects: [subject('ctx-A')] }),
-      Response.json({ error: 'unknown window' }, { status: 400 }),
+      Response.json({ error: 'fetch failed' }, { status: 500 }),
     ]
     setMockFetch((url) => {
       calls.push(url)
@@ -156,15 +156,14 @@ describe('BillingSection', () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
 
-    const select = target.querySelector<HTMLSelectElement>('[data-testid="billing-window-select"]')
-    expect(select).not.toBeNull()
-    select!.value = '7d'
-    select!.dispatchEvent(new Event('change', { bubbles: true }))
+    const refreshBtn = target.querySelector<HTMLButtonElement>('[data-testid="billing-refresh"]')
+    expect(refreshBtn).not.toBeNull()
+    refreshBtn!.click()
     for (let i = 0; i < 10; i++) await Promise.resolve()
     flushSync()
 
-    expect(calls.some((url) => url.includes('window=7d'))).toBe(true)
-    expect(target.textContent).toContain('unknown window')
+    expect(calls.filter((url) => url.startsWith('/billing/subjects')).length).toBe(2)
+    expect(target.textContent).toContain('fetch failed')
     void unmount(component)
   })
 })

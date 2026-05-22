@@ -6,12 +6,10 @@
 <script lang="ts">
   import { untrack } from 'svelte'
 
-  import Modal from '../../shared/Modal.svelte'
   import type { BillingDetail, BillingSubject, BillingWindow } from '../../shared/api-types.js'
   import SubjectDetail from '../components/SubjectDetail.svelte'
   import SubjectStatsPanel from '../components/SubjectStatsPanel.svelte'
   import SubjectsTable from '../components/SubjectsTable.svelte'
-  import WindowSelect from '../components/WindowSelect.svelte'
   import { fetchBillingDetail, fetchBillingSubjects } from '../fetchers.js'
 
   let billingWindow: BillingWindow = $state('30d')
@@ -54,17 +52,6 @@
     }
   }
 
-  function onWindowChange(window: BillingWindow): void {
-    billingWindow = window
-    void refreshAll()
-  }
-
-  function closeDetail(): void {
-    selectedSubject = null
-    billingDetail = null
-    detailError = null
-  }
-
   $effect(() => {
     untrack(() => {
       void refreshAll()
@@ -78,7 +65,6 @@
       <p class="eyebrow">Usage</p>
       <h2 data-testid="admin-section-title">Billing</h2>
     </div>
-    <WindowSelect value={billingWindow} onChange={onWindowChange} />
     <button
       type="button"
       data-testid="billing-refresh"
@@ -92,14 +78,9 @@
   {/if}
 
   <SubjectsTable subjects={billingSubjects} onSelect={(subject) => void selectSubject(subject)} />
-</section>
 
-<Modal
-  open={selectedSubject !== null}
-  title={selectedSubject === null ? '' : `Billing: ${selectedSubject.displayName ?? selectedSubject.storageContextId}`}
-  onClose={closeDetail}>
-  {#snippet body()}
-    {#if selectedSubject !== null}
+  {#if selectedSubject !== null}
+    <div class="billing-inline-detail">
       {#if detailFetching && billingDetail === null && detailError === null}
         <span class="placeholder">Loading...</span>
       {:else if detailError !== null}
@@ -108,6 +89,15 @@
         <SubjectDetail detail={billingDetail} />
       {/if}
       <SubjectStatsPanel storageContextId={selectedSubject.storageContextId} />
-    {/if}
-  {/snippet}
-</Modal>
+    </div>
+  {/if}
+</section>
+
+<style>
+  .billing-inline-detail {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+</style>
