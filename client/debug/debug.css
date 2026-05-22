@@ -5,132 +5,6 @@
   min-height: 0;
 }
 
-/* --- Header --- */
-
-header {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 16px;
-  flex: 0 0 auto;
-}
-
-.header-top {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 4px;
-}
-
-.header-top h1 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.header-stat {
-  color: var(--fg3);
-}
-
-.status-dot {
-  font-size: 11px;
-}
-
-.status-dot.connected {
-  color: var(--accent);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.status-dot.disconnected {
-  color: var(--danger);
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
-.header-infra {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--fg4);
-  font-size: 11px;
-}
-
-.infra-sep {
-  width: 1px;
-  height: 12px;
-  background: var(--border);
-}
-
-/* --- Context chips --- */
-
-.context-chips {
-  display: flex;
-  gap: 6px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  flex: 0 0 auto;
-}
-
-.chip {
-  background: var(--raised);
-  border: 1px solid var(--border);
-  color: var(--fg2);
-  border-radius: 2px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  padding: 3px 8px;
-  white-space: nowrap;
-}
-
-.chip:hover {
-  background: var(--border);
-}
-
-.chip.active {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-/* --- Main grid: sidebar | panels (top right) / logs (bottom right) --- */
-
-main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas:
-    'sidebar panels'
-    'sidebar logs';
-  min-height: 0;
-}
-
-#left-panel {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--border);
-  min-height: 0;
-}
-
-.panel-grid {
-  grid-area: panels;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(180px, 1fr);
-  gap: 8px;
-  padding: 8px;
-  overflow: hidden;
-  min-height: 0;
-}
 
 #log-explorer {
   grid-area: logs;
@@ -1146,4 +1020,36 @@ main {
   font-size: 12px;
   padding: 0;
   line-height: 1;
+}
+
+/* --- Three-column debug grid --- */
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 380px;
+  grid-template-rows: auto;
+  gap: 12px;
+  padding: 16px;
+  min-height: 0;
+}
+.debug-grid__left,
+.debug-grid__right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+.debug-grid__center {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+.debug-grid__center-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
 }
