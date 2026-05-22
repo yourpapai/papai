@@ -48,9 +48,9 @@
   <HR />
   <Caption>{#snippet children()}quick stats{/snippet}</Caption>
   <div class="admin-sidebar__kvs">
-    <KV k="DM" v={adminGlobals.data?.subjects ?? '—'} />
-    <KV k="llm" v={adminGlobals.data?.llmCalls ?? '—'} />
-    <KV k="tools" v={adminGlobals.data?.toolCalls ?? '—'} />
+    <KV k="DM" v={adminGlobals.data?.subjects?.dmTotal ?? '—'} />
+    <KV k="active" v={adminGlobals.data?.active?.activeIn30d ?? '—'} />
+    <KV k="tools" v="—" />
   </div>
 </aside>
 

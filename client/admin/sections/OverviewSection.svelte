@@ -11,18 +11,20 @@
 
   import { adminGlobals } from '../global-stats.svelte.js'
 
-  const sparkData = $derived(adminGlobals.data?.growthLast30d?.map((p) => p.count) ?? [])
-  const barsData = $derived(adminGlobals.data?.surfaceMix?.map((p) => p.value) ?? [])
+  const sparkData = $derived(
+    adminGlobals.data?.subjects?.growthLast30d?.map((p) => p.dmAdded + p.groupAdded) ?? [],
+  )
+  const barsData: number[] = []
 </script>
 
 <section id="overview" class="admin-section">
   <Panel title="overview">
     {#snippet body()}
       <div class="admin-overview__kpis">
-        <KV k="subjects" v={adminGlobals.data?.subjects ?? '—'} />
-        <KV k="llm calls" v={adminGlobals.data?.llmCalls ?? '—'} />
-        <KV k="tool calls" v={adminGlobals.data?.toolCalls ?? '—'} />
-        <KV k="tokens" v={adminGlobals.data?.tokens ?? '—'} />
+        <KV k="subjects" v="—" />
+        <KV k="active 30d" v={adminGlobals.data?.active?.activeIn30d ?? '—'} />
+        <KV k="tool calls" v="—" />
+        <KV k="storage" v="—" />
       </div>
       <div class="admin-overview__charts">
         <div class="admin-overview__spark">

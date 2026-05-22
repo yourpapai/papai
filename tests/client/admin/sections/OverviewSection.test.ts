@@ -25,12 +25,15 @@ describe('OverviewSection.svelte', () => {
     void unmount(component)
   })
 
-  test('renders KPI values when data is present', () => {
-    adminGlobals.data = { subjects: 32, llmCalls: 412, toolCalls: 98, tokens: 184_000 }
+  test('renders active 30d from nested active block', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 18, groupTotal: 14, growthLast30d: [] },
+      active: { activeIn1d: 4, activeIn7d: 12, activeIn30d: 24 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
     const component = mount(OverviewSection, { target, props: {} })
-    expect(target.textContent).toContain('32')
-    expect(target.textContent).toContain('412')
-    expect(target.textContent).toContain('98')
+    expect(target.textContent).toContain('24')
     void unmount(component)
   })
 })

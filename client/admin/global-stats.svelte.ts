@@ -7,18 +7,61 @@ import { z } from 'zod'
 
 import { readBody } from '../shared/fetcher-helpers.js'
 
-export type StatsWindow = '24h' | '7d' | '30d' | 'all'
+export type StatsWindow = '1d' | '7d' | '30d' | 'all'
+
+const SubjectGrowthPointSchema = z.object({
+  date: z.string(),
+  dmAdded: z.number(),
+  groupAdded: z.number(),
+})
 
 const GlobalStatsSchema = z.object({
-  subjects: z.number().optional(),
-  llmCalls: z.number().optional(),
-  toolCalls: z.number().optional(),
-  tokens: z.number().optional(),
-  growthLast30d: z.array(z.object({ ts: z.number(), count: z.number() })).optional(),
-  surfaceMix: z.array(z.object({ label: z.string(), value: z.number() })).optional(),
+  generatedAt: z.number().optional(),
+  window: z.string().optional(),
+  subjects: z
+    .object({
+      dmTotal: z.number(),
+      groupTotal: z.number(),
+      growthLast30d: z.array(SubjectGrowthPointSchema),
+    })
+    .optional(),
+  active: z
+    .object({
+      activeIn1d: z.number(),
+      activeIn7d: z.number(),
+      activeIn30d: z.number(),
+    })
+    .optional(),
+  storage: z
+    .object({
+      sqliteBytes: z.number(),
+      s3AttachmentBytes: z.number(),
+    })
+    .optional(),
+  surfaceMix: z
+    .object({
+      subjectsWithRecurring: z.number(),
+      subjectsWithDeferred: z.number(),
+      subjectsWithMemos: z.number(),
+      subjectsWithInstructions: z.number(),
+    })
+    .optional(),
+  toolMix: z
+    .object({
+      topTools: z.array(
+        z.object({
+          toolName: z.string(),
+          count: z.number(),
+          successRate: z.number(),
+        }),
+      ),
+      errorTypeCounts: z.record(z.string(), z.number()),
+    })
+    .optional(),
 })
 
 export type GlobalStats = z.infer<typeof GlobalStatsSchema>
+export type SubjectGrowthPoint = z.infer<typeof SubjectGrowthPointSchema>
 
 export const adminGlobals = $state({
   window: '30d' as StatsWindow,
