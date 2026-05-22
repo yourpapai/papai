@@ -238,8 +238,8 @@ export async function refreshGlobals(): Promise<void> {
 Notes:
 
 - `window: z.string().optional()` instead of a literal enum — the response carries it back informationally and we don't want a schema mismatch to nuke the whole payload over a string we don't use.
-- The schema is intentionally a *subset* of `GlobalStats` from `src/stats/types.ts`: it includes only the fields the Overview section will consume (subjects, active, storage, surfaceMix, toolMix). Z.optional() on each top-level field protects against the server omitting them in future variants.
-- Every nested field is required *within* its parent object — if the server returns `subjects` it must include all three keys. If a key is missing the whole `subjects` block is dropped on parse failure; the client falls back to `—`.
+- The schema is intentionally a _subset_ of `GlobalStats` from `src/stats/types.ts`: it includes only the fields the Overview section will consume (subjects, active, storage, surfaceMix, toolMix). Z.optional() on each top-level field protects against the server omitting them in future variants.
+- Every nested field is required _within_ its parent object — if the server returns `subjects` it must include all three keys. If a key is missing the whole `subjects` block is dropped on parse failure; the client falls back to `—`.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -285,9 +285,7 @@ If a test asserts on the `24h` label, update it to assert on `1d` instead. If no
 ```ts
 test('renders 1d in the window seg', () => {
   const component = mount(AdminTopBar, { target, props: {} })
-  const labels = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')).map(
-    (b) => b.textContent,
-  )
+  const labels = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')).map((b) => b.textContent)
   expect(labels).toContain('1d')
   expect(labels).not.toContain('24h')
   void unmount(component)
