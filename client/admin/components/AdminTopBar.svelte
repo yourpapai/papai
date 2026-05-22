@@ -34,7 +34,7 @@
     <div class="admin-topbar__secondary">
       <span class="admin-topbar__lbl">window</span>
       <Seg
-        options={['24h', '7d', '30d', 'all']}
+        options={['1d', '7d', '30d', 'all']}
         value={adminGlobals.window}
         onChange={(v) => setWindow(v as StatsWindow)} />
       <span class="admin-topbar__spacer"></span>

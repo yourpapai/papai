@@ -56,4 +56,12 @@ describe('AdminTopBar.svelte', () => {
     expect(link).not.toBeNull()
     void unmount(component)
   })
+
+  test('renders 1d in the window seg', () => {
+    const component = mount(AdminTopBar, { target, props: {} })
+    const labels = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')).map((b) => b.textContent)
+    expect(labels).toContain('1d')
+    expect(labels).not.toContain('24h')
+    void unmount(component)
+  })
 })
