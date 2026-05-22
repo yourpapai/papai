@@ -44,7 +44,7 @@
   })
 </script>
 
-<section class="panel system-section">
+<section id="system" class="panel system-section admin-section">
   <header class="system-header">
     <div>
       <p class="eyebrow">System</p>

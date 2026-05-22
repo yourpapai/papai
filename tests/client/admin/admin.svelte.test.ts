@@ -11,7 +11,7 @@ import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 describe('admin.svelte', () => {
   beforeEach(() => {
-    adminState.currentSection = 'system'
+    adminState.currentSection = 'overview'
     adminState.lastRefreshedAt = null
     adminGlobals.window = '30d'
     adminGlobals.data = null
@@ -64,7 +64,7 @@ describe('admin.svelte', () => {
     syncSectionFromLocation()
     // Result depends on whatever location.hash is at this point; just verify it
     // returns a valid AdminSectionId (not undefined / not throwing).
-    const validIds = ['system', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups']
+    const validIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'system']
     expect(validIds).toContain(adminState.currentSection)
   })
 })

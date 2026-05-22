@@ -7,13 +7,14 @@ import { adminGlobals, refreshGlobals } from './global-stats.svelte.js'
 import type { StatsWindow } from './global-stats.svelte.js'
 
 export const adminSections = [
-  { id: 'system', label: 'System' },
+  { id: 'overview', label: 'Overview' },
   { id: 'billing', label: 'Billing' },
   { id: 'stats', label: 'Stats' },
   { id: 'memos', label: 'Memos' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'identities', label: 'Identities' },
   { id: 'groups', label: 'Groups' },
+  { id: 'system', label: 'System' },
 ] as const
 
 export type AdminSectionId = (typeof adminSections)[number]['id']
@@ -31,12 +32,12 @@ function isAdminSectionId(value: string): value is AdminSectionId {
 
 export function sectionFromHash(hash: string): AdminSectionId {
   const normalized = hash.replace(/^#/u, '').toLowerCase()
-  return isAdminSectionId(normalized) ? normalized : 'system'
+  return isAdminSectionId(normalized) ? normalized : 'overview'
 }
 
 export function sectionLabel(sectionId: AdminSectionId): string {
   const section = adminSections.find((candidate) => candidate.id === sectionId)
-  if (section === undefined) return 'System'
+  if (section === undefined) return 'Overview'
   return section.label
 }
 

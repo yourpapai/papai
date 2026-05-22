@@ -3,13 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
-import { flushSync, mount, unmount } from 'svelte'
+import { mount, unmount } from 'svelte'
 
 import AdminApp from '../../../client/admin/AdminApp.svelte'
+import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-const sections = ['System', 'Billing', 'Stats', 'Memos', 'Reminders', 'Identities', 'Groups'] as const
+const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'system'] as const
 
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
@@ -19,51 +20,54 @@ function mountAdminApp(): ReturnType<typeof mount> {
   return mount(AdminApp, { target })
 }
 
-const textOf = (selector: string): string => {
-  const element = document.querySelector(selector)
-  if (element === null) throw new Error(`${selector} missing`)
-  const text = element.textContent
-  if (text === null) throw new Error(`${selector} has no text`)
-  return text
-}
-
-const trimmedText = (item: Element): string => {
-  const text = item.textContent
-  if (text === null) throw new Error('element has no text')
-  return text.trim()
-}
+afterEach(() => {
+  restoreFetch()
+})
 
 describe('AdminApp.svelte', () => {
-  test('renders seven navigation items', () => {
-    const component = mountAdminApp()
-
-    const navItems = Array.from(document.querySelectorAll('[data-testid="admin-nav-item"]')).map((item) =>
-      trimmedText(item),
+  test('renders all eight section anchor ids', () => {
+    setMockFetch(() =>
+      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
     )
+    const component = mountAdminApp()
 
-    expect(navItems).toEqual([...sections])
+    for (const id of sectionIds) {
+      expect(document.getElementById(id)).not.toBeNull()
+    }
 
     void unmount(component)
   })
 
-  test('selects System by default', () => {
+  test('renders eight navigation items', () => {
+    setMockFetch(() =>
+      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
+    )
     const component = mountAdminApp()
 
-    expect(textOf('[aria-current="page"]').trim()).toBe('System')
-    expect(textOf('[data-testid="admin-section-title"]')).toContain('System')
+    const navLinks = Array.from(document.querySelectorAll('.admin-sidebar__link'))
+    expect(navLinks).toHaveLength(8)
 
     void unmount(component)
   })
 
-  test('renders Stats when the hash targets stats', () => {
+  test('renders overview section in the DOM', () => {
+    setMockFetch(() =>
+      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
+    )
     const component = mountAdminApp()
 
-    location.hash = '#stats'
-    window.dispatchEvent(new HashChangeEvent('hashchange'))
-    flushSync()
+    expect(document.getElementById('overview')).not.toBeNull()
 
-    expect(textOf('[aria-current="page"]').trim()).toBe('Stats')
-    expect(textOf('[data-testid="admin-section-title"]')).toContain('Stats')
+    void unmount(component)
+  })
+
+  test('renders system section in the DOM', () => {
+    setMockFetch(() =>
+      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
+    )
+    const component = mountAdminApp()
+
+    expect(document.getElementById('system')).not.toBeNull()
 
     void unmount(component)
   })

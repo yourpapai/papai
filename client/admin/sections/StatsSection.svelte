@@ -12,4 +12,6 @@
   })
 </script>
 
-<StatsPanel {dashboard} />
+<section id="stats" class="admin-section">
+  <StatsPanel {dashboard} />
+</section>
