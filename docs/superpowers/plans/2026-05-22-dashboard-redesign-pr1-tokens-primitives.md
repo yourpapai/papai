@@ -15,6 +15,7 @@
 ## File Structure
 
 **Create:**
+
 - `client/shared/tokens.css` — single `:root { … }` block declaring all design tokens
 - `client/shared/ui/Dot.svelte` — 6px round status dot
 - `client/shared/ui/HR.svelte` — hairline rule
@@ -33,6 +34,7 @@
 - `tests/client/shared/ui/Dot.test.ts` through `TopBar.test.ts` — one per primitive
 
 **Modify:**
+
 - `scripts/build-client.ts` — prepend `tokens.css` to the CSS bundle (single edit)
 - `client/shared/base.css` — replace hex with `var(--…)`; tighten modal border radius to 2px; remove drop shadows
 - `client/admin/admin.css` — replace hex with `var(--…)`; remove rounded radii (6–8px → 0/2px); remove gradient-style hover backgrounds
@@ -51,6 +53,7 @@
 ## Task 1: Add `tokens.css` and wire it into the CSS bundle
 
 **Files:**
+
 - Create: `client/shared/tokens.css`
 - Modify: `scripts/build-client.ts`
 
@@ -82,14 +85,14 @@
 
   /* accent + semantic */
   --accent: #5dd97a;
-  --accent-soft: rgba(93, 217, 122, 0.10);
+  --accent-soft: rgba(93, 217, 122, 0.1);
   --accent-dim: rgba(93, 217, 122, 0.55);
   --warn: #e5a93a;
-  --warn-soft: rgba(229, 169, 58, 0.10);
+  --warn-soft: rgba(229, 169, 58, 0.1);
   --danger: #e85c5c;
-  --danger-soft: rgba(232, 92, 92, 0.10);
+  --danger-soft: rgba(232, 92, 92, 0.1);
   --info: #6cb6ff;
-  --info-soft: rgba(108, 182, 255, 0.10);
+  --info-soft: rgba(108, 182, 255, 0.1);
 
   /* type */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, Menlo, monospace;
@@ -170,26 +173,28 @@ EOF
 ## Task 2: Migrate `client/shared/base.css` to tokens
 
 **Files:**
+
 - Modify: `client/shared/base.css`
 
 Every hex color in `base.css` maps as follows. Apply each replacement.
 
-| Old hex | New value |
-|---|---|
-| `#0a0a0a` (body bg) | `var(--bg)` |
-| `#cccccc` (body fg) | `var(--fg)` |
-| `#111111` (panel bg) | `var(--surface)` |
-| `#222222` (panel border) | `var(--border)` |
-| `#666666` (panel h2) | `var(--fg3)` |
-| `#555555` (count-badge) | `var(--fg3)` |
-| `#1a1a1a` (modal-content bg) | `var(--raised)` |
-| `#333333` (modal borders) | `var(--border)` |
-| `#1f1f1f` (modal-footer button bg) | `var(--raised)` |
-| `#3a3a3a` (modal-footer button border) | `var(--border)` |
+| Old hex                                | New value        |
+| -------------------------------------- | ---------------- |
+| `#0a0a0a` (body bg)                    | `var(--bg)`      |
+| `#cccccc` (body fg)                    | `var(--fg)`      |
+| `#111111` (panel bg)                   | `var(--surface)` |
+| `#222222` (panel border)               | `var(--border)`  |
+| `#666666` (panel h2)                   | `var(--fg3)`     |
+| `#555555` (count-badge)                | `var(--fg3)`     |
+| `#1a1a1a` (modal-content bg)           | `var(--raised)`  |
+| `#333333` (modal borders)              | `var(--border)`  |
+| `#1f1f1f` (modal-footer button bg)     | `var(--raised)`  |
+| `#3a3a3a` (modal-footer button border) | `var(--border)`  |
 
 - [ ] **Step 1: Open the file and edit**
 
 Open `client/shared/base.css`. Replace each hex occurrence using the table above. Also:
+
 - `border-radius: 4px` on `.modal-content` and `.modal-footer button` → `border-radius: 2px`
 - `font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace` → `font-family: var(--font-mono)`
 
@@ -226,31 +231,32 @@ EOF
 ## Task 3: Migrate `client/admin/admin.css` to tokens
 
 **Files:**
+
 - Modify: `client/admin/admin.css`
 
-| Old hex | New value |
-|---|---|
-| `#0b0d10` (admin-shell bg, input bg) | `var(--bg)` |
-| `#11151b` (topbar bg, panel bg) | `var(--surface)` |
-| `#0f1318` (sidebar bg) | `var(--surface)` |
-| `#20252d` (borders) | `var(--border)` |
-| `#2b3543` (focus/hover borders) | `var(--strong)` |
-| `#18202a` (link hover bg) | `var(--raised)` |
-| `#f2f5f8` (heading fg) | `var(--fg)` |
-| `#ffffff` (active link fg) | `var(--fg)` |
-| `#d9e0e7` (section fg) | `var(--fg)` |
-| `#aab3c0` (sidebar link fg, label fg) | `var(--fg2)` |
-| `#778292` (eyebrow) | `var(--fg3)` |
-| `#ff8f8f` (status-error fg) | `var(--danger)` |
+| Old hex                               | New value        |
+| ------------------------------------- | ---------------- |
+| `#0b0d10` (admin-shell bg, input bg)  | `var(--bg)`      |
+| `#11151b` (topbar bg, panel bg)       | `var(--surface)` |
+| `#0f1318` (sidebar bg)                | `var(--surface)` |
+| `#20252d` (borders)                   | `var(--border)`  |
+| `#2b3543` (focus/hover borders)       | `var(--strong)`  |
+| `#18202a` (link hover bg)             | `var(--raised)`  |
+| `#f2f5f8` (heading fg)                | `var(--fg)`      |
+| `#ffffff` (active link fg)            | `var(--fg)`      |
+| `#d9e0e7` (section fg)                | `var(--fg)`      |
+| `#aab3c0` (sidebar link fg, label fg) | `var(--fg2)`     |
+| `#778292` (eyebrow)                   | `var(--fg3)`     |
+| `#ff8f8f` (status-error fg)           | `var(--danger)`  |
 
 Border radii change too. Apply these specific edits in addition to the hex replacements:
 
-| Old | New |
-|---|---|
-| `border-radius: 8px` on `.panel` | `border-radius: 0` |
+| Old                                                                                                       | New                  |
+| --------------------------------------------------------------------------------------------------------- | -------------------- |
+| `border-radius: 8px` on `.panel`                                                                          | `border-radius: 0`   |
 | `border-radius: 6px` on inputs/selects/buttons in `.admin-filter-form` and `.admin-section-header button` | `border-radius: 2px` |
-| `border-radius: 6px` on `.admin-key-value-list div` | `border-radius: 0` |
-| `border-radius: 4px` on sidebar `<a>` | `border-radius: 2px` |
+| `border-radius: 6px` on `.admin-key-value-list div`                                                       | `border-radius: 0`   |
+| `border-radius: 4px` on sidebar `<a>`                                                                     | `border-radius: 2px` |
 
 - [ ] **Step 1: Apply replacements in `client/admin/admin.css`**
 
@@ -287,28 +293,29 @@ EOF
 ## Task 4: Migrate `client/debug/debug.css` to tokens
 
 **Files:**
+
 - Modify: `client/debug/debug.css`
 
 This file is 1149 lines and has the broadest palette. Apply these replacements globally across the file.
 
-| Old hex | New value |
-|---|---|
-| `#111111` | `var(--surface)` |
-| `#131313` | `var(--surface)` |
-| `#181818` | `var(--raised)` |
-| `#1a1a1a` | `var(--raised)` |
-| `#222222` | `var(--border)` |
-| `#333333` | `var(--border)` |
-| `#cccccc` | `var(--fg)` |
-| `#888888` | `var(--fg2)` |
-| `#666666` | `var(--fg3)` |
-| `#555555` | `var(--fg4)` |
-| `#00ff88` | `var(--accent)` |
-| `#0088ff` | `var(--info)` |
+| Old hex     | New value          |
+| ----------- | ------------------ |
+| `#111111`   | `var(--surface)`   |
+| `#131313`   | `var(--surface)`   |
+| `#181818`   | `var(--raised)`    |
+| `#1a1a1a`   | `var(--raised)`    |
+| `#222222`   | `var(--border)`    |
+| `#333333`   | `var(--border)`    |
+| `#cccccc`   | `var(--fg)`        |
+| `#888888`   | `var(--fg2)`       |
+| `#666666`   | `var(--fg3)`       |
+| `#555555`   | `var(--fg4)`       |
+| `#00ff88`   | `var(--accent)`    |
+| `#0088ff`   | `var(--info)`      |
 | `#0088ff22` | `var(--info-soft)` |
-| `#ffaa00` | `var(--warn)` |
-| `#ff4444` | `var(--danger)` |
-| `#ff6666` | `var(--danger)` |
+| `#ffaa00`   | `var(--warn)`      |
+| `#ff4444`   | `var(--danger)`    |
+| `#ff6666`   | `var(--danger)`    |
 
 - [ ] **Step 1: Apply replacements**
 
@@ -344,6 +351,7 @@ EOF
 ## Task 5: Build `Dot` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Dot.svelte`
 - Test: `tests/client/shared/ui/Dot.test.ts`
 
@@ -457,6 +465,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 6: Build `HR` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/HR.svelte`
 - Test: `tests/client/shared/ui/HR.test.ts`
 
@@ -550,6 +559,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 7: Build `Caption` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Caption.svelte`
 - Test: `tests/client/shared/ui/Caption.test.ts`
 
@@ -649,6 +659,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 8: Build `KV` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/KV.svelte`
 - Test: `tests/client/shared/ui/KV.test.ts`
 
@@ -756,6 +767,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 9: Build `Pill` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Pill.svelte`
 - Test: `tests/client/shared/ui/Pill.test.ts`
 
@@ -800,7 +812,7 @@ describe('Pill.svelte', () => {
       const component = mount(Pill, { target, props: { children: textSnippet('x'), tone } })
       expect(target.querySelector(`.ui-pill--${tone}`)).not.toBeNull()
       void unmount(component)
-    }
+    },
   )
 
   test('renders a Dot when dot=true', () => {
@@ -926,6 +938,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 10: Build `Btn` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Btn.svelte`
 - Test: `tests/client/shared/ui/Btn.test.ts`
 
@@ -960,7 +973,7 @@ describe('Btn.svelte', () => {
       const component = mount(Btn, { target, props: { children: textSnippet('x'), variant } })
       expect(target.querySelector(`.ui-btn--${variant}`)).not.toBeNull()
       void unmount(component)
-    }
+    },
   )
 
   test.each<Size>(['sm', 'md', 'lg'])('applies ui-btn--%s size class', (size) => {
@@ -977,7 +990,12 @@ describe('Btn.svelte', () => {
     let clicked = false
     const component = mount(Btn, {
       target,
-      props: { children: textSnippet('go'), onClick: () => { clicked = true } },
+      props: {
+        children: textSnippet('go'),
+        onClick: () => {
+          clicked = true
+        },
+      },
     })
     const btn = target.querySelector('.ui-btn') as HTMLButtonElement
     btn.click()
@@ -1113,6 +1131,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 11: Build `Input` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Input.svelte`
 - Test: `tests/client/shared/ui/Input.test.ts`
 
@@ -1162,7 +1181,12 @@ describe('Input.svelte', () => {
     let last = ''
     const component = mount(Input, {
       target,
-      props: { value: '', onInput: (v: string) => { last = v } },
+      props: {
+        value: '',
+        onInput: (v: string) => {
+          last = v
+        },
+      },
     })
     const input = target.querySelector('input') as HTMLInputElement
     input.value = 'hi'
@@ -1260,6 +1284,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 12: Build `Select` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Select.svelte`
 - Test: `tests/client/shared/ui/Select.test.ts`
 
@@ -1311,7 +1336,9 @@ describe('Select.svelte', () => {
           { value: '7d', label: '7d' },
           { value: '30d', label: '30d' },
         ],
-        onChange: (v: string) => { last = v },
+        onChange: (v: string) => {
+          last = v
+        },
       },
     })
     const sel = target.querySelector('select') as HTMLSelectElement
@@ -1412,6 +1439,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 13: Build `Seg` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Seg.svelte`
 - Test: `tests/client/shared/ui/Seg.test.ts`
 
@@ -1452,7 +1480,9 @@ describe('Seg.svelte', () => {
       props: {
         options: ['dm', 'group'],
         value: 'dm',
-        onChange: (v: string) => { last = v },
+        onChange: (v: string) => {
+          last = v
+        },
       },
     })
     const btns = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn'))
@@ -1542,6 +1572,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 14: Build `Panel` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Panel.svelte`
 - Test: `tests/client/shared/ui/Panel.test.ts`
 
@@ -1735,6 +1766,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 15: Build `Spark` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Spark.svelte`
 - Test: `tests/client/shared/ui/Spark.test.ts`
 
@@ -1857,6 +1889,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 16: Build `Bars` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Bars.svelte`
 - Test: `tests/client/shared/ui/Bars.test.ts`
 
@@ -1949,6 +1982,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 17: Build `Shell` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/Shell.svelte`
 - Test: `tests/client/shared/ui/Shell.test.ts`
 
@@ -2059,6 +2093,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 18: Build `TopBar` primitive (TDD)
 
 **Files:**
+
 - Create: `client/shared/ui/TopBar.svelte`
 - Test: `tests/client/shared/ui/TopBar.test.ts`
 
@@ -2227,6 +2262,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 19: Restyle `Modal.svelte` (tokens, no shadow, 2px radius)
 
 **Files:**
+
 - Modify: `client/shared/Modal.svelte`
 
 Note: `client/shared/base.css` already migrated `.modal-content` border-radius to 2px in Task 2. The Modal component itself has no inline styles — all styling lives in `base.css`. This task verifies that and ensures nothing escaped.
@@ -2269,19 +2305,20 @@ EOF
 ## Task 20: Restyle `Confirm.svelte` (tokens)
 
 **Files:**
+
 - Modify: `client/shared/Confirm.svelte`
 
 - [ ] **Step 1: Read the current Confirm.svelte**
 
 Open `client/shared/Confirm.svelte`. If it has a `<style>` block with hex colors, port each hex to the corresponding `var(--…)` token using the same mapping table as Task 2 (base.css migration):
 
-| Old hex | New value |
-|---|---|
-| any near-black bg | `var(--surface)` or `var(--raised)` |
-| any grey border | `var(--border)` |
-| any greyish text | `var(--fg)` / `var(--fg2)` / `var(--fg3)` |
-| any red/danger color | `var(--danger)` |
-| `#cccccc` | `var(--fg)` |
+| Old hex              | New value                                 |
+| -------------------- | ----------------------------------------- |
+| any near-black bg    | `var(--surface)` or `var(--raised)`       |
+| any grey border      | `var(--border)`                           |
+| any greyish text     | `var(--fg)` / `var(--fg2)` / `var(--fg3)` |
+| any red/danger color | `var(--danger)`                           |
+| `#cccccc`            | `var(--fg)`                               |
 
 Apply per-line. If the file has no inline style block (it reuses `base.css` classes), there's nothing to change.
 
@@ -2311,6 +2348,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 21: Restyle remaining shared primitives
 
 **Files:**
+
 - Modify: `client/shared/PanelShell.svelte`
 - Modify: `client/shared/PropertiesTable.svelte`
 - Modify: `client/shared/StatusDot.svelte`
