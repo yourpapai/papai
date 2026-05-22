@@ -11,7 +11,7 @@ import { getIdentityMapping } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { listMemos } from '../memos.js'
 import { listRecurringTasks } from '../recurring.js'
-import { handleAdminSystem } from './admin-system.js'
+import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
@@ -200,6 +200,25 @@ function handleAuthGroups(): Response {
   })
 }
 
+function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
+  if (url.pathname === '/admin/system') {
+    if (req.method === 'GET') return handleAdminSystem()
+    return new Response('Method not allowed', { status: 405 })
+  }
+  if (url.pathname === '/admin/llm') {
+    if (req.method === 'GET') return handleAdminLlmGet()
+    if (req.method === 'POST') return handleAdminLlmPost(req)
+    return new Response('Method not allowed', { status: 405 })
+  }
+  if (url.pathname.startsWith('/admin/subjects/') && url.pathname.endsWith('/recent-requests')) {
+    return handleAdminRecentRequests(url)
+  }
+  if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
+    return handleAdminFile(url.pathname)
+  }
+  return null
+}
+
 function routeRequest(req: Request): Response | Promise<Response> {
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
@@ -224,20 +243,12 @@ function routeRequest(req: Request): Response | Promise<Response> {
   if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
   if (url.pathname === '/stats/global') return handleStatsGlobal(url)
   if (url.pathname.startsWith('/stats/subject/')) return handleStatsSubject(url)
-  if (url.pathname === '/admin/system') {
-    if (req.method === 'GET') return handleAdminSystem()
-    return new Response('Method not allowed', { status: 405 })
-  }
-  if (url.pathname === '/admin/llm') {
-    if (req.method === 'GET') return handleAdminLlmGet()
-    if (req.method === 'POST') return handleAdminLlmPost(req)
-    return new Response('Method not allowed', { status: 405 })
-  }
+
+  const adminResponse = routeAdminPaths(req, url)
+  if (adminResponse !== null) return adminResponse
+
   if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname === '/debug.css') {
     return handleDebugFile(url.pathname)
-  }
-  if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
-    return handleAdminFile(url.pathname)
   }
   if (url.pathname === '/dashboard') {
     return new Response(null, { status: 301, headers: { Location: '/debug' } })

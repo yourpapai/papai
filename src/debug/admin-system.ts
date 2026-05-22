@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { listRecentRequests } from '../usage/recent-requests.js'
+
 const CHAT_PROVIDERS = ['telegram', 'mattermost', 'discord'] as const
 const TASK_PROVIDERS = ['kaneo', 'youtrack'] as const
 
@@ -33,3 +35,31 @@ export const handleAdminSystem = (): Response =>
     }),
     { headers: { 'Content-Type': 'application/json' } },
   )
+
+const DEFAULT_RECENT_LIMIT = 25
+const MAX_RECENT_LIMIT = 200
+
+const parseLimit = (raw: string | null): number => {
+  if (raw === null) return DEFAULT_RECENT_LIMIT
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return DEFAULT_RECENT_LIMIT
+  return Math.max(0, Math.min(MAX_RECENT_LIMIT, Math.floor(parsed)))
+}
+
+export const handleAdminRecentRequests = (url: URL): Response => {
+  const match = /^\/admin\/subjects\/(?<id>[^/]+)\/recent-requests$/u.exec(url.pathname)
+  const rawId = match?.groups?.['id']
+  if (rawId === undefined || rawId === '') {
+    return new Response(JSON.stringify({ error: 'missing subject id' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const subjectId = decodeURIComponent(rawId)
+  const limit = parseLimit(url.searchParams.get('limit'))
+  const requests = listRecentRequests(subjectId, limit)
+  return new Response(JSON.stringify({ subjectId, limit, requests }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
