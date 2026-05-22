@@ -26,7 +26,8 @@ function freshState(turns: Turn[] = []): DashboardState {
     notifications: [],
     toolFailures: [],
     activeConfigEditors: new Set(),
-    activeContext: 'all',
+    scopeFilter: 'all',
+    selectedDetail: null,
     activeLogFilter: {},
   }
 }
@@ -72,7 +73,7 @@ describe('TurnsPanel', () => {
       makeTurn({ turnId: 'in-dm', scope: { kind: 'user', userId: 'u1' } }),
       makeTurn({ turnId: 'in-group', scope: { kind: 'group', groupId: 'g1' } }),
     ])
-    state.activeContext = 'dm'
+    state.scopeFilter = 'dm'
     const { target, component } = render(state)
     expect(target.innerHTML).not.toContain('No turns')
     // Only one row should render

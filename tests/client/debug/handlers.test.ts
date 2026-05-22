@@ -42,7 +42,8 @@ function freshState(): DashboardState {
     notifications: [],
     toolFailures: [],
     activeConfigEditors: new Set(),
-    activeContext: 'all',
+    scopeFilter: 'all',
+    selectedDetail: null,
     activeLogFilter: {},
   }
 }

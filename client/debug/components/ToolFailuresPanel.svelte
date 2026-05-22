@@ -1,6 +1,6 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
-  import type { ToolFailure, DashboardState } from '../dashboard-types.js'
+  import type { ToolFailure, DashboardState, ScopeFilter } from '../dashboard-types.js'
 
   interface Props {
     dashboard: DashboardState
@@ -9,14 +9,10 @@
 
   let { dashboard, onShowFailure }: Props = $props()
 
-  function matchesContext(scope: ToolFailure['scope'], activeContext: string): boolean {
-    if (activeContext === 'all') return true
-    if (activeContext === 'dm') return scope.kind === 'user'
-    if (activeContext.startsWith('group:')) {
-      const groupId = activeContext.slice('group:'.length)
-      return scope.kind === 'group' && scope.groupId === groupId
-    }
-    return true
+  function matchesScope(scope: ToolFailure['scope'], filter: ScopeFilter): boolean {
+    if (filter === 'all') return true
+    if (filter === 'dm') return scope.kind === 'user'
+    return scope.kind === 'group'
   }
 
   function retriableLabel(data: Record<string, unknown>): string {
@@ -25,7 +21,7 @@
     return ''
   }
 
-  const filtered = $derived(dashboard.toolFailures.filter((f) => matchesContext(f.scope, dashboard.activeContext)))
+  const filtered = $derived(dashboard.toolFailures.filter((f) => matchesScope(f.scope, dashboard.scopeFilter)))
 </script>
 
 <section class="panel">

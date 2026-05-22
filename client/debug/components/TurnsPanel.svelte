@@ -1,6 +1,6 @@
 <script lang="ts">
   import { formatTime } from '../../shared/helpers.js'
-  import type { Turn, DashboardState } from '../dashboard-types.js'
+  import type { Turn, DashboardState, ScopeFilter } from '../dashboard-types.js'
 
   interface Props {
     dashboard: DashboardState
@@ -29,17 +29,13 @@
     return `${ms}ms`
   }
 
-  function matchesContext(turn: Turn, activeContext: string): boolean {
-    if (activeContext === 'all') return true
-    if (activeContext === 'dm') return turn.scope.kind === 'user'
-    if (activeContext.startsWith('group:')) {
-      const groupId = activeContext.slice('group:'.length)
-      return turn.scope.kind === 'group' && turn.scope.groupId === groupId
-    }
-    return true
+  function matchesScope(turn: Turn, scope: ScopeFilter): boolean {
+    if (scope === 'all') return true
+    if (scope === 'dm') return turn.scope.kind === 'user'
+    return turn.scope.kind === 'group'
   }
 
-  const filtered = $derived(dashboard.turns.filter((t) => matchesContext(t, dashboard.activeContext)))
+  const filtered = $derived(dashboard.turns.filter((t) => matchesScope(t, dashboard.scopeFilter)))
 </script>
 
 <section class="panel">

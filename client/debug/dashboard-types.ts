@@ -98,6 +98,16 @@ export interface DashboardStats {
   totalToolCalls: number
 }
 
+export type ScopeFilter = 'all' | 'dm' | 'group'
+
+export type SelectedDetail =
+  | { kind: 'turn'; payload: Turn }
+  | { kind: 'trace'; payload: LlmTrace }
+  | { kind: 'session'; payload: { userId: string; session: Session } }
+  | { kind: 'log'; payload: { entry: LogEntry; index: number } }
+  | { kind: 'failure'; payload: ToolFailure }
+  | null
+
 export interface DashboardState {
   connected: boolean
   stats: DashboardStats
@@ -113,6 +123,7 @@ export interface DashboardState {
   notifications: Notification[]
   toolFailures: ToolFailure[]
   activeConfigEditors: Set<string>
-  activeContext: string
+  scopeFilter: ScopeFilter
+  selectedDetail: SelectedDetail
   activeLogFilter: { turnId?: string }
 }

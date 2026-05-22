@@ -19,7 +19,7 @@ describe('debug.svelte', () => {
     expect(state.turns).toEqual([])
     expect(state.notifications).toEqual([])
     expect(state.toolFailures).toEqual([])
-    expect(state.activeContext).toBe('all')
+    expect(state.scopeFilter).toBe('all')
     expect(state.activeLogFilter).toEqual({})
     expect(state.stats.totalMessages).toBe(0)
     expect(state.stats.totalLlmCalls).toBe(0)
