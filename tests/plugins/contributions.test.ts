@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
@@ -6,7 +11,6 @@ import {
   buildPluginPromptSection,
   buildPluginToolSet,
   contributionRegistry,
-  isPluginToolName,
   namespacedToolName,
   sanitizePluginId,
 } from '../../src/plugins/contributions.js'
@@ -51,18 +55,6 @@ describe('namespacedToolName', () => {
 
   test('handles no-hyphen plugin IDs', () => {
     expect(namespacedToolName('myplugin', 'search')).toBe('plugin_myplugin__search')
-  })
-})
-
-describe('isPluginToolName', () => {
-  test('returns true for namespaced plugin tool names', () => {
-    expect(isPluginToolName('plugin_myplugin__my_tool')).toBe(true)
-  })
-
-  test('returns false for built-in tool names', () => {
-    expect(isPluginToolName('search_tasks')).toBe(false)
-    expect(isPluginToolName('create_task')).toBe(false)
-    expect(isPluginToolName('plugin_')).toBe(false)
   })
 })
 

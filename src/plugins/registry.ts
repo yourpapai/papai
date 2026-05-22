@@ -1,9 +1,15 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ChatCapability } from '../chat/types.js'
 import { logger } from '../logger.js'
 import type { TaskCapability } from '../providers/types.js'
 import {
-  getPluginContextState,
   getPluginAdminState,
+  getPluginContextState,
+  isPluginEnabledForContext,
   setPluginContextEnabled,
   upsertPluginAdminState,
   updatePluginAdminStateField,
@@ -85,7 +91,11 @@ export class PluginRegistry {
     }
 
     // If manifest hash changed and plugin was previously approved, revert to discovered
-    if (existing.approvedManifestHash !== null && existing.approvedManifestHash !== undefined && manifestHash !== existing.approvedManifestHash) {
+    if (
+      existing.approvedManifestHash !== null &&
+      existing.approvedManifestHash !== undefined &&
+      manifestHash !== existing.approvedManifestHash
+    ) {
       updatePluginAdminStateField(manifest.id, {
         state: 'discovered',
         lastSeenManifestHash: manifestHash,
@@ -228,7 +238,7 @@ export function isPluginActiveForContext(pluginId: string, contextId: string): b
   const entry = pluginRegistry.getEntry(pluginId)
   if (entry === undefined || entry.state !== 'active') return false
   const contextState = getPluginContextState(pluginId, contextId)
-  if (contextState !== undefined) return contextState.enabled
+  if (contextState !== undefined) return isPluginEnabledForContext(pluginId, contextId)
   return entry.discoveredPlugin.manifest.defaultEnabled
 }
 
@@ -242,5 +252,5 @@ export function syncRegistryFromDb(discoveredPlugins: DiscoveredPlugin[]): void 
 
 /** Get plugins that are active AND enabled for the given context. */
 export function getPluginsForContext(contextId: string): DiscoveredPlugin[] {
-  return pluginRegistry.getActivePlugins().filter((p) => isPluginActiveForContext(p.manifest.id, contextId))
+  return pluginRegistry.getActivePlugins().filter((plugin) => isPluginActiveForContext(plugin.manifest.id, contextId))
 }

@@ -19,6 +19,7 @@ import {
   registerContextCommand,
   registerGroupCommand,
   registerHelpCommand,
+  registerPluginCommand,
   registerSetupCommand,
   registerStartCommand,
 } from './commands/index.js'
@@ -122,6 +123,7 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerClearCommand(observedChat, checkAuthorization, adminUserId)
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
+  registerPluginCommand(observedChat, adminUserId)
 }
 function userNeedsSetup(storageContextId: string, taskProvider: 'kaneo' | 'youtrack'): boolean {
   const config = getAllConfig(storageContextId)

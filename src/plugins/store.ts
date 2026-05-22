@@ -1,15 +1,18 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { and, eq, like, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
-import {
-  pluginAdminState,
-  pluginContextState,
-  pluginKv,
-  pluginRuntimeEvents,
-  type PluginAdminStateRow,
-  type PluginContextStateRow,
-  type PluginKvRow,
-} from '../db/schema.js'
+import type {
+  PluginAdminStateRow,
+  PluginContextStateRow,
+  PluginKvRow,
+  PluginRuntimeEventRow,
+} from '../db/plugin-schema.js'
+import { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from '../db/schema.js'
 import { logger } from '../logger.js'
 import type { PluginState } from './types.js'
 
@@ -186,10 +189,9 @@ export function recordRuntimeEvent(
   }
 }
 
-export function getRecentRuntimeEvents(
-  pluginId: string,
-  limit = 20,
-): Array<{ eventType: string; message: string | null; occurredAt: string }> {
+type PluginRuntimeEventSummary = Pick<PluginRuntimeEventRow, 'eventType' | 'message' | 'occurredAt'>
+
+export function getRecentRuntimeEvents(pluginId: string, limit = 20): PluginRuntimeEventSummary[] {
   const db = getDrizzleDb()
   return db
     .select({

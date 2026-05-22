@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -26,11 +31,6 @@ function isRealDirectory(path: string): boolean {
   } catch {
     return false
   }
-}
-
-function readManifestJson(manifestPath: string): unknown {
-  const content = readFileSync(manifestPath, 'utf-8')
-  return JSON.parse(content) as unknown
 }
 
 function computeManifestHash(manifestContent: string, entryPointContent: string): string {
@@ -180,4 +180,3 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
 
 /** Compute a hash for a manifest+entrypoint combo. Re-exported for tests. */
 export { computeManifestHash }
-export { readManifestJson }

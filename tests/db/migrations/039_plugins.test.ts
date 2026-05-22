@@ -38,20 +38,21 @@ describe('migration039Plugins', () => {
   test('creates plugin state and runtime tables', () => {
     migration039Plugins.up(db)
 
-    expect(getTableNames(db)).toEqual(expect.arrayContaining(['plugin_admin_state', 'plugin_context_state', 'plugin_kv', 'plugin_runtime_events']))
+    const tableNames = getTableNames(db)
+    expect(tableNames).toContain('plugin_admin_state')
+    expect(tableNames).toContain('plugin_context_state')
+    expect(tableNames).toContain('plugin_kv')
+    expect(tableNames).toContain('plugin_runtime_events')
   })
 
   test('creates lookup indexes for plugin context and runtime queries', () => {
     migration039Plugins.up(db)
 
-    expect(getIndexNames(db)).toEqual(
-      expect.arrayContaining([
-        'idx_plugin_context_state_context',
-        'idx_plugin_kv_plugin_context',
-        'idx_plugin_kv_context',
-        'idx_plugin_runtime_events_plugin',
-        'idx_plugin_runtime_events_occurred',
-      ]),
-    )
+    const indexNames = getIndexNames(db)
+    expect(indexNames).toContain('idx_plugin_context_state_context')
+    expect(indexNames).toContain('idx_plugin_kv_plugin_context')
+    expect(indexNames).toContain('idx_plugin_kv_context')
+    expect(indexNames).toContain('idx_plugin_runtime_events_plugin')
+    expect(indexNames).toContain('idx_plugin_runtime_events_occurred')
   })
 })

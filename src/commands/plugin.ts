@@ -1,7 +1,17 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ChatProvider, ReplyFn } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
-import { getAllPluginAdminStates, getPluginAdminState } from '../plugins/store.js'
+import {
+  getAllPluginAdminStates,
+  getEnabledPluginsForContext,
+  getPluginAdminState,
+  getRecentRuntimeEvents,
+} from '../plugins/store.js'
 import type { PluginState } from '../plugins/types.js'
 
 const log = logger.child({ scope: 'commands:plugin' })
@@ -59,6 +69,14 @@ function buildPluginInfoMessage(pluginId: string): string {
     `Tools: ${manifest.contributes.tools.length > 0 ? manifest.contributes.tools.join(', ') : 'none'}`,
   ]
   if (entry.compatibilityReason !== undefined) lines.push(`Note: ${entry.compatibilityReason}`)
+  const recentEvents = getRecentRuntimeEvents(pluginId, 3)
+  if (recentEvents.length > 0) {
+    lines.push('Recent events:')
+    for (const event of recentEvents) {
+      const detail = event.message === null ? '' : ` — ${event.message}`
+      lines.push(`- ${event.occurredAt}: ${event.eventType}${detail}`)
+    }
+  }
   return lines.join('\n')
 }
 
@@ -93,7 +111,8 @@ async function handleEnable(
     return
   }
   setPluginEnabledForContext(pluginId, targetContextId, true)
-  log.info({ pluginId, targetContextId, adminUserId }, 'Plugin enabled for context via command')
+  const enabledPluginCount = getEnabledPluginsForContext(targetContextId).length
+  log.info({ pluginId, targetContextId, adminUserId, enabledPluginCount }, 'Plugin enabled for context via command')
   await reply.text(`🟢 Plugin \`${pluginId}\` enabled for context \`${targetContextId}\`.`)
 }
 
@@ -115,7 +134,8 @@ async function handleDisable(
   reply: ReplyFn,
 ): Promise<void> {
   setPluginEnabledForContext(pluginId, targetContextId, false)
-  log.info({ pluginId, targetContextId, adminUserId }, 'Plugin disabled for context via command')
+  const enabledPluginCount = getEnabledPluginsForContext(targetContextId).length
+  log.info({ pluginId, targetContextId, adminUserId, enabledPluginCount }, 'Plugin disabled for context via command')
   await reply.text(`⭕ Plugin \`${pluginId}\` disabled.`)
 }
 
@@ -171,7 +191,7 @@ export function registerPluginCommand(chat: ChatProvider, adminUserId: string): 
     }
     const args = (msg.commandMatch ?? '')
       .trim()
-      .split(/\s+/)
+      .split(/\s+/u)
       .filter((s) => s !== '')
     const subcommand = args[0] ?? 'list'
     log.debug({ userId: msg.user.id, subcommand, args }, '/plugin command called')

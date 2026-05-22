@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ToolSet } from 'ai'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -16,17 +21,12 @@ export const MAX_TOTAL_PLUGIN_PROMPT_LENGTH = 8000
 
 /** Sanitize a plugin ID to a valid tool name prefix (replace hyphens with underscores). */
 export function sanitizePluginId(pluginId: string): string {
-  return pluginId.replace(/-/g, '_')
+  return pluginId.replace(/-/gu, '_')
 }
 
 /** Namespace a tool name under a plugin. */
 export function namespacedToolName(pluginId: string, toolName: string): string {
   return `plugin_${sanitizePluginId(pluginId)}__${toolName}`
-}
-
-/** Check if a tool name is a plugin-namespaced tool. */
-export function isPluginToolName(name: string): boolean {
-  return name.startsWith('plugin_') && name.includes('__')
 }
 
 /** Active contributions from a single plugin. */

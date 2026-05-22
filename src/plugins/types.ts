@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import type { ToolExecutionOptions } from 'ai'
 import { z } from 'zod'
 
@@ -93,25 +98,25 @@ const pluginIdSchema = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z][a-z0-9-]*$/, 'Plugin ID must be lowercase kebab-case starting with a letter')
+  .regex(/^[a-z][a-z0-9-]*$/u, 'Plugin ID must be lowercase kebab-case starting with a letter')
 
 const toolNameSchema = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/, 'Tool name must be snake_case starting with a letter')
+  .regex(/^[a-z][a-z0-9_]*$/u, 'Tool name must be snake_case starting with a letter')
 
 const commandNameSchema = z
   .string()
   .min(1)
   .max(32)
-  .regex(/^[a-z][a-z0-9_-]*$/, 'Command name must be lowercase')
+  .regex(/^[a-z][a-z0-9_-]*$/u, 'Command name must be lowercase')
 
 const configKeySchema = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z][a-z0-9_]*$/, 'Config key must be snake_case starting with a letter')
+  .regex(/^[a-z][a-z0-9_]*$/u, 'Config key must be snake_case starting with a letter')
 
 const pluginContributesSchema = z.object({
   tools: z.array(toolNameSchema).optional().default([]),
@@ -148,7 +153,7 @@ const permissionTuple = PLUGIN_PERMISSIONS
 export const pluginManifestSchema = z.object({
   id: pluginIdSchema,
   name: z.string().min(1).max(128),
-  version: z.string().regex(/^\d+\.\d+\.\d+/, 'version must be semver (major.minor.patch)'),
+  version: z.string().regex(/^\d+\.\d+\.\d+/u, 'version must be semver (major.minor.patch)'),
   description: z.string().min(1).max(512),
   apiVersion: z.literal(PLUGIN_API_VERSION),
   main: mainPathSchema.optional().default('index.ts'),
@@ -171,10 +176,6 @@ export const pluginManifestSchema = z.object({
 })
 
 export type PluginManifest = z.output<typeof pluginManifestSchema>
-export type PluginManifestInput = z.input<typeof pluginManifestSchema>
-
-export type PluginConfigRequirement = z.output<typeof pluginConfigRequirementSchema>
-
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {
   manifest: PluginManifest

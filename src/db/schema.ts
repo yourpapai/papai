@@ -296,7 +296,5 @@ export const attachments = sqliteTable(
     index('idx_attachments_context_checksum').on(table.contextId, table.checksum),
   ],
 )
-export type AttachmentRow = typeof attachments.$inferSelect
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
-export type { PluginAdminStateRow, PluginContextStateRow, PluginKvRow, PluginRuntimeEventRow } from './plugin-schema.js'

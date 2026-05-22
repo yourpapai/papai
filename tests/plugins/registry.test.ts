@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
@@ -58,10 +63,7 @@ describe('checkPluginCompatibility', () => {
       manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     const result = checkPluginCompatibility(plugin.manifest, new Set(), new Set())
-    expect(result.compatible).toBe(false)
-    if (!result.compatible) {
-      expect(result.reason).toContain('tasks.delete')
-    }
+    expect(result).toEqual({ compatible: false, reason: 'Required task capability missing: tasks.delete' })
   })
 
   test('returns compatible when task capability is present', () => {

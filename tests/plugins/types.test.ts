@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { describe, expect, test } from 'bun:test'
 
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
@@ -17,14 +22,13 @@ describe('pluginManifestSchema', () => {
   })
 
   test('applies defaults for optional fields', () => {
-    const result = pluginManifestSchema.safeParse(baseManifest)
-    expect(result.success).toBe(true)
-    if (!result.success) return
-    expect(result.data.main).toBe('index.ts')
-    expect(result.data.contributes.tools).toEqual([])
-    expect(result.data.permissions).toEqual([])
-    expect(result.data.defaultEnabled).toBe(false)
-    expect(result.data.activationTimeoutMs).toBe(5000)
+    const manifest = pluginManifestSchema.parse(baseManifest)
+
+    expect(manifest.main).toBe('index.ts')
+    expect(manifest.contributes.tools).toEqual([])
+    expect(manifest.permissions).toEqual([])
+    expect(manifest.defaultEnabled).toBe(false)
+    expect(manifest.activationTimeoutMs).toBe(5000)
   })
 
   describe('id validation', () => {

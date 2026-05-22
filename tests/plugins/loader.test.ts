@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { PluginContributions } from '../../src/plugins/types.js'
@@ -47,8 +52,7 @@ void mock.module('../../src/plugins/contributions.js', () => ({
   buildPluginToolSet: mock((): Record<string, unknown> => ({})),
   buildPluginPromptSection: mock((): string => ''),
   namespacedToolName: mock((id: string, name: string): string => `plugin_${id}__${name}`),
-  sanitizePluginId: mock((id: string): string => id.replace(/-/g, '_')),
-  isPluginToolName: mock((): boolean => false),
+  sanitizePluginId: mock((id: string): string => id.replace(/-/gu, '_')),
   MAX_FRAGMENT_LENGTH_PER_PLUGIN: 2000,
   MAX_TOTAL_PLUGIN_PROMPT_LENGTH: 8000,
 }))

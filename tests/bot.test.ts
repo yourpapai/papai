@@ -40,6 +40,7 @@ import {
   DEFAULT_CHAT_CAPABILITIES,
   createMockChat,
   createMockChatForBot,
+  createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
   setupTestDb,
@@ -389,6 +390,20 @@ describe('Bot Authorization Gate (setupBot)', () => {
     getMessageHandler = getHandler
 
     setupBot(mockChat, ADMIN_ID, botDeps)
+  })
+
+  test('registers the plugin management command', () => {
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    setupBot(
+      provider,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    expect(commandHandlers.has('plugin')).toBe(true)
   })
 
   describe('Unauthorized user — silent drop', () => {

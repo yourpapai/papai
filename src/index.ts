@@ -18,7 +18,7 @@ import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
 import { discoverPlugins } from './plugins/discovery.js'
-import { activatePlugins, deactivateAllPlugins } from './plugins/loader.js'
+import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
 import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { scheduler } from './scheduler-instance.js'
@@ -167,7 +167,10 @@ try {
 }
 const toActivate = pluginRegistry.getApprovedCompatiblePlugins()
 await activatePlugins(toActivate)
-log.info({ count: toActivate.length }, 'Plugin activation complete')
+log.info(
+  { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
+  'Plugin activation complete',
+)
 
 let stopDebugServerFn: (() => void) | null = null
 
