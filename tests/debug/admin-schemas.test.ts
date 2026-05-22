@@ -38,8 +38,13 @@ describe('admin-schemas', () => {
 
   test('RecentRequestSchema parsed row has only the 6 anonymous fields', () => {
     const result = RecentRequestSchema.parse(validRow)
-    expect(Object.keys(result).sort()).toEqual(
-      ['finishStatus', 'inputTokens', 'modelLabel', 'outputTokens', 'role', 'ts'],
-    )
+    expect(Object.keys(result).sort()).toEqual([
+      'finishStatus',
+      'inputTokens',
+      'modelLabel',
+      'outputTokens',
+      'role',
+      'ts',
+    ])
   })
 })

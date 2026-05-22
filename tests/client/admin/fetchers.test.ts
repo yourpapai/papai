@@ -252,7 +252,14 @@ describe('fetchRecentRequests', () => {
       subjectId: 'user-A',
       limit: 25,
       requests: [
-        { ts: 1_700_000_000_000, modelLabel: 'gpt-4o', role: 'main', inputTokens: 100, outputTokens: 200, finishStatus: 'stop' },
+        {
+          ts: 1_700_000_000_000,
+          modelLabel: 'gpt-4o',
+          role: 'main',
+          inputTokens: 100,
+          outputTokens: 200,
+          finishStatus: 'stop',
+        },
       ],
     })
     const result = await fetchRecentRequests('user-A')

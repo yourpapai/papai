@@ -5,8 +5,14 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import {
+  adminState,
+  refreshAll,
+  setSection,
+  setWindow,
+  syncSectionFromLocation,
+} from '../../../client/admin/admin.svelte.js'
 import { adminGlobals } from '../../../client/admin/global-stats.svelte.js'
-import { adminState, refreshAll, setSection, setWindow, syncSectionFromLocation } from '../../../client/admin/admin.svelte.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 describe('admin.svelte', () => {
@@ -33,7 +39,9 @@ describe('admin.svelte', () => {
   })
 
   test('setWindow writes to adminGlobals.window', () => {
-    setMockFetch(() => Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })))
+    setMockFetch(() =>
+      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
+    )
     setWindow('7d')
     expect(adminGlobals.window).toBe('7d')
   })

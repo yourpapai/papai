@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { logger } from '../logger.js'
 import { listRecentRequests } from '../usage/recent-requests.js'
+import { RecentRequestsResponseSchema } from './admin-schemas.js'
 
 const CHAT_PROVIDERS = ['telegram', 'mattermost', 'discord'] as const
 const TASK_PROVIDERS = ['kaneo', 'youtrack'] as const
@@ -58,7 +60,15 @@ export const handleAdminRecentRequests = (url: URL): Response => {
   const subjectId = decodeURIComponent(rawId)
   const limit = parseLimit(url.searchParams.get('limit'))
   const requests = listRecentRequests(subjectId, limit)
-  return new Response(JSON.stringify({ subjectId, limit, requests }), {
+  const parsed = RecentRequestsResponseSchema.safeParse({ subjectId, limit, requests })
+  if (!parsed.success) {
+    logger.warn({ scope: 'debug:admin-system' }, 'recent-requests response failed schema validation')
+    return new Response(JSON.stringify({ error: 'internal error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  return new Response(JSON.stringify(parsed.data), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   })

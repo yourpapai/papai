@@ -5,10 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  RecentRequestRowSchema,
-  RecentRequestsResponseSchema,
-} from '../../../client/admin/fetcher-schemas.js'
+import { RecentRequestRowSchema, RecentRequestsResponseSchema } from '../../../client/admin/fetcher-schemas.js'
 
 describe('RecentRequestRowSchema', () => {
   test('accepts a valid recent request row', () => {

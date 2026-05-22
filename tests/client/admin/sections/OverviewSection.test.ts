@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { mount, unmount } from 'svelte'
 
-import OverviewSection from '../../../../client/admin/sections/OverviewSection.svelte'
 import { adminGlobals } from '../../../../client/admin/global-stats.svelte.js'
+import OverviewSection from '../../../../client/admin/sections/OverviewSection.svelte'
 
 describe('OverviewSection.svelte', () => {
   let target: HTMLElement

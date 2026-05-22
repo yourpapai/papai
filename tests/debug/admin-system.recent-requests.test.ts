@@ -3,14 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import assert from 'node:assert/strict'
-
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { llmUsageEvents } from '../../src/db/schema.js'
-import { handleAdminRecentRequests } from '../../src/debug/admin-system.js'
 import { RecentRequestsResponseSchema } from '../../src/debug/admin-schemas.js'
+import { handleAdminRecentRequests } from '../../src/debug/admin-system.js'
 import { setupTestDb } from '../utils/test-helpers.js'
 
 const readJson = async (res: Response): Promise<object> => {

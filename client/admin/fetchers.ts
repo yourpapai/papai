@@ -141,10 +141,9 @@ export const fetchAdminIdentity = async (userId: string, provider: string): Prom
 }
 
 export const fetchRecentRequests = async (subjectId: string, limit = 25): Promise<RecentRequestRow[]> => {
-  const res = await fetch(
-    `/admin/subjects/${encodeURIComponent(subjectId)}/recent-requests?limit=${limit}`,
-    { headers: { Accept: 'application/json' } },
-  )
+  const res = await fetch(`/admin/subjects/${encodeURIComponent(subjectId)}/recent-requests?limit=${limit}`, {
+    headers: { Accept: 'application/json' },
+  })
   if (!res.ok) return []
   const body = await readBody(res)
   const parsed = RecentRequestsResponseSchema.safeParse(body)

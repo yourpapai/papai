@@ -3,9 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import assert from 'node:assert/strict'
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { handleAdminSystem } from '../../src/debug/admin-system.js'
 
