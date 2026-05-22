@@ -29,4 +29,24 @@ describe('KV.svelte', () => {
     expect(v.style.color).toContain('var(--accent)')
     void unmount(component)
   })
+
+  test('renders sub-label when sub prop is provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(KV, {
+      target,
+      props: { k: 'subjects', v: 32, sub: '18 dm · 14 group' },
+    })
+    expect(target.textContent).toContain('18 dm · 14 group')
+    expect(target.querySelector('.ui-kv__sub')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('does not render sub-label container when sub is omitted', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(KV, { target, props: { k: 'subjects', v: 32 } })
+    expect(target.querySelector('.ui-kv__sub')).toBeNull()
+    void unmount(component)
+  })
 })
