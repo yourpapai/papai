@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Stats Global — LLM Totals + main/small Split Implementation Plan
 
 **Goal:** Extend `/stats/global` with an `llmUsage` aggregate (totalCalls, mainCalls, smallCalls, embeddingCalls, inputTokensTotal, outputTokensTotal) and render an "llm calls" KPI on the admin Overview surface with a `N main · N small` sub-label.
