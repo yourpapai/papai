@@ -9,7 +9,12 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
-import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
+import {
+  isKaneoProvider,
+  listTaskLabels,
+  listVisibleWorkspaceLabels,
+  listWorkspaceLabels,
+} from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:add-task-label' })
 
@@ -76,7 +81,11 @@ const resolveKaneoAlreadyPresent = async (
   if (labelName !== undefined) {
     const matchingByName = taskMatches.filter((label) => label.name === labelName)
     if (matchingByName.length > 0) {
-      return alreadyPresent(taskId, labelName, matchingByName.map((label) => label.id))
+      return alreadyPresent(
+        taskId,
+        labelName,
+        matchingByName.map((label) => label.id),
+      )
     }
     return null
   }
@@ -88,13 +97,17 @@ const resolveKaneoAlreadyPresent = async (
     return alreadyPresent(taskId, directMatch.name, [directMatch.id])
   }
 
-  const workspaceLabel = (await listVisibleWorkspaceLabels(provider, undefined)).find((label) => label.id === labelId)
+  const workspaceLabel = (await listWorkspaceLabels(provider)).find((label) => label.id === labelId)
   if (workspaceLabel === undefined) return null
 
   const matchingByName = taskMatches.filter((label) => label.name === workspaceLabel.name)
   if (matchingByName.length === 0) return null
 
-  return alreadyPresent(taskId, workspaceLabel.name, matchingByName.map((label) => label.id))
+  return alreadyPresent(
+    taskId,
+    workspaceLabel.name,
+    matchingByName.map((label) => label.id),
+  )
 }
 
 export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
