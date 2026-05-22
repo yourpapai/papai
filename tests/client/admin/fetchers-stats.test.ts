@@ -57,6 +57,14 @@ const fullGlobalPayload = (overrides: Record<string, unknown>): Record<string, u
   },
   webFetches: { topHosts: [] },
   toolMix: { topTools: [], errorTypeCounts: {} },
+  llmUsage: {
+    totalCalls: 0,
+    mainCalls: 0,
+    smallCalls: 0,
+    embeddingCalls: 0,
+    inputTokensTotal: 0,
+    outputTokensTotal: 0,
+  },
   ...overrides,
 })
 
@@ -83,6 +91,14 @@ describe('fetchStatsGlobal', () => {
       },
       webFetches: { topHosts: [] },
       toolMix: { topTools: [], errorTypeCounts: {} },
+      llmUsage: {
+        totalCalls: 0,
+        mainCalls: 0,
+        smallCalls: 0,
+        embeddingCalls: 0,
+        inputTokensTotal: 0,
+        outputTokensTotal: 0,
+      },
     })
 
     const result = await fetchStatsGlobal('7d')

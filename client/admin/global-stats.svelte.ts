@@ -58,6 +58,16 @@ const GlobalStatsSchema = z.object({
       errorTypeCounts: z.record(z.string(), z.number()),
     })
     .optional(),
+  llmUsage: z
+    .object({
+      totalCalls: z.number(),
+      mainCalls: z.number(),
+      smallCalls: z.number(),
+      embeddingCalls: z.number(),
+      inputTokensTotal: z.number(),
+      outputTokensTotal: z.number(),
+    })
+    .optional(),
 })
 
 export type GlobalStats = z.infer<typeof GlobalStatsSchema>

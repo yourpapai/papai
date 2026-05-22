@@ -46,6 +46,14 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
     },
     webFetches: { topHosts: [{ hostHash: 'abc', count: 5 }] },
     toolMix: { topTools: [{ toolName: 'create_task', count: 8, successRate: 1 }], errorTypeCounts: {} },
+    llmUsage: {
+      totalCalls: 0,
+      mainCalls: 0,
+      smallCalls: 0,
+      embeddingCalls: 0,
+      inputTokensTotal: 0,
+      outputTokensTotal: 0,
+    },
   }
   if (overrides === null) return payload
   return { ...payload, ...overrides }

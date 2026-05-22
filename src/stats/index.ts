@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { authorizedGroups, llmUsageEvents, users } from '../db/schema.js'
 import { distributionsGlobal } from './global-distributions.js'
+import { llmUsageGlobal } from './global-llm.js'
 import { identityMixGlobal, storageGlobal, surfaceMixGlobal } from './global-mix.js'
 import { activeSubjectCounts, subjectsGlobal } from './global-subjects.js'
 import { toolMixGlobal, webFetchesGlobal } from './global-web-tools.js'
@@ -105,6 +106,7 @@ function computeGlobalStats(window: StatsWindow): GlobalStats {
     surfaceMix: surfaceMixGlobal(),
     webFetches: webFetchesGlobal(),
     toolMix: toolMixGlobal(),
+    llmUsage: llmUsageGlobal(window),
   }
 }
 

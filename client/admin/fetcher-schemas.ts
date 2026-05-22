@@ -53,6 +53,14 @@ export const GlobalStatsSchema = z.object({
     topTools: z.array(z.object({ toolName: z.string(), count: z.number(), successRate: z.number() })),
     errorTypeCounts: z.record(z.string(), z.number()),
   }),
+  llmUsage: z.object({
+    totalCalls: z.number(),
+    mainCalls: z.number(),
+    smallCalls: z.number(),
+    embeddingCalls: z.number(),
+    inputTokensTotal: z.number(),
+    outputTokensTotal: z.number(),
+  }),
 })
 
 export const BillingSubjectSchema = z.object({

@@ -43,6 +43,13 @@
   const toolTotal = $derived(toolTotals === null ? '—' : toolTotals.total)
   const toolSub = $derived(toolTotals === null ? undefined : `${toolTotals.ok} ok · ${toolTotals.fail} fail`)
 
+  const llmTotal = $derived(adminGlobals.data?.llmUsage?.totalCalls ?? '—')
+  const llmSub = $derived(
+    adminGlobals.data?.llmUsage === undefined
+      ? undefined
+      : `${adminGlobals.data.llmUsage.mainCalls} main · ${adminGlobals.data.llmUsage.smallCalls} small`,
+  )
+
   function formatBytes(n: number): string {
     if (n < 1_000) return `${n} B`
     if (n < 1_000_000) return `${(n / 1_000).toFixed(1)} KB`
@@ -80,6 +87,7 @@
       <div class="admin-overview__kpis">
         <KV k="subjects" v={subjectsTotal} sub={subjectsSub} />
         <KV k="active 30d" v={activeTotal} sub={activeSub} />
+        <KV k="llm calls" v={llmTotal} sub={llmSub} />
         <KV k="tool calls" v={toolTotal} sub={toolSub} />
         <KV k="storage" v={storageTotal} sub={storageSub} />
       </div>
@@ -101,7 +109,7 @@
   }
   .admin-overview__kpis {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
     padding: 12px;
   }

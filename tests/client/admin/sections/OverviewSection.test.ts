@@ -83,6 +83,41 @@ describe('OverviewSection.svelte', () => {
     void unmount(component)
   })
 
+  test('renders llm calls total + main/small sub-label', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+      llmUsage: {
+        totalCalls: 1089,
+        mainCalls: 892,
+        smallCalls: 197,
+        embeddingCalls: 0,
+        inputTokensTotal: 100,
+        outputTokensTotal: 200,
+      },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    expect(target.textContent).toContain('1089')
+    expect(target.textContent).toContain('892 main · 197 small')
+    void unmount(component)
+  })
+
+  test('llm calls KPI degrades to em-dash when llmUsage absent', () => {
+    adminGlobals.data = {
+      subjects: { dmTotal: 1, groupTotal: 0, growthLast30d: [] },
+      active: { activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 },
+      storage: { sqliteBytes: 0, s3AttachmentBytes: 0 },
+      toolMix: { topTools: [], errorTypeCounts: {} },
+    }
+    const component = mount(OverviewSection, { target, props: {} })
+    const llmKpi = target.querySelector('.admin-overview__kpis')!
+    expect(llmKpi.textContent).toContain('llm calls')
+    expect(llmKpi.textContent).toContain('—')
+    void unmount(component)
+  })
+
   test('Spark receives growth points summed across dm+group', () => {
     adminGlobals.data = {
       subjects: {
