@@ -370,6 +370,59 @@ describe('Task Label Tools', () => {
       expect(removeTaskLabel).not.toHaveBeenCalled()
     })
 
+    test('Kaneo removes task label by visible name when caller provides reusable workspace label id', async () => {
+      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+      const listLabels = mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }]))
+      const listTaskLabels = mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }]))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listLabels,
+        listTaskLabels,
+        removeTaskLabel,
+      })
+
+      const tool = makeRemoveTaskLabelTool(provider)
+      assertToolExecute(tool)
+      const result: unknown = await tool.execute(
+        { taskId: 'task-1', labelId: 'workspace-label-1' },
+        { toolCallId: '1', messages: [] },
+      )
+
+      assertTaskLabel(result)
+      expect(result).toEqual({ taskId: 'task-1', labelId: 'task-label-1' })
+      expect(listLabels).toHaveBeenCalledTimes(1)
+      expect(listTaskLabels).toHaveBeenCalledTimes(1)
+      expect(removeTaskLabel).toHaveBeenCalledWith('task-1', 'task-label-1')
+    })
+
+    test('returns already_absent for Kaneo when reusable workspace label id exists but task lacks that visible label', async () => {
+      const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
+      const listLabels = mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }]))
+      const listTaskLabels = mock(() => Promise.resolve([{ id: 'task-label-2', name: 'Bug', color: '#00ff00' }]))
+      const provider = createMockProvider({
+        name: 'kaneo',
+        listLabels,
+        listTaskLabels,
+        removeTaskLabel,
+      })
+
+      const tool = makeRemoveTaskLabelTool(provider)
+      const result: unknown = await getToolExecutor(tool)(
+        { taskId: 'task-1', labelId: 'workspace-label-1' },
+        { toolCallId: '1', messages: [] },
+      )
+
+      expect(result).toMatchObject({
+        status: 'already_absent',
+        taskId: 'task-1',
+        labelId: 'workspace-label-1',
+      })
+      expect(result).not.toHaveProperty('labelName')
+      expect(listLabels).toHaveBeenCalledTimes(1)
+      expect(listTaskLabels).toHaveBeenCalledTimes(1)
+      expect(removeTaskLabel).not.toHaveBeenCalled()
+    })
+
     test('Kaneo removes task label by task-scoped label id resolved from task labels', async () => {
       const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
       const provider = createMockProvider({

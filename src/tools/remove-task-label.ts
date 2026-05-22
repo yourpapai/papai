@@ -8,7 +8,7 @@ import type { ToolSet } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
-import type { TaskProvider } from '../providers/types.js'
+import type { TaskLabel, TaskProvider } from '../providers/types.js'
 import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:remove-task-label' })
@@ -59,6 +59,34 @@ const alreadyAbsentById = (taskId: string, labelId: string, message: string): Al
   message,
 })
 
+const missingTaskLabelById = (taskId: string, labelId: string): AlreadyAbsentByIdResult =>
+  alreadyAbsentById(taskId, labelId, `Task does not currently have label id "${labelId}". No action was taken.`)
+
+const resolveKaneoTaskLabelIdById = async (
+  provider: Readonly<TaskProvider>,
+  taskId: string,
+  labelId: string,
+  taskLabels: readonly TaskLabel[],
+): Promise<string | AlreadyAbsentByIdResult> => {
+  const direct = taskLabels.find((label) => label.id === labelId)
+  if (direct !== undefined) return direct.id
+
+  const workspaceLabels = await listVisibleWorkspaceLabels(provider, labelId)
+  const workspaceLabel = workspaceLabels.find((label) => label.id === labelId)
+  if (workspaceLabel === undefined) {
+    return missingTaskLabelById(taskId, labelId)
+  }
+
+  const taskMatches = taskLabels.filter((label) => label.name === workspaceLabel.name)
+  if (taskMatches.length === 0) {
+    return missingTaskLabelById(taskId, labelId)
+  }
+  if (taskMatches.length > 1) {
+    throw new Error(`Multiple task labels found: ${workspaceLabel.name}`)
+  }
+  return taskMatches[0]!.id
+}
+
 const resolveKaneoTaskLabelId = async (
   provider: Readonly<TaskProvider>,
   taskId: string,
@@ -68,13 +96,7 @@ const resolveKaneoTaskLabelId = async (
   const taskLabels = await listTaskLabels(provider, taskId)
 
   if (labelId !== undefined) {
-    const direct = taskLabels.find((label) => label.id === labelId)
-    if (direct !== undefined) return direct.id
-    return alreadyAbsentById(
-      taskId,
-      labelId,
-      `Task does not currently have label id "${labelId}". No action was taken.`,
-    )
+    return resolveKaneoTaskLabelIdById(provider, taskId, labelId, taskLabels)
   }
 
   if (labelName === undefined) {
