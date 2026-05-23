@@ -1452,11 +1452,11 @@ import { getConfigKeysForContext } from './config-keys.js'
 Replace `checkRequiredProviderConfig()` with:
 
 ```typescript
-export const checkRequiredProviderConfig = (_contextId: string, configId: string): string[] => {
-  const requiredKeys = getConfigKeysForContext(configId).filter(
+export const checkRequiredProviderConfig = (contextId: string): string[] => {
+  const requiredKeys = getConfigKeysForContext(contextId).filter(
     (key): key is 'kaneo_apikey' | 'youtrack_token' => key === 'kaneo_apikey' || key === 'youtrack_token',
   )
-  return requiredKeys.filter((key) => readConfig(configId, key) === null)
+  return requiredKeys.filter((key) => readConfig(contextId, key) === null)
 }
 ```
 
@@ -1469,7 +1469,7 @@ const missing = checkRequiredProviderConfig(configId, deps)
 to:
 
 ```typescript
-const missing = checkRequiredProviderConfig(contextId, configId)
+const missing = checkRequiredProviderConfig(configId)
 ```
 
 - [ ] **Step 6: Run targeted tests to verify they pass**
@@ -2090,10 +2090,11 @@ Expected: PASS.
 Run:
 
 ```bash
-rg "buildProviderForUser|providers/factory|CONFIG_KEYS" src tests
+rg "buildProviderForUser|providers/factory" src tests
+rg "\\bCONFIG_KEYS\\b" src tests
 ```
 
-Expected: no output.
+Expected: no output from either command.
 
 - [ ] **Step 7: Verify runtime `TASK_PROVIDER` use is constrained**
 
