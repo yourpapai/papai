@@ -5,6 +5,148 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.0] - 2026-05-23
+
+### Added
+
+- Implement plugin system (phases 1-13)
+- Implement trusted local plugin system
+- **shared:** Extract shared client skeleton
+- **build:** Extract shared base styles and generalize client build script
+- **debug:** Carve out live DebugApp
+- **debug:** Rename dashboard route to debug
+- **admin:** Add empty admin bundle
+- **admin:** Add system credentials section
+- **admin:** Add billing section
+- **admin:** Restore stats section
+- **admin:** Add memo reminder identity group sections
+- **admin:** Add confirm modal primitive
+- **client:** Add Telemetry design tokens
+- **ui:** Add Dot primitive
+- **ui:** Add HR primitive
+- **ui:** Add Caption primitive
+- **ui:** Add KV primitive
+- **ui:** Add Pill primitive
+- **ui:** Add Btn primitive
+- **ui:** Add Input primitive
+- **ui:** Add Select primitive
+- **ui:** Add Seg primitive
+- **ui:** Add Panel primitive
+- **ui:** Add Spark sparkline primitive
+- **ui:** Add Bars chart primitive
+- **ui:** Add Shell primitive
+- **ui:** Add TopBar primitive
+- **debug:** Add DebugTopBar with brand, status row, and scope Seg
+- **debug:** Add DebugDetailRail discriminated-union view
+- **debug:** Rebuild DebugApp around DebugTopBar and DebugDetailRail
+- **usage:** Add listRecentRequests query helper
+- **admin:** Add GET /admin/subjects/:id/recent-requests
+- **admin:** Add adminGlobals + refreshGlobals data layer
+- **admin:** Extend adminState with window + lastRefreshedAt helpers
+- **admin:** Add useScrollSpy hook + IntersectionObserver test stub
+- **admin:** Add AdminTopBar with brand, window Seg, refresh meta
+- **admin:** Add AdminSidebarPanel with anchor links + quick stats
+- **admin:** Add OverviewSection with KPI cards + growth + mix
+- **admin:** Wire SubjectDetail to /admin/subjects/:id/recent-requests
+- **admin:** Lazy-load section data via IntersectionObserver
+- **admin:** Rebuild AdminApp as one-page scrolling shell
+- **admin:** Align global-stats schema with /stats/global nested shape
+- **ui:** Add optional sub-label prop to KV primitive
+- **admin:** Wire OverviewSection KPIs to real /stats/global fields
+- **stats:** Add llmUsage to /stats/global and Overview KPI
+
+### Changed
+
+- **debug:** Migrate debug dashboard to consume shared client primitives
+- **debug:** Trim admin-only dashboard state
+- **client:** Migrate base.css to design tokens
+- **admin:** Migrate admin.css to design tokens
+- **debug:** Migrate debug.css to design tokens
+- **debug:** Replace activeContext with scopeFilter and add selectedDetail
+- **debug:** Replace legacy CSS with three-column grid
+- **admin:** Inline BillingSection subject detail; drop modal
+- **admin:** Replace legacy page-frame CSS with .admin-grid two-column layout
+
+### Documentation
+
+- Rebaseline plugin system implementation plan
+- Document trusted local plugin system in README and CLAUDE.md
+- **admin:** Document debug and admin split
+- **admin:** Fix system credentials and token docs
+- **dashboard:** Brainstorm Telemetry redesign spec
+- **dashboard:** Fix spec markdown table mangled by oxfmt
+- **dashboard:** Add PR1 plan for tokens and shared primitives
+- **dashboard:** Apply oxfmt to PR1 plan
+- **admin:** Add PR2 debug shell implementation plan
+- **admin:** Add PR3 admin shell implementation plan
+- **admin:** Surface DEBUG_TOKEN requirement on System section
+- **admin:** Add PR4 polish implementation plan
+- Format merged plugin docs
+- **spec:** Align multi-provider router design with implemented plugin system
+- **plan:** Add multi-provider router implementation plan
+- **spec:** Split multi-provider router design into five phase specs
+- **superpowers:** Add remaining brief for consolidate-keywords-agent mock cleanup
+- **adr:** ADR-0120 central LLM credentials, billing, stats (phases 1-5)
+- **plan:** Sync kaneo-label-semantics plan with branch state
+- **adr:** ADR-0121 dashboard split, ADR-0122 Kaneo label semantics
+- **plan:** Sync plugin system plan with merged implementation
+- **adr:** ADR-0123 trusted-local plugin system; archive plans and specs
+
+### Fixed
+
+- Satisfy checks after master merge
+- **shared:** Align StatusDot and expand shared helper and type test suites
+- **debug:** Use two-column panel grid
+- **debug:** Narrow legacy admin component state
+- **admin:** Constrain system provider summary
+- **admin:** Satisfy strict lint for system section
+- **admin:** Hide stats section until task 10
+- **admin:** Align billing stats ownership
+- **admin:** Align identity contract with server
+- **admin:** Clean split dashboard leftovers
+- **admin:** Remove stale debug app test
+- **admin:** Restore admin panel styling
+- **admin:** Preserve modal legacy default width
+- **ui:** Use generic querySelector to satisfy no-unsafe-type-assertion
+- **ui:** Add explicit return types to Caption test snippet
+- **debug:** Align smoke + topbar tests with new shell
+- **admin:** Align window seg with server contract (24h → 1d)
+
+### Miscellaneous
+
+- **debug:** Remove Header and ContextChips components
+- **admin:** Remove NavSidebar and WindowSelect components
+- **admin:** Fix format + knip for PR 3 verification
+- **knip:** Suppress SubjectGrowthPoint type false positive from Svelte blind spot
+- **docs:** Add BUSL-1.1 headers to new dashboard plans/spec
+- **docs:** Consolidate superpowers archive and drop obsolete remaining briefs
+- **docs:** Finish pi-migration archive consolidation
+- **docs:** Format multi-provider router plan and specs
+- **docs:** Format ADR-0120 and README
+- **docs:** Format dashboard redesign plan files
+
+### Styling
+
+- **docs:** Oxfmt PR4 plan
+
+### Testing
+
+- **recurrence:** Remove obsolete timezone validation check in spec-schema
+- **admin:** Move subject stats panel coverage
+- **admin:** Move stats fetcher coverage
+- **admin:** Tighten memo filters and error contracts
+- **admin:** Lock Spark wiring to growthLast30d in OverviewSection
+- **behavior-audit:** Replace last mock.module in classify-agent suite
+- **behavior-audit:** Replace mock.module in consolidate-keywords-agent suite
+
+### Build
+
+- **check:** Skip deleted-in-worktree files in license-headers gate
+
+### Merge
+
+- Merge origin/master and resolve conflicts
+- Resolve origin/master conflicts
 ## [5.6.2] - 2026-05-22
 
 ### Documentation
