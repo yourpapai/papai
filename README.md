@@ -415,12 +415,12 @@ plugins/
 
 ### Contribution Surface
 
-| Surface         | Exposed as                                       | Notes                                                          |
-| --------------- | ------------------------------------------------ | -------------------------------------------------------------- |
-| LLM tools       | `plugin_<plugin_id>__<tool_name>`                | Sandwiched through the same execution wrapper as core tools.   |
-| Prompt fragments| Appended to system prompt (8,000-char budget)    | Synchronous only; 2,000 chars per fragment.                    |
-| Commands        | `plugin_<plugin_id>_<command_name>`              | Registered through the normal chat command path.               |
-| Scheduled jobs  | Owner `plugin:<pluginId>:<jobName>`              | Runs only for contexts where the plugin is enabled & eligible. |
+| Surface          | Exposed as                                    | Notes                                                          |
+| ---------------- | --------------------------------------------- | -------------------------------------------------------------- |
+| LLM tools        | `plugin_<plugin_id>__<tool_name>`             | Sandwiched through the same execution wrapper as core tools.   |
+| Prompt fragments | Appended to system prompt (8,000-char budget) | Synchronous only; 2,000 chars per fragment.                    |
+| Commands         | `plugin_<plugin_id>_<command_name>`           | Registered through the normal chat command path.               |
+| Scheduled jobs   | Owner `plugin:<pluginId>:<jobName>`           | Runs only for contexts where the plugin is enabled & eligible. |
 
 ### Context API
 

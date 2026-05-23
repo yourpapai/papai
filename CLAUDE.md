@@ -283,12 +283,12 @@ Trusted, repository-local first-party plugins only — no sandbox, no marketplac
 
 Migration `039_plugins` creates four SQLite tables:
 
-| Table                    | Purpose                                                                                                  |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `plugin_admin_state`     | Per-plugin admin approval, state, approving admin, approved/last-seen manifest hash, compatibility note. |
-| `plugin_context_state`   | Per-(plugin, context) enable flag.                                                                       |
-| `plugin_kv`              | Per-(plugin, context, key) string KV, gated by the `storage` permission.                                 |
-| `plugin_runtime_events`  | Recent runtime events (activation, deactivation, error) for diagnostics in `/plugin info`.               |
+| Table                   | Purpose                                                                                                  |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `plugin_admin_state`    | Per-plugin admin approval, state, approving admin, approved/last-seen manifest hash, compatibility note. |
+| `plugin_context_state`  | Per-(plugin, context) enable flag.                                                                       |
+| `plugin_kv`             | Per-(plugin, context, key) string KV, gated by the `storage` permission.                                 |
+| `plugin_runtime_events` | Recent runtime events (activation, deactivation, error) for diagnostics in `/plugin info`.               |
 
 Runtime state values (`active`, `incompatible`, `config_missing`, `error`) are recomputed in memory; only approval-related state is persisted.
 
