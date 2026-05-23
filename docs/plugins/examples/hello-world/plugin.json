@@ -1,0 +1,28 @@
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "description": "A minimal example plugin that greets the user.",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "contributes": {
+    "tools": ["greet"],
+    "promptFragments": ["hello-world-hint"],
+    "commands": ["hello"],
+    "jobs": ["daily_hello"],
+    "configKeys": ["greeting_prefix"]
+  },
+  "permissions": ["storage"],
+  "defaultEnabled": false,
+  "requiredTaskCapabilities": [],
+  "requiredChatCapabilities": [],
+  "configRequirements": [
+    {
+      "key": "greeting_prefix",
+      "label": "Greeting Prefix",
+      "required": false,
+      "sensitive": false
+    }
+  ],
+  "activationTimeoutMs": 5000
+}

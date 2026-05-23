@@ -17,6 +17,9 @@ import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
+import { discoverPlugins } from './plugins/discovery.js'
+import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
+import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
 import { buildProviderForUser } from './providers/factory.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
@@ -145,6 +148,30 @@ startPollers(chatProvider, (userId) => buildProviderForUser(userId, false))
 // Start the central scheduler with all cleanup tasks
 scheduler.startAll()
 
+// Discover and activate plugins
+const pluginDir = 'plugins'
+const { plugins: discoveredPlugins, errors: pluginErrors } = discoverPlugins(pluginDir)
+if (pluginErrors.length > 0) {
+  log.warn({ errors: pluginErrors.map((e) => e.reason) }, 'Some plugins failed discovery')
+}
+syncRegistryFromDb(discoveredPlugins)
+try {
+  const adminProvider = buildProviderForUser(adminUserId, false)
+  if (adminProvider !== null) {
+    for (const plugin of discoveredPlugins) {
+      pluginRegistry.evaluateCompatibility(plugin.manifest.id, adminProvider.capabilities, chatProvider.capabilities)
+    }
+  }
+} catch (error) {
+  log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Plugin compatibility evaluation skipped')
+}
+const toActivate = pluginRegistry.getApprovedCompatiblePlugins()
+await activatePlugins(toActivate)
+log.info(
+  { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
+  'Plugin activation complete',
+)
+
 let stopDebugServerFn: (() => void) | null = null
 
 if (process.env['DEBUG_SERVER'] === 'true') {
@@ -157,7 +184,8 @@ if (process.env['DEBUG_SERVER'] === 'true') {
 const shutdown = (signal: string): void => {
   log.info(`${signal} received, starting graceful shutdown...`)
   void flushOnShutdown({ timeoutMs: 5000 })
-    .then(() => {
+    .then(async () => {
+      await deactivateAllPlugins()
       stopScheduler()
       scheduler.stopAll()
       stopPollers()

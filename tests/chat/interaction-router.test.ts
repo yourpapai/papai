@@ -101,6 +101,7 @@ describe('routeInteraction', () => {
         },
         handleConfigInteraction: () => Promise.resolve(false),
         handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -117,6 +118,7 @@ describe('routeInteraction', () => {
         return Promise.resolve(true)
       },
       handleWizardInteraction: () => Promise.resolve(false),
+      handlePluginInteraction: () => Promise.resolve(false),
     })
 
     expect(handled).toBe(true)
@@ -136,6 +138,7 @@ describe('routeInteraction', () => {
           calls.push('wizard')
           return Promise.resolve(true)
         },
+        handlePluginInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -184,6 +187,7 @@ describe('routeInteraction', () => {
         handleGroupSettingsInteraction: () => Promise.resolve(false),
         handleConfigInteraction: () => Promise.resolve(false),
         handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: () => Promise.resolve(false),
       },
     )
 

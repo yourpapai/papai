@@ -54,6 +54,18 @@ export function getAllConfig(userId: string): Partial<Record<ConfigKey, string>>
   return result
 }
 
+export function getPluginConfigStorageKey(pluginId: string, key: string): string {
+  return `plugin:${pluginId}:${key}`
+}
+
+export function getPluginConfig(contextId: string, pluginId: string, key: string): string | null {
+  return getCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key))
+}
+
+export function setPluginConfig(contextId: string, pluginId: string, key: string, value: string): void {
+  setCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key), value)
+}
+
 export function maskValue(key: ConfigKey, value: string): string {
   if (SENSITIVE_KEYS.has(key)) {
     const last4 = value.slice(-4)

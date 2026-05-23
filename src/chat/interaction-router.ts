@@ -15,6 +15,7 @@ import { validateAndSaveWizardConfig } from '../wizard/save.js'
 import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import { getResponseText, getTargetContextId } from './interaction-router-support.js'
+import { handlePluginInteraction } from './plugin-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
@@ -50,6 +51,7 @@ export type InteractionRouteDeps = {
   handleGroupSettingsInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handleConfigInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handleWizardInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
+  handlePluginInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
 }
 function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
   const result = handleGroupSettingsSelectorCallback(interaction.user.id, interaction.callbackData)
@@ -244,6 +246,7 @@ const defaultDeps: InteractionRouteDeps = {
   handleGroupSettingsInteraction: defaultHandleGroupSettingsInteraction,
   handleConfigInteraction: defaultHandleConfigInteraction,
   handleWizardInteraction: defaultHandleWizardInteraction,
+  handlePluginInteraction,
 }
 
 export function routeInteraction(
@@ -272,6 +275,10 @@ export function routeInteraction(
 
   if (callbackData.startsWith('wizard_')) {
     return resolvedDeps.handleWizardInteraction(interaction, reply)
+  }
+
+  if (callbackData.startsWith('plg:')) {
+    return resolvedDeps.handlePluginInteraction(interaction, reply)
   }
 
   log.debug({ callbackData }, 'No route matched for interaction callback')

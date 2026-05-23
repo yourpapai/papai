@@ -27,11 +27,12 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 ## Current Command Behavior
 
 - Commands are registered in `src/bot.ts` via `setupBot(chat, adminUserId)`.
-- Current command surface is `/help`, `/start`, `/setup`, `/config`, `/context`, `/clear`, `/group`, plus admin-only `/user`, `/users`, and `/announce`.
+- Current command surface is `/help`, `/start`, `/setup`, `/config`, `/context`, `/clear`, `/group`, plus admin-only `/user`, `/users`, `/announce`, and `/plugin`.
 - `/setup` and `/config` are DM-driven. In groups they redirect admins to DM, then the user chooses personal settings or a manageable group through the group-settings selector.
 - `/context` is no longer an admin-only export command. It builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
 - `/clear` clears conversation history, summary, and facts for the current storage context. The bot admin can also clear another user or all users; non-bot group admins are limited to clearing the current group context.
 - `/group` is the group authorization command surface and must use `supportsUserResolution(chat)` before assuming `@username` lookup works.
+- `/plugin` is DM-only and bot-admin-only. Subcommands: `list`, `info <id>`, `approve <id>`, `reject <id>`, `enable <id> [context-id]`, `disable <id> [context-id]`. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly. Per-context plugin enable toggles are also surfaced as `plg:` inline buttons inside `/config`.
 
 ## Interception Flow
 

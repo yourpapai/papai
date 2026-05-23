@@ -5,6 +5,8 @@
 
 import type { ToolSet } from 'ai'
 
+import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
+import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
 import { buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
@@ -41,6 +43,23 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
   const contextType = options === undefined ? undefined : options.contextType
   const stagedDownloadFn = options === undefined ? undefined : options.stagedDownloadFn
 
-  const internalTools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
-  return wrapToolSet(internalTools)
+  const tools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
+  const wrappedBuiltins = wrapToolSet(tools)
+
+  if (contextId !== undefined && chatUserId !== undefined) {
+    const activePlugins = getPluginsForContext(contextId)
+    if (activePlugins.length > 0) {
+      const activePluginIds = activePlugins
+        .map((p) => p.manifest.id)
+        .filter((id) => contributionRegistry.getContributions(id) !== undefined)
+      const pluginTools = buildPluginToolSet(activePluginIds, new Set(Object.keys(wrappedBuiltins)), {
+        provider,
+        storageContextId: contextId,
+        chatUserId,
+      })
+      return { ...wrappedBuiltins, ...pluginTools }
+    }
+  }
+
+  return wrappedBuiltins
 }

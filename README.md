@@ -65,6 +65,7 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 | **Recurring Tasks**  | Template schedules                              | Reusable recurring task automation                                   |
 | **Deferred Prompts** | One-shot, delayed, cron                         | Scheduled proactive assistance                                       |
 | **Instructions**     | Context-specific guidance                       | Per-chat custom instructions                                         |
+| **Plugins**          | Trusted local extensions                        | Discover, approve, and enable first-party plugins per context        |
 
 ### Platform Support
 
@@ -177,6 +178,7 @@ flowchart TD
 | `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                |
 | `src/group-settings/`                              | DM-driven selection of personal vs group configuration targets                             |
 | `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
+| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV       |
 | `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                           |
 
 ---
@@ -323,6 +325,7 @@ Use the bot’s DM-based configuration flow:
 | `/config`  | View current settings and edit fields interactively where supported    |
 | `/clear`   | Clear conversation history, summary, and facts for the current context |
 | `/context` | View the current LLM context window for this conversation              |
+| `/plugin`  | DM, bot-admin only: discover, approve, reject, and enable plugins      |
 
 Runtime keys shown by `/setup` and `/config` include:
 
@@ -387,6 +390,43 @@ Important behavior:
 - Group configuration is DM-only. `/setup` and `/config` in groups redirect admins to DM.
 - Thread contexts are isolated. In Telegram forum topics and Mattermost threads, the bot stores thread-scoped history separately from the main group chat.
 - In thread-scoped group contexts, the bot can use `lookup_group_history` to search the main group discussion when needed.
+
+---
+
+## Plugins
+
+Papai supports trusted, repository-local first-party plugins that can contribute LLM tools, prompt fragments, bot commands, and scheduled jobs. The MVP is intentionally narrow: no sandbox, no marketplace, no npm install, no hot reload, no plugin secret store, and no raw chat/task/DB/env access.
+
+### Layout
+
+```text
+plugins/
+└── <plugin-id>/
+    ├── plugin.json   # Zod-validated manifest
+    └── index.ts      # default-exports a factory: () => ({ activate(ctx), deactivate?(ctx) })
+```
+
+### Lifecycle
+
+1. **Discover** — startup scans `plugins/` and records each package in `plugin_admin_state` as `discovered`. The manifest + entry source are hashed for integrity.
+2. **Approve** — bot admin runs `/plugin approve <plugin-id>` in DM. Any subsequent change to the manifest or entry source clears approval and requires re-approval.
+3. **Activate** — on the next startup, approved plugins are imported with a per-plugin activation timeout. Failures are isolated and recorded to `plugin_runtime_events`.
+4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group context via `/plugin enable`, the `plg:` buttons in `/config`, or `defaultEnabled: true` in the manifest.
+
+### Contribution Surface
+
+| Surface          | Exposed as                                    | Notes                                                          |
+| ---------------- | --------------------------------------------- | -------------------------------------------------------------- |
+| LLM tools        | `plugin_<plugin_id>__<tool_name>`             | Sandwiched through the same execution wrapper as core tools.   |
+| Prompt fragments | Appended to system prompt (8,000-char budget) | Synchronous only; 2,000 chars per fragment.                    |
+| Commands         | `plugin_<plugin_id>_<command_name>`           | Registered through the normal chat command path.               |
+| Scheduled jobs   | Owner `plugin:<pluginId>:<jobName>`           | Runs only for contexts where the plugin is enabled & eligible. |
+
+### Context API
+
+Plugins activate against a frozen `PluginContext` exposing a scoped pino logger, a permission-gated KV store (`storage` permission required), and a `registration` facade. Tool executions also receive a `PluginToolRuntimeContext` with a permission-gated task-provider facade (`tasks.read` / `tasks.write` for read/write methods on `getTask`, `listTasks`, `searchTasks`, `createTask`, `updateTask`). Plugins never see raw chat or task providers, the DB, `process.env`, or arbitrary network access.
+
+See [`docs/plugins/developer-guide.md`](docs/plugins/developer-guide.md) for the full manifest schema, factory contract, and permission semantics, plus the runnable example at [`docs/plugins/examples/hello-world/`](docs/plugins/examples/hello-world/).
 
 ---
 

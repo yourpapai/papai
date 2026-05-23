@@ -112,6 +112,8 @@ export async function setupTestDb(): Promise<ReturnType<typeof drizzle<typeof sc
   // Clear the in-memory user cache to prevent config/session bleed between tests
   const { userCachesForTesting } = await import('../../src/cache.js')
   userCachesForTesting.clear()
+  const { resetPluginRegistryForTesting } = await import('../../src/plugins/registry.js')
+  resetPluginRegistryForTesting()
 
   testSqlite = new Database(':memory:')
   testSqlite.run('PRAGMA foreign_keys=ON')
