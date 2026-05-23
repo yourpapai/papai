@@ -48,6 +48,8 @@ run_license_header_check() {
   local file
 
   for file in "$@"; do
+    # Skip files that no longer exist on disk (e.g. tracked but deleted in worktree).
+    [ -f "$file" ] || continue
     case "$file" in
       *.md)
         if ! awk 'NR <= 2 && /^<!--$/ { found=1 } NR >= 2 && NR <= 3 && /SPDX-License-Identifier: BUSL-1\.1/ { found=1 } END { exit found ? 0 : 1 }' "$file" 2>/dev/null; then
@@ -259,6 +261,8 @@ else
         header_checked_files=()
         while IFS= read -r file; do
           [ -n "$file" ] || continue
+          # Skip tracked files that have been deleted in the worktree.
+          [ -f "$file" ] || continue
           if is_license_header_file "$file"; then
             header_checked_files+=("$file")
           fi

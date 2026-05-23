@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatTime, formatTokens } from '../helpers.js'
+  import { formatTime, formatTokens } from '../../shared/helpers.js'
   import type { LlmTrace, DashboardState } from '../dashboard-types.js'
 
   interface Props {

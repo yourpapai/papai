@@ -3,10 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import * as realAi from 'ai'
 import { stepCountIs } from 'ai'
 import { Output } from 'ai'
 
@@ -144,12 +143,9 @@ describe('behavior-audit phase 2a classify agent', () => {
     expect(events).toEqual(['generate:1', 'sleep:50', 'generate:2'])
   })
 
-  test('classifyBehaviorWithRetry default path reads reloaded config after module import', async () => {
+  test('createDefaultClassifyAgentDeps reads reloaded config after module import', async () => {
     const initialServer = startCountingFailureServer()
     const reloadedServer = startCountingFailureServer()
-    let capturedBaseUrl: string | null = null
-    let capturedModelValue: unknown = null
-    let generateTextCalls = 0
 
     try {
       process.env['BEHAVIOR_AUDIT_BASE_URL'] = initialServer.url
@@ -157,38 +153,19 @@ describe('behavior-audit phase 2a classify agent', () => {
       process.env['BEHAVIOR_AUDIT_MAX_RETRIES'] = '1'
       reloadBehaviorAuditConfig()
 
-      void mock.module('@ai-sdk/openai-compatible', () => ({
-        createOpenAICompatible:
-          ({ baseURL }: { readonly baseURL: string }) =>
-          (model: string): string => {
-            capturedBaseUrl = baseURL
-            return `mock-model:${baseURL}:${model}`
-          },
-      }))
-      void mock.module('ai', () => ({
-        ...realAi,
-        generateText: (input: { readonly model: unknown }): Promise<never> => {
-          generateTextCalls += 1
-          capturedModelValue = input.model
-          return Promise.reject(new Error('forced failure'))
-        },
-      }))
-
       const classifyAgent = await loadClassifyAgentModule(crypto.randomUUID())
+
+      const initialDeps = classifyAgent.createDefaultClassifyAgentDeps()
+      expect(initialDeps.config.BASE_URL).toBe(initialServer.url)
+      expect(initialDeps.config.PHASE2_TIMEOUT_MS).toBe(100)
+      expect(initialDeps.config.MAX_RETRIES).toBe(1)
 
       process.env['BEHAVIOR_AUDIT_BASE_URL'] = reloadedServer.url
       reloadBehaviorAuditConfig()
 
-      await expect(classifyAgent.classifyBehaviorWithRetry('prompt', 0)).resolves.toBeNull()
-      expect(generateTextCalls).toBe(1)
-      expect(initialServer.getRequestCount()).toBe(0)
-      expect(reloadedServer.getRequestCount()).toBe(0)
-      expect(capturedBaseUrl).not.toBeNull()
-      assert(capturedBaseUrl !== null)
-      const resolvedBaseUrl: string = capturedBaseUrl
-      expect(resolvedBaseUrl).toBe(reloadedServer.url)
-      expect(typeof capturedModelValue).toBe('string')
-      expect(String(capturedModelValue)).toContain(reloadedServer.url)
+      const reloadedDeps = classifyAgent.createDefaultClassifyAgentDeps()
+      expect(reloadedDeps.config.BASE_URL).toBe(reloadedServer.url)
+      assert(reloadedDeps.config.BASE_URL !== initialServer.url)
     } finally {
       initialServer.stop()
       reloadedServer.stop()

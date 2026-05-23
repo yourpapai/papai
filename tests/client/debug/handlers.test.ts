@@ -6,14 +6,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { DashboardState } from '../../../client/debug/dashboard-types.js'
-import {
-  handleAuthEvent,
-  handleConfigEditorEvent,
-  handleDeferredEvent,
-  handleIdentityEvent,
-  handleMemoEvent,
-  handleRecurringEvent,
-} from '../../../client/debug/handlers-extras.js'
+import * as handlerExtras from '../../../client/debug/handlers-extras.js'
 import {
   handleCacheEvent,
   handleCacheExpire,
@@ -48,23 +41,14 @@ function freshState(): DashboardState {
     turns: [],
     notifications: [],
     toolFailures: [],
-    recurringTasks: [],
-    deferredPrompts: [],
-    memos: [],
-    identityMappings: new Map(),
     activeConfigEditors: new Set(),
-    authorizedGroups: [],
-    activeContext: 'all',
+    scopeFilter: 'all',
+    selectedDetail: null,
     activeLogFilter: {},
-    billingWindow: '30d',
-    billingSubjects: [],
-    billingDetail: null,
-    adminLlm: null,
-    statsWindow: '30d',
-    globalStats: null,
-    subjectStats: null,
   }
 }
+
+const { handleConfigEditorEvent } = handlerExtras
 
 describe('handleStateInit', () => {
   test('populates sessions, scheduler, and stats from event', () => {
@@ -261,55 +245,7 @@ describe('handleNotificationEvent and handleToolFailureClassified', () => {
   })
 })
 
-describe('handleRecurringEvent', () => {
-  test('created adds a task', () => {
-    const s = freshState()
-    handleRecurringEvent(s, 'recurring:created', { taskId: 'r1', userId: 'u1', title: 'wake up' })
-    expect(s.recurringTasks).toHaveLength(1)
-  })
-
-  test('paused flips enabled to false', () => {
-    const s = freshState()
-    handleRecurringEvent(s, 'recurring:created', { taskId: 'r1', userId: 'u1', title: 'wake up' })
-    handleRecurringEvent(s, 'recurring:paused', { taskId: 'r1' })
-    expect(s.recurringTasks[0]?.enabled).toBe(false)
-  })
-
-  test('deleted removes task', () => {
-    const s = freshState()
-    handleRecurringEvent(s, 'recurring:created', { taskId: 'r1', userId: 'u1', title: 'wake up' })
-    handleRecurringEvent(s, 'recurring:deleted', { taskId: 'r1' })
-    expect(s.recurringTasks).toHaveLength(0)
-  })
-})
-
-describe('handleDeferredEvent and handleMemoEvent', () => {
-  test('deferred created and cancelled', () => {
-    const s = freshState()
-    handleDeferredEvent(s, 'deferred:created', { promptId: 'p1', userId: 'u1', prompt: 'do it', fireAt: '2024-01-01' })
-    expect(s.deferredPrompts).toHaveLength(1)
-    handleDeferredEvent(s, 'deferred:cancelled', { promptId: 'p1' })
-    expect(s.deferredPrompts).toHaveLength(0)
-  })
-
-  test('memo created and archived', () => {
-    const s = freshState()
-    handleMemoEvent(s, 'memo:created', { memoId: 'm1', userId: 'u1', content: 'note', tags: ['todo'] })
-    expect(s.memos).toHaveLength(1)
-    handleMemoEvent(s, 'memo:archived', { memoIds: ['m1'] })
-    expect(s.memos[0]?.status).toBe('archived')
-  })
-})
-
 describe('context handlers', () => {
-  test('identity:set adds mapping; identity:cleared removes it', () => {
-    const s = freshState()
-    handleIdentityEvent(s, 'identity:set', { userId: 'u1', provider: 'p', providerUserId: 'px', displayName: 'D' })
-    expect(s.identityMappings.has('u1')).toBe(true)
-    handleIdentityEvent(s, 'identity:cleared', { userId: 'u1' })
-    expect(s.identityMappings.has('u1')).toBe(false)
-  })
-
   test('config editor open/close updates the set', () => {
     const s = freshState()
     handleConfigEditorEvent(s, 'config_editor:opened', { userId: 'u1' })
@@ -318,11 +254,7 @@ describe('context handlers', () => {
     expect(s.activeConfigEditors.has('u1')).toBe(false)
   })
 
-  test('auth group authorize/revoke updates list', () => {
-    const s = freshState()
-    handleAuthEvent(s, 'auth:group_authorized', { groupId: 'g1' })
-    expect(s.authorizedGroups).toHaveLength(1)
-    handleAuthEvent(s, 'auth:group_revoked', { groupId: 'g1' })
-    expect(s.authorizedGroups).toHaveLength(0)
+  test('debug handlers-extra exports only config editor handling', () => {
+    expect(Object.keys(handlerExtras).sort()).toEqual(['handleConfigEditorEvent'])
   })
 })

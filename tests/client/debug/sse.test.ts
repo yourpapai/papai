@@ -23,21 +23,10 @@ function freshState(): DashboardState {
     turns: [],
     notifications: [],
     toolFailures: [],
-    recurringTasks: [],
-    deferredPrompts: [],
-    memos: [],
-    identityMappings: new Map(),
     activeConfigEditors: new Set(),
-    authorizedGroups: [],
-    activeContext: 'all',
+    scopeFilter: 'all',
+    selectedDetail: null,
     activeLogFilter: {},
-    billingWindow: '30d',
-    billingSubjects: [],
-    billingDetail: null,
-    adminLlm: null,
-    statsWindow: '30d',
-    globalStats: null,
-    subjectStats: null,
   }
 }
 
@@ -47,9 +36,18 @@ describe('buildHandlerMap', () => {
     expect(typeof handlers['state:init']).toBe('function')
     expect(typeof handlers['log:entry']).toBe('function')
     expect(typeof handlers['turn:start']).toBe('function')
-    expect(typeof handlers['identity:set']).toBe('function')
-    expect(typeof handlers['auth:group_authorized']).toBe('function')
-    expect(typeof handlers['memo:created']).toBe('function')
+    expect(typeof handlers['config_editor:opened']).toBe('function')
+    expect(typeof handlers['config_editor:closed']).toBe('function')
+    expect(typeof handlers['config_editor:step']).toBe('function')
+  })
+
+  test('does not register admin-only event handlers in the debug bundle', () => {
+    const handlers = buildHandlerMap(freshState())
+    expect(handlers['recurring:created']).toBeUndefined()
+    expect(handlers['deferred:created']).toBeUndefined()
+    expect(handlers['memo:created']).toBeUndefined()
+    expect(handlers['identity:set']).toBeUndefined()
+    expect(handlers['auth:group_authorized']).toBeUndefined()
   })
 
   test('log:entry handler mutates state', () => {
@@ -59,11 +57,11 @@ describe('buildHandlerMap', () => {
     expect(s.logs).toHaveLength(1)
   })
 
-  test('identity:set handler delegates to context handler', () => {
+  test('config_editor:opened handler delegates to context handler', () => {
     const s = freshState()
     const handlers = buildHandlerMap(s)
-    handlers['identity:set']?.({ userId: 'u1', provider: 'p' })
-    expect(s.identityMappings.has('u1')).toBe(true)
+    handlers['config_editor:opened']?.({ userId: 'u1' })
+    expect(s.activeConfigEditors.has('u1')).toBe(true)
   })
 
   test('malformed event data is silently ignored', () => {

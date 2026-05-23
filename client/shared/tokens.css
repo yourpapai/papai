@@ -1,0 +1,48 @@
+/* SPDX-License-Identifier: BUSL-1.1 */
+/* Copyright (c) 2026 Dmitriy Lazarev */
+/* Use of this software is governed by the Business Source License 1.1. */
+/* See LICENSE in the project root for details. */
+
+:root {
+  /* canvas, surfaces */
+  --bg: #0b0e10;
+  --surface: #14181b;
+  --raised: #1a1f23;
+  --inset: #0e1214;
+
+  /* borders */
+  --hair: #1f262a;
+  --border: #2a3338;
+  --strong: #3a464d;
+
+  /* foreground */
+  --fg: #e6ebee;
+  --fg2: #9aa5ac;
+  --fg3: #5e6970;
+  --fg4: #3a4248;
+
+  /* accent + semantic */
+  --accent: #5dd97a;
+  --accent-soft: rgba(93, 217, 122, 0.1);
+  --accent-dim: rgba(93, 217, 122, 0.55);
+  --warn: #e5a93a;
+  --warn-soft: rgba(229, 169, 58, 0.1);
+  --danger: #e85c5c;
+  --danger-soft: rgba(232, 92, 92, 0.1);
+  --info: #6cb6ff;
+  --info-soft: rgba(108, 182, 255, 0.1);
+
+  /* type */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, Menlo, monospace;
+
+  /* spacing scale (4px base) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 48px;
+}

@@ -27,3 +27,23 @@ if (typeof globalThis.EventSource === 'undefined') {
   // @ts-expect-error – minimal stub
   globalThis.EventSource = StubEventSource
 }
+
+if (typeof globalThis.IntersectionObserver === 'undefined') {
+  // @ts-expect-error – minimal stub
+  globalThis.IntersectionObserver = function StubIntersectionObserver(
+    this: IntersectionObserver,
+    _callback: IntersectionObserverCallback,
+  ): void {
+    Object.assign(this, {
+      observe(): void {},
+      unobserve(): void {},
+      disconnect(): void {},
+      takeRecords(): IntersectionObserverEntry[] {
+        return []
+      },
+      root: null,
+      rootMargin: '',
+      thresholds: [],
+    })
+  }
+}

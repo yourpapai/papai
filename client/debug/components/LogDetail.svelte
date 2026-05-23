@@ -1,6 +1,6 @@
 <script lang="ts">
-  import PropertiesTable from './PropertiesTable.svelte'
-  import { formatTime, levelClass, levelName } from '../helpers.js'
+  import PropertiesTable from '../../shared/PropertiesTable.svelte'
+  import { formatTime, levelClass, levelName } from '../../shared/helpers.js'
   import type { LogEntry } from '../dashboard-types.js'
 
   interface Props {

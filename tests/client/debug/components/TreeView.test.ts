@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { mount, unmount } from 'svelte'
 
-import TreeView from '../../../../client/debug/components/TreeView.svelte'
+import TreeView from '../../../../client/shared/TreeView.svelte'
 
 function render(value: unknown): { target: HTMLElement; component: ReturnType<typeof mount> } {
   document.body.innerHTML = '<div id="root"></div>'

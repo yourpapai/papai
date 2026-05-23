@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { formatTime } from '../helpers.js'
-  import TreeView from './TreeView.svelte'
+  import { formatTime } from '../../shared/helpers.js'
+  import TreeView from '../../shared/TreeView.svelte'
   import type { Session } from '../dashboard-types.js'
 
   interface Props {

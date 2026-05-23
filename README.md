@@ -140,7 +140,7 @@ Then configure runtime settings in chat:
 
 For groups, run `/setup` or `/config` in DM and choose either personal settings or one of the groups you manage.
 
-> LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via the debug dashboard's Billing → Credentials form without restarting the bot.
+> LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
 
 ---
 
@@ -149,7 +149,7 @@ For groups, run `/setup` or `/config` in DM and choose either personal settings 
 ```mermaid
 flowchart TD
     Runtime[src/index.ts] --> CP[ChatProvider]
-    Runtime --> Debug[Optional Debug Server + Dashboard]
+    Runtime --> Debug[Optional Debug Server + Debug/Admin UIs]
     User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| CP
     CP -->|IncomingMessage / IncomingInteraction| Bot[bot.ts]
     Bot -->|intercepts setup/config/group-selector flows| Intercept[Wizard + Config Editor + Group Settings]
@@ -165,21 +165,21 @@ flowchart TD
 
 ### Component Overview
 
-| Path                             | Responsibility                                                                             |
-| -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `src/index.ts`                   | Entry point, env validation, startup, scheduler and optional debug server wiring           |
-| `src/bot.ts`                     | Platform-agnostic message handling, interception, queueing, and interaction routing        |
-| `src/chat/`                      | Telegram, Mattermost, and Discord adapters plus capability metadata                        |
-| `src/llm-orchestrator.ts`        | LLM tool-calling orchestration                                                             |
-| `src/tools/`                     | Context-aware, capability-gated tool assembly                                              |
-| `src/providers/`                 | Kaneo and YouTrack provider adapters                                                       |
-| `src/identity/`                  | Chat-to-provider identity mapping and “me” resolution                                      |
-| `src/attachments/`               | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
-| `src/message-queue/`             | Message coalescing and orderly LLM dispatch                                                |
-| `src/group-settings/`            | DM-driven selection of personal vs group configuration targets                             |
-| `src/web/`                       | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
-| `src/plugins/`                   | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV       |
-| `src/debug/` and `client/debug/` | Optional local debug server and dashboard UI                                               |
+| Path                                               | Responsibility                                                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring           |
+| `src/bot.ts`                                       | Platform-agnostic message handling, interception, queueing, and interaction routing        |
+| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata                        |
+| `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                             |
+| `src/tools/`                                       | Context-aware, capability-gated tool assembly                                              |
+| `src/providers/`                                   | Kaneo and YouTrack provider adapters                                                       |
+| `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                      |
+| `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
+| `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                |
+| `src/group-settings/`                              | DM-driven selection of personal vs group configuration targets                             |
+| `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
+| `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV       |
+| `src/debug/`, `client/debug/`, and `client/admin/` | Optional local debug server plus split `/debug` and `/admin` UIs                           |
 
 ---
 
@@ -201,7 +201,7 @@ flowchart TD
 <details>
 <summary><b>Central LLM Credentials</b></summary>
 
-LLM credentials are admin-owned and live in the `system_config` SQLite table. They are seeded from the env vars below on the first start that finds the corresponding `system_config` row missing. After seeding, the bot reads them from the database on every startup; rotation happens either by editing the env and restarting, or by using the debug dashboard's Billing → Credentials form (no restart needed).
+LLM credentials are admin-owned and live in the `system_config` SQLite table. They are seeded from the env vars below on the first start that finds the corresponding `system_config` row missing. After seeding, the bot reads them from the database on every startup; rotation happens either by editing the env and restarting, or by using `/admin#system` (no restart needed).
 
 | Variable          | Required | Description                                                                               |
 | ----------------- | -------- | ----------------------------------------------------------------------------------------- |
@@ -211,7 +211,7 @@ LLM credentials are admin-owned and live in the `system_config` SQLite table. Th
 | `SMALL_MODEL`     | No       | Smaller helper model; callsites fall back to `main_model` when unset                      |
 | `EMBEDDING_MODEL` | No       | Embedding model for semantic memo search; when unset memo search degrades to keyword-only |
 
-If `system_config` is missing any of the three required entries at runtime, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin sets them (via env + restart, or via the dashboard).
+If `system_config` is missing any of the three required entries at runtime, the bot logs a startup warning and replies "the bot is not fully configured" to incoming messages until an admin sets them (via env + restart, or via `/admin#system`).
 
 </details>
 
@@ -275,19 +275,26 @@ Runtime setup still requires a per-user `youtrack_token`, configured through the
 <details>
 <summary><b>Optional Debug Server</b></summary>
 
-| Variable         | Description                                                          |
-| ---------------- | -------------------------------------------------------------------- |
-| `DEBUG_SERVER`   | Set to `true` to start the local debug server                        |
-| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                         |
-| `DEBUG_PORT`     | Debug server bind port (default `9100`)                              |
-| `DEBUG_TOKEN`    | Bearer token required for debug, billing, stats, and admin endpoints |
+| Variable         | Description                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `DEBUG_SERVER`   | Set to `true` to start the local debug server                                |
+| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                                 |
+| `DEBUG_PORT`     | Debug server bind port (default `9100`)                                      |
+| `DEBUG_TOKEN`    | Optional bearer token for debug/admin routes; required for `POST /admin/llm` |
 
-When the debug server is enabled, the dashboard at `/dashboard` exposes admin-only panels in addition to the live runtime view:
+When the debug server is enabled, the local surfaces are split by audience:
 
-- **Billing** — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows), drill-down by request, and a credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
-- **Stats** — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only — never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
+- `/debug` — engineer/live observability surface
+- `/admin` — operator/configuration and durable records surface
+- `/dashboard` — compatibility redirect to `/debug`
 
-`/billing/*`, `/stats/*`, and `/admin/llm` all require `DEBUG_TOKEN` to be set; the routes return 401 when it is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
+Admin sections include:
+
+- **System** at `/admin#system` — environment summary plus the credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
+- **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows) and drill-down by request.
+- **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
+
+When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer token. When it is unset, read-only debug/admin routes remain available without a token. `POST /admin/llm` is the special case: it returns 401 when `DEBUG_TOKEN` is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
 
 </details>
 
@@ -328,7 +335,7 @@ Runtime keys shown by `/setup` and `/config` include:
 | `youtrack_token` | YouTrack permanent token                         |
 | `timezone`       | User timezone for local date/time interpretation |
 
-LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or the debug dashboard's Billing → Credentials form — not through `/setup` or `/config`.
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
 
 ---
 
@@ -471,7 +478,7 @@ bun changelog:generate
 
 Notes:
 
-- `bun start` builds the dashboard client first, then starts the bot.
+- `bun start` builds the debug/admin clients first, then starts the bot.
 - `bun start:debug` also enables the local debug server.
 - `bun test` excludes client and E2E suites; run `bun test:client` and `bun test:e2e` separately.
 - `bun check` runs staged-file checks, while `bun check:full` runs the wider repo checks.
@@ -494,7 +501,7 @@ Runs the curated main Bun test suites defined in `package.json` for the repo’s
 bun test:client
 ```
 
-Runs debug dashboard UI tests under `tests/client/` with happy-dom.
+Runs debug/admin UI tests under `tests/client/` with happy-dom.
 
 ### E2E Tests
 
@@ -562,7 +569,7 @@ cp .env.example .env
 bun start
 ```
 
-If you want the local debug dashboard too:
+If you want the local debug/admin UI too:
 
 ```bash
 bun start:debug

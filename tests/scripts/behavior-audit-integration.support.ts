@@ -262,7 +262,11 @@ export function isClassifyModule(value: unknown): value is {
 }
 
 function isClassifyAgentModule(value: unknown): value is ClassifyAgentModuleShape {
-  return isObject(value) && hasFunctionProperty(value, 'classifyBehaviorWithRetry')
+  return (
+    isObject(value) &&
+    hasFunctionProperty(value, 'classifyBehaviorWithRetry') &&
+    hasFunctionProperty(value, 'createDefaultClassifyAgentDeps')
+  )
 }
 
 function isClassifiedStoreModule(value: unknown): value is ClassifiedStoreModuleShape {

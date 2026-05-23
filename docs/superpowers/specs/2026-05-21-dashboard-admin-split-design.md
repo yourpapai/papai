@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Dashboard / Admin Split Design
 
 **Date:** 2026-05-21  
-**Status:** Approved  
+**Status:** Implemented  
 **Source notes:**
 
 - [Detailed design note](../notes/dashboard-admin-split-design.md)
@@ -100,3 +100,10 @@ level, coverage must include:
 
 - Detailed rules and rationale: [../notes/dashboard-admin-split-design.md](../notes/dashboard-admin-split-design.md)
 - Work breakdown and sequencing: [../notes/dashboard-admin-split-plan.md](../notes/dashboard-admin-split-plan.md)
+
+## Final note
+
+Implemented on 2026-05-21. The shipped behavior now matches this design:
+`/debug` serves the live observability UI, `/admin` serves the
+operator/configuration UI, and `/dashboard` remains a compatibility
+redirect to `/debug`.
