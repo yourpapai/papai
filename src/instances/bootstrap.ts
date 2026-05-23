@@ -119,20 +119,30 @@ const seedInstances = (
   const platformInstanceId = `${chatType}-default`
   const taskInstanceId = `${taskType}-default`
 
-  insertPlatformInstance({
-    id: platformInstanceId,
-    type: chatType,
-    config: buildPlatformConfig(chatType),
-    status: 'active',
+  // Spec requirement (docs/superpowers/specs/2026-04-13-multi-provider-phase-1-instance-data-model.md
+  // §4 Error Handling): "bootstrap is wrapped in a transaction so partial writes are
+  // impossible." The stores all funnel through `getDrizzleDb()`, which shares the
+  // underlying `bun:sqlite` Database via `$client`. Wrapping at the SQLite layer
+  // means every store write inside the closure lands in the same transaction
+  // without refactoring the stores to take a tx-scoped Drizzle handle.
+  const sqlite = getDrizzleDb().$client
+  const tx = sqlite.transaction(() => {
+    insertPlatformInstance({
+      id: platformInstanceId,
+      type: chatType,
+      config: buildPlatformConfig(chatType),
+      status: 'active',
+    })
+    insertTaskInstance({
+      id: taskInstanceId,
+      type: taskType,
+      config: buildTaskConfig(taskType),
+      status: 'active',
+    })
+    addAdmin(adminUserId, SUPER_ADMIN_PLATFORM_ID)
+    addAdmin(adminUserId, platformInstanceId)
   })
-  insertTaskInstance({
-    id: taskInstanceId,
-    type: taskType,
-    config: buildTaskConfig(taskType),
-    status: 'active',
-  })
-  addAdmin(adminUserId, SUPER_ADMIN_PLATFORM_ID)
-  addAdmin(adminUserId, platformInstanceId)
+  tx()
 
   return { platformInstanceId, taskInstanceId }
 }

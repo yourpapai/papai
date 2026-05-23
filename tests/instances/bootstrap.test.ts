@@ -5,6 +5,9 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { sql } from 'drizzle-orm'
+
+import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { isAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
 import { bootstrapInstancesFromEnv } from '../../src/instances/bootstrap.js'
 import { listPlatformInstances } from '../../src/instances/platform-store.js'
@@ -152,5 +155,40 @@ describe('bootstrapInstancesFromEnv', () => {
       taskInstanceId: 'kaneo-default',
     })
     expect(listPlatformInstances()[0]?.config['token']).toBe('dc-token')
+  })
+
+  test('bootstrap is atomic: a failure mid-seed leaves the DB clean', () => {
+    process.env['CHAT_PROVIDER'] = 'telegram'
+    process.env['TASK_PROVIDER'] = 'kaneo'
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    process.env['TELEGRAM_BOT_TOKEN'] = 'tg-token'
+    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
+
+    // Force the second store write (`insertTaskInstance`) to fail by dropping
+    // the table out from under it. The bootstrap should propagate the error
+    // AND roll back the platform-instance row that was inserted first.
+    const db = getDrizzleDb()
+    db.run(sql`DROP TABLE task_instances`)
+
+    expect(() => bootstrapInstancesFromEnv()).toThrow()
+
+    // Re-create `task_instances` so the post-throw assertion can read both
+    // tables without tripping over the missing one. If the seed had been
+    // non-transactional, the platform row from write #1 would still be
+    // present here.
+    db.run(sql`
+      CREATE TABLE task_instances (
+        id TEXT PRIMARY KEY NOT NULL,
+        type TEXT NOT NULL,
+        config TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `)
+
+    expect(listPlatformInstances()).toHaveLength(0)
+    expect(listTaskInstances()).toHaveLength(0)
+    expect(isAdmin('admin-1', SUPER_ADMIN_PLATFORM_ID)).toBe(false)
+    expect(isAdmin('admin-1', 'telegram-default')).toBe(false)
   })
 })
