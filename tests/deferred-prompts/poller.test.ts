@@ -13,6 +13,7 @@ import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
+import { getSnapshotsForUser } from '../../src/deferred-prompts/snapshots.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -638,6 +639,70 @@ describe('delivery target routing', () => {
     expect(sentMessages).toHaveLength(2)
     expect(resolvedContextIds).toContain(firstGroupContextId)
     expect(resolvedContextIds).toContain(secondGroupContextId)
+  })
+
+  test('snapshot state is isolated by delivery target storage context', async () => {
+    const firstGroupContextId = 'chan-1:root-1'
+    const secondGroupContextId = 'chan-2:root-2'
+
+    createAlertPrompt(
+      USER_ID,
+      'Track first channel snapshots',
+      { field: 'task.status', op: 'eq', value: 'missing' },
+      60,
+      undefined,
+      {
+        contextId: 'chan-1',
+        contextType: 'group',
+        threadId: 'root-1',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+    createAlertPrompt(
+      USER_ID,
+      'Track second channel snapshots',
+      { field: 'task.status', op: 'eq', value: 'missing' },
+      60,
+      undefined,
+      {
+        contextId: 'chan-2',
+        contextType: 'group',
+        threadId: 'root-2',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+
+    const providerByContext = new Map<string, TaskProvider>([
+      [
+        firstGroupContextId,
+        createMockProvider({
+          listProjects: mock(() => Promise.resolve([{ id: 'project-1', name: 'First', url: 'http://test/proj/1' }])),
+          listTasks: mock(() =>
+            Promise.resolve([{ id: 'shared-task', title: 'Shared Task', status: 'todo', url: 'http://test/1' }]),
+          ),
+        }),
+      ],
+      [
+        secondGroupContextId,
+        createMockProvider({
+          listProjects: mock(() => Promise.resolve([{ id: 'project-2', name: 'Second', url: 'http://test/proj/2' }])),
+          listTasks: mock(() =>
+            Promise.resolve([{ id: 'shared-task', title: 'Shared Task', status: 'done', url: 'http://test/2' }]),
+          ),
+        }),
+      ],
+    ])
+
+    await pollAlertsOnce(chat, (contextId) => providerByContext.get(contextId)!)
+
+    expect(getSnapshotsForUser(firstGroupContextId).get('shared-task:status')).toBe('todo')
+    expect(getSnapshotsForUser(secondGroupContextId).get('shared-task:status')).toBe('done')
   })
 
   test('same creator but different delivery targets do not merge into one scheduled execution batch', async () => {

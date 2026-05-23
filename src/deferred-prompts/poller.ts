@@ -180,7 +180,7 @@ async function executeAlertsForUser(
   }
 
   let tasks = await fetchAllTasks(provider)
-  const snapshots = getSnapshotsForUser(userId)
+  const snapshots = getSnapshotsForUser(storageContextId)
 
   if (tasks.length > 0 && alertsNeedFullTasks(alerts)) {
     log.debug({ userId, taskCount: tasks.length }, 'Enriching tasks with full details for alert conditions')
@@ -195,7 +195,7 @@ async function executeAlertsForUser(
   )
   logSettledErrors(alertResults, 'Error evaluating alert')
 
-  updateSnapshots(userId, tasks)
+  updateSnapshots(storageContextId, tasks)
 }
 
 export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
