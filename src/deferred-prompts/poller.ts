@@ -47,8 +47,7 @@ function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
   return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
 }
 
-const alertDeliveryContextKey = (alert: AlertPrompt): string =>
-  [alert.createdByUserId, getStorageContextId(alert.deliveryTarget)].join('|')
+const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
 
 async function executeScheduledPromptsForGroup(
   execCtx: DeferredExecutionContext,

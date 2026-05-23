@@ -13,7 +13,7 @@ import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
 import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
-import { getSnapshotsForUser } from '../../src/deferred-prompts/snapshots.js'
+import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -703,6 +703,64 @@ describe('delivery target routing', () => {
 
     expect(getSnapshotsForUser(firstGroupContextId).get('shared-task:status')).toBe('todo')
     expect(getSnapshotsForUser(secondGroupContextId).get('shared-task:status')).toBe('done')
+  })
+
+  test('same delivery context alerts from different creators share one snapshot cycle', async () => {
+    const otherUserId = 'poller-user-2'
+    const groupContextId = 'chan-1:root-1'
+    const resolvedContextIds: string[] = []
+    setupUserConfig(otherUserId)
+    updateSnapshots(groupContextId, [{ id: 'shared-task', title: 'Shared Task', status: 'todo', url: 'http://test/1' }])
+
+    createAlertPrompt(
+      USER_ID,
+      'Notify first creator',
+      { field: 'task.status', op: 'changed_to', value: 'done' },
+      60,
+      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      {
+        contextId: 'chan-1',
+        contextType: 'group',
+        threadId: 'root-1',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+    createAlertPrompt(
+      otherUserId,
+      'Notify second creator',
+      { field: 'task.status', op: 'changed_to', value: 'done' },
+      60,
+      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      {
+        contextId: 'chan-1',
+        contextType: 'group',
+        threadId: 'root-1',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: otherUserId,
+        createdByUsername: null,
+      },
+    )
+
+    const matchingProvider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'project-1', name: 'First', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'shared-task', title: 'Shared Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+    const resolveProvider = (contextId: string): TaskProvider | null => {
+      resolvedContextIds.push(contextId)
+      return matchingProvider
+    }
+
+    await pollAlertsOnce(chat, resolveProvider)
+
+    expect(sentMessages).toHaveLength(2)
+    expect(resolvedContextIds).toEqual([groupContextId])
+    expect(getSnapshotsForUser(groupContextId).get('shared-task:status')).toBe('done')
   })
 
   test('same creator but different delivery targets do not merge into one scheduled execution batch', async () => {
