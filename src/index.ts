@@ -14,6 +14,7 @@ import { getTelegramFileFetcher } from './chat/telegram/index.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
+import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
@@ -76,6 +77,8 @@ try {
 }
 
 seedSystemConfigFromEnv()
+const bootstrapResult = bootstrapInstancesFromEnv()
+log.info({ bootstrapResult }, 'instance bootstrap evaluated')
 const missingSystemKeys = missingSystemConfigKeys()
 if (missingSystemKeys.length > 0) {
   log.warn(
