@@ -7,10 +7,20 @@ See LICENSE in the project root for details.
 
 # Remaining Work: consolidate-keywords-agent mock.module cleanup
 
-**Status:** not_started
+**Status:** complete
 **Generated:** 2026-05-23
+**Completed:** 2026-05-23
 **Predecessor:** `docs/archive/2026-04-22-behavior-audit-mock-module-cleanup.md` (closed out the classify-agent + phase2a + incremental-integration leftovers; explicitly carried this one as out-of-scope)
 **ADR (pattern):** `docs/adr/0057-dependency-injection-test-refactor.md`, `docs/adr/0111-behavior-audit-mock-module-cleanup.md`
+
+## Outcome
+
+Implemented as planned with the `buildEmbeddingModel(apiKey)` shape:
+
+- `scripts/behavior-audit/consolidate-keywords-agent.ts` — narrowed `EmbedSlugBatchDeps` to the minimal contract `embedSlugBatch` actually consumes (`{model, values}` in / `{embeddings}` out), added `buildEmbeddingModel: (apiKey: string) => EmbeddingModel` to deps, and introduced `defaultEmbedSlugBatchDeps` that wraps the real `embedMany` to strip unused result fields. Live-binding reads of `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` preserved via ESM live bindings.
+- `tests/scripts/behavior-audit/consolidate-keywords-agent.test.ts` — both `mock.module` calls removed; all 4 tests now route through DI via a small `makeDeps(embedManyImpl)` helper and a `'mock-embedding-model'` string stub (matches the `classify-agent.test.ts` `buildModel: () => 'mock-model'` precedent).
+
+Verification: `bun check:full` — 12/12 green. `rg "mock\.module" tests/scripts/behavior-audit/consolidate-keywords-agent.test.ts` — 0 matches. Remaining `mock.module` calls under `tests/scripts/behavior-audit/` are confined to the documented intentional startup mocks in `incremental-integration.test.ts`.
 
 ## Goal
 
