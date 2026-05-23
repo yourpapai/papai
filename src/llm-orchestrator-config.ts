@@ -25,11 +25,13 @@ const readConfig = (contextId: string, key: 'kaneo_apikey' | 'youtrack_token' | 
 }
 
 export const checkRequiredProviderConfig = (contextId: string, deps: RequiredProviderConfigDeps): string[] => {
-  void deps
   const requiredKeys = getConfigKeysForContext(contextId).filter(
     (key): key is 'kaneo_apikey' | 'youtrack_token' => key === 'kaneo_apikey' || key === 'youtrack_token',
   )
-  return requiredKeys.filter((key) => readConfig(contextId, key) === null)
+  const missingProviderKeys = requiredKeys.filter((key) => readConfig(contextId, key) === null)
+  const missingWorkspace =
+    requiredKeys.includes('kaneo_apikey') && deps.getKaneoWorkspace(contextId) === null ? ['workspaceId'] : []
+  return [...missingProviderKeys, ...missingWorkspace]
 }
 
 export const getLlmConfig = (): LlmConfig => {

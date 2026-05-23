@@ -93,7 +93,7 @@ describe('llm-orchestrator-config', () => {
       expect(missing).toEqual(['kaneo_apikey'])
     })
 
-    test('with kaneo: ignores workspaceId because it is internal setup state', () => {
+    test('with kaneo: reports workspaceId when internal workspace state is missing', () => {
       assignKaneoContext('user-1')
       setSystemConfig('llm_apikey', 'sk-system', 'env')
       setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
@@ -102,7 +102,7 @@ describe('llm-orchestrator-config', () => {
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
       const missing = checkRequiredProviderConfig('user-1', stubDepsNoWorkspace)
-      expect(missing).toEqual([])
+      expect(missing).toEqual(['workspaceId'])
     })
 
     test('returns no LLM keys even when system_config is missing', () => {

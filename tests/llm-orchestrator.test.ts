@@ -327,6 +327,31 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('/setup')
     })
 
+    test('missing Kaneo workspace is reported before provider construction', async () => {
+      const freshCtx = 'missing-kaneo-workspace'
+      assignKaneoContext(freshCtx)
+      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+      let providerBuildCalls = 0
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        buildProviderForUser: () => {
+          providerBuildCalls++
+          return buildMockProviderForUser()
+        },
+        getKaneoWorkspace: () => null,
+        maybeProvisionKaneo: () => Promise.resolve(),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      expect(providerBuildCalls).toBe(0)
+      expect(textCalls[0]).toContain('workspaceId')
+      expect(textCalls[0]).toContain('/setup')
+    })
+
     test('missing provider config is derived from assigned task instance', async () => {
       const freshCtx = 'missing-youtrack-token'
       assignYouTrackContext(freshCtx)
