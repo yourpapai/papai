@@ -390,8 +390,6 @@ describe('maybeProvisionKaneo', () => {
     buttons: (): Promise<void> => Promise.resolve(),
   }
 
-  const originalTaskProvider = process.env['TASK_PROVIDER']
-
   const assignKaneoContext = (contextId: string): void => {
     insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
@@ -412,11 +410,6 @@ describe('maybeProvisionKaneo', () => {
 
   afterEach(() => {
     restoreFetch()
-    if (originalTaskProvider === undefined) {
-      delete process.env['TASK_PROVIDER']
-    } else {
-      process.env['TASK_PROVIDER'] = originalTaskProvider
-    }
   })
 
   test('skips auto-provisioning when context is assigned to YouTrack', async () => {
@@ -444,7 +437,6 @@ describe('maybeProvisionKaneo', () => {
 
   test('skips auto-provisioning when context has no task assignment', async () => {
     const uniqueUserId = `kaneo-default-${Date.now()}`
-    delete process.env['TASK_PROVIDER']
 
     await maybeProvisionKaneo(mockReply, uniqueUserId, 'testuser')
 

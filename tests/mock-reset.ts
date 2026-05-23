@@ -48,7 +48,6 @@ import * as _memos from '../src/memos.js'
 import * as _messageCache from '../src/message-cache/cache.js'
 import * as _messageCacheIndex from '../src/message-cache/index.js'
 import * as _messageQueueIndex from '../src/message-queue/index.js'
-import * as _providersFactory from '../src/providers/factory.js'
 import * as _provision from '../src/providers/kaneo/provision.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
@@ -81,7 +80,6 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/memos.js', { ..._memos }],
   ['../src/message-cache/index.js', { ..._messageCacheIndex }],
   ['../src/message-queue/index.js', { ..._messageQueueIndex }],
-  ['../src/providers/factory.js', { ..._providersFactory }],
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],

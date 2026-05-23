@@ -50,7 +50,6 @@ describe('index.ts - graceful shutdown', () => {
   beforeEach(() => {
     process.env['CHAT_PROVIDER'] = 'telegram'
     process.env['ADMIN_USER_ID'] = 'admin-1'
-    delete process.env['TASK_PROVIDER']
     delete process.env['KANEO_CLIENT_URL']
     delete process.env['DEBUG_SERVER']
   })

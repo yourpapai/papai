@@ -33,7 +33,6 @@ const startSetupForTarget = async (
 
 describe('/setup command', () => {
   let setupHandler: CommandHandler | null = null
-  const originalTaskProvider = process.env['TASK_PROVIDER']
   const originalKaneoAutoProvision = process.env['KANEO_AUTO_PROVISION']
 
   const requireSetupHandler = (): CommandHandler => {
@@ -53,11 +52,6 @@ describe('/setup command', () => {
       throw new Error('setup handler was not registered')
     }
     setupHandler = registeredSetupHandler
-    if (originalTaskProvider === undefined) {
-      delete process.env['TASK_PROVIDER']
-    } else {
-      process.env['TASK_PROVIDER'] = originalTaskProvider
-    }
     if (originalKaneoAutoProvision === undefined) {
       delete process.env['KANEO_AUTO_PROVISION']
     } else {
@@ -112,7 +106,6 @@ describe('/setup command', () => {
   })
 
   test('first-time allowlisted group setup provisions and stops before wizard', async () => {
-    process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['KANEO_AUTO_PROVISION'] = 'true'
     addAuthorizedGroup('group-1', 'admin-1')
 
@@ -150,7 +143,6 @@ describe('/setup command', () => {
   })
 
   test('first-time allowlisted group setup with auto-provision disabled continues into wizard', async () => {
-    process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['KANEO_AUTO_PROVISION'] = 'false'
 
     const { reply, textCalls } = createMockReply()
@@ -191,7 +183,6 @@ describe('/setup command', () => {
   }
 
   test('subsequent allowlisted group setup skips provisioning and starts the wizard', async () => {
-    process.env['TASK_PROVIDER'] = 'kaneo'
     addAuthorizedGroup('group-1', 'admin-1')
     setConfig('group-1', 'kaneo_apikey', 'existing-key')
     setKaneoWorkspace('group-1', 'existing-workspace')

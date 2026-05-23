@@ -21,7 +21,6 @@ import { createMockProvider } from './tools/mock-provider.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { createMockChatWithHandler, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
 
-process.env['TASK_PROVIDER'] = 'kaneo'
 process.env['KANEO_CLIENT_URL'] = 'http://localhost:11337'
 
 const USER_ID = 'user-1'
