@@ -7,12 +7,13 @@ import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/cap
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
 import { getAllConfig, getPluginConfig, maskValue } from '../config.js'
+import { getConfigKeysForContext } from '../config-keys.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
-import { CONFIG_KEYS, type ConfigKey } from '../types/config.js'
+import type { ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'commands:config' })
 const GROUP_CONFIG_REDIRECT =
@@ -49,7 +50,7 @@ function formatConfigLine(key: ConfigKey, value: string | undefined): string {
 }
 
 function buildConfigButtons(config: Partial<Record<ConfigKey, string>>, targetContextId: string): ChatButton[] {
-  const buttons: ChatButton[] = CONFIG_KEYS.map((key) => ({
+  const buttons: ChatButton[] = getConfigKeysForContext(targetContextId).map((key) => ({
     text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
     callbackData: serializeCallbackData({ action: 'edit', key }, targetContextId),
     style: config[key] === undefined ? 'secondary' : 'primary',
@@ -136,7 +137,7 @@ export async function renderConfigForTarget(
   const config = getAllConfig(targetContextId)
   const lines = ['⚙️ **Current Configuration**\n']
 
-  CONFIG_KEYS.forEach((key) => {
+  getConfigKeysForContext(targetContextId).forEach((key) => {
     lines.push(formatConfigLine(key, config[key]))
   })
   appendPluginConfigLines(lines, targetContextId)

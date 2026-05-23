@@ -18,9 +18,6 @@ export type PreferenceConfigKey = 'timezone'
 // `src/system-config.ts`) and are owned by the bot admin, not per-user.
 export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
 
-// Temporary compatibility export for Task 3 callers. Do not use this from new code.
-export const CONFIG_KEYS: readonly ConfigKey[] = ['kaneo_apikey', 'timezone']
-
 // All valid config keys (not filtered by provider)
 // Note: kaneo_workspace_id is auto-provisioned and stored separately
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [

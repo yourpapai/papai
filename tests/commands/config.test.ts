@@ -9,6 +9,8 @@ import assert from 'node:assert/strict'
 import type { ChatCapability, CommandHandler } from '../../src/chat/types.js'
 import { registerConfigCommand, renderConfigForTarget } from '../../src/commands/config.js'
 import { setConfig, setPluginConfig } from '../../src/config.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
@@ -23,6 +25,11 @@ import {
 } from '../utils/test-helpers.js'
 
 const USER_ID = 'config-test-user'
+
+function assignKaneoContext(contextId: string): void {
+  insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
+}
 
 function makePlugin(pluginId: string, overrides: Partial<DiscoveredPlugin['manifest']> = {}): DiscoveredPlugin {
   return {
@@ -69,6 +76,7 @@ describe('/config Command', () => {
     })
 
     test('shows all config keys with values and masked secrets', async () => {
+      assignKaneoContext(USER_ID)
       setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
@@ -88,6 +96,20 @@ describe('/config Command', () => {
       // (exclude the hint line at the end)
       const configLines = lines.filter((line) => line.includes(':'))
       expect(configLines.every((line) => line.includes('(not set)'))).toBe(true)
+    })
+
+    test('renders only config keys for the assigned task instance', async () => {
+      insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+      setContextSettings({ contextId: USER_ID, taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
+      setConfig(USER_ID, 'youtrack_token', 'perm:abc1234')
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, USER_ID, true)
+
+      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('YouTrack Token')
+      expect(buttonCalls[0]).toContain('Timezone')
+      expect(buttonCalls[0]).not.toContain('Kaneo API Key')
     })
 
     test('shows missing required plugin config under an unavailable plugin', async () => {
@@ -171,6 +193,7 @@ describe('/config Command', () => {
     })
 
     test('falls back to plain text with config output', async () => {
+      assignKaneoContext(USER_ID)
       setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
       const { reply, textCalls, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, false)
