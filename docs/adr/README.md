@@ -123,6 +123,7 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0120](0120-central-llm-credentials-usage-billing-stats.md)          | Central LLM Credentials, Usage Telemetry, Billing Dashboard, Tool-Call Rows, and Anonymous DB-Wide Statistics | 2026-05-19 | Implemented (with architectural extensions)                 |
 | [0121](0121-dashboard-admin-split-and-redesign.md)                   | Debug/Admin Surface Split and Dashboard Redesign                                                              | 2026-05-21 | Implemented (with noted deviations)                         |
 | [0122](0122-kaneo-label-semantics.md)                                | Kaneo Scope-Aware Label Semantics                                                                             | 2026-05-22 | Implemented (with noted deviations)                         |
+| [0123](0123-trusted-local-plugin-system.md)                          | Trusted-Local Plugin System                                                                                   | 2026-03-30 | Implemented                                                 |
 
 ## Declined
 

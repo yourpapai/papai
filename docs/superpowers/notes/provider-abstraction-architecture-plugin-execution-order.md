@@ -17,7 +17,7 @@ See LICENSE in the project root for details.
 | --------------------------------------- | -------------------------------------------------------------------------- | ------------------ | ------------------------------- | ------------------------------------------------------- |
 | **Layered Architecture Violations Fix** | `docs/superpowers/plans/2026-03-26-layered-architecture-violations-fix.md` | ❌ Not implemented | 2026-03-26                      | 0/12 tasks completed                                    |
 | **Fix Provider Abstraction Leaks**      | `docs/superpowers/plans/2026-03-30-fix-provider-abstraction-leaks.md`      | ❌ Not implemented | 2026-03-30                      | 0/9 tasks completed                                     |
-| **Plugin System Implementation**        | `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md`        | ✅ Implemented     | 2026-03-30 (revised 2026-04-25) | All 13 phases completed (commit `225f8347`, 2026-04-25) |
+| **Plugin System Implementation**        | `docs/archive/2026-03-30-plugin-system-implementation.md`                  | ✅ Implemented     | 2026-03-30 (revised 2026-04-25) | All 13 phases completed (commit `225f8347`, 2026-04-25) |
 
 ---
 
@@ -177,6 +177,6 @@ The plugin system's `makeTools` integration, `buildSystemPrompt` integration, an
 
 - `docs/superpowers/plans/2026-03-30-fix-provider-abstraction-leaks.md` — source of provider plan tasks
 - `docs/superpowers/plans/2026-03-26-layered-architecture-violations-fix.md` — source of architecture plan tasks
-- `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md` — source of plugin plan phases
+- `docs/archive/2026-03-30-plugin-system-implementation.md` — source of plugin plan phases
 - `docs/superpowers/remaining/2026-03-30-fix-provider-abstraction-leaks.md` — auto-generated remaining-work tracker
 - `docs/superpowers/remaining/2026-03-30-plugin-system-implementation.md` — auto-generated remaining-work tracker
