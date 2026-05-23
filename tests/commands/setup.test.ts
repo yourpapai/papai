@@ -131,6 +131,15 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
+      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', deps)
@@ -159,6 +168,15 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
+      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', deps)
@@ -189,6 +207,15 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: getConfigWithExistingApiKey,
       getKaneoWorkspace: () => 'existing-workspace',
+      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', deps)
@@ -205,10 +232,37 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
+      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', deps)
 
     expect(textCalls[0]).toContain('/group add group-1')
+  })
+
+  test('starts task instance selection when target has no assignment', async () => {
+    const { reply, textCalls } = createMockReply()
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: () => true,
+      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfig: () => null,
+      getKaneoWorkspace: () => null,
+      getContextSettings: () => null,
+      getTaskInstance: () => null,
+      startTaskInstanceSelection: () => ({ status: 'pending', response: 'choose a task tracker' }),
+    }
+
+    await startSetupForTarget('admin-1', reply, 'admin-1', deps)
+
+    expect(textCalls).toEqual(['choose a task tracker'])
   })
 })

@@ -10,6 +10,8 @@ import { dispatchGroupSelectorResult } from './group-settings/dispatch.js'
 import { handleGroupSettingsSelectorMessage } from './group-settings/selector.js'
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from './group-settings/state.js'
 import { getMissingGroupTargetMessage } from './group-settings/target-validation.js'
+import { handleTaskInstanceSelectionMessage } from './setup/task-instance-selection.js'
+import { createWizard } from './wizard/index.js'
 import { handleWizardMessage } from './wizard-integration.js'
 
 function maybeDispatchGroupSelector(
@@ -54,6 +56,26 @@ function getSettingsTargetContextId(
   return configTargetContextId
 }
 
+async function maybeHandleTaskInstanceSelection(
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  settingsTargetContextId: string,
+): Promise<boolean> {
+  if (msg.contextType !== 'dm') return false
+  const selection = handleTaskInstanceSelectionMessage(msg.user.id, settingsTargetContextId, msg.text)
+  if (selection.status === 'not-handled') return false
+  if (selection.status === 'assigned') {
+    const result = createWizard(msg.user.id, settingsTargetContextId, selection.taskProvider)
+    await reply.text(result.prompt)
+    return true
+  }
+  if (selection.status === 'pending' || selection.status === 'aborted') {
+    await reply.text(selection.response)
+    return true
+  }
+  return false
+}
+
 async function maybeHandleSetupFlows(
   msg: IncomingMessage,
   reply: ReplyFn,
@@ -64,6 +86,7 @@ async function maybeHandleSetupFlows(
   autoStartWizardIfNeeded: (userId: string, storageContextId: string, reply: ReplyFn) => Promise<boolean>,
 ): Promise<boolean> {
   if (isCommand || !auth.allowed) return false
+  if (await maybeHandleTaskInstanceSelection(msg, reply, settingsTargetContextId)) return true
   if (await handleConfigEditorMessage(msg.user.id, settingsTargetContextId, msg.text, reply, msg.messageId)) return true
   if (
     await handleWizardMessage(

@@ -8,8 +8,11 @@ import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/cap
 import type { AuthorizationResult, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { getConfig } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
+import { getContextSettings } from '../instances/context-store.js'
+import { getTaskInstance } from '../instances/task-store.js'
 import { logger } from '../logger.js'
 import { provisionAndConfigure, type ProvisionOutcome } from '../providers/kaneo/provision.js'
+import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
 import { getKaneoWorkspace } from '../users.js'
 import { createWizard } from '../wizard/engine.js'
 
@@ -35,22 +38,15 @@ function isKaneoAutoProvisionEnabled(): boolean {
   return process.env['KANEO_AUTO_PROVISION'] !== 'false'
 }
 
-function getTaskProvider(): 'kaneo' | 'youtrack' {
-  const provider = process.env['TASK_PROVIDER']
-  if (provider === 'kaneo' || provider === 'youtrack') {
-    return provider
-  }
-  return 'kaneo'
-}
-
-const TASK_PROVIDER = getTaskProvider()
-
 export interface SetupCommandDeps {
   isAuthorizedGroup: (groupId: string) => boolean
   getConfig: typeof getConfig
   getKaneoWorkspace: typeof getKaneoWorkspace
   provisionAndConfigure: typeof provisionAndConfigure
   createWizard: typeof createWizard
+  getContextSettings: typeof getContextSettings
+  getTaskInstance: typeof getTaskInstance
+  startTaskInstanceSelection: typeof startTaskInstanceSelection
 }
 
 const defaultDeps: SetupCommandDeps = {
@@ -59,6 +55,9 @@ const defaultDeps: SetupCommandDeps = {
   getKaneoWorkspace,
   provisionAndConfigure,
   createWizard,
+  getContextSettings,
+  getTaskInstance,
+  startTaskInstanceSelection,
 }
 
 function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandDeps): boolean {
@@ -92,6 +91,48 @@ async function replyForProvisionOutcome(reply: ReplyFn, outcome: ProvisionOutcom
   return true
 }
 
+async function startCredentialWizard(
+  userId: string,
+  reply: ReplyFn,
+  targetContextId: string,
+  deps: SetupCommandDeps,
+): Promise<void> {
+  const settings = deps.getContextSettings(targetContextId)
+  if (settings === null) {
+    const selection = deps.startTaskInstanceSelection(userId, targetContextId)
+    if (selection.status === 'assigned') {
+      const result = deps.createWizard(userId, targetContextId, selection.taskProvider)
+      await reply.text(result.prompt)
+      return
+    }
+    if (selection.status === 'pending' || selection.status === 'aborted') {
+      await reply.text(selection.response)
+      return
+    }
+    await reply.text('Failed to start setup. Please try again.')
+    return
+  }
+
+  const taskInstance = deps.getTaskInstance(settings.taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active') {
+    const selection = deps.startTaskInstanceSelection(userId, targetContextId)
+    if (selection.status === 'assigned') {
+      const result = deps.createWizard(userId, targetContextId, selection.taskProvider)
+      await reply.text(result.prompt)
+      return
+    }
+    if (selection.status === 'pending' || selection.status === 'aborted') {
+      await reply.text(selection.response)
+      return
+    }
+    await reply.text('Failed to start setup. Please try again.')
+    return
+  }
+
+  const result = deps.createWizard(userId, targetContextId, taskInstance.type)
+  await reply.text(result.prompt)
+}
+
 export async function startSetupForTarget(
   ...args:
     | [userId: string, reply: ReplyFn, targetContextId: string]
@@ -111,7 +152,10 @@ export async function startSetupForTarget(
     return
   }
 
-  if (isGroupTarget && TASK_PROVIDER === 'kaneo' && isFirstTimeKaneoGroupSetup(targetContextId, resolvedDeps)) {
+  const settings = resolvedDeps.getContextSettings(targetContextId)
+  const taskInstance = settings === null ? null : resolvedDeps.getTaskInstance(settings.taskInstanceId)
+  const isKaneoTarget = taskInstance?.type === 'kaneo' && taskInstance.status === 'active'
+  if (isGroupTarget && isKaneoTarget && isFirstTimeKaneoGroupSetup(targetContextId, resolvedDeps)) {
     const shouldStop = await replyForProvisionOutcome(
       reply,
       await resolvedDeps.provisionAndConfigure(targetContextId, null),
@@ -121,16 +165,7 @@ export async function startSetupForTarget(
     }
   }
 
-  const result = resolvedDeps.createWizard(userId, targetContextId, TASK_PROVIDER)
-  if (result.success) {
-    await reply.text(result.prompt)
-    return
-  }
-  if (result.prompt === undefined) {
-    await reply.text('Failed to start wizard. Please try again.')
-    return
-  }
-  await reply.text(result.prompt)
+  await startCredentialWizard(userId, reply, targetContextId, resolvedDeps)
 }
 
 async function replyWithSetupSelection(reply: ReplyFn, userId: string, interactiveButtons: boolean): Promise<void> {
