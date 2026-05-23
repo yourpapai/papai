@@ -574,6 +574,72 @@ describe('delivery target routing', () => {
     expect(resolvedContextIds).toContain(groupContextId)
   })
 
+  test('different delivery target alert groups resolve their own storage contexts', async () => {
+    const firstGroupContextId = 'chan-1:root-1'
+    const secondGroupContextId = 'chan-2:root-2'
+    const resolvedContextIds: string[] = []
+
+    createAlertPrompt(
+      USER_ID,
+      'Notify first channel',
+      { field: 'task.project', op: 'eq', value: 'project-1' },
+      60,
+      undefined,
+      {
+        contextId: 'chan-1',
+        contextType: 'group',
+        threadId: 'root-1',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+    createAlertPrompt(
+      USER_ID,
+      'Notify second channel',
+      { field: 'task.project', op: 'eq', value: 'project-2' },
+      60,
+      undefined,
+      {
+        contextId: 'chan-2',
+        contextType: 'group',
+        threadId: 'root-2',
+        audience: 'shared',
+        mentionUserIds: [],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+
+    const providerByContext = new Map<string, TaskProvider>([
+      [
+        firstGroupContextId,
+        createMockProvider({
+          listProjects: mock(() => Promise.resolve([{ id: 'project-1', name: 'First', url: 'http://test/proj/1' }])),
+          listTasks: mock(() => Promise.resolve([{ id: 'task-1', title: 'First Task', url: 'http://test/1' }])),
+        }),
+      ],
+      [
+        secondGroupContextId,
+        createMockProvider({
+          listProjects: mock(() => Promise.resolve([{ id: 'project-2', name: 'Second', url: 'http://test/proj/2' }])),
+          listTasks: mock(() => Promise.resolve([{ id: 'task-2', title: 'Second Task', url: 'http://test/2' }])),
+        }),
+      ],
+    ])
+    const resolveProvider = (contextId: string): TaskProvider | null => {
+      resolvedContextIds.push(contextId)
+      return providerByContext.get(contextId)!
+    }
+
+    await pollAlertsOnce(chat, resolveProvider)
+
+    expect(sentMessages).toHaveLength(2)
+    expect(resolvedContextIds).toContain(firstGroupContextId)
+    expect(resolvedContextIds).toContain(secondGroupContextId)
+  })
+
   test('same creator but different delivery targets do not merge into one scheduled execution batch', async () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {

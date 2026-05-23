@@ -422,6 +422,15 @@ describe('scheduler', () => {
       expect(result).toBe(0)
       expect(createTaskCallCount).toBe(0)
     })
+
+    test('createMissedTasks returns 0 when resolver returns null', async () => {
+      const taskId = createDueTask()
+
+      const result = await createMissedTasks(taskId, ['2026-03-02'], { resolve: () => null })
+
+      expect(result).toBe(0)
+      expect(createTaskCallCount).toBe(0)
+    })
   })
 
   describe('startScheduler / stopScheduler', () => {

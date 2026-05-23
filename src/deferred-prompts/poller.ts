@@ -47,6 +47,9 @@ function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
   return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
 }
 
+const alertDeliveryContextKey = (alert: AlertPrompt): string =>
+  [alert.createdByUserId, getStorageContextId(alert.deliveryTarget)].join('|')
+
 async function executeScheduledPromptsForGroup(
   execCtx: DeferredExecutionContext,
   prompts: ScheduledPrompt[],
@@ -205,11 +208,12 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
 
   const now = new Date()
 
-  const byUser = new Map<string, AlertPrompt[]>()
+  const byDeliveryContext = new Map<string, AlertPrompt[]>()
   for (const alert of eligibleAlerts) {
-    const existing = byUser.get(alert.createdByUserId)
+    const key = alertDeliveryContextKey(alert)
+    const existing = byDeliveryContext.get(key)
     if (existing === undefined) {
-      byUser.set(alert.createdByUserId, [alert])
+      byDeliveryContext.set(key, [alert])
     } else {
       existing.push(alert)
     }
@@ -217,8 +221,8 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
 
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
-    [...byUser.entries()].map(([userId, alerts]) =>
-      userLimit((): Promise<void> => executeAlertsForUser(userId, alerts, chat, buildProviderFn, now)),
+    [...byDeliveryContext.values()].map((alerts) =>
+      userLimit((): Promise<void> => executeAlertsForUser(alerts[0]!.createdByUserId, alerts, chat, buildProviderFn, now)),
     ),
   )
   logSettledErrors(results, 'Error polling alerts for user')
