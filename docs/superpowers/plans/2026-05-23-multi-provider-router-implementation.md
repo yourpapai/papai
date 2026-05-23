@@ -23,15 +23,15 @@ This spec spans 8 sections and four loosely-coupled subsystems (data model, Chat
 
 **Phases:**
 
-| Phase | Scope | Independently shippable? |
-| ----- | ----- | ------------------------ |
-| 1 | Schema, encryption helper, system bootstrap, idempotency | Yes |
-| 2 | `TaskProviderResolver`, dynamic config keys, plumbing through llm-orchestrator / scheduler / poller | Yes (still single chat instance) |
-| 3 | `ChatRouter`, `platformInstanceId` on `IncomingMessage`, multi-chat-instance start/stop | Yes |
-| 4 | `/setup` wizard task-instance step, `/config` editor task-instance step, `/set` validation | Yes |
-| 5 | Admin model (`admins` table, `isAdmin(userId, platformInstanceId)`), `/user` retargeting, `/plugin` super-admin gating | Yes |
-| 6 | Dashboard pages and API endpoints, `INSTANCE_CONFIG_KEY` masking | Yes |
-| 7 | Plugin-system alignment (`capability_missing` eligibility, plugin compat eval against active-instance union) | Yes |
+| Phase | Scope                                                                                                                  | Independently shippable?         |
+| ----- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| 1     | Schema, encryption helper, system bootstrap, idempotency                                                               | Yes                              |
+| 2     | `TaskProviderResolver`, dynamic config keys, plumbing through llm-orchestrator / scheduler / poller                    | Yes (still single chat instance) |
+| 3     | `ChatRouter`, `platformInstanceId` on `IncomingMessage`, multi-chat-instance start/stop                                | Yes                              |
+| 4     | `/setup` wizard task-instance step, `/config` editor task-instance step, `/set` validation                             | Yes                              |
+| 5     | Admin model (`admins` table, `isAdmin(userId, platformInstanceId)`), `/user` retargeting, `/plugin` super-admin gating | Yes                              |
+| 6     | Dashboard pages and API endpoints, `INSTANCE_CONFIG_KEY` masking                                                       | Yes                              |
+| 7     | Plugin-system alignment (`capability_missing` eligibility, plugin compat eval against active-instance union)           | Yes                              |
 
 ---
 
@@ -39,57 +39,57 @@ This spec spans 8 sections and four loosely-coupled subsystems (data model, Chat
 
 ### New files
 
-| File | Responsibility |
-| ---- | -------------- |
-| `src/db/migrations/040_platform_instances.ts` | `platform_instances` + `task_instances` + `context_settings` + `admins` tables |
-| `src/db/instance-schema.ts` | Drizzle table definitions and row types for instance tables |
-| `src/instances/types.ts` | `PlatformInstanceRow`, `TaskInstanceRow`, `ContextAssignment`, `InstanceStatus` types |
-| `src/instances/encryption.ts` | AES-256-GCM encrypt/decrypt helpers keyed off `INSTANCE_CONFIG_KEY` |
-| `src/instances/platform-store.ts` | CRUD for `platform_instances` (insert / update status / list active / delete) |
-| `src/instances/task-store.ts` | CRUD for `task_instances` |
-| `src/instances/context-store.ts` | CRUD for `context_settings` (assign / read / unassign) |
-| `src/instances/bootstrap.ts` | First-run env → DB seeding, idempotency check, log notice |
-| `src/instances/admin-store.ts` | CRUD for `admins` table, `isSuperAdmin`, `isPlatformAdmin`, `isAdmin` |
-| `src/chat/router.ts` | `ChatRouter implements ChatProvider`, instance lifecycle, command replay, fan-out |
-| `src/providers/resolver.ts` | `TaskProviderResolver.resolve(contextId)` with strict/non-strict modes |
-| `src/types/config-dynamic.ts` | `getConfigKeysForContext(contextId)`, replaces `CONFIG_KEYS` constant |
-| `src/debug/instance-routes.ts` | `GET/POST/DELETE /api/platform-instances`, `/api/task-instances`, `/api/admins`, `POST /api/platform-instances/apply` |
-| `client/admin/src/pages/InstancesPage.tsx` | Platform Instances + Task Instances + Admins UI under `/admin#instances` |
-| `tests/instances/encryption.test.ts` | Encryption round-trip, fallback-key warning, tamper detection |
-| `tests/instances/platform-store.test.ts` | Platform CRUD coverage |
-| `tests/instances/task-store.test.ts` | Task CRUD coverage |
-| `tests/instances/context-store.test.ts` | Assignment + unassignment + listing |
-| `tests/instances/admin-store.test.ts` | Super-admin / platform-admin checks |
-| `tests/instances/bootstrap.test.ts` | Empty-DB env seeding, idempotency, empty-env warning |
-| `tests/chat/router.test.ts` | Command replay, `platformInstanceId` injection, sendMessage routing, lifecycle, failure isolation |
-| `tests/providers/resolver.test.ts` | DM/group resolution, missing assignment, missing creds, strict throw |
-| `tests/types/config-dynamic.test.ts` | Per-context key derivation, plugin-key merge |
-| `tests/debug/instance-routes.test.ts` | API endpoint coverage + masked secrets |
+| File                                          | Responsibility                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `src/db/migrations/040_platform_instances.ts` | `platform_instances` + `task_instances` + `context_settings` + `admins` tables                                        |
+| `src/db/instance-schema.ts`                   | Drizzle table definitions and row types for instance tables                                                           |
+| `src/instances/types.ts`                      | `PlatformInstanceRow`, `TaskInstanceRow`, `ContextAssignment`, `InstanceStatus` types                                 |
+| `src/instances/encryption.ts`                 | AES-256-GCM encrypt/decrypt helpers keyed off `INSTANCE_CONFIG_KEY`                                                   |
+| `src/instances/platform-store.ts`             | CRUD for `platform_instances` (insert / update status / list active / delete)                                         |
+| `src/instances/task-store.ts`                 | CRUD for `task_instances`                                                                                             |
+| `src/instances/context-store.ts`              | CRUD for `context_settings` (assign / read / unassign)                                                                |
+| `src/instances/bootstrap.ts`                  | First-run env → DB seeding, idempotency check, log notice                                                             |
+| `src/instances/admin-store.ts`                | CRUD for `admins` table, `isSuperAdmin`, `isPlatformAdmin`, `isAdmin`                                                 |
+| `src/chat/router.ts`                          | `ChatRouter implements ChatProvider`, instance lifecycle, command replay, fan-out                                     |
+| `src/providers/resolver.ts`                   | `TaskProviderResolver.resolve(contextId)` with strict/non-strict modes                                                |
+| `src/types/config-dynamic.ts`                 | `getConfigKeysForContext(contextId)`, replaces `CONFIG_KEYS` constant                                                 |
+| `src/debug/instance-routes.ts`                | `GET/POST/DELETE /api/platform-instances`, `/api/task-instances`, `/api/admins`, `POST /api/platform-instances/apply` |
+| `client/admin/src/pages/InstancesPage.tsx`    | Platform Instances + Task Instances + Admins UI under `/admin#instances`                                              |
+| `tests/instances/encryption.test.ts`          | Encryption round-trip, fallback-key warning, tamper detection                                                         |
+| `tests/instances/platform-store.test.ts`      | Platform CRUD coverage                                                                                                |
+| `tests/instances/task-store.test.ts`          | Task CRUD coverage                                                                                                    |
+| `tests/instances/context-store.test.ts`       | Assignment + unassignment + listing                                                                                   |
+| `tests/instances/admin-store.test.ts`         | Super-admin / platform-admin checks                                                                                   |
+| `tests/instances/bootstrap.test.ts`           | Empty-DB env seeding, idempotency, empty-env warning                                                                  |
+| `tests/chat/router.test.ts`                   | Command replay, `platformInstanceId` injection, sendMessage routing, lifecycle, failure isolation                     |
+| `tests/providers/resolver.test.ts`            | DM/group resolution, missing assignment, missing creds, strict throw                                                  |
+| `tests/types/config-dynamic.test.ts`          | Per-context key derivation, plugin-key merge                                                                          |
+| `tests/debug/instance-routes.test.ts`         | API endpoint coverage + masked secrets                                                                                |
 
 ### Modified files
 
-| File | Reason |
-| ---- | ------ |
-| `src/db/index.ts` | Register migration 040 |
-| `src/db/schema.ts` | Re-export instance schemas; add `platform_instance_id` to `users` table type |
-| `src/index.ts` | Replace direct `buildProviderForUser` / `setupBot(chatProvider)` calls with bootstrap → resolver/router wiring |
-| `src/llm-orchestrator.ts` | Switch `deps.buildProviderForUser(contextId)` → `deps.resolve(contextId)` |
-| `src/llm-orchestrator-types.ts` | Replace `buildProviderForUser` field with `resolve` returning `TaskProvider \| null` |
-| `src/scheduler.ts` | Use resolver instead of internal `buildProviderForUser` |
-| `src/deferred-prompts/poller.ts` | `BuildProviderFn` signature → `(contextId: string) => TaskProvider \| null` |
-| `src/chat/types.ts` | Add `platformInstanceId: string` to `IncomingMessage` and `IncomingInteraction` |
-| `src/types/config.ts` | Remove module-level `CONFIG_KEYS` constant; re-export `getConfigKeysForContext` |
-| `src/providers/factory.ts` | Delete (replaced by resolver). Keep one barrel re-export for `createProvider` |
-| `src/commands/setup.ts` | Insert "select task instance" first wizard step |
-| `src/commands/config.ts` | Insert task-instance edit option |
-| `src/commands/set.ts` | Validate against `getConfigKeysForContext(contextId)` |
-| `src/commands/user.ts` | Use `isAdmin(userId, platformInstanceId)` instead of `ADMIN_USER_ID === userId` |
-| `src/commands/plugin.ts` | Require super-admin for `approve` / `reject`; keep enable/disable on per-context admin |
-| `src/users.ts` | Authorization now keyed by `(platformUserId, platformInstanceId)` |
-| `src/plugins/registry.ts` | `evaluateCompatibility` uses union of capabilities across active task instances; `getPluginContextEligibility` adds `capability_missing` reason |
-| `src/plugins/contributions.ts` | Plugin scheduled-job dispatch resolves per-context provider; null skips with warning |
-| `client/admin/src/App.tsx` | Add `/admin#instances` route |
-| `CLAUDE.md` | Mention `INSTANCE_CONFIG_KEY` env var; update Required Environment Variables section |
+| File                             | Reason                                                                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/db/index.ts`                | Register migration 040                                                                                                                          |
+| `src/db/schema.ts`               | Re-export instance schemas; add `platform_instance_id` to `users` table type                                                                    |
+| `src/index.ts`                   | Replace direct `buildProviderForUser` / `setupBot(chatProvider)` calls with bootstrap → resolver/router wiring                                  |
+| `src/llm-orchestrator.ts`        | Switch `deps.buildProviderForUser(contextId)` → `deps.resolve(contextId)`                                                                       |
+| `src/llm-orchestrator-types.ts`  | Replace `buildProviderForUser` field with `resolve` returning `TaskProvider \| null`                                                            |
+| `src/scheduler.ts`               | Use resolver instead of internal `buildProviderForUser`                                                                                         |
+| `src/deferred-prompts/poller.ts` | `BuildProviderFn` signature → `(contextId: string) => TaskProvider \| null`                                                                     |
+| `src/chat/types.ts`              | Add `platformInstanceId: string` to `IncomingMessage` and `IncomingInteraction`                                                                 |
+| `src/types/config.ts`            | Remove module-level `CONFIG_KEYS` constant; re-export `getConfigKeysForContext`                                                                 |
+| `src/providers/factory.ts`       | Delete (replaced by resolver). Keep one barrel re-export for `createProvider`                                                                   |
+| `src/commands/setup.ts`          | Insert "select task instance" first wizard step                                                                                                 |
+| `src/commands/config.ts`         | Insert task-instance edit option                                                                                                                |
+| `src/commands/set.ts`            | Validate against `getConfigKeysForContext(contextId)`                                                                                           |
+| `src/commands/user.ts`           | Use `isAdmin(userId, platformInstanceId)` instead of `ADMIN_USER_ID === userId`                                                                 |
+| `src/commands/plugin.ts`         | Require super-admin for `approve` / `reject`; keep enable/disable on per-context admin                                                          |
+| `src/users.ts`                   | Authorization now keyed by `(platformUserId, platformInstanceId)`                                                                               |
+| `src/plugins/registry.ts`        | `evaluateCompatibility` uses union of capabilities across active task instances; `getPluginContextEligibility` adds `capability_missing` reason |
+| `src/plugins/contributions.ts`   | Plugin scheduled-job dispatch resolves per-context provider; null skips with warning                                                            |
+| `client/admin/src/App.tsx`       | Add `/admin#instances` route                                                                                                                    |
+| `CLAUDE.md`                      | Mention `INSTANCE_CONFIG_KEY` env var; update Required Environment Variables section                                                            |
 
 ---
 
@@ -114,6 +114,7 @@ This spec spans 8 sections and four loosely-coupled subsystems (data model, Chat
 ### Task 1.1: Migration 040 — instance and admin tables
 
 **Files:**
+
 - Create: `src/db/migrations/040_platform_instances.ts`
 - Modify: `src/db/index.ts` (registration only)
 - Test: `tests/db/migrations/040_platform_instances.test.ts`
@@ -155,7 +156,10 @@ describe('migration 040 platform instances', () => {
   it('creates admins table with composite PK', () => {
     migration040PlatformInstances.up(db)
     const cols = db.query("PRAGMA table_info('admins')").all() as Array<{ name: string; pk: number }>
-    const pkCols = cols.filter((c) => c.pk > 0).map((c) => c.name).sort()
+    const pkCols = cols
+      .filter((c) => c.pk > 0)
+      .map((c) => c.name)
+      .sort()
     expect(pkCols).toEqual(['platform_instance_id', 'user_id'])
   })
 
@@ -178,6 +182,7 @@ describe('migration 040 platform instances', () => {
 ```bash
 bun test tests/db/migrations/040_platform_instances.test.ts --bail
 ```
+
 Expected: FAIL — `Cannot find module ../../../src/db/migrations/040_platform_instances.js`.
 
 - [ ] **Step 3: Write the migration**
@@ -283,6 +288,7 @@ import { migration040PlatformInstances } from './migrations/040_platform_instanc
 ```bash
 bun test tests/db/migrations/040_platform_instances.test.ts --bail
 ```
+
 Expected: 6 tests pass.
 
 - [ ] **Step 6: Run the broader DB suite, confirm no regressions**
@@ -290,6 +296,7 @@ Expected: 6 tests pass.
 ```bash
 bun test tests/db --bail
 ```
+
 Expected: all DB tests pass.
 
 - [ ] **Step 7: Commit**
@@ -304,6 +311,7 @@ git commit -m "feat(db): add migration 040 for platform/task/context/admin table
 ### Task 1.2: Drizzle schema + row types for instance tables
 
 **Files:**
+
 - Create: `src/db/instance-schema.ts`
 - Modify: `src/db/schema.ts` (re-export)
 - Create: `src/instances/types.ts`
@@ -337,6 +345,7 @@ describe('instance Drizzle schema', () => {
 ```bash
 bun test tests/db/instance-schema.test.ts --bail
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Create `src/db/instance-schema.ts`**
@@ -455,6 +464,7 @@ export type ContextAssignment = {
 ```bash
 bun test tests/db/instance-schema.test.ts --bail
 ```
+
 Expected: 4 tests pass.
 
 - [ ] **Step 7: Commit**
@@ -469,6 +479,7 @@ git commit -m "feat(db): add Drizzle schema for instance tables"
 ### Task 1.3: Encryption helper for instance configs
 
 **Files:**
+
 - Create: `src/instances/encryption.ts`
 - Test: `tests/instances/encryption.test.ts`
 
@@ -521,6 +532,7 @@ describe('instance config encryption', () => {
 ```bash
 bun test tests/instances/encryption.test.ts --bail
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `src/instances/encryption.ts`**
@@ -611,6 +623,7 @@ export function maskConfig(plain: Record<string, string>): Record<string, string
 ```bash
 bun test tests/instances/encryption.test.ts --bail
 ```
+
 Expected: 4 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -625,6 +638,7 @@ git commit -m "feat(instances): add AES-256-GCM encryption for instance configs"
 ### Task 1.4: Platform / task / context / admin stores
 
 **Files:**
+
 - Create: `src/instances/platform-store.ts`
 - Create: `src/instances/task-store.ts`
 - Create: `src/instances/context-store.ts`
@@ -713,7 +727,11 @@ describe('task store', () => {
   it('lists', () => {
     insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
     insertTaskInstance({ id: 'y1', type: 'youtrack', config: { baseUrl: 'https://y' }, status: 'active' })
-    expect(listTaskInstances().map((r) => r.id).sort()).toEqual(['k1', 'y1'])
+    expect(
+      listTaskInstances()
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['k1', 'y1'])
   })
 
   it('updates status', () => {
@@ -844,6 +862,7 @@ export function resetMemoryDb(): void {
 ```bash
 bun test tests/instances --bail
 ```
+
 Expected: FAIL — modules not found.
 
 - [ ] **Step 4: Implement `src/instances/platform-store.ts`**
@@ -1048,11 +1067,7 @@ import { admins } from '../db/schema.js'
 export const SUPER_ADMIN_SCOPE = '__super__'
 
 export function insertAdmin(userId: string, platformInstanceId: string): void {
-  getDrizzleDb()
-    .insert(admins)
-    .values({ userId, platformInstanceId })
-    .onConflictDoNothing()
-    .run()
+  getDrizzleDb().insert(admins).values({ userId, platformInstanceId }).onConflictDoNothing().run()
 }
 
 export function removeAdmin(userId: string, platformInstanceId: string): void {
@@ -1111,6 +1126,7 @@ export function listPlatformAdmins(platformInstanceId: string): string[] {
 ```bash
 bun test tests/instances --bail
 ```
+
 Expected: 18 tests pass across the four files.
 
 - [ ] **Step 9: Commit**
@@ -1125,6 +1141,7 @@ git commit -m "feat(instances): add platform/task/context/admin stores"
 ### Task 1.5: Bootstrap from environment on first run
 
 **Files:**
+
 - Create: `src/instances/bootstrap.ts`
 - Test: `tests/instances/bootstrap.test.ts`
 
@@ -1220,6 +1237,7 @@ describe('bootstrap from env', () => {
 ```bash
 bun test tests/instances/bootstrap.test.ts --bail
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `src/instances/bootstrap.ts`**
@@ -1320,7 +1338,10 @@ export function bootstrapInstancesFromEnv(): BootstrapResult {
   insertAdmin(adminUserId, SUPER_ADMIN_SCOPE)
   insertAdmin(adminUserId, platformId)
 
-  log.info({ platformId, taskId, adminUserId }, 'Bootstrapped from environment variables. DB is now the source of truth.')
+  log.info(
+    { platformId, taskId, adminUserId },
+    'Bootstrapped from environment variables. DB is now the source of truth.',
+  )
   return { bootstrapped: true, platformInstanceId: platformId, taskInstanceId: taskId }
 }
 ```
@@ -1330,6 +1351,7 @@ export function bootstrapInstancesFromEnv(): BootstrapResult {
 ```bash
 bun test tests/instances/bootstrap.test.ts --bail
 ```
+
 Expected: 3 tests pass.
 
 - [ ] **Step 5: Run the whole instance suite to be sure nothing regressed**
@@ -1337,6 +1359,7 @@ Expected: 3 tests pass.
 ```bash
 bun test tests/instances --bail
 ```
+
 Expected: 21 tests pass.
 
 - [ ] **Step 6: Commit**
@@ -1351,6 +1374,7 @@ git commit -m "feat(instances): bootstrap from env vars exactly once"
 ### Task 1.6: Document `INSTANCE_CONFIG_KEY` in CLAUDE.md
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 
 - [ ] **Step 1: Find the existing "Required Environment Variables" section and add a new subsection**
@@ -1380,6 +1404,7 @@ git commit -m "docs: document INSTANCE_CONFIG_KEY env var"
 ### Task 2.1: `TaskProviderResolver` against the new tables
 
 **Files:**
+
 - Create: `src/providers/resolver.ts`
 - Test: `tests/providers/resolver.test.ts`
 
@@ -1438,6 +1463,7 @@ describe('TaskProviderResolver', () => {
 ```bash
 bun test tests/providers/resolver.test.ts --bail
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `src/providers/resolver.ts`**
@@ -1510,6 +1536,7 @@ export const defaultTaskProviderResolver = new TaskProviderResolver()
 ```bash
 bun test tests/providers/resolver.test.ts --bail
 ```
+
 Expected: 4 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1524,6 +1551,7 @@ git commit -m "feat(providers): add TaskProviderResolver against context_setting
 ### Task 2.2: Replace `buildProviderForUser` in `llm-orchestrator`
 
 **Files:**
+
 - Modify: `src/llm-orchestrator-types.ts`
 - Modify: `src/llm-orchestrator.ts`
 - Modify: `tests/llm-orchestrator.test.ts` (fixture rename only)
@@ -1535,6 +1563,7 @@ In `tests/llm-orchestrator.test.ts`, replace every `buildProviderForUser` field 
 ```bash
 bun test tests/llm-orchestrator.test.ts --bail
 ```
+
 Expected: FAIL — current code references `buildProviderForUser`.
 
 - [ ] **Step 2: Update `src/llm-orchestrator-types.ts`**
@@ -1585,6 +1614,7 @@ if (provider === null) {
 ```bash
 bun test tests/llm-orchestrator.test.ts --bail
 ```
+
 Expected: all orchestrator tests pass.
 
 - [ ] **Step 5: Commit**
@@ -1599,6 +1629,7 @@ git commit -m "refactor(llm): switch orchestrator from buildProviderForUser to r
 ### Task 2.3: Replace `buildProviderForUser` in `scheduler` and `deferred-prompts/poller`
 
 **Files:**
+
 - Modify: `src/scheduler.ts`
 - Modify: `src/deferred-prompts/poller.ts`
 - Modify: `tests/scheduler.test.ts`, `tests/deferred-prompts/poller.test.ts`
@@ -1610,6 +1641,7 @@ In `tests/scheduler.test.ts`, replace `buildProviderForUser` test fixtures with 
 ```bash
 bun test tests/scheduler.test.ts --bail
 ```
+
 Expected: FAIL — `buildProviderForUser` signature mismatch.
 
 - [ ] **Step 2: Rewrite the internal helper in `src/scheduler.ts`**
@@ -1636,6 +1668,7 @@ bun test tests/scheduler.test.ts --bail
 ```bash
 bun test tests/deferred-prompts/poller.test.ts --bail
 ```
+
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1650,6 +1683,7 @@ git commit -m "refactor(scheduler,deferred): switch to resolver signature"
 ### Task 2.4: Replace `src/providers/factory.ts` callsites and delete the file
 
 **Files:**
+
 - Delete: `src/providers/factory.ts`
 - Modify: `src/index.ts`
 - Modify: any remaining importers (grep first)
@@ -1689,6 +1723,7 @@ git rm src/providers/factory.ts
 ```bash
 bun test --bail
 ```
+
 Expected: all green.
 
 - [ ] **Step 5: Commit**
@@ -1703,6 +1738,7 @@ git commit -m "refactor(providers): remove factory.ts in favor of resolver"
 ### Task 2.5: Dynamic `getConfigKeysForContext`
 
 **Files:**
+
 - Create: `src/types/config-dynamic.ts`
 - Modify: `src/types/config.ts` (remove `CONFIG_KEYS` constant, re-export new function)
 - Test: `tests/types/config-dynamic.test.ts`
@@ -1746,6 +1782,7 @@ describe('getConfigKeysForContext', () => {
 ```bash
 bun test tests/types/config-dynamic.test.ts --bail
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `src/types/config-dynamic.ts`**
@@ -1790,6 +1827,7 @@ For each importer that previously used `CONFIG_KEYS` at module-level, pass `cont
 ```bash
 bun test --bail
 ```
+
 Expected: all green.
 
 - [ ] **Step 7: Commit**
@@ -1806,6 +1844,7 @@ git commit -m "refactor(config): make config keys per-context dynamic"
 ### Task 3.1: Add `platformInstanceId` to `IncomingMessage` / `IncomingInteraction`
 
 **Files:**
+
 - Modify: `src/chat/types.ts`
 - Modify: existing test fixtures (`tests/bot.ts`, `tests/utils/messages.ts` if present)
 
@@ -1836,6 +1875,7 @@ describe('IncomingMessage shape', () => {
 ```bash
 bun typecheck
 ```
+
 Expected: ERROR — `platformInstanceId` does not exist on `IncomingMessage`.
 
 - [ ] **Step 3: Add the field to `src/chat/types.ts`**
@@ -1850,7 +1890,9 @@ export type IncomingMessage = {
   text: string
   /** ID of the chat instance this message arrived on. Set by ChatRouter. */
   platformInstanceId: string
-} & Partial<{ /* unchanged optional fields */ }>
+} & Partial<{
+  /* unchanged optional fields */
+}>
 
 // In IncomingInteraction:
 export type IncomingInteraction = {
@@ -1876,6 +1918,7 @@ For each match, set `platformInstanceId: overrides?.platformInstanceId ?? 'test-
 ```bash
 bun typecheck && bun test --bail
 ```
+
 Expected: green.
 
 - [ ] **Step 6: Commit**
@@ -1890,6 +1933,7 @@ git commit -m "feat(chat): add platformInstanceId to IncomingMessage/IncomingInt
 ### Task 3.2: `ChatRouter` implementation
 
 **Files:**
+
 - Create: `src/chat/router.ts`
 - Test: `tests/chat/router.test.ts`
 
@@ -1974,7 +2018,10 @@ describe('ChatRouter', () => {
   it('isolates a failing instance start from the others', async () => {
     const factoryFail: ManagedChatInstanceFactory = (type) => {
       const p = makeFakeProvider(type, capture)
-      if (type === 'mattermost') (p.start as any) = mock(async () => { throw new Error('boom') })
+      if (type === 'mattermost')
+        (p.start as any) = mock(async () => {
+          throw new Error('boom')
+        })
       return p
     }
     const router = new ChatRouter(factoryFail)
@@ -1992,6 +2039,7 @@ describe('ChatRouter', () => {
 ```bash
 bun test tests/chat/router.test.ts --bail
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `src/chat/router.ts`**
@@ -2003,13 +2051,7 @@ Expected: FAIL — module not found.
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import type {
-  ChatProvider,
-  CommandHandler,
-  IncomingInteraction,
-  IncomingMessage,
-  ReplyFn,
-} from './types.js'
+import type { ChatProvider, CommandHandler, IncomingInteraction, IncomingMessage, ReplyFn } from './types.js'
 import type { DeferredDeliveryTarget } from './deferred-target.js'
 
 const log = logger.child({ scope: 'chat:router' })
@@ -2157,6 +2199,7 @@ export class ChatRouter {
 ```bash
 bun test tests/chat/router.test.ts --bail
 ```
+
 Expected: 4 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -2171,6 +2214,7 @@ git commit -m "feat(chat): add ChatRouter implementing ChatProvider fan-out"
 ### Task 3.3: Wire `ChatRouter` into `src/index.ts`
 
 **Files:**
+
 - Modify: `src/index.ts`
 
 - [ ] **Step 1: Replace existing single-provider construction with the router**
@@ -2199,6 +2243,7 @@ const chatProvider = router // ChatRouter implements ChatProvider
 ```bash
 bun typecheck && bun test --bail
 ```
+
 Expected: green. (If a chat adapter's `createChatProvider` does not accept the new shape, fix that in this same task.)
 
 - [ ] **Step 3: Commit**
@@ -2215,6 +2260,7 @@ git commit -m "feat(chat): start the bot through ChatRouter and bootstrap"
 ### Task 4.1: `/setup` wizard gains a task-instance pick step
 
 **Files:**
+
 - Modify: `src/commands/setup.ts`
 - Test: `tests/commands/setup.test.ts`
 
@@ -2237,7 +2283,10 @@ it('first prompts the user to pick a task instance when context has no assignmen
 it('after pick, persists the assignment and proceeds to credential prompts', async () => {
   insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
   // simulate the pick callback or text input "k1"
-  await handleSetupPick(makeDmMessage({ contextId: 'u-1', text: 'k1' }), mock(async () => {}))
+  await handleSetupPick(
+    makeDmMessage({ contextId: 'u-1', text: 'k1' }),
+    mock(async () => {}),
+  )
   expect(getContextAssignment('u-1')).toMatchObject({ taskInstanceId: 'k1' })
 })
 ```
@@ -2247,6 +2296,7 @@ it('after pick, persists the assignment and proceeds to credential prompts', asy
 ```bash
 bun test tests/commands/setup.test.ts --bail
 ```
+
 Expected: FAIL — `runSetupWizard` does not yet branch on assignment.
 
 - [ ] **Step 3: Update `src/commands/setup.ts`**
@@ -2271,6 +2321,7 @@ git commit -m "feat(setup): add task-instance selection step to /setup wizard"
 ### Task 4.2: `/config` shows task-instance entry, `/set` validates per-context
 
 **Files:**
+
 - Modify: `src/commands/config.ts`
 - Modify: `src/commands/set.ts`
 - Test: extend existing `tests/commands/config.test.ts`, `tests/commands/set.test.ts`
@@ -2290,7 +2341,10 @@ it('rejects kaneo_apikey on a youtrack-assigned context', async () => {
 
 it('allows plugin-namespaced keys for plugins enabled on the context', async () => {
   // (existing plugin enable harness)
-  await runSet(makeDmMessage({ contextId: 'u-1', text: '/set plugin.hello-world.greeting_prefix Hey' }), mock(async () => {}))
+  await runSet(
+    makeDmMessage({ contextId: 'u-1', text: '/set plugin.hello-world.greeting_prefix Hey' }),
+    mock(async () => {}),
+  )
   expect(getConfig('u-1', 'plugin.hello-world.greeting_prefix')).toBe('Hey')
 })
 ```
@@ -2340,6 +2394,7 @@ git commit -m "feat(commands): make /set and /config context-aware"
 ### Task 5.1: Authorization via `admins` table
 
 **Files:**
+
 - Modify: `src/users.ts`
 - Modify: `src/bot.ts` (auth check call sites)
 - Modify: `src/commands/user.ts`
@@ -2416,6 +2471,7 @@ git commit -m "feat(auth): per-platform-instance authorization via admins table"
 ### Task 5.2: `/plugin` super-admin gating
 
 **Files:**
+
 - Modify: `src/commands/plugin.ts`
 - Test: extend `tests/commands/plugin.test.ts`
 
@@ -2427,7 +2483,11 @@ it('rejects /plugin approve when caller is a platform admin (not super-admin)', 
   insertAdmin('platform-admin', 'tg-prod')
   const reply = mock(async () => {})
   await runPluginCommand(
-    makeDmMessage({ contextId: 'platform-admin', text: '/plugin approve hello-world', user: { id: 'platform-admin', username: null, isAdmin: true } }),
+    makeDmMessage({
+      contextId: 'platform-admin',
+      text: '/plugin approve hello-world',
+      user: { id: 'platform-admin', username: null, isAdmin: true },
+    }),
     reply,
   )
   expect((reply.mock.calls[0]?.[0] as string).toLowerCase()).toMatch(/super.admin/iu)
@@ -2507,6 +2567,7 @@ git commit -m "feat(plugin): require super-admin for /plugin approve|reject"
 ### Task 6.1: Instance HTTP routes
 
 **Files:**
+
 - Create: `src/debug/instance-routes.ts`
 - Modify: `src/debug/server.ts` (wire routes in)
 - Test: `tests/debug/instance-routes.test.ts`
@@ -2550,7 +2611,9 @@ describe('instance routes', () => {
         body: JSON.stringify({ id: 'tg-prod', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'x' } }),
       }),
     )
-    const res = await handleInstanceRequest(new Request('http://x/api/platform-instances/tg-prod', { method: 'DELETE' }))
+    const res = await handleInstanceRequest(
+      new Request('http://x/api/platform-instances/tg-prod', { method: 'DELETE' }),
+    )
     expect(res.status).toBe(204)
   })
 
@@ -2581,16 +2644,8 @@ bun test tests/debug/instance-routes.test.ts --bail
 
 import { z } from 'zod'
 
-import {
-  insertPlatformInstance,
-  listPlatformInstances,
-  deletePlatformInstance,
-} from '../instances/platform-store.js'
-import {
-  insertTaskInstance,
-  listTaskInstances,
-  deleteTaskInstance,
-} from '../instances/task-store.js'
+import { insertPlatformInstance, listPlatformInstances, deletePlatformInstance } from '../instances/platform-store.js'
+import { insertTaskInstance, listTaskInstances, deleteTaskInstance } from '../instances/task-store.js'
 import {
   insertAdmin,
   listSuperAdmins,
@@ -2670,8 +2725,9 @@ async function handleTask(req: Request, suffix: string): Promise<Response | null
 async function handleAdmins(req: Request, suffix: string): Promise<Response | null> {
   if (req.method === 'GET' && suffix === '') {
     const supers = listSuperAdmins().map((userId) => ({ userId, platformInstanceId: SUPER_ADMIN_SCOPE }))
-    const platforms = listPlatformInstances()
-      .flatMap((p) => listPlatformAdmins(p.id).map((userId) => ({ userId, platformInstanceId: p.id })))
+    const platforms = listPlatformInstances().flatMap((p) =>
+      listPlatformAdmins(p.id).map((userId) => ({ userId, platformInstanceId: p.id })),
+    )
     return json(200, { admins: [...supers, ...platforms] })
   }
   if (req.method === 'POST' && suffix === '') {
@@ -2716,9 +2772,11 @@ In the existing request dispatcher, add:
 ```ts
 import { handleInstanceRequest } from './instance-routes.js'
 
-if (url.pathname.startsWith('/api/platform-instances') ||
-    url.pathname.startsWith('/api/task-instances') ||
-    url.pathname.startsWith('/api/admins')) {
+if (
+  url.pathname.startsWith('/api/platform-instances') ||
+  url.pathname.startsWith('/api/task-instances') ||
+  url.pathname.startsWith('/api/admins')
+) {
   return handleInstanceRequest(req)
 }
 ```
@@ -2743,6 +2801,7 @@ git commit -m "feat(debug): add /api/platform-instances /api/task-instances /api
 ### Task 6.2: Admin UI — Instances page under `/admin#instances`
 
 **Files:**
+
 - Create: `client/admin/src/pages/InstancesPage.tsx`
 - Modify: `client/admin/src/App.tsx`
 - Test: `tests/client/admin/instances-page.test.tsx`
@@ -2761,7 +2820,17 @@ describe('InstancesPage', () => {
     setMockFetch({
       '/api/platform-instances': () =>
         new Response(
-          JSON.stringify({ instances: [{ id: 'tg-prod', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: '****ABCD' }, status: 'active', createdAt: 'now' }] }),
+          JSON.stringify({
+            instances: [
+              {
+                id: 'tg-prod',
+                type: 'telegram',
+                config: { TELEGRAM_BOT_TOKEN: '****ABCD' },
+                status: 'active',
+                createdAt: 'now',
+              },
+            ],
+          }),
         ),
       '/api/task-instances': () => new Response(JSON.stringify({ instances: [] })),
       '/api/admins': () => new Response(JSON.stringify({ admins: [] })),
@@ -2792,7 +2861,7 @@ bun test:client --bail
 ```tsx
 import { InstancesPage } from './pages/InstancesPage.tsx'
 // ...
-<Route path="instances" element={<InstancesPage />} />
+;<Route path="instances" element={<InstancesPage />} />
 ```
 
 - [ ] **Step 5: Build and run client tests**
@@ -2815,6 +2884,7 @@ git commit -m "feat(admin-ui): add /admin#instances page for platform/task/admin
 ### Task 7.1: Capability eval across active instance union
 
 **Files:**
+
 - Modify: `src/plugins/compatibility.ts`
 - Modify: `src/plugins/registry.ts`
 - Test: extend `tests/plugins/compatibility.test.ts`, `tests/plugins/registry.test.ts`
@@ -2825,7 +2895,7 @@ git commit -m "feat(admin-ui): add /admin#instances page for platform/task/admin
 // in tests/plugins/registry.test.ts
 it('marks a plugin compatible at startup when at least one active task instance supplies the required capability', () => {
   const manifest = makeManifest({ requiredTaskCapabilities: ['comments.read'] })
-  pluginRegistry.registerDiscovered({ manifest, /* ... */ })
+  pluginRegistry.registerDiscovered({ manifest /* ... */ })
   pluginRegistry.approve(manifest.id, 'admin', 'hash')
 
   pluginRegistry.evaluateCompatibilityAcrossInstances([
@@ -2837,12 +2907,10 @@ it('marks a plugin compatible at startup when at least one active task instance 
 
 it('marks incompatible when no active instance supplies the capability', () => {
   const manifest = makeManifest({ requiredTaskCapabilities: ['comments.read'] })
-  pluginRegistry.registerDiscovered({ manifest, /* ... */ })
+  pluginRegistry.registerDiscovered({ manifest /* ... */ })
   pluginRegistry.approve(manifest.id, 'admin', 'hash')
 
-  pluginRegistry.evaluateCompatibilityAcrossInstances([
-    { taskCapabilities: new Set(), chatCapabilities: new Set() },
-  ])
+  pluginRegistry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
   expect(pluginRegistry.getEntry(manifest.id)?.state).toBe('incompatible')
 })
 ```
@@ -2890,6 +2958,7 @@ git commit -m "feat(plugins): evaluate compatibility across active-instance unio
 ### Task 7.2: Per-context `capability_missing` eligibility
 
 **Files:**
+
 - Modify: `src/plugins/registry.ts`
 - Test: extend `tests/plugins/registry.test.ts`
 
@@ -2961,6 +3030,7 @@ git commit -m "feat(plugins): add capability_missing eligibility per context"
 ### Task 7.3: Plugin scheduled-job dispatch uses resolver
 
 **Files:**
+
 - Modify: `src/plugins/contributions.ts`
 - Test: extend `tests/plugins/contributions.test.ts`
 
@@ -2976,12 +3046,24 @@ it('runPluginScheduledJob skips contexts where the resolver returns null', async
   setConfig('u-with-setup', 'kaneo_apikey', 'key')
 
   const executions: string[] = []
-  contributionRegistry.register('hello-world', {
-    tools: [],
-    promptFragments: [],
-    commands: [],
-    jobs: [{ name: 'tick', intervalMs: 60_000, execute: (ctx) => { executions.push(ctx) } }],
-  }, makeManifest({ id: 'hello-world', contributes: { jobs: ['tick'] } }))
+  contributionRegistry.register(
+    'hello-world',
+    {
+      tools: [],
+      promptFragments: [],
+      commands: [],
+      jobs: [
+        {
+          name: 'tick',
+          intervalMs: 60_000,
+          execute: (ctx) => {
+            executions.push(ctx)
+          },
+        },
+      ],
+    },
+    makeManifest({ id: 'hello-world', contributes: { jobs: ['tick'] } }),
+  )
 
   await runPluginScheduledJob('hello-world', 'tick')
   expect(executions).toEqual(['u-with-setup'])
@@ -3058,24 +3140,24 @@ I ran the self-review checklist after writing the plan.
 
 **Spec coverage:**
 
-| Spec section | Covered by |
-| ------------ | ---------- |
-| 1. Data Model (new tables) | Task 1.1, 1.2 |
-| 1. Config key changes | Task 2.5 |
-| 2. ChatRouter | Task 3.1, 3.2, 3.3 |
-| 3. TaskProviderResolver | Task 2.1 |
-| 3. What changes (orchestrator/scheduler/poller/factory) | Task 2.2, 2.3, 2.4 |
-| 3. /setup wizard task-instance step | Task 4.1 |
-| 4. Admin Model + bootstrap of super-admin | Task 1.5, 5.1 |
-| 4. Platform admin commands | Task 5.1 |
-| 4. Plugin admin authority | Task 5.2 |
-| 5. Dashboard pages + endpoints | Task 6.1, 6.2 |
-| 5. Config encryption | Task 1.3 |
-| 6. Bootstrap and migration | Task 1.5 |
-| 7. Error handling — capability gating | Task 7.1, 7.2 |
-| 7. Scheduler & poller resilience for plugin jobs | Task 7.3 |
-| 8. Testing strategy (router, resolver, instances) | Tasks include matching test files |
-| 9. Plugin system interactions | Phase 7 |
+| Spec section                                            | Covered by                        |
+| ------------------------------------------------------- | --------------------------------- |
+| 1. Data Model (new tables)                              | Task 1.1, 1.2                     |
+| 1. Config key changes                                   | Task 2.5                          |
+| 2. ChatRouter                                           | Task 3.1, 3.2, 3.3                |
+| 3. TaskProviderResolver                                 | Task 2.1                          |
+| 3. What changes (orchestrator/scheduler/poller/factory) | Task 2.2, 2.3, 2.4                |
+| 3. /setup wizard task-instance step                     | Task 4.1                          |
+| 4. Admin Model + bootstrap of super-admin               | Task 1.5, 5.1                     |
+| 4. Platform admin commands                              | Task 5.1                          |
+| 4. Plugin admin authority                               | Task 5.2                          |
+| 5. Dashboard pages + endpoints                          | Task 6.1, 6.2                     |
+| 5. Config encryption                                    | Task 1.3                          |
+| 6. Bootstrap and migration                              | Task 1.5                          |
+| 7. Error handling — capability gating                   | Task 7.1, 7.2                     |
+| 7. Scheduler & poller resilience for plugin jobs        | Task 7.3                          |
+| 8. Testing strategy (router, resolver, instances)       | Tasks include matching test files |
+| 9. Plugin system interactions                           | Phase 7                           |
 
 **Placeholder scan:** I searched for `TBD`, `TODO`, `implement later`, `add validation`, `similar to`, `fill in` — none remain in the plan body. Two references say "extend the existing file" with an inline new test block; the block contains complete code, so that is not a placeholder.
 
@@ -3096,6 +3178,7 @@ I ran the self-review checklist after writing the plan.
 ### Task 6.3: `POST /api/platform-instances/apply` re-syncs ChatRouter
 
 **Files:**
+
 - Modify: `src/debug/instance-routes.ts`
 - Test: extend `tests/debug/instance-routes.test.ts`
 
@@ -3115,9 +3198,17 @@ it('POST /api/platform-instances/apply re-syncs the ChatRouter from DB', async (
 - [ ] **Step 2: Add `setApplyTarget` + `POST .../apply` handler in `src/debug/instance-routes.ts`**
 
 ```ts
-let applyTarget: { listInstances: () => ManagedChatInstance[]; addInstance: (...args: any[]) => void; removeInstance: (id: string) => Promise<void>; startInstance: (id: string) => Promise<void>; stopInstance: (id: string) => Promise<void> } | null = null
+let applyTarget: {
+  listInstances: () => ManagedChatInstance[]
+  addInstance: (...args: any[]) => void
+  removeInstance: (id: string) => Promise<void>
+  startInstance: (id: string) => Promise<void>
+  stopInstance: (id: string) => Promise<void>
+} | null = null
 
-export function setApplyTarget(router: typeof applyTarget): void { applyTarget = router }
+export function setApplyTarget(router: typeof applyTarget): void {
+  applyTarget = router
+}
 
 // inside handlePlatform:
 if (req.method === 'POST' && suffix === '/apply') {
