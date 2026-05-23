@@ -10,6 +10,7 @@ import { getConfig } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
+import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { provisionAndConfigure, type ProvisionOutcome } from '../providers/kaneo/provision.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
@@ -91,18 +92,42 @@ async function replyForProvisionOutcome(reply: ReplyFn, outcome: ProvisionOutcom
   return true
 }
 
+async function maybeProvisionKaneoGroup(
+  reply: ReplyFn,
+  targetContextId: string,
+  taskProvider: TaskInstanceType,
+  isGroupTarget: boolean,
+  deps: SetupCommandDeps,
+): Promise<boolean> {
+  if (!isGroupTarget || taskProvider !== 'kaneo' || !isFirstTimeKaneoGroupSetup(targetContextId, deps)) return false
+  return replyForProvisionOutcome(reply, await deps.provisionAndConfigure(targetContextId, null))
+}
+
+export async function startWizardForAssignedTask(
+  userId: string,
+  reply: ReplyFn,
+  targetContextId: string,
+  taskProvider: TaskInstanceType,
+  isGroupTarget: boolean,
+  deps: SetupCommandDeps = defaultDeps,
+): Promise<void> {
+  if (await maybeProvisionKaneoGroup(reply, targetContextId, taskProvider, isGroupTarget, deps)) return
+  const result = deps.createWizard(userId, targetContextId, taskProvider)
+  await reply.text(result.prompt)
+}
+
 async function startCredentialWizard(
   userId: string,
   reply: ReplyFn,
   targetContextId: string,
+  isGroupTarget: boolean,
   deps: SetupCommandDeps,
 ): Promise<void> {
   const settings = deps.getContextSettings(targetContextId)
   if (settings === null) {
     const selection = deps.startTaskInstanceSelection(userId, targetContextId)
     if (selection.status === 'assigned') {
-      const result = deps.createWizard(userId, targetContextId, selection.taskProvider)
-      await reply.text(result.prompt)
+      await startWizardForAssignedTask(userId, reply, targetContextId, selection.taskProvider, isGroupTarget, deps)
       return
     }
     if (selection.status === 'pending' || selection.status === 'aborted') {
@@ -117,8 +142,7 @@ async function startCredentialWizard(
   if (taskInstance === null || taskInstance.status !== 'active') {
     const selection = deps.startTaskInstanceSelection(userId, targetContextId)
     if (selection.status === 'assigned') {
-      const result = deps.createWizard(userId, targetContextId, selection.taskProvider)
-      await reply.text(result.prompt)
+      await startWizardForAssignedTask(userId, reply, targetContextId, selection.taskProvider, isGroupTarget, deps)
       return
     }
     if (selection.status === 'pending' || selection.status === 'aborted') {
@@ -129,8 +153,7 @@ async function startCredentialWizard(
     return
   }
 
-  const result = deps.createWizard(userId, targetContextId, taskInstance.type)
-  await reply.text(result.prompt)
+  await startWizardForAssignedTask(userId, reply, targetContextId, taskInstance.type, isGroupTarget, deps)
 }
 
 export async function startSetupForTarget(
@@ -152,20 +175,7 @@ export async function startSetupForTarget(
     return
   }
 
-  const settings = resolvedDeps.getContextSettings(targetContextId)
-  const taskInstance = settings === null ? null : resolvedDeps.getTaskInstance(settings.taskInstanceId)
-  const isKaneoTarget = taskInstance?.type === 'kaneo' && taskInstance.status === 'active'
-  if (isGroupTarget && isKaneoTarget && isFirstTimeKaneoGroupSetup(targetContextId, resolvedDeps)) {
-    const shouldStop = await replyForProvisionOutcome(
-      reply,
-      await resolvedDeps.provisionAndConfigure(targetContextId, null),
-    )
-    if (shouldStop) {
-      return
-    }
-  }
-
-  await startCredentialWizard(userId, reply, targetContextId, resolvedDeps)
+  await startCredentialWizard(userId, reply, targetContextId, isGroupTarget, resolvedDeps)
 }
 
 async function replyWithSetupSelection(reply: ReplyFn, userId: string, interactiveButtons: boolean): Promise<void> {

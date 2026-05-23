@@ -265,4 +265,36 @@ describe('/setup command', () => {
 
     expect(textCalls).toEqual(['choose a task tracker'])
   })
+
+  test('provisions newly assigned group Kaneo task instance before starting wizard', async () => {
+    process.env['KANEO_AUTO_PROVISION'] = 'false'
+    const { reply, textCalls } = createMockReply()
+    let provisionCalls = 0
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: () => true,
+      provisionAndConfigure: () => {
+        provisionCalls++
+        return Promise.resolve({
+          status: 'provisioned',
+          email: 'group-1-a1b2c3d4@pap.ai',
+          password: 'pw-1',
+          kaneoUrl: 'https://kaneo.test',
+          apiKey: 'key-1',
+          workspaceId: 'ws-1',
+        })
+      },
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfig: () => null,
+      getKaneoWorkspace: () => null,
+      getContextSettings: () => null,
+      getTaskInstance: () => null,
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+    }
+
+    await startSetupForTarget('admin-1', reply, 'group-1', deps)
+
+    expect(provisionCalls).toBe(1)
+    expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
+    expect(textCalls).toContain('wizard-started')
+  })
 })

@@ -11,7 +11,7 @@ import { handleGroupSettingsSelectorMessage } from './group-settings/selector.js
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from './group-settings/state.js'
 import { getMissingGroupTargetMessage } from './group-settings/target-validation.js'
 import { handleTaskInstanceSelectionMessage } from './setup/task-instance-selection.js'
-import { createWizard } from './wizard/index.js'
+import { startWizardForAssignedTask } from './commands/setup.js'
 import { handleWizardMessage } from './wizard-integration.js'
 
 function maybeDispatchGroupSelector(
@@ -65,8 +65,13 @@ async function maybeHandleTaskInstanceSelection(
   const selection = handleTaskInstanceSelectionMessage(msg.user.id, settingsTargetContextId, msg.text)
   if (selection.status === 'not-handled') return false
   if (selection.status === 'assigned') {
-    const result = createWizard(msg.user.id, settingsTargetContextId, selection.taskProvider)
-    await reply.text(result.prompt)
+    await startWizardForAssignedTask(
+      msg.user.id,
+      reply,
+      settingsTargetContextId,
+      selection.taskProvider,
+      settingsTargetContextId !== msg.user.id,
+    )
     return true
   }
   if (selection.status === 'pending' || selection.status === 'aborted') {

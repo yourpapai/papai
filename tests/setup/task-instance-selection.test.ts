@@ -12,7 +12,15 @@ import {
   handleTaskInstanceSelectionMessage,
   startTaskInstanceSelection,
 } from '../../src/setup/task-instance-selection.js'
+import type { TaskInstanceSelectionResult } from '../../src/setup/task-instance-selection.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+const expectPending = (
+  result: TaskInstanceSelectionResult,
+): Extract<TaskInstanceSelectionResult, { status: 'pending' }> => {
+  if (result.status !== 'pending') throw new Error(`Expected pending, got ${result.status}`)
+  return result
+}
 
 describe('task instance setup selection', () => {
   beforeEach(async () => {
@@ -55,9 +63,10 @@ describe('task instance setup selection', () => {
     const result = startTaskInstanceSelection('user-1', 'ctx-1')
 
     expect(result.status).toBe('pending')
-    expect(result.response).toContain('Choose a task tracker for this context')
-    expect(result.response).toContain('kaneo-prod')
-    expect(result.response).toContain('yt-prod')
+    const pending = expectPending(result)
+    expect(pending.response).toContain('Choose a task tracker for this context')
+    expect(pending.response).toContain('kaneo-prod')
+    expect(pending.response).toContain('yt-prod')
     expect(getContextSettings('ctx-1')).toBeNull()
   })
 
@@ -83,7 +92,8 @@ describe('task instance setup selection', () => {
     const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'old-prod')
 
     expect(result.status).toBe('pending')
-    expect(result.response).toContain('Reply with one of these task instance IDs')
+    const pending = expectPending(result)
+    expect(pending.response).toContain('Reply with one of these task instance IDs')
     expect(getContextSettings('ctx-1')).toBeNull()
   })
 })
