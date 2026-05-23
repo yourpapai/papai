@@ -1825,7 +1825,8 @@ Update the warning log object from `{ userId: createdByUserId }` to:
 
 ```typescript
 {
-  userId: (createdByUserId, storageContextId)
+  userId: createdByUserId,
+  storageContextId,
 }
 ```
 
