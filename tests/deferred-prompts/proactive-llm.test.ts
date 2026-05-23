@@ -342,6 +342,19 @@ describe('dispatchExecution', () => {
       expect(loadFacts(USER_ID)).toEqual([])
     })
 
+    test('resolves full-mode provider from storage context instead of creator ID', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      const resolvedContextIds: string[] = []
+
+      await dispatchExecution(makeGroupThreadExecCtx(), 'scheduled', 'check overdue', metadata, (contextId) => {
+        resolvedContextIds.push(contextId)
+        return provider
+      })
+
+      expect(resolvedContextIds).toEqual(['-1001:42'])
+    })
+
     test('stores extracted facts from all tool-call steps', async () => {
       setupUserConfig()
       const provider = createMockProvider()

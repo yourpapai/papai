@@ -150,7 +150,7 @@ describe('scheduler', () => {
     mockLogger()
 
     schedulerDeps = {
-      createProvider: (_name: string, _config: Record<string, string>): TaskProvider =>
+      resolve: (_contextId: string): TaskProvider =>
         createMockProvider({
           capabilities: mockCapabilities,
           createTask: (params): Promise<Task> => {
@@ -359,13 +359,14 @@ describe('scheduler', () => {
   })
 
   describe('tick() — provider build failure', () => {
-    test('tick() when buildProviderForUser returns null skips the task', async () => {
-      clearUserCache(USER_ID)
-      createDueTask()
-      await awaitTick()
+    test('skips recurring task when resolver returns null', async () => {
+      const taskId = createDueTask()
+
+      await tick({ resolve: () => null })
+
       expect(createTaskCallCount).toBe(0)
       const row = testSqlite
-        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE user_id = '${USER_ID}'`)
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
         .get()
       expect(row!.last_run).toBeNull()
     })

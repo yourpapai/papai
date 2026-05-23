@@ -61,7 +61,7 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   buildModel: (config, modelId) => createOpenAICompatible({ name: 'openai-compatible', ...config })(modelId),
 }
 
-export type BuildProviderFn = (userId: string) => TaskProvider | null
+export type BuildProviderFn = (contextId: string) => TaskProvider | null
 
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
@@ -248,9 +248,9 @@ async function invokeFull(
   const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return config
 
-  const provider = buildProviderFn(createdByUserId)
+  const provider = buildProviderFn(storageContextId)
   if (provider === null) {
-    log.warn({ userId: createdByUserId }, 'Could not build task provider for deferred prompt')
+    log.warn({ userId: createdByUserId, storageContextId }, 'Could not build task provider for deferred prompt')
     return 'Deferred prompt skipped: task provider not configured.'
   }
 

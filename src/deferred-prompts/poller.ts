@@ -16,6 +16,7 @@ import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.j
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
+import { getStorageContextId } from './proactive-llm-helpers.js'
 import { getScheduledPromptsDue } from './scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from './snapshots.js'
 import type { AlertPrompt, ScheduledPrompt } from './types.js'
@@ -168,9 +169,10 @@ async function executeAlertsForUser(
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
 ): Promise<void> {
-  const provider = buildProviderFn(userId)
+  const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
+  const provider = buildProviderFn(storageContextId)
   if (provider === null) {
-    log.warn({ userId }, 'Could not build task provider for alert polling')
+    log.warn({ userId, storageContextId }, 'Could not build task provider for alert polling')
     return
   }
 

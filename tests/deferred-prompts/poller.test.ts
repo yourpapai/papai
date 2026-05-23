@@ -536,6 +536,8 @@ describe('delivery target routing', () => {
   })
 
   test('alert created in group fires to stored group target, not DM', async () => {
+    const groupContextId = 'chan-1:root-1'
+    const resolvedContextIds: string[] = []
     createAlertPrompt(
       USER_ID,
       'Notify this channel',
@@ -559,12 +561,17 @@ describe('delivery target routing', () => {
         Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
       ),
     })
+    const resolveProvider = (contextId: string): TaskProvider | null => {
+      resolvedContextIds.push(contextId)
+      return matchingProvider
+    }
 
-    await pollAlertsOnce(chat, () => matchingProvider)
+    await pollAlertsOnce(chat, resolveProvider)
 
     expect(sentMessages.length).toBeGreaterThan(0)
     expect(sentMessages[0]!.target.contextId).toBe('chan-1')
     expect(sentMessages[0]!.target.audience).toBe('shared')
+    expect(resolvedContextIds).toContain(groupContextId)
   })
 
   test('same creator but different delivery targets do not merge into one scheduled execution batch', async () => {
