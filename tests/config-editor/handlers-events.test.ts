@@ -7,11 +7,18 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { startEditor, handleEditorCallback, handleEditorMessage } from '../../src/config-editor/handlers.js'
 import { deleteEditorSession } from '../../src/config-editor/state.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('config_editor events', () => {
   const userId = 'user-1'
   const storageContextId = 'ctx-1'
+
+  const assignKaneoContext = (): void => {
+    insertTaskInstance({ id: 'ctx-1-kaneo', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId: storageContextId, taskInstanceId: 'ctx-1-kaneo', platformInstanceId: 'telegram-default' })
+  }
 
   beforeEach(async () => {
     mockLogger()
@@ -20,6 +27,7 @@ describe('config_editor events', () => {
   })
 
   test('startEditor emits config_editor:opened event', async () => {
+    assignKaneoContext()
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
     subscribe((event) => {
@@ -34,6 +42,7 @@ describe('config_editor events', () => {
   })
 
   test('handleEditorMessage emits config_editor:step event', async () => {
+    assignKaneoContext()
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
     subscribe((event) => {
@@ -50,6 +59,7 @@ describe('config_editor events', () => {
   })
 
   test('handleEditorCallback cancel emits config_editor:closed event', async () => {
+    assignKaneoContext()
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
     subscribe((event) => {
@@ -65,6 +75,7 @@ describe('config_editor events', () => {
   })
 
   test('handleEditorCallback save emits config_editor:closed event', async () => {
+    assignKaneoContext()
     const { subscribe } = await import('../../src/debug/event-bus.js')
     const events: Array<{ type: string; data: Record<string, unknown> }> = []
     subscribe((event) => {

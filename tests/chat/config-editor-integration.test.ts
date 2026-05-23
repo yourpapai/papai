@@ -12,11 +12,18 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { handleConfigEditorMessage } from '../../src/chat/config-editor-integration.js'
 import type { ReplyFn } from '../../src/chat/types.js'
 import { deleteEditorSession, startEditor } from '../../src/config-editor/index.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('config-editor chat integration', () => {
   const userId = 'user123'
   const storageContextId = 'ctx456'
+
+  const assignKaneoContext = (): void => {
+    insertTaskInstance({ id: 'ctx456-kaneo', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId: storageContextId, taskInstanceId: 'ctx456-kaneo', platformInstanceId: 'telegram-default' })
+  }
 
   beforeEach(async () => {
     mockLogger()
@@ -59,6 +66,7 @@ describe('config-editor chat integration', () => {
   })
 
   test('sets isSensitiveKey flag for sensitive key', async () => {
+    assignKaneoContext()
     startEditor(userId, storageContextId, 'kaneo_apikey')
     const { reply, buttonCalls } = createMockReply()
 
@@ -69,6 +77,7 @@ describe('config-editor chat integration', () => {
   })
 
   test('calls deleteMessage when available and key is sensitive', async () => {
+    assignKaneoContext()
     startEditor(userId, storageContextId, 'kaneo_apikey')
     const deletedIds: string[] = []
     const reply: ReplyFn = {
@@ -89,6 +98,7 @@ describe('config-editor chat integration', () => {
   })
 
   test('appends warning when deleteMessage unavailable and key is sensitive', async () => {
+    assignKaneoContext()
     startEditor(userId, storageContextId, 'kaneo_apikey')
     const { reply, buttonCalls } = createMockReply()
 

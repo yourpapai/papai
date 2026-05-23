@@ -14,6 +14,8 @@ import { dmTarget } from '../../../src/chat/types.js'
 import { setConfig } from '../../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { startGroupSettingsSelection } from '../../../src/group-settings/selector.js'
+import { setContextSettings } from '../../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { setKaneoWorkspace } from '../../../src/users.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
@@ -69,6 +71,11 @@ describe('DiscordChatProvider', () => {
       process.env['DISCORD_BOT_TOKEN'] = originalToken
     }
   })
+
+  const assignKaneoContext = (contextId: string): void => {
+    insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'discord-default' })
+  }
 
   test('constructor throws when DISCORD_BOT_TOKEN is missing', async () => {
     delete process.env['DISCORD_BOT_TOKEN']
@@ -1038,6 +1045,7 @@ describe('DiscordChatProvider', () => {
         isAdmin: true,
       })
       addAuthorizedGroup('group-1', 'admin-id')
+      assignKaneoContext('group-1')
       setConfig('group-1', 'kaneo_apikey', 'existing-key')
       setKaneoWorkspace('group-1', 'existing-workspace')
       startGroupSettingsSelection('user-1', 'setup', true)

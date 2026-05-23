@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
+import { setContextSettings } from '../../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { isKaneoSessionCookie } from '../../../src/providers/kaneo/client.js'
 import {
   maybeProvisionKaneo,
@@ -390,6 +392,16 @@ describe('maybeProvisionKaneo', () => {
 
   const originalTaskProvider = process.env['TASK_PROVIDER']
 
+  const assignKaneoContext = (contextId: string): void => {
+    insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
+  }
+
+  const assignYouTrackContext = (contextId: string): void => {
+    insertTaskInstance({ id: `${contextId}-yt`, type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
+  }
+
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
@@ -407,8 +419,8 @@ describe('maybeProvisionKaneo', () => {
     }
   })
 
-  test('skips auto-provisioning when TASK_PROVIDER is youtrack', async () => {
-    process.env['TASK_PROVIDER'] = 'youtrack'
+  test('skips auto-provisioning when context is assigned to YouTrack', async () => {
+    assignYouTrackContext('user-1')
 
     await maybeProvisionKaneo(mockReply, 'user-1', 'testuser')
 
@@ -416,10 +428,10 @@ describe('maybeProvisionKaneo', () => {
     expect(textCalls).toHaveLength(0)
   })
 
-  test('proceeds with auto-provisioning when TASK_PROVIDER is kaneo', async () => {
+  test('proceeds with auto-provisioning when context is assigned to Kaneo', async () => {
     // Ensure fresh user that doesn't have workspace configured
     const uniqueUserId = `kaneo-test-${Date.now()}`
-    process.env['TASK_PROVIDER'] = 'kaneo'
+    assignKaneoContext(uniqueUserId)
 
     setMockFetch(routeStandardProvision)
 
@@ -430,16 +442,12 @@ describe('maybeProvisionKaneo', () => {
     expect(textCalls[0]).toContain('Your Kaneo account has been created')
   })
 
-  test('proceeds with auto-provisioning when TASK_PROVIDER is not set (defaults to kaneo)', async () => {
+  test('skips auto-provisioning when context has no task assignment', async () => {
     const uniqueUserId = `kaneo-default-${Date.now()}`
     delete process.env['TASK_PROVIDER']
 
-    setMockFetch(routeStandardProvision)
-
     await maybeProvisionKaneo(mockReply, uniqueUserId, 'testuser')
 
-    // Should send welcome message with account details
-    expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('Your Kaneo account has been created')
+    expect(textCalls).toHaveLength(0)
   })
 })

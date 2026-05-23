@@ -19,6 +19,8 @@ import {
   deleteGroupSettingsSession,
   getActiveGroupSettingsTarget,
 } from '../../src/group-settings/state.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { setKaneoWorkspace } from '../../src/users.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -76,6 +78,11 @@ function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'
     stage: 'active',
     targetContextId: 'group-9',
   })
+}
+
+function assignKaneoContext(contextId: string): void {
+  insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
 }
 
 describe('routeInteraction', () => {
@@ -388,6 +395,7 @@ describe('routeInteraction', () => {
       parentName: 'Platform',
     })
     addAuthorizedGroup('group-9', 'admin-1')
+    assignKaneoContext('group-9')
     setConfig('group-9', 'kaneo_apikey', 'test-kaneo-key')
     setKaneoWorkspace('group-9', 'workspace-9')
     upsertGroupAdminObservation({
