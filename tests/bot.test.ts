@@ -31,6 +31,8 @@ import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.
 import { listManageableGroups } from '../src/group-settings/access.js'
 import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src/group-settings/state.js'
 import { addGroupMember } from '../src/groups.js'
+import { setContextSettings } from '../src/instances/context-store.js'
+import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
 import { addUser, isAuthorized, removeUser } from '../src/users.js'
@@ -319,7 +321,16 @@ describe('Demo Mode Auto-Provision', () => {
 
 // Setup user config to bypass wizard auto-start. Phase 1 removes per-user
 // LLM keys, so only the task-provider key and timezone need to be present.
+function setupContextTaskAssignment(contextId: string): void {
+  const taskInstanceId = `${contextId}-kaneo-test`
+  if (getTaskInstance(taskInstanceId) === null) {
+    insertTaskInstance({ id: taskInstanceId, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  }
+  setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+}
+
 function setupUserConfig(userId: string): void {
+  setupContextTaskAssignment(userId)
   setConfig(userId, 'kaneo_apikey', 'test-kaneo-key')
   setConfig(userId, 'timezone', 'UTC')
 }
@@ -720,6 +731,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     test('auto-starts wizard for unconfigured DM messages', async () => {
       addUser('dm-needs-setup', ADMIN_ID)
+      const taskInstanceId = 'dm-needs-setup-kaneo-test'
+      insertTaskInstance({ id: taskInstanceId, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+      setContextSettings({ contextId: 'dm-needs-setup', taskInstanceId, platformInstanceId: 'telegram-default' })
       cancelWizard('dm-needs-setup', 'dm-needs-setup')
 
       const messageHandler = getMessageHandler()
@@ -733,6 +747,18 @@ describe('Bot Authorization Gate (setupBot)', () => {
       expect(textCalls[0]).toContain('Welcome to papai configuration wizard!')
 
       cancelWizard('dm-needs-setup', 'dm-needs-setup')
+    })
+
+    test('auto-starts setup selection when authorized DM context has no task assignment', async () => {
+      addUser('dm-no-task-assignment', ADMIN_ID)
+
+      const messageHandler = getMessageHandler()
+      expect(messageHandler).not.toBeNull()
+
+      const { reply, textCalls } = createMockReply()
+      await messageHandler!({ ...createDmMessage('dm-no-task-assignment'), text: 'hello' }, reply)
+
+      expect(textCalls.join('\n')).toMatch(/Choose a task tracker|No task trackers are configured/u)
     })
   })
 
@@ -971,6 +997,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     addUser('dm-admin', ADMIN_ID)
     addAuthorizedGroup('group-ops', ADMIN_ID)
     setupUserConfig('dm-admin')
+    setupContextTaskAssignment('group-ops')
 
     const messageHandler = getMessageHandler()
     expect(messageHandler).not.toBeNull()
@@ -1004,6 +1031,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     addUser('dm-admin', ADMIN_ID)
     addAuthorizedGroup('group-ops', ADMIN_ID)
     setupUserConfig('dm-admin')
+    setupContextTaskAssignment('group-ops')
 
     const messageHandler = getMessageHandler()
     expect(messageHandler).not.toBeNull()
@@ -1035,6 +1063,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     addUser('dm-admin', ADMIN_ID)
     addAuthorizedGroup('group-ops', ADMIN_ID)
     setupUserConfig('dm-admin')
+    setupContextTaskAssignment('group-ops')
 
     const messageHandler = getMessageHandler()
     expect(messageHandler).not.toBeNull()

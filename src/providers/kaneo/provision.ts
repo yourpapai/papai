@@ -8,6 +8,8 @@ import { z } from 'zod'
 import { userCachesForTesting, clearCachedTools } from '../../cache.js'
 import type { ReplyFn } from '../../chat/types.js'
 import { getConfig, setConfig } from '../../config.js'
+import { getContextSettings } from '../../instances/context-store.js'
+import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import { getKaneoWorkspace, setKaneoWorkspace } from '../../users.js'
 
@@ -209,19 +211,14 @@ export async function provisionAndConfigure(userId: string, username: string | n
 const provLog = logger.child({ scope: 'kaneo:auto-provision' })
 
 /**
- * Auto-provisions a Kaneo account for a user if they don't have one.
- * Called on /start or first natural language message.
- * Skips auto-provisioning if TASK_PROVIDER is not 'kaneo'.
+ * Auto-provisions a Kaneo account for a context assigned to an active Kaneo task instance.
+ * Unassigned contexts return without provisioning; /setup owns task-instance assignment.
  */
 export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, username: string | null): Promise<void> {
-  let taskProvider = 'kaneo'
-  const configuredTaskProvider = process.env['TASK_PROVIDER']
-  if (configuredTaskProvider !== undefined) {
-    taskProvider = configuredTaskProvider
-  }
-  if (taskProvider !== 'kaneo') {
-    return
-  }
+  const settings = getContextSettings(contextId)
+  if (settings === null) return
+  const taskInstance = getTaskInstance(settings.taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return
 
   if (getKaneoWorkspace(contextId) !== null && getConfig(contextId, 'kaneo_apikey') !== null) {
     return

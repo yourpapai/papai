@@ -23,7 +23,7 @@ import {
   registerSetupCommand,
   registerStartCommand,
 } from './commands/index.js'
-import { getAllConfig } from './config.js'
+import { autoStartWizardIfNeeded } from './bot-auto-setup.js'
 import { emitUser } from './debug/event-bus.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
@@ -31,9 +31,7 @@ import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
-import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
-import { createWizard, hasActiveWizard } from './wizard/index.js'
-import { getWizardSteps } from './wizard/steps.js'
+import { isAuthorized, resolveUserByUsername } from './users.js'
 
 type ProcessMessageFn = typeof defaultProcessMessage
 type EnqueueMessageFn = typeof enqueueMessage
@@ -126,25 +124,6 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerGroupCommand(observedChat)
   registerPluginCommand(observedChat, adminUserId)
   registerPluginCommands(observedChat)
-}
-function userNeedsSetup(storageContextId: string, taskProvider: 'kaneo' | 'youtrack'): boolean {
-  const config = getAllConfig(storageContextId)
-  return getWizardSteps(taskProvider).some((step) => {
-    if (step.isOptional === true) return false
-    const value = config[step.key]
-    if (value === undefined) return true
-    if (value === '') return true
-    return false
-  })
-}
-async function autoStartWizardIfNeeded(userId: string, storageContextId: string, reply: ReplyFn): Promise<boolean> {
-  if (hasActiveWizard(userId, storageContextId)) return false
-  if (process.env['DEMO_MODE'] === 'true' && isDemoUser(userId)) return false
-  const taskProvider = process.env['TASK_PROVIDER'] === 'youtrack' ? 'youtrack' : 'kaneo'
-  if (!userNeedsSetup(storageContextId, taskProvider)) return false
-  const result = createWizard(userId, storageContextId, taskProvider)
-  if (result.success) await reply.text(result.prompt)
-  return result.success
 }
 async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
   const start = Date.now()

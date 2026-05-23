@@ -120,6 +120,8 @@ import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
 import { setKaneoWorkspace } from '../src/users.js'
+import { setContextSettings } from '../src/instances/context-store.js'
+import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 
 const CTX_ID = 'ctx-1'
 
@@ -150,12 +152,39 @@ describe('processMessage', () => {
 
   /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
   const seedConfigForContext = (ctxId: string): void => {
+    assignKaneoContext(ctxId)
     setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
     setCachedConfig(ctxId, 'timezone', 'UTC')
     setKaneoWorkspace(ctxId, 'workspace-1')
   }
 
   const seedConfig = (): void => seedConfigForContext(CTX_ID)
+
+  const assignKaneoContext = (contextId: string): void => {
+    const taskInstanceId = `${contextId}-kaneo`
+    if (getTaskInstance(taskInstanceId) === null) {
+      insertTaskInstance({
+        id: taskInstanceId,
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+      })
+    }
+    setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+  }
+
+  const assignYouTrackContext = (contextId: string): void => {
+    const taskInstanceId = `${contextId}-yt`
+    if (getTaskInstance(taskInstanceId) === null) {
+      insertTaskInstance({
+        id: taskInstanceId,
+        type: 'youtrack',
+        config: { url: 'https://yt.invalid' },
+        status: 'active',
+      })
+    }
+    setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+  }
 
   const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
     const { reply: baseReply, textCalls } = createMockReply()
@@ -236,6 +265,7 @@ describe('processMessage', () => {
     test('group context does not call maybeProvisionKaneo before missing-provider-config handling', async () => {
       let maybeProvisionCalls = 0
       const freshGroupCtx = 'group-1:thread-1'
+      assignKaneoContext('group-1')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
@@ -276,9 +306,9 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('not fully configured')
     })
 
-    test('missing Kaneo workspace is handled as setup-remediable missing configuration', async () => {
-      const freshCtx = 'missing-kaneo-workspace'
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+    test('missing Kaneo provider config is derived from assigned task instance', async () => {
+      const freshCtx = 'missing-kaneo-api-key'
+      assignKaneoContext(freshCtx)
 
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
@@ -293,7 +323,26 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('workspaceId')
+      expect(textCalls[0]).toContain('kaneo_apikey')
+      expect(textCalls[0]).toContain('/setup')
+    })
+
+    test('missing provider config is derived from assigned task instance', async () => {
+      const freshCtx = 'missing-youtrack-token'
+      assignYouTrackContext(freshCtx)
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        buildProviderForUser: buildMockProviderForUser,
+        getKaneoWorkspace: () => null,
+        maybeProvisionKaneo: () => Promise.resolve(),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      expect(textCalls[0]).toContain('youtrack_token')
       expect(textCalls[0]).toContain('/setup')
     })
   })
