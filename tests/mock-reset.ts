@@ -42,6 +42,7 @@ import * as _dbIndex from '../src/db/index.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _identityMapping from '../src/identity/mapping.js'
+import * as _instancesBootstrap from '../src/instances/bootstrap.js'
 import * as _logger from '../src/logger.js'
 import * as _memos from '../src/memos.js'
 import * as _messageCache from '../src/message-cache/cache.js'
@@ -76,6 +77,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
+  ['../src/instances/bootstrap.js', { ..._instancesBootstrap }],
   ['../src/memos.js', { ..._memos }],
   ['../src/message-cache/index.js', { ..._messageCacheIndex }],
   ['../src/message-queue/index.js', { ..._messageQueueIndex }],
