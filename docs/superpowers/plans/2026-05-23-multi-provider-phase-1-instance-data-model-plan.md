@@ -70,12 +70,7 @@ Create `tests/db/instance-schema.test.ts`:
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  admins,
-  contextSettings,
-  platformInstances,
-  taskInstances,
-} from '../../src/db/schema.js'
+import { admins, contextSettings, platformInstances, taskInstances } from '../../src/db/schema.js'
 
 describe('instance-schema re-exports', () => {
   test('platformInstances table name', () => {
@@ -242,7 +237,10 @@ const getIndexNames = (db: Database): string[] =>
     .map((r) => r.name)
 
 const getColumnNames = (db: Database, table: string): string[] =>
-  db.query<PragmaColumnRow, []>(`PRAGMA table_info(${table})`).all().map((r) => r.name)
+  db
+    .query<PragmaColumnRow, []>(`PRAGMA table_info(${table})`)
+    .all()
+    .map((r) => r.name)
 
 const createUsersTable = (db: Database): void => {
   db.run(`
@@ -312,14 +310,14 @@ describe('migration040PlatformInstances', () => {
 
   test('platform_instances row insert with all columns works', () => {
     migration040PlatformInstances.up(db)
-    db.run(
-      `INSERT INTO platform_instances (id, type, config, status) VALUES (?, ?, ?, ?)`,
-      ['telegram-default', 'telegram', 'encrypted-blob', 'active'],
-    )
+    db.run(`INSERT INTO platform_instances (id, type, config, status) VALUES (?, ?, ?, ?)`, [
+      'telegram-default',
+      'telegram',
+      'encrypted-blob',
+      'active',
+    ])
     const row = db
-      .query<{ id: string; type: string; status: string }, []>(
-        `SELECT id, type, status FROM platform_instances`,
-      )
+      .query<{ id: string; type: string; status: string }, []>(`SELECT id, type, status FROM platform_instances`)
       .get()
     expect(row).toEqual({ id: 'telegram-default', type: 'telegram', status: 'active' })
   })
@@ -387,12 +385,8 @@ function createContextSettingsTable(db: Database): void {
       platform_instance_id TEXT NOT NULL
     )
   `)
-  db.run(
-    `CREATE INDEX IF NOT EXISTS idx_context_settings_task_instance ON context_settings (task_instance_id)`,
-  )
-  db.run(
-    `CREATE INDEX IF NOT EXISTS idx_context_settings_platform_instance ON context_settings (platform_instance_id)`,
-  )
+  db.run(`CREATE INDEX IF NOT EXISTS idx_context_settings_task_instance ON context_settings (task_instance_id)`)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_context_settings_platform_instance ON context_settings (platform_instance_id)`)
 }
 
 function createAdminsTable(db: Database): void {
@@ -927,11 +921,7 @@ export const insertPlatformInstance = (input: InsertPlatformInstanceInput): void
 }
 
 export const getPlatformInstance = (id: string): PlatformInstance | null => {
-  const row = getDrizzleDb()
-    .select()
-    .from(platformInstances)
-    .where(eq(platformInstances.id, id))
-    .get()
+  const row = getDrizzleDb().select().from(platformInstances).where(eq(platformInstances.id, id)).get()
   return row === undefined ? null : rowToInstance(row)
 }
 
@@ -1023,7 +1013,11 @@ describe('task-store', () => {
   test('list returns all rows', () => {
     insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'u1' }, status: 'active' })
     insertTaskInstance({ id: 'b', type: 'youtrack', config: { url: 'u2' }, status: 'pending' })
-    expect(listTaskInstances().map((r) => r.id).sort()).toEqual(['a', 'b'])
+    expect(
+      listTaskInstances()
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['a', 'b'])
   })
 
   test('update sets config + status', () => {
@@ -1200,7 +1194,9 @@ describe('context-store', () => {
     setContextSettings({ contextId: 'u1', taskInstanceId: 'kaneo-default', platformInstanceId: 'tg-default' })
     setContextSettings({ contextId: 'u2', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
     setContextSettings({ contextId: 'u3', taskInstanceId: 'kaneo-default', platformInstanceId: 'tg-default' })
-    const ids = listContextsByTaskInstance('kaneo-default').map((c) => c.contextId).sort()
+    const ids = listContextsByTaskInstance('kaneo-default')
+      .map((c) => c.contextId)
+      .sort()
     expect(ids).toEqual(['u1', 'u3'])
   })
 
@@ -1263,11 +1259,7 @@ export const setContextSettings = (input: ContextSettings): void => {
 }
 
 export const getContextSettings = (contextId: string): ContextSettings | null => {
-  const row = getDrizzleDb()
-    .select()
-    .from(contextSettings)
-    .where(eq(contextSettings.contextId, contextId))
-    .get()
+  const row = getDrizzleDb().select().from(contextSettings).where(eq(contextSettings.contextId, contextId)).get()
   return row === undefined ? null : rowToSettings(row)
 }
 
@@ -1377,7 +1369,9 @@ describe('admin-store', () => {
     addAdmin('u1', 'tg-default')
     addAdmin('u2', 'tg-default')
     addAdmin('u3', 'mm-default')
-    const ids = listAdminsForPlatform('tg-default').map((a) => a.userId).sort()
+    const ids = listAdminsForPlatform('tg-default')
+      .map((a) => a.userId)
+      .sort()
     expect(ids).toEqual(['u1', 'u2'])
   })
 })
@@ -1448,11 +1442,7 @@ export const isAdmin = (userId: string, platformInstanceId: string): boolean => 
 }
 
 export const listAdminsForPlatform = (platformInstanceId: string): AdminRecord[] => {
-  const rows = getDrizzleDb()
-    .select()
-    .from(admins)
-    .where(eq(admins.platformInstanceId, platformInstanceId))
-    .all()
+  const rows = getDrizzleDb().select().from(admins).where(eq(admins.platformInstanceId, platformInstanceId)).all()
   return rows.map(rowToRecord)
 }
 ```
@@ -1664,12 +1654,7 @@ import { count } from 'drizzle-orm'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from './admin-store.js'
 import { insertPlatformInstance } from './platform-store.js'
 import { insertTaskInstance } from './task-store.js'
-import type {
-  BootstrapResult,
-  InstanceConfig,
-  PlatformInstanceType,
-  TaskInstanceType,
-} from './types.js'
+import type { BootstrapResult, InstanceConfig, PlatformInstanceType, TaskInstanceType } from './types.js'
 
 const log = logger.child({ scope: 'instances:bootstrap' })
 
@@ -1979,28 +1964,28 @@ Expected: branch published, no force-push required.
 
 **Spec coverage:**
 
-| Spec section / requirement | Implementing task(s) |
-| -------------------------- | -------------------- |
-| `platform_instances` table | Tasks 1, 2 |
-| `task_instances` table | Tasks 1, 2 |
-| `context_settings` table + indexes | Tasks 1, 2 |
-| `admins` table with composite PK | Tasks 1, 2 |
-| `users.platform_instance_id` column added (nullable) | Task 2 |
-| `user_config`, plugin tables, history etc. untouched | (none — verified by leaving schema.ts re-exports unchanged and not editing those migrations) |
-| Encryption: AES-256-GCM, 12-byte IV, 16-byte tag, base64(IV‖TAG‖CT) | Task 4 |
-| `INSTANCE_CONFIG_KEY` resolution (hex / hash / fallback + WARN) | Task 4 |
-| Tamper detection raises clear error | Task 4 (test + impl) |
-| `maskConfig()` masks `/token|key|secret|password|cookie/iu` | Task 4 |
-| Bootstrap on empty DB seeds platform + task + 2 admin rows | Task 9 |
-| Bootstrap idempotent (non-zero counts → already-bootstrapped) | Task 9 |
-| Bootstrap silent + warn when empty env + empty DB | Task 9 |
-| Bootstrap aborts with `partial-env` and the list of missing names | Task 9 |
-| Bootstrap wrapped per-row (transactionality already provided by per-migration tx + per-store inserts; idempotency precondition prevents partial writes) | Task 9 (precondition check before any insert) |
-| Startup wiring: call after `initDb()` | Task 10 |
-| Migration 040 registered in `MIGRATIONS` list | Task 3 |
-| Test files at the paths listed in spec Section 5 | Tasks 2, 4, 5, 6, 7, 8, 9 |
-| `INSTANCE_CONFIG_KEY` documented | Task 11 |
-| Phases 2–5 deferred (no `TaskProviderResolver`, no `ChatRouter`, no dashboard, no `/setup` change, no plugin re-eval) | Out of scope — confirmed nothing in tasks 1–11 touches `src/providers/factory.ts`, `src/chat/registry.ts`, `src/debug/`, `src/wizard/`, or `src/plugins/` |
+| Spec section / requirement                                                                                                                              | Implementing task(s)                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- | ---------- | ------ |
+| `platform_instances` table                                                                                                                              | Tasks 1, 2                                                                                                                                                |
+| `task_instances` table                                                                                                                                  | Tasks 1, 2                                                                                                                                                |
+| `context_settings` table + indexes                                                                                                                      | Tasks 1, 2                                                                                                                                                |
+| `admins` table with composite PK                                                                                                                        | Tasks 1, 2                                                                                                                                                |
+| `users.platform_instance_id` column added (nullable)                                                                                                    | Task 2                                                                                                                                                    |
+| `user_config`, plugin tables, history etc. untouched                                                                                                    | (none — verified by leaving schema.ts re-exports unchanged and not editing those migrations)                                                              |
+| Encryption: AES-256-GCM, 12-byte IV, 16-byte tag, base64(IV‖TAG‖CT)                                                                                     | Task 4                                                                                                                                                    |
+| `INSTANCE_CONFIG_KEY` resolution (hex / hash / fallback + WARN)                                                                                         | Task 4                                                                                                                                                    |
+| Tamper detection raises clear error                                                                                                                     | Task 4 (test + impl)                                                                                                                                      |
+| `maskConfig()` masks `/token                                                                                                                            | key                                                                                                                                                       | secret | password | cookie/iu` | Task 4 |
+| Bootstrap on empty DB seeds platform + task + 2 admin rows                                                                                              | Task 9                                                                                                                                                    |
+| Bootstrap idempotent (non-zero counts → already-bootstrapped)                                                                                           | Task 9                                                                                                                                                    |
+| Bootstrap silent + warn when empty env + empty DB                                                                                                       | Task 9                                                                                                                                                    |
+| Bootstrap aborts with `partial-env` and the list of missing names                                                                                       | Task 9                                                                                                                                                    |
+| Bootstrap wrapped per-row (transactionality already provided by per-migration tx + per-store inserts; idempotency precondition prevents partial writes) | Task 9 (precondition check before any insert)                                                                                                             |
+| Startup wiring: call after `initDb()`                                                                                                                   | Task 10                                                                                                                                                   |
+| Migration 040 registered in `MIGRATIONS` list                                                                                                           | Task 3                                                                                                                                                    |
+| Test files at the paths listed in spec Section 5                                                                                                        | Tasks 2, 4, 5, 6, 7, 8, 9                                                                                                                                 |
+| `INSTANCE_CONFIG_KEY` documented                                                                                                                        | Task 11                                                                                                                                                   |
+| Phases 2–5 deferred (no `TaskProviderResolver`, no `ChatRouter`, no dashboard, no `/setup` change, no plugin re-eval)                                   | Out of scope — confirmed nothing in tasks 1–11 touches `src/providers/factory.ts`, `src/chat/registry.ts`, `src/debug/`, `src/wizard/`, or `src/plugins/` |
 
 **Placeholder scan:** No `TBD`, `TODO`, `FIXME`, or "implement later" in any task body. Each code block is the full file or full snippet to insert.
 

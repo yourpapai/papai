@@ -28,11 +28,11 @@ Introduce a super-admin / platform-admin / group-admin hierarchy backed by the `
 
 ## Section 1: Admin Hierarchy
 
-| Role           | Backing                                                | Powers                                                              |
-| -------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
-| Super-admin    | `admins(user_id, '__super__')`                         | Everything; manages instances, platform admins, plugin approval     |
-| Platform admin | `admins(user_id, '<platformInstanceId>')`              | Manages users on that platform instance, enables plugins per context |
-| Group admin    | Existing group membership / `chat.user.isAdmin` flag   | Group-level settings (unchanged)                                    |
+| Role           | Backing                                              | Powers                                                               |
+| -------------- | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Super-admin    | `admins(user_id, '__super__')`                       | Everything; manages instances, platform admins, plugin approval      |
+| Platform admin | `admins(user_id, '<platformInstanceId>')`            | Manages users on that platform instance, enables plugins per context |
+| Group admin    | Existing group membership / `chat.user.isAdmin` flag | Group-level settings (unchanged)                                     |
 
 ### Predicates
 
@@ -57,11 +57,11 @@ isAuthorized(userId, platformInstanceId): boolean // = isSuperAdmin || row in us
 
 ### `/plugin` subcommand gating
 
-| Subcommand               | Gating                                                          |
-| ------------------------ | --------------------------------------------------------------- |
-| `list`, `info`           | DM-only, any admin (super or platform)                          |
-| `approve`, `reject`      | DM-only, **super-admin only** (plugin trust is global)          |
-| `enable`, `disable`      | DM-only, any admin authorized for the target context-id        |
+| Subcommand          | Gating                                                  |
+| ------------------- | ------------------------------------------------------- |
+| `list`, `info`      | DM-only, any admin (super or platform)                  |
+| `approve`, `reject` | DM-only, **super-admin only** (plugin trust is global)  |
+| `enable`, `disable` | DM-only, any admin authorized for the target context-id |
 
 Approve/reject takes effect on next startup; enable/disable on next tool/prompt assembly.
 
@@ -112,12 +112,12 @@ If the router has not been initialized (e.g., on a brand-new install) the endpoi
 
 ## Section 6: Error Handling
 
-| Condition                                                | Behavior                                                                              |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Condition                                                  | Behavior                                                                                |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | Delete a task instance with referencing `context_settings` | Confirm-once warning; on confirmation, delete the row and the orphaned context_settings |
-| Delete a platform instance still serving connections     | `removeInstance` stops the adapter first, then deletes; in-flight calls complete       |
-| Encryption key missing/wrong                             | Decryption throws — surface to the dashboard as `500 { error: 'config unreadable' }`  |
-| Apply with no router target set                          | `503 router not initialised`                                                          |
+| Delete a platform instance still serving connections       | `removeInstance` stops the adapter first, then deletes; in-flight calls complete        |
+| Encryption key missing/wrong                               | Decryption throws — surface to the dashboard as `500 { error: 'config unreadable' }`    |
+| Apply with no router target set                            | `503 router not initialised`                                                            |
 
 ## Section 7: Testing Strategy
 

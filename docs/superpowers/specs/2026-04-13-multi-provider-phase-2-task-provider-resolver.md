@@ -73,12 +73,12 @@ Replaces the module-level `CONFIG_KEYS` constant. Logic:
 
 ### Callers to update
 
-| File | Change |
-| ---- | ------ |
-| `src/config.ts` (seeding loop) | Iterate `getConfigKeysForContext(contextId)` instead of the constant |
-| `src/commands/setup.ts` | Prompt only for the per-context keys after the task instance is bound |
-| `src/commands/config.ts` | Render only the per-context keys + the existing Plugins section |
-| `src/commands/set.ts` | Reject keys outside the per-context allow-list and outside `plugin.<id>.<key>` |
+| File                           | Change                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `src/config.ts` (seeding loop) | Iterate `getConfigKeysForContext(contextId)` instead of the constant           |
+| `src/commands/setup.ts`        | Prompt only for the per-context keys after the task instance is bound          |
+| `src/commands/config.ts`       | Render only the per-context keys + the existing Plugins section                |
+| `src/commands/set.ts`          | Reject keys outside the per-context allow-list and outside `plugin.<id>.<key>` |
 
 ## Section 3: Callsite Migrations
 
@@ -122,13 +122,13 @@ If no active task instances exist, the wizard replies `No task trackers are conf
 
 ## Section 5: Error Handling
 
-| Condition                                          | Behavior                                                                              |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Context has no assignment                          | Resolver returns `null`; bot tells the user to `/setup`                               |
-| Assignment refers to a removed task instance       | Resolver returns `null` and logs WARN; user re-runs `/setup`                          |
-| Credentials missing for the assigned instance      | Resolver returns `null`; `/setup` flow already covers this                            |
-| `/set` on an unsupported key                       | Reject with `Config key "x" is not valid for this context.`                           |
-| Strict resolver called and resolution fails        | Throw a clear `Context <id> needs /setup`; callers should prefer non-strict           |
+| Condition                                     | Behavior                                                                    |
+| --------------------------------------------- | --------------------------------------------------------------------------- |
+| Context has no assignment                     | Resolver returns `null`; bot tells the user to `/setup`                     |
+| Assignment refers to a removed task instance  | Resolver returns `null` and logs WARN; user re-runs `/setup`                |
+| Credentials missing for the assigned instance | Resolver returns `null`; `/setup` flow already covers this                  |
+| `/set` on an unsupported key                  | Reject with `Config key "x" is not valid for this context.`                 |
+| Strict resolver called and resolution fails   | Throw a clear `Context <id> needs /setup`; callers should prefer non-strict |
 
 ## Section 6: Testing Strategy
 

@@ -77,7 +77,9 @@ export type IncomingMessage = {
   isMentioned: boolean
   text: string
   platformInstanceId: string // NEW — set by ChatRouter
-} & Partial<{ /* unchanged optional fields */ }>
+} & Partial<{
+  /* unchanged optional fields */
+}>
 
 export type IncomingInteraction = {
   kind: 'button'
@@ -132,13 +134,13 @@ for (const instance of listActivePlatformInstances()) {
 
 ## Section 8: Error Handling
 
-| Condition                                  | Behavior                                                                              |
-| ------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Instance factory throws on `addInstance`   | Throw immediately; the row is not stored                                              |
-| `startInstance` throws                     | Mark `status: 'stopped'`, log ERROR, continue with other instances                    |
-| Instance disconnects at runtime            | Existing adapter reconnection logic owns recovery; if unrecoverable, mark `stopped`   |
+| Condition                                     | Behavior                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Instance factory throws on `addInstance`      | Throw immediately; the row is not stored                                              |
+| `startInstance` throws                        | Mark `status: 'stopped'`, log ERROR, continue with other instances                    |
+| Instance disconnects at runtime               | Existing adapter reconnection logic owns recovery; if unrecoverable, mark `stopped`   |
 | `sendMessage` to unknown `platformInstanceId` | Log a WARN and return without throwing (caller may be poller/scheduler racing remove) |
-| `removeInstance` called while running      | Call `stop()` first, swallow errors, then drop from the map                           |
+| `removeInstance` called while running         | Call `stop()` first, swallow errors, then drop from the map                           |
 
 ## Section 9: Testing Strategy
 

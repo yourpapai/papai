@@ -32,13 +32,13 @@ This overview is intentionally short. **All implementation details live in the p
 
 ## Phases
 
-| Phase                                                                                       | Scope                                                                          | Depends on |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------- |
-| [Phase 1 — Instance Data Model & Bootstrap](./2026-04-13-multi-provider-phase-1-instance-data-model.md) | Migration 040, encryption helper, env→DB bootstrap, idempotency                | —          |
-| [Phase 2 — TaskProviderResolver & Per-Context Config](./2026-04-13-multi-provider-phase-2-task-provider-resolver.md) | `TaskProviderResolver`, dynamic `getConfigKeysForContext`, `/setup` step       | Phase 1    |
-| [Phase 3 — ChatRouter](./2026-04-13-multi-provider-phase-3-chat-router.md)                  | `ChatRouter` wrapping multiple adapters, `platformInstanceId` plumbing         | Phase 1    |
-| [Phase 4 — Admin Model & Dashboard](./2026-04-13-multi-provider-phase-4-admin-and-dashboard.md) | `admins` table, super- / platform-admin gating, `/admin#instances`, apply endpoint | Phase 1, 3 |
-| [Phase 5 — Plugin System Alignment](./2026-04-13-multi-provider-phase-5-plugin-alignment.md) | Capability eval across instance union, `capability_missing` eligibility, resolver-driven plugin jobs | Phase 1, 2, 3 |
+| Phase                                                                                                                | Scope                                                                                                | Depends on    |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------- |
+| [Phase 1 — Instance Data Model & Bootstrap](./2026-04-13-multi-provider-phase-1-instance-data-model.md)              | Migration 040, encryption helper, env→DB bootstrap, idempotency                                      | —             |
+| [Phase 2 — TaskProviderResolver & Per-Context Config](./2026-04-13-multi-provider-phase-2-task-provider-resolver.md) | `TaskProviderResolver`, dynamic `getConfigKeysForContext`, `/setup` step                             | Phase 1       |
+| [Phase 3 — ChatRouter](./2026-04-13-multi-provider-phase-3-chat-router.md)                                           | `ChatRouter` wrapping multiple adapters, `platformInstanceId` plumbing                               | Phase 1       |
+| [Phase 4 — Admin Model & Dashboard](./2026-04-13-multi-provider-phase-4-admin-and-dashboard.md)                      | `admins` table, super- / platform-admin gating, `/admin#instances`, apply endpoint                   | Phase 1, 3    |
+| [Phase 5 — Plugin System Alignment](./2026-04-13-multi-provider-phase-5-plugin-alignment.md)                         | Capability eval across instance union, `capability_missing` eligibility, resolver-driven plugin jobs | Phase 1, 2, 3 |
 
 Each phase produces working, testable software on its own. Phases 1–3 are the minimum to actually serve multiple providers; phases 4–5 layer admin surfaces and plugin-aware capability gating on top.
 
