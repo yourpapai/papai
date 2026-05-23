@@ -5,6 +5,8 @@
 
 import type { AppError } from '../errors.js'
 import type {
+  Activity,
+  Agile,
   Attachment,
   Column,
   Comment,
@@ -14,7 +16,9 @@ import type {
   ListTasksParams,
   Project,
   RelationType,
+  SavedQuery,
   SetTaskVisibilityParams,
+  Sprint,
   Task,
   TaskLabel,
   TaskCommandResult,
@@ -25,7 +29,7 @@ import type {
   UserRef,
   WorkItem,
 } from './domain-types.js'
-import type { TaskProviderPhaseFive } from './task-provider-phase-five.js'
+import type { TaskCapability } from './task-capability.js'
 
 export type {
   Activity,
@@ -56,50 +60,7 @@ export type {
   WorkItem,
 } from './domain-types.js'
 
-/** Capabilities that a task tracker provider may support. */
-export type TaskCapability =
-  | 'tasks.delete'
-  | 'tasks.count'
-  | 'tasks.relations'
-  | 'tasks.watchers'
-  | 'tasks.votes'
-  | 'tasks.visibility'
-  | 'tasks.commands'
-  | 'projects.read'
-  | 'projects.list'
-  | 'projects.create'
-  | 'projects.update'
-  | 'projects.delete'
-  | 'projects.team'
-  | 'comments.read'
-  | 'comments.create'
-  | 'comments.update'
-  | 'comments.delete'
-  | 'comments.reactions'
-  | 'labels.list'
-  | 'labels.create'
-  | 'labels.update'
-  | 'labels.delete'
-  | 'labels.assign'
-  | 'statuses.list'
-  | 'statuses.create'
-  | 'statuses.update'
-  | 'statuses.delete'
-  | 'statuses.reorder'
-  | 'attachments.list'
-  | 'attachments.upload'
-  | 'attachments.delete'
-  | 'workItems.list'
-  | 'workItems.create'
-  | 'workItems.update'
-  | 'workItems.delete'
-  | 'agiles.list'
-  | 'sprints.list'
-  | 'sprints.create'
-  | 'sprints.update'
-  | 'sprints.assign'
-  | 'activities.read'
-  | 'queries.saved'
+export type { TaskCapability } from './task-capability.js'
 
 export type ToolDueDateInput = Readonly<{ date: string; time?: string }>
 
@@ -115,7 +76,7 @@ export interface UserIdentityResolver {
 /** Configuration keys that a provider requires to function. */
 export type ProviderConfigRequirement = { key: string; label: string; required: boolean }
 /** Core task tracker interface: required task CRUD plus optional capability-gated methods. */
-export interface TaskProvider extends TaskProviderPhaseFive {
+export interface TaskProvider {
   /** Provider identifier, e.g. "kaneo", "linear", "jira". */
   readonly name: string
   readonly supportsCustomFields?: boolean
@@ -275,6 +236,50 @@ export interface TaskProvider extends TaskProviderPhaseFive {
   createWorkItem?(taskId: string, params: CreateWorkItemParams): Promise<WorkItem>
   updateWorkItem?(taskId: string, workItemId: string, params: UpdateWorkItemParams): Promise<WorkItem>
   deleteWorkItem?(taskId: string, workItemId: string): Promise<{ id: string }>
+
+  // --- Optional: agiles, sprints, history, saved queries ---
+  listAgiles?(): Promise<Agile[]>
+  listSprints?(agileId: string): Promise<Sprint[]>
+  createSprint?(
+    agileId: string,
+    params: {
+      name: string
+      goal?: string
+      start?: string
+      finish?: string
+      previousSprintId?: string
+      isDefault?: boolean
+    },
+  ): Promise<Sprint>
+  updateSprint?(
+    agileId: string,
+    sprintId: string,
+    params: {
+      name?: string
+      goal?: string | null
+      start?: string | null
+      finish?: string | null
+      previousSprintId?: string | null
+      isDefault?: boolean
+      archived?: boolean
+    },
+  ): Promise<Sprint>
+  assignTaskToSprint?(taskId: string, sprintId: string): Promise<{ taskId: string; sprintId: string }>
+  getTaskHistory?(
+    taskId: string,
+    params?: {
+      categories?: string[]
+      limit?: number
+      offset?: number
+      reverse?: boolean
+      start?: string
+      end?: string
+      author?: string
+    },
+  ): Promise<Activity[]>
+  listSavedQueries?(): Promise<SavedQuery[]>
+  runSavedQuery?(queryId: string): Promise<TaskSearchResult[]>
+  countTasks?(params: { query: string; projectId?: string }): Promise<number>
 
   buildTaskUrl(taskId: string, projectId?: string): string
   buildProjectUrl(projectId: string): string
