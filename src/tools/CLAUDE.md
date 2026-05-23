@@ -84,6 +84,7 @@ This pattern applies to destructive removals such as task deletion, project dele
 - web fetch: `web_fetch` is user/context scoped, rate-limited, cached, and restricted to public HTTP(S) content
 - identity: `set_my_identity` and `clear_my_identity` are group-only and provider-dependent
 - history lookup: `lookup_group_history` searches the main group history when the current context is a thread-scoped group conversation
+- plugin tools: when `storageContextId` and `chatUserId` are set, `makeTools()` merges tools from plugins that are active **and** eligible for the current context. Plugin tool names are namespaced (`plugin_<plugin_id>__<tool_name>`) and execute against a `PluginToolRuntimeContext` with a permission-gated task-provider facade — plugins never receive the raw provider. See the Plugin System section in `CLAUDE.md` and `docs/plugins/developer-guide.md`.
 
 ## Logging
 
