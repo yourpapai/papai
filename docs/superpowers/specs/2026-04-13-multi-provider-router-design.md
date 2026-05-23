@@ -15,6 +15,8 @@ See LICENSE in the project root for details.
 
 Refactor papai to support multiple chat provider and task provider instances simultaneously from a single process. Chat and task provider instances are DB-stored and dashboard-managed. A `ChatRouter` wraps multiple `ChatProvider` instances behind the existing interface. A `TaskProviderResolver` resolves the correct task provider per context from DB-stored assignments.
 
+The plugin system (migration `039_plugins`, `src/plugins/`) is already implemented and stays orthogonal to this refactor: plugin tables (`plugin_admin_state`, `plugin_context_state`, `plugin_kv`, `plugin_runtime_events`) are keyed by `contextId` and remain unchanged. Plugin tools, prompt fragments, commands, and scheduled jobs flow through the same resolver and router paths described below — see Section 9 for the integration points.
+
 ## Requirements
 
 - Single process serves multiple chat platforms and multiple task trackers simultaneously
@@ -73,10 +75,13 @@ PK: `(user_id, platform_instance_id)`
 - `user_config` table — per-context credentials (`kaneo_apikey`, `youtrack_token`, `llm_*`) remain keyed by storageContextId (userId in DMs, groupId in groups)
 - `users` table — authorization stays per-platform-user, no cross-platform linking
 - Conversation history, memos, facts, recurring tasks — all keyed by contextId, unchanged
+- Plugin tables (`plugin_admin_state`, `plugin_context_state`, `plugin_kv`, `plugin_runtime_events`) — admin approval is global and per-manifest-hash; per-context enable, KV, and runtime events are already keyed by storage `contextId`, so multi-provider routing does not change their shape
 
 ### Config key changes
 
 `CONFIG_KEYS` becomes dynamic — resolved from the context's assigned task instance type rather than a global env var. New function `getConfigKeysForContext(contextId)` replaces the module-level constant.
+
+Plugin-contributed config keys (`PluginManifest.contributes.configKeys`, namespaced `plugin.<plugin-id>.<key>` in user-facing surfaces) are merged on top of the task-instance-derived keys for that context. Required keys are still evaluated by `getPluginContextEligibility()` per context, so plugin keys never leak across contexts that have not enabled the plugin.
 
 ## Section 2: ChatRouter
 
@@ -179,7 +184,9 @@ No changes to the existing `config.ts` / `user_config` table. Credentials are sc
 - **`scheduler.ts`** — internal `buildProviderForUser()` replaced with `resolver.resolve(contextId)`
 - **`deferred-prompts/poller.ts`** — `BuildProviderFn` becomes `(contextId: string) => TaskProvider | null`
 - **`types/config.ts`** — `CONFIG_KEYS` module-level constant replaced by `getConfigKeysForContext(contextId)` function
-- **`/setup` wizard** — gains a first step: "Select task provider instance" from available active instances
+- **`/setup` wizard** — gains a first step: "Select task provider instance" from available active instances. After the task instance is bound to the context, the wizard layers any required plugin `configRequirements` for plugins that are enabled for that context (existing plugin-system behavior, now triggered through the resolver path).
+- **`src/plugins/contributions.ts`** — `buildPluginToolSet()` continues to receive a `PluginToolSetRuntime` containing the per-context `TaskProvider`; the only change is the caller switches from `buildProviderForUser(userId)` to `resolver.resolve(contextId)`. The plugin tool runtime context (`buildPluginToolRuntimeContext`) is unchanged.
+- **`src/plugins/contributions.ts`** scheduled-job dispatch (`runPluginScheduledJob`) iterates `getEnabledContextsForPlugin(pluginId)` and resolves a provider per `contextId`; jobs targeting contexts that resolve to `null` skip with a warning, matching the existing scheduler resilience rule.
 
 ## Section 4: Admin Model
 
@@ -209,6 +216,10 @@ Existing `/user add` and `/user remove` commands continue, scoped to the platfor
 ### User authorization
 
 The `users` table gains a `platform_instance_id` column. Users are authorized per-instance — a user added on `mm-team-a` can't use `telegram-prod` unless separately added.
+
+### Plugin admin authority
+
+`/plugin` (defined in `src/commands/plugin.ts`, DM-only) is plugin-trust-level, not platform-level: approving a plugin grants a repository-local module access to every active context. After this refactor, `/plugin approve|reject` is restricted to super-admins. `/plugin enable|disable <id> [context-id]` remains available to any admin authorized to manage that context — super-admins for any context, platform admins for contexts on their instance, and group admins for their managed groups (matching the existing `/config` target-selection rules).
 
 ## Section 5: Dashboard Extensions
 
@@ -305,13 +316,22 @@ Bootstrap is idempotent — if `platform_instances` has rows, env vars are never
 
 ### Config key validation
 
-- `/set` without task instance → only LLM keys and `timezone`
+- `/set` without task instance → only LLM keys, `timezone`, and plugin-namespaced keys (`plugin.<plugin-id>.<key>`) for plugins enabled on that context
 - `/set kaneo_apikey` on YouTrack context → rejected
-- `/config` shows keys relevant to assigned task instance type
+- `/config` shows keys relevant to assigned task instance type, plus the Plugins section already rendered by the plugin system
+
+### Plugin capability gating
+
+`checkPluginCompatibility()` (in `src/plugins/compatibility.ts`) currently takes a single `taskCapabilities` and `chatCapabilities` set, so the `incompatible` state is global. In a multi-provider world, the same plugin can be eligible on a Kaneo context but incompatible on a YouTrack context. To keep the existing storage shape, the resolver pipeline computes eligibility per request rather than mutating registry state:
+
+- `evaluateCompatibility()` at startup downgrades a plugin to `incompatible` only if **no** active task instance satisfies `requiredTaskCapabilities` and **no** active chat instance satisfies `requiredChatCapabilities`.
+- `getPluginContextEligibility(pluginId, contextId)` gains a fourth ineligibility reason — `capability_missing` — emitted when the context's resolved task or platform instance lacks a required capability. This reason is computed on demand using the context's resolved task instance (via `TaskProviderResolver`) and the context's `platform_instance_id`. No new DB columns are required.
 
 ### Scheduler and poller resilience
 
 If user's task instance removed, resolver returns null → scheduler skips task with warning. Recurring task stays in DB, resumes after re-setup.
+
+Plugin scheduled jobs registered as `plugin:<pluginId>:<jobName>` follow the same rule: `runPluginScheduledJob` iterates `getEnabledContextsForPlugin(pluginId)`, calls `resolver.resolve(contextId)` if the job needs a task provider, and skips with a warning when the resolver returns null. Job rows are not garbage-collected — re-setup re-enables them automatically because the registration owner name is stable.
 
 ## Section 8: Testing Strategy
 
@@ -337,3 +357,33 @@ If user's task instance removed, resolver returns null → scheduler skips task 
 ### E2E
 
 Existing E2E tests bootstrap a `kaneo-default` instance from env vars, continue working. Multi-instance E2E tests deferred.
+
+### Plugin-system test impact
+
+- **`tests/plugins/`** suite stays as-is — activation still uses the `__system__` context and does not depend on any platform or task instance.
+- **`tests/plugins/contributions.test.ts`** — extend the `PluginToolSetRuntime` fixtures to use a resolver-produced provider (`createTestResolver(...).resolve(contextId)`) instead of a directly constructed mock provider, mirroring the production wiring.
+- **`tests/plugins/registry.test.ts`** — add cases for `getPluginContextEligibility()` returning `capability_missing` when the context's resolved task instance lacks a required capability, and `eligible` when at least one assigned instance satisfies it.
+- **No changes** to `plugin_admin_state` / `plugin_context_state` / `plugin_kv` schema — migrations are unaffected.
+
+## Section 9: Plugin System Interactions
+
+The plugin system (designed 2026-03-30, implemented under migration `039_plugins`) ships before this refactor lands. This section pins down every interaction point so the router refactor does not regress plugin behavior.
+
+### Touchpoints
+
+| Concern                         | Where it lives today                                          | What changes under multi-provider                                                                          |
+| ------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Plugin discovery / approval     | `src/plugins/discovery.ts`, `src/plugins/registry.ts`         | No change. Approval stays global because plugins are repository-local and trusted.                          |
+| Per-context enable              | `plugin_context_state` table, `setPluginEnabledForContext()`  | No change. `context_id` is already the storage `contextId` used by the resolver.                            |
+| Capability gating               | `checkPluginCompatibility()` in `src/plugins/compatibility.ts` | Startup uses the union of capabilities across active instances; per-context eligibility is checked per request (`capability_missing`). |
+| Plugin tool runtime             | `buildPluginToolRuntimeContext()` in `src/plugins/tool-runtime.ts` | Caller switches from `buildProviderForUser(userId)` to `resolver.resolve(contextId)`. Facade shape unchanged. |
+| Plugin scheduled jobs           | `runPluginScheduledJob()` in `src/plugins/contributions.ts`   | Each enabled context resolves its own provider via the resolver; `null` resolves are skipped with a warning. |
+| Plugin commands                 | `PluginCommand.execute(message, reply, auth)`                 | `message.platformInstanceId` is set by the `ChatRouter`; plugin command handlers receive it transparently.  |
+| Plugin KV                       | `plugin_kv` table, `kvGet/kvSet/...`                          | No change. KV is plugin+context scoped and provider-agnostic.                                              |
+| `/plugin` admin command         | `src/commands/plugin.ts`                                      | `approve` and `reject` restricted to super-admins. `enable`/`disable`/`list`/`info` follow the existing admin scoping for the target context. |
+| `/setup` and `/config`          | Setup wizard, config editor                                   | After task-instance selection, plugin `configRequirements` and the existing Plugins section continue to render. |
+| Bootstrap                       | First-run env→DB seeding                                      | No plugin-table seeding. Plugins follow their own discovery flow regardless of bootstrap state.            |
+
+### Provider-as-plugin (out of scope)
+
+The plugin-system design retained a "Phase 3" possibility of migrating chat or task providers into plugins. That phase is **not** part of this refactor and not part of the plugin MVP. The multi-provider router keeps providers in `src/providers/` and `src/chat/`. A future spec can layer provider-as-plugin on top of the router without changing the router contracts described here.
