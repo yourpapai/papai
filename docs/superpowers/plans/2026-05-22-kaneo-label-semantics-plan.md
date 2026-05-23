@@ -30,7 +30,7 @@ See LICENSE in the project root for details.
 - Modify: `tests/providers/kaneo/index.test.ts:74-220`
 - Modify: `tests/tools/mock-provider.ts:141-146`
 
-- [ ] **Step 1: Write the failing provider tests**
+- [x] **Step 1: Write the failing provider tests**
 
 Update `tests/providers/kaneo/label-resource.test.ts` by adding a new `describe('listForTask', ...)` block after the existing `describe('list', ...)` block:
 
@@ -117,7 +117,7 @@ describe('labels', () => {
 })
 ```
 
-- [ ] **Step 2: Run the provider tests to verify they fail**
+- [x] **Step 2: Run the provider tests to verify they fail**
 
 Run:
 
@@ -127,7 +127,7 @@ bun test tests/providers/kaneo/label-resource.test.ts tests/providers/kaneo/inde
 
 Expected: FAIL because `LabelResource.listForTask()` and `KaneoProvider.listTaskLabels()` do not exist, and `listLabels()` still returns task-bound rows.
 
-- [ ] **Step 3: Add the provider contract and Kaneo resource methods**
+- [x] **Step 3: Add the provider contract and Kaneo resource methods**
 
 Modify `src/providers/types.ts` by extending the label section:
 
@@ -211,36 +211,25 @@ export async function listTaskLabels({
 }
 ```
 
-- [ ] **Step 4: Filter Kaneo workspace labels and expose task labels from the provider**
+- [x] **Step 4: Filter Kaneo workspace labels and expose task labels from the provider**
 
-Modify `src/providers/kaneo/operations/labels.ts`:
+Modify `src/providers/kaneo/operations/labels.ts`. The actual implementation uses an `isReusableWorkspaceLabel` predicate that accepts both `taskId === null` and `taskId === undefined`, because some API responses omit the field entirely rather than returning `null`:
 
 ```typescript
-import type { Label, TaskLabel } from '../../types.js'
-import { addTaskLabel } from '../add-task-label.js'
-import type { KaneoConfig } from '../client.js'
-import { createLabel } from '../create-label.js'
-import { listLabels } from '../list-labels.js'
-import { listTaskLabels } from '../list-task-labels.js'
-import { mapLabel } from '../mappers.js'
-import { removeLabel } from '../remove-label.js'
-import { removeTaskLabel } from '../remove-task-label.js'
-import { updateLabel } from '../update-label.js'
-
-const mapTaskLabel = (label: { id: string; name: string; color?: string }): TaskLabel => ({
-  id: label.id,
-  name: label.name,
-  color: label.color,
-})
+const isReusableWorkspaceLabel = (label: { taskId?: string | null }): boolean => {
+  if (label.taskId === null) return true
+  if (label.taskId === undefined) return true
+  return false
+}
 
 export async function kaneoListLabels(config: KaneoConfig, workspaceId: string): Promise<Label[]> {
   const results = await listLabels({ config, workspaceId })
-  return results.filter((label) => label.taskId === null).map(mapLabel)
+  return results.filter(isReusableWorkspaceLabel).map(mapLabel)
 }
 
 export async function kaneoListTaskLabels(config: KaneoConfig, taskId: string): Promise<TaskLabel[]> {
   const results = await listTaskLabels({ config, taskId })
-  return results.map(mapTaskLabel)
+  return results.map((label) => mapTaskLabel(label))
 }
 ```
 
@@ -256,7 +245,7 @@ Modify `src/providers/kaneo/index.ts` label section:
   }
 ```
 
-- [ ] **Step 5: Run the provider tests to verify they pass**
+- [x] **Step 5: Run the provider tests to verify they pass**
 
 Run:
 
@@ -266,7 +255,7 @@ bun test tests/providers/kaneo/label-resource.test.ts tests/providers/kaneo/inde
 
 Expected: PASS, including the new task-label endpoint coverage and the reusable-label filtering behavior.
 
-- [ ] **Step 6: Commit the provider changes**
+- [x] **Step 6: Commit the provider changes**
 
 Run:
 
@@ -285,7 +274,7 @@ git commit -m "fix(kaneo): distinguish reusable and task labels"
 - Modify: `src/tools/create-label.ts:1-34`
 - Modify: `tests/tools/label-tools.test.ts:113-193`
 
-- [ ] **Step 1: Write the failing create-label tests**
+- [x] **Step 1: Write the failing create-label tests**
 
 Add these tests inside `describe('makeCreateLabelTool', ...)` in `tests/tools/label-tools.test.ts`:
 
@@ -329,7 +318,7 @@ test('keeps existing create behavior for non-Kaneo providers', async () => {
 })
 ```
 
-- [ ] **Step 2: Run the create-label tests to verify they fail**
+- [x] **Step 2: Run the create-label tests to verify they fail**
 
 Run:
 
@@ -339,9 +328,9 @@ bun test tests/tools/label-tools.test.ts -t "already_exists|existing create beha
 
 Expected: FAIL because `create_label` always calls `provider.createLabel()` and never returns a non-fatal status.
 
-- [ ] **Step 3: Create a small Kaneo label helper module**
+- [x] **Step 3: Create a small Kaneo label helper module**
 
-Create `src/tools/kaneo-label-helpers.ts`:
+Create `src/tools/kaneo-label-helpers.ts`. The actual file also exports `listWorkspaceLabels` (unconditional, no name filter), which is consumed by `add-task-label.ts` when resolving presence by `labelId`:
 
 ```typescript
 // SPDX-License-Identifier: BUSL-1.1
@@ -355,23 +344,28 @@ export function isKaneoProvider(provider: Readonly<TaskProvider>): boolean {
   return provider.name === 'kaneo'
 }
 
-export async function listVisibleWorkspaceLabels(
-  provider: Readonly<TaskProvider>,
-  labelName?: string,
-): Promise<Label[]> {
-  if (provider.getLabelByName !== undefined && labelName !== undefined) {
-    return await provider.getLabelByName(labelName)
-  }
-  return (await provider.listLabels?.()) ?? []
+export function listWorkspaceLabels(provider: Readonly<TaskProvider>): Promise<Label[]> {
+  if (provider.listLabels === undefined) return Promise.resolve([])
+  return provider.listLabels()
 }
 
-export async function listTaskLabels(provider: Readonly<TaskProvider>, taskId: string): Promise<TaskLabel[]> {
-  if (!isKaneoProvider(provider) || provider.listTaskLabels === undefined) return []
-  return await provider.listTaskLabels(taskId)
+export function listVisibleWorkspaceLabels(
+  provider: Readonly<TaskProvider>,
+  labelName: string | undefined,
+): Promise<Label[]> {
+  if (provider.getLabelByName !== undefined && labelName !== undefined) {
+    return provider.getLabelByName(labelName)
+  }
+  return listWorkspaceLabels(provider)
+}
+
+export function listTaskLabels(provider: Readonly<TaskProvider>, taskId: string): Promise<TaskLabel[]> {
+  if (!isKaneoProvider(provider) || provider.listTaskLabels === undefined) return Promise.resolve([])
+  return provider.listTaskLabels(taskId)
 }
 ```
 
-- [ ] **Step 4: Implement Kaneo-only `already_exists` in the tool**
+- [x] **Step 4: Implement Kaneo-only `already_exists` in the tool**
 
 Modify `src/tools/create-label.ts`:
 
@@ -417,7 +411,7 @@ export function makeCreateLabelTool(provider: TaskProvider): ToolSet[string] {
 }
 ```
 
-- [ ] **Step 5: Run the create-label tests to verify they pass**
+- [x] **Step 5: Run the create-label tests to verify they pass**
 
 Run:
 
@@ -427,7 +421,7 @@ bun test tests/tools/label-tools.test.ts -t "already_exists|existing create beha
 
 Expected: PASS. Kaneo returns `already_exists`; non-Kaneo providers retain the previous create path.
 
-- [ ] **Step 6: Commit the create-label changes**
+- [x] **Step 6: Commit the create-label changes**
 
 Run:
 
@@ -446,7 +440,7 @@ git commit -m "fix(tools): prevent duplicate Kaneo label creation"
 - Modify: `src/tools/remove-task-label.ts:1-80`
 - Modify: `tests/tools/task-label-tools.test.ts:1-335`
 
-- [ ] **Step 1: Write the failing task-label tests**
+- [x] **Step 1: Write the failing task-label tests**
 
 Add these tests to `tests/tools/task-label-tools.test.ts`.
 
@@ -546,7 +540,7 @@ test('Kaneo removes task label by task-scoped label id resolved from task labels
 })
 ```
 
-- [ ] **Step 2: Run the task-label tests to verify they fail**
+- [x] **Step 2: Run the task-label tests to verify they fail**
 
 Run:
 
@@ -556,16 +550,77 @@ bun test tests/tools/task-label-tools.test.ts -t "already_present|already_absent
 
 Expected: FAIL because both tools still use workspace label resolution and do not return structured non-fatal statuses.
 
-- [ ] **Step 3: Implement Kaneo task-label checks in `add_task_label`**
+- [x] **Step 3: Implement Kaneo task-label checks in `add_task_label`**
 
-Modify `src/tools/add-task-label.ts`:
+Modify `src/tools/add-task-label.ts`. The actual implementation extends the plan: `resolveKaneoAlreadyPresent` also handles the `labelId` case — when a caller passes a workspace `labelId`, it looks up the workspace label's name and checks whether any task label shares that name, returning `already_present` if so:
 
 ```typescript
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
-import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
+import {
+  isKaneoProvider,
+  listTaskLabels,
+  listVisibleWorkspaceLabels,
+  listWorkspaceLabels,
+} from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:add-task-label' })
+
+type AlreadyPresentResult = {
+  status: 'already_present'
+  taskId: string
+  labelName: string
+  taskLabelIds: string[]
+  message: string
+}
+
+const alreadyPresent = (taskId: string, labelName: string, taskLabelIds: string[]): AlreadyPresentResult => ({
+  status: 'already_present',
+  taskId,
+  labelName,
+  taskLabelIds,
+  message: `Task already has label "${labelName}". No action was taken.`,
+})
+
+const resolveKaneoAlreadyPresent = async (
+  provider: Readonly<TaskProvider>,
+  taskId: string,
+  labelId: string | undefined,
+  labelName: string | undefined,
+): Promise<AlreadyPresentResult | null> => {
+  const taskMatches = await listTaskLabels(provider, taskId)
+
+  if (labelName !== undefined) {
+    const matchingByName = taskMatches.filter((label) => label.name === labelName)
+    if (matchingByName.length > 0) {
+      return alreadyPresent(
+        taskId,
+        labelName,
+        matchingByName.map((label) => label.id),
+      )
+    }
+    return null
+  }
+
+  if (labelId === undefined) return null
+
+  const directMatch = taskMatches.find((label) => label.id === labelId)
+  if (directMatch !== undefined) {
+    return alreadyPresent(taskId, directMatch.name, [directMatch.id])
+  }
+
+  const workspaceLabel = (await listWorkspaceLabels(provider)).find((label) => label.id === labelId)
+  if (workspaceLabel === undefined) return null
+
+  const matchingByName = taskMatches.filter((label) => label.name === workspaceLabel.name)
+  if (matchingByName.length === 0) return null
+
+  return alreadyPresent(
+    taskId,
+    workspaceLabel.name,
+    matchingByName.map((label) => label.id),
+  )
+}
 
 const resolveWorkspaceLabelId = async (
   provider: Readonly<TaskProvider>,
@@ -573,17 +628,11 @@ const resolveWorkspaceLabelId = async (
   labelName: string | undefined,
 ): Promise<string> => {
   if (labelId !== undefined) return labelId
-  if (labelName === undefined) {
-    throw new Error('Provide exactly one of labelId or labelName')
-  }
+  if (labelName === undefined) throw new Error('Provide exactly one of labelId or labelName')
   const labels = await listVisibleWorkspaceLabels(provider, labelName)
   const matches = labels.filter((label) => label.name === labelName)
-  if (matches.length === 0) {
-    throw new Error(`Label not found: ${labelName}`)
-  }
-  if (matches.length > 1) {
-    throw new Error(`Multiple labels found: ${labelName}`)
-  }
+  if (matches.length === 0) throw new Error(`Label not found: ${labelName}`)
+  if (matches.length > 1) throw new Error(`Multiple labels found: ${labelName}`)
   return matches[0]!.id
 }
 
@@ -594,19 +643,10 @@ export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[
     inputSchema: labelTargetSchema,
     execute: async ({ taskId, labelId, labelName }) => {
       try {
-        if (isKaneoProvider(provider) && labelName !== undefined) {
-          const taskMatches = (await listTaskLabels(provider, taskId)).filter((label) => label.name === labelName)
-          if (taskMatches.length > 0) {
-            return {
-              status: 'already_present' as const,
-              taskId,
-              labelName,
-              taskLabelIds: taskMatches.map((label) => label.id),
-              message: `Task already has label "${labelName}". No action was taken.`,
-            }
-          }
+        if (isKaneoProvider(provider)) {
+          const existing = await resolveKaneoAlreadyPresent(provider, taskId, labelId, labelName)
+          if (existing !== null) return existing
         }
-
         const resolvedLabelId = await resolveWorkspaceLabelId(provider, labelId, labelName)
         return await provider.addTaskLabel!(taskId, resolvedLabelId)
       } catch (error) {
@@ -627,69 +667,85 @@ export function makeAddTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[
 }
 ```
 
-- [ ] **Step 4: Implement Kaneo task-label checks in `remove_task_label`**
+- [x] **Step 4: Implement Kaneo task-label checks in `remove_task_label`**
 
-Modify `src/tools/remove-task-label.ts`:
+Modify `src/tools/remove-task-label.ts`. The actual implementation uses two `AlreadyAbsent` variants (by-name and by-id) and a `resolveKaneoTaskLabelIdById` helper that resolves workspace label names when a caller passes a workspace `labelId` rather than a task-scoped label id:
 
 ```typescript
 import { logger } from '../logger.js'
-import type { TaskProvider } from '../providers/types.js'
+import type { TaskLabel, TaskProvider } from '../providers/types.js'
 import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:remove-task-label' })
 
-const resolveTaskLabelId = async (
+type AlreadyAbsentByNameResult = { status: 'already_absent'; taskId: string; labelName: string; message: string }
+type AlreadyAbsentByIdResult = { status: 'already_absent'; taskId: string; labelId: string; message: string }
+type AlreadyAbsentResult = AlreadyAbsentByNameResult | AlreadyAbsentByIdResult
+
+const resolveKaneoTaskLabelIdById = async (
+  provider: Readonly<TaskProvider>,
+  taskId: string,
+  labelId: string,
+  taskLabels: readonly TaskLabel[],
+): Promise<string | AlreadyAbsentByIdResult> => {
+  const direct = taskLabels.find((label) => label.id === labelId)
+  if (direct !== undefined) return direct.id
+
+  const workspaceLabels = await listVisibleWorkspaceLabels(provider, labelId)
+  const workspaceLabel = workspaceLabels.find((label) => label.id === labelId)
+  if (workspaceLabel === undefined) {
+    return {
+      status: 'already_absent',
+      taskId,
+      labelId,
+      message: `Task does not currently have label id "${labelId}". No action was taken.`,
+    }
+  }
+  const taskMatches = taskLabels.filter((label) => label.name === workspaceLabel.name)
+  if (taskMatches.length === 0) {
+    return {
+      status: 'already_absent',
+      taskId,
+      labelId,
+      message: `Task does not currently have label id "${labelId}". No action was taken.`,
+    }
+  }
+  if (taskMatches.length > 1) throw new Error(`Multiple task labels found: ${workspaceLabel.name}`)
+  return taskMatches[0]!.id
+}
+
+const resolveKaneoTaskLabelId = async (
   provider: Readonly<TaskProvider>,
   taskId: string,
   labelId: string | undefined,
   labelName: string | undefined,
-): Promise<string | { status: 'already_absent'; taskId: string; labelName: string; message: string }> => {
-  if (isKaneoProvider(provider)) {
-    const taskLabels = await listTaskLabels(provider, taskId)
+): Promise<string | AlreadyAbsentResult> => {
+  const taskLabels = await listTaskLabels(provider, taskId)
 
-    if (labelId !== undefined) {
-      const direct = taskLabels.find((label) => label.id === labelId)
-      if (direct !== undefined) return direct.id
-      return {
-        status: 'already_absent',
-        taskId,
-        labelName: labelId,
-        message: `Task does not currently have label id "${labelId}". No action was taken.`,
-      }
-    }
+  if (labelId !== undefined) return resolveKaneoTaskLabelIdById(provider, taskId, labelId, taskLabels)
+  if (labelName === undefined) throw new Error('Provide exactly one of labelId or labelName')
 
-    if (labelName === undefined) {
-      throw new Error('Provide exactly one of labelId or labelName')
-    }
-
-    const matches = taskLabels.filter((label) => label.name === labelName)
-    if (matches.length === 0) {
-      return {
-        status: 'already_absent',
-        taskId,
-        labelName,
-        message: `Task does not currently have label "${labelName}". No action was taken.`,
-      }
-    }
-    if (matches.length > 1) {
-      throw new Error(`Multiple task labels found: ${labelName}`)
-    }
-    return matches[0]!.id
-  }
-
-  if (labelId !== undefined) return labelId
-  if (labelName === undefined) {
-    throw new Error('Provide exactly one of labelId or labelName')
-  }
-  const labels = await listVisibleWorkspaceLabels(provider, labelName)
-  const matches = labels.filter((label) => label.name === labelName)
+  const matches = taskLabels.filter((label) => label.name === labelName)
   if (matches.length === 0) {
-    throw new Error(`Label not found: ${labelName}`)
+    return {
+      status: 'already_absent',
+      taskId,
+      labelName,
+      message: `Task does not currently have label "${labelName}". No action was taken.`,
+    }
   }
-  if (matches.length > 1) {
-    throw new Error(`Multiple labels found: ${labelName}`)
-  }
+  if (matches.length > 1) throw new Error(`Multiple task labels found: ${labelName}`)
   return matches[0]!.id
+}
+
+const resolveTaskLabelId = (
+  provider: Readonly<TaskProvider>,
+  taskId: string,
+  labelId: string | undefined,
+  labelName: string | undefined,
+): Promise<string | AlreadyAbsentResult> => {
+  if (isKaneoProvider(provider)) return resolveKaneoTaskLabelId(provider, taskId, labelId, labelName)
+  return resolveWorkspaceLabelId(provider, labelId, labelName) as Promise<string | AlreadyAbsentResult>
 }
 
 export function makeRemoveTaskLabelTool(provider: Readonly<TaskProvider>): ToolSet[string] {
@@ -720,7 +776,7 @@ export function makeRemoveTaskLabelTool(provider: Readonly<TaskProvider>): ToolS
 }
 ```
 
-- [ ] **Step 5: Run the task-label tests to verify they pass**
+- [x] **Step 5: Run the task-label tests to verify they pass**
 
 Run:
 
@@ -730,7 +786,7 @@ bun test tests/tools/task-label-tools.test.ts
 
 Expected: PASS, including the new Kaneo-only non-fatal statuses and the existing non-Kaneo behavior.
 
-- [ ] **Step 6: Commit the task-label tool changes**
+- [x] **Step 6: Commit the task-label tool changes**
 
 Run:
 
@@ -743,131 +799,21 @@ git commit -m "fix(tools): add Kaneo task-label status handling"
 
 ## Task 4: Add safe Kaneo label deduplication SQL scripts
 
-**Files:**
+> **Status: Intentionally dropped.** The scripts were initially created (commit `b657ef4b chore(sql): add Kaneo label dedup scripts`) and then explicitly removed (commit `0f4d691f chore(sql): drop uncommitted Kaneo dedup scripts`). They are not present in the repository and are not expected to be re-added as part of this plan. If deduplication is needed in the future, this task can serve as the reference for the query approach.
 
-- Create: `scripts/sql/kaneo-label-dedup-preview.sql`
-- Create: `scripts/sql/kaneo-label-dedup-apply.sql`
+**Files (not present):**
 
-- [ ] **Step 1: Write the SQL preview script**
+- `scripts/sql/kaneo-label-dedup-preview.sql` — dropped
+- `scripts/sql/kaneo-label-dedup-apply.sql` — dropped
 
-Create `scripts/sql/kaneo-label-dedup-preview.sql`:
+**Preview query approach (for reference):**
 
-```sql
--- Preview duplicate reusable workspace labels
-SELECT
-  l.workspace_id,
-  l.name,
-  COUNT(*) AS duplicate_count,
-  ARRAY_AGG(l.id ORDER BY l.id) AS label_ids
-FROM "label" l
-WHERE l.workspace_id IS NOT NULL
-  AND l.task_id IS NULL
-GROUP BY l.workspace_id, l.name
-HAVING COUNT(*) > 1
-ORDER BY duplicate_count DESC, l.workspace_id, l.name;
+Duplicate reusable workspace labels: group by `(workspace_id, name)` where `task_id IS NULL`, `HAVING COUNT(*) > 1`.
+Duplicate same-name task labels: group by `(task_id, name)` where `task_id IS NOT NULL`, `HAVING COUNT(*) > 1`.
 
--- Preview duplicate same-name labels on the same task
-SELECT
-  l.task_id,
-  l.name,
-  COUNT(*) AS duplicate_count,
-  ARRAY_AGG(l.id ORDER BY l.id) AS label_ids
-FROM "label" l
-WHERE l.task_id IS NOT NULL
-GROUP BY l.task_id, l.name
-HAVING COUNT(*) > 1
-ORDER BY duplicate_count DESC, l.task_id, l.name;
-```
+**Apply approach (for reference):**
 
-- [ ] **Step 2: Write the safe consolidation script**
-
-Create `scripts/sql/kaneo-label-dedup-apply.sql`:
-
-```sql
-BEGIN;
-
--- Remove duplicate reusable workspace labels, keeping the lexicographically smallest id
-WITH ranked_workspace AS (
-  SELECT
-    l.id,
-    ROW_NUMBER() OVER (
-      PARTITION BY l.workspace_id, l.name
-      ORDER BY l.id
-    ) AS rn
-  FROM "label" l
-  WHERE l.workspace_id IS NOT NULL
-    AND l.task_id IS NULL
-),
-delete_workspace AS (
-  SELECT id
-  FROM ranked_workspace
-  WHERE rn > 1
-)
-DELETE FROM "label" l
-USING delete_workspace d
-WHERE l.id = d.id;
-
--- Remove duplicate same-name labels on the same task, keeping the lexicographically smallest id
-WITH ranked_task AS (
-  SELECT
-    l.id,
-    ROW_NUMBER() OVER (
-      PARTITION BY l.task_id, l.name
-      ORDER BY l.id
-    ) AS rn
-  FROM "label" l
-  WHERE l.task_id IS NOT NULL
-),
-delete_task AS (
-  SELECT id
-  FROM ranked_task
-  WHERE rn > 1
-)
-DELETE FROM "label" l
-USING delete_task d
-WHERE l.id = d.id;
-
-COMMIT;
-```
-
-- [ ] **Step 3: Run the preview script and verify it only reports safe targets**
-
-Run:
-
-```bash
-docker compose exec -T kaneo-postgres sh -lc 'psql -U "${POSTGRES_USER:-kaneo}" -d "${POSTGRES_DB:-kaneo}" -v ON_ERROR_STOP=1 -At' < scripts/sql/kaneo-label-dedup-preview.sql
-```
-
-Expected: zero or more preview rows. Rows should only represent duplicate reusable workspace labels or duplicate same-name labels on the same task. Cross-task same-name rows such as your current `Feature` data should not appear in the second query unless the same task has the duplicate more than once.
-
-- [ ] **Step 4: Run the apply script in a test/staging environment first**
-
-Run:
-
-```bash
-docker compose exec -T kaneo-postgres sh -lc 'psql -U "${POSTGRES_USER:-kaneo}" -d "${POSTGRES_DB:-kaneo}" -v ON_ERROR_STOP=1' < scripts/sql/kaneo-label-dedup-apply.sql
-```
-
-Expected: `BEGIN`, one or two `DELETE <n>` lines, then `COMMIT`. If this is production data, take a database backup before running it outside staging.
-
-- [ ] **Step 5: Re-run the preview script to verify cleanup completed**
-
-Run:
-
-```bash
-docker compose exec -T kaneo-postgres sh -lc 'psql -U "${POSTGRES_USER:-kaneo}" -d "${POSTGRES_DB:-kaneo}" -v ON_ERROR_STOP=1 -At' < scripts/sql/kaneo-label-dedup-preview.sql
-```
-
-Expected: no rows for duplicate reusable workspace labels and no rows for duplicate same-name labels on the same task.
-
-- [ ] **Step 6: Commit the SQL scripts**
-
-Run:
-
-```bash
-git add scripts/sql/kaneo-label-dedup-preview.sql scripts/sql/kaneo-label-dedup-apply.sql
-git commit -m "chore(sql): add Kaneo label dedup scripts"
-```
+`ROW_NUMBER() OVER (PARTITION BY workspace_id, name ORDER BY id)` keeps the lexicographically smallest id; all `rn > 1` rows are deleted in a `BEGIN…COMMIT` block.
 
 ---
 
@@ -892,7 +838,7 @@ git commit -m "chore(sql): add Kaneo label dedup scripts"
 - Verify: `scripts/sql/kaneo-label-dedup-preview.sql`
 - Verify: `scripts/sql/kaneo-label-dedup-apply.sql`
 
-- [ ] **Step 1: Run the full targeted test suite**
+- [x] **Step 1: Run the full targeted test suite**
 
 Run:
 
@@ -902,7 +848,7 @@ bun test tests/providers/kaneo/label-resource.test.ts tests/providers/kaneo/inde
 
 Expected: PASS.
 
-- [ ] **Step 2: Run typecheck to catch provider contract drift**
+- [x] **Step 2: Run typecheck to catch provider contract drift**
 
 Run:
 
@@ -912,7 +858,7 @@ bun typecheck
 
 Expected: PASS. In particular, the new optional `listTaskLabels()` method should not break existing providers.
 
-- [ ] **Step 3: Run the stricter lint pass on touched implementation files**
+- [x] **Step 3: Run the stricter lint pass on touched implementation files**
 
 Run:
 
@@ -922,7 +868,7 @@ bun lint:agent-strict -- src/providers/types.ts src/providers/kaneo/label-resour
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit the verification checkpoint**
+- [x] **Step 4: Commit the verification checkpoint**
 
 Run:
 
@@ -935,8 +881,57 @@ Expected: either a small verification-only commit or `nothing to commit` if all 
 
 ---
 
+## Task 6: Standalone test files for new source modules and updated tools
+
+> Added retroactively during plan sync (2026-05-23). These files were created alongside Tasks 1–3 to provide dedicated test coverage for each new source module; they were not included in the original plan file.
+
+**Files:**
+
+- Create: `tests/providers/kaneo/list-task-labels.test.ts`
+- Create: `tests/providers/kaneo/operations/labels.test.ts`
+- Create: `tests/tools/add-task-label.test.ts`
+- Create: `tests/tools/create-label.test.ts`
+- Create: `tests/tools/kaneo-label-helpers.test.ts`
+- Create: `tests/tools/remove-task-label.test.ts`
+
+- [x] **Step 1: Create standalone test files for each new source module**
+
+Six test files were created:
+
+- `tests/providers/kaneo/list-task-labels.test.ts` — covers `listTaskLabels()` in `src/providers/kaneo/list-task-labels.ts`
+- `tests/providers/kaneo/operations/labels.test.ts` — covers `kaneoListLabels` / `kaneoListTaskLabels` filtering in `src/providers/kaneo/operations/labels.ts`
+- `tests/tools/add-task-label.test.ts` — standalone tests for `makeAddTaskLabelTool` beyond what `task-label-tools.test.ts` already covers
+- `tests/tools/create-label.test.ts` — standalone tests for `makeCreateLabelTool`
+- `tests/tools/kaneo-label-helpers.test.ts` — unit tests for `isKaneoProvider`, `listWorkspaceLabels`, `listVisibleWorkspaceLabels`, `listTaskLabels`
+- `tests/tools/remove-task-label.test.ts` — standalone tests for `makeRemoveTaskLabelTool`
+
+- [x] **Step 2: Verify all tests pass**
+
+Run:
+
+```bash
+bun test tests/providers/kaneo/list-task-labels.test.ts tests/providers/kaneo/operations/labels.test.ts tests/tools/add-task-label.test.ts tests/tools/create-label.test.ts tests/tools/kaneo-label-helpers.test.ts tests/tools/remove-task-label.test.ts
+```
+
+Expected: PASS.
+
+---
+
 ## Self-review notes
 
-- **Spec coverage:** The plan covers reusable workspace label filtering (Task 1), Kaneo-only `already_exists` (Task 2), Kaneo-only `already_present` / `already_absent` (Task 3), and safe SQL consolidation scripts (Task 4).
-- **Placeholder scan:** No `TODO`, `TBD`, or “similar to above” placeholders remain; every task includes concrete code and commands.
+- **Spec coverage:** The plan covers reusable workspace label filtering (Task 1), Kaneo-only `already_exists` (Task 2), Kaneo-only `already_present` / `already_absent` (Task 3), Task 4 SQL scripts (intentionally dropped — reference approach preserved in the task body), and standalone test files (Task 6, added retroactively).
+- **Placeholder scan:** No `TODO`, `TBD`, or “similar to above” placeholders remain; every completed task includes concrete code and commands.
 - **Type consistency:** `listTaskLabels(taskId)` is introduced in the provider contract, mocked in `tests/tools/mock-provider.ts`, implemented only for Kaneo, and consumed by Kaneo-only tool logic via `isKaneoProvider()`.
+
+---
+
+## Drift Log
+
+| Date       | Category             | Item                                                                                         | Decision                                                                                          |
+| ---------- | -------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | In-plan, divergent   | `operations/labels.ts` filter: inline `=== null` → `isReusableWorkspaceLabel` helper         | Code wins — updated Task 1 Step 4 snippet to show helper that also accepts `taskId === undefined` |
+| 2026-05-23 | In-plan, divergent   | `kaneo-label-helpers.ts`: extra `listWorkspaceLabels` export not in plan                     | Code wins — updated Task 2 Step 3 snippet to include the fourth export                            |
+| 2026-05-23 | In-plan, divergent   | `add-task-label.ts`: Kaneo check extended to `labelId` case via `resolveKaneoAlreadyPresent` | Code wins — updated Task 3 Step 3 snippet to show full function                                   |
+| 2026-05-23 | In-plan, divergent   | `remove-task-label.ts`: two `AlreadyAbsent` types; `resolveKaneoTaskLabelIdById` added       | Code wins — updated Task 3 Step 4 snippet to show two-type shape                                  |
+| 2026-05-23 | In-plan, missing     | Task 4 SQL scripts: added then dropped (`0f4d691f`)                                          | Marked Task 4 as intentionally dropped; reference approach preserved in task body                 |
+| 2026-05-23 | Out-of-plan, on-goal | 6 new standalone test files for new source modules                                           | Added as Task 6 with all steps marked `[x]`                                                       |
