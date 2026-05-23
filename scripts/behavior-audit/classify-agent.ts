@@ -83,7 +83,7 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
-function createDefaultClassifyAgentDeps(): ClassifyAgentDeps {
+export function createDefaultClassifyAgentDeps(): ClassifyAgentDeps {
   const defaultApiKey = getEnvOrFallback('OPENAI_API_KEY', 'no-key')
   const defaultModel = createOpenAICompatible({
     name: 'behavior-audit-classify',
