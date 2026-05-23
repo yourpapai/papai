@@ -488,7 +488,7 @@ export function getConfigKeysForContext(contextId: string): readonly ConfigKey[]
 }
 ```
 
-- [ ] **Step 4: Remove `CONFIG_KEYS` from `src/types/config.ts`**
+- [ ] **Step 4: Remove env-derived `CONFIG_KEYS` from `src/types/config.ts`**
 
 In `src/types/config.ts`, replace lines 10-38 with:
 
@@ -503,9 +503,12 @@ export type PreferenceConfigKey = 'timezone'
 // All per-user config keys. LLM credentials live in `system_config` (see
 // `src/system-config.ts`) and are owned by the bot admin, not per-user.
 export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
+
+// Temporary compatibility export for Task 3 callers. Do not use this from new code.
+export const CONFIG_KEYS: readonly ConfigKey[] = ['kaneo_apikey', 'timezone']
 ```
 
-Keep `ALL_CONFIG_KEYS` and `isConfigKey` unchanged.
+Keep `ALL_CONFIG_KEYS` and `isConfigKey` unchanged. The temporary `CONFIG_KEYS` export is removed in Task 3 after the preloaded callers stop importing it.
 
 - [ ] **Step 5: Update `getAllConfig()` to use dynamic keys**
 
@@ -542,7 +545,7 @@ Expected: PASS.
 
 Run: `rg "CONFIG_KEYS" src tests`
 
-Expected: remaining matches only in files planned for later tasks: `src/wizard/engine.ts` and `src/commands/config.ts`.
+Expected: remaining matches are `src/types/config.ts` as the temporary compatibility export plus files planned for later tasks: `src/wizard/engine.ts` and `src/commands/config.ts`.
 
 - [ ] **Step 8: Commit dynamic keys**
 
@@ -562,6 +565,7 @@ Expected: commit succeeds.
 **Files:**
 - Modify: `src/wizard/engine.ts`
 - Modify: `src/wizard/steps.ts`
+- Modify: `src/types/config.ts`
 - Modify: `src/config-editor/handlers.ts`
 - Modify: `tests/config-editor/handlers.test.ts`
 - Modify: `tests/commands/config.test.ts`
@@ -762,22 +766,37 @@ At the start of `handleEditorMessage()`, after the null-session guard, add:
 
 - [ ] **Step 8: Run targeted tests to verify they pass**
 
+- [ ] **Step 8: Remove temporary `CONFIG_KEYS` export**
+
+In `src/types/config.ts`, remove the Task 2 temporary compatibility export:
+
+```typescript
+// Temporary compatibility export for Task 3 callers. Do not use this from new code.
+export const CONFIG_KEYS: readonly ConfigKey[] = ['kaneo_apikey', 'timezone']
+```
+
+Run: `rg "CONFIG_KEYS" src tests`
+
+Expected: no production matches. Test matches are allowed only if they refer to historical text.
+
+- [ ] **Step 9: Run targeted tests to verify they pass**
+
 Run: `bun test ./tests/config-editor/handlers.test.ts ./tests/commands/config.test.ts -t "assigned task instance"`
 
 Expected: PASS.
 
-- [ ] **Step 9: Run wizard tests because wizard imports changed**
+- [ ] **Step 10: Run wizard tests because wizard imports changed**
 
 Run: `bun test ./tests/wizard ./tests/commands/setup.test.ts`
 
 Expected: PASS or only failures caused by setup assignment not implemented yet. If setup assignment failures appear, continue to Task 4 before fixing them.
 
-- [ ] **Step 10: Commit wizard/config editor changes**
+- [ ] **Step 11: Commit wizard/config editor changes**
 
 Run:
 
 ```bash
-git add src/wizard/engine.ts src/wizard/steps.ts src/commands/config.ts src/config-editor/handlers.ts tests/config-editor/handlers.test.ts tests/commands/config.test.ts
+git add src/wizard/engine.ts src/wizard/steps.ts src/types/config.ts src/commands/config.ts src/config-editor/handlers.ts tests/config-editor/handlers.test.ts tests/commands/config.test.ts
 git commit -m "feat: apply context config keys to setup UI"
 ```
 
