@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ToolSet } from 'ai'
 
@@ -126,10 +126,6 @@ describe('registerContextCommand', () => {
 
   test('builds full direct tool definitions on cache miss', async () => {
     const provider = createMockProvider()
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof provider => provider,
-    }))
-
     const commands = new Map<string, CommandHandler>()
     const chat = createMockChat({ commandHandlers: commands })
     let activeToolDefinitions: Record<string, unknown> | null = null
@@ -138,6 +134,7 @@ describe('registerContextCommand', () => {
       commands,
       chat,
       snapshotDeps({
+        buildProvider: (): typeof provider => provider,
         collectContext: (_contextId, collectorDeps): ContextSnapshot => {
           activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
           return {
@@ -163,10 +160,6 @@ describe('registerContextCommand', () => {
 
   test('uses invocation-aware active tool definitions for group summaries on cache miss', async () => {
     const provider = createIdentityCapableProvider()
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof provider => provider,
-    }))
-
     const commands = new Map<string, CommandHandler>()
     const chat = createFormattedContextChat(commands, null)
     let activeToolDefinitions: Record<string, unknown> | null = null
@@ -175,6 +168,7 @@ describe('registerContextCommand', () => {
       commands,
       chat,
       snapshotDeps({
+        buildProvider: (): typeof provider => provider,
         collectContext: (_contextId, collectorDeps): ContextSnapshot => {
           activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
           return {
@@ -203,12 +197,6 @@ describe('registerContextCommand', () => {
 
   test('uses injected provider construction instead of the hardwired provider factory', async () => {
     const provider = createIdentityCapableProvider()
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): never => {
-        throw new Error('factory should not be used')
-      },
-    }))
-
     const commands = new Map<string, CommandHandler>()
     const chat = createFormattedContextChat(commands, null)
     const handler = await registerContextHandler(
@@ -259,10 +247,6 @@ describe('registerContextCommand', () => {
 
   test('keeps summary tool definitions aligned with live follow-up tools when cache is warmed', async () => {
     const provider = createIdentityCapableProvider()
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof provider => provider,
-    }))
-
     const commands = new Map<string, CommandHandler>()
     const chat = createFormattedContextChat(commands, null)
     let activeToolDefinitions: Record<string, unknown> | null = null
@@ -270,6 +254,7 @@ describe('registerContextCommand', () => {
       commands,
       chat,
       snapshotDeps({
+        buildProvider: (): typeof provider => provider,
         collectContext: (_contextId, collectorDeps): ContextSnapshot => {
           activeToolDefinitions = collectorDeps.getActiveToolDefinitions()
           return {
@@ -303,10 +288,6 @@ describe('registerContextCommand', () => {
       contextType: 'group',
     })
     const liveResults: readonly [ToolSet, null] = [firstLiveTools, null]
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof provider => provider,
-    }))
-
     const commands = new Map<string, CommandHandler>()
     const chat = createFormattedContextChat(commands, null)
     let activeToolDefinitions: Record<string, unknown> | null = null
@@ -314,6 +295,7 @@ describe('registerContextCommand', () => {
       commands,
       chat,
       snapshotDeps({
+        buildProvider: (): typeof provider => provider,
         buildLiveToolSet: createSequentialLiveToolSet(liveResults),
         collectContext: (_contextId, collectorDeps): ContextSnapshot => {
           activeToolDefinitions = collectorDeps.getActiveToolDefinitions()

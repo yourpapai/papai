@@ -21,8 +21,8 @@ import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-ty
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
-import { buildProviderForUser } from './providers/factory.js'
 import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
+import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'
 import { getKaneoWorkspace } from './users.js'
@@ -35,7 +35,7 @@ const defaultDeps: LlmOrchestratorDeps = {
   stepCountIs: (...args) => stepCountIs(...args),
   buildOpenAI: (apiKey: string, baseURL: string) =>
     createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL, fetch: fetchWithoutTimeout }),
-  buildProviderForUser: (userId: string) => buildProviderForUser(userId, true),
+  resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
   getKaneoWorkspace,
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
@@ -158,7 +158,12 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   await ensureRequiredConfig(reply, contextId, configId, deps)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
-  const provider = deps.buildProviderForUser(configId)
+  const provider = deps.resolve(configId)
+  if (provider === null) {
+    log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
+    await reply.text('I need /setup before I can do that.')
+    return { response: { messages: [] } }
+  }
   await maybeAutoLinkIdentity(chatUserId, username, provider)
   const { routingResult, validatedMessages } = prepareLlmInvocation(
     contextId,

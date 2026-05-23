@@ -12,7 +12,7 @@ import type { ModelMessage } from 'ai'
 import type { ReplyFn } from '../src/chat/types.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
-import { processMessage } from '../src/llm-orchestrator.js'
+import { defaultDeps, processMessage } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -112,6 +112,7 @@ const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, bas
 
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
+import { setConfig } from '../src/config.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
@@ -137,7 +138,7 @@ describe('processMessage', () => {
 
   // Provider factory — returns a mock provider to avoid real HTTP calls and env var checks
   const mockProvider = createMockProvider({ name: 'mock' })
-  const buildMockProviderForUser = (): TaskProvider => mockProvider
+  const resolveMockProvider = (): TaskProvider => mockProvider
 
   // AI SDK — the key control point for success/failure simulation
   // generateText returns a result object with direct values
@@ -210,10 +211,6 @@ describe('processMessage', () => {
     // Register mocks
     mockLogger()
 
-    void mock.module('../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof mockProvider => mockProvider,
-    }))
-
     void mock.module('../src/providers/kaneo/provision.js', () => ({
       provisionAndConfigure: (): Promise<{ status: string }> => Promise.resolve({ status: 'already_configured' }),
       maybeProvisionKaneo: realProvisionMod.maybeProvisionKaneo,
@@ -270,7 +267,7 @@ describe('processMessage', () => {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        buildProviderForUser: buildMockProviderForUser,
+        resolve: resolveMockProvider,
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => {
           maybeProvisionCalls++
@@ -314,7 +311,7 @@ describe('processMessage', () => {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        buildProviderForUser: buildMockProviderForUser,
+        resolve: resolveMockProvider,
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
@@ -336,9 +333,9 @@ describe('processMessage', () => {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        buildProviderForUser: () => {
+        resolve: () => {
           providerBuildCalls++
-          return buildMockProviderForUser()
+          return resolveMockProvider()
         },
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
@@ -359,7 +356,7 @@ describe('processMessage', () => {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        buildProviderForUser: buildMockProviderForUser,
+        resolve: resolveMockProvider,
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
@@ -369,6 +366,26 @@ describe('processMessage', () => {
 
       expect(textCalls[0]).toContain('youtrack_token')
       expect(textCalls[0]).toContain('/setup')
+    })
+
+    test('replies with setup guidance when resolver returns null after credentials pass', async () => {
+      const freshCtx = 'resolver-null-context'
+      insertTaskInstance({ id: 'yt-prod-null', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+      setContextSettings({ contextId: freshCtx, taskInstanceId: 'yt-prod-null', platformInstanceId: 'telegram-default' })
+      setConfig(freshCtx, 'youtrack_token', 'perm:abc')
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        getKaneoWorkspace: () => null,
+        maybeProvisionKaneo: () => Promise.resolve(),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      expect(textCalls).toContain('I need /setup before I can do that.')
     })
   })
 
@@ -876,13 +893,12 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
       // Pass null for username - should skip auto-link
-      await processMessage(reply, GROUP_CTX, USER_ID, null, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, null, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // No mapping should be created
       const mapping = getIdentityMapping(GROUP_CTX, 'mock')
@@ -892,13 +908,11 @@ describe('processMessage', () => {
     test('skips auto-link when provider has no identity resolver', async () => {
       seedConfigForContext(GROUP_CTX)
 
-      // Use mockProvider without identityResolver
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof mockProvider => mockProvider,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof mockProvider => mockProvider,
+      })
 
       // No mapping should be created
       const mapping = getIdentityMapping(GROUP_CTX, 'mock')
@@ -928,12 +942,11 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // Existing mapping should be preserved (stored under user ID)
       const mapping = getIdentityMapping(USER_ID, 'mock')
@@ -954,12 +967,11 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // Auto-link should have created a mapping under the user ID (not group context)
       const mapping = getIdentityMapping(USER_ID, 'mock')
@@ -981,12 +993,11 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, 'unknownuser', 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, 'unknownuser', 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // Should store unmatched mapping under the user ID (not group context)
       const mapping = getIdentityMapping(USER_ID, 'mock')
