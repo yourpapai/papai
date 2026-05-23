@@ -149,6 +149,12 @@ describe('index.ts - graceful shutdown', () => {
       SYSTEM_CONFIG_KEYS: [],
       resetSystemConfigCacheForTesting: (): void => undefined,
     }))
+    void mock.module('../src/instances/bootstrap.js', () => ({
+      bootstrapInstancesFromEnv: (): { bootstrapped: false; reason: 'no-env' } => ({
+        bootstrapped: false,
+        reason: 'no-env',
+      }),
+    }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (): void => undefined,
       stopPollers: (): void => undefined,
