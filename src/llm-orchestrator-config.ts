@@ -8,10 +8,6 @@ import { getConfigKeysForContext } from './config-keys.js'
 import { getConfig } from './config.js'
 import { getSystemConfig } from './system-config.js'
 
-export interface RequiredProviderConfigDeps {
-  getKaneoWorkspace: (contextId: string) => string | null
-}
-
 export interface LlmConfig {
   llmApiKey: string
   llmBaseUrl: string
@@ -24,14 +20,11 @@ const readConfig = (contextId: string, key: 'kaneo_apikey' | 'youtrack_token' | 
   return getCachedConfig(contextId, key)
 }
 
-export const checkRequiredProviderConfig = (contextId: string, deps: RequiredProviderConfigDeps): string[] => {
+export const checkRequiredProviderConfig = (contextId: string): string[] => {
   const requiredKeys = getConfigKeysForContext(contextId).filter(
     (key): key is 'kaneo_apikey' | 'youtrack_token' => key === 'kaneo_apikey' || key === 'youtrack_token',
   )
-  const missingProviderKeys = requiredKeys.filter((key) => readConfig(contextId, key) === null)
-  const missingWorkspace =
-    requiredKeys.includes('kaneo_apikey') && deps.getKaneoWorkspace(contextId) === null ? ['workspaceId'] : []
-  return [...missingProviderKeys, ...missingWorkspace]
+  return requiredKeys.filter((key) => readConfig(contextId, key) === null)
 }
 
 export const getLlmConfig = (): LlmConfig => {

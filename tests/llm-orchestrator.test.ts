@@ -324,18 +324,18 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('/setup')
     })
 
-    test('missing Kaneo workspace is reported before provider construction', async () => {
+    test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
       const freshCtx = 'missing-kaneo-workspace'
       assignKaneoContext(freshCtx)
       setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
-      let providerBuildCalls = 0
+      let resolverCalls = 0
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => {
-          providerBuildCalls++
-          return resolveMockProvider()
+          resolverCalls++
+          return null
         },
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
@@ -344,9 +344,8 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(providerBuildCalls).toBe(0)
-      expect(textCalls[0]).toContain('workspaceId')
-      expect(textCalls[0]).toContain('/setup')
+      expect(resolverCalls).toBe(1)
+      expect(textCalls).toContain('I need /setup before I can do that.')
     })
 
     test('missing provider config is derived from assigned task instance', async () => {

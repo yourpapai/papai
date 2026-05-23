@@ -100,9 +100,8 @@ const ensureRequiredConfig = async (
   reply: ReplyFn,
   contextId: string,
   configId: string,
-  deps: LlmOrchestratorDeps,
 ): Promise<void> => {
-  const missing = checkRequiredProviderConfig(configId, deps)
+  const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
   log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
   await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /setup to configure.`)
@@ -155,7 +154,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   if (contextType === 'dm') {
     await deps.maybeProvisionKaneo(reply, configId, username)
   }
-  await ensureRequiredConfig(reply, contextId, configId, deps)
+  await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
   const provider = deps.resolve(configId)

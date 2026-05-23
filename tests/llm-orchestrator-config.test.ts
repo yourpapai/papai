@@ -17,9 +17,6 @@ import {
 import { setSystemConfig } from '../src/system-config.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
-const stubDeps = { getKaneoWorkspace: (): string => 'workspace-1' }
-const stubDepsNoWorkspace = { getKaneoWorkspace: (): string | null => null }
-
 const assignKaneoContext = (contextId: string): void => {
   insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
@@ -89,11 +86,11 @@ describe('llm-orchestrator-config', () => {
       setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
       setSystemConfig('main_model', 'main-system', 'env')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDeps)
+      const missing = checkRequiredProviderConfig('user-1')
       expect(missing).toEqual(['kaneo_apikey'])
     })
 
-    test('with kaneo: reports workspaceId when internal workspace state is missing', () => {
+    test('with kaneo: ignores internal workspace state when visible credentials are present', () => {
       assignKaneoContext('user-1')
       setSystemConfig('llm_apikey', 'sk-system', 'env')
       setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
@@ -101,8 +98,8 @@ describe('llm-orchestrator-config', () => {
 
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDepsNoWorkspace)
-      expect(missing).toEqual(['workspaceId'])
+      const missing = checkRequiredProviderConfig('user-1')
+      expect(missing).toEqual([])
     })
 
     test('returns no LLM keys even when system_config is missing', () => {
@@ -111,7 +108,7 @@ describe('llm-orchestrator-config', () => {
       // is checked separately at the orchestrator entry point.
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDeps)
+      const missing = checkRequiredProviderConfig('user-1')
       expect(missing).not.toContain('llm_apikey')
       expect(missing).not.toContain('llm_baseurl')
       expect(missing).not.toContain('main_model')
@@ -121,7 +118,7 @@ describe('llm-orchestrator-config', () => {
       assignKaneoContext('user-1')
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDeps)
+      const missing = checkRequiredProviderConfig('user-1')
       expect(missing).toEqual([])
     })
   })
