@@ -201,6 +201,7 @@ records).
 Implement a five-phase roadmap:
 
 **Phase 1 — Central LLM credentials (env-only)**
+
 - Migration 034: `system_config(key PK, value, updated_at, updated_by)`.
 - Migration 036: delete LLM keys from `user_config` (with JSONL backup).
 - `src/system-config.ts`: `getSystemConfig`, `setSystemConfig`,
@@ -213,6 +214,7 @@ Implement a five-phase roadmap:
   `SENSITIVE_KEYS` / `user_config` schema.
 
 **Phase 2 — Usage telemetry recording**
+
 - Migration 035: `llm_usage_events` with indexes on subject, user, turn, time.
 - `src/usage/`: `types.ts`, `recorder.ts` (`recordUsage`), `query.ts`
   (`listSubjects`, `getSubjectDetail`), `index.ts` (`initUsageRecorder`).
@@ -224,6 +226,7 @@ Implement a five-phase roadmap:
   with `model_role: 'embedding'` and `model_role: 'small'` respectively.
 
 **Phase 3 — Billing dashboard + admin credentials form**
+
 - `src/debug/billing.ts`: `listBillingSubjects`, `getBillingDetail`, window
   helpers. Display names from `users.username`; null for groups.
 - `src/debug/admin-llm.ts`: `getAdminLlmSnapshot` (masked `llm_apikey`),
@@ -239,9 +242,10 @@ Implement a five-phase roadmap:
   `ADMIN_USER_ID` is unset; 400 on bad key or empty value.
 
 **Phase 4 — Tool-call rows + idempotency hardening**
+
 - Migration 037: `tool_call_events(event_id PK, turn_id, tool_name, tool_call_id,
-  success, duration_ms, args_bytes, result_bytes, error_type, error_code,
-  retryable, recovered, forwarded_at, forward_attempts, forward_error, …)`.
+success, duration_ms, args_bytes, result_bytes, error_type, error_code,
+retryable, recovered, forwarded_at, forward_attempts, forward_error, …)`.
 - Migration 038: outbox columns (`forwarded_at`, `forward_attempts`,
   `forward_error`) + partial index on `llm_usage_events`.
 - `src/usage/event-id.ts`: `toolCallEventId(turnId, toolCallId)` and
@@ -255,6 +259,7 @@ Implement a five-phase roadmap:
 - `src/usage/query.ts`: `listToolCallsForTurn`, `summarizeToolCallsBySubject`.
 
 **Phase 5 — Anonymous DB-wide statistics**
+
 - `src/stats/types.ts`: `SubjectStats`, `GlobalStats`, `Percentiles`, sub-types.
 - `src/stats/aggregate.ts`: `percentiles()` — pure function, input-order invariant.
 - `src/stats/hashing.ts`: `keyedHash()` — SHA-256 over `(value + stats_anonymity_salt)`;
@@ -346,44 +351,44 @@ Implement a five-phase roadmap:
 
 ### Migrations
 
-| Migration | File                                    | Test                                                 |
-| --------- | --------------------------------------- | ---------------------------------------------------- |
-| 034       | `src/db/migrations/034_system_config.ts`              | `tests/db/migrations/034_system_config.test.ts`      |
-| 035       | `src/db/migrations/035_llm_usage_events.ts`           | `tests/db/migrations/035_llm_usage_events.test.ts`   |
-| 036       | `src/db/migrations/036_drop_user_llm_config.ts`       | `tests/db/migrations/036_drop_user_llm_config.test.ts` |
-| 037       | `src/db/migrations/037_tool_call_events.ts`           | `tests/db/migrations/037_tool_call_events.test.ts`   |
-| 038       | `src/db/migrations/038_llm_usage_events_outbox.ts`    | `tests/db/migrations/038_llm_usage_events_outbox.test.ts` |
+| Migration | File                                               | Test                                                      |
+| --------- | -------------------------------------------------- | --------------------------------------------------------- |
+| 034       | `src/db/migrations/034_system_config.ts`           | `tests/db/migrations/034_system_config.test.ts`           |
+| 035       | `src/db/migrations/035_llm_usage_events.ts`        | `tests/db/migrations/035_llm_usage_events.test.ts`        |
+| 036       | `src/db/migrations/036_drop_user_llm_config.ts`    | `tests/db/migrations/036_drop_user_llm_config.test.ts`    |
+| 037       | `src/db/migrations/037_tool_call_events.ts`        | `tests/db/migrations/037_tool_call_events.test.ts`        |
+| 038       | `src/db/migrations/038_llm_usage_events_outbox.ts` | `tests/db/migrations/038_llm_usage_events_outbox.test.ts` |
 
 ### Server Modules
 
-| Module                        | Routes / Exports                                                     | Tests                                     |
-| ----------------------------- | -------------------------------------------------------------------- | ----------------------------------------- |
-| `src/system-config.ts`        | `getSystemConfig`, `setSystemConfig`, `seedSystemConfigFromEnv`, …   | `tests/system-config.test.ts`             |
-| `src/usage/recorder.ts`       | `recordUsage`                                                        | `tests/usage/recorder.test.ts`            |
-| `src/usage/index.ts`          | `initUsageRecorder`                                                  | `tests/usage/recorder-integration.test.ts`|
-| `src/usage/query.ts`          | `listSubjects`, `getSubjectDetail`, `listToolCallsForTurn`, …        | `tests/usage/query.test.ts`               |
-| `src/usage/event-id.ts`       | `usageEventId`, `toolCallEventId`                                    | `tests/usage/event-id.test.ts`            |
-| `src/usage/tool-call-recorder.ts` | `recordToolCall`, `updateToolCallClassification`                 | `tests/usage/tool-call-recorder.test.ts`  |
-| `src/debug/billing.ts`        | `listBillingSubjects`, `getBillingDetail`                            | `tests/debug/billing.test.ts`             |
-| `src/debug/admin-llm.ts`      | `getAdminLlmSnapshot`, `applyAdminLlmUpdate`                         | `tests/debug/admin-llm.test.ts`           |
-| `src/debug/billing-routes.ts` | `/billing/subjects`, `/billing/subject/:id`, `/admin/llm`            | `tests/debug/billing-route.test.ts`, `tests/debug/admin-llm-route.test.ts` |
-| `src/debug/subject-display-name.ts` | `resolveDisplayName`, `resolveContextTypeFromUsage`            | `tests/debug/subject-display-name.test.ts`|
-| `src/debug/stats-routes.ts`   | `/stats/global`, `/stats/subject/:id`                                | `tests/debug/stats-routes.test.ts`, `tests/debug/server-stats.test.ts` |
-| `src/stats/index.ts`          | `getSubjectStats`, `getGlobalStats`                                  | `tests/stats/index.test.ts`               |
-| `src/stats/hashing.ts`        | `keyedHash`                                                          | `tests/stats/hashing.test.ts`             |
-| `src/stats/aggregate.ts`      | `percentiles`                                                        | `tests/stats/aggregate.test.ts`           |
-| `src/stats/per-table*.ts`     | Per-subject query helpers                                            | `tests/stats/per-table-*.test.ts`         |
-| `src/stats/global-*.ts`       | Global query helpers                                                 | `tests/stats/global-*.test.ts`            |
+| Module                              | Routes / Exports                                                   | Tests                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `src/system-config.ts`              | `getSystemConfig`, `setSystemConfig`, `seedSystemConfigFromEnv`, … | `tests/system-config.test.ts`                                              |
+| `src/usage/recorder.ts`             | `recordUsage`                                                      | `tests/usage/recorder.test.ts`                                             |
+| `src/usage/index.ts`                | `initUsageRecorder`                                                | `tests/usage/recorder-integration.test.ts`                                 |
+| `src/usage/query.ts`                | `listSubjects`, `getSubjectDetail`, `listToolCallsForTurn`, …      | `tests/usage/query.test.ts`                                                |
+| `src/usage/event-id.ts`             | `usageEventId`, `toolCallEventId`                                  | `tests/usage/event-id.test.ts`                                             |
+| `src/usage/tool-call-recorder.ts`   | `recordToolCall`, `updateToolCallClassification`                   | `tests/usage/tool-call-recorder.test.ts`                                   |
+| `src/debug/billing.ts`              | `listBillingSubjects`, `getBillingDetail`                          | `tests/debug/billing.test.ts`                                              |
+| `src/debug/admin-llm.ts`            | `getAdminLlmSnapshot`, `applyAdminLlmUpdate`                       | `tests/debug/admin-llm.test.ts`                                            |
+| `src/debug/billing-routes.ts`       | `/billing/subjects`, `/billing/subject/:id`, `/admin/llm`          | `tests/debug/billing-route.test.ts`, `tests/debug/admin-llm-route.test.ts` |
+| `src/debug/subject-display-name.ts` | `resolveDisplayName`, `resolveContextTypeFromUsage`                | `tests/debug/subject-display-name.test.ts`                                 |
+| `src/debug/stats-routes.ts`         | `/stats/global`, `/stats/subject/:id`                              | `tests/debug/stats-routes.test.ts`, `tests/debug/server-stats.test.ts`     |
+| `src/stats/index.ts`                | `getSubjectStats`, `getGlobalStats`                                | `tests/stats/index.test.ts`                                                |
+| `src/stats/hashing.ts`              | `keyedHash`                                                        | `tests/stats/hashing.test.ts`                                              |
+| `src/stats/aggregate.ts`            | `percentiles`                                                      | `tests/stats/aggregate.test.ts`                                            |
+| `src/stats/per-table*.ts`           | Per-subject query helpers                                          | `tests/stats/per-table-*.test.ts`                                          |
+| `src/stats/global-*.ts`             | Global query helpers                                               | `tests/stats/global-*.test.ts`                                             |
 
 ### Client Modules
 
-| Module                               | Location                                    | Tests                                             |
-| ------------------------------------ | ------------------------------------------- | ------------------------------------------------- |
-| Billing section + subject detail     | `client/admin/sections/BillingSection.svelte` | `tests/client/admin/billing/`                   |
-| Credentials form                     | `client/admin/components/CredentialsForm.svelte` | `tests/client/admin/billing/`                |
-| Stats section                        | `client/admin/sections/StatsSection.svelte` | `tests/client/admin/StatsPanel.test.ts`           |
-| Subject stats sub-panel              | `client/admin/components/SubjectStatsPanel.svelte` | `tests/client/admin/billing/SubjectStatsPanel.test.ts` |
-| Admin fetchers                       | `client/admin/fetchers.ts`                  | `tests/client/admin/fetchers.test.ts`             |
+| Module                           | Location                                           | Tests                                                  |
+| -------------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
+| Billing section + subject detail | `client/admin/sections/BillingSection.svelte`      | `tests/client/admin/billing/`                          |
+| Credentials form                 | `client/admin/components/CredentialsForm.svelte`   | `tests/client/admin/billing/`                          |
+| Stats section                    | `client/admin/sections/StatsSection.svelte`        | `tests/client/admin/StatsPanel.test.ts`                |
+| Subject stats sub-panel          | `client/admin/components/SubjectStatsPanel.svelte` | `tests/client/admin/billing/SubjectStatsPanel.test.ts` |
+| Admin fetchers                   | `client/admin/fetchers.ts`                         | `tests/client/admin/fetchers.test.ts`                  |
 
 ### Anonymity Contract Tests
 
