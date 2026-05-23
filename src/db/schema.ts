@@ -138,19 +138,7 @@ export type RecurringTask = typeof recurringTasks.$inferSelect
 export type RecurringTaskOccurrence = typeof recurringTaskOccurrences.$inferSelect
 export { scheduledPrompts, alertPrompts, taskSnapshots } from './deferred-schema.js'
 export type { ScheduledPromptRow, AlertPromptRow } from './deferred-schema.js'
-export const userInstructions = sqliteTable(
-  'user_instructions',
-  {
-    id: text('id').primaryKey(),
-    contextId: text('context_id').notNull(),
-    text: text('text').notNull(),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`(datetime('now'))`),
-  },
-  (table) => [index('idx_user_instructions_context').on(table.contextId)],
-)
-export type UserInstruction = typeof userInstructions.$inferSelect
+export { userInstructions, type UserInstruction } from './user-instructions-schema.js'
 export type GroupMember = typeof groupMembers.$inferSelect
 export type AuthorizedGroup = typeof authorizedGroups.$inferSelect
 export const messageMetadata = sqliteTable(
@@ -298,3 +286,13 @@ export const attachments = sqliteTable(
 )
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
+export {
+  admins,
+  contextSettings,
+  platformInstances,
+  taskInstances,
+  type AdminRow,
+  type ContextSettingsRow,
+  type PlatformInstanceRow,
+  type TaskInstanceRow,
+} from './instance-schema.js'
