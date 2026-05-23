@@ -135,6 +135,11 @@ environment variables on first start and from the DB on subsequent starts:
 - `MAIN_MODEL` (seeded into `system_config.main_model`)
 - `SMALL_MODEL` — optional; callsites fall back to `main_model`
 - `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
+- `INSTANCE_CONFIG_KEY` — 32-byte AES-256-GCM key (64 hex chars) used to
+  encrypt `platform_instances.config` and `task_instances.config` at rest.
+  Non-hex values are SHA-256-hashed. When unset, a derived host-local
+  fallback key is used and a one-shot `WARN` is logged at startup;
+  production deployments must set this explicitly.
 
 If `system_config` is missing any of the three required entries at runtime,
 the bot logs `WARN` at startup and replies "the bot is not fully configured"
@@ -260,6 +265,7 @@ Optional: debug server + debug/admin clients
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
 - `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 - `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
+- `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Phase 2–5 of the multi-provider router refactor will replace `buildProviderForUser` and the single `ChatProvider` startup with these stores.
 
 ## Plugin System
 
