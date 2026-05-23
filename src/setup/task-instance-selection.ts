@@ -45,7 +45,8 @@ const assignTaskInstance = (userId: string, contextId: string, instance: TaskIns
   if (platformInstanceId === null) {
     return {
       status: 'aborted',
-      response: 'No active chat platform instance is available for this setup flow. Ask a super-admin to check the dashboard.',
+      response:
+        'No active chat platform instance is available for this setup flow. Ask a super-admin to check the dashboard.',
     }
   }
   setContextSettings({ contextId, taskInstanceId: instance.id, platformInstanceId })

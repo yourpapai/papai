@@ -391,12 +391,22 @@ describe('maybeProvisionKaneo', () => {
   }
 
   const assignKaneoContext = (contextId: string): void => {
-    insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: `${contextId}-kaneo`,
+      type: 'kaneo',
+      config: { url: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
   }
 
   const assignYouTrackContext = (contextId: string): void => {
-    insertTaskInstance({ id: `${contextId}-yt`, type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: `${contextId}-yt`,
+      type: 'youtrack',
+      config: { url: 'https://yt.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
   }
 

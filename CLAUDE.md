@@ -124,7 +124,6 @@ Required at startup:
 
 - `CHAT_PROVIDER`
 - `ADMIN_USER_ID`
-- `TASK_PROVIDER`
 
 The bot also needs central LLM credentials before it can serve any message.
 They live in the admin-owned `system_config` SQLite table, seeded once from
@@ -153,10 +152,7 @@ Chat-provider requirements:
 - Mattermost: `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`
 - Discord: `DISCORD_BOT_TOKEN`
 
-Task-provider requirements:
-
-- Kaneo: `KANEO_CLIENT_URL`
-- YouTrack: `YOUTRACK_URL`
+`TASK_PROVIDER` is used only by first-run env bootstrap when `task_instances` is empty. After bootstrap, task-provider selection is read from `context_settings.task_instance_id`, and per-context credentials stay in `user_config`.
 
 Optional but important runtime flags include:
 
@@ -265,7 +261,7 @@ Optional: debug server + debug/admin clients
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
 - `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 - `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
-- `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Phase 2–5 of the multi-provider router refactor will replace `buildProviderForUser` and the single `ChatProvider` startup with these stores.
+- `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Phase 2 replaced runtime task-provider construction with `TaskProviderResolver`; later multi-provider router phases still replace the single `ChatProvider` startup path if needed.
 
 ## Plugin System
 

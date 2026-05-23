@@ -6,6 +6,7 @@
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import { autoStartWizardIfNeeded } from './bot-auto-setup.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { maybeInterceptWizard } from './bot-settings.js'
@@ -23,7 +24,6 @@ import {
   registerSetupCommand,
   registerStartCommand,
 } from './commands/index.js'
-import { autoStartWizardIfNeeded } from './bot-auto-setup.js'
 import { emitUser } from './debug/event-bus.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'

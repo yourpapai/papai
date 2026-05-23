@@ -21,8 +21,17 @@ describe('config-editor chat integration', () => {
   const storageContextId = 'ctx456'
 
   const assignKaneoContext = (): void => {
-    insertTaskInstance({ id: 'ctx456-kaneo', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    setContextSettings({ contextId: storageContextId, taskInstanceId: 'ctx456-kaneo', platformInstanceId: 'telegram-default' })
+    insertTaskInstance({
+      id: 'ctx456-kaneo',
+      type: 'kaneo',
+      config: { url: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: storageContextId,
+      taskInstanceId: 'ctx456-kaneo',
+      platformInstanceId: 'telegram-default',
+    })
   }
 
   beforeEach(async () => {

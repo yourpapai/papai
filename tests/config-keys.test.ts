@@ -44,7 +44,11 @@ describe('getConfigKeysForContext', () => {
 
   test('returns preferences only when assigned instance is inactive', () => {
     insertTaskInstance({ id: 'yt-stopped', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'stopped' })
-    setContextSettings({ contextId: 'ctx-stopped', taskInstanceId: 'yt-stopped', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: 'ctx-stopped',
+      taskInstanceId: 'yt-stopped',
+      platformInstanceId: 'telegram-default',
+    })
 
     expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone'])
   })

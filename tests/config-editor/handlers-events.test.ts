@@ -17,7 +17,11 @@ describe('config_editor events', () => {
 
   const assignKaneoContext = (): void => {
     insertTaskInstance({ id: 'ctx-1-kaneo', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    setContextSettings({ contextId: storageContextId, taskInstanceId: 'ctx-1-kaneo', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: storageContextId,
+      taskInstanceId: 'ctx-1-kaneo',
+      platformInstanceId: 'telegram-default',
+    })
   }
 
   beforeEach(async () => {

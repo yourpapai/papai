@@ -82,6 +82,7 @@ See LICENSE in the project root for details.
 ## Task 1: Add `TaskProviderResolver`
 
 **Files:**
+
 - Create: `src/providers/resolver.ts`
 - Create: `tests/providers/resolver.test.ts`
 - Later delete: `src/providers/factory.ts` in Task 9 after all imports are gone
@@ -180,7 +181,12 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a Kaneo provider with session cookie credentials', () => {
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'kaneo_apikey', 'better-auth.session_token=abc')
     setKaneoWorkspace('ctx-1', 'workspace-1')
@@ -381,6 +387,7 @@ Expected: commit succeeds.
 ## Task 2: Add Dynamic Config Keys
 
 **Files:**
+
 - Create: `src/config-keys.ts`
 - Create: `tests/config-keys.test.ts`
 - Modify: `src/types/config.ts`
@@ -437,7 +444,11 @@ describe('getConfigKeysForContext', () => {
 
   test('returns preferences only when assigned instance is inactive', () => {
     insertTaskInstance({ id: 'yt-stopped', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'stopped' })
-    setContextSettings({ contextId: 'ctx-stopped', taskInstanceId: 'yt-stopped', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: 'ctx-stopped',
+      taskInstanceId: 'yt-stopped',
+      platformInstanceId: 'telegram-default',
+    })
 
     expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone'])
   })
@@ -563,6 +574,7 @@ Expected: commit succeeds.
 ## Task 3: Update Wizard Steps and Config Editor Allow-List
 
 **Files:**
+
 - Modify: `src/wizard/engine.ts`
 - Modify: `src/wizard/steps.ts`
 - Modify: `src/types/config.ts`
@@ -644,12 +656,12 @@ import type { ConfigKey } from '../types/config.js'
 Replace the loop in `createWizard()` with:
 
 ```typescript
-  for (const key of getConfigKeysForContext(storageContextId)) {
-    const value = existingConfig[key]
-    if (value !== undefined) {
-      initialData[key] = value
-    }
+for (const key of getConfigKeysForContext(storageContextId)) {
+  const value = existingConfig[key]
+  if (value !== undefined) {
+    initialData[key] = value
   }
+}
 ```
 
 - [ ] **Step 5: Remove hidden Kaneo workspace from wizard summary**
@@ -657,11 +669,11 @@ Replace the loop in `createWizard()` with:
 In `src/wizard/steps.ts`, replace the Kaneo summary block with:
 
 ```typescript
-  if (taskProvider === 'kaneo') {
-    lines.push(`Kaneo API Key: ${getDisplayValue('kaneo_apikey', data['kaneo_apikey'])}`)
-  } else if (taskProvider === 'youtrack') {
-    lines.push(`YouTrack Token: ${getDisplayValue('youtrack_token', data['youtrack_token'])}`)
-  }
+if (taskProvider === 'kaneo') {
+  lines.push(`Kaneo API Key: ${getDisplayValue('kaneo_apikey', data['kaneo_apikey'])}`)
+} else if (taskProvider === 'youtrack') {
+  lines.push(`YouTrack Token: ${getDisplayValue('youtrack_token', data['youtrack_token'])}`)
+}
 ```
 
 - [ ] **Step 6: Update `/config` to render dynamic keys**
@@ -700,9 +712,9 @@ function buildConfigButtons(config: Partial<Record<ConfigKey, string>>, targetCo
 Replace the render loop in `renderConfigForTarget()` with:
 
 ```typescript
-  getConfigKeysForContext(targetContextId).forEach((key) => {
-    lines.push(formatConfigLine(key, config[key]))
-  })
+getConfigKeysForContext(targetContextId).forEach((key) => {
+  lines.push(formatConfigLine(key, config[key]))
+})
 ```
 
 - [ ] **Step 7: Update config editor key validation**
@@ -724,44 +736,44 @@ function isKeyValidForContext(storageContextId: string, key: ConfigKey): boolean
 At the start of `startEditor()`, add:
 
 ```typescript
-  if (!isKeyValidForContext(storageContextId, key)) {
-    return { handled: true, response: `Config key "${key}" is not valid for this context.` }
-  }
+if (!isKeyValidForContext(storageContextId, key)) {
+  return { handled: true, response: `Config key "${key}" is not valid for this context.` }
+}
 ```
 
 Replace `buildConfigList()` key list with:
 
 ```typescript
-  const configKeys = getConfigKeysForContext(storageContextId)
+const configKeys = getConfigKeysForContext(storageContextId)
 
-  for (const key of configKeys) {
-    const value = getConfig(storageContextId, key)
-    lines.push(formatConfigLine(key, value ?? undefined))
-    buttons.push({
-      text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
-      action: 'edit',
-      key,
-      style: value === null ? 'secondary' : 'primary',
-    })
-  }
+for (const key of configKeys) {
+  const value = getConfig(storageContextId, key)
+  lines.push(formatConfigLine(key, value ?? undefined))
+  buttons.push({
+    text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
+    action: 'edit',
+    key,
+    style: value === null ? 'secondary' : 'primary',
+  })
+}
 ```
 
 At the start of `handleSaveAction()`, after the null-session guard, add:
 
 ```typescript
-  if (!isKeyValidForContext(storageContextId, session.editingKey)) {
-    deleteEditorSession(userId, storageContextId)
-    return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
-  }
+if (!isKeyValidForContext(storageContextId, session.editingKey)) {
+  deleteEditorSession(userId, storageContextId)
+  return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
+}
 ```
 
 At the start of `handleEditorMessage()`, after the null-session guard, add:
 
 ```typescript
-  if (!isKeyValidForContext(storageContextId, session.editingKey)) {
-    deleteEditorSession(userId, storageContextId)
-    return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
-  }
+if (!isKeyValidForContext(storageContextId, session.editingKey)) {
+  deleteEditorSession(userId, storageContextId)
+  return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
+}
 ```
 
 - [ ] **Step 8: Run targeted tests to verify they pass**
@@ -807,6 +819,7 @@ Expected: commit succeeds.
 ## Task 4: Add Task-Instance Selection Before `/setup`
 
 **Files:**
+
 - Create: `src/setup/platform-instance.ts`
 - Create: `src/setup/task-instance-selection.ts`
 - Create: `tests/setup/task-instance-selection.test.ts`
@@ -995,7 +1008,9 @@ const formatChoiceList = (instances: readonly TaskInstance[]): string =>
   [
     'Choose a task tracker for this context.',
     '',
-    ...instances.map((instance, index) => `${String(index + 1)}. ${instance.id} (${instance.type}, created ${instance.createdAt})`),
+    ...instances.map(
+      (instance, index) => `${String(index + 1)}. ${instance.id} (${instance.type}, created ${instance.createdAt})`,
+    ),
     '',
     'Reply with one of these task instance IDs.',
   ].join('\n')
@@ -1005,7 +1020,8 @@ const assignTaskInstance = (userId: string, contextId: string, instance: TaskIns
   if (platformInstanceId === null) {
     return {
       status: 'aborted',
-      response: 'No active chat platform instance is available for this setup flow. Ask a super-admin to check the dashboard.',
+      response:
+        'No active chat platform instance is available for this setup flow. Ask a super-admin to check the dashboard.',
     }
   }
   setContextSettings({ contextId, taskInstanceId: instance.id, platformInstanceId })
@@ -1145,20 +1161,20 @@ async function startCredentialWizard(
 Replace lines 114-133 in `startSetupForTarget()` with:
 
 ```typescript
-  const settings = resolvedDeps.getContextSettings(targetContextId)
-  const taskInstance = settings === null ? null : resolvedDeps.getTaskInstance(settings.taskInstanceId)
-  const isKaneoTarget = taskInstance?.type === 'kaneo'
-  if (isGroupTarget && isKaneoTarget && isFirstTimeKaneoGroupSetup(targetContextId, resolvedDeps)) {
-    const shouldStop = await replyForProvisionOutcome(
-      reply,
-      await resolvedDeps.provisionAndConfigure(targetContextId, null),
-    )
-    if (shouldStop) {
-      return
-    }
+const settings = resolvedDeps.getContextSettings(targetContextId)
+const taskInstance = settings === null ? null : resolvedDeps.getTaskInstance(settings.taskInstanceId)
+const isKaneoTarget = taskInstance?.type === 'kaneo'
+if (isGroupTarget && isKaneoTarget && isFirstTimeKaneoGroupSetup(targetContextId, resolvedDeps)) {
+  const shouldStop = await replyForProvisionOutcome(
+    reply,
+    await resolvedDeps.provisionAndConfigure(targetContextId, null),
+  )
+  if (shouldStop) {
+    return
   }
+}
 
-  await startCredentialWizard(userId, reply, targetContextId, resolvedDeps)
+await startCredentialWizard(userId, reply, targetContextId, resolvedDeps)
 ```
 
 - [ ] **Step 7: Intercept text replies for task-instance selection**
@@ -1197,7 +1213,7 @@ async function maybeHandleTaskInstanceSelection(
 In `maybeHandleSetupFlows()`, insert this immediately before `handleConfigEditorMessage()`:
 
 ```typescript
-  if (await maybeHandleTaskInstanceSelection(msg, reply, settingsTargetContextId)) return true
+if (await maybeHandleTaskInstanceSelection(msg, reply, settingsTargetContextId)) return true
 ```
 
 - [ ] **Step 8: Update setup command tests for new dependencies**
@@ -1260,6 +1276,7 @@ Expected: commit succeeds.
 ## Task 5: Update Bot Auto-Start and Required Config Checks
 
 **Files:**
+
 - Modify: `src/bot.ts`
 - Modify: `src/llm-orchestrator-config.ts`
 - Modify: `src/providers/kaneo/provision.ts`
@@ -1280,12 +1297,21 @@ test('auto-starts setup selection when authorized DM context has no task assignm
   })
 
   await addUser('admin-1', 'admin-1')
-  await messageHandler(createDmMessage('admin-1', 'hello'), { text: (text) => {
-    replies.push(text)
-    return Promise.resolve()
-  }, formatted: () => Promise.resolve(), typing: () => Promise.resolve(), buttons: () => Promise.resolve() })
+  await messageHandler(createDmMessage('admin-1', 'hello'), {
+    text: (text) => {
+      replies.push(text)
+      return Promise.resolve()
+    },
+    formatted: () => Promise.resolve(),
+    typing: () => Promise.resolve(),
+    buttons: () => Promise.resolve(),
+  })
 
-  expect(replies.some((reply) => reply.includes('Choose a task tracker') || reply.includes('No task trackers are configured'))).toBe(true)
+  expect(
+    replies.some(
+      (reply) => reply.includes('Choose a task tracker') || reply.includes('No task trackers are configured'),
+    ),
+  ).toBe(true)
 })
 ```
 
@@ -1297,7 +1323,12 @@ In `tests/llm-orchestrator.test.ts`, update the missing provider config tests to
 
 ```typescript
 const assignYouTrackContext = (contextId: string): void => {
-  insertTaskInstance({ id: `${contextId}-yt`, type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+  insertTaskInstance({
+    id: `${contextId}-yt`,
+    type: 'youtrack',
+    config: { url: 'https://yt.invalid' },
+    status: 'active',
+  })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
 }
 ```
@@ -1432,13 +1463,13 @@ export const checkRequiredProviderConfig = (_contextId: string, configId: string
 In `src/llm-orchestrator.ts`, update the call inside `ensureRequiredConfig()` from:
 
 ```typescript
-  const missing = checkRequiredProviderConfig(configId, deps)
+const missing = checkRequiredProviderConfig(configId, deps)
 ```
 
 to:
 
 ```typescript
-  const missing = checkRequiredProviderConfig(contextId, configId)
+const missing = checkRequiredProviderConfig(contextId, configId)
 ```
 
 - [ ] **Step 6: Run targeted tests to verify they pass**
@@ -1464,10 +1495,10 @@ Replace the comment above `maybeProvisionKaneo()` with:
 Replace the `TASK_PROVIDER` block at the start of `maybeProvisionKaneo()` with:
 
 ```typescript
-  const settings = getContextSettings(contextId)
-  if (settings === null) return
-  const taskInstance = getTaskInstance(settings.taskInstanceId)
-  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return
+const settings = getContextSettings(contextId)
+if (settings === null) return
+const taskInstance = getTaskInstance(settings.taskInstanceId)
+if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return
 ```
 
 - [ ] **Step 7: Run targeted tests to verify they pass**
@@ -1492,6 +1523,7 @@ Expected: commit succeeds.
 ## Task 6: Migrate LLM Orchestrator and `/context` Provider Resolution
 
 **Files:**
+
 - Modify: `src/llm-orchestrator-types.ts`
 - Modify: `src/llm-orchestrator.ts`
 - Modify: `src/commands/context-tool-resolution.ts`
@@ -1549,13 +1581,13 @@ Expected: FAIL because `LlmOrchestratorDeps` still requires `buildProviderForUse
 In `src/llm-orchestrator-types.ts`, replace:
 
 ```typescript
-  buildProviderForUser: (userId: string) => TaskProvider
+buildProviderForUser: (userId: string) => TaskProvider
 ```
 
 with:
 
 ```typescript
-  resolve: (contextId: string) => TaskProvider | null
+resolve: (contextId: string) => TaskProvider | null
 ```
 
 - [ ] **Step 4: Update orchestrator defaults and null handling**
@@ -1587,12 +1619,12 @@ with:
 Replace provider construction in `callLlm()` with:
 
 ```typescript
-  const provider = deps.resolve(configId)
-  if (provider === null) {
-    log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
-    await reply.text('I need /setup before I can do that.')
-    return { response: { messages: [] } }
-  }
+const provider = deps.resolve(configId)
+if (provider === null) {
+  log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
+  await reply.text('I need /setup before I can do that.')
+  return { response: { messages: [] } }
+}
 ```
 
 - [ ] **Step 5: Update `/context` live tool resolution**
@@ -1647,6 +1679,7 @@ Expected: commit succeeds.
 ## Task 7: Migrate Scheduler and Deferred Prompt Pollers
 
 **Files:**
+
 - Modify: `src/scheduler.ts`
 - Modify: `src/deferred-prompts/proactive-llm.ts`
 - Modify: `src/deferred-prompts/poller.ts`
@@ -1659,13 +1692,17 @@ Expected: commit succeeds.
 In `tests/scheduler.test.ts`, replace deps objects shaped as:
 
 ```typescript
-{ createProvider: () => provider }
+{
+  createProvider: () => provider
+}
 ```
 
 with:
 
 ```typescript
-{ resolve: () => provider }
+{
+  resolve: () => provider
+}
 ```
 
 Add this test for null-skip behavior:
@@ -1735,21 +1772,21 @@ Delete `getTaskProvider()`, `TASK_PROVIDER`, and local `buildProviderForUser()`.
 In `executeRecurringTask()`, replace provider construction with:
 
 ```typescript
-  const provider = deps.resolve(task.userId)
-  if (provider === null) {
-    log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
-    return
-  }
+const provider = deps.resolve(task.userId)
+if (provider === null) {
+  log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
+  return
+}
 ```
 
 In `createMissedTasks()`, replace provider construction with:
 
 ```typescript
-  const provider = resolvedDeps.resolve(task.userId)
-  if (provider === null) {
-    log.warn({ recurringTaskId, contextId: task.userId }, 'Skipping missed tasks: task provider unavailable')
-    return 0
-  }
+const provider = resolvedDeps.resolve(task.userId)
+if (provider === null) {
+  log.warn({ recurringTaskId, contextId: task.userId }, 'Skipping missed tasks: task provider unavailable')
+  return 0
+}
 ```
 
 Update `getSchedulerSnapshot()` task provider field to avoid global task provider. If the snapshot currently returns `taskProvider: TASK_PROVIDER`, replace it with:
@@ -1775,19 +1812,21 @@ export type BuildProviderFn = (contextId: string) => TaskProvider | null
 In `invokeFull()`, replace:
 
 ```typescript
-  const provider = buildProviderFn(createdByUserId)
+const provider = buildProviderFn(createdByUserId)
 ```
 
 with:
 
 ```typescript
-  const provider = buildProviderFn(storageContextId)
+const provider = buildProviderFn(storageContextId)
 ```
 
 Update the warning log object from `{ userId: createdByUserId }` to:
 
 ```typescript
-{ userId: createdByUserId, storageContextId }
+{
+  userId: (createdByUserId, storageContextId)
+}
 ```
 
 In `src/deferred-prompts/poller.ts`, inside `executeAlertsForUser()`, compute a storage context per alert group instead of using only `createdByUserId`. Add import:
@@ -1799,12 +1838,12 @@ import { getStorageContextId } from './proactive-llm-helpers.js'
 Replace provider construction at the start of `executeAlertsForUser()` with:
 
 ```typescript
-  const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
-  const provider = buildProviderFn(storageContextId)
-  if (provider === null) {
-    log.warn({ userId, storageContextId }, 'Could not build task provider for alert polling')
-    return
-  }
+const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
+const provider = buildProviderFn(storageContextId)
+if (provider === null) {
+  log.warn({ userId, storageContextId }, 'Could not build task provider for alert polling')
+  return
+}
 ```
 
 - [ ] **Step 6: Run scheduler/poller tests to verify they pass**
@@ -1829,6 +1868,7 @@ Expected: commit succeeds.
 ## Task 8: Update Startup Wiring and Remove Runtime `TASK_PROVIDER` Dependence
 
 **Files:**
+
 - Modify: `src/index.ts`
 - Modify: `src/debug/admin-system.ts`
 - Modify: `tests/debug/admin-system.test.ts` if present
@@ -1912,13 +1952,13 @@ startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(co
 Replace admin warmup:
 
 ```typescript
-  const adminProvider = buildProviderForUser(adminUserId, false)
+const adminProvider = buildProviderForUser(adminUserId, false)
 ```
 
 with:
 
 ```typescript
-  const adminProvider = defaultTaskProviderResolver.resolve(adminUserId)
+const adminProvider = defaultTaskProviderResolver.resolve(adminUserId)
 ```
 
 - [ ] **Step 5: Keep admin system status safe when `TASK_PROVIDER` is unset**
@@ -1947,6 +1987,7 @@ Expected: commit succeeds. If `tests/debug/admin-system.test.ts` does not exist 
 ## Task 9: Delete Provider Factory and Clean Remaining Callers
 
 **Files:**
+
 - Delete: `src/providers/factory.ts`
 - Modify: any file returned by `rg "buildProviderForUser|providers/factory|CONFIG_KEYS|process.env\['TASK_PROVIDER'\]" src tests`
 
@@ -2005,6 +2046,7 @@ Expected: commit succeeds.
 ## Task 10: Full Verification and Documentation Sync
 
 **Files:**
+
 - Modify: `CLAUDE.md` if it still says runtime task provider comes from env
 - Modify: `docs/superpowers/specs/2026-04-13-multi-provider-phase-2-task-provider-resolver.md` only if execution found a concrete mismatch with this plan
 

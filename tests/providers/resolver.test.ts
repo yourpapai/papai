@@ -87,7 +87,12 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a Kaneo provider with session cookie credentials', () => {
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'kaneo_apikey', 'better-auth.session_token=abc')
     setKaneoWorkspace('ctx-1', 'workspace-1')

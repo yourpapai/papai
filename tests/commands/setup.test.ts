@@ -124,7 +124,11 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
-      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
@@ -160,7 +164,11 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
-      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
@@ -198,7 +206,11 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: getConfigWithExistingApiKey,
       getKaneoWorkspace: () => 'existing-workspace',
-      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
@@ -223,7 +235,11 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
-      getContextSettings: () => ({ contextId: 'group-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' }),
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',

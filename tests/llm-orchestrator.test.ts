@@ -114,6 +114,8 @@ import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { setConfig } from '../src/config.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
+import { setContextSettings } from '../src/instances/context-store.js'
+import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
@@ -121,8 +123,6 @@ import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
 import { setKaneoWorkspace } from '../src/users.js'
-import { setContextSettings } from '../src/instances/context-store.js'
-import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 
 const CTX_ID = 'ctx-1'
 
@@ -369,8 +369,17 @@ describe('processMessage', () => {
 
     test('replies with setup guidance when resolver returns null after credentials pass', async () => {
       const freshCtx = 'resolver-null-context'
-      insertTaskInstance({ id: 'yt-prod-null', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
-      setContextSettings({ contextId: freshCtx, taskInstanceId: 'yt-prod-null', platformInstanceId: 'telegram-default' })
+      insertTaskInstance({
+        id: 'yt-prod-null',
+        type: 'youtrack',
+        config: { url: 'https://yt.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: freshCtx,
+        taskInstanceId: 'yt-prod-null',
+        platformInstanceId: 'telegram-default',
+      })
       setConfig(freshCtx, 'youtrack_token', 'perm:abc')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),

@@ -96,11 +96,7 @@ const maybeAutoLinkIdentity = async (
   }
 }
 
-const ensureRequiredConfig = async (
-  reply: ReplyFn,
-  contextId: string,
-  configId: string,
-): Promise<void> => {
+const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId: string): Promise<void> => {
   const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
   log.warn({ contextId, configId, missing }, 'Missing required provider config keys')

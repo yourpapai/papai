@@ -5,13 +5,13 @@
 
 import { handleConfigEditorMessage } from './chat/config-editor-integration.js'
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from './chat/types.js'
+import { startWizardForAssignedTask } from './commands/setup.js'
 import { listManageableGroups } from './group-settings/access.js'
 import { dispatchGroupSelectorResult } from './group-settings/dispatch.js'
 import { handleGroupSettingsSelectorMessage } from './group-settings/selector.js'
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from './group-settings/state.js'
 import { getMissingGroupTargetMessage } from './group-settings/target-validation.js'
 import { handleTaskInstanceSelectionMessage } from './setup/task-instance-selection.js'
-import { startWizardForAssignedTask } from './commands/setup.js'
 import { handleWizardMessage } from './wizard-integration.js'
 
 function maybeDispatchGroupSelector(

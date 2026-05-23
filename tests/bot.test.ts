@@ -324,7 +324,12 @@ describe('Demo Mode Auto-Provision', () => {
 function setupContextTaskAssignment(contextId: string): void {
   const taskInstanceId = `${contextId}-kaneo-test`
   if (getTaskInstance(taskInstanceId) === null) {
-    insertTaskInstance({ id: taskInstanceId, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: taskInstanceId,
+      type: 'kaneo',
+      config: { url: 'https://kaneo.invalid' },
+      status: 'active',
+    })
   }
   setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
 }
@@ -732,7 +737,12 @@ describe('Bot Authorization Gate (setupBot)', () => {
     test('auto-starts wizard for unconfigured DM messages', async () => {
       addUser('dm-needs-setup', ADMIN_ID)
       const taskInstanceId = 'dm-needs-setup-kaneo-test'
-      insertTaskInstance({ id: taskInstanceId, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+      insertTaskInstance({
+        id: taskInstanceId,
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+      })
       setContextSettings({ contextId: 'dm-needs-setup', taskInstanceId, platformInstanceId: 'telegram-default' })
       cancelWizard('dm-needs-setup', 'dm-needs-setup')
 

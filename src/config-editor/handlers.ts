@@ -8,8 +8,8 @@
  * Button callback and message handlers for standalone config editing
  */
 
-import { getConfig, isSensitiveKey, maskValue, setConfig } from '../config.js'
 import { getConfigKeysForContext } from '../config-keys.js'
+import { getConfig, isSensitiveKey, maskValue, setConfig } from '../config.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { ConfigKey } from '../types/config.js'

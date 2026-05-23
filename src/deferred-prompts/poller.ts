@@ -15,8 +15,8 @@ import { describeCondition, evaluateCondition, getEligibleAlertPrompts, updateAl
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
-import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getStorageContextId } from './proactive-llm-helpers.js'
+import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getScheduledPromptsDue } from './scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from './snapshots.js'
 import type { AlertPrompt, ScheduledPrompt } from './types.js'
@@ -221,7 +221,9 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
     [...byDeliveryContext.values()].map((alerts) =>
-      userLimit((): Promise<void> => executeAlertsForUser(alerts[0]!.createdByUserId, alerts, chat, buildProviderFn, now)),
+      userLimit(
+        (): Promise<void> => executeAlertsForUser(alerts[0]!.createdByUserId, alerts, chat, buildProviderFn, now),
+      ),
     ),
   )
   logSettledErrors(results, 'Error polling alerts for user')

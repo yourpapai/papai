@@ -81,7 +81,12 @@ function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'
 }
 
 function assignKaneoContext(contextId: string): void {
-  insertTaskInstance({ id: `${contextId}-kaneo`, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
 }
 

@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getAllConfig, isSensitiveKey, maskValue } from '../config.js'
 import { getConfigKeysForContext } from '../config-keys.js'
+import { getAllConfig, isSensitiveKey, maskValue } from '../config.js'
 import { logger } from '../logger.js'
 import type { ConfigKey } from '../types/config.js'
 

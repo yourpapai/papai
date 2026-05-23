@@ -77,17 +77,17 @@ Replaces the module-level `CONFIG_KEYS` constant. Logic:
 
 ### Callers to update
 
-| File                           | Change                                                                         |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| `src/config.ts` (getAllConfig)        | Iterate `getConfigKeysForContext(contextId)` instead of the constant                  |
-| `src/wizard/engine.ts`                | Prompt only for the assigned provider's visible keys after the task instance is bound |
-| `src/wizard/steps.ts`                 | Remove global-provider assumptions from step/summary generation                       |
-| `src/commands/setup.ts`               | Assign a task instance before starting the credential wizard                          |
-| `src/commands/config.ts`              | Render only the per-context keys + the existing Plugins section                       |
-| `src/config-editor/handlers.ts`       | Reject callback/text edits for keys outside the per-context allow-list                |
-| `src/bot.ts`                          | Auto-start setup from the context assignment instead of `process.env.TASK_PROVIDER`   |
-| `src/llm-orchestrator-config.ts`      | Compute required keys from the context assignment instead of `TASK_PROVIDER`          |
-| `src/providers/kaneo/provision.ts`    | Auto-provision only when the assigned task instance type is `kaneo`                   |
+| File                               | Change                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `src/config.ts` (getAllConfig)     | Iterate `getConfigKeysForContext(contextId)` instead of the constant                  |
+| `src/wizard/engine.ts`             | Prompt only for the assigned provider's visible keys after the task instance is bound |
+| `src/wizard/steps.ts`              | Remove global-provider assumptions from step/summary generation                       |
+| `src/commands/setup.ts`            | Assign a task instance before starting the credential wizard                          |
+| `src/commands/config.ts`           | Render only the per-context keys + the existing Plugins section                       |
+| `src/config-editor/handlers.ts`    | Reject callback/text edits for keys outside the per-context allow-list                |
+| `src/bot.ts`                       | Auto-start setup from the context assignment instead of `process.env.TASK_PROVIDER`   |
+| `src/llm-orchestrator-config.ts`   | Compute required keys from the context assignment instead of `TASK_PROVIDER`          |
+| `src/providers/kaneo/provision.ts` | Auto-provision only when the assigned task instance type is `kaneo`                   |
 
 ## Section 3: Callsite Migrations
 
@@ -144,14 +144,14 @@ If no active task instances exist, the wizard replies `No task trackers are conf
 
 ## Section 5: Error Handling
 
-| Condition                                     | Behavior                                                                    |
-| --------------------------------------------- | --------------------------------------------------------------------------- |
-| Context has no assignment                     | Resolver returns `null`; bot tells the user to `/setup`                     |
-| Assignment refers to a removed task instance  | Resolver returns `null` and logs WARN; user re-runs `/setup`                |
-| Assignment refers to an inactive task instance | Resolver returns `null` and logs WARN; user re-runs `/setup`               |
-| Credentials missing for the assigned instance | Resolver returns `null`; `/setup` flow already covers this                  |
-| Config editor on an unsupported key           | Reject with `Config key "x" is not valid for this context.`                 |
-| Strict resolver called and resolution fails   | Throw a clear `Context <id> needs /setup`; callers should prefer non-strict |
+| Condition                                      | Behavior                                                                    |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| Context has no assignment                      | Resolver returns `null`; bot tells the user to `/setup`                     |
+| Assignment refers to a removed task instance   | Resolver returns `null` and logs WARN; user re-runs `/setup`                |
+| Assignment refers to an inactive task instance | Resolver returns `null` and logs WARN; user re-runs `/setup`                |
+| Credentials missing for the assigned instance  | Resolver returns `null`; `/setup` flow already covers this                  |
+| Config editor on an unsupported key            | Reject with `Config key "x" is not valid for this context.`                 |
+| Strict resolver called and resolution fails    | Throw a clear `Context <id> needs /setup`; callers should prefer non-strict |
 
 ## Section 6: Testing Strategy
 
