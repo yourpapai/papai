@@ -194,7 +194,8 @@ This short pass was completed before starting Task 2 implementation to reduce re
 - Modify: `src/plugins/store.ts`
 - Modify: `src/index.ts`
 - Test: `tests/plugins/registry.test.ts`
-- Consider create: `src/plugins/runtime.ts`
+- Test: `tests/plugins/store.test.ts`
+- Create: `src/plugins/compatibility.ts` (startup eligibility evaluation; replaces the optional `runtime.ts` considered in the original plan)
 
 - [x] **Step 1: Write failing restart-state tests**
 
@@ -242,10 +243,10 @@ This short pass was completed before starting Task 2 implementation to reduce re
 
   Expected: registry tests pass and no TypeScript errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
-  git add src/plugins/registry.ts src/plugins/store.ts src/index.ts tests/plugins/registry.test.ts src/plugins/runtime.ts
+  git add src/plugins/registry.ts src/plugins/store.ts src/index.ts tests/plugins/registry.test.ts src/plugins/compatibility.ts tests/plugins/store.test.ts
   git commit -m "fix: separate plugin approval from runtime state"
   ```
 
@@ -316,7 +317,7 @@ This short pass was completed before starting Task 2 implementation to reduce re
   bun typecheck
   ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
   ```bash
   git add src/plugins/types.ts src/plugins/context.ts src/plugins/loader.ts \
@@ -357,7 +358,7 @@ This short pass was completed before starting Task 2 implementation to reduce re
   bun lint
   ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
   ```bash
   git add src/plugins/discovery.ts tests/plugins/discovery.test.ts
@@ -372,6 +373,7 @@ This short pass was completed before starting Task 2 implementation to reduce re
 - Modify: `src/plugins/contributions.ts`
 - Modify: `src/tools/index.ts`
 - Modify: `src/plugins/context.ts`
+- Create: `src/plugins/tool-runtime.ts` (per-request `PluginToolRuntimeContext` and task provider facade; emerged from the optional `runtime.ts` in Task 2)
 - Test: `tests/plugins/contributions.test.ts`
 - Test: `tests/tools/tools-builder.test.ts`
 
@@ -418,11 +420,11 @@ This short pass was completed before starting Task 2 implementation to reduce re
   bun typecheck
   ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add src/plugins/types.ts src/plugins/contributions.ts src/tools/index.ts src/plugins/context.ts \
-    tests/plugins/contributions.test.ts tests/tools/tools-builder.test.ts
+    src/plugins/tool-runtime.ts tests/plugins/contributions.test.ts tests/tools/tools-builder.test.ts
   git commit -m "feat: bind plugin tools to active execution context"
   ```
 
@@ -476,7 +478,7 @@ This short pass was completed before starting Task 2 implementation to reduce re
   bun typecheck
   ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add src/plugins/registry.ts src/commands/config.ts src/chat/plugin-interaction-handler.ts \
@@ -495,6 +497,8 @@ This short pass was completed before starting Task 2 implementation to reduce re
 - Modify: `src/plugins/loader.ts`
 - Modify: `src/bot.ts`
 - Modify: `src/scheduler-instance.ts` or the existing scheduler integration point
+- Create: `src/plugins/command-contributions.ts` (namespaced command registration and cleanup)
+- Create: `src/plugins/contribution-names.ts` (contribution naming/namespacing helpers)
 - Test: `tests/plugins/context.test.ts`
 - Test: `tests/plugins/contributions.test.ts`
 - Test: `tests/plugins/loader.test.ts`
@@ -526,10 +530,11 @@ This short pass was completed before starting Task 2 implementation to reduce re
   bun typecheck
   ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add src/plugins/types.ts src/plugins/context.ts src/plugins/contributions.ts src/plugins/loader.ts \
+    src/plugins/command-contributions.ts src/plugins/contribution-names.ts \
     src/bot.ts src/scheduler-instance.ts tests/plugins/context.test.ts tests/plugins/contributions.test.ts tests/plugins/loader.test.ts
   git commit -m "feat: support plugin command and job contributions"
   ```
@@ -542,6 +547,7 @@ This short pass was completed before starting Task 2 implementation to reduce re
 - Modify: `src/plugins/store.ts`
 - Modify: `src/commands/plugin.ts`
 - Modify: `src/index.ts`
+- Create: `src/plugins/prompt-contributions.ts` (prompt fragment contribution registry and budget enforcement)
 - Test: `tests/plugins/loader.test.ts`
 - Test: `tests/commands/plugin.test.ts`
 
@@ -572,11 +578,11 @@ This short pass was completed before starting Task 2 implementation to reduce re
   bun lint
   ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add src/plugins/loader.ts src/plugins/store.ts src/commands/plugin.ts src/index.ts \
-    tests/plugins/loader.test.ts tests/commands/plugin.test.ts
+    src/plugins/prompt-contributions.ts tests/plugins/loader.test.ts tests/commands/plugin.test.ts
   git commit -m "fix: harden plugin lifecycle diagnostics"
   ```
 
@@ -636,7 +642,7 @@ This short pass was completed before starting Task 2 implementation to reduce re
 
   Expected: `bun check:full` passes 12/12 checks. `bun security` has no new plugin-loading, path traversal, secret exposure, or unsafe-network findings.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add tests/plugins/integration.test.ts tests/plugins/discovery.test.ts \
@@ -671,3 +677,23 @@ Expected:
 - Migrating chat or task providers into plugins.
 - Async prompt fragment support.
 - Raw DB, raw chat provider, raw task provider, raw process env, or arbitrary network access in plugin context.
+
+## Drift Log
+
+| Date       | Category               | Item                                                                                             | Decision                                                                                                                                 |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | In-plan, stale anchors | Task 2 Step 6 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 3 Step 7 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 4 Step 4 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 5 Step 6 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 6 Step 5 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 7 Step 5 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 8 Step 5 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, stale anchors | Task 9 Step 6 commit checkbox `[ ]`                                                              | Flipped to `[x]`; code merged to master via PR #105                                                                                      |
+| 2026-05-23 | In-plan, divergent     | Task 2 "Consider create: `src/plugins/runtime.ts`" — not created                                 | Runtime concern split into `compatibility.ts` (startup eligibility) and `tool-runtime.ts` (Task 5); plan updated to reflect actual files |
+| 2026-05-23 | Out-of-plan, on-goal   | `src/plugins/command-contributions.ts` — namespaced command registration (Task 7 scope)          | Added to Task 7 Files list                                                                                                               |
+| 2026-05-23 | Out-of-plan, on-goal   | `src/plugins/compatibility.ts` — startup eligibility evaluation (Task 2 scope)                   | Added to Task 2 Files list                                                                                                               |
+| 2026-05-23 | Out-of-plan, on-goal   | `src/plugins/contribution-names.ts` — contribution naming helpers (Task 7 scope)                 | Added to Task 7 Files list                                                                                                               |
+| 2026-05-23 | Out-of-plan, on-goal   | `src/plugins/prompt-contributions.ts` — prompt fragment registry and budget enforcement (Task 8) | Added to Task 8 Files list                                                                                                               |
+| 2026-05-23 | Out-of-plan, on-goal   | `src/plugins/tool-runtime.ts` — per-request `PluginToolRuntimeContext` and task facade (Task 5)  | Added to Task 5 Files list                                                                                                               |
+| 2026-05-23 | Out-of-plan, on-goal   | `tests/plugins/store.test.ts` — plugin store layer tests (Task 2 scope)                          | Added to Task 2 Files list                                                                                                               |
