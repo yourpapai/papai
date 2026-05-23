@@ -21,7 +21,7 @@ import { flushOnShutdown } from './message-queue/index.js'
 import { discoverPlugins } from './plugins/discovery.js'
 import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
 import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
-import { buildProviderForUser } from './providers/factory.js'
+import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
@@ -30,7 +30,7 @@ import { addUser } from './users.js'
 
 const log = logger.child({ scope: 'main' })
 
-const REQUIRED_ENV_VARS = ['CHAT_PROVIDER', 'ADMIN_USER_ID', 'TASK_PROVIDER'] as const
+const REQUIRED_ENV_VARS = ['CHAT_PROVIDER', 'ADMIN_USER_ID'] as const
 
 const getEnvValue = (key: string): string => {
   const value = process.env[key]
@@ -42,29 +42,6 @@ const missing = REQUIRED_ENV_VARS.filter((v) => getEnvValue(v) === '')
 if (missing.length > 0) {
   log.error({ variables: missing }, 'Missing required environment variables')
   process.exit(1)
-}
-
-// Validate TASK_PROVIDER value and check provider-specific env vars
-const TASK_PROVIDER = process.env['TASK_PROVIDER']!
-if (TASK_PROVIDER !== 'kaneo' && TASK_PROVIDER !== 'youtrack') {
-  log.error({ TASK_PROVIDER }, 'TASK_PROVIDER must be either "kaneo" or "youtrack"')
-  process.exit(1)
-}
-
-if (TASK_PROVIDER === 'kaneo') {
-  const missingKaneo = ['KANEO_CLIENT_URL'].filter((v) => getEnvValue(v) === '')
-  if (missingKaneo.length > 0) {
-    log.error({ variables: missingKaneo }, 'Missing required Kaneo environment variables')
-    process.exit(1)
-  }
-}
-
-if (TASK_PROVIDER === 'youtrack') {
-  const missingYouTrack = ['YOUTRACK_URL'].filter((v) => getEnvValue(v) === '')
-  if (missingYouTrack.length > 0) {
-    log.error({ variables: missingYouTrack }, 'Missing required YouTrack environment variables')
-    process.exit(1)
-  }
 }
 
 log.info('Starting papai...')
@@ -100,7 +77,7 @@ log.info(
   {
     adminUserConfigured: Boolean(adminUserId),
     chatProvider: process.env['CHAT_PROVIDER'],
-    taskProvider: TASK_PROVIDER,
+    taskProviderSource: 'context_settings',
     s3Storage: isS3Configured(),
   },
   'Starting papai...',
@@ -146,7 +123,7 @@ void announceNewVersion(chatProvider, adminUserId)
 
 startScheduler(chatProvider)
 
-startPollers(chatProvider, (userId) => buildProviderForUser(userId, false))
+startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
 
 // Start the central scheduler with all cleanup tasks
 scheduler.startAll()
@@ -159,7 +136,7 @@ if (pluginErrors.length > 0) {
 }
 syncRegistryFromDb(discoveredPlugins)
 try {
-  const adminProvider = buildProviderForUser(adminUserId, false)
+  const adminProvider = defaultTaskProviderResolver.resolve(adminUserId)
   if (adminProvider !== null) {
     for (const plugin of discoveredPlugins) {
       pluginRegistry.evaluateCompatibility(plugin.manifest.id, adminProvider.capabilities, chatProvider.capabilities)

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 
 import type { BotDeps } from '../src/bot.js'
 import type { ChatProvider } from '../src/chat/types.js'
+import type { TaskProvider } from '../src/providers/types.js'
 
 const indexModuleCoverage: null | typeof import('../src/index.js') = null
 void indexModuleCoverage
@@ -49,8 +50,8 @@ describe('index.ts - graceful shutdown', () => {
   beforeEach(() => {
     process.env['CHAT_PROVIDER'] = 'telegram'
     process.env['ADMIN_USER_ID'] = 'admin-1'
-    process.env['TASK_PROVIDER'] = 'kaneo'
-    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.example.test'
+    delete process.env['TASK_PROVIDER']
+    delete process.env['KANEO_CLIENT_URL']
     delete process.env['DEBUG_SERVER']
   })
   test('message queue module exports a callable flushOnShutdown', () => {
@@ -79,7 +80,9 @@ describe('index.ts - graceful shutdown', () => {
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {
     const callOrder: string[] = []
     let capturedDeps: BotDeps | undefined
+    const resolverContexts: string[] = []
     let telegramFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
+    const originalExit = process.exit.bind(process)
 
     const chatProvider: ChatProvider = {
       name: 'telegram',
@@ -156,7 +159,9 @@ describe('index.ts - graceful shutdown', () => {
       }),
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
-      startPollers: (): void => undefined,
+      startPollers: (_chat: ChatProvider, resolveProvider: (contextId: string) => TaskProvider | null): void => {
+        void resolveProvider('poller-context-1')
+      },
       stopPollers: (): void => undefined,
     }))
     void mock.module('../src/logger.js', () => ({
@@ -170,8 +175,13 @@ describe('index.ts - graceful shutdown', () => {
     void mock.module('../src/message-queue/index.js', () => ({
       flushOnShutdown: (): Promise<void> => Promise.resolve(),
     }))
-    void mock.module('../src/providers/factory.js', () => ({
-      buildProviderForUser: (): null => null,
+    void mock.module('../src/providers/resolver.js', () => ({
+      defaultTaskProviderResolver: {
+        resolve: (contextId: string): TaskProvider | null => {
+          resolverContexts.push(contextId)
+          return null
+        },
+      },
     }))
     void mock.module('../src/scheduler-instance.js', () => ({
       scheduler: {
@@ -195,9 +205,18 @@ describe('index.ts - graceful shutdown', () => {
       addUser: (): void => undefined,
     }))
 
-    await import(`../src/index.js?startup-order=${crypto.randomUUID()}`)
+    process.exit = ((code?: string | number | null): never => {
+      throw new Error(`process.exit:${String(code)}`)
+    }) as typeof process.exit
+
+    try {
+      await import(`../src/index.js?startup-order=${crypto.randomUUID()}`)
+    } finally {
+      process.exit = originalExit
+    }
 
     expect(callOrder).toEqual(['setupBot', 'start'])
+    expect(resolverContexts).toEqual(['poller-context-1', 'admin-1'])
     assert.ok(capturedDeps !== undefined)
     assert.ok(capturedDeps.stagedDownloadFn !== undefined)
 
