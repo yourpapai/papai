@@ -121,6 +121,8 @@ ADRs capture the context, options considered, and rationale behind significant a
 | [0118](0118-codeindex-tier1-completion.md)                           | Codeindex Tier 1 Implementation Completion — Extraction to Standalone Repository                              | 2026-05-19 | Implemented (with extraction divergence)                    |
 | [0119](0119-file-attachments-implementation.md)                      | Shared Attachment Pipeline — Durable File Handling for LLM and Tool Workflows                                 | 2026-04-11 | Implemented (with divergence)                               |
 | [0120](0120-central-llm-credentials-usage-billing-stats.md)          | Central LLM Credentials, Usage Telemetry, Billing Dashboard, Tool-Call Rows, and Anonymous DB-Wide Statistics | 2026-05-19 | Implemented (with architectural extensions)                 |
+| [0121](0121-dashboard-admin-split-and-redesign.md)                   | Debug/Admin Surface Split and Dashboard Redesign                                                              | 2026-05-21 | Implemented (with noted deviations)                         |
+| [0122](0122-kaneo-label-semantics.md)                                | Kaneo Scope-Aware Label Semantics                                                                             | 2026-05-22 | Implemented (with noted deviations)                         |
 
 ## Declined
 
