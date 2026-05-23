@@ -8,67 +8,143 @@ import { tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
+import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
-import type { PluginContributions, PluginManifest, PluginPromptFragment, PluginTool } from './types.js'
+import { namespacedJobName, namespacedToolName } from './contribution-names.js'
+import { getEnabledContextsForPlugin } from './store.js'
+import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from './tool-runtime.js'
+import type {
+  PluginCommand,
+  PluginContributions,
+  PluginManifest,
+  PluginPromptFragment,
+  PluginScheduledJob,
+  PluginTool,
+} from './types.js'
 
 const log = logger.child({ scope: 'plugins:contributions' })
-
-/** Maximum prompt fragment length per plugin (characters). */
-export const MAX_FRAGMENT_LENGTH_PER_PLUGIN = 2000
-
-/** Maximum total plugin prompt budget (characters). */
-export const MAX_TOTAL_PLUGIN_PROMPT_LENGTH = 8000
-
-/** Sanitize a plugin ID to a valid tool name prefix (replace hyphens with underscores). */
-export function sanitizePluginId(pluginId: string): string {
-  return pluginId.replace(/-/gu, '_')
-}
-
-/** Namespace a tool name under a plugin. */
-export function namespacedToolName(pluginId: string, toolName: string): string {
-  return `plugin_${sanitizePluginId(pluginId)}__${toolName}`
-}
+export { namespacedJobName, namespacedToolName, sanitizePluginId } from './contribution-names.js'
 
 /** Active contributions from a single plugin. */
 export type ActivePluginContributions = {
   pluginId: string
+  manifest: PluginManifest
   tools: PluginTool[]
   promptFragments: PluginPromptFragment[]
+  commands: PluginCommand[]
+  jobs: PluginScheduledJob[]
 }
+
+export type { PluginToolSetRuntime } from './tool-runtime.js'
 
 /** Registry of active plugin contributions (in-memory, per-process). */
 class PluginContributionRegistry {
   private readonly activeContributions = new Map<string, ActivePluginContributions>()
 
-  register(pluginId: string, rawContributions: PluginContributions, manifest: PluginManifest): void {
-    // Validate all contributed tools are in the manifest
+  private unregisterPluginJobs(pluginId: string): void {
+    const existing = this.activeContributions.get(pluginId)
+    if (existing === undefined) return
+    existing.jobs.forEach((job) => {
+      const owner = namespacedJobName(pluginId, job.name)
+      if (scheduler.hasTask(owner)) scheduler.unregister(owner)
+    })
+  }
+
+  private registerPluginJobs(pluginId: string, jobs: readonly PluginScheduledJob[]): void {
+    jobs.forEach((job) => {
+      const owner = namespacedJobName(pluginId, job.name)
+      if (scheduler.hasTask(owner)) scheduler.unregister(owner)
+      scheduler.register(owner, {
+        interval: job.intervalMs,
+        handler: () => runPluginScheduledJob(pluginId, job.name),
+        options: { immediate: false },
+      })
+      scheduler.start(owner)
+    })
+  }
+
+  private getValidTools(
+    pluginId: string,
+    rawContributions: PluginContributions,
+    manifest: PluginManifest,
+  ): PluginTool[] {
     const declaredTools = new Set(manifest.contributes.tools)
-    const validTools = rawContributions.tools.filter((t) => {
+    return rawContributions.tools.filter((t) => {
       if (declaredTools.has(t.name)) return true
       log.warn({ pluginId, toolName: t.name }, 'Plugin contributed undeclared tool — skipping')
       return false
     })
+  }
 
-    // Validate all contributed prompt fragments are in the manifest
+  private getValidPromptFragments(
+    pluginId: string,
+    rawContributions: PluginContributions,
+    manifest: PluginManifest,
+  ): PluginPromptFragment[] {
     const declaredFragments = new Set(manifest.contributes.promptFragments)
-    const validFragments = rawContributions.promptFragments.filter((f) => {
+    return rawContributions.promptFragments.filter((f) => {
       if (declaredFragments.has(f.name)) return true
       log.warn({ pluginId, fragmentName: f.name }, 'Plugin contributed undeclared prompt fragment — skipping')
       return false
     })
+  }
+
+  private getValidCommands(
+    pluginId: string,
+    rawContributions: PluginContributions,
+    manifest: PluginManifest,
+  ): PluginCommand[] {
+    const declaredCommands = new Set(manifest.contributes.commands)
+    return (rawContributions.commands ?? []).filter((command) => {
+      if (declaredCommands.has(command.name)) return true
+      log.warn({ pluginId, commandName: command.name }, 'Plugin contributed undeclared command — skipping')
+      return false
+    })
+  }
+
+  private getValidJobs(
+    pluginId: string,
+    rawContributions: PluginContributions,
+    manifest: PluginManifest,
+  ): PluginScheduledJob[] {
+    const declaredJobs = new Set(manifest.contributes.jobs)
+    return (rawContributions.jobs ?? []).filter((job) => {
+      if (declaredJobs.has(job.name)) return true
+      log.warn({ pluginId, jobName: job.name }, 'Plugin contributed undeclared scheduled job — skipping')
+      return false
+    })
+  }
+
+  register(pluginId: string, rawContributions: PluginContributions, manifest: PluginManifest): void {
+    this.unregisterPluginJobs(pluginId)
+    const validTools = this.getValidTools(pluginId, rawContributions, manifest)
+    const validFragments = this.getValidPromptFragments(pluginId, rawContributions, manifest)
+    const validCommands = this.getValidCommands(pluginId, rawContributions, manifest)
+    const validJobs = this.getValidJobs(pluginId, rawContributions, manifest)
 
     this.activeContributions.set(pluginId, {
       pluginId,
+      manifest,
       tools: validTools,
       promptFragments: validFragments,
+      commands: validCommands,
+      jobs: validJobs,
     })
+    this.registerPluginJobs(pluginId, validJobs)
     log.info(
-      { pluginId, toolCount: validTools.length, fragmentCount: validFragments.length },
+      {
+        pluginId,
+        toolCount: validTools.length,
+        fragmentCount: validFragments.length,
+        commandCount: validCommands.length,
+        jobCount: validJobs.length,
+      },
       'Plugin contributions registered',
     )
   }
 
   deregister(pluginId: string): void {
+    this.unregisterPluginJobs(pluginId)
     this.activeContributions.delete(pluginId)
     log.debug({ pluginId }, 'Plugin contributions deregistered')
   }
@@ -89,11 +165,26 @@ class PluginContributionRegistry {
 /** Singleton contribution registry. */
 export const contributionRegistry = new PluginContributionRegistry()
 
+export async function runPluginScheduledJob(pluginId: string, jobName: string): Promise<void> {
+  const contributions = contributionRegistry.getContributions(pluginId)
+  const job = contributions?.jobs.find((candidate) => candidate.name === jobName)
+  if (job === undefined) return
+
+  await getEnabledContextsForPlugin(pluginId).reduce(
+    (chain, contextId) => chain.then(() => Promise.resolve(job.execute(contextId))),
+    Promise.resolve(),
+  )
+}
+
 /**
  * Build a ToolSet from the active plugin contributions for a given set of active plugin IDs.
  * Collisions with built-in tool names or other plugin tools are rejected with a warning.
  */
-export function buildPluginToolSet(activePluginIds: string[], existingToolNames: ReadonlySet<string>): ToolSet {
+export function buildPluginToolSet(
+  activePluginIds: string[],
+  existingToolNames: ReadonlySet<string>,
+  runtime: PluginToolSetRuntime,
+): ToolSet {
   const pluginTools: ToolSet = {}
   const usedNames = new Set<string>(existingToolNames)
 
@@ -112,7 +203,13 @@ export function buildPluginToolSet(activePluginIds: string[], existingToolNames:
       usedNames.add(namespacedName)
 
       const schema = pluginTool.inputSchema ?? z.object({})
-      const wrappedExecute = wrapToolExecution(pluginTool.execute, namespacedName)
+      const wrappedExecute = wrapToolExecution((input, options) => {
+        return pluginTool.execute(
+          input,
+          buildPluginToolRuntimeContext(pluginId, contributions.manifest, runtime),
+          options,
+        )
+      }, namespacedName)
 
       pluginTools[namespacedName] = tool({
         description: pluginTool.description,
@@ -123,39 +220,4 @@ export function buildPluginToolSet(activePluginIds: string[], existingToolNames:
   }
 
   return pluginTools
-}
-
-/**
- * Build prompt fragment text for the active plugin IDs.
- * Enforces per-plugin and total length budgets.
- */
-export function buildPluginPromptSection(activePluginIds: string[]): string {
-  const sections: string[] = []
-  let totalLength = 0
-
-  for (const pluginId of activePluginIds) {
-    const contributions = contributionRegistry.getContributions(pluginId)
-    if (contributions === undefined || contributions.promptFragments.length === 0) continue
-
-    for (const fragment of contributions.promptFragments) {
-      if (totalLength >= MAX_TOTAL_PLUGIN_PROMPT_LENGTH) {
-        log.warn({ pluginId }, 'Total plugin prompt budget exceeded — stopping')
-        break
-      }
-
-      const rawContent = typeof fragment.content === 'function' ? fragment.content() : fragment.content
-      const truncated =
-        rawContent.length > MAX_FRAGMENT_LENGTH_PER_PLUGIN
-          ? rawContent.slice(0, MAX_FRAGMENT_LENGTH_PER_PLUGIN - '[truncated]'.length) + '[truncated]'
-          : rawContent
-
-      const section = `<!-- plugin:${pluginId}:${fragment.name} -->\n${truncated}\n<!-- /plugin:${pluginId}:${fragment.name} -->`
-      sections.push(section)
-      totalLength += section.length
-    }
-
-    if (totalLength >= MAX_TOTAL_PLUGIN_PROMPT_LENGTH) break
-  }
-
-  return sections.join('\n\n')
 }

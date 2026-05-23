@@ -6,10 +6,11 @@
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
-import { getAllConfig, maskValue } from '../config.js'
+import { getAllConfig, getPluginConfig, maskValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
-import { pluginRegistry, isPluginActiveForContext } from '../plugins/registry.js'
+import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
+import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
 import { CONFIG_KEYS, type ConfigKey } from '../types/config.js'
 
@@ -65,18 +66,49 @@ function encodePluginContextId(contextId: string): string {
   return Buffer.from(contextId).toString('base64url')
 }
 
+function maskPluginConfigValue(value: string): string {
+  return `****${value.slice(-4)}`
+}
+
+function isPluginSelectedForContext(entry: PluginRegistryEntry, targetContextId: string): boolean {
+  const state = getPluginContextState(entry.discoveredPlugin.manifest.id, targetContextId)
+  return state === undefined ? entry.discoveredPlugin.manifest.defaultEnabled : state.enabled
+}
+
+function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string): string {
+  const selected = isPluginSelectedForContext(entry, targetContextId)
+  const source =
+    getPluginContextState(entry.discoveredPlugin.manifest.id, targetContextId) === undefined && selected
+      ? ' (default)'
+      : ''
+  if (!selected) return 'disabled'
+
+  const eligibility = getPluginContextEligibility(entry.discoveredPlugin.manifest.id, targetContextId)
+  if (eligibility.eligible) return `enabled${source}`
+  if (eligibility.reason === 'config_missing') return 'unavailable (missing config)'
+  return 'disabled'
+}
+
+function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntry, targetContextId: string): void {
+  for (const requirement of entry.discoveredPlugin.manifest.configRequirements) {
+    const value = getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
+    const displayedValue =
+      value === null || value === '' ? '*(not set)*' : requirement.sensitive ? maskPluginConfigValue(value) : value
+    lines.push(`  - ${requirement.label} (${requirement.required ? 'required' : 'optional'}): ${displayedValue}`)
+  }
+}
+
 function appendPluginConfigLines(lines: string[], targetContextId: string): void {
   const pluginEntries = pluginRegistry.getAllEntries().filter((entry) => entry.state === 'active')
   if (pluginEntries.length === 0) return
 
   lines.push('\n🧩 **Plugins**')
   for (const entry of pluginEntries) {
-    const state = getPluginContextState(entry.discoveredPlugin.manifest.id, targetContextId)
-    const enabled = isPluginActiveForContext(entry.discoveredPlugin.manifest.id, targetContextId)
-    const source = state === undefined && entry.discoveredPlugin.manifest.defaultEnabled ? ' (default)' : ''
-    lines.push(
-      `${enabled ? '🟢' : '⭕'} ${entry.discoveredPlugin.manifest.name}: ${enabled ? 'enabled' : 'disabled'}${source}`,
-    )
+    const eligible = isPluginActiveForContext(entry.discoveredPlugin.manifest.id, targetContextId)
+    const selected = isPluginSelectedForContext(entry, targetContextId)
+    const marker = eligible ? '🟢' : selected ? '🟠' : '⭕'
+    lines.push(`${marker} ${entry.discoveredPlugin.manifest.name}: ${formatPluginStatus(entry, targetContextId)}`)
+    appendPluginRequirementLines(lines, entry, targetContextId)
   }
 }
 

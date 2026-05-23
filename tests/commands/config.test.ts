@@ -8,7 +8,10 @@ import assert from 'node:assert/strict'
 
 import type { ChatCapability, CommandHandler } from '../../src/chat/types.js'
 import { registerConfigCommand, renderConfigForTarget } from '../../src/commands/config.js'
-import { setConfig } from '../../src/config.js'
+import { setConfig, setPluginConfig } from '../../src/config.js'
+import { pluginRegistry } from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { clearUserCache } from '../utils/test-cache.js'
 import {
   createAuth,
@@ -20,6 +23,36 @@ import {
 } from '../utils/test-helpers.js'
 
 const USER_ID = 'config-test-user'
+
+function makePlugin(pluginId: string, overrides: Partial<DiscoveredPlugin['manifest']> = {}): DiscoveredPlugin {
+  return {
+    manifest: {
+      id: pluginId,
+      name: 'Config Test Plugin',
+      version: '1.0.0',
+      description: 'Plugin config render test',
+      apiVersion: PLUGIN_API_VERSION,
+      main: 'index.ts',
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      permissions: [],
+      defaultEnabled: true,
+      activationTimeoutMs: 5000,
+      requiredTaskCapabilities: [],
+      requiredChatCapabilities: [],
+      configRequirements: [],
+      ...overrides,
+    },
+    pluginDir: `/tmp/${pluginId}`,
+    entryPoint: `/tmp/${pluginId}/index.ts`,
+    manifestHash: `hash-${pluginId}`,
+  }
+}
+
+function registerActivePlugin(plugin: DiscoveredPlugin): void {
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+  pluginRegistry.markActive(plugin.manifest.id)
+}
 
 describe('/config Command', () => {
   let configHandler: CommandHandler | null
@@ -55,6 +88,45 @@ describe('/config Command', () => {
       // (exclude the hint line at the end)
       const configLines = lines.filter((line) => line.includes(':'))
       expect(configLines.every((line) => line.includes('(not set)'))).toBe(true)
+    })
+
+    test('shows missing required plugin config under an unavailable plugin', async () => {
+      const pluginId = 'config-render-missing-plugin'
+      registerActivePlugin(
+        makePlugin(pluginId, {
+          name: 'Missing Config Plugin',
+          configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+        }),
+      )
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, USER_ID, true)
+
+      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('Missing Config Plugin')
+      expect(buttonCalls[0]).toContain('unavailable')
+      expect(buttonCalls[0]).toContain('API Token')
+      expect(buttonCalls[0]).toContain('required')
+      expect(buttonCalls[0]).toContain('*(not set)*')
+    })
+
+    test('masks sensitive plugin config values in config output', async () => {
+      const pluginId = 'config-render-sensitive-plugin'
+      registerActivePlugin(
+        makePlugin(pluginId, {
+          name: 'Sensitive Config Plugin',
+          configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+        }),
+      )
+      setPluginConfig(USER_ID, pluginId, 'api_token', 'secret-token-1234')
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, USER_ID, true)
+
+      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('API Token')
+      expect(buttonCalls[0]).toContain('****1234')
+      expect(buttonCalls[0]).not.toContain('secret-token-1234')
     })
 
     test('starts with a personal/group selector in DM', async () => {

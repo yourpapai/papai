@@ -74,6 +74,73 @@ The approved design aimed at both first-party modularity and future third-party 
 5. **Required config is parsed but unused.** Active plugins can expose tools/prompts for contexts that are missing required plugin config.
 6. **Test coverage does not match the risk.** Discovery, loader lifecycle, prompt/config/tool eligibility, plugin interactions, and end-to-end lifecycle tests are insufficient.
 
+## Pre-implementation hardening pass (2026-05-23)
+
+This short pass was completed before starting Task 2 implementation to reduce rework risk and lock immediate execution gates.
+
+- [x] **Baseline verification run**
+
+  Executed successfully:
+
+  ```bash
+  bun test tests/plugins tests/commands/plugin.test.ts tests/commands/config.test.ts tests/system-prompt.test.ts
+  bun typecheck
+  ```
+
+  Observed: 105 tests passing, 0 failing, and TypeScript check clean.
+
+- [x] **Plan-to-code drift recheck**
+
+  Re-validated current code status against this plan in:
+  - `src/plugins/{types,discovery,registry,context,contributions,loader,store}.ts`
+  - `src/tools/index.ts`
+  - `src/system-prompt.ts`
+  - `src/commands/{plugin,config}.ts`
+  - `src/chat/{plugin-interaction-handler,interaction-router}.ts`
+  - `src/index.ts`
+
+- [x] **Migration baseline recheck**
+
+  Confirmed `src/db/index.ts` registers `migration039Plugins` exactly once and no `028_plugins` migration file is present.
+
+- [x] **Missing test-file inventory recheck**
+
+  Confirmed expected gaps remain:
+  - missing: `tests/plugins/context.test.ts`
+  - missing: `tests/plugins/integration.test.ts`
+  - missing: `tests/chat/plugin-interaction-handler.test.ts`
+  - present but not plugin-focused yet: `tests/commands/config.test.ts`
+
+- [x] **Decision gate A: entry contract strictness (required before Task 3 merge)**
+
+  Required explicit choice:
+  - strict factory-only default export, or
+  - temporary object-export compatibility wrapper.
+
+  Recommended default for this MVP: strict factory-only contract with one transitional compatibility release note in developer docs.
+
+  Decision: strict factory-only default export. Object-style default exports are rejected and documented in the developer guide.
+
+- [x] **Decision gate B: durable vs runtime state split (required before Task 2 merge)**
+
+  Required explicit choice:
+  - keep durable admin state as `approved/discovered/rejected` only,
+  - move `active/error/incompatible/config_missing` to recomputed runtime state + runtime events.
+
+  Recommended default: keep transient states out of durable admin state and recompute runtime eligibility each startup.
+
+  Decision: durable admin state is normalized to approval state on discovery; transient active/error/incompatible state stays in process memory and runtime events.
+
+- [x] **Decision gate C: Task 7 MVP surface (required before Task 7 starts)**
+
+  Required explicit choice:
+  - implement plugin commands/jobs in MVP, or
+  - remove them from MVP manifest/docs in a single deferral commit.
+
+  Recommended default: implement minimal namespaced command/job support if it can be completed with deterministic cleanup and test coverage in this branch; otherwise defer explicitly in one commit.
+
+  Decision: implement minimal namespaced command and scheduled-job contribution support in the MVP.
+
 ---
 
 ## Task 1: Re-baseline docs and canonical migration state
@@ -129,7 +196,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Test: `tests/plugins/registry.test.ts`
 - Consider create: `src/plugins/runtime.ts`
 
-- [ ] **Step 1: Write failing restart-state tests**
+- [x] **Step 1: Write failing restart-state tests**
 
   Add tests proving these behaviors:
   - an entry persisted as `active` with a matching approved manifest hash is treated as eligible for activation on the next startup
@@ -137,7 +204,7 @@ The approved design aimed at both first-party modularity and future third-party 
   - an `incompatible` plugin can recover to eligible when required capabilities later become available
   - a changed manifest hash still reverts to `discovered` and clears approval
 
-- [ ] **Step 2: Normalize persisted state on discovery**
+- [x] **Step 2: Normalize persisted state on discovery**
 
   Implement a pure helper, for example:
 
@@ -152,7 +219,7 @@ The approved design aimed at both first-party modularity and future third-party 
 
   Use this during `registerDiscovered()` so runtime states from previous processes do not block activation.
 
-- [ ] **Step 3: Stop persisting transient `active` as the durable admin decision**
+- [x] **Step 3: Stop persisting transient `active` as the durable admin decision**
 
   Either:
   1. move active/error/incompatible to an in-memory runtime map in `src/plugins/runtime.ts`, or
@@ -160,11 +227,11 @@ The approved design aimed at both first-party modularity and future third-party 
 
   The preferred shape is option 1 if `/plugin list` needs to show runtime status separately from durable approval.
 
-- [ ] **Step 4: Re-evaluate compatibility every startup**
+- [x] **Step 4: Re-evaluate compatibility every startup**
 
   Ensure `src/index.ts` calls compatibility evaluation for every plugin whose durable state is approved, not only plugins restored as literal `approved` after previous runtime states.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run:
 
@@ -195,7 +262,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Test: `tests/plugins/loader.test.ts`
 - Create: `tests/plugins/context.test.ts`
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
   Cover:
   - default export function returning `{ activate, deactivate? }` is accepted
@@ -205,7 +272,7 @@ The approved design aimed at both first-party modularity and future third-party 
   - `ctx`, `ctx.registration`, `ctx.kv`, and `ctx.log` are frozen or otherwise non-replaceable
   - storage permission denial throws when `ctx.kv` is used without `storage`
 
-- [ ] **Step 2: Define the canonical plugin types**
+- [x] **Step 2: Define the canonical plugin types**
 
   Use this public shape unless a later design update explicitly changes it:
 
@@ -218,11 +285,11 @@ The approved design aimed at both first-party modularity and future third-party 
   export type PluginFactory = () => PluginInstance
   ```
 
-- [ ] **Step 3: Update the loader import path**
+- [x] **Step 3: Update the loader import path**
 
   `importPluginModule()` should import the module, extract `default`, require it to be a function, call it once, and validate that the returned instance has an `activate` function.
 
-- [ ] **Step 4: Keep `PluginContext` intentionally narrow**
+- [x] **Step 4: Keep `PluginContext` intentionally narrow**
 
   For this task, keep the already-supported MVP context surface:
   - `pluginId`
@@ -235,11 +302,11 @@ The approved design aimed at both first-party modularity and future third-party 
 
   Jobs, commands, task facades, and chat facades are added in later tasks so this task stays reviewable.
 
-- [ ] **Step 5: Sync developer docs and example**
+- [x] **Step 5: Sync developer docs and example**
 
   Update `docs/plugins/developer-guide.md` and `docs/plugins/examples/hello-world/index.ts` so the example imports `PluginFactory` from `src/plugins/types.js`, exports a function, and uses only supported context properties.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
   Run:
 
@@ -265,7 +332,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Modify: `src/plugins/discovery.ts`
 - Test: `tests/plugins/discovery.test.ts`
 
-- [ ] **Step 1: Write missing discovery tests**
+- [x] **Step 1: Write missing discovery tests**
 
   Add tests for:
   - missing `plugins/` directory returns no plugins and no errors
@@ -274,14 +341,14 @@ The approved design aimed at both first-party modularity and future third-party 
   - unsafe `main` path with `..` or absolute path is rejected
   - symlinked plugin directory is rejected
   - symlinked entry point resolving outside the plugin dir is rejected
-  - duplicate plugin IDs are reported deterministically
+  - duplicate plugin IDs are defensively handled; current strict `manifest.id === directoryName` validation makes duplicate valid IDs unreachable through normal directory discovery, so coverage asserts that invariant instead of manufacturing an impossible duplicate fixture
   - discovered plugins are sorted by ID/directory order
 
-- [ ] **Step 2: Fix implementation only where tests expose gaps**
+- [x] **Step 2: Fix implementation only where tests expose gaps**
 
   Keep discovery synchronous if that remains simpler for startup. Preserve the existing `DiscoveryResult` shape and structured warning logs.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
   Run:
 
@@ -308,7 +375,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Test: `tests/plugins/contributions.test.ts`
 - Test: `tests/tools/tools-builder.test.ts`
 
-- [ ] **Step 1: Write failing tool eligibility and runtime-context tests**
+- [x] **Step 1: Write failing tool eligibility and runtime-context tests**
 
   Cover:
   - built-in tools remain present when no plugin is active
@@ -318,7 +385,7 @@ The approved design aimed at both first-party modularity and future third-party 
   - plugin tools requiring `tasks.read` or `tasks.write` fail closed without that permission
   - collisions with built-in or other plugin names are rejected deterministically
 
-- [ ] **Step 2: Introduce a runtime tool context**
+- [x] **Step 2: Introduce a runtime tool context**
 
   Add a type similar to:
 
@@ -334,15 +401,15 @@ The approved design aimed at both first-party modularity and future third-party 
 
   The facade should expose only operations allowed by plugin permissions. If a complete task facade is too large, start with no raw provider exposure and make task facades a separate subtask before enabling `tasks.read`/`tasks.write` permissions.
 
-- [ ] **Step 3: Build plugin tools per tool assembly**
+- [x] **Step 3: Build plugin tools per tool assembly**
 
   `makeTools(provider, options)` should build plugin tools for the active context using current `provider`, `storageContextId`, and `chatUserId`, not rely on globally bound execution state from activation.
 
-- [ ] **Step 4: Preserve wrapping and attribution**
+- [x] **Step 4: Preserve wrapping and attribution**
 
   Plugin tool executions must continue to flow through `wrapToolExecution()` and include the namespaced tool name in logs/errors.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run:
 
@@ -373,7 +440,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Test: `tests/tools/tools-builder.test.ts`
 - Test: `tests/system-prompt.test.ts`
 
-- [ ] **Step 1: Write failing eligibility tests**
+- [x] **Step 1: Write failing eligibility tests**
 
   Cover:
   - active plugin with missing required config is shown as unavailable/missing config for that target context
@@ -382,7 +449,7 @@ The approved design aimed at both first-party modularity and future third-party 
   - sensitive config values are masked with existing `maskValue()` behavior or an explicit plugin-sensitive mask
   - managed-group target validation matches existing `/config` group-target rules
 
-- [ ] **Step 2: Add an eligibility helper**
+- [x] **Step 2: Add an eligibility helper**
 
   Add a helper such as:
 
@@ -394,11 +461,11 @@ The approved design aimed at both first-party modularity and future third-party 
 
   Use it from tools, prompt, config rendering, and interaction responses so all surfaces agree.
 
-- [ ] **Step 3: Render plugin config requirements in `/config`**
+- [x] **Step 3: Render plugin config requirements in `/config`**
 
   For the selected target context, show plugin config rows under the plugin entry. Required missing fields should be visible and actionable. Sensitive values must never be printed raw.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
   Run:
 
@@ -433,11 +500,11 @@ The approved design aimed at both first-party modularity and future third-party 
 - Test: `tests/plugins/loader.test.ts`
 - Test: command/scheduler tests as needed
 
-- [ ] **Step 1: Decide the MVP surface**
+- [x] **Step 1: Decide the MVP surface**
 
   Because the approved design and manifest currently include commands and jobs, the preferred path is to implement them. If implementation is intentionally deferred, remove `commands`, `jobs`, `scheduler`, and `commands` permission from the MVP schema/docs in one explicit commit and record the deferral.
 
-- [ ] **Step 2: Write failing tests for the chosen path**
+- [x] **Step 2: Write failing tests for the chosen path**
 
   If implementing:
   - declared plugin command registers under a safe namespaced command or explicit plugin command namespace
@@ -446,11 +513,11 @@ The approved design aimed at both first-party modularity and future third-party 
   - job execution is scoped to contexts where the plugin is enabled
   - deactivation unregisters commands/jobs owned by that plugin
 
-- [ ] **Step 3: Implement framework-owned registration and cleanup**
+- [x] **Step 3: Implement framework-owned registration and cleanup**
 
   Track all command/job registrations by plugin ID in `contributionRegistry` or a companion registry. Deactivation must remove every contribution even if plugin `deactivate()` throws.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
   Run:
 
@@ -478,7 +545,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Test: `tests/plugins/loader.test.ts`
 - Test: `tests/commands/plugin.test.ts`
 
-- [ ] **Step 1: Expand loader tests**
+- [x] **Step 1: Expand loader tests**
 
   Cover:
   - successful activation registers contributions and runtime event
@@ -488,15 +555,15 @@ The approved design aimed at both first-party modularity and future third-party 
   - deactivation runs in reverse activation order
   - deactivation error still cleans framework-owned contributions
 
-- [ ] **Step 2: Fix lifecycle behavior**
+- [x] **Step 2: Fix lifecycle behavior**
 
   Use bounded concurrency only where ordering does not matter. If reverse deactivation order is required, deactivation should execute deterministically rather than concurrently reversing a list and then racing all tasks.
 
-- [ ] **Step 3: Expand `/plugin` command tests**
+- [x] **Step 3: Expand `/plugin` command tests**
 
   Cover list/info/approve/reject/enable/disable, non-admin denial, group-context denial, manifest-change reapproval message, incompatible diagnostics, runtime error diagnostics, and restart-required messaging.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
   Run:
 
@@ -524,7 +591,7 @@ The approved design aimed at both first-party modularity and future third-party 
 - Modify: `docs/plugins/examples/hello-world/plugin.json`
 - Modify: `docs/superpowers/remaining/2026-03-30-plugin-system-implementation.md`
 
-- [ ] **Step 1: Write the lifecycle integration test**
+- [x] **Step 1: Write the lifecycle integration test**
 
   Cover the complete happy path:
   1. create a temporary plugin directory with a valid manifest and entry point
@@ -538,11 +605,11 @@ The approved design aimed at both first-party modularity and future third-party 
   9. verify its prompt fragment appears in `buildSystemPrompt()` only for that context
   10. deactivate it and verify contributions are gone
 
-- [ ] **Step 2: Add failure lifecycle tests**
+- [x] **Step 2: Add failure lifecycle tests**
 
   Cover manifest hash changes, missing provider capabilities, missing required config, activation failure, and context opt-out.
 
-- [ ] **Step 3: Sync docs to the finished MVP**
+- [x] **Step 3: Sync docs to the finished MVP**
 
   The developer guide must accurately state:
   - trusted local plugin boundary
@@ -554,11 +621,11 @@ The approved design aimed at both first-party modularity and future third-party 
   - approval/restart behavior
   - validation commands for plugin developers
 
-- [ ] **Step 4: Update remaining-work doc**
+- [x] **Step 4: Update remaining-work doc**
 
   Mark completed phases and list only true follow-ups such as sandboxing, encrypted secrets, provider-as-plugin migration, and hot reload.
 
-- [ ] **Step 5: Final verification**
+- [x] **Step 5: Final verification**
 
   Run:
 

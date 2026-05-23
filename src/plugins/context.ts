@@ -9,11 +9,11 @@ import type {
   PluginContributions,
   PluginManifest,
   PluginPermission,
+  PluginCommand,
   PluginTool,
   PluginPromptFragment,
+  PluginScheduledJob,
 } from './types.js'
-
-const log = logger.child({ scope: 'plugins:context' })
 
 /** Context-scoped KV store exposed to a plugin. */
 export type PluginKvStore = {
@@ -37,6 +37,10 @@ export type PluginRegistration = {
   registerTool(tool: PluginTool): void
   /** Register a prompt fragment. The name must match a declared contributes.promptFragments entry. */
   registerPromptFragment(fragment: PluginPromptFragment): void
+  /** Register a command. The name must match a declared contributes.commands entry. */
+  registerCommand(command: PluginCommand): void
+  /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
+  registerScheduledJob(job: PluginScheduledJob): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -50,7 +54,7 @@ export type PluginContext = {
 }
 
 function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
-  return {
+  return Object.freeze({
     get(key: string): string | undefined {
       return kvGet(pluginId, contextId, key)
     },
@@ -63,12 +67,12 @@ function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
     list(prefix?: string): Array<{ key: string; value: string }> {
       return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
     },
-  }
+  })
 }
 
 function buildPluginLogger(pluginId: string): PluginLogger {
   const scopedLog = logger.child({ scope: 'plugin', pluginId })
-  return {
+  return Object.freeze({
     debug(data: Record<string, unknown>, msg: string): void {
       scopedLog.debug(data, msg)
     },
@@ -81,32 +85,43 @@ function buildPluginLogger(pluginId: string): PluginLogger {
     error(data: Record<string, unknown>, msg: string): void {
       scopedLog.error(data, msg)
     },
-  }
+  })
 }
 
 function buildRegistration(manifest: PluginManifest, collected: PluginContributions): PluginRegistration {
   const declaredTools = new Set(manifest.contributes.tools)
   const declaredFragments = new Set(manifest.contributes.promptFragments)
+  const declaredCommands = new Set(manifest.contributes.commands)
+  const declaredJobs = new Set(manifest.contributes.jobs)
 
-  return {
+  return Object.freeze({
     registerTool(pluginTool: PluginTool): void {
       if (!declaredTools.has(pluginTool.name)) {
-        log.warn({ pluginId: manifest.id, toolName: pluginTool.name }, 'Undeclared tool registration rejected')
-        return
+        throw new Error(`Tool '${pluginTool.name}' is not declared in plugin manifest contributes.tools`)
       }
       collected.tools.push(pluginTool)
     },
     registerPromptFragment(fragment: PluginPromptFragment): void {
       if (!declaredFragments.has(fragment.name)) {
-        log.warn(
-          { pluginId: manifest.id, fragmentName: fragment.name },
-          'Undeclared prompt fragment registration rejected',
+        throw new Error(
+          `Prompt fragment '${fragment.name}' is not declared in plugin manifest contributes.promptFragments`,
         )
-        return
       }
       collected.promptFragments.push(fragment)
     },
-  }
+    registerCommand(command: PluginCommand): void {
+      if (!declaredCommands.has(command.name)) {
+        throw new Error(`Command '${command.name}' is not declared in plugin manifest contributes.commands`)
+      }
+      collected.commands = [...(collected.commands ?? []), command]
+    },
+    registerScheduledJob(job: PluginScheduledJob): void {
+      if (!declaredJobs.has(job.name)) {
+        throw new Error(`Scheduled job '${job.name}' is not declared in plugin manifest contributes.jobs`)
+      }
+      collected.jobs = [...(collected.jobs ?? []), job]
+    },
+  })
 }
 
 /**
@@ -118,7 +133,7 @@ export function buildPluginContext(
   contextId: string,
 ): { ctx: PluginContext; collected: PluginContributions } {
   const permissions = new Set(manifest.permissions) as ReadonlySet<PluginPermission>
-  const collected: PluginContributions = { tools: [], promptFragments: [] }
+  const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)
 
@@ -138,5 +153,5 @@ function buildDeniedKvStore(pluginId: string): PluginKvStore {
   const deny = (): never => {
     throw new Error(`Plugin ${pluginId} does not have 'storage' permission`)
   }
-  return { get: deny, set: deny, delete: deny, list: deny }
+  return Object.freeze({ get: deny, set: deny, delete: deny, list: deny })
 }

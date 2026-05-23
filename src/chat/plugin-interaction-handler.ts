@@ -3,10 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getPluginConfig } from '../config.js'
 import { listManageableGroups } from '../group-settings/access.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
+import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { replyTextPreferReplace } from './interaction-router-replies.js'
 import type { IncomingInteraction, ReplyFn } from './types.js'
 
@@ -24,6 +26,53 @@ function canManageTargetContext(interaction: IncomingInteraction, targetContextI
   if (interaction.contextType !== 'dm') return targetContextId === interaction.storageContextId
   if (targetContextId === interaction.user.id) return true
   return listManageableGroups(interaction.user.id).some((group) => group.contextId === targetContextId)
+}
+
+function getMissingRequiredConfigLabels(entry: PluginRegistryEntry, contextId: string): readonly string[] {
+  return entry.discoveredPlugin.manifest.configRequirements
+    .filter((requirement) => requirement.required)
+    .filter((requirement) => {
+      const value = getPluginConfig(contextId, entry.discoveredPlugin.manifest.id, requirement.key)
+      return value === null || value.trim() === ''
+    })
+    .map((requirement) => requirement.label)
+}
+
+async function handleEnablePlugin(
+  pluginId: string,
+  contextId: string,
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+): Promise<void> {
+  const entry = pluginRegistry.getEntry(pluginId)
+  if (entry === undefined || entry.state !== 'active') {
+    await replyTextPreferReplace(reply, `Plugin \`${pluginId}\` is not available.`)
+    return
+  }
+
+  const missingLabels = getMissingRequiredConfigLabels(entry, contextId)
+  if (missingLabels.length > 0) {
+    await replyTextPreferReplace(
+      reply,
+      `Plugin \`${pluginId}\` requires configuration before it can be enabled: ${missingLabels.join(', ')}. Open /config for this target and set the missing values.`,
+    )
+    return
+  }
+
+  setPluginEnabledForContext(pluginId, contextId, true)
+  log.info({ pluginId, contextId, userId: interaction.user.id }, 'Plugin enabled via interaction')
+  await replyTextPreferReplace(reply, `🟢 Plugin \`${pluginId}\` enabled.`)
+}
+
+async function handleDisablePlugin(
+  pluginId: string,
+  contextId: string,
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+): Promise<void> {
+  setPluginEnabledForContext(pluginId, contextId, false)
+  log.info({ pluginId, contextId, userId: interaction.user.id }, 'Plugin disabled via interaction')
+  await replyTextPreferReplace(reply, `⭕ Plugin \`${pluginId}\` disabled.`)
 }
 
 /** Handle plg: callback interactions for enabling/disabling plugins per context. */
@@ -54,21 +103,12 @@ export async function handlePluginInteraction(interaction: IncomingInteraction, 
   }
 
   if (action === 'enable') {
-    const entry = pluginRegistry.getEntry(pluginId)
-    if (entry === undefined || entry.state !== 'active') {
-      await replyTextPreferReplace(reply, `Plugin \`${pluginId}\` is not available.`)
-      return true
-    }
-    setPluginEnabledForContext(pluginId, contextId, true)
-    log.info({ pluginId, contextId, userId: interaction.user.id }, 'Plugin enabled via interaction')
-    await replyTextPreferReplace(reply, `🟢 Plugin \`${pluginId}\` enabled.`)
+    await handleEnablePlugin(pluginId, contextId, interaction, reply)
     return true
   }
 
   if (action === 'disable') {
-    setPluginEnabledForContext(pluginId, contextId, false)
-    log.info({ pluginId, contextId, userId: interaction.user.id }, 'Plugin disabled via interaction')
-    await replyTextPreferReplace(reply, `⭕ Plugin \`${pluginId}\` disabled.`)
+    await handleDisablePlugin(pluginId, contextId, interaction, reply)
     return true
   }
 

@@ -5,17 +5,33 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { namespacedCommandName, registerPluginCommands } from '../../src/plugins/command-contributions.js'
+import {
+  buildPluginToolSet,
+  contributionRegistry,
+  namespacedJobName,
+  namespacedToolName,
+  runPluginScheduledJob,
+  sanitizePluginId,
+  type PluginToolSetRuntime,
+} from '../../src/plugins/contributions.js'
 import {
   MAX_FRAGMENT_LENGTH_PER_PLUGIN,
   MAX_TOTAL_PLUGIN_PROMPT_LENGTH,
   buildPluginPromptSection,
-  buildPluginToolSet,
-  contributionRegistry,
-  namespacedToolName,
-  sanitizePluginId,
-} from '../../src/plugins/contributions.js'
+} from '../../src/plugins/prompt-contributions.js'
+import { setPluginEnabledForContext } from '../../src/plugins/registry.js'
 import type { PluginContributions, PluginManifest } from '../../src/plugins/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { scheduler } from '../../src/scheduler-instance.js'
+import { createMockProvider } from '../tools/mock-provider.js'
+import {
+  createAuth,
+  createDmMessage,
+  createMockChatWithCommandHandlers,
+  getToolExecutor,
+  mockLogger,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
   return {
@@ -32,6 +48,15 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     requiredTaskCapabilities: [],
     requiredChatCapabilities: [],
     configRequirements: [],
+    ...overrides,
+  }
+}
+
+function makeRuntime(overrides: Partial<PluginToolSetRuntime> = {}): PluginToolSetRuntime {
+  return {
+    provider: createMockProvider(),
+    storageContextId: 'ctx-1',
+    chatUserId: 'user-1',
     ...overrides,
   }
 }
@@ -55,6 +80,16 @@ describe('namespacedToolName', () => {
 
   test('handles no-hyphen plugin IDs', () => {
     expect(namespacedToolName('myplugin', 'search')).toBe('plugin_myplugin__search')
+  })
+})
+
+describe('plugin command and job naming', () => {
+  test('namespaces commands under a safe plugin command name', () => {
+    expect(namespacedCommandName('my-plugin', 'sync')).toBe('plugin_my_plugin_sync')
+  })
+
+  test('namespaces scheduled jobs under a stable plugin owner', () => {
+    expect(namespacedJobName('my-plugin', 'daily')).toBe('plugin:my-plugin:daily')
   })
 })
 
@@ -116,6 +151,100 @@ describe('PluginContributionRegistry', () => {
     contributionRegistry.deregister('test-plugin')
     expect(contributionRegistry.getContributions('test-plugin')).toBeUndefined()
   })
+
+  test('registers declared plugin commands with namespaced chat commands', async () => {
+    let executed = false
+    const manifest = makeManifest({
+      contributes: { tools: [], promptFragments: [], commands: ['sync'], jobs: [], configKeys: [] },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [
+          {
+            name: 'sync',
+            description: 'Sync plugin data',
+            execute: (): void => {
+              executed = true
+            },
+          },
+        ],
+        jobs: [],
+      },
+      manifest,
+    )
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    registerPluginCommands(provider)
+    await commandHandlers.get('plugin_test_plugin_sync')?.(
+      createDmMessage('user-1'),
+      {
+        text: () => Promise.resolve(),
+        formatted: () => Promise.resolve(),
+        typing: () => undefined,
+        buttons: () => Promise.resolve(),
+      },
+      createAuth('user-1'),
+    )
+
+    expect(commandHandlers.has('plugin_test_plugin_sync')).toBe(true)
+    expect(executed).toBe(true)
+  })
+
+  test('runs scheduled jobs only for explicitly enabled plugin contexts', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-disabled', false)
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toEqual(['ctx-enabled'])
+    expect(scheduler.hasTask('plugin:test-plugin:daily')).toBe(true)
+    expect(scheduler.getTaskState('plugin:test-plugin:daily')?.running).toBe(true)
+  })
+
+  test('deregister removes scheduled jobs owned by the plugin', () => {
+    const manifest = makeManifest({
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [{ name: 'daily', intervalMs: 60_000, execute: (): undefined => undefined }],
+      },
+      manifest,
+    )
+
+    contributionRegistry.deregister('test-plugin')
+
+    expect(scheduler.hasTask('plugin:test-plugin:daily')).toBe(false)
+  })
 })
 
 describe('buildPluginToolSet', () => {
@@ -130,7 +259,7 @@ describe('buildPluginToolSet', () => {
   })
 
   test('returns empty ToolSet when no plugins active', () => {
-    const tools = buildPluginToolSet([], new Set())
+    const tools = buildPluginToolSet([], new Set(), makeRuntime())
     expect(Object.keys(tools)).toHaveLength(0)
   })
 
@@ -146,8 +275,145 @@ describe('buildPluginToolSet', () => {
       },
       manifest,
     )
-    const tools = buildPluginToolSet(['test-plugin'], new Set())
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime())
     expect(Object.keys(tools)).toContain('plugin_test_plugin__my_tool')
+  })
+
+  test('passes active runtime context to plugin tool executions', async () => {
+    const manifest = makeManifest({ permissions: ['storage', 'tasks.read'] })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              Promise.resolve({
+                storageContextId: runtimeContext.storageContextId,
+                chatUserId: runtimeContext.chatUserId,
+                kvValue: runtimeContext.kv.get('runtime-key'),
+              }),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), {
+      provider: createMockProvider(),
+      storageContextId: 'ctx-1',
+      chatUserId: 'user-1',
+    })
+    const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
+
+    const result = await execute({}, { toolCallId: 'call-1' })
+
+    expect(result).toEqual({ storageContextId: 'ctx-1', chatUserId: 'user-1', kvValue: undefined })
+  })
+
+  test('exposes read facade when tasks.read permission is declared', async () => {
+    const manifest = makeManifest({ permissions: ['tasks.read'] })
+    const getTaskResult = { id: 'task-1', title: 'Task 1', url: 'https://example.test/task-1' }
+    const provider = createMockProvider({
+      getTask: () => Promise.resolve(getTaskResult),
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (_input, runtimeContext): Promise<unknown> => runtimeContext.taskProvider.getTask('task-1'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), {
+      provider,
+      storageContextId: 'ctx-1',
+      chatUserId: 'user-1',
+    })
+    const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
+
+    await expect(execute({}, { toolCallId: 'call-1' })).resolves.toEqual(getTaskResult)
+  })
+
+  test('fails closed when tasks.read permission is missing', async () => {
+    const manifest = makeManifest({ permissions: [] })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (_input, runtimeContext): Promise<unknown> => runtimeContext.taskProvider.getTask('task-1'),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), {
+      provider: createMockProvider(),
+      storageContextId: 'ctx-1',
+      chatUserId: 'user-1',
+    })
+    const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
+
+    const result = await execute({}, { toolCallId: 'call-1' })
+
+    expect(result).toMatchObject({
+      success: false,
+      toolName: 'plugin_test_plugin__my_tool',
+      errorType: 'tool-execution',
+    })
+    expect(result).toHaveProperty(
+      'error',
+      expect.stringContaining("Plugin test-plugin does not have 'tasks.read' permission"),
+    )
+  })
+
+  test('fails closed when tasks.write permission is missing', async () => {
+    const manifest = makeManifest({ permissions: [] })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              runtimeContext.taskProvider.createTask({ projectId: 'project-1', title: 'New task' }),
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), {
+      provider: createMockProvider(),
+      storageContextId: 'ctx-1',
+      chatUserId: 'user-1',
+    })
+    const execute = getToolExecutor(tools['plugin_test_plugin__my_tool'])
+
+    const result = await execute({}, { toolCallId: 'call-1' })
+
+    expect(result).toMatchObject({
+      success: false,
+      toolName: 'plugin_test_plugin__my_tool',
+      errorType: 'tool-execution',
+    })
+    expect(result).toHaveProperty(
+      'error',
+      expect.stringContaining("Plugin test-plugin does not have 'tasks.write' permission"),
+    )
   })
 
   test('skips tools that collide with existing tool names', () => {
@@ -163,7 +429,7 @@ describe('buildPluginToolSet', () => {
       manifest,
     )
     const existing = new Set(['plugin_test_plugin__my_tool'])
-    const tools = buildPluginToolSet(['test-plugin'], existing)
+    const tools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
     expect(Object.keys(tools)).toHaveLength(0)
   })
 })

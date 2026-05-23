@@ -4,8 +4,10 @@
 // See LICENSE in the project root for details.
 
 import type { ChatCapability } from '../chat/types.js'
+import { getPluginConfig } from '../config.js'
 import { logger } from '../logger.js'
 import type { TaskCapability } from '../providers/types.js'
+import { checkPluginCompatibility } from './compatibility.js'
 import {
   getPluginAdminState,
   getPluginContextState,
@@ -14,8 +16,7 @@ import {
   upsertPluginAdminState,
   updatePluginAdminStateField,
 } from './store.js'
-import type { DiscoveredPlugin, PluginManifest, PluginState } from './types.js'
-import { PLUGIN_API_VERSION } from './types.js'
+import type { DiscoveredPlugin, PluginState } from './types.js'
 
 const log = logger.child({ scope: 'plugins:registry' })
 
@@ -29,6 +30,17 @@ const VALID_PLUGIN_STATES: ReadonlySet<PluginState> = new Set<PluginState>([
   'error',
 ])
 
+function hasApprovedManifestHash(value: string | null | undefined): boolean {
+  return value !== null && value !== undefined && value !== ''
+}
+
+function resolveStartupState(state: PluginState, approvedManifestHash: string | null | undefined): PluginState {
+  if (state === 'rejected') return 'rejected'
+  if (state === 'discovered') return 'discovered'
+  if (hasApprovedManifestHash(approvedManifestHash)) return 'approved'
+  return 'discovered'
+}
+
 function toPluginState(value: string): PluginState {
   for (const state of VALID_PLUGIN_STATES) {
     if (state === value) return state
@@ -37,35 +49,11 @@ function toPluginState(value: string): PluginState {
   return 'discovered'
 }
 
-export type CompatibilityResult = { compatible: true } | { compatible: false; reason: string }
+export { checkPluginCompatibility } from './compatibility.js'
 
-/** Check whether a plugin's requirements are met by the current providers. */
-export function checkPluginCompatibility(
-  manifest: PluginManifest,
-  taskCapabilities: ReadonlySet<TaskCapability>,
-  chatCapabilities: ReadonlySet<ChatCapability>,
-): CompatibilityResult {
-  if (manifest.apiVersion !== PLUGIN_API_VERSION) {
-    return {
-      compatible: false,
-      reason: `Unsupported apiVersion ${String(manifest.apiVersion)}; expected ${String(PLUGIN_API_VERSION)}`,
-    }
-  }
-
-  for (const cap of manifest.requiredTaskCapabilities) {
-    if (!taskCapabilities.has(cap)) {
-      return { compatible: false, reason: `Required task capability missing: ${cap}` }
-    }
-  }
-
-  for (const cap of manifest.requiredChatCapabilities) {
-    if (!chatCapabilities.has(cap)) {
-      return { compatible: false, reason: `Required chat capability missing: ${cap}` }
-    }
-  }
-
-  return { compatible: true }
-}
+export type PluginContextEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: 'inactive' | 'disabled' | 'config_missing'; missingKeys?: readonly string[] }
 
 export type PluginRegistryEntry = {
   discoveredPlugin: DiscoveredPlugin
@@ -113,11 +101,16 @@ export class PluginRegistry {
     }
 
     // Update last seen hash
-    updatePluginAdminStateField(manifest.id, { lastSeenManifestHash: manifestHash })
+    const normalizedState = resolveStartupState(toPluginState(existing.state), existing.approvedManifestHash)
+    updatePluginAdminStateField(manifest.id, {
+      lastSeenManifestHash: manifestHash,
+      state: normalizedState,
+      compatibilityReason: normalizedState === 'approved' ? null : (existing.compatibilityReason ?? null),
+    })
     this.entries.set(manifest.id, {
       discoveredPlugin: plugin,
-      state: toPluginState(existing.state),
-      compatibilityReason: existing.compatibilityReason ?? undefined,
+      state: normalizedState,
+      compatibilityReason: normalizedState === 'approved' ? undefined : (existing.compatibilityReason ?? undefined),
     })
   }
 
@@ -167,7 +160,6 @@ export class PluginRegistry {
 
     const result = checkPluginCompatibility(entry.discoveredPlugin.manifest, taskCapabilities, chatCapabilities)
     if (!result.compatible) {
-      updatePluginAdminStateField(pluginId, { state: 'incompatible', compatibilityReason: result.reason })
       entry.state = 'incompatible'
       entry.compatibilityReason = result.reason
       log.warn({ pluginId, reason: result.reason }, 'Plugin marked incompatible')
@@ -180,7 +172,6 @@ export class PluginRegistry {
     if (entry !== undefined) {
       entry.state = 'active'
     }
-    updatePluginAdminStateField(pluginId, { state: 'active', compatibilityReason: null })
     log.info({ pluginId }, 'Plugin marked active')
   }
 
@@ -191,7 +182,6 @@ export class PluginRegistry {
       entry.state = 'error'
       entry.compatibilityReason = reason
     }
-    updatePluginAdminStateField(pluginId, { state: 'error', compatibilityReason: reason })
     log.error({ pluginId, reason }, 'Plugin marked as error')
   }
 
@@ -201,7 +191,6 @@ export class PluginRegistry {
     if (entry !== undefined && entry.state === 'active') {
       entry.state = 'approved'
     }
-    updatePluginAdminStateField(pluginId, { state: 'approved' })
   }
 
   getEntry(pluginId: string): PluginRegistryEntry | undefined {
@@ -210,6 +199,10 @@ export class PluginRegistry {
 
   getAllEntries(): PluginRegistryEntry[] {
     return Array.from(this.entries.values())
+  }
+
+  clearForTesting(): void {
+    this.entries.clear()
   }
 
   getApprovedCompatiblePlugins(): DiscoveredPlugin[] {
@@ -225,8 +218,22 @@ export class PluginRegistry {
   }
 }
 
+function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
+  return plugin.manifest.configRequirements
+    .filter((requirement) => requirement.required)
+    .filter((requirement) => {
+      const value = getPluginConfig(contextId, plugin.manifest.id, requirement.key)
+      return value === null || value.trim() === ''
+    })
+    .map((requirement) => requirement.key)
+}
+
 /** Singleton plugin registry for the current process. */
 export const pluginRegistry = new PluginRegistry()
+
+export function resetPluginRegistryForTesting(): void {
+  pluginRegistry.clearForTesting()
+}
 
 /** Enable or disable a plugin for a specific context (user or group). */
 export function setPluginEnabledForContext(pluginId: string, contextId: string, enabled: boolean): void {
@@ -235,11 +242,23 @@ export function setPluginEnabledForContext(pluginId: string, contextId: string, 
 
 /** Check if a plugin is enabled for a specific context. */
 export function isPluginActiveForContext(pluginId: string, contextId: string): boolean {
+  return getPluginContextEligibility(pluginId, contextId).eligible
+}
+
+export function getPluginContextEligibility(pluginId: string, contextId: string): PluginContextEligibility {
   const entry = pluginRegistry.getEntry(pluginId)
-  if (entry === undefined || entry.state !== 'active') return false
+  if (entry === undefined || entry.state !== 'active') return { eligible: false, reason: 'inactive' }
   const contextState = getPluginContextState(pluginId, contextId)
-  if (contextState !== undefined) return isPluginEnabledForContext(pluginId, contextId)
-  return entry.discoveredPlugin.manifest.defaultEnabled
+  const enabled =
+    contextState === undefined
+      ? entry.discoveredPlugin.manifest.defaultEnabled
+      : isPluginEnabledForContext(pluginId, contextId)
+  if (!enabled) return { eligible: false, reason: 'disabled' }
+
+  const missingKeys = getMissingRequiredConfigKeys(entry.discoveredPlugin, contextId)
+  if (missingKeys.length > 0) return { eligible: false, reason: 'config_missing', missingKeys }
+
+  return { eligible: true }
 }
 
 /** Load admin state from DB into the in-memory registry for all known plugins. */
@@ -252,5 +271,7 @@ export function syncRegistryFromDb(discoveredPlugins: DiscoveredPlugin[]): void 
 
 /** Get plugins that are active AND enabled for the given context. */
 export function getPluginsForContext(contextId: string): DiscoveredPlugin[] {
-  return pluginRegistry.getActivePlugins().filter((plugin) => isPluginActiveForContext(plugin.manifest.id, contextId))
+  return pluginRegistry
+    .getActivePlugins()
+    .filter((plugin) => getPluginContextEligibility(plugin.manifest.id, contextId).eligible)
 }

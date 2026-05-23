@@ -67,6 +67,10 @@ function buildPluginInfoMessage(pluginId: string): string {
     manifest.description,
     `Permissions: ${manifest.permissions.length > 0 ? manifest.permissions.join(', ') : 'none'}`,
     `Tools: ${manifest.contributes.tools.length > 0 ? manifest.contributes.tools.join(', ') : 'none'}`,
+    `Prompt fragments: ${manifest.contributes.promptFragments.length > 0 ? manifest.contributes.promptFragments.join(', ') : 'none'}`,
+    `Commands: ${manifest.contributes.commands.length > 0 ? manifest.contributes.commands.join(', ') : 'none'}`,
+    `Jobs: ${manifest.contributes.jobs.length > 0 ? manifest.contributes.jobs.join(', ') : 'none'}`,
+    `Config keys: ${manifest.contributes.configKeys.length > 0 ? manifest.contributes.configKeys.join(', ') : 'none'}`,
   ]
   if (entry.compatibilityReason !== undefined) lines.push(`Note: ${entry.compatibilityReason}`)
   const recentEvents = getRecentRuntimeEvents(pluginId, 3)
@@ -121,7 +125,11 @@ async function handleReject(pluginId: string, adminUserId: string, reply: ReplyF
   if (ok) {
     log.info({ pluginId, adminUserId }, 'Plugin rejected via command')
   }
-  await reply.text(ok ? `❌ Plugin \`${pluginId}\` rejected.` : `Plugin \`${pluginId}\` not found.`)
+  await reply.text(
+    ok
+      ? `❌ Plugin \`${pluginId}\` rejected. It will stop loading on next startup.`
+      : `Plugin \`${pluginId}\` not found.`,
+  )
 }
 
 const PLUGIN_USAGE =

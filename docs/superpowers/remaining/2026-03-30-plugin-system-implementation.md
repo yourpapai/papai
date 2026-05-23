@@ -7,58 +7,56 @@ See LICENSE in the project root for details.
 
 # Remaining Work: Plugin System Implementation
 
-**Status:** partially_implemented
-**Updated:** 2026-05-22
+**Status:** mvp_implemented
+**Updated:** 2026-05-23
 **Plan:** `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md`
 **Spec:** `docs/superpowers/specs/2026-03-30-plugin-system-design.md`
 
-## Current baseline
+## Completed MVP Scope
 
-The plugin framework is no longer unimplemented. The current branch already contains the core plugin directory, schema, startup wiring, tool/prompt hooks, admin command, config toggle surface, and developer docs.
+The trusted-local plugin-system MVP is implemented in this branch. It supports repository-local plugin discovery from `plugins/<plugin-id>/plugin.json`, admin approval, startup activation, context-scoped enablement, context-scoped required config gating, plugin tools, prompt fragments, commands, scheduled jobs, plugin KV, and runtime diagnostics.
 
 Canonical migration state:
 
 - Registered plugin migration: `src/db/migrations/039_plugins.ts`
 - Registered from: `src/db/index.ts`
-- Removed stale unregistered migration stub: `src/db/migrations/028_plugins.ts` (deleted 2026-05-22 to avoid accidental imports)
+- Removed stale unregistered migration stub: `src/db/migrations/028_plugins.ts`
 
-## Phase status matrix
+## Phase Status Matrix
 
-| Phase / area | Status | Evidence / remaining gap |
-| --- | --- | --- |
-| Phase 1: types and manifest validation | Mostly present | `src/plugins/types.ts` exists, but tests still need directory mismatch, duplicate contributions, and contract coverage. |
-| Phase 2: database schema and storage | Mostly present | `src/db/plugin-schema.ts`, `src/plugins/store.ts`, and registered migration `039_plugins` exist; `028_plugins.ts` has been removed so `039_plugins` is the canonical migration. |
-| Phase 3: discovery | Partial | Discovery exists, but invalid JSON, missing dir, symlink/path escape, duplicate ID, and deterministic ordering coverage are still missing or thin. |
-| Phase 4: registry and compatibility evaluation | Partial | Approval and capability checks exist, but runtime states are still persisted and required config is not yet part of context eligibility. |
-| Phase 5: context builder and service facades | Partial | KV/log/tool/prompt registration exist. Jobs, commands, task/chat facades, strict thrown rejection, and deep-freeze guarantees are incomplete. |
-| Phase 6: loader and lifecycle management | Partial | Import, timeout, failure isolation, and reverse deactivation exist, but success-path, cleanup, factory-shape, timeout, and reverse-order tests are incomplete. |
-| Phase 7: tool integration | Partial | Tools are merged for active contexts, but plugin tool execution still lacks context-bound provider/user facades. |
-| Phase 8: prompt integration | Mostly present | Prompt fragments are appended with budgets and delimiters, but active/inactive context coverage is still thin. |
-| Phase 9: commands and interactions | Partial | `/plugin` and `plg:` routing exist, but admin UX, restart messaging, list/info details, and callback coverage are still thin. |
-| Phase 10: `/config` context opt-in and plugin config | Partial | Plugin toggles appear, but plugin config requirements, sensitive masking, and missing-config gating are not implemented. |
-| Phase 11: startup and shutdown integration | Partial | Discovery/activation/deactivation are wired in `src/index.ts`, but runtime-state re-evaluation semantics still need correction. |
-| Base docs and examples | Mostly present | `docs/plugins/developer-guide.md` and `docs/plugins/examples/hello-world/` exist, but still need final runtime-contract sync. |
-| Phase 13: end-to-end lifecycle tests | Missing | No discover → approve → compatibility → activate → opt-in → tool/prompt → deactivate integration coverage exists yet. |
+| Phase / area                                         | Status           | Evidence                                                                                                                               |
+| ---------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1: types and manifest validation               | Complete for MVP | Manifest schema, strict factory contract, declared contribution validation, and path/id hardening are covered.                         |
+| Phase 2: database schema and storage                 | Complete for MVP | Plugin admin/context/KV/runtime-event storage uses canonical migration `039_plugins`.                                                  |
+| Phase 3: discovery                                   | Complete for MVP | Missing directory, invalid JSON, id mismatch, unsafe entry paths, symlink rejection, and deterministic ordering are covered.           |
+| Phase 4: registry and compatibility evaluation       | Complete for MVP | Durable approval state is separated from transient runtime state; compatibility is recomputed; context config eligibility is enforced. |
+| Phase 5: context builder and facades                 | Complete for MVP | Tool, prompt, command, job, KV, logger, and task facade surfaces are narrow and declaration-gated.                                     |
+| Phase 6: loader and lifecycle management             | Complete for MVP | Activation success/failure, timeout cleanup, strict factory loading, diagnostics, and deterministic deactivation are covered.          |
+| Phase 7: tool integration                            | Complete for MVP | Plugin tools are assembled per active context with runtime provider/user facades.                                                      |
+| Phase 8: prompt integration                          | Complete for MVP | Prompt fragments are context-gated, delimited, and budgeted.                                                                           |
+| Phase 9: commands and interactions                   | Complete for MVP | `/plugin`, namespaced plugin commands, and `plg:` enable/disable callbacks are covered.                                                |
+| Phase 10: `/config` context opt-in and plugin config | Complete for MVP | Plugin config requirements render in `/config`; sensitive values are masked; missing required config gates exposure.                   |
+| Phase 11: startup and shutdown integration           | Complete for MVP | Startup discovery/activation and shutdown deactivation are wired.                                                                      |
+| Phase 12: docs and examples                          | Complete for MVP | Developer guide and hello-world example document the implemented surface.                                                              |
+| Phase 13: end-to-end lifecycle tests                 | Complete for MVP | `tests/plugins/integration.test.ts` covers discover → approve → activate → opt-in → tool/prompt → deactivate plus failure paths.       |
 
-## Missing targeted coverage
+## True Follow-Ups
 
-- Discovery failure-path tests for invalid manifests, missing directories, symlink/path escapes, duplicate IDs, and deterministic ordering.
-- Loader lifecycle tests for cleanup, timeout handling, factory-shape validation, and reverse-order deactivation.
-- Prompt/config/tool eligibility tests for active vs inactive contexts and required plugin config.
-- `/plugin` admin UX and `plg:` callback coverage.
-- Phase 13 end-to-end lifecycle coverage.
-
-## Suggested next steps
-
-1. Execute Task 2: fix registry persistence vs runtime state before adding new plugin surfaces.
-2. Execute Task 3: align the plugin entry contract and context API with the approved design.
-3. Continue through Tasks 4-9 in `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md`.
-4. After implementation, add the missing targeted tests and the Phase 13 lifecycle suite.
-
-## Explicit non-goals for the remaining MVP
-
-- Untrusted third-party sandboxing.
+- Untrusted third-party sandboxing and process isolation.
+- Marketplace or package-based plugin distribution.
 - Encrypted plugin secret storage.
-- Hot reload or restartless admin approval.
-- Provider-as-plugin migration.
-- Async prompt fragments.
+- Hot reload or restartless approval/rejection activation.
+- Provider-as-plugin migration for chat or task providers.
+- Async prompt fragment support.
+- Raw network/web-fetch facades for plugins, if a future security design allows them.
+- Richer command menu publishing for plugin commands on platforms that support command menus.
+- Optional runtime UI for plugin job status and last-run metadata.
+
+## Validation Status
+
+Task 9 adds final lifecycle coverage and documentation sync. Final branch validation is tracked in `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md` and should use:
+
+```bash
+bun check:full
+bun security
+```

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { buildInstructionsBlock } from './instructions.js'
-import { buildPluginPromptSection } from './plugins/contributions.js'
+import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { getPluginsForContext } from './plugins/registry.js'
 import type { TaskProvider } from './providers/types.js'
 

@@ -6,8 +6,8 @@
 import type { ToolExecutionOptions } from 'ai'
 import { z } from 'zod'
 
-import type { ChatCapability } from '../chat/types.js'
-import type { TaskCapability } from '../providers/types.js'
+import type { AuthorizationResult, ChatCapability, IncomingMessage, ReplyFn } from '../chat/types.js'
+import type { TaskCapability, TaskProvider } from '../providers/types.js'
 import type { PluginContext } from './context.js'
 
 /** Current plugin API version. Plugins declaring a different apiVersion will be rejected as incompatible. */
@@ -188,12 +188,25 @@ export type DiscoveredPlugin = {
 }
 
 /** A tool contributed by a plugin. */
+export type PluginTaskProviderFacade = Pick<
+  TaskProvider,
+  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
+>
+
+export type PluginToolRuntimeContext = {
+  pluginId: string
+  storageContextId: string
+  chatUserId: string
+  taskProvider: PluginTaskProviderFacade
+  kv: PluginContext['kv']
+}
+
 export type PluginTool = {
   /** Raw tool name as declared in the manifest (snake_case). */
   name: string
   description: string
   inputSchema?: z.ZodType
-  execute: (input: unknown, options: ToolExecutionOptions) => Promise<unknown>
+  execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
 }
 
 /** A prompt fragment contributed by a plugin. */
@@ -204,14 +217,31 @@ export type PluginPromptFragment = {
   content: string | (() => string)
 }
 
+export type PluginCommand = {
+  name: string
+  description: string
+  execute: (message: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void> | void
+}
+
+export type PluginScheduledJob = {
+  name: string
+  intervalMs: number
+  execute: (contextId: string) => Promise<void> | void
+}
+
 /** Registration result from a plugin's activate() call. */
 export type PluginContributions = {
   tools: PluginTool[]
   promptFragments: PluginPromptFragment[]
+  commands?: PluginCommand[]
+  jobs?: PluginScheduledJob[]
+}
+
+/** Runtime plugin instance returned by a plugin factory. */
+export type PluginInstance = {
+  activate(ctx: PluginContext): Promise<void> | void
+  deactivate?(ctx: PluginContext): Promise<void> | void
 }
 
 /** Interface that a plugin module's default export must satisfy. */
-export type PluginFactory = {
-  activate(ctx: PluginContext): Promise<PluginContributions | undefined> | PluginContributions | undefined
-  deactivate?(ctx: PluginContext): Promise<void> | void
-}
+export type PluginFactory = () => PluginInstance

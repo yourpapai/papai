@@ -10,9 +10,13 @@ import { buildPluginContext } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
-import type { DiscoveredPlugin, PluginFactory } from './types.js'
+import type { DiscoveredPlugin, PluginFactory, PluginInstance } from './types.js'
 
 function isPluginFactory(value: unknown): value is PluginFactory {
+  return typeof value === 'function'
+}
+
+function isPluginInstance(value: unknown): value is PluginInstance {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -21,11 +25,17 @@ function isPluginFactory(value: unknown): value is PluginFactory {
   )
 }
 
-async function importPluginModule(entryPoint: string): Promise<PluginFactory | null> {
+async function importPluginModule(entryPoint: string): Promise<PluginInstance> {
   const mod: unknown = await import(entryPoint)
   const candidate = typeof mod === 'object' && mod !== null && 'default' in mod ? mod.default : mod
-  if (!isPluginFactory(candidate)) return null
-  return candidate
+  if (!isPluginFactory(candidate)) {
+    throw new Error('Invalid plugin module contract: default export must be a factory function')
+  }
+  const instance = candidate()
+  if (!isPluginInstance(instance)) {
+    throw new Error('Invalid plugin module contract: factory must return an object with activate(ctx)')
+  }
+  return instance
 }
 
 function buildActivationTimeout(timeoutMs: number): { promise: Promise<never>; cancel: () => void } {
@@ -51,33 +61,30 @@ const SYSTEM_CONTEXT_ID = '__system__'
 
 /** Activation order for deterministic reverse deactivation. */
 const activationOrder: string[] = []
+const activeInstances = new Map<string, PluginInstance>()
 
 async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   const { manifest, entryPoint } = plugin
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
-  const factory = await importPluginModule(entryPoint).catch((err: unknown) => {
+  const instance = await importPluginModule(entryPoint).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
     log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
     pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
     recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
     return null
   })
-  if (factory === null) return false
+  if (instance === null) return false
 
   const { ctx, collected } = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    const contributions = await Promise.race([Promise.resolve(factory.activate(ctx)), activationTimeout.promise])
-
-    if (contributions !== undefined && contributions !== null) {
-      collected.tools.push(...contributions.tools)
-      collected.promptFragments.push(...contributions.promptFragments)
-    }
+    await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
 
     contributionRegistry.register(manifest.id, collected, manifest)
+    activeInstances.set(manifest.id, instance)
     pluginRegistry.markActive(manifest.id)
     activationOrder.push(manifest.id)
     recordRuntimeEvent(manifest.id, 'activated')
@@ -86,6 +93,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     log.error({ pluginId: manifest.id, error: msg }, 'Plugin activation failed')
+    activeInstances.delete(manifest.id)
     contributionRegistry.deregister(manifest.id)
     pluginRegistry.markError(manifest.id, `Activation failed: ${msg}`)
     recordRuntimeEvent(manifest.id, 'error', `Activation failed: ${msg}`)
@@ -114,12 +122,14 @@ async function deactivateOne(pluginId: string): Promise<void> {
   const entry = pluginRegistry.getEntry(pluginId)
   if (entry === undefined || entry.state !== 'active') return
 
+  const instance = activeInstances.get(pluginId)
+
   try {
-    const factory = await importPluginModule(entry.discoveredPlugin.entryPoint)
-    if (factory !== null && typeof factory.deactivate === 'function') {
+    if (instance !== undefined && typeof instance.deactivate === 'function') {
       const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID)
-      await Promise.resolve(factory.deactivate(ctx))
+      await Promise.resolve(instance.deactivate(ctx))
     }
+    activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'deactivated')
@@ -127,6 +137,7 @@ async function deactivateOne(pluginId: string): Promise<void> {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     log.error({ pluginId, error: msg }, 'Plugin deactivation error (continuing)')
+    activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
   }
@@ -139,9 +150,9 @@ export async function deactivateAllPlugins(): Promise<void> {
 
   log.info({ count: toDeactivate.length }, 'Deactivating plugins')
 
-  const limit = pLimit(PLUGIN_LIFECYCLE_CONCURRENCY)
-  await Promise.all(toDeactivate.map((id) => limit(() => deactivateOne(id))))
+  await toDeactivate.reduce((chain, id) => chain.then(() => deactivateOne(id)), Promise.resolve())
 
+  activeInstances.clear()
   activationOrder.length = 0
   log.info('All plugins deactivated')
 }

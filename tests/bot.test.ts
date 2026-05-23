@@ -31,6 +31,8 @@ import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.
 import { listManageableGroups } from '../src/group-settings/access.js'
 import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src/group-settings/state.js'
 import { addGroupMember } from '../src/groups.js'
+import { contributionRegistry } from '../src/plugins/contributions.js'
+import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
 import { addUser, isAuthorized, removeUser } from '../src/users.js'
 import { cancelWizard, createWizard } from '../src/wizard/index.js'
 import {
@@ -345,6 +347,24 @@ function makeFile(overrides: Partial<IncomingFile> | undefined): IncomingFile {
 
 const ADMIN_ID = 'admin-bot-auth'
 
+function makePluginCommandManifest(pluginId: string): PluginManifest {
+  return {
+    id: pluginId,
+    name: 'Bot Test Plugin',
+    version: '1.0.0',
+    description: 'Plugin command bot test',
+    apiVersion: PLUGIN_API_VERSION,
+    main: 'index.ts',
+    contributes: { tools: [], promptFragments: [], commands: ['sync'], jobs: [], configKeys: [] },
+    permissions: [],
+    defaultEnabled: false,
+    activationTimeoutMs: 5000,
+    requiredTaskCapabilities: [],
+    requiredChatCapabilities: [],
+    configRequirements: [],
+  }
+}
+
 describe('Bot Authorization Gate (setupBot)', () => {
   // Track processMessage calls
   let processMessageCallCount = 0
@@ -404,6 +424,33 @@ describe('Bot Authorization Gate (setupBot)', () => {
     )
 
     expect(commandHandlers.has('plugin')).toBe(true)
+  })
+
+  test('registers active plugin command contributions', () => {
+    const pluginId = 'bot-command-plugin'
+    contributionRegistry.deregister(pluginId)
+    contributionRegistry.register(
+      pluginId,
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [{ name: 'sync', description: 'Sync data', execute: (): Promise<void> => Promise.resolve() }],
+        jobs: [],
+      },
+      makePluginCommandManifest(pluginId),
+    )
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    setupBot(
+      provider,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    expect(commandHandlers.has('plugin_bot_command_plugin_sync')).toBe(true)
+    contributionRegistry.deregister(pluginId)
   })
 
   describe('Unauthorized user — silent drop', () => {

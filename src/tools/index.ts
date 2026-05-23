@@ -52,7 +52,11 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
       const activePluginIds = activePlugins
         .map((p) => p.manifest.id)
         .filter((id) => contributionRegistry.getContributions(id) !== undefined)
-      const pluginTools = buildPluginToolSet(activePluginIds, new Set(Object.keys(wrappedBuiltins)))
+      const pluginTools = buildPluginToolSet(activePluginIds, new Set(Object.keys(wrappedBuiltins)), {
+        provider,
+        storageContextId: contextId,
+        chatUserId,
+      })
       return { ...wrappedBuiltins, ...pluginTools }
     }
   }

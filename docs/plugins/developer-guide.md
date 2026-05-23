@@ -7,21 +7,19 @@ See LICENSE in the project root for details.
 
 # Plugin Developer Guide
 
-Papai supports a first-party plugin system that allows extending the bot with additional tools and prompt fragments at runtime, without modifying core source code.
+Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, provider-as-plugin API, raw provider access, raw DB access, or arbitrary process/env/network facade.
 
----
+## Quick Start
 
-## Quick-start
+1. Create `plugins/<plugin-id>/` where `<plugin-id>` is lower-case kebab-case.
+2. Add `plugin.json`.
+3. Add an entry point such as `index.ts` or `index.js`.
+4. Start the bot. Discovery happens on startup.
+5. The bot admin runs `/plugin approve <plugin-id>`.
+6. Restart the bot so the approved plugin activates.
+7. Enable it for a personal or managed group context with `/config`, `plg:` buttons, or `/plugin enable <plugin-id> [context-id]`.
 
-1. Create a directory under `plugins/` in the repo root (e.g. `plugins/hello-world/`).
-2. Add a `plugin.json` manifest file.
-3. Add an entry point (e.g. `index.ts`) that exports a `PluginFactory` as its default export.
-4. Start the bot — it will discover the plugin automatically.
-5. An admin must approve the plugin via `/plugin approve hello-world` before it activates.
-
----
-
-## Manifest (`plugin.json`)
+## Manifest
 
 ```json
 {
@@ -34,147 +32,171 @@ Papai supports a first-party plugin system that allows extending the bot with ad
   "contributes": {
     "tools": ["greet"],
     "promptFragments": ["hello-world-hint"],
-    "commands": [],
-    "jobs": [],
-    "configKeys": []
+    "commands": ["hello"],
+    "jobs": ["daily_hello"],
+    "configKeys": ["greeting_prefix"]
   },
-  "permissions": [],
+  "permissions": ["storage"],
+  "defaultEnabled": false,
   "requiredTaskCapabilities": [],
   "requiredChatCapabilities": [],
+  "configRequirements": [
+    {
+      "key": "greeting_prefix",
+      "label": "Greeting Prefix",
+      "required": false,
+      "sensitive": false
+    }
+  ],
   "activationTimeoutMs": 5000
 }
 ```
 
-### Required fields
+Required fields: `id`, `name`, `version`, `description`, `apiVersion`, and `main`.
 
-| Field         | Type     | Description                                                            |
-| ------------- | -------- | ---------------------------------------------------------------------- |
-| `id`          | `string` | Unique lower-case kebab-case identifier, 1–64 characters.              |
-| `name`        | `string` | Human-readable display name.                                           |
-| `version`     | `string` | SemVer string (e.g. `1.0.0`).                                          |
-| `description` | `string` | Short description shown in admin commands.                             |
-| `apiVersion`  | `1`      | Must equal `1` (the current plugin API version).                       |
-| `main`        | `string` | Relative path to entry point (`.ts` or `.js`, no `..` or leading `/`). |
+Supported optional fields:
 
-### Optional fields
+| Field                         | Description                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contributes.tools`           | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
+| `contributes.promptFragments` | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
+| `contributes.commands`        | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
+| `contributes.jobs`            | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
+| `contributes.configKeys`      | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
+| `permissions`                 | Permission claims checked by framework facades.                                                                                                   |
+| `defaultEnabled`              | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
+| `requiredTaskCapabilities`    | Task provider capabilities required before activation.                                                                                            |
+| `requiredChatCapabilities`    | Chat provider capabilities required before activation.                                                                                            |
+| `configRequirements`          | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
+| `activationTimeoutMs`         | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
 
-| Field                         | Default | Description                                                                    |
-| ----------------------------- | ------- | ------------------------------------------------------------------------------ |
-| `contributes.tools`           | `[]`    | Tool names the plugin may register. Only listed names are accepted at runtime. |
-| `contributes.promptFragments` | `[]`    | Prompt fragment keys the plugin may register.                                  |
-| `permissions`                 | `[]`    | Reserved for future use.                                                       |
-| `requiredTaskCapabilities`    | `[]`    | Task provider capabilities required for the plugin to be compatible.           |
-| `requiredChatCapabilities`    | `[]`    | Chat provider capabilities required for the plugin to be compatible.           |
-| `activationTimeoutMs`         | `5000`  | Activation timeout in ms (100–10000).                                          |
+The manifest `id` must match the directory name. The entry point must stay inside the plugin directory and must be a relative `.ts` or `.js` path without `..` components.
 
----
+## Entry Contract
 
-## Entry point
-
-The entry point must export a `PluginFactory` as its **default export**:
+The entry point must default-export a factory function returning a plugin instance:
 
 ```typescript
-import type { PluginContext, PluginFactory } from '../../../../src/plugins/context.js'
+import type { PluginContext } from '../../../../src/plugins/context.js'
+import type { PluginFactory } from '../../../../src/plugins/types.js'
 
-const factory: PluginFactory = {
-  activate(rawCtx: unknown) {
-    const ctx = rawCtx as PluginContext
-    ctx.log.info({}, 'hello-world plugin activated')
-
-    ctx.registration.registerTool({
-      name: 'greet',
-      description: 'Greet a person by name',
-      execute(args: unknown): Promise<unknown> {
-        const input = args as { name: string }
-        return Promise.resolve({ greeting: `Hello, ${input.name}!` })
-      },
-    })
+const factory: PluginFactory = () => ({
+  activate(ctx: PluginContext): void {
+    ctx.log.info({}, 'plugin activated')
   },
 
-  deactivate(rawCtx: unknown) {
-    const ctx = rawCtx as PluginContext
-    ctx.log.info({}, 'hello-world plugin deactivated')
+  deactivate(ctx: PluginContext): void {
+    ctx.log.info({}, 'plugin deactivated')
   },
-}
+})
 
 export default factory
 ```
 
-### PluginContext API
+Object-style default exports such as `export default { activate() {} }` are rejected at load time.
 
-The `ctx` object passed to `activate` and `deactivate` provides:
+## Plugin Context API
 
-| Method / Property                                                                            | Description                                                                                           |
-| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `ctx.pluginId`                                                                               | The plugin's ID string.                                                                               |
-| `ctx.log.debug(data, msg)` / `.info` / `.warn` / `.error`                                    | Structured pino logger. `data` is `Record<string, unknown>`, `msg` is a string.                       |
-| `ctx.registration.registerTool(tool)`                                                        | Register a `PluginTool` object (only if `name` is listed in `contributes.tools`).                     |
-| `ctx.registration.registerPromptFragment(fragment)`                                          | Register a `PluginPromptFragment` object (only if `name` is listed in `contributes.promptFragments`). |
-| `ctx.kv.get(key)` / `ctx.kv.set(key, value)` / `ctx.kv.delete(key)` / `ctx.kv.list(prefix?)` | Persistent key-value store scoped to the plugin.                                                      |
+The `ctx` object is frozen and exposes only framework-owned facades:
 
----
+| API                                                 | Description                                                                                                                |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.pluginId`                                      | Plugin ID.                                                                                                                 |
+| `ctx.contextId`                                     | Activation context ID. Activation currently uses the system context; tool and job execution are context-scoped separately. |
+| `ctx.permissions`                                   | Readonly set of requested permissions.                                                                                     |
+| `ctx.log.debug/info/warn/error(data, msg)`          | Structured plugin logger. Never log secrets.                                                                               |
+| `ctx.kv.get/set/delete/list`                        | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                               |
+| `ctx.registration.registerTool(tool)`               | Register a declared `PluginTool`.                                                                                          |
+| `ctx.registration.registerPromptFragment(fragment)` | Register a declared prompt fragment.                                                                                       |
+| `ctx.registration.registerCommand(command)`         | Register a declared command.                                                                                               |
+| `ctx.registration.registerScheduledJob(job)`        | Register a declared scheduled job.                                                                                         |
 
-## Tool registration
+Undeclared registrations throw during activation. Activation failure cleans framework-owned contributions and records runtime diagnostics.
 
-Tools registered by plugins are namespaced automatically:
+## Tools
 
-```
+Plugin tools are exposed to the LLM as:
+
+```text
 plugin_<sanitized-plugin-id>__<tool-name>
 ```
 
-For example, a plugin with id `hello-world` registering a tool named `greet` becomes `plugin_hello_world__greet` from the LLM's perspective. Plugin code always uses the short name (`greet`).
+For example, `hello-world` plus `greet` becomes `plugin_hello_world__greet`.
 
----
+Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, and plugin/context KV. The raw task provider is not exposed.
 
-## Prompt fragments
+## Prompt Fragments
 
-Prompt fragments are short text snippets injected into the system prompt. Each plugin has a budget of **2 000 characters** per fragment, with a total budget of **8 000 characters** across all active plugins. Fragments that exceed the per-plugin budget are truncated with a `[truncated]` suffix.
+Prompt fragments are synchronous strings or synchronous functions returning strings. Async prompt fragments are not supported. Fragments are delimited in the system prompt and budgeted at 2,000 characters per fragment and 8,000 characters total across active plugins.
 
-```typescript
-ctx.registration.registerPromptFragment({
-  name: 'my-hint',
-  content: 'Use the greet tool when the user says hello.',
-})
+## Commands
 
-// Or lazily computed at render time:
-ctx.registration.registerPromptFragment({
-  name: 'dynamic-hint',
-  content: () => `Current time: ${new Date().toISOString()}`,
-})
+Plugin commands are registered through `ctx.registration.registerCommand()` and exposed under a safe namespace:
+
+```text
+plugin_<sanitized-plugin-id>_<command-name>
 ```
 
----
+Command handlers receive the normal `IncomingMessage`, `ReplyFn`, and `AuthorizationResult` values. They run through the same chat command registration path as core commands.
 
-## Admin workflow
+## Scheduled Jobs
 
-All plugin state changes require an admin user (a user with the `ADMIN_USER_ID` or an authorized user):
+Plugin jobs are registered through `ctx.registration.registerScheduledJob()` with an `intervalMs` and an `execute(contextId)` function. Jobs are registered with owner names like `plugin:<pluginId>:<jobName>` and execute only for contexts where the plugin is enabled and eligible.
 
+## Permissions
+
+Supported MVP permissions:
+
+| Permission    | Effect                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------- |
+| `storage`     | Enables plugin KV access. Without it, KV calls fail closed.                             |
+| `tasks.read`  | Enables read methods on the task-provider facade.                                       |
+| `tasks.write` | Enables write methods on the task-provider facade.                                      |
+| `commands`    | Reserved declaration for command-capable plugins; registration is still manifest-gated. |
+| `scheduler`   | Reserved declaration for scheduled-job plugins; registration is still manifest-gated.   |
+| `chat.send`   | Declared in the permission list but no raw chat-send facade is exposed in the MVP.      |
+
+Unsupported in the MVP: raw chat provider access, raw task provider access, raw DB access, raw environment access, encrypted plugin secrets, arbitrary network access, and sandbox isolation.
+
+## Context Config And Eligibility
+
+Required `configRequirements` are evaluated per target context. Missing required config does not globally break activation; it makes that plugin ineligible for that context, so tools and prompt fragments are hidden and enable actions report the missing keys. Sensitive plugin config values are masked in `/config` output.
+
+## Admin Workflow
+
+`/plugin` is DM-only and bot-admin-only.
+
+```text
+/plugin list
+/plugin info <id>
+/plugin approve <id>
+/plugin reject <id>
+/plugin enable <id> [context-id]
+/plugin disable <id> [context-id]
 ```
-/plugin list                  — list all discovered plugins and their states
-/plugin info <id>             — show full manifest for a plugin
-/plugin approve <id>          — approve and activate a plugin
-/plugin reject <id>           — reject a plugin (prevents activation)
-/plugin enable <id>           — enable an active plugin for the current context
-/plugin disable <id>          — disable a plugin for the current context
+
+Discovery and approval are startup-oriented. Approving or rejecting a plugin affects the next startup. Manifest hash changes clear approval and require reapproval.
+
+Per-context enable/disable takes effect the next time tools or prompt fragments are assembled.
+
+## Validation Commands
+
+Recommended checks while developing plugins:
+
+```bash
+bun test tests/plugins
+bun test tests/tools/tools-builder.test.ts tests/system-prompt.test.ts
+bun lint
+bun typecheck
 ```
 
-### Plugin lifecycle states
+Run the broader release gate before merging plugin-system changes:
 
+```bash
+bun check:full
+bun security
 ```
-discovered ──► approved ──► active
-     │              │          │
-     └──► rejected  └──► incompatible / config_missing / error
-```
 
-- **discovered**: Manifest parsed; awaiting admin approval.
-- **approved**: Admin approved; will activate on next startup or reload if compatible.
-- **incompatible**: Plugin requires capabilities the current provider does not support.
-- **active**: Activated successfully and contributing tools/prompts.
-- **error**: Activation failed; error reason stored and logged.
-- **rejected**: Admin explicitly rejected; will not activate.
+## Example Plugin
 
----
-
-## Example plugin
-
-See [`docs/plugins/examples/hello-world/`](./examples/hello-world/) for a complete working example.
+See [`docs/plugins/examples/hello-world/`](./examples/hello-world/) for a complete example covering tools, prompt fragments, commands, jobs, and context config metadata.

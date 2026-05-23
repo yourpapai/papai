@@ -7,6 +7,9 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { persistIncomingAttachments } from '../../src/attachments/index.js'
 import type { IncomingFile } from '../../src/chat/types.js'
+import { contributionRegistry } from '../../src/plugins/contributions.js'
+import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
+import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/types.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { makeTools } from '../../src/tools/index.js'
 import { buildTools } from '../../src/tools/tools-builder.js'
@@ -428,5 +431,188 @@ describe('makeTools direct integration', () => {
 
     expect(dmTools).not.toHaveProperty('set_my_identity')
     expect(groupTools).toHaveProperty('set_my_identity')
+  })
+
+  it('adds context-enabled plugin tools with request-scoped runtime context', async () => {
+    mockLogger()
+    await setupTestDb()
+    const pluginId = 'task-five-plugin'
+    const storageContextId = 'ctx-task-five'
+    const plugin: DiscoveredPlugin = {
+      manifest: {
+        id: pluginId,
+        name: 'Task Five Plugin',
+        version: '1.0.0',
+        description: 'Plugin tool integration test',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        contributes: { tools: ['runtime_echo'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+        permissions: ['tasks.read'],
+        defaultEnabled: false,
+        activationTimeoutMs: 5000,
+        requiredTaskCapabilities: [],
+        requiredChatCapabilities: [],
+        configRequirements: [],
+      },
+      pluginDir: '/tmp/task-five-plugin',
+      entryPoint: '/tmp/task-five-plugin/index.ts',
+      manifestHash: 'task-five-hash',
+    }
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'task-five-hash')
+    pluginRegistry.markActive(pluginId)
+    setPluginEnabledForContext(pluginId, storageContextId, true)
+    contributionRegistry.register(
+      pluginId,
+      {
+        tools: [
+          {
+            name: 'runtime_echo',
+            description: 'Echo runtime context',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              Promise.resolve({
+                chatUserId: runtimeContext.chatUserId,
+                storageContextId: runtimeContext.storageContextId,
+              }),
+          },
+        ],
+        promptFragments: [],
+      },
+      plugin.manifest,
+    )
+
+    const tools = makeTools(createMockProvider(), {
+      storageContextId,
+      chatUserId: 'chat-user-task-five',
+      contextType: 'dm',
+    })
+    const execute = getToolExecutor(tools['plugin_task_five_plugin__runtime_echo'])
+
+    await expect(execute({}, { toolCallId: 'call-task-five' })).resolves.toEqual({
+      chatUserId: 'chat-user-task-five',
+      storageContextId,
+    })
+
+    contributionRegistry.deregister(pluginId)
+  })
+
+  it('does not add active plugin tools when plugin is disabled for the context', async () => {
+    mockLogger()
+    await setupTestDb()
+    const pluginId = 'task-five-disabled-plugin'
+    const storageContextId = 'ctx-task-five-disabled'
+    const plugin: DiscoveredPlugin = {
+      manifest: {
+        id: pluginId,
+        name: 'Task Five Disabled Plugin',
+        version: '1.0.0',
+        description: 'Plugin disabled integration test',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        contributes: { tools: ['runtime_echo'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+        permissions: ['tasks.read'],
+        defaultEnabled: false,
+        activationTimeoutMs: 5000,
+        requiredTaskCapabilities: [],
+        requiredChatCapabilities: [],
+        configRequirements: [],
+      },
+      pluginDir: '/tmp/task-five-disabled-plugin',
+      entryPoint: '/tmp/task-five-disabled-plugin/index.ts',
+      manifestHash: 'task-five-disabled-hash',
+    }
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'task-five-disabled-hash')
+    pluginRegistry.markActive(pluginId)
+    contributionRegistry.register(
+      pluginId,
+      {
+        tools: [
+          {
+            name: 'runtime_echo',
+            description: 'Echo runtime context',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              Promise.resolve({
+                chatUserId: runtimeContext.chatUserId,
+                storageContextId: runtimeContext.storageContextId,
+              }),
+          },
+        ],
+        promptFragments: [],
+      },
+      plugin.manifest,
+    )
+
+    const tools = makeTools(createMockProvider(), {
+      storageContextId,
+      chatUserId: 'chat-user-task-five',
+      contextType: 'dm',
+    })
+
+    expect(tools).not.toHaveProperty('plugin_task_five_disabled_plugin__runtime_echo')
+
+    contributionRegistry.deregister(pluginId)
+  })
+
+  it('does not add enabled plugin tools when required plugin config is missing for the context', async () => {
+    mockLogger()
+    await setupTestDb()
+    const pluginId = 'task-six-missing-config-plugin'
+    const storageContextId = 'ctx-task-six-missing-config'
+    const plugin: DiscoveredPlugin = {
+      manifest: {
+        id: pluginId,
+        name: 'Task Six Missing Config Plugin',
+        version: '1.0.0',
+        description: 'Plugin config gating integration test',
+        apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
+        contributes: { tools: ['runtime_echo'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+        permissions: ['tasks.read'],
+        defaultEnabled: false,
+        activationTimeoutMs: 5000,
+        requiredTaskCapabilities: [],
+        requiredChatCapabilities: [],
+        configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+      },
+      pluginDir: '/tmp/task-six-missing-config-plugin',
+      entryPoint: '/tmp/task-six-missing-config-plugin/index.ts',
+      manifestHash: 'task-six-missing-config-hash',
+    }
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'task-six-missing-config-hash')
+    pluginRegistry.markActive(pluginId)
+    setPluginEnabledForContext(pluginId, storageContextId, true)
+    contributionRegistry.register(
+      pluginId,
+      {
+        tools: [
+          {
+            name: 'runtime_echo',
+            description: 'Echo runtime context',
+            execute: (_input, runtimeContext): Promise<unknown> =>
+              Promise.resolve({
+                chatUserId: runtimeContext.chatUserId,
+                storageContextId: runtimeContext.storageContextId,
+              }),
+          },
+        ],
+        promptFragments: [],
+      },
+      plugin.manifest,
+    )
+
+    const tools = makeTools(createMockProvider(), {
+      storageContextId,
+      chatUserId: 'chat-user-task-six',
+      contextType: 'dm',
+    })
+
+    expect(tools).not.toHaveProperty('plugin_task_six_missing_config_plugin__runtime_echo')
+
+    contributionRegistry.deregister(pluginId)
   })
 })

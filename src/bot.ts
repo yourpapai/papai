@@ -29,6 +29,7 @@ import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orch
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
+import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
@@ -124,6 +125,7 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
   registerPluginCommand(observedChat, adminUserId)
+  registerPluginCommands(observedChat)
 }
 function userNeedsSetup(storageContextId: string, taskProvider: 'kaneo' | 'youtrack'): boolean {
   const config = getAllConfig(storageContextId)

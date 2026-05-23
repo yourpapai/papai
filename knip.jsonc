@@ -79,6 +79,10 @@
     // pattern in src/cache.ts, but unlike that one no production code currently
     // consumes it, so knip can't trace it through to a project entry.
     "src/system-config.ts": ["exports"],
+    // Plugin config setter and registry reset are test/reset seams consumed by
+    // plugin and config tests; they are intentionally outside production flows.
+    "src/config.ts": ["exports"],
+    "src/plugins/registry.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],

@@ -5,15 +5,22 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { setPluginConfig } from '../../src/config.js'
 import {
   PluginRegistry,
   checkPluginCompatibility,
+  getPluginContextEligibility,
   getPluginsForContext,
   isPluginActiveForContext,
+  pluginRegistry,
   setPluginEnabledForContext,
   syncRegistryFromDb,
 } from '../../src/plugins/registry.js'
-import { isPluginEnabledForContext as storeIsEnabled } from '../../src/plugins/store.js'
+import {
+  getPluginAdminState,
+  isPluginEnabledForContext as storeIsEnabled,
+  updatePluginAdminStateField,
+} from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -194,6 +201,68 @@ describe('PluginRegistry', () => {
     // Re-discover with a different hash
     registry.registerDiscovered({ ...plugin, manifestHash: 'hash-new' })
     expect(registry.getEntry('test-plugin')?.state).toBe('discovered')
+    const adminState = getPluginAdminState('test-plugin')
+    expect(adminState?.approvedManifestHash).toBeNull()
+    expect(adminState?.approvedBy).toBeNull()
+  })
+
+  test('startup normalizes persisted active state back to approved when approval hash exists', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+    registry.markActive('test-plugin')
+
+    const restartedRegistry = new PluginRegistry()
+    restartedRegistry.registerDiscovered(plugin)
+
+    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
+  })
+
+  test('startup normalizes persisted error state back to approved when approval hash exists', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+    registry.markError('test-plugin', 'activation failed')
+
+    const restartedRegistry = new PluginRegistry()
+    restartedRegistry.registerDiscovered(plugin)
+
+    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
+  })
+
+  test('persisted incompatible state can recover on startup when capabilities become available', () => {
+    const plugin = makePlugin({
+      manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
+    })
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+    registry.evaluateCompatibility('test-plugin', new Set(), new Set())
+    expect(registry.getEntry('test-plugin')?.state).toBe('incompatible')
+
+    const restartedRegistry = new PluginRegistry()
+    restartedRegistry.registerDiscovered(plugin)
+    restartedRegistry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
+
+    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
+  })
+
+  test('startup falls back to discovered when approved hash is missing', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+    updatePluginAdminStateField('test-plugin', {
+      approvedManifestHash: null,
+      state: 'active',
+    })
+
+    const restartedRegistry = new PluginRegistry()
+    restartedRegistry.registerDiscovered(plugin)
+
+    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('discovered')
+    expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(0)
   })
 })
 
@@ -222,5 +291,77 @@ describe('singleton registry helpers', () => {
 
   test('getPluginsForContext returns active plugins enabled for context', () => {
     expect(getPluginsForContext('ctx-unused')).toEqual([])
+  })
+
+  test('excludes enabled active plugin from context when required plugin config is unset', () => {
+    const pluginId = 'required-config-plugin'
+    const contextId = 'ctx-required-config'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Required Config Plugin',
+        defaultEnabled: true,
+        configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+      },
+      manifestHash: 'hash-required-config',
+    })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-required-config')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({
+      eligible: false,
+      reason: 'config_missing',
+      missingKeys: ['api_token'],
+    })
+    expect(getPluginsForContext(contextId)).toEqual([])
+  })
+
+  test('treats optional plugin config as non-blocking for context eligibility', () => {
+    const pluginId = 'optional-config-plugin'
+    const contextId = 'ctx-optional-config'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Optional Config Plugin',
+        defaultEnabled: true,
+        configRequirements: [{ key: 'project_hint', label: 'Project Hint', required: false, sensitive: false }],
+      },
+      manifestHash: 'hash-optional-config',
+    })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-optional-config')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({ eligible: true })
+    expect(getPluginsForContext(contextId).map((p) => p.manifest.id)).toContain(pluginId)
+  })
+
+  test('allows enabled active plugin when required plugin config is set for the target context', () => {
+    const pluginId = 'configured-plugin'
+    const contextId = 'ctx-configured-plugin'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Configured Plugin',
+        defaultEnabled: false,
+        configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+      },
+      manifestHash: 'hash-configured-plugin',
+    })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-configured-plugin')
+    pluginRegistry.markActive(pluginId)
+    setPluginEnabledForContext(pluginId, contextId, true)
+    setPluginConfig(contextId, pluginId, 'api_token', 'secret-token')
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({ eligible: true })
+    expect(getPluginsForContext(contextId).map((p) => p.manifest.id)).toContain(pluginId)
   })
 })
