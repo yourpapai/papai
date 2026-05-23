@@ -7,12 +7,28 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import { getAllConfig, getConfig, isConfigKey, isSensitiveKey, maskValue, setConfig } from '../src/config.js'
+import { setContextSettings } from '../src/instances/context-store.js'
+import { insertTaskInstance } from '../src/instances/task-store.js'
 import { CONFIG_KEYS, type ConfigKey } from '../src/types/config.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const USER_A = '111'
 const USER_B = '222'
+
+const assignKaneoContext = (contextId: string): void => {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({
+    contextId,
+    taskInstanceId: `${contextId}-kaneo`,
+    platformInstanceId: 'telegram-default',
+  })
+}
 
 beforeEach(() => {
   mockLogger()
@@ -119,6 +135,7 @@ describe('getAllConfig', () => {
   })
 
   test('returns all set configs for user', () => {
+    assignKaneoContext(USER_A)
     setConfig(USER_A, 'kaneo_apikey', 'key-1')
     setConfig(USER_A, 'timezone', 'UTC')
     const allConfig = getAllConfig(USER_A)
@@ -133,6 +150,7 @@ describe('getAllConfig', () => {
   })
 
   test('does not leak config from other users', () => {
+    assignKaneoContext(USER_A)
     setConfig(USER_A, 'kaneo_apikey', 'key-a')
     setConfig(USER_B, 'kaneo_apikey', 'key-b')
     const configA = getAllConfig(USER_A)
