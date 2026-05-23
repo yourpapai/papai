@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Dashboard Redesign — PR 2: `/debug` Shell + Right Rail Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rebuild the `/debug` page as a three-column Telemetry shell — `DebugTopBar` on top, sessions/traces left rail, panels in the center, swappable detail rail on the right. Collapse the five separate `<Modal>` overlays + five `selected*` state cells into a single `selectedDetail: SelectedDetail` discriminated union rendered by a new `DebugDetailRail`. Replace the per-group `ContextChips` button row with a simpler `Seg(all|dm|group)` filter wired to `dashboard.scopeFilter`.
 
@@ -64,12 +64,12 @@ See LICENSE in the project root for details.
 
 - Modify: `client/debug/dashboard-types.ts`
 
-- [ ] **Step 1: Read the current file**
+- [x] **Step 1: Read the current file**
 
 Run: `cat client/debug/dashboard-types.ts | head -120`
 Identify the `DashboardState` interface (around line 101) and confirm the current `activeContext: string` field on line 116.
 
-- [ ] **Step 2: Apply the type edits**
+- [x] **Step 2: Apply the type edits**
 
 Replace lines 101–118 of `client/debug/dashboard-types.ts` with the following. Keep all imports and the leading `DashboardWizard` / `DashboardStats` types untouched.
 
@@ -105,12 +105,12 @@ export interface DashboardState {
 }
 ```
 
-- [ ] **Step 3: Run typecheck — expect failures (this is intentional)**
+- [x] **Step 3: Run typecheck — expect failures (this is intentional)**
 
 Run: `bun typecheck 2>&1 | grep -E "(activeContext|scopeFilter|selectedDetail)" | head -30`
 Expected: a list of files still referencing the removed `activeContext` — this is the work list for the next tasks.
 
-- [ ] **Step 4: Do NOT commit yet**
+- [x] **Step 4: Do NOT commit yet**
 
 Hold the commit until the rename has propagated through every consumer in subsequent tasks. The branch is intentionally red between tasks 1 and 6.
 
@@ -122,11 +122,11 @@ Hold the commit until the rename has propagated through every consumer in subseq
 
 - Modify: `client/debug/debug.svelte.ts`
 
-- [ ] **Step 1: Locate the state initializer**
+- [x] **Step 1: Locate the state initializer**
 
 Open `client/debug/debug.svelte.ts`. Find the `$state` initializer block (around line 23, where `activeContext: 'all'` sits).
 
-- [ ] **Step 2: Replace `activeContext` with `scopeFilter` and add `selectedDetail`**
+- [x] **Step 2: Replace `activeContext` with `scopeFilter` and add `selectedDetail`**
 
 Change the initializer so that:
 
@@ -135,12 +135,12 @@ Change the initializer so that:
 
 If the file lacks a `SelectedDetail` import, add it to the existing import line from `./dashboard-types.js`.
 
-- [ ] **Step 3: Run typecheck on this file specifically**
+- [x] **Step 3: Run typecheck on this file specifically**
 
 Run: `bun tsc --noEmit client/debug/debug.svelte.ts 2>&1 | tail -10`
 Expected: no errors local to this file. (Other files still reference `activeContext` — that's tasks 3–5.)
 
-- [ ] **Step 4: Hold the commit (still red downstream)**
+- [x] **Step 4: Hold the commit (still red downstream)**
 
 ---
 
@@ -150,11 +150,11 @@ Expected: no errors local to this file. (Other files still reference `activeCont
 
 - Modify: `client/debug/components/TurnsPanel.svelte`
 
-- [ ] **Step 1: Locate `matchesContext`**
+- [x] **Step 1: Locate `matchesContext`**
 
 Read `client/debug/components/TurnsPanel.svelte`. The function on line 32–40 takes `(turn: Turn, activeContext: string)` and includes a `group:<id>` branch.
 
-- [ ] **Step 2: Rename and simplify**
+- [x] **Step 2: Rename and simplify**
 
 Rename `matchesContext` to `matchesScope`, change its signature to `(turn: Turn, scope: ScopeFilter)`, and remove the `group:<id>` branch entirely. The whole helper becomes:
 
@@ -174,12 +174,12 @@ const filtered = $derived(dashboard.turns.filter((t) => matchesScope(t, dashboar
 
 Add a `ScopeFilter` type import from `../dashboard-types.js` if the file does not already include it.
 
-- [ ] **Step 3: Run the existing TurnsPanel test**
+- [x] **Step 3: Run the existing TurnsPanel test**
 
 Run: `bun test:client tests/client/debug/components/TurnsPanel.test.ts 2>&1 | tail -20`
 Expected: FAIL on the line `state.activeContext = 'dm'` — that test still uses the old field. Leave the test alone; Task 6 updates all callers in one sweep.
 
-- [ ] **Step 4: Hold the commit**
+- [x] **Step 4: Hold the commit**
 
 ---
 
@@ -189,7 +189,7 @@ Expected: FAIL on the line `state.activeContext = 'dm'` — that test still uses
 
 - Modify: `client/debug/components/NotificationsPanel.svelte`
 
-- [ ] **Step 1: Apply the same rename**
+- [x] **Step 1: Apply the same rename**
 
 Replace `matchesContext(scope: Notification['scope'], activeContext: string)` with:
 
@@ -205,7 +205,7 @@ Update the `$derived` call site to read `dashboard.scopeFilter` and call `matche
 
 Add the `ScopeFilter` import from `../dashboard-types.js`.
 
-- [ ] **Step 2: Hold the commit**
+- [x] **Step 2: Hold the commit**
 
 ---
 
@@ -215,7 +215,7 @@ Add the `ScopeFilter` import from `../dashboard-types.js`.
 
 - Modify: `client/debug/components/ToolFailuresPanel.svelte`
 
-- [ ] **Step 1: Apply the same rename**
+- [x] **Step 1: Apply the same rename**
 
 Mirror Task 4 against this file. Helper becomes:
 
@@ -229,7 +229,7 @@ function matchesScope(scope: ToolFailure['scope'], filter: ScopeFilter): boolean
 
 Update the `$derived` call site.
 
-- [ ] **Step 2: Hold the commit**
+- [x] **Step 2: Hold the commit**
 
 ---
 
@@ -243,12 +243,12 @@ Update the `$derived` call site.
 - Modify: `tests/client/debug/components/TurnsPanel.test.ts`
 - Modify: `tests/client/debug/components/DebugApp.test.ts`
 
-- [ ] **Step 1: Find every occurrence**
+- [x] **Step 1: Find every occurrence**
 
 Run: `grep -rn "activeContext" tests/client/debug/`
 Expected: 6 lines across 5 files.
 
-- [ ] **Step 2: Rename each**
+- [x] **Step 2: Rename each**
 
 For each occurrence:
 
@@ -259,17 +259,17 @@ For each occurrence:
 
 Also: in each `mockState`/`createState` helper that builds a `DashboardState` literal, add `selectedDetail: null` next to the new `scopeFilter` field (otherwise TypeScript will refuse the literal against the updated interface).
 
-- [ ] **Step 3: Run the migrated tests**
+- [x] **Step 3: Run the migrated tests**
 
 Run: `bun test:client tests/client/debug/`
 Expected: all debug tests pass (the source-side changes from Tasks 1–5 align with these renamed callers).
 
-- [ ] **Step 4: Run full client test suite**
+- [x] **Step 4: Run full client test suite**
 
 Run: `bun test:client 2>&1 | tail -5`
 Expected: green. The branch is now consistent again.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/debug/dashboard-types.ts client/debug/debug.svelte.ts \
@@ -303,7 +303,7 @@ EOF
 - Create: `client/debug/components/DebugTopBar.svelte`
 - Create: `tests/client/debug/components/DebugTopBar.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -393,12 +393,12 @@ describe('DebugTopBar.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test:client tests/client/debug/components/DebugTopBar.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/debug/components/DebugTopBar.svelte`**
+- [x] **Step 3: Implement `client/debug/components/DebugTopBar.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -507,12 +507,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test:client tests/client/debug/components/DebugTopBar.test.ts`
 Expected: PASS (4 cases).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/debug/components/DebugTopBar.svelte tests/client/debug/components/DebugTopBar.test.ts
@@ -539,7 +539,7 @@ EOF
 - Create: `client/debug/components/DebugDetailRail.svelte`
 - Create: `tests/client/debug/components/DebugDetailRail.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -614,12 +614,12 @@ describe('DebugDetailRail.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test:client tests/client/debug/components/DebugDetailRail.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/debug/components/DebugDetailRail.svelte`**
+- [x] **Step 3: Implement `client/debug/components/DebugDetailRail.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -738,12 +738,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test:client tests/client/debug/components/DebugDetailRail.test.ts`
 Expected: PASS (3 cases).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/debug/components/DebugDetailRail.svelte tests/client/debug/components/DebugDetailRail.test.ts
@@ -771,12 +771,12 @@ EOF
 
 This task replaces the file in full.
 
-- [ ] **Step 1: Read the current file to confirm imports and effect logic**
+- [x] **Step 1: Read the current file to confirm imports and effect logic**
 
 Run: `cat client/debug/DebugApp.svelte`
 Confirm: `setupEventSource`, `fetchInitialLogs`, `parseLogsArray`, `collectScopes`, and `showLogsForTurn` are the only behaviors that must be preserved. Five `<Modal>` blocks and five `selected*` cells go away.
 
-- [ ] **Step 2: Replace the file contents**
+- [x] **Step 2: Replace the file contents**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -874,17 +874,17 @@ Confirm: `setupEventSource`, `fetchInitialLogs`, `parseLogsArray`, `collectScope
 </Shell>
 ```
 
-- [ ] **Step 3: Run the existing `DebugApp.test.ts`**
+- [x] **Step 3: Run the existing `DebugApp.test.ts`**
 
 Run: `bun test:client tests/client/debug/components/DebugApp.test.ts 2>&1 | tail -20`
 Expected: PASS, after the Task 6 rename. If the test still asserts the presence of `<Modal>` overlays, simplify those assertions to check for `.debug-grid` instead. Document the simplification inline in the commit message.
 
-- [ ] **Step 4: Run the entire debug test suite**
+- [x] **Step 4: Run the entire debug test suite**
 
 Run: `bun test:client tests/client/debug/ 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/debug/DebugApp.svelte tests/client/debug/components/DebugApp.test.ts
@@ -913,31 +913,31 @@ EOF
 - Delete: `client/debug/components/ContextChips.svelte`
 - Delete (only if they exist): `tests/client/debug/components/Header.test.ts`, `tests/client/debug/components/ContextChips.test.ts`
 
-- [ ] **Step 1: Confirm nothing imports them**
+- [x] **Step 1: Confirm nothing imports them**
 
 Run: `grep -rn "Header\.svelte\|ContextChips\.svelte\|from '.*Header'\|from '.*ContextChips'" client/ tests/client/`
 Expected: no matches other than (potentially) the files themselves being defined.
 
 If any production import survives the Task 9 rewrite, **stop and report** — DebugApp.svelte was supposed to drop both.
 
-- [ ] **Step 2: Check for orphan test files**
+- [x] **Step 2: Check for orphan test files**
 
 Run: `ls tests/client/debug/components/ | grep -E "Header|ContextChips"`
 
 For each match, delete it. (`git rm tests/client/debug/components/<name>.test.ts`.)
 
-- [ ] **Step 3: Delete the components**
+- [x] **Step 3: Delete the components**
 
 ```bash
 git rm client/debug/components/Header.svelte client/debug/components/ContextChips.svelte
 ```
 
-- [ ] **Step 4: Run the full client test suite**
+- [x] **Step 4: Run the full client test suite**
 
 Run: `bun test:client 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -962,13 +962,13 @@ EOF
 
 The old CSS still carries selectors for `.header*`, `.context-chips`, the legacy `main { display: grid; ... }`, `#left-panel`, and `.panel-grid`. Drop those and replace with grid styles for the new shell.
 
-- [ ] **Step 1: Identify the legacy selectors**
+- [x] **Step 1: Identify the legacy selectors**
 
 Run: `grep -nE '^(\.header|\.context-chips|\.chip|#left-panel|\.panel-grid|main \{)' client/debug/debug.css`
 
 Note each match. These blocks (and their nested rules) all go.
 
-- [ ] **Step 2: Remove the legacy blocks**
+- [x] **Step 2: Remove the legacy blocks**
 
 In `client/debug/debug.css`, delete the rule blocks for:
 
@@ -980,7 +980,7 @@ In `client/debug/debug.css`, delete the rule blocks for:
 
 Keep every selector that the surviving components depend on (panels, log explorer rows, session card, trace list, turn rows, notifications, failures, modal close, etc.). When unsure, leave a rule in place — task 22 in PR 1 already confirmed the bundle still compiles with residual rules.
 
-- [ ] **Step 3: Add the new grid block**
+- [x] **Step 3: Add the new grid block**
 
 Append to `client/debug/debug.css`:
 
@@ -1016,21 +1016,21 @@ Append to `client/debug/debug.css`:
 }
 ```
 
-- [ ] **Step 4: Rebuild and inspect the bundle**
+- [x] **Step 4: Rebuild and inspect the bundle**
 
 Run: `bun build:client && grep -c '^\.debug-grid' public/debug.css`
 Expected: at least `1`. The compiled bundle contains the new grid block.
 
-- [ ] **Step 5: Run the client suite**
+- [x] **Step 5: Run the client suite**
 
 Run: `bun test:client 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 6: Manual smoke (optional)**
+- [x] **Step 6: Manual smoke (optional)**
 
 Run: `bun start:debug` and open `/debug`. Click a turn row, then a trace row, then a session, then a log — confirm the right-rail swaps between them and `✕` clears it. Confirm `Seg(all|dm|group)` filters the center panels. Confirm `/admin →` link navigates to `/admin`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add client/debug/debug.css
@@ -1054,22 +1054,22 @@ EOF
 
 This is the gate before declaring PR 2 done.
 
-- [ ] **Step 1: Full check pipeline**
+- [x] **Step 1: Full check pipeline**
 
 Run: `bun check:full`
 Expected: green. If anything fails, fix the underlying issue — never `--no-verify`.
 
-- [ ] **Step 2: Client suite**
+- [x] **Step 2: Client suite**
 
 Run: `bun test:client`
 Expected: green. Should be the PR 1 baseline plus the two new components' tests (7 new cases total: 4 DebugTopBar + 3 DebugDetailRail).
 
-- [ ] **Step 3: Backend unit suite**
+- [x] **Step 3: Backend unit suite**
 
 Run: `bun test`
 Expected: green (no backend code changed).
 
-- [ ] **Step 4: Build the bundle**
+- [x] **Step 4: Build the bundle**
 
 Run: `bun build:client`
 Expected: succeeds. Verify:
@@ -1081,7 +1081,7 @@ grep -cE '^\.context-chips|^#left-panel|^\.panel-grid' public/debug.css
 
 Expected: first ≥ 1, second = 0.
 
-- [ ] **Step 5: No final commit — all work was already committed task-by-task**
+- [x] **Step 5: No final commit — all work was already committed task-by-task**
 
 PR 2 is complete. The branch holds ~6 new commits on top of PR 1.
 
@@ -1103,3 +1103,9 @@ Out of scope for this plan (and deferred to PR 3 / PR 4):
 - Section 8 (`/admin` shell + scrollspy + recent-requests endpoint) — PR 3.
 - Section 9 (data plumbing for `adminGlobals`) — PR 3.
 - Section 10 (polish: Spark/Bars wired to real data, KPI sub-labels, modal restyle pass, dead-code sweep) — PR 4.
+
+## Drift Log
+
+| Date       | Category          | Item                                                                                         | Decision                                  |
+| ---------- | ----------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 2026-05-23 | In-plan, accurate | All 12 tasks (54 checkboxes) — implementation exists on `claude/split-dashboard-admin-zaoys` | Flipped all `[ ]` → `[x]` via replace_all |

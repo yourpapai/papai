@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Dashboard Redesign — PR 3: `/admin` Shell + Scrollspy + Recent-Requests Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rebuild `/admin` as a single scrolling page with a sticky sidebar driving scrollspy navigation. Add an `OverviewSection` (KPIs + sparkline + bars) backed by a new `adminGlobals` data layer fed from `/stats/global`. Inline the per-subject billing detail (drop the modal). Add a `GET /admin/subjects/:id/recent-requests` route that returns an anonymous request log per the `/stats/*` anonymity contract.
 
@@ -77,7 +77,7 @@ See LICENSE in the project root for details.
 - Create: `src/usage/recent-requests.ts`
 - Create: `tests/usage/recent-requests.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -163,12 +163,12 @@ describe('listRecentRequests', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test tests/usage/recent-requests.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the helper**
+- [x] **Step 3: Implement the helper**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -220,12 +220,12 @@ export const listRecentRequests = (storageContextId: string, limit: number): Rec
 }
 ```
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test tests/usage/recent-requests.test.ts`
 Expected: PASS (4 cases).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/usage/recent-requests.ts tests/usage/recent-requests.test.ts
@@ -252,7 +252,7 @@ EOF
 - Modify: `src/debug/admin-system.ts`
 - Modify: `src/debug/server.ts`
 
-- [ ] **Step 1: Add the schema to `src/debug/schemas.ts`**
+- [x] **Step 1: Add the schema to `src/debug/schemas.ts`**
 
 Append at the bottom of the file (after the existing schemas):
 
@@ -276,7 +276,7 @@ export type RecentRequest = z.infer<typeof RecentRequestSchema>
 export type RecentRequestsResponse = z.infer<typeof RecentRequestsResponseSchema>
 ```
 
-- [ ] **Step 2: Add the handler to `src/debug/admin-system.ts`**
+- [x] **Step 2: Add the handler to `src/debug/admin-system.ts`**
 
 Append at the bottom of the file:
 
@@ -314,7 +314,7 @@ export const handleAdminRecentRequests = (url: URL): Response => {
 
 The function MUST NOT include any content fields (message text, error bodies, etc.) — verify by inspection.
 
-- [ ] **Step 3: Wire the route in `src/debug/server.ts`**
+- [x] **Step 3: Wire the route in `src/debug/server.ts`**
 
 Locate the existing admin pathname branches (around line 227, after `/admin/system` and `/admin/llm`). Add:
 
@@ -328,12 +328,12 @@ Also add `handleAdminRecentRequests` to the import line from `./admin-system.js`
 
 **Read-route gating:** The existing pattern is "bearer-gated only when `DEBUG_TOKEN` is set; otherwise read-only routes are open". Mirror that. If the existing read-routes are routed through a shared `requireBearer(req)` helper, use it. If not, add no gating here — it inherits from the global routing layer.
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 Run: `bun typecheck 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 5: Hold the commit — Task 3 ships the route test alongside this code**
+- [x] **Step 5: Hold the commit — Task 3 ships the route test alongside this code**
 
 ---
 
@@ -343,13 +343,13 @@ Expected: green.
 
 - Create: `tests/debug/admin-system.recent-requests.test.ts`
 
-- [ ] **Step 1: Read existing admin-system tests to mirror the harness pattern**
+- [x] **Step 1: Read existing admin-system tests to mirror the harness pattern**
 
 Run: `ls tests/debug/ | grep -i admin && cat tests/debug/admin-system.test.ts 2>/dev/null | head -40`
 
 Use the existing setup pattern (Bun.serve harness, port allocation, env reset) from `tests/debug/server.test.ts` if no local pattern exists.
 
-- [ ] **Step 2: Write the test**
+- [x] **Step 2: Write the test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -440,12 +440,12 @@ describe('handleAdminRecentRequests', () => {
 })
 ```
 
-- [ ] **Step 3: Run the test**
+- [x] **Step 3: Run the test**
 
 Run: `bun test tests/debug/admin-system.recent-requests.test.ts`
 Expected: 5/5 PASS.
 
-- [ ] **Step 4: Commit tasks 2 + 3 together**
+- [x] **Step 4: Commit tasks 2 + 3 together**
 
 ```bash
 git add src/debug/schemas.ts src/debug/admin-system.ts src/debug/server.ts \
@@ -473,7 +473,7 @@ EOF
 - Create: `client/admin/global-stats.svelte.ts`
 - Create: `tests/client/admin/global-stats.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -522,12 +522,12 @@ describe('global-stats', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test:client tests/client/admin/global-stats.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/admin/global-stats.svelte.ts`**
+- [x] **Step 3: Implement `client/admin/global-stats.svelte.ts`**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -569,12 +569,12 @@ export async function refreshGlobals(): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test:client tests/client/admin/global-stats.test.ts`
 Expected: 2/2 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/global-stats.svelte.ts tests/client/admin/global-stats.test.ts
@@ -598,11 +598,11 @@ EOF
 
 - Modify: `client/admin/admin.svelte.ts`
 
-- [ ] **Step 1: Read the current file**
+- [x] **Step 1: Read the current file**
 
 Run: `cat client/admin/admin.svelte.ts`. Confirm: `adminState` only has `currentSection` today.
 
-- [ ] **Step 2: Add the `window` field and helpers**
+- [x] **Step 2: Add the `window` field and helpers**
 
 Replace the `adminState` declaration and `syncSectionFromLocation` with:
 
@@ -636,17 +636,17 @@ export function syncSectionFromLocation(): void {
 }
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `bun typecheck 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 4: Run existing admin tests**
+- [x] **Step 4: Run existing admin tests**
 
 Run: `bun test:client tests/client/admin/`
 Expected: green. If `admin.svelte.test.ts` exists and asserts on the old `adminState` shape, this task may surface a failure — fix the assertion in the same edit (add `lastRefreshedAt: null` to the assumed shape).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/admin.svelte.ts $(ls tests/client/admin/admin.svelte.test.ts 2>/dev/null)
@@ -672,7 +672,7 @@ EOF
 - Create: `tests/client/admin/scrollspy.test.ts`
 - Modify: `tests/client-setup.ts`
 
-- [ ] **Step 1: Add an IntersectionObserver stub to the client test setup**
+- [x] **Step 1: Add an IntersectionObserver stub to the client test setup**
 
 In `tests/client-setup.ts`, mirror the existing `EventSource` stub block. After the `EventSource` stub, append:
 
@@ -698,7 +698,7 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
 }
 ```
 
-- [ ] **Step 2: Write the failing scrollspy test**
+- [x] **Step 2: Write the failing scrollspy test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -774,12 +774,12 @@ describe('useScrollSpy', () => {
 })
 ```
 
-- [ ] **Step 3: Run the failing test**
+- [x] **Step 3: Run the failing test**
 
 Run: `bun test:client tests/client/admin/scrollspy.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement `client/admin/scrollspy.ts`**
+- [x] **Step 4: Implement `client/admin/scrollspy.ts`**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -822,12 +822,12 @@ export const useScrollSpy = (sectionIds: readonly string[], onChange: (id: strin
 }
 ```
 
-- [ ] **Step 5: Run the test until green**
+- [x] **Step 5: Run the test until green**
 
 Run: `bun test:client tests/client/admin/scrollspy.test.ts`
 Expected: 2/2 PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/admin/scrollspy.ts tests/client/admin/scrollspy.test.ts tests/client-setup.ts
@@ -855,7 +855,7 @@ EOF
 - Create: `client/admin/components/AdminTopBar.svelte`
 - Create: `tests/client/admin/components/AdminTopBar.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -910,12 +910,12 @@ describe('AdminTopBar.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test:client tests/client/admin/components/AdminTopBar.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/admin/components/AdminTopBar.svelte`**
+- [x] **Step 3: Implement `client/admin/components/AdminTopBar.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1005,12 +1005,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test:client tests/client/admin/components/AdminTopBar.test.ts`
 Expected: 3/3 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/components/AdminTopBar.svelte tests/client/admin/components/AdminTopBar.test.ts
@@ -1036,7 +1036,7 @@ EOF
 - Create: `client/admin/components/AdminSidebarPanel.svelte`
 - Create: `tests/client/admin/components/AdminSidebarPanel.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1076,12 +1076,12 @@ describe('AdminSidebarPanel.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test:client tests/client/admin/components/AdminSidebarPanel.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/admin/components/AdminSidebarPanel.svelte`**
+- [x] **Step 3: Implement `client/admin/components/AdminSidebarPanel.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1134,18 +1134,9 @@ Expected: FAIL — module not found.
   <HR />
   <Caption>{#snippet children()}quick stats{/snippet}</Caption>
   <div class="admin-sidebar__kvs">
-    <KV>
-      {#snippet k()}DM{/snippet}
-      {#snippet v()}{adminGlobals.data?.subjects ?? '—'}{/snippet}
-    </KV>
-    <KV>
-      {#snippet k()}llm{/snippet}
-      {#snippet v()}{adminGlobals.data?.llmCalls ?? '—'}{/snippet}
-    </KV>
-    <KV>
-      {#snippet k()}tools{/snippet}
-      {#snippet v()}{adminGlobals.data?.toolCalls ?? '—'}{/snippet}
-    </KV>
+    <KV k="DM" v={adminGlobals.data?.subjects?.dmTotal ?? '—'} />
+    <KV k="active" v={adminGlobals.data?.active?.activeIn30d ?? '—'} />
+    <KV k="tools" v="—" />
   </div>
 </aside>
 
@@ -1189,14 +1180,14 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test:client tests/client/admin/components/AdminSidebarPanel.test.ts`
 Expected: 2/2 PASS.
 
 If `KV.svelte` uses different snippet prop names than `k`/`v`, read the component first and adjust the call sites in this file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/components/AdminSidebarPanel.svelte \
@@ -1223,7 +1214,7 @@ EOF
 - Create: `client/admin/sections/OverviewSection.svelte`
 - Create: `tests/client/admin/sections/OverviewSection.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1265,12 +1256,12 @@ describe('OverviewSection.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run: `bun test:client tests/client/admin/sections/OverviewSection.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/admin/sections/OverviewSection.svelte`**
+- [x] **Step 3: Implement `client/admin/sections/OverviewSection.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1293,22 +1284,10 @@ Expected: FAIL — module not found.
 <section id="overview" class="admin-section">
   <Panel title="overview">
     <div class="admin-overview__kpis">
-      <KV>
-        {#snippet k()}subjects{/snippet}
-        {#snippet v()}{adminGlobals.data?.subjects ?? '—'}{/snippet}
-      </KV>
-      <KV>
-        {#snippet k()}llm calls{/snippet}
-        {#snippet v()}{adminGlobals.data?.llmCalls ?? '—'}{/snippet}
-      </KV>
-      <KV>
-        {#snippet k()}tool calls{/snippet}
-        {#snippet v()}{adminGlobals.data?.toolCalls ?? '—'}{/snippet}
-      </KV>
-      <KV>
-        {#snippet k()}tokens{/snippet}
-        {#snippet v()}{adminGlobals.data?.tokens ?? '—'}{/snippet}
-      </KV>
+      <KV k="subjects" v={adminGlobals.data?.subjects ?? '—'} />
+      <KV k="llm calls" v={adminGlobals.data?.llmCalls ?? '—'} />
+      <KV k="tool calls" v={adminGlobals.data?.toolCalls ?? '—'} />
+      <KV k="tokens" v={adminGlobals.data?.tokens ?? '—'} />
     </div>
     <div class="admin-overview__charts">
       <div class="admin-overview__spark">
@@ -1343,12 +1322,12 @@ Expected: FAIL — module not found.
 
 Verify before final write: `Panel.svelte`'s `title` prop, `Spark.svelte`'s `values` prop, `Bars.svelte`'s `values` prop. Read each one. If a prop is named differently (e.g. `data` instead of `values`), adjust.
 
-- [ ] **Step 4: Run the test until green**
+- [x] **Step 4: Run the test until green**
 
 Run: `bun test:client tests/client/admin/sections/OverviewSection.test.ts`
 Expected: 2/2 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/sections/OverviewSection.svelte \
@@ -1376,7 +1355,7 @@ EOF
 - Modify: `client/admin/fetchers.ts`
 - Modify: `client/admin/fetcher-schemas.ts`
 
-- [ ] **Step 1: Read the current SubjectDetail + fetchers**
+- [x] **Step 1: Read the current SubjectDetail + fetchers**
 
 Run: `cat client/admin/components/SubjectDetail.svelte | head -60`
 Run: `cat client/admin/fetchers.ts | head -40`
@@ -1384,7 +1363,7 @@ Run: `cat client/admin/fetcher-schemas.ts | head -40`
 
 Confirm the existing fetch pattern (Zod-validated `fetch` wrappers).
 
-- [ ] **Step 2: Add the schema and fetcher**
+- [x] **Step 2: Add the schema and fetcher**
 
 In `client/admin/fetcher-schemas.ts`, mirror an existing schema block and append:
 
@@ -1424,7 +1403,7 @@ export async function fetchRecentRequests(subjectId: string, limit = 25): Promis
 }
 ```
 
-- [ ] **Step 3: Add a `recentRequests` block to `SubjectDetail.svelte`**
+- [x] **Step 3: Add a `recentRequests` block to `SubjectDetail.svelte`**
 
 Inside `<script>`, add:
 
@@ -1507,12 +1486,12 @@ Add a corresponding CSS block inside the file's `<style>`:
 }
 ```
 
-- [ ] **Step 4: Run any existing SubjectDetail tests**
+- [x] **Step 4: Run any existing SubjectDetail tests**
 
 Run: `bun test:client tests/client/admin/`
 Expected: green. If a test asserts on the absence of the recent-requests block, update it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/components/SubjectDetail.svelte \
@@ -1537,12 +1516,12 @@ EOF
 
 - Modify: `client/admin/sections/BillingSection.svelte`
 
-- [ ] **Step 1: Read the current file**
+- [x] **Step 1: Read the current file**
 
 Run: `cat client/admin/sections/BillingSection.svelte`
 Identify: the `<Modal>` block that wraps subject detail, the local selection state (likely `selectedSubject`), the per-section window selector.
 
-- [ ] **Step 2: Replace the modal with an inline panel**
+- [x] **Step 2: Replace the modal with an inline panel**
 
 Drop the `<Modal>` import and block. Replace with:
 
@@ -1559,7 +1538,7 @@ Drop the `<Modal>` import and block. Replace with:
 
 Drop the per-section window selector import (`WindowSelect`) and its usage. Read `adminGlobals.window` instead from a `$derived` if BillingSection needs to filter — but per spec §8 the top-bar owns this, so the section's own state just subscribes.
 
-- [ ] **Step 3: CSS block at the bottom of the file**
+- [x] **Step 3: CSS block at the bottom of the file**
 
 ```css
 .billing-inline-detail {
@@ -1570,12 +1549,12 @@ Drop the per-section window selector import (`WindowSelect`) and its usage. Read
 }
 ```
 
-- [ ] **Step 4: Run existing BillingSection tests**
+- [x] **Step 4: Run existing BillingSection tests**
 
 Run: `bun test:client tests/client/admin/`
 Expected: green. If a test asserts on the modal, update it to check for `.billing-inline-detail`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/sections/BillingSection.svelte \
@@ -1606,11 +1585,11 @@ EOF
 
 For each of the four files:
 
-- [ ] **Step 1: Read the current fetch pattern**
+- [x] **Step 1: Read the current fetch pattern**
 
 Find the existing `onMount` or `$effect` that triggers the initial fetch. Capture the body in a function (e.g. `loadInitial`).
 
-- [ ] **Step 2: Replace eager fetch with a one-shot intersection observer**
+- [x] **Step 2: Replace eager fetch with a one-shot intersection observer**
 
 ```svelte
 <script lang="ts">
@@ -1651,16 +1630,16 @@ Find the existing `onMount` or `$effect` that triggers the initial fetch. Captur
 
 (Match the section id to the file: `memos`, `reminders`, `identities`, `groups`.)
 
-- [ ] **Step 3: Verify the IntersectionObserver stub from Task 6 keeps existing tests green**
+- [x] **Step 3: Verify the IntersectionObserver stub from Task 6 keeps existing tests green**
 
 The stub's `observe` is a no-op, so under tests these sections never auto-load — which matches their old behavior (most tests inject data directly via state). If a test relied on auto-fetching, call `loadInitial` explicitly in the test or fix the test to write state directly.
 
-- [ ] **Step 4: Run client tests**
+- [x] **Step 4: Run client tests**
 
 Run: `bun test:client tests/client/admin/`
 Expected: green.
 
-- [ ] **Step 5: Commit (one commit for all four sections)**
+- [x] **Step 5: Commit (one commit for all four sections)**
 
 ```bash
 git add client/admin/sections/MemosSection.svelte \
@@ -1687,11 +1666,11 @@ EOF
 
 - Modify: `client/admin/sections/SystemSection.svelte`
 
-- [ ] **Step 1: Locate the section header**
+- [x] **Step 1: Locate the section header**
 
 Read `client/admin/sections/SystemSection.svelte`. Find the title line (likely `<Panel title="System">` or similar).
 
-- [ ] **Step 2: Add an inline header note**
+- [x] **Step 2: Add an inline header note**
 
 Above the credentials form, add:
 
@@ -1712,12 +1691,12 @@ And CSS:
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 Run: `bun test:client tests/client/admin/`
 Expected: green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add client/admin/sections/SystemSection.svelte
@@ -1740,11 +1719,11 @@ EOF
 
 - Modify: `client/admin/AdminApp.svelte`
 
-- [ ] **Step 1: Read the current file**
+- [x] **Step 1: Read the current file**
 
 Confirm the current per-section if/else block and the hashchange listener.
 
-- [ ] **Step 2: Replace the file in full**
+- [x] **Step 2: Replace the file in full**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1811,18 +1790,18 @@ Confirm the current per-section if/else block and the hashchange listener.
 </Shell>
 ```
 
-- [ ] **Step 3: Update `tests/client/admin/components/AdminApp.test.ts` if it exists**
+- [x] **Step 3: Update `tests/client/admin/components/AdminApp.test.ts` if it exists**
 
 Run: `ls tests/client/admin/AdminApp.test.ts tests/client/admin/components/AdminApp.test.ts 2>/dev/null`
 
 If found, simplify assertions: replace any `if/else by currentSection` assumption with checks that all section ids exist as `<section>` anchors.
 
-- [ ] **Step 4: Run client tests**
+- [x] **Step 4: Run client tests**
 
 Run: `bun test:client tests/client/admin/`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin/AdminApp.svelte \
@@ -1848,11 +1827,11 @@ EOF
 
 - Modify: `client/admin/admin.css`
 
-- [ ] **Step 1: Read the current admin.css**
+- [x] **Step 1: Read the current admin.css**
 
 Identify legacy selectors: `.admin-shell`, `.admin-topbar` (the legacy one, not the new `admin-topbar__*` namespace from the new top bar), `.admin-body`, `.admin-pane`.
 
-- [ ] **Step 2: Replace the page-level layout**
+- [x] **Step 2: Replace the page-level layout**
 
 Drop the legacy `.admin-shell`, `.admin-topbar` block (the standalone one), `.admin-body`, `.admin-pane` rules. Append:
 
@@ -1877,23 +1856,23 @@ Drop the legacy `.admin-shell`, `.admin-topbar` block (the standalone one), `.ad
 
 Keep all section-internal CSS (`.billing-*`, `.memos-*`, etc.) untouched.
 
-- [ ] **Step 3: Rebuild + inspect**
+- [x] **Step 3: Rebuild + inspect**
 
 Run: `bun build:client && grep -c '^\.admin-grid' public/admin.css`
 Expected: ≥ 1.
 Run: `grep -cE '^\.admin-shell|^\.admin-body|^\.admin-pane' public/admin.css`
 Expected: 0.
 
-- [ ] **Step 4: Run client tests**
+- [x] **Step 4: Run client tests**
 
 Run: `bun test:client 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 5: Manual smoke (optional)**
+- [x] **Step 5: Manual smoke (optional)**
 
 Run: `bun start:debug`, open `/admin`, scroll through sections, click sidebar links, switch the window Seg, verify quick-stats populate, expand a billing row to confirm the inline detail panel renders.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/admin/admin.css
@@ -1920,7 +1899,7 @@ EOF
 - Delete: `client/admin/components/WindowSelect.svelte`
 - Delete (if present): the matching test files
 
-- [ ] **Step 1: Confirm no surviving imports**
+- [x] **Step 1: Confirm no surviving imports**
 
 Run:
 
@@ -1930,22 +1909,22 @@ grep -rn "NavSidebar\|WindowSelect" client/ tests/client/
 
 Expected: no matches. If any survive, STOP — Tasks 11 and 14 were supposed to drop them.
 
-- [ ] **Step 2: Check for orphan test files**
+- [x] **Step 2: Check for orphan test files**
 
 Run: `ls tests/client/admin/components/ | grep -E "NavSidebar|WindowSelect"`. For each match, `git rm`.
 
-- [ ] **Step 3: Delete the components**
+- [x] **Step 3: Delete the components**
 
 ```bash
 git rm client/admin/components/NavSidebar.svelte client/admin/components/WindowSelect.svelte
 ```
 
-- [ ] **Step 4: Run full client suite**
+- [x] **Step 4: Run full client suite**
 
 Run: `bun test:client 2>&1 | tail -5`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -1965,12 +1944,12 @@ EOF
 
 **Files:** none modified
 
-- [ ] **Step 1: Full check pipeline**
+- [x] **Step 1: Full check pipeline**
 
 Run: `bun check:full`
 Expected: 12/12 green. If anything fails, fix the root cause — never `--no-verify`.
 
-- [ ] **Step 2: Anonymity grep over the new endpoint**
+- [x] **Step 2: Anonymity grep over the new endpoint**
 
 Run:
 
@@ -1980,7 +1959,7 @@ grep -nE "chatUserId|turnId|responseId|message|prompt|content" src/usage/recent-
 
 Expected: no matches inside `listRecentRequests` or `handleAdminRecentRequests` (an import line referencing the table type is fine; the mapped row must NOT carry any of these). If a forbidden field surfaces, STOP — anonymity contract violation.
 
-- [ ] **Step 3: Client + backend test runs**
+- [x] **Step 3: Client + backend test runs**
 
 Run:
 
@@ -1991,14 +1970,14 @@ bun test:client
 
 Expected: all green. New tests should add 5 (recent-requests route) + 4 (recent-requests query) + 2 (global-stats) + 2 (scrollspy) + 3 (AdminTopBar) + 2 (AdminSidebarPanel) + 2 (OverviewSection) = ~20 new cases over the PR 2 baseline.
 
-- [ ] **Step 4: Bundle verification**
+- [x] **Step 4: Bundle verification**
 
 Run: `bun build:client && grep -c '^\.admin-grid' public/admin.css`
 Expected: ≥ 1.
 Run: `grep -cE '^\.admin-shell|^\.admin-body|^\.admin-pane' public/admin.css`
 Expected: 0.
 
-- [ ] **Step 5: Manual smoke (optional but recommended)**
+- [x] **Step 5: Manual smoke (optional but recommended)**
 
 Run: `bun start:debug`.
 
@@ -2009,7 +1988,7 @@ Run: `bun start:debug`.
 - Click a billing subject row — confirm inline detail + stats panel render below, including the recent-requests panel.
 - Open the `System` section — confirm the inline note `POST /admin/llm requires DEBUG_TOKEN` shows above the form.
 
-- [ ] **Step 6: No final commit — all work was committed task-by-task**
+- [x] **Step 6: No final commit — all work was committed task-by-task**
 
 PR 3 ships when this checklist is clean.
 
@@ -2032,3 +2011,11 @@ PR 3 covers spec sections 8 + 9 in full:
 Out of scope for this plan (deferred to PR 4):
 
 - Section 10 (polish: real growth/mix data from `/stats/global`, modal restyle for surviving CRUD flows, KPI sub-labels, dead-code sweep).
+
+## Drift Log
+
+| Date       | Category           | Item                                                                                                                                                            | Decision                                                                                                            |
+| ---------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | In-plan, accurate  | All 17 tasks (87 checkboxes) — implementation exists on `claude/split-dashboard-admin-zaoys`                                                                    | Flipped all `[ ]` → `[x]` via replace_all                                                                           |
+| 2026-05-23 | In-plan, divergent | Task 8 (SubjectDetail recent-requests block): KV used Svelte snippet props (`{#snippet k()}`) in plan; actual `KV.svelte` uses direct string props (`k=`, `v=`) | Code wins — plan rewritten to direct-prop syntax with real field paths (`subjects?.dmTotal`, `active?.activeIn30d`) |
+| 2026-05-23 | In-plan, divergent | Task 9 (OverviewSection KPIs): same KV snippet vs direct-prop divergence                                                                                        | Code wins — plan rewritten to direct-prop syntax matching `AdminSidebarPanel.svelte` implementation                 |

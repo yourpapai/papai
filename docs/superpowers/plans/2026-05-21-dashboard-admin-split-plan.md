@@ -7,7 +7,9 @@ See LICENSE in the project root for details.
 
 # Dashboard / Admin Split Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+
+> **Status:** Implemented via PR1–PR4 plans on branch `claude/split-dashboard-admin-zaoys`. See `2026-05-22-dashboard-redesign-pr1-tokens-primitives.md` through `2026-05-22-dashboard-redesign-pr4-polish.md` for the detailed task-by-task execution. All tasks in this plan are completed.
 
 **Goal:** Split the unified `/dashboard` route and static bundle into a live, ephemeral engineer observability page (`/debug`) and a durable, configuration/records operator page (`/admin`), preserving security, styling, and compatibility.
 
@@ -34,7 +36,7 @@ See LICENSE in the project root for details.
 - Test: `tests/client/shared/Modal.test.ts`
 - Test: `tests/client/shared/fetcher-helpers.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/client/shared/fetcher-helpers.test.ts`:
 
@@ -95,12 +97,12 @@ describe('Modal.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `bun test:client tests/client/shared/`
 Expected: FAIL due to missing files and compile errors.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `client/shared/helpers.ts`:
 
@@ -553,12 +555,12 @@ Create `client/shared/PanelShell.svelte`:
 </section>
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `bun test:client tests/client/shared/`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared tests/client/shared
@@ -580,12 +582,12 @@ git commit -m "feat(shared): extract shared client skeleton"
 - Modify: `client/debug/stats/fetchers.ts` (Import fetcher-helpers)
 - Modify Svelte components under `client/debug/` to import from `../../shared/` paths instead of locally.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Verify existing tests compile. Since we are changing imports, compilation issues in TypeScript will serve as failing tests.
 Run `tsc` to make sure there are unresolved local imports if we delete files.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun typecheck` after deleting:
 
@@ -595,7 +597,7 @@ Run: `bun typecheck` after deleting:
 - `client/debug/helpers.ts`
   Expected: Errors indicating imported modules do not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Rewrite Svelte component imports from:
 
@@ -617,12 +619,12 @@ In `client/debug/billing/fetchers.ts`:
 import { readBody, requireOk, errorMessageFrom } from '../../shared/fetcher-helpers.js'
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun typecheck && bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git rm client/debug/components/Modal.svelte client/debug/components/PropertiesTable.svelte client/debug/components/TreeView.svelte client/debug/helpers.ts
@@ -641,7 +643,7 @@ git commit -m "refactor(debug): migrate debug pages to use shared primitives"
 - Modify: `scripts/build-client.ts` (Generalize build)
 - Create: `tests/scripts/build-client.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/scripts/build-client.test.ts`:
 
@@ -660,12 +662,12 @@ describe('build-client', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/scripts/build-client.test.ts`
 Expected: PASS (if public files exist, but we will test our build helper dynamically).
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `client/shared/base.css` with dark theme fonts, `.panel`, `.modal` styling.
 Modify `scripts/build-client.ts`:
@@ -739,12 +741,12 @@ async function main(): Promise<void> {
 await main()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun build:client && bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/base.css scripts/build-client.ts tests/scripts
@@ -765,7 +767,7 @@ git commit -m "build: generalize build-client.ts to support multiple bundle opti
 - Modify: `client/debug/dashboard.svelte.ts` (Prune admin reactive properties)
 - Test: `tests/client/debug/components/DebugApp.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/client/debug/components/DebugApp.test.ts`:
 
@@ -787,12 +789,12 @@ describe('DebugApp.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client tests/client/debug/components/DebugApp.test.ts`
 Expected: FAIL (missing files)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `client/debug/components/LiveContextCard.svelte`:
 
@@ -833,12 +835,12 @@ Update `client/debug/App.svelte` to wrap `DebugApp`:
 <DebugApp {dashboard} />
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/debug/DebugApp.svelte client/debug/components/LiveContextCard.svelte client/debug/App.svelte tests/client/debug/components/DebugApp.test.ts
@@ -855,16 +857,16 @@ git commit -m "feat(debug): carve out DebugApp containing only engineering panel
 - Modify: `client/debug/sse.ts` (Remove registrations for admin SSE events)
 - Create: `client/admin/handlers-admin-extras.ts` (Move trimmed handlers here as reference)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create or modify `tests/client/debug/sse.test.ts` to assert that admin-scoped events (e.g. `memo:created`) do not trigger registry handlers in the debug state.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client tests/client/debug/sse.test.ts`
 Expected: Fail if assertions about deleted handlers fail.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Modify `client/debug/handlers-extras.ts`:
 Remove `handleRecurringEvent`, `handleDeferredEvent`, `handleMemoEvent`, `handleIdentityEvent`, `handleAuthEvent`.
@@ -873,12 +875,12 @@ Modify `client/debug/sse.ts` and remove the unregistered cases.
 
 Save the removed code to `client/admin/handlers-admin-extras.ts` for future wiring.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/debug/handlers-extras.ts client/debug/sse.ts client/admin/handlers-admin-extras.ts
@@ -898,7 +900,7 @@ git commit -m "refactor(debug): trim admin-specific SSE handlers from debug bund
 - Modify: `src/debug/server.ts` (Add `/debug` static serving and 301 redirect for `/dashboard`)
 - Modify: `tests/debug/server.test.ts` (Update assertions from dashboard to debug & assert 301 redirect)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Modify `tests/debug/server.test.ts` around line 129:
 
@@ -916,12 +918,12 @@ test('GET /debug returns debug HTML', async () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test tests/debug/server.test.ts`
 Expected: FAIL (no `/debug` route, `/dashboard` returns 200 html instead of 301)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Rename the client-side files using `git mv`.
 
@@ -961,12 +963,12 @@ if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname ==
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun build:client && bun test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git mv client/debug/dashboard.html client/debug/debug.html
@@ -995,7 +997,7 @@ git commit -m "feat(server): rename dashboard route to debug and add 301 redirec
 - Test: `tests/client/admin/AdminApp.test.ts`
 - Test: `tests/debug/server.test.ts` (Assert `/admin` returns 200)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/client/admin/AdminApp.test.ts`:
 
@@ -1027,12 +1029,12 @@ test('GET /admin returns admin HTML', async () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test`
 Expected: FAIL (missing admin files, routes)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `client/admin/admin.html`:
 
@@ -1160,12 +1162,12 @@ function handleAdminFile(pathname: string): Response {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun build:client && bun test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin src/debug/server.ts scripts/build-client.ts tests/client/admin tests/debug/server.test.ts
@@ -1184,7 +1186,7 @@ git commit -m "feat(admin): build empty admin shell bundle and add static routin
 - Modify: `src/debug/server.ts` (Add `GET /admin/system`)
 - Test: `tests/client/admin/sections/SystemSection.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/client/admin/sections/SystemSection.test.ts`:
 
@@ -1205,12 +1207,12 @@ describe('SystemSection.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client`
 Expected: FAIL (missing files)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Move `client/debug/billing/CredentialsForm.svelte` to `client/admin/components/CredentialsForm.svelte` and adjust imports to point to `../../shared/fetcher-helpers.js`.
 
@@ -1248,12 +1250,12 @@ function handleAdminSystem(): Response {
 
 Create `client/admin/sections/SystemSection.svelte` to wrap the credentials form and show the env table.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin src/debug/server.ts tests/client/admin
@@ -1273,28 +1275,28 @@ git commit -m "feat(admin): move LLM credentials form and build system config se
 - Delete: `client/debug/billing` directory
 - Test: Port billing tests to `tests/client/admin/sections/BillingSection.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Port `tests/client/debug/billing/BillingPanel.test.ts` to `tests/client/admin/sections/BillingSection.test.ts` pointing to the new `BillingSection` component.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client`
 Expected: FAIL due to missing `BillingSection`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `client/admin/sections/BillingSection.svelte` composing the subjects table and detail modals.
 Import and setup local fetchers inside `client/admin/fetchers.ts` (porting `fetchBillingSubjects` and `fetchBillingDetail` from the deleted files).
 
 Update component imports inside `SubjectsTable.svelte`, `SubjectDetail.svelte`, and `SubjectStatsPanel.svelte` to use the shared types.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin tests/client/admin
@@ -1313,25 +1315,25 @@ git commit -m "feat(admin): port billing section and component files to admin ar
 - Delete: `client/debug/stats` directory
 - Test: Port stats tests to `tests/client/admin/sections/StatsSection.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Port `tests/client/debug/stats/StatsPanel.test.ts` to `tests/client/admin/sections/StatsSection.test.ts`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `client/admin/sections/StatsSection.svelte` with `StatsPanel` embedded inside. Add global stats fetchers to `client/admin/fetchers.ts`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/admin tests/client/admin
@@ -1352,27 +1354,27 @@ git commit -m "feat(admin): move and setup global stats section"
 - Delete: `client/debug/components/MemosPanel.svelte`, `RemindersPanel.svelte`, `ContextPanel.svelte`
 - Test: Create tests under `tests/client/admin/sections/`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create tests for each newly created section verifying that data-loading fetches are triggered on mount and rendered cleanly.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Write Svelte components for each section using pure REST fetches to `/memos`, `/recurring`, `/deferred`, `/identity`, `/auth/groups`.
 Wire these sections into `client/admin/AdminApp.svelte`.
 Delete the old Svelte files under `client/debug/components/`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git rm client/debug/components/MemosPanel.svelte client/debug/components/RemindersPanel.svelte client/debug/components/ContextPanel.svelte
@@ -1392,28 +1394,28 @@ git commit -m "feat(admin): build memos, reminders, identities, and groups secti
 - Modify: `client/debug/debug.svelte.ts` (Prune unused reactive states)
 - Modify: `client/shared/base.css` (De-duplicate styling rule classes)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Run `bun knip` to find unused exports, types, or fields.
 Ensure there are no compile warnings.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun knip`
 Expected: Warnings on unused components, files, or state variables.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Prune state variables inside `client/debug/debug.svelte.ts` that were moved or no longer referenced (e.g., `memos`, `recurringTasks`, `billingSubjects`).
 
 Ensure `client/debug/index.ts` mounts `DebugApp` directly instead of the legacy `App.svelte` wrapper. Remove `App.svelte`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun check:full`
 Expected: PASS and clean build output.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git rm client/debug/App.svelte
@@ -1430,23 +1432,23 @@ git commit -m "chore: prune dead states and delete legacy debug App.svelte"
 - Modify: `CLAUDE.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Verify documentation references are accurate.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Review doc strings manually for `/dashboard` references.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Update `CLAUDE.md` "Anonymity contract for `/stats/*`" and server setup guides to explicitly list `/debug` as the engineer panel and `/admin` as the operator/backstage credentials/stats manager, noting the 301 redirection.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Confirm documents are clean and precise.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CLAUDE.md README.md
@@ -1463,16 +1465,16 @@ git commit -m "docs: update CLAUDE.md and README.md with debug and admin split"
 - Create: `client/shared/Confirm.svelte` (Thin Action Confirm dialog wrapper)
 - Test: `tests/client/shared/Modal.test.ts` (Sized checks)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Update `tests/client/shared/Modal.test.ts` to assert modal renders with size classes (e.g. `modal--lg`) and renders the footer snippet when available.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bun test:client`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Enhance `client/shared/Modal.svelte`:
 
@@ -1496,12 +1498,12 @@ Enhance `client/shared/Modal.svelte`:
 
 Create `client/shared/Confirm.svelte` as a reusable component utilizing this enhanced primitive.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `bun test:client`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared tests/client/shared
@@ -1519,3 +1521,10 @@ git commit -m "feat(shared): support size-variant and footers in Modal primitive
 **2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints.
 
 **Which approach?**
+
+## Drift Log
+
+| Date       | Category             | Item                                                                                         | Decision                                                                                                                  |
+| ---------- | -------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | In-plan, accurate    | All 14 tasks (71 checkboxes) — implementation exists on `claude/split-dashboard-admin-zaoys` | Flipped all `[ ]` → `[x]` via replace_all                                                                                 |
+| 2026-05-23 | Out-of-plan, on-goal | Plan superseded by PR1–PR4 detailed execution plans                                          | Added status note after Goal pointing to `2026-05-22-dashboard-redesign-pr1-tokens-primitives.md` through `pr4-polish.md` |

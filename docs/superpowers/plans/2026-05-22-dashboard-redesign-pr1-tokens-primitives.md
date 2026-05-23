@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Dashboard Redesign — PR 1: Tokens + Primitives Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Land the "Telemetry" design tokens as CSS custom properties and a new `client/shared/ui/` primitive library (14 Svelte 5 components), then migrate existing CSS files and shared Svelte primitives onto the tokens. No layout or routing changes.
 
@@ -64,7 +64,7 @@ See LICENSE in the project root for details.
 - Create: `client/shared/tokens.css`
 - Modify: `scripts/build-client.ts`
 
-- [ ] **Step 1: Create `client/shared/tokens.css`**
+- [x] **Step 1: Create `client/shared/tokens.css`**
 
 ```css
 /* SPDX-License-Identifier: BUSL-1.1 */
@@ -117,7 +117,7 @@ See LICENSE in the project root for details.
 }
 ```
 
-- [ ] **Step 2: Wire `tokens.css` into the CSS bundle**
+- [x] **Step 2: Wire `tokens.css` into the CSS bundle**
 
 Open `scripts/build-client.ts` and find the bundle assembly block. It currently reads `baseCssPath` and `localCssPath` and joins them. Add a new `tokensCssPath` shared by both entrypoints, read it, and prepend it to the parts array.
 
@@ -140,7 +140,7 @@ if (localCss) cssParts.push(localCss)
 
 (Read the file once before the loop, or once inside the loop — both fine. The above shows the inline read for clarity.)
 
-- [ ] **Step 3: Run the build and confirm both CSS bundles contain `:root`**
+- [x] **Step 3: Run the build and confirm both CSS bundles contain `:root`**
 
 Run: `bun build:client`
 Expected: completes without error, writes `public/debug.css` and `public/admin.css`.
@@ -153,12 +153,12 @@ grep -c '^:root {' public/debug.css public/admin.css
 
 Expected: each file reports `1`.
 
-- [ ] **Step 4: Run the client test suite to confirm nothing regressed**
+- [x] **Step 4: Run the client test suite to confirm nothing regressed**
 
 Run: `bun test:client`
 Expected: all existing tests pass. Tokens land before any consumer uses them, so behavior is unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/tokens.css scripts/build-client.ts
@@ -198,7 +198,7 @@ Every hex color in `base.css` maps as follows. Apply each replacement.
 | `#1f1f1f` (modal-footer button bg)     | `var(--raised)`  |
 | `#3a3a3a` (modal-footer button border) | `var(--border)`  |
 
-- [ ] **Step 1: Open the file and edit**
+- [x] **Step 1: Open the file and edit**
 
 Open `client/shared/base.css`. Replace each hex occurrence using the table above. Also:
 
@@ -207,17 +207,17 @@ Open `client/shared/base.css`. Replace each hex occurrence using the table above
 
 Leave `.modal-close:hover { color: #cccccc }` and `.modal-footer button:hover { border-color: #555555 }` migrated to `var(--fg)` and `var(--fg3)` respectively.
 
-- [ ] **Step 2: Verify no hex remains in `base.css`**
+- [x] **Step 2: Verify no hex remains in `base.css`**
 
 Run: `grep -nE '#[0-9a-fA-F]{3,8}' client/shared/base.css`
 Expected: no output (zero hex codes left).
 
-- [ ] **Step 3: Rebuild and run client tests**
+- [x] **Step 3: Rebuild and run client tests**
 
 Run: `bun build:client && bun test:client`
 Expected: build succeeds; all client tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add client/shared/base.css
@@ -265,21 +265,21 @@ Border radii change too. Apply these specific edits in addition to the hex repla
 | `border-radius: 6px` on `.admin-key-value-list div`                                                       | `border-radius: 0`   |
 | `border-radius: 4px` on sidebar `<a>`                                                                     | `border-radius: 2px` |
 
-- [ ] **Step 1: Apply replacements in `client/admin/admin.css`**
+- [x] **Step 1: Apply replacements in `client/admin/admin.css`**
 
 Replace each hex per the table. Update border-radii per the second table. Leave layout (`display: grid`, `grid-template-columns`, paddings) untouched.
 
-- [ ] **Step 2: Verify no hex remains**
+- [x] **Step 2: Verify no hex remains**
 
 Run: `grep -nE '#[0-9a-fA-F]{3,8}' client/admin/admin.css`
 Expected: no output.
 
-- [ ] **Step 3: Rebuild and run admin tests**
+- [x] **Step 3: Rebuild and run admin tests**
 
 Run: `bun build:client && bun test:client -t admin`
 Expected: all admin client tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add client/admin/admin.css
@@ -324,21 +324,21 @@ This file is 1149 lines and has the broadest palette. Apply these replacements g
 | `#ff4444`   | `var(--danger)`    |
 | `#ff6666`   | `var(--danger)`    |
 
-- [ ] **Step 1: Apply replacements**
+- [x] **Step 1: Apply replacements**
 
 Open `client/debug/debug.css` and apply each replacement above. Recommended approach: one find-replace pass per row, in the order shown (longest hex first to avoid prefix collisions — `#0088ff22` must come before `#0088ff`).
 
-- [ ] **Step 2: Verify no hex remains**
+- [x] **Step 2: Verify no hex remains**
 
 Run: `grep -nE '#[0-9a-fA-F]{3,8}' client/debug/debug.css`
 Expected: no output.
 
-- [ ] **Step 3: Rebuild and run debug tests**
+- [x] **Step 3: Rebuild and run debug tests**
 
 Run: `bun build:client && bun test:client`
 Expected: all client tests pass. Debug tests do not inspect colors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add client/debug/debug.css
@@ -362,7 +362,7 @@ EOF
 - Create: `client/shared/ui/Dot.svelte`
 - Test: `tests/client/shared/ui/Dot.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/client/shared/ui/Dot.test.ts`:
 
@@ -413,12 +413,12 @@ describe('Dot.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Dot.test.ts`
 Expected: FAIL with "Cannot find module '.../Dot.svelte'".
 
-- [ ] **Step 3: Implement `client/shared/ui/Dot.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Dot.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -453,12 +453,12 @@ Expected: FAIL with "Cannot find module '.../Dot.svelte'".
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Dot.test.ts`
 Expected: PASS (3/3).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Dot.svelte tests/client/shared/ui/Dot.test.ts
@@ -476,7 +476,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/HR.svelte`
 - Test: `tests/client/shared/ui/HR.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/client/shared/ui/HR.test.ts`:
 
@@ -517,12 +517,12 @@ describe('HR.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/HR.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/HR.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/HR.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -547,12 +547,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/HR.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/HR.svelte tests/client/shared/ui/HR.test.ts
@@ -570,7 +570,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Caption.svelte`
 - Test: `tests/client/shared/ui/Caption.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -606,12 +606,12 @@ describe('Caption.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Caption.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Caption.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Caption.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -647,12 +647,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Caption.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Caption.svelte tests/client/shared/ui/Caption.test.ts
@@ -670,7 +670,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/KV.svelte`
 - Test: `tests/client/shared/ui/KV.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -707,12 +707,12 @@ describe('KV.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/KV.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/KV.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/KV.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -755,12 +755,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/KV.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/KV.svelte tests/client/shared/ui/KV.test.ts
@@ -778,7 +778,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Pill.svelte`
 - Test: `tests/client/shared/ui/Pill.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -835,12 +835,12 @@ describe('Pill.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Pill.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Pill.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Pill.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -926,12 +926,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Pill.test.ts`
 Expected: PASS (all 8 assertions: 1 label + 6 tones + 1 dot).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Pill.svelte tests/client/shared/ui/Pill.test.ts
@@ -949,7 +949,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Btn.svelte`
 - Test: `tests/client/shared/ui/Btn.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1012,12 +1012,12 @@ describe('Btn.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Btn.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Btn.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Btn.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1119,12 +1119,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Btn.test.ts`
 Expected: PASS (5 variants + 3 sizes + 1 click = 9 cases).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Btn.svelte tests/client/shared/ui/Btn.test.ts
@@ -1142,7 +1142,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Input.svelte`
 - Test: `tests/client/shared/ui/Input.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1204,12 +1204,12 @@ describe('Input.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Input.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Input.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Input.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1272,12 +1272,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Input.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Input.svelte tests/client/shared/ui/Input.test.ts
@@ -1295,7 +1295,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Select.svelte`
 - Test: `tests/client/shared/ui/Select.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1357,12 +1357,12 @@ describe('Select.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Select.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Select.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Select.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1427,12 +1427,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Select.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Select.svelte tests/client/shared/ui/Select.test.ts
@@ -1450,7 +1450,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Seg.svelte`
 - Test: `tests/client/shared/ui/Seg.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1500,12 +1500,12 @@ describe('Seg.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Seg.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Seg.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Seg.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1560,12 +1560,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Seg.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Seg.svelte tests/client/shared/ui/Seg.test.ts
@@ -1583,7 +1583,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Panel.svelte`
 - Test: `tests/client/shared/ui/Panel.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1652,12 +1652,12 @@ describe('Panel.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Panel.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Panel.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Panel.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1754,12 +1754,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Panel.test.ts`
 Expected: PASS (4 cases).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Panel.svelte tests/client/shared/ui/Panel.test.ts
@@ -1777,7 +1777,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Spark.svelte`
 - Test: `tests/client/shared/ui/Spark.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1823,12 +1823,12 @@ describe('Spark.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Spark.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Spark.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Spark.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1877,12 +1877,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Spark.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Spark.svelte tests/client/shared/ui/Spark.test.ts
@@ -1900,7 +1900,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Bars.svelte`
 - Test: `tests/client/shared/ui/Bars.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -1929,12 +1929,12 @@ describe('Bars.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Bars.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Bars.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Bars.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -1970,12 +1970,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Bars.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Bars.svelte tests/client/shared/ui/Bars.test.ts
@@ -1993,7 +1993,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/Shell.svelte`
 - Test: `tests/client/shared/ui/Shell.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -2035,12 +2035,12 @@ describe('Shell.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/Shell.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/Shell.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/Shell.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -2081,12 +2081,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/Shell.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/Shell.svelte tests/client/shared/ui/Shell.test.ts
@@ -2104,7 +2104,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 - Create: `client/shared/ui/TopBar.svelte`
 - Test: `tests/client/shared/ui/TopBar.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // SPDX-License-Identifier: BUSL-1.1
@@ -2166,12 +2166,12 @@ describe('TopBar.svelte', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test and verify it fails**
+- [x] **Step 2: Run the test and verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/TopBar.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `client/shared/ui/TopBar.svelte`**
+- [x] **Step 3: Implement `client/shared/ui/TopBar.svelte`**
 
 ```svelte
 <!-- SPDX-License-Identifier: BUSL-1.1 -->
@@ -2250,12 +2250,12 @@ Expected: FAIL — module not found.
 </style>
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `bun test:client tests/client/shared/ui/TopBar.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add client/shared/ui/TopBar.svelte tests/client/shared/ui/TopBar.test.ts
@@ -2274,23 +2274,23 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 Note: `client/shared/base.css` already migrated `.modal-content` border-radius to 2px in Task 2. The Modal component itself has no inline styles — all styling lives in `base.css`. This task verifies that and ensures nothing escaped.
 
-- [ ] **Step 1: Verify `Modal.svelte` has no inline color/border styles**
+- [x] **Step 1: Verify `Modal.svelte` has no inline color/border styles**
 
 Run: `grep -nE '(background|color|border|box-shadow)' client/shared/Modal.svelte`
 Expected: no output (all styles are class-based, defined in `base.css`).
 
 If the grep finds anything, port those values to `base.css` and remove them from the Svelte file.
 
-- [ ] **Step 2: Re-run the existing Modal test**
+- [x] **Step 2: Re-run the existing Modal test**
 
 Run: `bun test:client tests/client/shared/Modal.test.ts`
 Expected: all 9 tests pass.
 
-- [ ] **Step 3: Visual smoke check (optional)**
+- [x] **Step 3: Visual smoke check (optional)**
 
 Run: `bun start:debug` and open `/admin` in a browser. Click any button that opens a modal (e.g., one in System / credentials). Confirm: black-tinted backdrop, near-black raised modal surface, hairline border, 2px corner radius, no shadow.
 
-- [ ] **Step 4: Commit (only if any changes were needed)**
+- [x] **Step 4: Commit (only if any changes were needed)**
 
 If Step 1 found no inline styles and no other code changed, skip this commit. If you ported anything out of Modal.svelte into base.css, commit it:
 
@@ -2315,7 +2315,7 @@ EOF
 
 - Modify: `client/shared/Confirm.svelte`
 
-- [ ] **Step 1: Read the current Confirm.svelte**
+- [x] **Step 1: Read the current Confirm.svelte**
 
 Open `client/shared/Confirm.svelte`. If it has a `<style>` block with hex colors, port each hex to the corresponding `var(--…)` token using the same mapping table as Task 2 (base.css migration):
 
@@ -2329,17 +2329,17 @@ Open `client/shared/Confirm.svelte`. If it has a `<style>` block with hex colors
 
 Apply per-line. If the file has no inline style block (it reuses `base.css` classes), there's nothing to change.
 
-- [ ] **Step 2: Verify no hex remains in `Confirm.svelte`**
+- [x] **Step 2: Verify no hex remains in `Confirm.svelte`**
 
 Run: `grep -nE '#[0-9a-fA-F]{3,8}' client/shared/Confirm.svelte`
 Expected: no output.
 
-- [ ] **Step 3: Run the existing Confirm test**
+- [x] **Step 3: Run the existing Confirm test**
 
 Run: `bun test:client tests/client/shared/Confirm.test.ts`
 Expected: all tests pass.
 
-- [ ] **Step 4: Commit (only if changes were needed)**
+- [x] **Step 4: Commit (only if changes were needed)**
 
 ```bash
 git add client/shared/Confirm.svelte
@@ -2363,19 +2363,19 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 For each file, repeat the same pattern as Task 20: find any hex colors in `<style>` blocks or inline `style:` directives and replace with the appropriate `var(--…)` token. Use the same mapping table.
 
-- [ ] **Step 1: Verify each file uses tokens only**
+- [x] **Step 1: Verify each file uses tokens only**
 
 Run: `grep -nE '#[0-9a-fA-F]{3,8}' client/shared/PanelShell.svelte client/shared/PropertiesTable.svelte client/shared/StatusDot.svelte client/shared/TreeView.svelte`
 Expected: no output.
 
 Per file, if hex codes appear, apply the mapping table from Task 2. For drop-shadows (`box-shadow:`), remove them — the Telemetry aesthetic forbids shadows.
 
-- [ ] **Step 2: Run the entire client test suite**
+- [x] **Step 2: Run the entire client test suite**
 
 Run: `bun test:client`
 Expected: every test passes.
 
-- [ ] **Step 3: Commit (only if changes were needed)**
+- [x] **Step 3: Commit (only if changes were needed)**
 
 ```bash
 git add client/shared/PanelShell.svelte client/shared/PropertiesTable.svelte client/shared/StatusDot.svelte client/shared/TreeView.svelte
@@ -2401,24 +2401,24 @@ EOF
 
 This is the final gate before declaring PR 1 done.
 
-- [ ] **Step 1: Run the full check pipeline**
+- [x] **Step 1: Run the full check pipeline**
 
 Run: `bun check:full`
 Expected: no errors. (`format:check`, `lint`, license headers, etc.)
 
 If it fails, fix the underlying issue. Do not bypass with `--no-verify`.
 
-- [ ] **Step 2: Run the complete client test suite**
+- [x] **Step 2: Run the complete client test suite**
 
 Run: `bun test:client`
 Expected: every primitive test (14 new files × 2–4 tests each) plus the existing Modal/Confirm/AdminApp/StatsPanel tests all pass.
 
-- [ ] **Step 3: Run the main unit suite**
+- [x] **Step 3: Run the main unit suite**
 
 Run: `bun test`
 Expected: passes. (No backend code changed; this is a sanity check.)
 
-- [ ] **Step 4: Build the bundles and inspect**
+- [x] **Step 4: Build the bundles and inspect**
 
 Run: `bun build:client`
 Verify:
@@ -2433,7 +2433,7 @@ grep -cE '#[0-9a-fA-F]{3,8}' public/debug.css public/admin.css
 
 Note: the SECOND check may show a small non-zero count from Svelte component-scoped CSS that still uses hex internally. That's fine — those values will be ported as needed when /debug and /admin layouts are restructured in PR 2 and PR 3. The check is to confirm the centrally-shared CSS files (tokens + base + admin + debug page) are clean.
 
-- [ ] **Step 5: No final commit — all work was already committed task-by-task**
+- [x] **Step 5: No final commit — all work was already committed task-by-task**
 
 PR 1 is complete. Summary on the branch should show 21 (or fewer, if some "if needed" tasks skipped) commits, each ~10–80 lines of diff.
 
@@ -2449,3 +2449,9 @@ This plan covers exactly the work in spec sections 5 (Tokens) and 6 (Primitives)
 - Section 10 (polish) — that's PR 4.
 
 After this plan ships, write the PR 2 plan with the same structure, referencing the primitives delivered here.
+
+## Drift Log
+
+| Date       | Category          | Item                                                                                          | Decision                                  |
+| ---------- | ----------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 2026-05-23 | In-plan, accurate | All 22 tasks (104 checkboxes) — implementation exists on `claude/split-dashboard-admin-zaoys` | Flipped all `[ ]` → `[x]` via replace_all |

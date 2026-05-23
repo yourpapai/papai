@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Dashboard Redesign PR 4 — Polish Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Wire the admin `/admin` Overview charts and KPI cards to the real `/stats/global` response, align the client/server `StatsWindow` contract, finalize KPI sub-labels, and audit the remaining modal + dead-code items from spec §10.
 
@@ -58,11 +58,11 @@ Each file has one clear responsibility. No new files. No new endpoints. No new b
 - Modify: `client/admin/global-stats.svelte.ts`
 - Modify: `tests/client/admin/global-stats.svelte.test.ts`
 
-- [ ] **Step 1: Read both files**
+- [x] **Step 1: Read both files**
 
 Use the `Read` tool on `client/admin/global-stats.svelte.ts` and `tests/client/admin/global-stats.svelte.test.ts`. Confirm the current placeholder schema (flat `subjects: number`, etc.) and the test that mocks the response with the same placeholder shape.
 
-- [ ] **Step 2: Write the failing test first**
+- [x] **Step 2: Write the failing test first**
 
 Replace the response shape in `tests/client/admin/global-stats.svelte.test.ts` with the real nested shape. Use this as the new mock body (subset matching the new schema):
 
@@ -142,12 +142,12 @@ test('refreshGlobals sends window=1d when adminGlobals.window is 1d', async () =
 
 Drop the old `beforeEach` line that sets `adminGlobals.window = '30d'` if the new test mutates window — re-set it to a known good value (`'30d'`) at the top of each test that needs it. Match the existing `beforeEach` pattern (the file already resets window to `'30d'` — keep that and only mutate inside the `1d` test).
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `bun test:client tests/client/admin/global-stats.svelte.test.ts`
 Expected: FAIL — the current schema rejects the nested shape, so `parsed.success` is `false` and `adminGlobals.data` stays `null`. The `dmTotal === 18` assertion fails.
 
-- [ ] **Step 4: Replace the schema in `client/admin/global-stats.svelte.ts`**
+- [x] **Step 4: Replace the schema in `client/admin/global-stats.svelte.ts`**
 
 Replace the entire file body with:
 
@@ -248,12 +248,12 @@ Notes:
 - The schema is intentionally a _subset_ of `GlobalStats` from `src/stats/types.ts`: it includes only the fields the Overview section will consume (subjects, active, storage, surfaceMix, toolMix). Z.optional() on each top-level field protects against the server omitting them in future variants.
 - Every nested field is required _within_ its parent object — if the server returns `subjects` it must include all three keys. If a key is missing the whole `subjects` block is dropped on parse failure; the client falls back to `—`.
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `bun test:client tests/client/admin/global-stats.svelte.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/admin/global-stats.svelte.ts tests/client/admin/global-stats.svelte.test.ts
@@ -281,11 +281,11 @@ EOF
 - Modify: `client/admin/components/AdminTopBar.svelte`
 - Modify: `tests/client/admin/components/AdminTopBar.test.ts` (only if it asserts on the literal `24h` label)
 
-- [ ] **Step 1: Read both files**
+- [x] **Step 1: Read both files**
 
 Use `Read` on `client/admin/components/AdminTopBar.svelte` (look for the Seg `options` array near line 37) and `tests/client/admin/components/AdminTopBar.test.ts`. Note any test that searches the DOM for the text `24h`.
 
-- [ ] **Step 2: Write the failing test (or update an existing one)**
+- [x] **Step 2: Write the failing test (or update an existing one)**
 
 If a test asserts on the `24h` label, update it to assert on `1d` instead. If no test exists for this, add one:
 
@@ -301,12 +301,12 @@ test('renders 1d in the window seg', () => {
 
 Avoid `?.` or ternaries inside the test body — the `vitest(no-conditional-in-test)` rule fires on those (this has bitten earlier PR tasks).
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `bun test:client tests/client/admin/components/AdminTopBar.test.ts`
 Expected: FAIL — current Seg still shows `24h`.
 
-- [ ] **Step 4: Update the Seg options**
+- [x] **Step 4: Update the Seg options**
 
 In `client/admin/components/AdminTopBar.svelte`, change:
 
@@ -326,12 +326,12 @@ to:
   onChange={(v) => setWindow(v as StatsWindow)} />
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `bun test:client tests/client/admin/components/AdminTopBar.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/admin/components/AdminTopBar.svelte tests/client/admin/components/AdminTopBar.test.ts
@@ -357,13 +357,13 @@ EOF
 - Modify: `client/shared/ui/KV.svelte`
 - Test (new or modify): `tests/client/shared/ui/KV.test.ts` (create if absent)
 
-- [ ] **Step 1: Read the current KV primitive**
+- [x] **Step 1: Read the current KV primitive**
 
 Use `Read` on `client/shared/ui/KV.svelte`. Current props: `{ k: string, v: string | number, vColor?: string, dim?: boolean }`. The layout is a single row with key on the left and value on the right.
 
 Also check whether a test file exists at `tests/client/shared/ui/KV.test.ts`. If not, you'll create one.
 
-- [ ] **Step 2: Write the failing test first**
+- [x] **Step 2: Write the failing test first**
 
 Create or extend `tests/client/shared/ui/KV.test.ts`:
 
@@ -412,12 +412,12 @@ describe('KV.svelte', () => {
 })
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `bun test:client tests/client/shared/ui/KV.test.ts`
 Expected: FAIL — `sub` prop doesn't exist; `.ui-kv__sub` is never rendered.
 
-- [ ] **Step 4: Add the `sub` prop to `KV.svelte`**
+- [x] **Step 4: Add the `sub` prop to `KV.svelte`**
 
 Replace the script + template + style with:
 
@@ -484,7 +484,7 @@ Notes:
 - `sub` is optional. Existing call sites (`KV k="subjects" v={...}`) continue to work unchanged.
 - The sub-label renders on its own line via flex wrap, right-aligned under the value, in a smaller dimmer style consistent with the Telemetry aesthetic.
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 Run: `bun test:client tests/client/shared/ui/KV.test.ts`
 Expected: PASS.
@@ -494,7 +494,7 @@ Also run the full client suite to confirm no existing KV consumer broke:
 Run: `bun test:client`
 Expected: all green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/shared/ui/KV.svelte tests/client/shared/ui/KV.test.ts
@@ -519,11 +519,11 @@ EOF
 - Modify: `client/admin/sections/OverviewSection.svelte`
 - Modify: `tests/client/admin/sections/OverviewSection.test.ts`
 
-- [ ] **Step 1: Read both files**
+- [x] **Step 1: Read both files**
 
 Use `Read` on the current `OverviewSection.svelte` and the existing test file. The current `<KV>` cards show `subjects`, `llm calls`, `tool calls`, `tokens` — fields that don't exist in the real response. We will swap them for: `subjects`, `active 30d`, `tool calls`, `storage`.
 
-- [ ] **Step 2: Update the test first**
+- [x] **Step 2: Update the test first**
 
 Replace the existing tests in `tests/client/admin/sections/OverviewSection.test.ts` with:
 
@@ -617,12 +617,12 @@ describe('OverviewSection.svelte', () => {
 
 Note the ok/fail derivation: `ok = round(count * successRate)` summed across tools, `fail = total - ok`. `1000 * 0.97 = 970`, `500 * 0.9 = 450`, sum 1420 ok, 1500 - 1420 = 80 fail.
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `bun test:client tests/client/admin/sections/OverviewSection.test.ts`
 Expected: FAIL — current section reads `adminGlobals.data?.subjects` as a `number`, not an object.
 
-- [ ] **Step 4: Rewrite `OverviewSection.svelte` KPI block**
+- [x] **Step 4: Rewrite `OverviewSection.svelte` KPI block**
 
 Replace the file body with:
 
@@ -751,7 +751,7 @@ Implementation notes:
 - Spark sums dm + group growth per day for a single trend line. Bars show top 8 tools by ok-call volume (`count * successRate`).
 - `formatBytes` is a local helper. It is intentionally small and not extracted — only used here.
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 Run: `bun test:client tests/client/admin/sections/OverviewSection.test.ts`
 Expected: PASS.
@@ -759,7 +759,7 @@ Expected: PASS.
 Run: `bun test:client`
 Expected: all green (no regressions in other sections).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add client/admin/sections/OverviewSection.svelte tests/client/admin/sections/OverviewSection.test.ts
@@ -787,7 +787,7 @@ This work is already included in Task 4 (the `sparkData` derived above sums `dmA
 
 - Modify: `tests/client/admin/sections/OverviewSection.test.ts` (add one more case)
 
-- [ ] **Step 1: Add a Spark-data assertion test**
+- [x] **Step 1: Add a Spark-data assertion test**
 
 Append to the `OverviewSection.svelte` describe block:
 
@@ -819,12 +819,12 @@ test('Spark receives growth points summed across dm+group', () => {
 
 This test deliberately does NOT introspect Spark's internal SVG/path output (Spark has its own tests). It only confirms the Spark slot received data + rendered.
 
-- [ ] **Step 2: Run + verify**
+- [x] **Step 2: Run + verify**
 
 Run: `bun test:client tests/client/admin/sections/OverviewSection.test.ts`
 Expected: PASS (Task 4's implementation already wires `growthLast30d` correctly).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/client/admin/sections/OverviewSection.test.ts
@@ -846,7 +846,7 @@ EOF
 
 **Files:** none modified
 
-- [ ] **Step 1: Confirm Modal consumers**
+- [x] **Step 1: Confirm Modal consumers**
 
 Run:
 
@@ -856,7 +856,7 @@ grep -rn "import Modal\|<Modal " client/ 2>/dev/null | grep -v test
 
 Expected: only `client/shared/Confirm.svelte` matches. If anything else matches, STOP and report — there's a hidden CRUD modal that needs restyle. The PR 4 spec §10 work was to "restyle CRUD modals (Add Memo, Add Recurring, etc.)" — these modals **do not currently exist** in the client (memos/reminders/identities/groups sections use inline forms).
 
-- [ ] **Step 2: Confirm Modal primitive is already token-styled**
+- [x] **Step 2: Confirm Modal primitive is already token-styled**
 
 Read `client/shared/Modal.svelte`. Confirm:
 
@@ -866,11 +866,11 @@ Read `client/shared/Modal.svelte`. Confirm:
 
 If the file still uses raw hex anywhere, fix that as part of this task (replace with token vars from `client/shared/tokens.css`). Otherwise this is a pure verification.
 
-- [ ] **Step 3: Confirm Confirm.svelte is already token-styled**
+- [x] **Step 3: Confirm Confirm.svelte is already token-styled**
 
 Read `client/shared/Confirm.svelte`. Confirm tokens are used throughout.
 
-- [ ] **Step 4: No commit if nothing changed**
+- [x] **Step 4: No commit if nothing changed**
 
 If neither file needed edits, skip the commit. The task is satisfied by the verification grep.
 
@@ -896,7 +896,7 @@ EOF
 
 **Files:** none modified (or `client/admin/admin.css` if a truly orphan rule is found)
 
-- [ ] **Step 1: Confirm legacy admin CSS classes are still consumed**
+- [x] **Step 1: Confirm legacy admin CSS classes are still consumed**
 
 Run:
 
@@ -906,7 +906,7 @@ grep -rn "admin-section-header\|admin-filter-form\|admin-key-value-list" client/
 
 Expected: the four section files (`MemosSection.svelte`, `RemindersSection.svelte`, `IdentitiesSection.svelte`, `GroupsSection.svelte`) still use them. If they do, **keep the rules in `admin.css`**. The spec §10 bullet said "remove if unused" — they ARE used, so they stay.
 
-- [ ] **Step 2: Confirm no truly orphan classes from PR 3 leftovers**
+- [x] **Step 2: Confirm no truly orphan classes from PR 3 leftovers**
 
 Run knip:
 
@@ -919,7 +919,7 @@ Expected: clean. If knip flags any new orphans introduced by PR 3 (e.g., a class
 - delete the dead CSS rule from `client/admin/admin.css` and commit, OR
 - if the export is actually used from a `.svelte` file (knip blind spot), add to `knip.jsonc` `ignoreIssues` following the existing `client/admin/*` pattern.
 
-- [ ] **Step 3: Commit (only if something changed)**
+- [x] **Step 3: Commit (only if something changed)**
 
 If admin.css was trimmed, commit:
 
@@ -943,12 +943,12 @@ If nothing was removed, no commit. The task is satisfied by the grep + knip veri
 
 **Files:** none modified
 
-- [ ] **Step 1: Full check pipeline**
+- [x] **Step 1: Full check pipeline**
 
 Run: `bun check:full`
 Expected: 12/12 green.
 
-- [ ] **Step 2: Anonymity re-verification (defense in depth)**
+- [x] **Step 2: Anonymity re-verification (defense in depth)**
 
 Run:
 
@@ -958,7 +958,7 @@ grep -nE "chatUserId|turnId|responseId|message|prompt|content" src/usage/recent-
 
 Expected: no matches inside the mapped row or response shape. PR 4 doesn't touch this path, but cheap to confirm regression-free.
 
-- [ ] **Step 3: Test suites**
+- [x] **Step 3: Test suites**
 
 Run:
 
@@ -969,7 +969,7 @@ bun test:client
 
 Expected: all green. Client test count should be ≥ 256 (baseline at end of PR 3) and likely 263–266 after PR 4 (Task 1 +1 new test; Task 3 +3 new tests; Task 4 +5 tests replacing 2 = +3 net; Task 5 +1 test = ~+8 cases overall).
 
-- [ ] **Step 4: Bundle verification**
+- [x] **Step 4: Bundle verification**
 
 Run:
 
@@ -980,7 +980,7 @@ grep -c '^\.admin-grid' public/admin.css
 
 Expected: ≥1.
 
-- [ ] **Step 5: Manual smoke (optional but recommended)**
+- [x] **Step 5: Manual smoke (optional but recommended)**
 
 Run: `bun start:debug`. Open `/admin`. Expectations:
 
@@ -990,7 +990,7 @@ Run: `bun start:debug`. Open `/admin`. Expectations:
 - Spark line in Overview renders a non-flat curve once growth data exists for the last 30 days
 - Bars in Overview show the top tools by ok-call volume
 
-- [ ] **Step 6: No final commit — all work was committed task-by-task**
+- [x] **Step 6: No final commit — all work was committed task-by-task**
 
 PR 4 ships when this checklist is clean.
 
@@ -1010,3 +1010,16 @@ PR 4 ships when this checklist is clean.
 - LLM call totals and main/small model split on the Overview KPI cards (spec example `892 main · 197 small`) — `/stats/global` does not currently surface llm_usage_events totals. Adding this requires a new aggregator in `src/stats/` plus extending the route and the client schema. Tracked for a future PR if the operator surface needs it.
 - Per-section data refresh wiring against the window seg — only Overview re-fetches today via `refreshGlobals`. Memos / Reminders / Identities / Groups still use their own user-driven inputs (no window filter applies).
 - New chart library, mobile layouts, light theme (spec §14).
+
+## Out-of-Scope (Tracked Separately)
+
+| Item                                                                                                                                                                                                                                             | Plan                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `feat(stats): add llmUsage to /stats/global and Overview KPI` — extends `src/stats/` aggregator, `/stats/global` route, and `client/admin/global-stats.svelte.ts` to surface LLM usage totals (main/small model split) on the Overview KPI cards | `docs/superpowers/plans/2026-05-23-stats-global-llm-totals.md` |
+
+## Drift Log
+
+| Date       | Category             | Item                                                                                          | Decision                                                                                             |
+| ---------- | -------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | In-plan, accurate    | All 8 tasks (41 checkboxes) — implementation exists on `claude/split-dashboard-admin-zaoys`   | Flipped all `[ ]` → `[x]` via replace_all                                                            |
+| 2026-05-23 | Out-of-plan, on-goal | `feat(stats): add llmUsage to /stats/global and Overview KPI` commit not covered by this plan | Split to `docs/superpowers/plans/2026-05-23-stats-global-llm-totals.md`; cross-reference added above |
