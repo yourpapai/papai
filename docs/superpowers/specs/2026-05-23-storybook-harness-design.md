@@ -1,3 +1,10 @@
+<!--
+SPDX-License-Identifier: BUSL-1.1
+Copyright (c) 2026 Dmitriy Lazarev
+Use of this software is governed by the Business Source License 1.1.
+See LICENSE in the project root for details.
+-->
+
 # Storybook harness for the dashboard UI
 
 - **Status:** Draft — awaiting review
@@ -32,14 +39,14 @@ not block them, but does not implement them.
   invoked through `bun storybook` / `bun build:storybook`.
 - **Build is Bun-native.** Production builds for the SPA continue to run through
   `scripts/build-client.ts` using `scripts/svelte-plugin.ts` and `Bun.build`.
-  Storybook introduces Vite as a *second*, dev-only toolchain. Vite never
+  Storybook introduces Vite as a _second_, dev-only toolchain. Vite never
   participates in production bundles.
 - **Svelte 5 with runes.** Components use `$props`, `$state`, `$derived`.
   Story files use Svelte CSF (`<Story>` blocks inside a `.stories.svelte` file).
 - **Strict TypeScript** with `.js` import extensions.
 - **TDD hook pipeline** runs on writes to files under `src/` or `client/` whose
   extension is `.ts`, `.js`, `.tsx`, or `.jsx` and that aren't `*.test.*` /
-  `*.spec.*`. `.stories.svelte` is *not* in this set, so colocated stories do
+  `*.spec.*`. `.stories.svelte` is _not_ in this set, so colocated stories do
   not trip the test-first gate. `.stories.ts` files would — see "Story format".
 - **knip strictness** flags unused exports and deps. Storybook deps and the
   stories glob must be declared as entrypoints.
@@ -50,16 +57,16 @@ not block them, but does not implement them.
 
 ## Locked decisions (from brainstorming)
 
-| Axis | Decision |
-| --- | --- |
-| Tool | Official Storybook 9.x + Vite, run by Bun |
-| Scope | Everything under `client/` including both SPA shells (~50 components) |
-| Mocking | MSW handlers + custom SSE stub + fixture decorator |
-| Coverage shape | Multi-state per component: default, empty, loading, error, populated, edge |
-| Story location | Colocated next to each component |
-| Story format | Svelte CSF (`*.stories.svelte`) only; no `*.stories.ts` |
-| Addons (baseline) | Essentials, `addon-svelte-csf`, `addon-a11y`, `addon-themes` |
-| Rollout | Vertical slice (PR 1, 5 stories proving every mock layer) → phased fan-out (PRs 2–4) |
+| Axis              | Decision                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Tool              | Official Storybook 9.x + Vite, run by Bun                                            |
+| Scope             | Everything under `client/` including both SPA shells (~50 components)                |
+| Mocking           | MSW handlers + custom SSE stub + fixture decorator                                   |
+| Coverage shape    | Multi-state per component: default, empty, loading, error, populated, edge           |
+| Story location    | Colocated next to each component                                                     |
+| Story format      | Svelte CSF (`*.stories.svelte`) only; no `*.stories.ts`                              |
+| Addons (baseline) | Essentials, `addon-svelte-csf`, `addon-a11y`, `addon-themes`                         |
+| Rollout           | Vertical slice (PR 1, 5 stories proving every mock layer) → phased fan-out (PRs 2–4) |
 
 ## Architecture
 
@@ -113,13 +120,13 @@ keeping per-story files small.
 The dashboard breaks naturally into five tiers; the harness applies different
 mock requirements to each.
 
-| Tier | Examples | Mocks needed | Min states per component |
-| --- | --- | --- | --- |
-| Primitives | `client/shared/ui/{Btn,Pill,Dot,Bars,Spark}` | None — props only | default, edge |
-| Composites | `client/shared/{PanelShell,PropertiesTable,Modal,Confirm,TreeView}` | None — props only | default, empty, populated, edge |
-| Components | `client/{debug,admin}/components/*` | Fixture decorator (rune-state injection); MSW only if the component fetches directly | default, empty, loading, error, populated, edge |
-| Sections | `client/admin/sections/*` | Full decorator (MSW + rune reset) | default, empty, loading, error, populated |
-| Shells | `DebugApp.svelte`, `AdminApp.svelte` | Full decorator + SSE pre-feed + IntersectionObserver stub | default, populated |
+| Tier       | Examples                                                            | Mocks needed                                                                         | Min states per component                        |
+| ---------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Primitives | `client/shared/ui/{Btn,Pill,Dot,Bars,Spark}`                        | None — props only                                                                    | default, edge                                   |
+| Composites | `client/shared/{PanelShell,PropertiesTable,Modal,Confirm,TreeView}` | None — props only                                                                    | default, empty, populated, edge                 |
+| Components | `client/{debug,admin}/components/*`                                 | Fixture decorator (rune-state injection); MSW only if the component fetches directly | default, empty, loading, error, populated, edge |
+| Sections   | `client/admin/sections/*`                                           | Full decorator (MSW + rune reset)                                                    | default, empty, loading, error, populated       |
+| Shells     | `DebugApp.svelte`, `AdminApp.svelte`                                | Full decorator + SSE pre-feed + IntersectionObserver stub                            | default, populated                              |
 
 "Required states" are an authoring convention enforced in code review, not via
 a write-time hook (initially). A follow-up may add a lint rule that fails when
@@ -144,8 +151,8 @@ a non-primitive `.stories.svelte` declares fewer than the required number of
 
 - Re-uses the `StubEventSource` pattern from `tests/client-setup.ts` (the same
   shape the unit tests already depend on), but adds an imperative `emit(event,
-  payload)` API for stories to drive.
-- Installed onto `window.EventSource` in `preview.ts` *before* any story
+payload)` API for stories to drive.
+- Installed onto `window.EventSource` in `preview.ts` _before_ any story
   module loads, so `client/debug/sse.ts` picks up the stub when first imported.
 - The decorator exposes an `sse.seed([{event, payload}, …])` helper for stories
   that need a pre-populated dashboard before mount.
@@ -154,7 +161,7 @@ a non-primitive `.stories.svelte` declares fewer than the required number of
 
 - Receives a `scenario` name from `parameters.fixtures`.
 - Imperatively resets the module-level `$state` singletons. `$state` proxies
-  cannot be *reassigned* from outside the module, so the reset uses the same
+  cannot be _reassigned_ from outside the module, so the reset uses the same
   per-field mutation pattern used in `tests/client/`. The contract is locked in
   PR 1 against the hardest target (`AdminApp.svelte`).
 - Swaps MSW handlers to the named bundle, then restores the default bundle on
@@ -179,7 +186,7 @@ a non-primitive `.stories.svelte` declares fewer than the required number of
   immediately visible.
 - **TDD hook pipeline.** Story files use `.svelte`, which falls outside the
   hook's extension filter. Fixture/MSW/decorator helpers live under
-  `client/stories/` with `.ts` extensions and *will* trigger the hook —
+  `client/stories/` with `.ts` extensions and _will_ trigger the hook —
   resolved by the same test-first discipline as any other `client/` code: each
   helper module ships with a sibling unit test under
   `tests/client/stories/<name>.test.ts` that exercises its public surface.
@@ -258,39 +265,39 @@ decorator survives `AdminApp`, every later story is easier.
 
 Branch: `claude/wonderful-brown-Iq7wL`. All work pushes to this branch only.
 
-| PR | Contents | Stories added | Mock layers exercised |
-| --- | --- | --- | --- |
-| 1 (slice) | Harness scaffold, mocks, decorators, byte-size guard | 5 | All |
-| 2 | `client/shared/ui/` primitives | ~13 | None (props only) |
-| 3 | `client/shared/` composites + `client/{debug,admin}/components/` | ~28 | Fixture decorator, fetcher MSW |
-| 4 | `client/admin/sections/` + `DebugApp` | ~9 | Full decorator (MSW + SSE + rune reset) |
+| PR        | Contents                                                         | Stories added | Mock layers exercised                   |
+| --------- | ---------------------------------------------------------------- | ------------- | --------------------------------------- |
+| 1 (slice) | Harness scaffold, mocks, decorators, byte-size guard             | 5             | All                                     |
+| 2         | `client/shared/ui/` primitives                                   | ~13           | None (props only)                       |
+| 3         | `client/shared/` composites + `client/{debug,admin}/components/` | ~28           | Fixture decorator, fetcher MSW          |
+| 4         | `client/admin/sections/` + `DebugApp`                            | ~9            | Full decorator (MSW + SSE + rune reset) |
 
 Each PR must leave `bun check:full`, `bun knip`, and `bun test:client` green.
 PRs 2–4 are independent; if review on one stalls, the others are not blocked.
 
 ## Risks and mitigations
 
-- **Storybook 9 + Bun command-form quirks.** *Mitigation:* pin the exact
+- **Storybook 9 + Bun command-form quirks.** _Mitigation:_ pin the exact
   Storybook version installed in PR 1, document the `bun storybook` invocation
   in `CLAUDE.md`, and leave a note in the PR description for any required Bun
   flags.
 - **`$state` rune singleton reset.** Module-level `$state` cannot be
-  reassigned from outside the defining module. *Mitigation:* the decorator
+  reassigned from outside the defining module. _Mitigation:_ the decorator
   mutates fields in place; the slice PR locks the pattern against `AdminApp`
   (the most singleton-heavy shell). If a reset cannot be made airtight, the
   fallback is to refactor the offending module to export a `resetForTests()`
   helper — also useful for `tests/client/`.
-- **Fixture / schema drift.** *Mitigation:* fixtures are validated against the
+- **Fixture / schema drift.** _Mitigation:_ fixtures are validated against the
   live zod schemas at module load. A schema-incompatible fixture fails
   Storybook startup, not silently in a story render.
 - **MSW + Bun-native unit tests.** MSW only runs inside the Storybook preview
   iframe (real browser); `tests/client/` continues to run under happy-dom
   without MSW. The two environments do not share global state.
-- **Production bundle leak.** *Mitigation:* PR 1 adds a byte-size assertion on
+- **Production bundle leak.** _Mitigation:_ PR 1 adds a byte-size assertion on
   `bun build:client` output. Any future change that causes story modules to
   reach `debug.js` / `admin.js` trips the check.
 - **knip false positives.** Storybook adds binaries and entrypoints that knip
-  may flag. *Mitigation:* PR 1 lands the knip config update in the same commit
+  may flag. _Mitigation:_ PR 1 lands the knip config update in the same commit
   as the deps; `bun knip` must be green at the end of PR 1.
 
 ## Open questions

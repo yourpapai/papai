@@ -155,12 +155,7 @@ import type { StorybookConfig } from '@storybook/svelte-vite'
 const config: StorybookConfig = {
   framework: { name: '@storybook/svelte-vite', options: {} },
   stories: ['../client/**/*.stories.svelte'],
-  addons: [
-    '@storybook/addon-svelte-csf',
-    '@storybook/addon-a11y',
-    '@storybook/addon-themes',
-    'msw-storybook-addon',
-  ],
+  addons: ['@storybook/addon-svelte-csf', '@storybook/addon-a11y', '@storybook/addon-themes', 'msw-storybook-addon'],
   staticDirs: ['../public'],
   typescript: { check: false },
 }
@@ -329,11 +324,7 @@ Run `bun test:client tests/client/stories/fixtures.test.ts`. Expected: red
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type {
-  AdminLlmSnapshot,
-  BillingDetail,
-  BillingSubject,
-} from '../../shared/api-types.js'
+import type { AdminLlmSnapshot, BillingDetail, BillingSubject } from '../../shared/api-types.js'
 
 const baseRoleTotals = { inputTokens: 0, outputTokens: 0, requests: 0 }
 
@@ -413,10 +404,7 @@ Expected: all 4 tests pass.
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  makeBillingSubject,
-  makeGlobalStats,
-} from '../../../client/stories/fixtures/index.js'
+import { makeBillingSubject, makeGlobalStats } from '../../../client/stories/fixtures/index.js'
 import { assertFixturesMatchSchemas } from '../../../client/stories/fixtures/schemas.js'
 
 describe('fixture schema validation', () => {
@@ -447,17 +435,11 @@ Verify red.
 
 import { z } from 'zod'
 
-import {
-  BillingSubjectsResponseSchema,
-  GlobalStatsSchema,
-} from '../../admin/fetcher-schemas.js'
+import { BillingSubjectsResponseSchema, GlobalStatsSchema } from '../../admin/fetcher-schemas.js'
 
 import { makeBillingSubject, makeGlobalStats } from './index.js'
 
-const KnownFixtureSchema = z.union([
-  BillingSubjectsResponseSchema.shape.subjects.element,
-  GlobalStatsSchema,
-])
+const KnownFixtureSchema = z.union([BillingSubjectsResponseSchema.shape.subjects.element, GlobalStatsSchema])
 
 export function assertFixturesMatchSchemas(extras: readonly unknown[] = []): void {
   const candidates: unknown[] = [makeBillingSubject(), makeGlobalStats(), ...extras]
@@ -501,11 +483,7 @@ Expected: all 3 tests pass.
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  adminHandlers,
-  billingHandlers,
-  statsHandlers,
-} from '../../../client/stories/msw/handlers.js'
+import { adminHandlers, billingHandlers, statsHandlers } from '../../../client/stories/msw/handlers.js'
 
 describe('msw handlers', () => {
   test('every family exposes populated / empty / error / loading variants', () => {
@@ -534,12 +512,7 @@ describe('msw handlers', () => {
 
 import { HttpResponse, delay, http } from 'msw'
 
-import {
-  makeAdminLlmSnapshot,
-  makeBillingDetail,
-  makeBillingSubject,
-  makeGlobalStats,
-} from '../fixtures/index.js'
+import { makeAdminLlmSnapshot, makeBillingDetail, makeBillingSubject, makeGlobalStats } from '../fixtures/index.js'
 
 const NEVER_RESOLVE_MS = 60_000
 
@@ -551,9 +524,7 @@ export interface HandlerFamily {
 }
 
 export const adminHandlers: HandlerFamily = {
-  populated: [
-    http.get('/admin/llm', () => HttpResponse.json(makeAdminLlmSnapshot())),
-  ],
+  populated: [http.get('/admin/llm', () => HttpResponse.json(makeAdminLlmSnapshot()))],
   empty: [http.get('/admin/llm', () => HttpResponse.json(makeAdminLlmSnapshot({})))],
   error: [http.get('/admin/llm', () => HttpResponse.json({ error: 'denied' }, { status: 401 }))],
   loading: [
@@ -567,12 +538,12 @@ export const adminHandlers: HandlerFamily = {
 export const billingHandlers: HandlerFamily = {
   populated: [
     http.get('/admin/billing/subjects', () =>
-      HttpResponse.json({ subjects: [makeBillingSubject(), makeBillingSubject({ contextType: 'group', displayName: 'team-alpha' })] }),
+      HttpResponse.json({
+        subjects: [makeBillingSubject(), makeBillingSubject({ contextType: 'group', displayName: 'team-alpha' })],
+      }),
     ),
     http.get('/admin/billing/subject/:id', ({ params }) =>
-      HttpResponse.json(
-        makeBillingDetail({ subject: makeBillingSubject({ storageContextId: String(params['id']) }) }),
-      ),
+      HttpResponse.json(makeBillingDetail({ subject: makeBillingSubject({ storageContextId: String(params['id']) }) })),
     ),
   ],
   empty: [
@@ -599,7 +570,9 @@ export const statsHandlers: HandlerFamily = {
     ),
   ],
   empty: [
-    http.get('/stats/global', () => HttpResponse.json(makeGlobalStats({ subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] } }))),
+    http.get('/stats/global', () =>
+      HttpResponse.json(makeGlobalStats({ subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] } })),
+    ),
   ],
   error: [http.get('/stats/global', () => HttpResponse.json({ error: 'boom' }, { status: 500 }))],
   loading: [
@@ -976,10 +949,7 @@ export const themeConfig = {
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import {
-  resolveScenario,
-  resetAllSingletons,
-} from '../../../client/stories/decorators/withFixtures.js'
+import { resolveScenario, resetAllSingletons } from '../../../client/stories/decorators/withFixtures.js'
 import { sseStub, uninstallSseStub } from '../../../client/stories/stubs/sse.js'
 
 describe('withFixtures', () => {
@@ -1511,9 +1481,7 @@ If `knip.json` does not exist, create it:
     "client/**/*.stories.svelte",
     ".storybook/{main,preview,vite.config}.ts"
   ],
-  "ignoreDependencies": [
-    "msw-storybook-addon"
-  ]
+  "ignoreDependencies": ["msw-storybook-addon"]
 }
 ```
 
@@ -1654,6 +1622,7 @@ bun build:storybook
 Expected: all exit 0. `bun build:storybook` produces `public/storybook/`.
 
 If any check fails:
+
 - **typecheck / lint** — fix the underlying issue. Do not add suppressions.
 - **knip** — adjust `knip.json` (extra entries or `ignoreDependencies`).
 - **test:client** — the new helper tests should already cover their files;
@@ -1666,7 +1635,6 @@ If any check fails:
 ### Task E2: Manual smoke
 
 - [ ] Run `bun storybook` and visit, in a real browser:
-
   - `http://localhost:6006/?path=/story/shared-ui-btn--default` — light + dark toggle work
   - `http://localhost:6006/?path=/story/admin-sections-billingsection--populated` — table renders with seeded subjects
   - `http://localhost:6006/?path=/story/admin-sections-billingsection--error` — error message renders
