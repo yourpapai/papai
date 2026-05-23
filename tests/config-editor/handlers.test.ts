@@ -27,7 +27,7 @@ describe('config-editor back action', () => {
     expect(getEditorSession('user-1', 'group-1')).toBeNull()
   })
 
-  test('rejects editing a key that is not valid for the assigned context', async () => {
+  test('rejects editing a key that is not valid for the assigned context', () => {
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
