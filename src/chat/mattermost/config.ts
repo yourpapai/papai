@@ -15,9 +15,19 @@ export type ResolvedMattermostConfig = {
   platformInstanceId: string
 }
 
+const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
+  if (value === undefined) return fallback
+  return value
+}
+
+const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId === undefined) return 'mattermost-default'
+  return platformInstanceId
+}
+
 export const resolveMattermostConfig = (config: MattermostConstructorConfig): ResolvedMattermostConfig => {
-  const url = config.url ?? process.env['MATTERMOST_URL']
-  const token = config.token ?? process.env['MATTERMOST_BOT_TOKEN']
+  const url = resolveConfigValue(config.url, process.env['MATTERMOST_URL'])
+  const token = resolveConfigValue(config.token, process.env['MATTERMOST_BOT_TOKEN'])
   if (url === undefined || url.trim() === '') {
     throw new Error('MATTERMOST_URL environment variable is required')
   }
@@ -27,6 +37,6 @@ export const resolveMattermostConfig = (config: MattermostConstructorConfig): Re
   return {
     baseUrl: url.replace(/\/+$/u, ''),
     token,
-    platformInstanceId: config.platformInstanceId ?? 'legacy-single',
+    platformInstanceId: resolvePlatformInstanceId(config.platformInstanceId),
   }
 }

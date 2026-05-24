@@ -60,7 +60,7 @@ const resolveToken = (tokenOverride: string | undefined): string | undefined => 
 }
 
 const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId === undefined) return 'legacy-single'
+  if (platformInstanceId === undefined) return 'discord-default'
   return platformInstanceId
 }
 

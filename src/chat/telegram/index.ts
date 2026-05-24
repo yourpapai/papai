@@ -55,7 +55,14 @@ export { extractReplyContext } from './message-extraction.js'
 export { getTelegramFileFetcher } from './file-fetcher.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
-
+const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
+  if (value === undefined) return fallback
+  return value
+}
+const resolvePlatformInstanceId = (value: string | undefined): string => {
+  if (value === undefined) return 'telegram-default'
+  return value
+}
 export class TelegramChatProvider implements ChatProvider {
   readonly name = 'telegram'
   readonly threadCapabilities = {
@@ -72,8 +79,9 @@ export class TelegramChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(tokenOverride?: string, platformInstanceId = 'legacy-single') {
-    const token = tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']
+  constructor(...args: [] | [string | undefined] | [string | undefined, string | undefined]) {
+    const token = resolveConfigValue(args[0], process.env['TELEGRAM_BOT_TOKEN'])
+    const platformInstanceId = resolvePlatformInstanceId(args[1])
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }
@@ -284,7 +292,9 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const fetcher = getTelegramFileFetcher() ?? createTelegramFileFetcher(this.bot.api, this.token, log)
+    const fetcher = getTelegramFileFetcher()
+    if (fetcher === undefined)
+      return extractFilesFromContext(ctx, createTelegramFileFetcher(this.bot.api, this.token, log))
     return extractFilesFromContext(ctx, fetcher)
   }
 }

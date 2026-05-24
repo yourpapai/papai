@@ -19,7 +19,7 @@ import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
 
-const TEST_PLATFORM_ID = 'legacy-single'
+const TEST_PLATFORM_ID = 'discord-default'
 
 const addUser = (userId: string, addedBy: string, username?: string): void => {
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
@@ -196,6 +196,37 @@ describe('DiscordChatProvider', () => {
 
     expect(seen).toHaveLength(1)
     expect(seen[0]!.platformInstanceId).toBe('discord-secondary')
+  })
+
+  test('onMessage receives default Discord platform instance ID when constructor omits it', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider(undefined)
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm2-default',
+      author: { id: 'u2', username: 'bob', bot: false },
+      content: '<@bot_id> what is the weather',
+      channel: {
+        id: 'c2',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+      },
+      mentions: { has: (id: string): boolean => id === 'bot_id' },
+      reference: null,
+      type: 0,
+    }
+    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.platformInstanceId).toBe('discord-default')
   })
 
   test('bot-authored messages are ignored', async () => {
