@@ -15,6 +15,7 @@ import {
   fallbackThreadCapabilities,
   fallbackTraits,
 } from './router-helpers.js'
+import type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
   ChatCapability,
   ChatProvider,
@@ -29,7 +30,6 @@ import type {
   ResolveUserContext,
   ThreadCapabilities,
 } from './types.js'
-import type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 
 export type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 
