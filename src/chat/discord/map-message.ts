@@ -68,6 +68,7 @@ export function mapDiscordMessage(
     contextParentName,
     isMentioned: mentioned,
     text,
+    platformInstanceId: 'discord-default',
     messageId: message.id,
     replyToMessageId: message.reference?.messageId,
   }

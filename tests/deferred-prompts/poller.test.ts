@@ -297,10 +297,12 @@ describe('pollScheduledOnce — error handling', () => {
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(userId, 'one-time task', { fireAt: pastTime })
 
-    const failOnceThenRecord = mock((_target: DeferredDeliveryTarget, text: string): Promise<void> => {
-      sentMessages.push({ target: _target, text })
-      return Promise.resolve()
-    })
+    const failOnceThenRecord = mock(
+      (_platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
+        sentMessages.push({ target: _target, text })
+        return Promise.resolve()
+      },
+    )
     failOnceThenRecord.mockImplementationOnce(() => Promise.reject(new Error('delivery failed')))
     chat = { ...chat, sendMessage: failOnceThenRecord }
 
@@ -409,10 +411,12 @@ describe('pollAlertsOnce', () => {
 
   test('does not update alert trigger time when delivery fails', async () => {
     const created = createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
-    const failOnceThenRecord = mock((_target: DeferredDeliveryTarget, text: string): Promise<void> => {
-      sentMessages.push({ target: _target, text })
-      return Promise.resolve()
-    })
+    const failOnceThenRecord = mock(
+      (_platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
+        sentMessages.push({ target: _target, text })
+        return Promise.resolve()
+      },
+    )
     failOnceThenRecord.mockImplementationOnce(() => Promise.reject(new Error('delivery failed')))
     chat = { ...chat, sendMessage: failOnceThenRecord }
 

@@ -26,6 +26,7 @@ describe('buildTelegramInteraction', () => {
       user: { id: '42', username: 'alice', isAdmin: true },
       contextId: '99',
       contextType: 'dm',
+      platformInstanceId: 'telegram-default',
       storageContextId: '99',
       callbackData: 'cfg:edit:timezone',
       messageId: '7',
@@ -51,6 +52,7 @@ describe('buildTelegramInteraction', () => {
       user: { id: '42', username: 'alice', isAdmin: false },
       contextId: '100',
       contextType: 'group',
+      platformInstanceId: 'telegram-default',
       // storageContextId must include threadId for wizard session lookup
       storageContextId: '100:5',
       callbackData: 'wizard_confirm',

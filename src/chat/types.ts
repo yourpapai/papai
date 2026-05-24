@@ -27,7 +27,10 @@ export type ResolveUserContext = {
   contextId: string
   /** 'dm' or 'group' — adapters may use this to decide whether guild-scoped search is possible. */
   contextType: ContextType
-}
+} & Partial<{
+  /** Source platform instance for router delegation when context_settings is not available yet. */
+  platformInstanceId: string
+}>
 
 /** Thread support capabilities for a chat platform. */
 export type ThreadCapabilities = {
@@ -130,6 +133,8 @@ export type IncomingMessage = {
   /** bot was @mentioned */
   isMentioned: boolean
   text: string
+  /** ID of the chat provider instance this message arrived on. */
+  platformInstanceId: string
 } & Partial<{
   /** Human-readable channel/group name when the adapter knows it */
   contextName: string
@@ -155,6 +160,8 @@ export type IncomingInteraction = {
   user: ChatUser
   contextId: string
   contextType: ContextType
+  /** ID of the chat provider instance this interaction arrived on. */
+  platformInstanceId: string
   /**
    * Thread-scoped storage key for session/config lookup.
    * Same as contextId in DMs, groupId:threadId in forum topics.
@@ -277,7 +284,7 @@ export type ChatProvider = {
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void
 
   /** Send a formatted markdown message to a delivery target (for proactive/announcement sends). */
-  sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void>
+  sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void>
   /** Render a context snapshot into a platform-native representation. */
   renderContext(snapshot: ContextSnapshot): ContextRendered
 

@@ -47,6 +47,7 @@ function makeInteraction(callbackData: string, storageContextId: string): Incomi
     user: { id: storageContextId, username: 'alice', isAdmin: false },
     contextId: storageContextId,
     contextType: 'dm',
+    platformInstanceId: 'test-instance',
     storageContextId,
     callbackData,
   }

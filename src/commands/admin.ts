@@ -214,7 +214,7 @@ async function handleAnnounce(chat: ChatProvider, reply: ReplyFn, msg: IncomingM
   const results = await Promise.allSettled(
     users.map((user) =>
       limit(async () => {
-        await chat.sendMessage(dmTarget(user.platform_user_id), message)
+        await chat.sendMessage(msg.platformInstanceId, dmTarget(user.platform_user_id), message)
         return user.platform_user_id
       }),
     ),

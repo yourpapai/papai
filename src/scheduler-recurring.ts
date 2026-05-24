@@ -56,7 +56,11 @@ export const notifyUser = async (
   if (chatProviderRef === null) return
 
   try {
-    await chatProviderRef.sendMessage(dmTarget(userId), `Recurring task created: **${created.title}** in project.`)
+    await chatProviderRef.sendMessage(
+      `${chatProviderRef.name}-default`,
+      dmTarget(userId),
+      `Recurring task created: **${created.title}** in project.`,
+    )
   } catch (notifyError) {
     log.warn(
       { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },

@@ -31,6 +31,7 @@ export function buildDiscordInteraction(ctx: DiscordInteractionContext, isAdmin:
     },
     contextId,
     contextType,
+    platformInstanceId: 'discord-default',
     storageContextId: contextId,
     callbackData,
     messageId: ctx.message.id,

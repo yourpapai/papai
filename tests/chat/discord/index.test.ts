@@ -229,7 +229,7 @@ describe('DiscordChatProvider', () => {
     }
     provider.testSetClient(fakeClient)
 
-    await provider.sendMessage(dmTarget('user-42'), 'hello discord')
+    await provider.sendMessage('discord-default', dmTarget('user-42'), 'hello discord')
     expect(sends).toHaveLength(1)
     expect(sends[0]!.content).toBe('hello discord')
   })
@@ -254,6 +254,7 @@ describe('DiscordChatProvider', () => {
 
     await expect(
       provider.sendMessage(
+        'discord-default',
         {
           contextId: 'chan-404',
           contextType: 'group',
@@ -292,6 +293,7 @@ describe('DiscordChatProvider', () => {
 
     await expect(
       provider.sendMessage(
+        'discord-default',
         {
           contextId: 'chan-stage',
           contextType: 'group',

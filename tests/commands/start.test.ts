@@ -47,6 +47,7 @@ describe('start command — demo mode auto-add', () => {
       contextId: 'demo-start-1',
       contextType: 'dm' as const,
       text: '/start',
+      platformInstanceId: 'test-instance',
       commandMatch: 'start',
       isMentioned: false,
     }
@@ -69,6 +70,7 @@ describe('start command — demo mode auto-add', () => {
       contextId: 'no-demo-1',
       contextType: 'dm' as const,
       text: '/start',
+      platformInstanceId: 'test-instance',
       commandMatch: 'start',
       isMentioned: false,
     }
@@ -92,6 +94,7 @@ describe('start command — demo mode auto-add', () => {
       contextId: 'existing-1',
       contextType: 'dm' as const,
       text: '/start',
+      platformInstanceId: 'test-instance',
       commandMatch: 'start',
       isMentioned: false,
     }

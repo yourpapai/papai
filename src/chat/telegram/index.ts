@@ -129,7 +129,7 @@ export class TelegramChatProvider implements ChatProvider {
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
   }
-  async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const chatId = parseInt(target.contextId, 10)
     const mentionPrefix = buildTelegramMentionPrefix(target)
     const formatted = formatLlmOutput(markdown)
@@ -204,6 +204,7 @@ export class TelegramChatProvider implements ChatProvider {
       contextName,
       isMentioned,
       text,
+      platformInstanceId: `${this.name}-default`,
       messageId: messageIdStr,
       replyToMessageId: replyToMessageIdStr,
       replyContext,

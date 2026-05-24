@@ -86,7 +86,7 @@ export class MattermostChatProvider implements ChatProvider {
     this.messageHandler = handler
   }
 
-  async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     if (target.contextType === 'dm') {
       if (this.botUserId === null) throw new Error('Bot not started')
       const dmData = await this.apiFetch('POST', '/api/v4/channels/direct', [this.botUserId, target.contextId])
@@ -217,6 +217,7 @@ export class MattermostChatProvider implements ChatProvider {
       contextParentName,
       isMentioned,
       text: post.message,
+      platformInstanceId: `${this.name}-default`,
       commandMatch: command === null ? undefined : command.match,
       messageId: post.id,
       replyToMessageId,

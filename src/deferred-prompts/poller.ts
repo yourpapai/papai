@@ -75,12 +75,16 @@ async function executeScheduledPromptsForGroup(
       { userId: createdByUserId, promptIds, error: errMsg },
       'Scheduled prompt execution failed before delivery',
     )
-    await chat.sendMessage(execCtx.deliveryTarget, `I ran into an error while working on that: ${errMsg}`)
+    await chat.sendMessage(
+      `${chat.name}-default`,
+      execCtx.deliveryTarget,
+      `I ran into an error while working on that: ${errMsg}`,
+    )
     finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
     return
   }
 
-  await chat.sendMessage(execCtx.deliveryTarget, response)
+  await chat.sendMessage(`${chat.name}-default`, execCtx.deliveryTarget, response)
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
   for (const prompt of prompts) {
     emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })
@@ -149,14 +153,18 @@ async function executeSingleAlert(
       { id: alert.id, userId: alert.createdByUserId, error: errMsg },
       'Alert prompt execution failed before delivery',
     )
-    await chat.sendMessage(alert.deliveryTarget, `Sorry, something went wrong while preparing this update: ${errMsg}`)
+    await chat.sendMessage(
+      `${chat.name}-default`,
+      alert.deliveryTarget,
+      `Sorry, something went wrong while preparing this update: ${errMsg}`,
+    )
     const now = new Date().toISOString()
     updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
     log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
     return
   }
 
-  await chat.sendMessage(alert.deliveryTarget, response)
+  await chat.sendMessage(`${chat.name}-default`, alert.deliveryTarget, response)
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')

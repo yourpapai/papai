@@ -61,6 +61,7 @@ describe('IncomingMessage context metadata', () => {
       contextParentName: 'Platform',
       isMentioned: true,
       text: 'hello',
+      platformInstanceId: 'test-instance',
     }
 
     expect(message.contextName).toBe('Operations')
@@ -132,6 +133,7 @@ describe('ChatProvider interface', () => {
       user: { id: 'user123', username: 'alice', isAdmin: false },
       contextId: 'ctx-1',
       contextType: 'dm',
+      platformInstanceId: 'test-instance',
       storageContextId: 'ctx-1',
       callbackData: 'cfg:setup',
     }

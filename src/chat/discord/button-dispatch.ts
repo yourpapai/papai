@@ -81,6 +81,7 @@ export function createFallbackMessage(
     contextType,
     isMentioned: true,
     text: interaction.customId,
+    platformInstanceId: 'discord-default',
     messageId: interaction.message.id,
   }
 }

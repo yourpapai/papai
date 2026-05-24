@@ -17,6 +17,7 @@ function makeDmMessage(overrides: Partial<IncomingMessage> = {}): IncomingMessag
     contextType: 'dm',
     isMentioned: false,
     text: 'Hello world',
+    platformInstanceId: 'test-instance',
     ...overrides,
   }
 }

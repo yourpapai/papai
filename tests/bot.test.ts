@@ -956,7 +956,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
       onMessage(_handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {}
 
-      sendMessage(_target: DeferredDeliveryTarget, _text: string): Promise<void> {
+      sendMessage(_platformInstanceId: string, _target: DeferredDeliveryTarget, _text: string): Promise<void> {
         return Promise.resolve()
       }
 
@@ -1356,6 +1356,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       contextParentName: 'Platform',
       isMentioned: false,
       text: 'hello team',
+      platformInstanceId: 'test-instance',
     }
 
     const { reply } = createMockReply()
@@ -1493,6 +1494,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       user: { id: 'auth-user', username: 'authuser', isAdmin: false },
       contextId: 'group-missing',
       contextType: 'group',
+      platformInstanceId: 'test-instance',
       storageContextId: 'group-missing',
       callbackData: 'wizard_confirm',
     }
@@ -1524,6 +1526,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       user: { id: 'auth-user', username: 'authuser', isAdmin: false },
       contextId: 'group-allowed',
       contextType: 'group',
+      platformInstanceId: 'test-instance',
       storageContextId: 'group-allowed',
       callbackData: 'wizard_confirm',
     }
@@ -1566,6 +1569,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       user: { id: 'auth-user', username: 'authuser', isAdmin: false },
       contextId: 'auth-user',
       contextType: 'dm',
+      platformInstanceId: 'test-instance',
       storageContextId: 'auth-user',
       callbackData: 'wizard_confirm',
     }

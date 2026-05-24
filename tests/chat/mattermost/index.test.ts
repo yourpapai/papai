@@ -231,6 +231,7 @@ describe('MattermostChatProvider', () => {
       Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
+        'mattermost-default',
         {
           contextId: 'chan-1',
           contextType: 'group',
@@ -259,6 +260,7 @@ describe('MattermostChatProvider', () => {
       Reflect.set(provider, 'apiFetch', makeApiFetchPostOnly(requests))
 
       await provider.sendMessage(
+        'mattermost-default',
         {
           contextId: 'chan-1',
           contextType: 'group',
@@ -287,6 +289,7 @@ describe('MattermostChatProvider', () => {
       Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
+        'mattermost-default',
         {
           contextId: 'chan-1',
           contextType: 'group',

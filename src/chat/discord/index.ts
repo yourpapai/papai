@@ -80,7 +80,7 @@ export class DiscordChatProvider implements ChatProvider {
     this.interactionHandler = handler
   }
 
-  async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     await sendDiscordMessage(this.client, target, markdown)
   }
 

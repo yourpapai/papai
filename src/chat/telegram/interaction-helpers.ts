@@ -53,6 +53,7 @@ export function buildTelegramInteraction(
     user: { id: userId, username: ctx.from?.username ?? null, isAdmin },
     contextId,
     contextType,
+    platformInstanceId: 'telegram-default',
     storageContextId: computeStorageContextId(contextId, contextType, threadId),
     callbackData,
     messageId: callbackMessageId(ctx),

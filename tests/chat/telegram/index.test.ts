@@ -146,7 +146,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: 'alice',
       }
 
-      await provider.sendMessage(target, 'hello')
+      await provider.sendMessage('telegram-default', target, 'hello')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -189,7 +189,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: null,
       }
 
-      await provider.sendMessage(target, '**hi**')
+      await provider.sendMessage('telegram-default', target, '**hi**')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -236,7 +236,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: 'alice',
       }
 
-      await provider.sendMessage(target, 'hello')
+      await provider.sendMessage('telegram-default', target, 'hello')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -271,7 +271,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: 'alice',
       }
 
-      await provider.sendMessage(target, '**hi**')
+      await provider.sendMessage('telegram-default', target, '**hi**')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
