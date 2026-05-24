@@ -12,7 +12,6 @@ const log = logger.child({ scope: 'instances:encryption' })
 
 const IV_LEN = 12
 const TAG_LEN = 16
-const KEY_LEN = 32
 const FALLBACK_SEED = 'papai:instance-config:fallback'
 const SECRET_KEY_PATTERN = /token|key|secret|password|cookie/iu
 
