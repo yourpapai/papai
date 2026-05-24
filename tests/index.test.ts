@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 
 import type { BotDeps } from '../src/bot.js'
 import type { ChatProvider } from '../src/chat/types.js'
+import type { InstanceConfig, PlatformInstance, PlatformInstanceType } from '../src/instances/types.js'
 import type { TaskProvider } from '../src/providers/types.js'
 
 const indexModuleCoverage: null | typeof import('../src/index.js') = null
@@ -78,10 +79,21 @@ describe('index.ts - graceful shutdown', () => {
 
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {
     const callOrder: string[] = []
+    const activePlatformInstance = {
+      id: 'telegram-default',
+      type: 'telegram',
+      config: { token: 'telegram-token' },
+      status: 'active',
+      createdAt: '2026-05-24T00:00:00.000Z',
+    } as const satisfies PlatformInstance
+    const addedInstances: Array<Pick<PlatformInstance, 'id' | 'type' | 'config'>> = []
     let capturedDeps: BotDeps | undefined
     let capturedAnnouncementPlatformInstanceId: string | undefined
     const resolverContexts: string[] = []
     let telegramFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
+    let mattermostFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
+    let createChatProviderCalls = 0
+    let createChatProviderFromConfigCalls = 0
     const originalExit = process.exit.bind(process)
 
     const chatProvider: ChatProvider = {
@@ -118,7 +130,15 @@ describe('index.ts - graceful shutdown', () => {
       createStagedDownloader: (deps: {
         telegramFetcher: (fileId: string) => Promise<Buffer | null>
         mattermostFetcher: (fileId: string) => Promise<Buffer | null>
-      }): ((fileId: string) => Promise<Buffer | null>) => deps.telegramFetcher,
+      }): ((fileId: string, sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown') => Promise<Buffer | null>) => {
+        const fetchers = {
+          telegram: deps.telegramFetcher,
+          mattermost: deps.mattermostFetcher,
+          discord: (): Promise<Buffer | null> => Promise.resolve(null),
+          unknown: (): Promise<Buffer | null> => Promise.resolve(null),
+        } as const
+        return (fileId, sourceProvider) => fetchers[sourceProvider](fileId)
+      },
     }))
     void mock.module('../src/bot.js', () => ({
       setupBot: (_chat: ChatProvider, _adminUserId: string, deps: BotDeps): void => {
@@ -127,7 +147,55 @@ describe('index.ts - graceful shutdown', () => {
       },
     }))
     void mock.module('../src/chat/registry.js', () => ({
-      createChatProvider: (): ChatProvider => chatProvider,
+      createChatProvider: (): ChatProvider => {
+        createChatProviderCalls += 1
+        return chatProvider
+      },
+      createChatProviderFromConfig: (_id: string, _type: PlatformInstanceType, _config: InstanceConfig): ChatProvider => {
+        createChatProviderFromConfigCalls += 1
+        return chatProvider
+      },
+    }))
+    void mock.module('../src/chat/router.js', () => ({
+      ChatRouter: class MockChatRouter implements ChatProvider {
+        readonly name = 'router'
+        readonly threadCapabilities = chatProvider.threadCapabilities
+        readonly capabilities = chatProvider.capabilities
+        readonly traits = chatProvider.traits
+        readonly configRequirements = []
+
+        constructor(private readonly factory: (id: string, type: PlatformInstanceType, config: InstanceConfig) => ChatProvider) {}
+
+        addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): void {
+          addedInstances.push({ id, type, config })
+          void this.factory(id, type, config)
+        }
+
+        registerCommand(name: string, handler: Parameters<ChatProvider['registerCommand']>[1]): void {
+          chatProvider.registerCommand(name, handler)
+        }
+
+        onMessage(handler: Parameters<ChatProvider['onMessage']>[0]): void {
+          chatProvider.onMessage(handler)
+        }
+
+        sendMessage(...args: Parameters<ChatProvider['sendMessage']>): Promise<void> {
+          return chatProvider.sendMessage(...args)
+        }
+
+        renderContext(snapshot: Parameters<ChatProvider['renderContext']>[0]): ReturnType<ChatProvider['renderContext']> {
+          return chatProvider.renderContext(snapshot)
+        }
+
+        start(): Promise<void> {
+          callOrder.push('start')
+          return Promise.resolve()
+        }
+
+        stop(): Promise<void> {
+          return Promise.resolve()
+        }
+      },
     }))
     void mock.module('../src/chat/startup.js', () => ({
       registerCommandMenuIfSupported: (): Promise<void> => Promise.resolve(),
@@ -139,7 +207,7 @@ describe('index.ts - graceful shutdown', () => {
       getTelegramFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => telegramFetcher,
     }))
     void mock.module('../src/chat/mattermost/index.js', () => ({
-      getMattermostFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => telegramFetcher,
+      getMattermostFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => mattermostFetcher,
     }))
     void mock.module('../src/db/drizzle.js', () => ({
       closeDrizzleDb: (): void => undefined,
@@ -163,6 +231,9 @@ describe('index.ts - graceful shutdown', () => {
         bootstrapped: false,
         reason: 'no-env',
       }),
+    }))
+    void mock.module('../src/instances/platform-store.js', () => ({
+      listActivePlatformInstances: (): readonly PlatformInstance[] => [activePlatformInstance],
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (_chat: ChatProvider, resolveProvider: (contextId: string) => TaskProvider | null): void => {
@@ -222,6 +293,15 @@ describe('index.ts - graceful shutdown', () => {
     }
 
     expect(callOrder).toEqual(['setupBot', 'start'])
+    expect(addedInstances).toEqual([
+      {
+        id: activePlatformInstance.id,
+        type: activePlatformInstance.type,
+        config: activePlatformInstance.config,
+      },
+    ])
+    expect(createChatProviderCalls).toBe(0)
+    expect(createChatProviderFromConfigCalls).toBe(1)
     expect(capturedAnnouncementPlatformInstanceId).toBe('telegram-active-instance')
     expect(resolverContexts).toEqual(['poller-context-1', 'admin-1'])
     assert.ok(capturedDeps !== undefined)
@@ -233,6 +313,13 @@ describe('index.ts - graceful shutdown', () => {
 
     assert.ok(downloaded !== null)
     expect(downloaded.toString()).toBe('telegram:file-123')
+
+    mattermostFetcher = (fileId: string): Promise<Buffer | null> => Promise.resolve(Buffer.from(`mattermost:${fileId}`))
+
+    const mattermostDownloaded = await capturedDeps.stagedDownloadFn('file-456', 'mattermost')
+
+    assert.ok(mattermostDownloaded !== null)
+    expect(mattermostDownloaded.toString()).toBe('mattermost:file-456')
   })
 
   test('global preload restores the real message queue module before the next test', async () => {

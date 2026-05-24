@@ -8,13 +8,15 @@ import { isS3Configured } from './attachments/index.js'
 import { createStagedDownloader } from './attachments/staged-download.js'
 import { setupBot, type BotDeps } from './bot.js'
 import { getMattermostFileFetcher } from './chat/mattermost/index.js'
-import { createChatProvider } from './chat/registry.js'
+import { createChatProviderFromConfig } from './chat/registry.js'
+import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
 import { getTelegramFileFetcher } from './chat/telegram/index.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
+import { listActivePlatformInstances } from './instances/platform-store.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
@@ -72,7 +74,11 @@ initializeMessageCache()
 const adminUserId = process.env['ADMIN_USER_ID']!
 addUser(adminUserId, adminUserId)
 
-const chatProvider = createChatProvider(process.env['CHAT_PROVIDER']!)
+const activePlatformInstances = listActivePlatformInstances()
+const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
+for (const instance of activePlatformInstances) {
+  chatProvider.addInstance(instance.id, instance.type, instance.config)
+}
 
 log.info(
   {
@@ -84,35 +90,23 @@ log.info(
   'Starting papai...',
 )
 
-const createStagedDownloadFn = (
-  chat: typeof chatProvider,
-): import('./attachments/types.js').StagedFileDownloadFn | null => {
-  if (chat.name === 'telegram') {
-    return createStagedDownloader({
-      telegramFetcher: (fileId) => {
-        const fetcher = getTelegramFileFetcher()
-        return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
-      },
-      mattermostFetcher: () => Promise.resolve(null),
-    })
-  }
-  if (chat.name === 'mattermost') {
-    return createStagedDownloader({
-      telegramFetcher: () => Promise.resolve(null),
-      mattermostFetcher: (fileId) => {
-        const fetcher = getMattermostFileFetcher()
-        return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
-      },
-    })
-  }
-  return null
-}
+const createStagedDownloadFn = (): import('./attachments/types.js').StagedFileDownloadFn =>
+  createStagedDownloader({
+    telegramFetcher: (fileId) => {
+      const fetcher = getTelegramFileFetcher()
+      return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
+    },
+    mattermostFetcher: (fileId) => {
+      const fetcher = getMattermostFileFetcher()
+      return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
+    },
+  })
 
 const processMessage: BotDeps['processMessage'] = (...args) =>
   import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args))
 
-const stagedDownloadFn = createStagedDownloadFn(chatProvider)
-const botDeps: BotDeps = stagedDownloadFn === null ? { processMessage } : { processMessage, stagedDownloadFn }
+const stagedDownloadFn = createStagedDownloadFn()
+const botDeps: BotDeps = { processMessage, stagedDownloadFn }
 
 setupBot(chatProvider, adminUserId, botDeps)
 
