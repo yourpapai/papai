@@ -5,15 +5,17 @@
 
 import { getContextSettings } from '../instances/context-store.js'
 import { logger } from '../logger.js'
+import { getStorageContextId } from '../deferred-prompts/proactive-llm-helpers.js'
 import type { DeferredDeliveryTarget } from './types.js'
 
 const log = logger.child({ scope: 'chat:delivery-routing' })
 
 export function resolveDeliveryPlatformInstanceId(target: DeferredDeliveryTarget): string | null {
-  const settings = getContextSettings(target.contextId)
+  const storageContextId = getStorageContextId(target)
+  const settings = getContextSettings(storageContextId)
   if (settings === null) {
     log.warn(
-      { contextId: target.contextId, contextType: target.contextType },
+      { contextId: target.contextId, contextType: target.contextType, storageContextId },
       'Cannot route proactive chat delivery: context has no platform instance assignment',
     )
     return null
