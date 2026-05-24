@@ -47,6 +47,9 @@ reports/
 # Client build output
 public/
 
+# Storybook static build
+storybook-static/
+
 # Review loop state
 .review-loop/
 

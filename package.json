@@ -15,7 +15,7 @@
     "build:client": "bun scripts/build-client.ts",
     "storybook:prepare": "mkdir -p public && msw init public/ --no-save && cat client/shared/base.css client/shared/tokens.css client/admin/admin.css client/debug/debug.css > public/storybook-base.css",
     "storybook": "bun storybook:prepare && storybook dev -p 6006 --no-open",
-    "build:storybook": "bun storybook:prepare && storybook build -o public/storybook",
+    "build:storybook": "bun storybook:prepare && storybook build -o storybook-static",
     "start": "bun build:client && bun run src/index.ts",
     "start:debug": "bun build:client && DEBUG_SERVER=true bun run src/index.ts",
     "review-loop:test": "bun run --filter review-loop test",
