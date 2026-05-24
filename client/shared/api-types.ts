@@ -190,8 +190,8 @@ export type TaskInstanceView = {
   readonly createdAt: string
 }
 
-export type AdminInstanceView =
-  | { readonly userId: string; readonly platformInstanceId: string; readonly createdAt: string }
-  | { readonly userId: string; readonly platformInstanceId: string }
+export type AdminInstanceView = Readonly<
+  { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
+>
 
 export type ApplyInstancesResult = { readonly applied: number }

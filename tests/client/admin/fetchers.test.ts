@@ -27,12 +27,27 @@ import {
   setPlatformInstanceStatus,
   submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
+import type { AdminInstanceView } from '../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+
+type Equal<Left, Right> = [Left] extends [Right] ? ([Right] extends [Left] ? true : false) : false
+type Expect<Actual extends true> = Actual
+type ExpectedAdminInstanceView = Readonly<
+  { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
+>
+type PlatformStatusInput = Parameters<typeof setPlatformInstanceStatus>[1]
+const adminInstanceViewContract: Expect<Equal<AdminInstanceView, ExpectedAdminInstanceView>> = true
+const platformStatusInputContract: Expect<Equal<PlatformStatusInput, 'active' | 'stopped'>> = true
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
 
 beforeEach(() => {
   captured.length = 0
+})
+
+test('compile-time instance client contracts are enforced', () => {
+  expect(adminInstanceViewContract).toBe(true)
+  expect(platformStatusInputContract).toBe(true)
 })
 
 afterEach(() => {

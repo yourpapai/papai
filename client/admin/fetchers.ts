@@ -18,7 +18,6 @@ import type {
   DeferredPrompt,
   IdentityMappingEntry,
   InstanceConfigView,
-  InstanceStatusView,
   Memo,
   PlatformInstanceView,
   RecurringTask,
@@ -76,6 +75,8 @@ export type CreateTaskInstanceInput = {
 export type CreateAdminInput =
   | { readonly userId: string; readonly platformInstanceId: string }
   | { readonly userId: string }
+
+export type PlatformInstanceStatusInput = 'active' | 'stopped'
 
 export const fetchStatsGlobal = async (window: StatsWindow | undefined): Promise<GlobalStats> => {
   const path = window === undefined ? '/stats/global' : `/stats/global?window=${encodeURIComponent(window)}`
@@ -207,7 +208,7 @@ export const createPlatformInstance = async (input: CreatePlatformInstanceInput)
 
 export const setPlatformInstanceStatus = async (
   id: string,
-  status: InstanceStatusView,
+  status: PlatformInstanceStatusInput,
 ): Promise<PlatformInstanceView> => {
   const res = await fetch(`/api/platform-instances/${encodeURIComponent(id)}/status`, {
     method: 'POST',
