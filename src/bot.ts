@@ -12,7 +12,7 @@ import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-trackin
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import { resolveSourceProviderName } from './chat/source-instance.js'
+import { resolveSourceChatProvider, resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
@@ -230,7 +230,8 @@ async function onIncomingMessage(
     storageContextId: auth.storageContextId,
   })
   if (auth.allowed) recordGroupObservation(chat, msg)
-  if (await maybeInterceptWizard(msg, tracked.reply, auth, supportsInteractiveButtons(chat), autoStartWizardIfNeeded)) {
+  const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
+  if (await maybeInterceptWizard(msg, tracked.reply, auth, supportsInteractiveButtons(sourceChat), autoStartWizardIfNeeded)) {
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
     return
   }

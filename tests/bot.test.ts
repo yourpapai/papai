@@ -795,6 +795,56 @@ describe('Bot Authorization Gate (setupBot)', () => {
       expect(processMessageCallCount).toBe(0)
       expect(getContextSettings('dm-source-platform')).toMatchObject({ platformInstanceId: 'telegram-secondary' })
     })
+
+    test('uses source instance button capabilities for DM group settings follow-ups', async () => {
+      addUser('dm-source-no-buttons', ADMIN_ID)
+      addAuthorizedGroup('group-source-no-buttons', ADMIN_ID)
+      setupUserConfig('dm-source-no-buttons')
+
+      const sourceChat = createMockChat({ capabilities: new Set(['messages.files']) })
+      const { provider: aggregateChat, getMessageHandler: getAggregateMessageHandler } = createMockChatForBot()
+      const routerChat: ChatProvider & { getInstance: (id: string) => { readonly provider: ChatProvider } | null } = {
+        ...aggregateChat,
+        name: 'router',
+        getInstance: (_id: string): { readonly provider: ChatProvider } => ({ provider: sourceChat }),
+      }
+
+      setupBot(
+        routerChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: (): Promise<void> => Promise.resolve(),
+        }),
+      )
+
+      const messageHandler = getAggregateMessageHandler()
+      expect(messageHandler).not.toBeNull()
+
+      const observedGroupMessage = {
+        ...createGroupMessage('dm-source-no-buttons', '@bot status', true, 'group-source-no-buttons'),
+        contextName: 'Operations',
+        platformInstanceId: 'mattermost-source',
+      }
+      const { reply: groupReply } = createMockReply()
+      await messageHandler!(observedGroupMessage, groupReply)
+
+      createGroupSettingsSession({
+        userId: 'dm-source-no-buttons',
+        command: 'setup',
+        stage: 'choose_scope',
+      })
+
+      const { reply, textCalls, buttonCalls } = createMockReply()
+      await messageHandler!(
+        { ...createDmMessage('dm-source-no-buttons'), text: 'group', platformInstanceId: 'mattermost-source' },
+        reply,
+      )
+
+      expect(buttonCalls).toHaveLength(0)
+      expect(textCalls).toHaveLength(1)
+      expect(textCalls[0]).toContain('Choose a group to configure.')
+      expect(textCalls[0]).toContain('Operations - group-source-no-buttons')
+    })
   })
 
   test('records known group and admin observations before normal message handling', async () => {
