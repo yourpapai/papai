@@ -630,6 +630,38 @@ describe('group commands', () => {
 
       expect(textCalls[0]).toBe('User 12345 added to this group.')
     })
+
+    test('adduser @username uses source instance capability before router resolution', async () => {
+      let aggregateResolveCalls = 0
+      const routerHandlers = new Map<string, CommandHandler>()
+      const sourceProvider = createMockChat({ capabilities: TELEGRAM_LIKE_CAPABILITIES })
+      const aggregateProvider = createMockChat({
+        commandHandlers: routerHandlers,
+        resolveUserId: (): Promise<string | null> => {
+          aggregateResolveCalls += 1
+          return Promise.resolve(null)
+        },
+      })
+      const routerProvider: ChatProvider & {
+        readonly getInstance: (id: string) => { readonly provider: ChatProvider } | null
+      } = {
+        ...aggregateProvider,
+        getInstance: (_id: string): { readonly provider: ChatProvider } | null => ({ provider: sourceProvider }),
+      }
+      registerGroupCommand(routerProvider)
+      const handler = routerHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(
+        createGroupMessage('admin1', 'adduser @alice', true),
+        reply,
+        createAuth('admin1', { isGroupAdmin: true }),
+      )
+
+      expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
+      expect(aggregateResolveCalls).toBe(0)
+    })
   })
 
   describe('readable label resolution', () => {

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { supportsUserResolution } from '../chat/capabilities.js'
+import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { ChatProvider, ResolveUserContext } from '../chat/types.js'
 
 export type GroupUserIdResult = { kind: 'resolved'; userId: string } | { kind: 'error'; message: string }
@@ -14,7 +15,9 @@ export async function extractGroupUserId(
   context: ResolveUserContext,
 ): Promise<GroupUserIdResult> {
   if (input.startsWith('@')) {
-    if (!supportsUserResolution(chat)) {
+    const capabilityProvider =
+      context.platformInstanceId === undefined ? chat : resolveSourceChatProvider(chat, context.platformInstanceId)
+    if (!supportsUserResolution(capabilityProvider)) {
       return { kind: 'error', message: 'This chat provider does not support username lookup. Use an explicit user ID.' }
     }
     const resolveUserId = chat.resolveUserId
