@@ -7,7 +7,7 @@ import pLimit from 'p-limit'
 
 import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
-import { isAdmin } from '../instances/admin-store.js'
+import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import {
   provisionAndConfigure as defaultProvisionAndConfigure,
@@ -128,7 +128,7 @@ async function handleUsersCommand(
   adminUserId: string,
   platformInstanceId: string,
 ): Promise<void> {
-  const users = listUsers(platformInstanceId)
+  const users = isSuperAdmin(userId) ? listUsers() : listUsers(platformInstanceId)
   if (users.length === 0) {
     await reply.text('No authorized users.')
     return

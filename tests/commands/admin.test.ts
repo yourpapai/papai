@@ -9,7 +9,7 @@ import type { CommandHandler } from '../../src/chat/types.js'
 import type { AdminCommandsDeps } from '../../src/commands/admin.js'
 import { registerAdminCommands } from '../../src/commands/admin.js'
 import * as schema from '../../src/db/schema.js'
-import { addAdmin } from '../../src/instances/admin-store.js'
+import { SUPER_ADMIN_PLATFORM_ID, addAdmin } from '../../src/instances/admin-store.js'
 import type { ProvisionOutcome } from '../../src/providers/kaneo/provision.js'
 import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped, listUsers } from '../../src/users.js'
 import {
@@ -353,6 +353,24 @@ describe('Admin Commands', () => {
 
       expect(getReplies()[0]).toContain('mattermost-user')
       expect(getReplies()[0]).not.toContain('legacy-user')
+    })
+
+    test('super-admin lists users across all platform instances', async () => {
+      addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
+      addUserOnPlatform('mattermost-user', 'mattermost-default', ADMIN_ID)
+      addUser('legacy-user', ADMIN_ID)
+      const handler = commandHandlers.get('users')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+      await handler!({ ...createDmMessage('super-admin', ''), platformInstanceId: 'mattermost-default' }, reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: 'super-admin',
+      })
+
+      expect(getReplies()[0]).toContain('mattermost-user')
+      expect(getReplies()[0]).toContain('legacy-user')
     })
 
     test('allows platform-scoped admin to list their platform users', async () => {
