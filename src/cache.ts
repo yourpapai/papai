@@ -18,11 +18,12 @@ import {
 import { parseHistoryFromDb } from './cache-helpers.js'
 import type { CachedFact, CachedInstruction, UserCache } from './cache-types.js'
 import { getDrizzleDb } from './db/drizzle.js'
-import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions, users } from './db/schema.js'
+import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions } from './db/schema.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'cache' })
+const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
 
 // --- User Session Cache ---
 
@@ -197,15 +198,14 @@ export function getCachedWorkspace(userId: string): string | null {
   if (cache.workspaceId === null && !cache.config.has('workspace_loaded')) {
     log.debug({ userId }, 'Loading workspace from DB into cache')
     const row = getDrizzleDb()
-      .select({ kaneoWorkspaceId: users.kaneoWorkspaceId })
-      .from(users)
-      .where(sql`${users.platformUserId} = ${userId}`)
-      .all()
-    const [workspaceRow] = row
-    if (row.length === 1 && workspaceRow !== undefined) {
-      cache.workspaceId = workspaceRow.kaneoWorkspaceId
-    } else {
+      .select({ value: userConfig.value })
+      .from(userConfig)
+      .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY}`)
+      .get()
+    if (row === undefined) {
       cache.workspaceId = null
+    } else {
+      cache.workspaceId = row.value
     }
     cache.config.set('workspace_loaded', 'true')
     emitUser('cache:load', userId, { field: 'workspace' })

@@ -10,6 +10,7 @@ import { conversationHistory, memorySummary, memoryFacts, userConfig, userInstru
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'cache-db' })
+const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
 
 export function syncHistoryToDb(userId: string, messages: unknown[]): void {
   queueMicrotask(() => {
@@ -125,13 +126,20 @@ export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
   queueMicrotask(() => {
     try {
       const db = getDrizzleDb()
+      db.insert(userConfig)
+        .values({ userId, key: KANEO_WORKSPACE_CONFIG_KEY, value: workspaceId })
+        .onConflictDoUpdate({
+          target: [userConfig.userId, userConfig.key],
+          set: { value: workspaceId },
+        })
+        .run()
       const matchingUsers = db
         .select({ platformUserId: users.platformUserId, platformInstanceId: users.platformInstanceId })
         .from(users)
         .where(eq(users.platformUserId, userId))
         .all()
       if (matchingUsers.length !== 1) {
-        log.debug({ userId, matchCount: matchingUsers.length }, 'Workspace DB sync skipped without exact user scope')
+        log.debug({ userId, matchCount: matchingUsers.length }, 'Workspace synced to config without exact user mirror')
         return
       }
       const user = matchingUsers[0]

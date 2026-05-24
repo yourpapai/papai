@@ -215,7 +215,7 @@ describe('cache-db', () => {
       })
 
       userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspace(groupId)).toBeNull()
+      expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
 
       const db = getDrizzleDb()
       const result = db.select().from(users).where(eq(users.platformUserId, groupId)).get()

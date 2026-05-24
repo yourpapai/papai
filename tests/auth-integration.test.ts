@@ -7,6 +7,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 
 import { checkAuthorizationExtended as checkAuthorizationExtendedScoped } from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
+import type { AuthorizationResult } from '../src/chat/types.js'
 import { addGroupMember } from '../src/groups.js'
 import { addUser as addScopedUser } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -24,7 +25,8 @@ const checkAuthorizationExtended = (
   contextType: 'dm' | 'group',
   threadId: string | undefined,
   isPlatformAdmin: boolean,
-) => checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
+): AuthorizationResult =>
+  checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
 
 describe('group context isolation', () => {
   beforeEach(async () => {

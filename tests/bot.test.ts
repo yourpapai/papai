@@ -13,6 +13,7 @@ import { checkAuthorizationExtended as checkAuthorizationExtendedScoped, getThre
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
 import type {
+  AuthorizationResult,
   ChatProvider,
   CommandHandler,
   ContextRendered,
@@ -72,7 +73,8 @@ const checkAuthorizationExtended = (
   contextType: 'dm' | 'group',
   threadId: string | undefined,
   isPlatformAdmin: boolean,
-) => checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
+): AuthorizationResult =>
+  checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
 
 const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (item, reply, handler): void => {
   void handler({
