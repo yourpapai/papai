@@ -34,6 +34,7 @@ function userNeedsSetup(storageContextId: string): boolean {
 export async function autoStartWizardIfNeeded(
   userId: string,
   storageContextId: string,
+  platformInstanceId: string,
   reply: ReplyFn,
 ): Promise<boolean> {
   if (hasActiveWizard(userId, storageContextId)) return false
@@ -42,7 +43,7 @@ export async function autoStartWizardIfNeeded(
 
   const settings = getContextSettings(storageContextId)
   if (settings === null) {
-    const selection = startTaskInstanceSelection(userId, storageContextId)
+    const selection = startTaskInstanceSelection(userId, storageContextId, platformInstanceId)
     if (selection.status === 'assigned') {
       const result = createWizard(userId, storageContextId, selection.taskProvider)
       if (result.success) await reply.text(result.prompt)

@@ -23,7 +23,7 @@ function maybeDispatchGroupSelector(
 ): Promise<boolean> {
   if (isCommand || !auth.allowed || msg.contextType !== 'dm') return Promise.resolve(false)
   const selection = handleGroupSettingsSelectorMessage(msg.user.id, msg.text, interactiveButtons)
-  return dispatchGroupSelectorResult(selection, reply, msg.user.id, interactiveButtons)
+  return dispatchGroupSelectorResult(selection, reply, msg.user.id, msg.platformInstanceId, interactiveButtons)
 }
 
 function getConfigTargetContextId(auth: AuthorizationResult): string {
@@ -88,7 +88,12 @@ async function maybeHandleSetupFlows(
   interactiveButtons: boolean,
   isCommand: boolean,
   settingsTargetContextId: string,
-  autoStartWizardIfNeeded: (userId: string, storageContextId: string, reply: ReplyFn) => Promise<boolean>,
+  autoStartWizardIfNeeded: (
+    userId: string,
+    storageContextId: string,
+    platformInstanceId: string,
+    reply: ReplyFn,
+  ) => Promise<boolean>,
 ): Promise<boolean> {
   if (isCommand || !auth.allowed) return false
   if (await maybeHandleTaskInstanceSelection(msg, reply, settingsTargetContextId)) return true
@@ -107,7 +112,7 @@ async function maybeHandleSetupFlows(
     return true
   }
   if (msg.contextType !== 'dm') return false
-  return autoStartWizardIfNeeded(msg.user.id, settingsTargetContextId, reply)
+  return autoStartWizardIfNeeded(msg.user.id, settingsTargetContextId, msg.platformInstanceId, reply)
 }
 
 export async function maybeInterceptWizard(
@@ -115,7 +120,12 @@ export async function maybeInterceptWizard(
   reply: ReplyFn,
   auth: AuthorizationResult,
   interactiveButtons: boolean,
-  autoStartWizardIfNeeded: (userId: string, storageContextId: string, reply: ReplyFn) => Promise<boolean>,
+  autoStartWizardIfNeeded: (
+    userId: string,
+    storageContextId: string,
+    platformInstanceId: string,
+    reply: ReplyFn,
+  ) => Promise<boolean>,
 ): Promise<boolean> {
   const isCommand = msg.text.startsWith('/')
   if (await maybeDispatchGroupSelector(msg, reply, auth, interactiveButtons, isCommand)) return true

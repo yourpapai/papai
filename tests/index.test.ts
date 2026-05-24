@@ -78,6 +78,7 @@ describe('index.ts - graceful shutdown', () => {
   })
 
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {
+    delete process.env['CHAT_PROVIDER']
     const callOrder: string[] = []
     const activePlatformInstance = {
       id: 'telegram-default',

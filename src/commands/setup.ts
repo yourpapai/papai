@@ -109,8 +109,9 @@ export async function startWizardForAssignedTask(
   targetContextId: string,
   taskProvider: TaskInstanceType,
   isGroupTarget: boolean,
-  deps: SetupCommandDeps = defaultDeps,
+  ...rest: [] | [SetupCommandDeps]
 ): Promise<void> {
+  const deps = rest.length === 0 ? defaultDeps : rest[0]
   if (await maybeProvisionKaneoGroup(reply, targetContextId, taskProvider, isGroupTarget, deps)) return
   const result = deps.createWizard(userId, targetContextId, taskProvider)
   await reply.text(result.prompt)
@@ -120,12 +121,13 @@ async function startCredentialWizard(
   userId: string,
   reply: ReplyFn,
   targetContextId: string,
+  platformInstanceId: string,
   isGroupTarget: boolean,
   deps: SetupCommandDeps,
 ): Promise<void> {
   const settings = deps.getContextSettings(targetContextId)
   if (settings === null) {
-    const selection = deps.startTaskInstanceSelection(userId, targetContextId)
+    const selection = deps.startTaskInstanceSelection(userId, targetContextId, platformInstanceId)
     if (selection.status === 'assigned') {
       await startWizardForAssignedTask(userId, reply, targetContextId, selection.taskProvider, isGroupTarget, deps)
       return
@@ -140,7 +142,7 @@ async function startCredentialWizard(
 
   const taskInstance = deps.getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') {
-    const selection = deps.startTaskInstanceSelection(userId, targetContextId)
+    const selection = deps.startTaskInstanceSelection(userId, targetContextId, platformInstanceId)
     if (selection.status === 'assigned') {
       await startWizardForAssignedTask(userId, reply, targetContextId, selection.taskProvider, isGroupTarget, deps)
       return
@@ -157,31 +159,34 @@ async function startCredentialWizard(
 }
 
 export async function startSetupForTarget(
-  ...args:
-    | [userId: string, reply: ReplyFn, targetContextId: string]
-    | [userId: string, reply: ReplyFn, targetContextId: string, deps: SetupCommandDeps | undefined]
+  userId: string,
+  reply: ReplyFn,
+  targetContextId: string,
+  platformInstanceId: string,
+  ...rest: [] | [SetupCommandDeps]
 ): Promise<void> {
-  const [userId, reply, targetContextId, deps] = args
-  let resolvedDeps = defaultDeps
-  if (deps !== undefined) {
-    resolvedDeps = deps
-  }
+  const deps = rest.length === 0 ? defaultDeps : rest[0]
   const isGroupTarget = targetContextId !== userId
 
-  if (isGroupTarget && !resolvedDeps.isAuthorizedGroup(targetContextId)) {
+  if (isGroupTarget && !deps.isAuthorizedGroup(targetContextId)) {
     await reply.text(
       `This group is not authorized yet. Ask the bot admin to run \`/group add ${targetContextId}\` in DM first.`,
     )
     return
   }
 
-  await startCredentialWizard(userId, reply, targetContextId, isGroupTarget, resolvedDeps)
+  await startCredentialWizard(userId, reply, targetContextId, platformInstanceId, isGroupTarget, deps)
 }
 
-async function replyWithSetupSelection(reply: ReplyFn, userId: string, interactiveButtons: boolean): Promise<void> {
+async function replyWithSetupSelection(
+  reply: ReplyFn,
+  userId: string,
+  platformInstanceId: string,
+  interactiveButtons: boolean,
+): Promise<void> {
   const selection = startGroupSettingsSelection(userId, 'setup', interactiveButtons)
   if ('continueWith' in selection) {
-    await startSetupForTarget(userId, reply, selection.continueWith.targetContextId)
+    await startSetupForTarget(userId, reply, selection.continueWith.targetContextId, platformInstanceId)
     return
   }
   if ('buttons' in selection && selection.buttons !== undefined) {
@@ -212,7 +217,7 @@ export function registerSetupCommand(
     if (!supportsMessageDeletion(chat)) {
       await reply.text(NO_DELETE_WARNING)
     }
-    await replyWithSetupSelection(reply, msg.user.id, supportsInteractiveButtons(chat))
+    await replyWithSetupSelection(reply, msg.user.id, msg.platformInstanceId, supportsInteractiveButtons(chat))
   }
 
   chat.registerCommand('setup', handler)

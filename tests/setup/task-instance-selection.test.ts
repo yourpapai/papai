@@ -33,7 +33,7 @@ describe('task instance setup selection', () => {
   test('aborts when there are no active task instances', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1')
+    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
 
     expect(result).toEqual({
       status: 'aborted',
@@ -45,7 +45,7 @@ describe('task instance setup selection', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1')
+    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
 
     expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
     expect(getContextSettings('ctx-1')).toEqual({
@@ -55,12 +55,27 @@ describe('task instance setup selection', () => {
     })
   })
 
+  test('auto-assignment persists the source platform instance when multiple active platforms share a type', () => {
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
+    insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+
+    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-secondary')
+
+    expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
+    expect(getContextSettings('ctx-1')).toEqual({
+      contextId: 'ctx-1',
+      taskInstanceId: 'yt-prod',
+      platformInstanceId: 'telegram-secondary',
+    })
+  })
+
   test('asks the user to choose when multiple active task instances exist', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1')
+    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
 
     expect(result.status).toBe('pending')
     const pending = expectPending(result)
@@ -74,12 +89,33 @@ describe('task instance setup selection', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
-    startTaskInstanceSelection('user-1', 'ctx-1')
+    startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
 
     const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'yt-prod')
 
     expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
-    expect(getContextSettings('ctx-1')?.taskInstanceId).toBe('yt-prod')
+    expect(getContextSettings('ctx-1')).toEqual({
+      contextId: 'ctx-1',
+      taskInstanceId: 'yt-prod',
+      platformInstanceId: 'telegram-default',
+    })
+  })
+
+  test('manual selection persists the platform instance from the selection session', () => {
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
+    insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
+    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-secondary')
+
+    const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'yt-prod')
+
+    expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
+    expect(getContextSettings('ctx-1')).toEqual({
+      contextId: 'ctx-1',
+      taskInstanceId: 'yt-prod',
+      platformInstanceId: 'telegram-secondary',
+    })
   })
 
   test('rejects text selection that is not one of the active options', () => {
@@ -87,7 +123,7 @@ describe('task instance setup selection', () => {
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'old-prod', type: 'youtrack', config: { url: 'https://old.invalid' }, status: 'stopped' })
-    startTaskInstanceSelection('user-1', 'ctx-1')
+    startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
 
     const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'old-prod')
 

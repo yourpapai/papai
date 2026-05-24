@@ -25,10 +25,16 @@ const startSetupForTarget = async (
   userId: string,
   reply: ReplyFn,
   targetContextId: string,
+  platformInstanceId: string,
   deps: SetupCommandDeps,
 ): Promise<void> => {
   const module = await import('../../src/commands/setup.js')
-  return module.startSetupForTarget(userId, reply, targetContextId, deps)
+  return module.startSetupForTarget(userId, reply, targetContextId, platformInstanceId, deps)
+}
+
+const getConfigWithExistingApiKey = (_contextId: string, key: string): string | null => {
+  const values: Record<string, string> = { kaneo_apikey: 'existing-key' }
+  return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
 }
 
 describe('/setup command', () => {
@@ -139,7 +145,7 @@ describe('/setup command', () => {
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
-    await startSetupForTarget('admin-1', reply, 'group-1', deps)
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(textCalls.some((text) => text.includes('group Kaneo account has been created'))).toBe(true)
     expect(textCalls.some((text) => text.includes('Run /setup again when you are ready to continue'))).toBe(true)
@@ -179,16 +185,11 @@ describe('/setup command', () => {
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
-    await startSetupForTarget('admin-1', reply, 'group-1', deps)
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(true)
   })
-
-  const getConfigWithExistingApiKey = (_contextId: string, key: string): string | null => {
-    const values: Record<string, string> = { kaneo_apikey: 'existing-key' }
-    return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
-  }
 
   test('subsequent allowlisted group setup skips provisioning and starts the wizard', async () => {
     addAuthorizedGroup('group-1', 'admin-1')
@@ -221,7 +222,7 @@ describe('/setup command', () => {
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
-    await startSetupForTarget('admin-1', reply, 'group-1', deps)
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(0)
     expect(textCalls).toContain('wizard-started')
@@ -250,7 +251,7 @@ describe('/setup command', () => {
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
-    await startSetupForTarget('admin-1', reply, 'group-1', deps)
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(textCalls[0]).toContain('/group add group-1')
   })
@@ -265,10 +266,13 @@ describe('/setup command', () => {
       getKaneoWorkspace: () => null,
       getContextSettings: () => null,
       getTaskInstance: () => null,
-      startTaskInstanceSelection: () => ({ status: 'pending', response: 'choose a task tracker' }),
+      startTaskInstanceSelection: (_userId, _targetContextId, platformInstanceId) => {
+        expect(platformInstanceId).toBe('mattermost-source')
+        return { status: 'pending', response: 'choose a task tracker' }
+      },
     }
 
-    await startSetupForTarget('admin-1', reply, 'admin-1', deps)
+    await startSetupForTarget('admin-1', reply, 'admin-1', 'mattermost-source', deps)
 
     expect(textCalls).toEqual(['choose a task tracker'])
   })
@@ -298,7 +302,7 @@ describe('/setup command', () => {
       startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
     }
 
-    await startSetupForTarget('admin-1', reply, 'group-1', deps)
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(1)
     expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)

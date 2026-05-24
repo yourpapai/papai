@@ -31,7 +31,8 @@ import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.
 import { listManageableGroups } from '../src/group-settings/access.js'
 import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src/group-settings/state.js'
 import { addGroupMember } from '../src/groups.js'
-import { setContextSettings } from '../src/instances/context-store.js'
+import { getContextSettings, setContextSettings } from '../src/instances/context-store.js'
+import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
@@ -769,6 +770,30 @@ describe('Bot Authorization Gate (setupBot)', () => {
       await messageHandler!({ ...createDmMessage('dm-no-task-assignment'), text: 'hello' }, reply)
 
       expect(textCalls.join('\n')).toMatch(/Choose a task tracker|No task trackers are configured/u)
+    })
+
+    test('auto-started task assignment uses the source message platform instance', async () => {
+      addUser('dm-source-platform', ADMIN_ID)
+      insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
+      insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
+      insertTaskInstance({
+        id: 'dm-source-task',
+        type: 'youtrack',
+        config: { url: 'https://yt.invalid' },
+        status: 'active',
+      })
+
+      const messageHandler = getMessageHandler()
+      expect(messageHandler).not.toBeNull()
+
+      const { reply } = createMockReply()
+      await messageHandler!(
+        { ...createDmMessage('dm-source-platform'), text: 'hello', platformInstanceId: 'telegram-secondary' },
+        reply,
+      )
+
+      expect(processMessageCallCount).toBe(0)
+      expect(getContextSettings('dm-source-platform')).toMatchObject({ platformInstanceId: 'telegram-secondary' })
     })
   })
 
@@ -1768,7 +1793,8 @@ describe('Attachment workspace integration (setupBot)', () => {
 
     expect(capturedStorageId).toBe('relay-user')
     expect(attachmentIdsAtProcessingTime).toHaveLength(1)
-    expect(attachmentIdsAtProcessingTime[0]?.startsWith('att_')).toBe(true)
+    assert.ok(attachmentIdsAtProcessingTime[0] !== undefined)
+    expect(attachmentIdsAtProcessingTime[0].startsWith('att_')).toBe(true)
   })
 
   test('does not persist anything when an authorized message has no files', async () => {

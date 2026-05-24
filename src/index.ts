@@ -32,7 +32,7 @@ import { addUser } from './users.js'
 
 const log = logger.child({ scope: 'main' })
 
-const REQUIRED_ENV_VARS = ['CHAT_PROVIDER', 'ADMIN_USER_ID'] as const
+const REQUIRED_ENV_VARS = ['ADMIN_USER_ID'] as const
 
 const getEnvValue = (key: string): string => {
   const value = process.env[key]

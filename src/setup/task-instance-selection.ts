@@ -7,13 +7,13 @@ import { setContextSettings } from '../instances/context-store.js'
 import { listTaskInstances } from '../instances/task-store.js'
 import type { TaskInstance, TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { resolveCurrentPlatformInstanceId } from './platform-instance.js'
 
 const log = logger.child({ scope: 'setup:task-instance-selection' })
 
 type SelectionSession = {
   userId: string
   contextId: string
+  platformInstanceId: string
   options: readonly TaskInstance[]
 }
 
@@ -40,22 +40,23 @@ const formatChoiceList = (instances: readonly TaskInstance[]): string =>
     'Reply with one of these task instance IDs.',
   ].join('\n')
 
-const assignTaskInstance = (userId: string, contextId: string, instance: TaskInstance): TaskInstanceSelectionResult => {
-  const platformInstanceId = resolveCurrentPlatformInstanceId()
-  if (platformInstanceId === null) {
-    return {
-      status: 'aborted',
-      response:
-        'No active chat platform instance is available for this setup flow. Ask a super-admin to check the dashboard.',
-    }
-  }
+const assignTaskInstance = (
+  userId: string,
+  contextId: string,
+  platformInstanceId: string,
+  instance: TaskInstance,
+): TaskInstanceSelectionResult => {
   setContextSettings({ contextId, taskInstanceId: instance.id, platformInstanceId })
   sessions.delete(sessionKey(userId, contextId))
   log.info({ userId, contextId, taskInstanceId: instance.id, platformInstanceId }, 'Task instance assigned')
   return { status: 'assigned', taskProvider: instance.type }
 }
 
-export function startTaskInstanceSelection(userId: string, contextId: string): TaskInstanceSelectionResult {
+export function startTaskInstanceSelection(
+  userId: string,
+  contextId: string,
+  platformInstanceId: string,
+): TaskInstanceSelectionResult {
   const options = activeTaskInstances()
   if (options.length === 0) {
     return {
@@ -65,10 +66,10 @@ export function startTaskInstanceSelection(userId: string, contextId: string): T
   }
   if (options.length === 1) {
     const only = options[0]!
-    log.info({ userId, contextId, taskInstanceId: only.id }, 'Auto-selecting only active task instance')
-    return assignTaskInstance(userId, contextId, only)
+    log.info({ userId, contextId, taskInstanceId: only.id, platformInstanceId }, 'Auto-selecting only active task instance')
+    return assignTaskInstance(userId, contextId, platformInstanceId, only)
   }
-  sessions.set(sessionKey(userId, contextId), { userId, contextId, options })
+  sessions.set(sessionKey(userId, contextId), { userId, contextId, platformInstanceId, options })
   return { status: 'pending', response: formatChoiceList(options) }
 }
 
@@ -85,5 +86,5 @@ export function handleTaskInstanceSelectionMessage(
   if (selected === undefined) {
     return { status: 'pending', response: formatChoiceList(session.options) }
   }
-  return assignTaskInstance(userId, contextId, selected)
+  return assignTaskInstance(userId, contextId, session.platformInstanceId, selected)
 }

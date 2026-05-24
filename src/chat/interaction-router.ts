@@ -55,7 +55,7 @@ export type InteractionRouteDeps = {
 }
 function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
   const result = handleGroupSettingsSelectorCallback(interaction.user.id, interaction.callbackData)
-  return dispatchGroupSelectorResult(result, reply, interaction.user.id)
+  return dispatchGroupSelectorResult(result, reply, interaction.user.id, interaction.platformInstanceId)
 }
 
 function getValidatedDmTargetContextId(userId: string): string | null {

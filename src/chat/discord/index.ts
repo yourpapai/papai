@@ -43,6 +43,26 @@ export type { DiscordClientFactory, DiscordClientLike, DispatchableMessage }
 export { defaultClientFactory }
 const log = logger.child({ scope: 'chat:discord' })
 type OnMessageHandler = (msg: IncomingMessage, reply: ReplyFn) => Promise<void>
+type DiscordConstructorArgs =
+  | []
+  | [clientFactory: DiscordClientFactory | undefined]
+  | [clientFactory: DiscordClientFactory | undefined, tokenOverride: string | undefined]
+  | [
+      clientFactory: DiscordClientFactory | undefined,
+      tokenOverride: string | undefined,
+      platformInstanceId: string | undefined,
+    ]
+
+const resolveToken = (tokenOverride: string | undefined): string | undefined => {
+  if (tokenOverride === undefined) return process.env['DISCORD_BOT_TOKEN']
+  return tokenOverride
+}
+
+const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId === undefined) return 'legacy-single'
+  return platformInstanceId
+}
+
 export class DiscordChatProvider implements ChatProvider {
   readonly name = 'discord'
   readonly threadCapabilities: ThreadCapabilities = {
@@ -60,11 +80,14 @@ export class DiscordChatProvider implements ChatProvider {
   private messageHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
-  constructor(clientFactory?: DiscordClientFactory, tokenOverride?: string, platformInstanceId = 'legacy-single') {
-    const token = tokenOverride ?? process.env['DISCORD_BOT_TOKEN']
+  constructor(...args: DiscordConstructorArgs) {
+    const clientFactory = args[0]
+    const tokenOverride = args.length >= 2 ? args[1] : undefined
+    const token = resolveToken(tokenOverride)
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
+    const platformInstanceId = resolvePlatformInstanceId(args.length >= 3 ? args[2] : undefined)
     this.token = token
     this.platformInstanceId = platformInstanceId
     this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory
@@ -193,7 +216,8 @@ export class DiscordChatProvider implements ChatProvider {
     const { incoming, channel } = result
 
     // Handle group-settings selector callbacks before standard routing
-    if (await handleDiscordGroupSettingsSelection(interaction, incoming.user.id, result.reply)) return
+    if (await handleDiscordGroupSettingsSelection(interaction, incoming.user.id, incoming.platformInstanceId, result.reply))
+      return
 
     if (this.interactionHandler === null) {
       const auth = checkAuthorizationExtended(

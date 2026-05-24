@@ -32,7 +32,7 @@ describe('dispatchGroupSelectorResult', () => {
 
   test('returns false for an unhandled result', async () => {
     const result: GroupSettingsSelectorResult = { handled: false }
-    const handled = await dispatchGroupSelectorResult(result, makeReply(), 'user-1')
+    const handled = await dispatchGroupSelectorResult(result, makeReply(), 'user-1', 'telegram-source')
     expect(handled).toBe(false)
   })
 
@@ -43,7 +43,7 @@ describe('dispatchGroupSelectorResult', () => {
     }
     const reply = makeReply()
     const deps = makeDeps()
-    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', true, deps)
+    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source', true, deps)
     expect(handled).toBe(true)
     expect(deps.renderConfigForTarget).toHaveBeenCalledWith(reply, 'ctx-1', true)
     expect(deps.startSetupForTarget).not.toHaveBeenCalled()
@@ -56,7 +56,7 @@ describe('dispatchGroupSelectorResult', () => {
     }
     const reply = makeReply()
     const deps = makeDeps()
-    await dispatchGroupSelectorResult(result, reply, 'user-1', false, deps)
+    await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source', false, deps)
     expect(deps.renderConfigForTarget).toHaveBeenCalledWith(reply, 'ctx-1', false)
   })
 
@@ -67,9 +67,9 @@ describe('dispatchGroupSelectorResult', () => {
     }
     const reply = makeReply()
     const deps = makeDeps()
-    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', true, deps)
+    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source', true, deps)
     expect(handled).toBe(true)
-    expect(deps.startSetupForTarget).toHaveBeenCalledWith('user-1', reply, 'ctx-2')
+    expect(deps.startSetupForTarget).toHaveBeenCalledWith('user-1', reply, 'ctx-2', 'telegram-source')
     expect(deps.renderConfigForTarget).not.toHaveBeenCalled()
   })
 
@@ -81,7 +81,7 @@ describe('dispatchGroupSelectorResult', () => {
       buttons,
     }
     const reply = makeReply()
-    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1')
+    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source')
     expect(handled).toBe(true)
     expect(reply.buttons).toHaveBeenCalledWith('Choose:', { buttons })
     expect(reply.text).not.toHaveBeenCalled()
@@ -102,7 +102,7 @@ describe('dispatchGroupSelectorResult', () => {
       replaceButtons: typeof replaceButtons
     }
 
-    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1')
+    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source')
 
     expect(handled).toBe(true)
     expect(replaceButtons).toHaveBeenCalledWith('Choose:', { buttons })
@@ -116,7 +116,7 @@ describe('dispatchGroupSelectorResult', () => {
       response: 'Done.',
     }
     const reply = makeReply()
-    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1')
+    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source')
     expect(handled).toBe(true)
     expect(reply.text).toHaveBeenCalledWith('Done.')
     expect(reply.buttons).not.toHaveBeenCalled()
@@ -135,7 +135,7 @@ describe('dispatchGroupSelectorResult', () => {
       replaceText: typeof replaceText
     }
 
-    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1')
+    const handled = await dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source')
 
     expect(handled).toBe(true)
     expect(replaceText).toHaveBeenCalledWith('Done.')

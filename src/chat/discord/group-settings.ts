@@ -11,6 +11,7 @@ import type { ButtonInteractionLike } from './buttons.js'
 export function handleDiscordGroupSettingsSelection(
   interaction: ButtonInteractionLike,
   userId: string,
+  platformInstanceId: string,
   reply: ReplyFn,
 ): Promise<boolean> {
   if (!interaction.customId.startsWith('gsel:')) {
@@ -18,5 +19,5 @@ export function handleDiscordGroupSettingsSelection(
   }
 
   const result = handleGroupSettingsSelectorCallback(userId, interaction.customId)
-  return dispatchGroupSelectorResult(result, reply, userId)
+  return dispatchGroupSelectorResult(result, reply, userId, platformInstanceId)
 }
