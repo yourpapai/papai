@@ -216,7 +216,14 @@ export class DiscordChatProvider implements ChatProvider {
     const { incoming, channel } = result
 
     // Handle group-settings selector callbacks before standard routing
-    if (await handleDiscordGroupSettingsSelection(interaction, incoming.user.id, incoming.platformInstanceId, result.reply))
+    if (
+      await handleDiscordGroupSettingsSelection(
+        interaction,
+        incoming.user.id,
+        incoming.platformInstanceId,
+        result.reply,
+      )
+    )
       return
 
     if (this.interactionHandler === null) {

@@ -66,7 +66,10 @@ export function startTaskInstanceSelection(
   }
   if (options.length === 1) {
     const only = options[0]!
-    log.info({ userId, contextId, taskInstanceId: only.id, platformInstanceId }, 'Auto-selecting only active task instance')
+    log.info(
+      { userId, contextId, taskInstanceId: only.id, platformInstanceId },
+      'Auto-selecting only active task instance',
+    )
     return assignTaskInstance(userId, contextId, platformInstanceId, only)
   }
   sessions.set(sessionKey(userId, contextId), { userId, contextId, platformInstanceId, options })

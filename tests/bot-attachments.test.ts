@@ -12,8 +12,8 @@ import {
   setBlobStoreForTesting,
 } from '../src/attachments/blob-store.js'
 import { listActiveAttachments } from '../src/attachments/index.js'
-import { loadAttachmentRecord } from '../src/attachments/store.js'
 import { findStagedFilesByMessageId } from '../src/attachments/staged.js'
+import { loadAttachmentRecord } from '../src/attachments/store.js'
 import type { StagedFileRef, StageFileParams } from '../src/attachments/types.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot } from '../src/bot.js'

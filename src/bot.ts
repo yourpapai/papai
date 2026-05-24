@@ -231,7 +231,15 @@ async function onIncomingMessage(
   })
   if (auth.allowed) recordGroupObservation(chat, msg)
   const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
-  if (await maybeInterceptWizard(msg, tracked.reply, auth, supportsInteractiveButtons(sourceChat), autoStartWizardIfNeeded)) {
+  if (
+    await maybeInterceptWizard(
+      msg,
+      tracked.reply,
+      auth,
+      supportsInteractiveButtons(sourceChat),
+      autoStartWizardIfNeeded,
+    )
+  ) {
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
     return
   }

@@ -38,7 +38,10 @@ const getConfigWithExistingApiKey = (_contextId: string, key: string): string | 
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
 }
 
-function createRouterLikeSetupChat(sourceProvider: ChatProvider, commandHandlers: Map<string, CommandHandler>): ChatProvider {
+function createRouterLikeSetupChat(
+  sourceProvider: ChatProvider,
+  commandHandlers: Map<string, CommandHandler>,
+): ChatProvider {
   return {
     ...createMockChatWithCommandHandlers({
       capabilities: new Set<ChatCapability>([
