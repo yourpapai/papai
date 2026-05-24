@@ -15,6 +15,7 @@ import { getTelegramFileFetcher } from './chat/telegram/index.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
 import { listActivePlatformInstances } from './instances/platform-store.js'
 import { logger } from './logger.js'
@@ -87,6 +88,7 @@ for (const instance of activePlatformInstances) {
     )
   }
 }
+setRuntimeChatRouter(chatProvider)
 
 log.info(
   {
@@ -183,6 +185,7 @@ const shutdown = (signal: string): void => {
       return chatProvider.stop()
     })
     .then(() => {
+      clearRuntimeChatRouter()
       closeDrizzleDb()
       closeMigrationDbInstance()
       process.exit(0)

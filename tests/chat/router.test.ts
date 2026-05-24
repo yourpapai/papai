@@ -283,6 +283,22 @@ describe('ChatRouter', () => {
     ])
   })
 
+  test('listInstances returns readonly snapshots of managed instances', async () => {
+    router.addInstance('telegram-main', 'telegram', {})
+    router.addInstance('discord-main', 'discord', {})
+    await router.startInstance('telegram-main')
+    await router.stopInstance('discord-main')
+
+    const snapshots = router.listInstances()
+
+    expect(snapshots).toEqual([
+      { id: 'telegram-main', type: 'telegram', status: 'active' },
+      { id: 'discord-main', type: 'discord', status: 'stopped' },
+    ])
+    expect('provider' in snapshots[0]!).toBe(false)
+    expect(snapshots[0]).not.toBe(routerInstance('telegram-main'))
+  })
+
   test('isolates start failures and starts remaining instances', async () => {
     const started: string[] = []
     const startById: Record<string, () => Promise<void>> = {

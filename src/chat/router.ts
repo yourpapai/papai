@@ -6,7 +6,7 @@
 import pLimit from 'p-limit'
 
 import { getContextSettings } from '../instances/context-store.js'
-import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
+import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import {
   activeInstanceStatuses,
@@ -29,19 +29,9 @@ import type {
   ResolveUserContext,
   ThreadCapabilities,
 } from './types.js'
+import type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 
-export type ManagedChatInstance = {
-  readonly id: string
-  readonly type: PlatformInstanceType
-  readonly provider: ChatProvider
-  status: InstanceStatus
-}
-
-export type ManagedChatInstanceFactory = (
-  id: string,
-  type: PlatformInstanceType,
-  config: InstanceConfig,
-) => ChatProvider
+export type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 
 const log = logger.child({ scope: 'chat:router' })
 const ROUTER_LIFECYCLE_CONCURRENCY = 4
@@ -99,7 +89,17 @@ export class ChatRouter implements ChatProvider {
   }
 
   getInstance(id: string): ManagedChatInstance | null {
-    return this.instances.get(id) ?? null
+    const instance = this.instances.get(id)
+    if (instance === undefined) return null
+    return instance
+  }
+
+  listInstances(): readonly ManagedChatInstanceSnapshot[] {
+    return [...this.instances.values()].map((instance) => ({
+      id: instance.id,
+      type: instance.type,
+      status: instance.status,
+    }))
   }
 
   async startInstance(id: string): Promise<void> {

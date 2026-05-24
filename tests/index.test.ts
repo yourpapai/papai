@@ -75,6 +75,7 @@ describe('index.ts - graceful shutdown', () => {
     expect(source).toContain("process.on('SIGTERM'")
     expect(source).toContain("process.on('SIGINT'")
     expect(countMatches(source, /flushOnShutdown\(\s*\{\s*timeoutMs:\s*5000\s*\}\s*\)/gu)).toBe(1)
+    expect(source).toContain('clearRuntimeChatRouter()')
   })
 
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {
@@ -104,6 +105,7 @@ describe('index.ts - graceful shutdown', () => {
     let mattermostFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
     let createChatProviderCalls = 0
     let createChatProviderFromConfigCalls = 0
+    const runtimeRouterCalls: ChatProvider[] = []
     const originalExit = process.exit.bind(process)
 
     const chatProvider: ChatProvider = {
@@ -266,6 +268,15 @@ describe('index.ts - graceful shutdown', () => {
       },
       stopPollers: (): void => undefined,
     }))
+    void mock.module('../src/debug/chat-router-runtime.js', () => ({
+      setRuntimeChatRouter: (router: ChatProvider): void => {
+        runtimeRouterCalls.push(router)
+      },
+      getRuntimeChatRouter: (): ChatProvider | null => null,
+      clearRuntimeChatRouter: (): void => {
+        runtimeRouterCalls.length = 0
+      },
+    }))
     void mock.module('../src/logger.js', () => ({
       logger: {
         child: (): LoggerMethods => ({
@@ -332,6 +343,7 @@ describe('index.ts - graceful shutdown', () => {
     ])
     expect(createChatProviderCalls).toBe(0)
     expect(createChatProviderFromConfigCalls).toBe(2)
+    expect(runtimeRouterCalls).toHaveLength(1)
     expect(loggedErrors.length).toBeGreaterThan(0)
     expect(capturedAnnouncementPlatformInstanceId).toBe(activePlatformInstance.id)
     expect(resolverContexts).toEqual(['poller-context-1', 'admin-1'])

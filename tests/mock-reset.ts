@@ -42,6 +42,7 @@ import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
+import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
 import * as _identityMapping from '../src/identity/mapping.js'
 import * as _instancesBootstrap from '../src/instances/bootstrap.js'
 import * as _logger from '../src/logger.js'
@@ -76,6 +77,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/chat/telegram/index.js', { ..._chatTelegram }],
   ['../src/db/drizzle.js', { ..._dbDrizzle }],
   ['../src/db/index.js', { ..._dbIndex }],
+  ['../src/debug/chat-router-runtime.js', { ..._chatRouterRuntime }],
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
