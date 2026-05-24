@@ -198,7 +198,7 @@ export class ChatRouter implements ChatProvider {
 
   getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
     const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined) return new Set()
+    if (instance === undefined || instance.status !== 'active') return new Set()
     return instance.provider.capabilities
   }
 

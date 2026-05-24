@@ -405,16 +405,29 @@ describe('ChatRouter', () => {
     expect(userId).toBe('discord:alice')
   })
 
-  test('getPlatformInstanceCapabilities returns capabilities for a managed instance', () => {
+  test('getPlatformInstanceCapabilities returns capabilities for an active managed instance', async () => {
     const capabilityRouter = new ChatRouter((id: string, type: PlatformInstanceType, _config: InstanceConfig) => {
       const fakeProvider = makeProvider(type, { capabilities: ['messages.buttons'] })
       providers[id] = fakeProvider
       return fakeProvider
     })
     capabilityRouter.addInstance('telegram-a', 'telegram', { token: 'x' })
+    await capabilityRouter.startInstance('telegram-a')
 
     expect(capabilityRouter.getPlatformInstanceCapabilities('telegram-a')).toEqual(new Set(['messages.buttons']))
     expect(capabilityRouter.getPlatformInstanceCapabilities('missing')).toEqual(new Set())
+  })
+
+  test('getPlatformInstanceCapabilities returns no capabilities for a stopped managed instance', async () => {
+    const capabilityRouter = new ChatRouter((id: string, type: PlatformInstanceType, _config: InstanceConfig) => {
+      const fakeProvider = makeProvider(type, { capabilities: ['messages.buttons'] })
+      providers[id] = fakeProvider
+      return fakeProvider
+    })
+    capabilityRouter.addInstance('telegram-a', 'telegram', { token: 'x' })
+    await capabilityRouter.stopInstance('telegram-a')
+
+    expect(capabilityRouter.getPlatformInstanceCapabilities('telegram-a')).toEqual(new Set())
   })
 
   test('uses context settings to resolve users and groups when platform instance context is absent', async () => {

@@ -483,6 +483,37 @@ describe('singleton registry helpers', () => {
     })
   })
 
+  test('returns capability_missing when assigned platform instance is stopped despite supporting a required chat capability', async () => {
+    const pluginId = 'stopped-chat-capability-plugin'
+    const contextId = 'ctx-stopped-chat-capability'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Stopped Chat Capability Plugin',
+        defaultEnabled: true,
+        requiredChatCapabilities: ['messages.buttons'],
+      },
+      manifestHash: 'hash-stopped-chat-capability',
+    })
+    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
+    const router = new ChatRouter(() => createMockChat({ capabilities: new Set(['messages.buttons']) }))
+    router.addInstance('telegram-a', 'telegram', { token: 'x' })
+    await router.stopInstance('telegram-a')
+    setRuntimeChatRouter(router)
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-stopped-chat-capability')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({
+      eligible: false,
+      reason: 'capability_missing',
+      missingCapabilities: ['messages.buttons'],
+    })
+  })
+
   test('skips capability checks when context settings are absent', () => {
     const pluginId = 'pre-setup-plugin'
     const plugin = makePlugin({
