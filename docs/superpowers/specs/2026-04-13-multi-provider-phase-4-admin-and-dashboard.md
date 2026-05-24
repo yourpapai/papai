@@ -81,7 +81,7 @@ All forms POST to the API in Section 4. Configs are entered as key/value pairs a
 
 ## Section 4: API Endpoints
 
-All routes live under `src/debug/instance-routes.ts` and follow the existing `DEBUG_TOKEN` write-surface pattern used by `admin-llm.ts`: GET is open when `DEBUG_TOKEN` is unset, POST/DELETE require `DEBUG_TOKEN` to be configured and the request to include `Authorization: Bearer <DEBUG_TOKEN>`.
+All routes live under `src/debug/instance-routes.ts` and follow the existing debug-server auth behavior: when `DEBUG_TOKEN` is configured, the server-wide bearer-token gate applies to GET and write requests; when `DEBUG_TOKEN` is unset, GET routes are open while POST/DELETE still require `DEBUG_TOKEN` to be configured and the request to include `Authorization: Bearer <DEBUG_TOKEN>`.
 
 ```
 GET    /api/platform-instances
@@ -118,13 +118,13 @@ Phase 4 must add a readonly `ChatRouter.listInstances()` method because Phase 3 
 
 ## Section 6: Error Handling
 
-| Condition                                                  | Behavior                                                                                |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Delete a task instance with referencing `context_settings` | Confirm-once warning; on confirmation, delete the row and the orphaned context_settings |
-| Delete a platform instance still serving connections       | `removeInstance` stops the adapter first, then deletes; in-flight calls complete        |
-| Encryption key missing/wrong                               | Decryption throws — surface to the dashboard as `500 { error: 'config unreadable' }`    |
-| Apply with no router target set                            | `503 router not initialised`                                                            |
-| Unknown admin role / platform instance in command flow     | Reply with a short denial and do not mutate DB                                          |
+| Condition                                                  | Behavior                                                                                                                                                 |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Delete a task instance with referencing `context_settings` | Dashboard asks for confirmation before deleting the row and dependent context settings                                                                   |
+| Delete a platform instance still serving connections       | Dashboard asks for confirmation; `removeInstance` stops the adapter first, then deletes the row and dependent context settings; in-flight calls complete |
+| Encryption key missing/wrong                               | Decryption throws — surface to the dashboard as `500 { error: 'config unreadable' }`                                                                     |
+| Apply with no router target set                            | `503 router not initialised`                                                                                                                             |
+| Unknown admin role / platform instance in command flow     | Reply with a short denial and do not mutate DB                                                                                                           |
 
 ## Section 7: Testing Strategy
 
