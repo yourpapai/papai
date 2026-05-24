@@ -3,48 +3,63 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { eq, or } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 
 import { evictUser, getCachedWorkspace, setCachedWorkspace } from './cache.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { users } from './db/schema.js'
+import { isAdmin } from './instances/admin-store.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'users' })
 
-interface UserRecord {
+export interface UserRecord {
   platform_user_id: string
+  platform_instance_id: string | null
   username: string | null
   added_at: string
   added_by: string
 }
 
-export function addUser(userId: string, addedBy: string, username?: string): void {
-  log.debug({ hasUsername: username !== undefined }, 'addUser called')
+type AddUserInputWithoutUsername = Readonly<Record<never, never>>
+
+export type AddUserInput = Readonly<{
+  userId: string
+  platformInstanceId: string
+  addedBy: string
+}> &
+  (Readonly<{ username: string | undefined }> | AddUserInputWithoutUsername)
+
+export function addUser(input: AddUserInput): void {
+  const username = 'username' in input && input.username !== undefined ? input.username : null
+  log.debug({ platformInstanceId: input.platformInstanceId, hasUsername: username !== null }, 'addUser called')
   const db = getDrizzleDb()
 
   db.insert(users)
     .values({
-      platformUserId: userId,
-      username: username ?? null,
-      addedBy,
+      platformUserId: input.userId,
+      platformInstanceId: input.platformInstanceId,
+      username,
+      addedBy: input.addedBy,
     })
     .onConflictDoUpdate({
       target: users.platformUserId,
-      set: { username: username ?? null },
+      set: { platformInstanceId: input.platformInstanceId, username },
     })
     .run()
 
-  log.info({ hasUsername: username !== undefined }, 'User added')
+  log.info({ platformInstanceId: input.platformInstanceId, hasUsername: username !== null }, 'User added')
 }
 
-export function removeUser(identifier: string): boolean {
-  log.debug('removeUser called')
+export function removeUser(identifier: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'removeUser called')
   const db = getDrizzleDb()
 
   const deleted = db
     .delete(users)
-    .where(or(eq(users.username, identifier), eq(users.platformUserId, identifier)))
+    .where(
+      and(eq(users.platformInstanceId, platformInstanceId), or(eq(users.username, identifier), eq(users.platformUserId, identifier))),
+    )
     .returning({ platformUserId: users.platformUserId })
     .all()
 
@@ -60,54 +75,66 @@ export function removeUser(identifier: string): boolean {
   return removed
 }
 
-export function isAuthorized(userId: string): boolean {
-  log.debug('isAuthorized called')
+export function isAuthorized(userId: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'isAuthorized called')
+  if (isAdmin(userId, platformInstanceId)) return true
+
   const db = getDrizzleDb()
 
   const row = db
     .select({ platformUserId: users.platformUserId })
     .from(users)
-    .where(eq(users.platformUserId, userId))
+    .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
     .get()
 
   return row !== undefined
 }
 
-export function resolveUserByUsername(userId: string, username: string): boolean {
-  log.debug('resolveUserByUsername called')
+export function resolveUserByUsername(userId: string, username: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'resolveUserByUsername called')
   const db = getDrizzleDb()
 
-  const row = db.select({ platformUserId: users.platformUserId }).from(users).where(eq(users.username, username)).get()
+  const row = db
+    .select({ platformUserId: users.platformUserId })
+    .from(users)
+    .where(and(eq(users.username, username), eq(users.platformInstanceId, platformInstanceId)))
+    .get()
 
   if (row === undefined) return false
   if (row.platformUserId === userId) return true
 
-  db.update(users).set({ platformUserId: userId }).where(eq(users.username, username)).run()
+  db.update(users)
+    .set({ platformUserId: userId })
+    .where(and(eq(users.username, username), eq(users.platformInstanceId, platformInstanceId)))
+    .run()
 
   log.info('User platform_user_id resolved from username')
   return true
 }
 
-export function listUsers(): UserRecord[] {
-  log.debug('listUsers called')
+export function listUsers(...args: [] | [platformInstanceId: string]): UserRecord[] {
+  const platformInstanceId = args[0]
+  log.debug({ platformInstanceId }, 'listUsers called')
   const db = getDrizzleDb()
-
-  return db
+  const query = db
     .select({
       platform_user_id: users.platformUserId,
+      platform_instance_id: users.platformInstanceId,
       username: users.username,
       added_at: users.addedAt,
       added_by: users.addedBy,
     })
     .from(users)
-    .all()
+
+  if (platformInstanceId === undefined) return query.all()
+  return query.where(eq(users.platformInstanceId, platformInstanceId)).all()
 }
 
 export function isDemoUser(userId: string): boolean {
   log.debug({ userId }, 'isDemoUser called')
   const db = getDrizzleDb()
   const row = db.select({ addedBy: users.addedBy }).from(users).where(eq(users.platformUserId, userId)).get()
-  return row?.addedBy === 'demo-auto'
+  return row === undefined ? false : row.addedBy === 'demo-auto'
 }
 
 export function getKaneoWorkspace(userId: string): string | null {

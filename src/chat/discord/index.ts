@@ -235,6 +235,7 @@ export class DiscordChatProvider implements ChatProvider {
         incoming.contextType,
         incoming.threadId,
         incoming.user.isAdmin,
+        incoming.platformInstanceId,
       )
       const handled = await routeInteraction(incoming, result.reply, auth)
       if (handled) return
@@ -267,6 +268,7 @@ export class DiscordChatProvider implements ChatProvider {
       mapped.contextType,
       mapped.threadId,
       mapped.user.isAdmin,
+      mapped.platformInstanceId,
     )
     const command = matchDiscordCommand(mapped.text, this.commands)
     if (command !== null) {

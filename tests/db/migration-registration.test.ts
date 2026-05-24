@@ -13,7 +13,7 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('040_platform_instances')
   })
 
-  test('040 is the last migration', () => {
-    expect(MIGRATIONS.at(-1)?.id).toBe('040_platform_instances')
+  test('041 is the last migration', () => {
+    expect(MIGRATIONS.at(-1)?.id).toBe('041_users_platform_instance_index')
   })
 })

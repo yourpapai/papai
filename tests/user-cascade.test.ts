@@ -8,8 +8,16 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import * as schema from '../src/db/schema.js'
-import { addUser, removeUser } from '../src/users.js'
+import { addUser as addScopedUser, removeUser as removeScopedUser } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'legacy-single'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
+const removeUser = (identifier: string): boolean => removeScopedUser(identifier, TEST_PLATFORM_ID)
 
 const countRows = (
   db: Awaited<ReturnType<typeof setupTestDb>>,

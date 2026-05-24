@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { and, eq } from 'drizzle-orm'
 
 import { listActiveAttachments } from '../src/attachments/index.js'
-import { checkAuthorizationExtended, getThreadScopedStorageContextId } from '../src/auth.js'
+import { checkAuthorizationExtended as checkAuthorizationExtendedScoped, getThreadScopedStorageContextId } from '../src/auth.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
 import type {
@@ -36,7 +36,7 @@ import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
-import { addUser, isAuthorized, removeUser } from '../src/users.js'
+import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped, removeUser as removeScopedUser } from '../src/users.js'
 import { cancelWizard, createWizard } from '../src/wizard/index.js'
 import {
   createAuth,
@@ -50,6 +50,29 @@ import {
   mockLogger,
   setupTestDb,
 } from './utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'test-instance'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
+const addUserOnPlatform = (userId: string, platformInstanceId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId, addedBy, username })
+}
+
+const isAuthorized = (userId: string): boolean => isAuthorizedScoped(userId, TEST_PLATFORM_ID)
+
+const removeUser = (identifier: string): boolean => removeScopedUser(identifier, TEST_PLATFORM_ID)
+
+const checkAuthorizationExtended = (
+  userId: string,
+  username: string | null,
+  contextId: string,
+  contextType: 'dm' | 'group',
+  threadId: string | undefined,
+  isPlatformAdmin: boolean,
+) => checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
 
 const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (item, reply, handler): void => {
   void handler({
@@ -773,7 +796,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     test('auto-started task assignment uses the source message platform instance', async () => {
-      addUser('dm-source-platform', ADMIN_ID)
+      addUserOnPlatform('dm-source-platform', 'telegram-secondary', ADMIN_ID)
       insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
       insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
       insertTaskInstance({
@@ -797,7 +820,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     test('uses source instance button capabilities for DM group settings follow-ups', async () => {
-      addUser('dm-source-no-buttons', ADMIN_ID)
+      addUserOnPlatform('dm-source-no-buttons', 'mattermost-source', ADMIN_ID)
       addAuthorizedGroup('group-source-no-buttons', ADMIN_ID)
       setupUserConfig('dm-source-no-buttons')
 

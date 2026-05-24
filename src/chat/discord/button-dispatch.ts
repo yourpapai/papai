@@ -130,6 +130,7 @@ async function executeCommand(
     mapped.contextType,
     threadId,
     mapped.user.isAdmin,
+    mapped.platformInstanceId,
   )
 
   if (!auth.allowed) {

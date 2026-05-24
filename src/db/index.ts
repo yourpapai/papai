@@ -51,6 +51,7 @@ import { migration037ToolCallEvents } from './migrations/037_tool_call_events.js
 import { migration038LlmUsageEventsOutbox } from './migrations/038_llm_usage_events_outbox.js'
 import { migration039Plugins } from './migrations/039_plugins.js'
 import { migration040PlatformInstances } from './migrations/040_platform_instances.js'
+import { migration041UsersPlatformInstanceIndex } from './migrations/041_users_platform_instance_index.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -126,6 +127,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration038LlmUsageEventsOutbox,
   migration039Plugins,
   migration040PlatformInstances,
+  migration041UsersPlatformInstanceIndex,
 ]
 
 export const initDb = (): void => {

@@ -44,10 +44,12 @@ const defaultBotDeps: BotDeps = {
   enqueueMessage,
 }
 const log = logger.child({ scope: 'bot' })
+const TRANSITIONAL_PLATFORM_INSTANCE_ID = 'legacy-single'
 const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
   log.debug({ userId }, 'Checking authorization')
-  if (isAuthorized(userId)) return true
-  if (username !== undefined && username !== null && resolveUserByUsername(userId, username)) return true
+  if (isAuthorized(userId, TRANSITIONAL_PLATFORM_INSTANCE_ID)) return true
+  if (username !== undefined && username !== null && resolveUserByUsername(userId, username, TRANSITIONAL_PLATFORM_INSTANCE_ID))
+    return true
   log.warn({ attemptedUserId: userId }, 'Unauthorized access attempt')
   return false
 }
@@ -78,6 +80,7 @@ function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
     msg.contextType,
     msg.threadId,
     msg.user.isAdmin,
+    msg.platformInstanceId,
   )
 }
 function createObservedCommandHandler(
@@ -258,6 +261,7 @@ async function routeIncomingInteraction(interaction: IncomingInteraction, reply:
       interaction.contextType,
       interaction.threadId,
       interaction.user.isAdmin,
+      interaction.platformInstanceId,
     )
     if (!auth.allowed) {
       await replyToUnauthorized(reply, auth, interaction.contextId)

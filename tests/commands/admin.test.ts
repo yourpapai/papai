@@ -10,7 +10,7 @@ import type { AdminCommandsDeps } from '../../src/commands/admin.js'
 import { registerAdminCommands } from '../../src/commands/admin.js'
 import * as schema from '../../src/db/schema.js'
 import type { ProvisionOutcome } from '../../src/providers/kaneo/provision.js'
-import { addUser, isAuthorized, listUsers } from '../../src/users.js'
+import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped, listUsers } from '../../src/users.js'
 import {
   createDmMessage,
   createGroupMessage,
@@ -23,6 +23,13 @@ import {
 } from '../utils/test-helpers.js'
 
 const ADMIN_ID = 'admin-001'
+const TEST_PLATFORM_ID = 'legacy-single'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
+const isAuthorized = (userId: string): boolean => isAuthorizedScoped(userId, TEST_PLATFORM_ID)
 
 describe('Admin Commands', () => {
   let commandHandlers: Map<string, CommandHandler>

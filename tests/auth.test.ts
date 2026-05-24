@@ -5,11 +5,26 @@
 
 import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { checkAuthorizationExtended, getThreadScopedStorageContextId } from '../src/auth.js'
+import { checkAuthorizationExtended as checkAuthorizationExtendedScoped, getThreadScopedStorageContextId } from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import { addGroupMember } from '../src/groups.js'
-import { addUser } from '../src/users.js'
+import { addUser as addScopedUser } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'legacy-single'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
+const checkAuthorizationExtended = (
+  userId: string,
+  username: string | null,
+  contextId: string,
+  contextType: 'dm' | 'group',
+  threadId: string | undefined,
+  isPlatformAdmin: boolean,
+) => checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
 
 describe('auth', () => {
   beforeEach(async () => {

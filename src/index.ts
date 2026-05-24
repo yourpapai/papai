@@ -71,7 +71,7 @@ initUsageRecorder()
 initializeMessageCache()
 
 const adminUserId = process.env['ADMIN_USER_ID']!
-addUser(adminUserId, adminUserId)
+addUser({ userId: adminUserId, platformInstanceId: 'legacy-single', addedBy: adminUserId })
 
 const activePlatformInstances = listActivePlatformInstances()
 const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))

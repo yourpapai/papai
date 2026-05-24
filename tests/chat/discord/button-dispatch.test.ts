@@ -10,8 +10,14 @@ import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
 import type { CommandHandler } from '../../../src/chat/types.js'
 import { addGroupMember } from '../../../src/groups.js'
-import { addUser } from '../../../src/users.js'
+import { addUser as addScopedUser } from '../../../src/users.js'
 import { createMockReply, mockLogger, setupTestDb } from '../../utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'discord-default'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
 
 const stringCommandMatch = (commandMatch: string | RegExpMatchArray | null | undefined): string => {
   assert(typeof commandMatch === 'string')

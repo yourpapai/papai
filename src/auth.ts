@@ -93,17 +93,14 @@ const maybeAuthorizeDemoModeUser = (
   contextId: string,
   contextType: ContextType,
   threadId: string | undefined,
+  platformInstanceId: string,
 ): AuthorizationResult | null => {
-  if (process.env['DEMO_MODE'] !== 'true' || isAuthorized(userId) || contextType !== 'dm') {
+  if (process.env['DEMO_MODE'] !== 'true' || isAuthorized(userId, platformInstanceId) || contextType !== 'dm') {
     return null
   }
 
   log.info({ userId, username }, 'Demo mode: auto-adding user')
-  if (username === null) {
-    addUser(userId, 'demo-auto')
-  } else {
-    addUser(userId, 'demo-auto', username)
-  }
+  addUser({ userId, platformInstanceId, addedBy: 'demo-auto', username: username ?? undefined })
   return getGroupMemberAuth(contextId, contextType, threadId, false)
 }
 
@@ -114,6 +111,7 @@ export const checkAuthorizationExtended = (
   contextType: ContextType,
   threadId: string | undefined,
   isPlatformAdmin: boolean,
+  platformInstanceId: string,
 ): AuthorizationResult => {
   log.debug({ userId, contextId, contextType, threadId }, 'Checking authorization')
 
@@ -121,12 +119,12 @@ export const checkAuthorizationExtended = (
     return getUnauthorizedGroupAuth(contextId, 'group_not_allowed')
   }
 
-  const demoModeAuth = maybeAuthorizeDemoModeUser(userId, username, contextId, contextType, threadId)
+  const demoModeAuth = maybeAuthorizeDemoModeUser(userId, username, contextId, contextType, threadId, platformInstanceId)
   if (demoModeAuth !== null) {
     return demoModeAuth
   }
 
-  if (isAuthorized(userId)) {
+  if (isAuthorized(userId, platformInstanceId)) {
     if (contextType === 'dm' && isDemoUser(userId)) {
       return getGroupMemberAuth(contextId, contextType, threadId, false)
     }
@@ -149,7 +147,7 @@ export const checkAuthorizationExtended = (
     return getUnauthorizedGroupAuth(contextId, 'group_member_not_allowed')
   }
 
-  if (username !== null && resolveUserByUsername(userId, username)) {
+  if (username !== null && resolveUserByUsername(userId, username, platformInstanceId)) {
     return getDmUserAuth(userId)
   }
 

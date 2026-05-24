@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { listActiveAttachments, persistIncomingAttachments } from '../../src/attachments/index.js'
 import type { ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerClearCommand } from '../../src/commands/clear.js'
-import { addUser } from '../../src/users.js'
+import { addUser as addScopedUser } from '../../src/users.js'
 import {
   createAuth,
   createDmMessage,
@@ -17,6 +17,12 @@ import {
   mockLogger,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'legacy-single'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
 
 describe('/clear command — history and memory only', () => {
   let mockChat: ChatProvider

@@ -14,8 +14,9 @@ import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 const ORIGINAL_ENV = { ...process.env }
 
 // Import the addUser function after mocking
-type AddUserFn = (userId: string, addedBy: string, username?: string) => void
+type AddUserFn = (input: { userId: string; platformInstanceId: string; addedBy: string; username?: string }) => void
 let addUser: AddUserFn
+const TEST_PLATFORM_ID = 'legacy-single'
 
 describe('index.ts startup - admin auto-authorization', () => {
   const ADMIN_USER_ID = '12345'
@@ -38,8 +39,8 @@ describe('index.ts startup - admin auto-authorization', () => {
 
   test('addUser call from index.ts startup adds admin as self-referential', () => {
     // This simulates what index.ts does on line 56:
-    // addUser(adminUserId, adminUserId)
-    addUser(ADMIN_USER_ID, ADMIN_USER_ID)
+    // addUser({ userId: adminUserId, platformInstanceId: 'legacy-single', addedBy: adminUserId })
+    addUser({ userId: ADMIN_USER_ID, platformInstanceId: TEST_PLATFORM_ID, addedBy: ADMIN_USER_ID })
 
     // Verify admin user was added to database
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, ADMIN_USER_ID)).get()
@@ -52,11 +53,11 @@ describe('index.ts startup - admin auto-authorization', () => {
 
   test('admin can add other users', () => {
     // First, add admin (simulating startup)
-    addUser(ADMIN_USER_ID, ADMIN_USER_ID)
+    addUser({ userId: ADMIN_USER_ID, platformInstanceId: TEST_PLATFORM_ID, addedBy: ADMIN_USER_ID })
 
     // Then admin adds a regular user
     const NEW_USER_ID = '67890'
-    addUser(NEW_USER_ID, ADMIN_USER_ID)
+    addUser({ userId: NEW_USER_ID, platformInstanceId: TEST_PLATFORM_ID, addedBy: ADMIN_USER_ID })
 
     const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, NEW_USER_ID)).get()
 
@@ -67,12 +68,12 @@ describe('index.ts startup - admin auto-authorization', () => {
 
   test('admin can add user with username placeholder', () => {
     // First, add admin (simulating startup)
-    addUser(ADMIN_USER_ID, ADMIN_USER_ID)
+    addUser({ userId: ADMIN_USER_ID, platformInstanceId: TEST_PLATFORM_ID, addedBy: ADMIN_USER_ID })
 
     // Then admin adds a user by username (creates placeholder)
     const USERNAME = 'alice'
     const PLACEHOLDER_ID = `placeholder-${crypto.randomUUID()}`
-    addUser(PLACEHOLDER_ID, ADMIN_USER_ID, USERNAME)
+    addUser({ userId: PLACEHOLDER_ID, platformInstanceId: TEST_PLATFORM_ID, addedBy: ADMIN_USER_ID, username: USERNAME })
 
     const user = testDb.select().from(schema.users).where(eq(schema.users.username, USERNAME)).get()
 

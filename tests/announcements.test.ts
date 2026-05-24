@@ -20,6 +20,8 @@ import { migration004KaneoWorkspace } from '../src/db/migrations/004_kaneo_works
 import { migration005RenameConfigKeys } from '../src/db/migrations/005_rename_config_keys.js'
 import { migration006VersionAnnouncements } from '../src/db/migrations/006_version_announcements.js'
 import { migration007PlatformUserId } from '../src/db/migrations/007_platform_user_id.js'
+import { migration040PlatformInstances } from '../src/db/migrations/040_platform_instances.js'
+import { migration041UsersPlatformInstanceIndex } from '../src/db/migrations/041_users_platform_instance_index.js'
 import * as schema from '../src/db/schema.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
 import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
@@ -37,6 +39,8 @@ const MIGRATIONS = [
   migration005RenameConfigKeys,
   migration006VersionAnnouncements,
   migration007PlatformUserId,
+  migration040PlatformInstances,
+  migration041UsersPlatformInstanceIndex,
 ] as const
 
 const VERSION: string = packageJson.version
@@ -152,7 +156,10 @@ describe('announceNewVersion', () => {
     runMigrations(testSqlite, MIGRATIONS)
 
     // Add admin user to the database
-    testDb.insert(schema.users).values({ platformUserId: ADMIN_USER_ID, addedBy: ADMIN_USER_ID }).run()
+    testDb
+      .insert(schema.users)
+      .values({ platformUserId: ADMIN_USER_ID, platformInstanceId: PLATFORM_INSTANCE_ID, addedBy: ADMIN_USER_ID })
+      .run()
 
     mockChat = createMockChat({
       sendMessage: (platformInstanceId, target, text): Promise<void> =>

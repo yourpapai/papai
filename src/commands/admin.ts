@@ -15,6 +15,7 @@ import {
 import { addUser, listUsers, removeUser } from '../users.js'
 
 const MAX_CONCURRENT_SENDS = 5
+const TRANSITIONAL_PLATFORM_INSTANCE_ID = 'legacy-single'
 
 const log = logger.child({ scope: 'admin' })
 
@@ -152,13 +153,18 @@ async function handleUserAdd(
   }
 
   if (parsed.type === 'id') {
-    addUser(parsed.value, adminId)
+    addUser({ userId: parsed.value, platformInstanceId: TRANSITIONAL_PLATFORM_INSTANCE_ID, addedBy: adminId })
     log.info({ adminId, newUserId: parsed.value }, '/user add command executed')
     await reply.text(`User ${parsed.value} authorized.`)
     await provisionUserKaneo(reply, parsed.value, deps)
   } else {
     const placeholderId = `placeholder-${crypto.randomUUID()}`
-    addUser(placeholderId, adminId, parsed.value)
+    addUser({
+      userId: placeholderId,
+      platformInstanceId: TRANSITIONAL_PLATFORM_INSTANCE_ID,
+      addedBy: adminId,
+      username: parsed.value,
+    })
     log.info({ adminId, username: parsed.value }, '/user add command executed')
     await reply.text(`User @${parsed.value} authorized.`)
   }
@@ -187,7 +193,7 @@ async function handleUserRemove(
     return
   }
 
-  const removed = removeUser(parsed.value)
+  const removed = removeUser(parsed.value, TRANSITIONAL_PLATFORM_INSTANCE_ID)
   if (removed) {
     log.info({ adminId, identifier: parsed.value }, '/user remove command executed')
     await reply.text(`User ${identifier} removed.`)

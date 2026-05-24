@@ -16,9 +16,14 @@ import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../s
 import { startGroupSettingsSelection } from '../../../src/group-settings/selector.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
-import { setKaneoWorkspace } from '../../../src/users.js'
-import { addUser } from '../../../src/users.js'
+import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'legacy-single'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
 
 type ReadyListener = (arg: { user: { id: string; username: string } }) => void
 type GenericListener = (...args: unknown[]) => void

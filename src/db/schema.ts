@@ -6,15 +6,23 @@
 import { sql } from 'drizzle-orm'
 import { blob, sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
 
-export const users = sqliteTable('users', {
-  platformUserId: text('platform_user_id').primaryKey(),
-  username: text('username').unique(),
-  addedAt: text('added_at')
-    .notNull()
-    .default(sql`(datetime('now'))`),
-  addedBy: text('added_by').notNull(),
-  kaneoWorkspaceId: text('kaneo_workspace_id'),
-})
+export const users = sqliteTable(
+  'users',
+  {
+    platformUserId: text('platform_user_id').primaryKey(),
+    platformInstanceId: text('platform_instance_id'),
+    username: text('username').unique(),
+    addedAt: text('added_at')
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    addedBy: text('added_by').notNull(),
+    kaneoWorkspaceId: text('kaneo_workspace_id'),
+  },
+  (table) => [
+    index('idx_users_platform_user').on(table.platformInstanceId, table.platformUserId),
+    index('idx_users_platform_username').on(table.platformInstanceId, table.username),
+  ],
+)
 export const userConfig = sqliteTable(
   'user_config',
   {
@@ -286,13 +294,5 @@ export const attachments = sqliteTable(
 )
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
-export {
-  admins,
-  contextSettings,
-  platformInstances,
-  taskInstances,
-  type AdminRow,
-  type ContextSettingsRow,
-  type PlatformInstanceRow,
-  type TaskInstanceRow,
-} from './instance-schema.js'
+export { admins, contextSettings, platformInstances, taskInstances } from './instance-schema.js'
+export type { AdminRow, ContextSettingsRow, PlatformInstanceRow, TaskInstanceRow } from './instance-schema.js'
