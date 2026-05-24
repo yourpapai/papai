@@ -94,4 +94,10 @@ describe('buildDiscordInteraction', () => {
     expect(result?.contextType).toBe('group')
     expect(result?.contextId).toBe('channel-789')
   })
+
+  it('uses the provided platform instance ID', () => {
+    const result = buildDiscordInteraction(baseCtx, false, 'discord-secondary')
+
+    expect(result?.platformInstanceId).toBe('discord-secondary')
+  })
 })

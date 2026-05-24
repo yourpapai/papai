@@ -330,6 +330,28 @@ describe('TelegramChatProvider', () => {
       delete process.env['TELEGRAM_BOT_TOKEN']
     })
 
+    test('extractMessage emits constructor-provided platform instance ID', async () => {
+      const provider = new TelegramChatProvider('test-token', 'telegram-secondary')
+      const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
+      expect(extractMessage).toBeInstanceOf(Function)
+      assert(typeof extractMessage === 'function', 'extractMessage not available')
+
+      const result: unknown = await Promise.resolve(
+        extractMessage.call(
+          provider,
+          {
+            from: { id: 1, username: 'alice' },
+            chat: { id: 99, type: 'supergroup', title: 'Operations' },
+            message: { text: '/help', message_id: 42 },
+          },
+          true,
+        ),
+      )
+
+      assert(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
+      expect(result.platformInstanceId).toBe('telegram-secondary')
+    })
+
     test('async extractMessage returns IncomingMessage with threadId when mentioned', () => {
       process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
       const provider = new TelegramChatProvider()

@@ -347,6 +347,31 @@ describe('MattermostChatProvider', () => {
     expect(result.msg.contextParentName).toBe('Platform')
   })
 
+  test('buildPostedMessage emits constructor-provided platform instance ID', async () => {
+    const { reply } = createMockReply()
+
+    provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+
+    Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
+    Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
+    Reflect.set(provider, 'buildReplyFn', () => reply)
+
+    const result = await provider.buildPostedMessage(
+      {
+        id: 'post-1',
+        user_id: 'user-1',
+        channel_id: 'chan-1',
+        message: '@papai hi',
+        user_name: 'alice',
+        file_ids: [],
+      },
+      'alice',
+      undefined,
+    )
+
+    expect(result?.msg.platformInstanceId).toBe('mattermost-secondary')
+  })
+
   describe('renderContext', () => {
     test('returns formatted method result with context snapshot', () => {
       const mmProvider = new MattermostChatProvider()

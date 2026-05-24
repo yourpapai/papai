@@ -581,5 +581,14 @@ describe('routeButtonFallback', () => {
 
       expect(result.user.username).toBeNull()
     })
+
+    test('uses the provided platform instance ID', async () => {
+      const { createFallbackMessage } = await import('../../../src/chat/discord/button-dispatch.js')
+      const interaction = createMockInteraction({ customId: '/help' })
+
+      const result = createFallbackMessage(interaction, 'channel-123', 'group', false, 'discord-secondary')
+
+      expect(result.platformInstanceId).toBe('discord-secondary')
+    })
   })
 })

@@ -34,6 +34,7 @@ export function mapDiscordMessage(
   message: DiscordMessageLike,
   botId: string,
   adminUserId: string,
+  platformInstanceId = 'discord-default',
 ): IncomingMessage | null {
   if (message.author.bot) {
     log.debug({ messageId: message.id, authorId: message.author.id }, 'Skipping bot-authored message')
@@ -68,7 +69,7 @@ export function mapDiscordMessage(
     contextParentName,
     isMentioned: mentioned,
     text,
-    platformInstanceId: 'discord-default',
+    platformInstanceId,
     messageId: message.id,
     replyToMessageId: message.reference?.messageId,
   }

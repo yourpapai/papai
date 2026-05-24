@@ -26,6 +26,7 @@ export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promis
 export function buildInteraction(
   interaction: ButtonInteractionLike,
   adminUserId: string,
+  platformInstanceId = 'discord-default',
 ): {
   incoming: IncomingInteraction
   channel: NonNullable<ButtonInteractionLike['channel']>
@@ -44,6 +45,7 @@ export function buildInteraction(
       message: interaction.message,
     },
     isAdmin,
+    platformInstanceId,
   )
 
   if (incomingInteraction === null) return null
@@ -70,6 +72,7 @@ export function createFallbackMessage(
   contextId: string,
   contextType: 'dm' | 'group',
   isPlatformAdmin: boolean,
+  platformInstanceId = 'discord-default',
 ): IncomingMessage {
   return {
     user: {
@@ -81,7 +84,7 @@ export function createFallbackMessage(
     contextType,
     isMentioned: true,
     text: interaction.customId,
-    platformInstanceId: 'discord-default',
+    platformInstanceId,
     messageId: interaction.message.id,
   }
 }
@@ -145,6 +148,7 @@ export async function routeButtonFallback(
   adminUserId: string,
   commands: Map<string, CommandHandler>,
   messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
+  platformInstanceId = 'discord-default',
 ): Promise<void> {
   const data = interaction.customId
 
@@ -152,7 +156,7 @@ export async function routeButtonFallback(
 
   // Use user's platform admin status if true, otherwise check if user is bot admin
   const isPlatformAdmin = interaction.user.isAdmin === true ? true : interaction.user.id === adminUserId
-  const mapped = createFallbackMessage(interaction, contextId, contextType, isPlatformAdmin)
+  const mapped = createFallbackMessage(interaction, contextId, contextType, isPlatformAdmin, platformInstanceId)
   const reply = createDiscordReplyFn({
     channel,
     replyToMessageId: undefined,

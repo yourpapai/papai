@@ -61,6 +61,23 @@ describe('buildTelegramInteraction', () => {
     })
   })
 
+  test('uses the provided platform instance ID', () => {
+    const interaction = buildTelegramInteraction(
+      {
+        from: { id: 42, username: 'alice' },
+        chat: { id: 99, type: 'private' },
+        callbackQuery: {
+          data: 'cfg:edit:timezone',
+          message: { message_id: 7 },
+        },
+      },
+      true,
+      'telegram-secondary',
+    )
+
+    expect(interaction?.platformInstanceId).toBe('telegram-secondary')
+  })
+
   test('returns null when callback data is missing', () => {
     const interaction = buildTelegramInteraction(
       { from: { id: 42 }, chat: { id: 99, type: 'private' }, callbackQuery: {} },

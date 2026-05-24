@@ -162,6 +162,37 @@ describe('DiscordChatProvider', () => {
     expect(seen[0]!.text).toBe('what is the weather')
   })
 
+  test('onMessage receives constructor-provided platform instance ID', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider(undefined, 'fake-discord-token', 'discord-secondary')
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm2',
+      author: { id: 'u2', username: 'bob', bot: false },
+      content: '<@bot_id> what is the weather',
+      channel: {
+        id: 'c2',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+      },
+      mentions: { has: (id: string): boolean => id === 'bot_id' },
+      reference: null,
+      type: 0,
+    }
+    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.platformInstanceId).toBe('discord-secondary')
+  })
+
   test('bot-authored messages are ignored', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     const provider = new DiscordChatProvider(undefined)

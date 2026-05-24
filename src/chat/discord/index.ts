@@ -181,7 +181,7 @@ export class DiscordChatProvider implements ChatProvider {
   private async dispatchButtonInteraction(interaction: ButtonInteractionLike, adminUserId: string): Promise<void> {
     await tryDeferUpdate(interaction)
 
-    const result = buildInteraction(interaction, adminUserId)
+    const result = buildInteraction(interaction, adminUserId, this.platformInstanceId)
     if (result === null) {
       log.debug({ customId: interaction.customId }, 'Could not build incoming interaction, skipping')
       return
@@ -211,6 +211,7 @@ export class DiscordChatProvider implements ChatProvider {
         adminUserId,
         this.commands,
         this.messageHandler,
+        this.platformInstanceId,
       )
       return
     }
@@ -218,7 +219,7 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   private async dispatchMessage(message: DispatchableMessage, botId: string, adminUserId: string): Promise<void> {
-    const mapped = mapDiscordMessage(message, botId, adminUserId)
+    const mapped = mapDiscordMessage(message, botId, adminUserId, this.platformInstanceId)
     if (mapped === null) return
     const reply = createDiscordReplyFn({
       channel: message.channel,

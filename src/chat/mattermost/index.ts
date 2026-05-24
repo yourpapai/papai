@@ -226,7 +226,7 @@ export class MattermostChatProvider implements ChatProvider {
       contextParentName,
       isMentioned,
       text: post.message,
-      platformInstanceId: `${this.name}-default`,
+      platformInstanceId: this.platformInstanceId,
       commandMatch: command === null ? undefined : command.match,
       messageId: post.id,
       replyToMessageId,

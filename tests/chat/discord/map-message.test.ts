@@ -111,4 +111,11 @@ describe('mapDiscordMessage', () => {
     expect(mapped?.contextName).toBe('operations')
     expect(mapped?.contextParentName).toBe('Platform')
   })
+
+  test('uses the provided platform instance ID', () => {
+    const msg = makeMsg({ content: `<@${botId}> /help` })
+    const result = mapDiscordMessage(msg, botId, adminId, 'discord-secondary')
+
+    expect(result?.platformInstanceId).toBe('discord-secondary')
+  })
 })

@@ -207,7 +207,7 @@ export class TelegramChatProvider implements ChatProvider {
       contextName,
       isMentioned,
       text,
-      platformInstanceId: `${this.name}-default`,
+      platformInstanceId: this.platformInstanceId,
       messageId: messageIdStr,
       replyToMessageId: replyToMessageIdStr,
       replyContext,
@@ -269,6 +269,7 @@ export class TelegramChatProvider implements ChatProvider {
     const interaction = buildTelegramInteraction(
       ctx,
       await checkTelegramAdminStatus(ctx, (chatId) => this.bot.api.getChatAdministrators(chatId)),
+      this.platformInstanceId,
     )
     if (interaction === null) return
     const reply = this.buildReplyFn(ctx, interaction.threadId, true)
