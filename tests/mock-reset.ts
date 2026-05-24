@@ -54,7 +54,6 @@ import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
 import * as _scheduler from '../src/scheduler.js'
-import * as _setupPlatformInstance from '../src/setup/platform-instance.js'
 import * as _systemConfig from '../src/system-config.js'
 import * as _users from '../src/users.js'
 
@@ -88,7 +87,6 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],
-  ['../src/setup/platform-instance.js', { ..._setupPlatformInstance }],
   ['../src/system-config.js', { ..._systemConfig }],
   ['../src/users.js', { ..._users }],
 ]

@@ -79,10 +79,3 @@ export const maskConfig = (plain: InstanceConfig): InstanceConfig => {
   }
   return out
 }
-
-// Exposed for testing only.
-export const resetFallbackWarnFlagForTesting = (): void => {
-  fallbackWarned = false
-}
-
-export { KEY_LEN as INSTANCE_CONFIG_KEY_LEN }

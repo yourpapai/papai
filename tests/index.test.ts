@@ -228,9 +228,6 @@ describe('index.ts - graceful shutdown', () => {
     void mock.module('../src/chat/startup.js', () => ({
       registerCommandMenuIfSupported: (): Promise<void> => Promise.resolve(),
     }))
-    void mock.module('../src/setup/platform-instance.js', () => ({
-      resolveCurrentPlatformInstanceId: (): string | null => 'telegram-active-instance',
-    }))
     void mock.module('../src/chat/telegram/index.js', () => ({
       getTelegramFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => telegramFetcher,
     }))
