@@ -196,6 +196,17 @@ describe('ChatRouter', () => {
     ])
   })
 
+  test('rejects duplicate instance IDs without replacing the existing provider', async () => {
+    router.addInstance('same-id', 'telegram', {})
+    const firstProvider = providers['same-id']
+
+    expect(() => router.addInstance('same-id', 'discord', {})).toThrow('Chat instance already exists: same-id')
+
+    expect(router.getInstance('same-id')?.provider).toBe(firstProvider)
+    await router.sendMessage('same-id', dmTarget('user-1'), 'hello')
+    expect(firstProvider?.sent).toEqual([{ platformInstanceId: 'same-id', target: dmTarget('user-1'), markdown: 'hello' }])
+  })
+
   test('isolates start failures and starts remaining instances', async () => {
     const started: string[] = []
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {
@@ -214,6 +225,29 @@ describe('ChatRouter', () => {
     expect(started).toEqual(['good'])
     expect(router.getInstance('bad')?.status).toBe('stopped')
     expect(router.getInstance('good')?.status).toBe('active')
+  })
+
+  test('isolates stop failures and stops remaining instances during router shutdown', async () => {
+    const stopped: string[] = []
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const provider = makeProvider(type, {
+        stop: async () => {
+          stopped.push(id)
+          if (id === 'bad') throw new Error('stop failed')
+        },
+      })
+      providers[id] = provider
+      return provider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('bad', 'telegram', {})
+    router.addInstance('good', 'discord', {})
+
+    await expect(router.stop()).resolves.toBeUndefined()
+
+    expect(stopped).toEqual(['bad', 'good'])
+    expect(router.getInstance('bad')?.status).toBe('stopped')
+    expect(router.getInstance('good')?.status).toBe('stopped')
   })
 
   test('removes instances even when provider stop fails', async () => {

@@ -75,6 +75,10 @@ export class ChatRouter implements ChatProvider {
   }
 
   addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): ManagedChatInstance {
+    if (this.instances.has(id)) {
+      throw new Error(`Chat instance already exists: ${id}`)
+    }
+
     const provider = this.factory(id, type, config)
     const instance: ManagedChatInstance = { id, type, provider, status: 'pending' }
     this.instances.set(id, instance)
@@ -134,7 +138,12 @@ export class ChatRouter implements ChatProvider {
 
   async stop(): Promise<void> {
     for (const instance of this.instances.values()) {
-      await this.stopInstance(instance.id)
+      try {
+        await this.stopInstance(instance.id)
+      } catch (error) {
+        instance.status = 'stopped'
+        log.error({ platformInstanceId: instance.id, error: errorMessage(error) }, 'failed to stop chat instance')
+      }
     }
   }
 
