@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerPluginCommand } from '../../src/commands/plugin.js'
+import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getPluginAdminState, isPluginEnabledForContext, recordRuntimeEvent } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
@@ -61,6 +63,19 @@ async function runPluginCommand(...args: [commandMatch: string] | [commandMatch:
   const { reply, textCalls } = createMockReply()
   await handler(
     { ...createDmMessage(userId, `/plugin ${commandMatch}`), commandMatch },
+    reply,
+    createAuth(userId, { isBotAdmin: true }),
+  )
+  const firstText = textCalls[0]
+  if (firstText === undefined) return ''
+  return firstText
+}
+
+async function runPluginCommandFromPlatform(commandMatch: string, userId: string, platformInstanceId: string): Promise<string> {
+  const handler = registerCommandForTest()
+  const { reply, textCalls } = createMockReply()
+  await handler(
+    { ...createDmMessage(userId, `/plugin ${commandMatch}`), commandMatch, platformInstanceId },
     reply,
     createAuth(userId, { isBotAdmin: true }),
   )
@@ -145,6 +160,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('approves a discovered plugin and reports restart requirement', async () => {
+    addAdmin('admin-user', SUPER_ADMIN_PLATFORM_ID)
     const plugin = makePlugin('approve-plugin')
     pluginRegistry.registerDiscovered(plugin)
 
@@ -158,6 +174,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('rejects a plugin and reports restart requirement', async () => {
+    addAdmin('admin-user', SUPER_ADMIN_PLATFORM_ID)
     const plugin = makePlugin('reject-plugin')
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -171,7 +188,36 @@ describe('registerPluginCommand', () => {
     expect(output).toContain('next startup')
   })
 
+  test('denies approve for platform admin without super-admin row', async () => {
+    addAdmin('platform-admin', 'test-instance')
+    const plugin = makePlugin('platform-approve-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+
+    const output = await runPluginCommand('approve platform-approve-plugin', 'platform-admin')
+
+    const state = getPluginAdminState('platform-approve-plugin')
+    expect(state).toBeDefined()
+    expect(state!.state).toBe('discovered')
+    expect(output).toContain('Only the super admin')
+  })
+
+  test('denies reject for platform admin without super-admin row', async () => {
+    addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
+    addAdmin('platform-admin', 'test-instance')
+    const plugin = makePlugin('platform-reject-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
+
+    const output = await runPluginCommand('reject platform-reject-plugin', 'platform-admin')
+
+    const state = getPluginAdminState('platform-reject-plugin')
+    expect(state).toBeDefined()
+    expect(state!.state).toBe('approved')
+    expect(output).toContain('Only the super admin')
+  })
+
   test('enables and disables an active plugin for a context', async () => {
+    addAdmin('admin-user', 'test-instance')
     const plugin = makePlugin('toggle-plugin')
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -183,6 +229,60 @@ describe('registerPluginCommand', () => {
     expect(enabledOutput).toContain('enabled')
     expect(disabledOutput).toContain('disabled')
     expect(isPluginEnabledForContext('toggle-plugin', 'ctx-1')).toBe(false)
+  })
+
+  test('denies enable when target context belongs to another platform instance', async () => {
+    addAdmin('platform-admin', 'test-instance')
+    setContextSettings({ contextId: 'other-context', taskInstanceId: 'tasks-1', platformInstanceId: 'other-platform' })
+    const plugin = makePlugin('target-platform-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
+    pluginRegistry.markActive(plugin.manifest.id)
+
+    const output = await runPluginCommand('enable target-platform-plugin other-context', 'platform-admin')
+
+    expect(isPluginEnabledForContext('target-platform-plugin', 'other-context')).toBe(false)
+    expect(output).toContain('not authorized')
+  })
+
+  test('allows enable for target context platform admin', async () => {
+    addAdmin('platform-admin', 'other-platform')
+    setContextSettings({ contextId: 'other-context', taskInstanceId: 'tasks-1', platformInstanceId: 'other-platform' })
+    const plugin = makePlugin('matching-platform-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
+    pluginRegistry.markActive(plugin.manifest.id)
+
+    const output = await runPluginCommand('enable matching-platform-plugin other-context', 'platform-admin')
+
+    expect(isPluginEnabledForContext('matching-platform-plugin', 'other-context')).toBe(true)
+    expect(output).toContain('enabled')
+  })
+
+  test('uses source platform when target context settings are missing', async () => {
+    addAdmin('platform-admin', 'source-platform')
+    const plugin = makePlugin('source-platform-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
+    pluginRegistry.markActive(plugin.manifest.id)
+
+    const output = await runPluginCommandFromPlatform('enable source-platform-plugin missing-context', 'platform-admin', 'source-platform')
+
+    expect(isPluginEnabledForContext('source-platform-plugin', 'missing-context')).toBe(true)
+    expect(output).toContain('enabled')
+  })
+
+  test('defaults omitted enable target to requester DM context', async () => {
+    addAdmin('platform-admin', 'test-instance')
+    const plugin = makePlugin('default-target-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
+    pluginRegistry.markActive(plugin.manifest.id)
+
+    const output = await runPluginCommand('enable default-target-plugin', 'platform-admin')
+
+    expect(isPluginEnabledForContext('default-target-plugin', 'platform-admin')).toBe(true)
+    expect(output).toContain('enabled')
   })
 
   test('shows manifest-change reapproval diagnostics in plugin info', async () => {

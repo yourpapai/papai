@@ -4,6 +4,8 @@
 // See LICENSE in the project root for details.
 
 import type { ChatProvider, ReplyFn } from '../chat/types.js'
+import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
+import { getContextSettings } from '../instances/context-store.js'
 import { logger } from '../logger.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
 import {
@@ -15,6 +17,13 @@ import {
 import type { PluginState } from '../plugins/types.js'
 
 const log = logger.child({ scope: 'commands:plugin' })
+type PluginCommandContext = Readonly<{
+  args: string[]
+  userId: string
+  sourceContextId: string
+  sourcePlatformInstanceId: string
+  reply: ReplyFn
+}>
 
 function formatState(state: PluginState): string {
   const stateEmoji: Record<PluginState, string> = {
@@ -41,11 +50,20 @@ const getSubcommand = (args: string[]): string => {
   return subcommand
 }
 
-const getTargetContextId = (args: string[], userId: string): string => {
+const getTargetContextId = (args: string[], requesterContextId: string): string => {
   const targetContextId = args[2]
-  if (targetContextId === undefined) return userId
+  if (targetContextId === undefined) return requesterContextId
   return targetContextId
 }
+
+const getTargetPlatformInstanceId = (targetContextId: string, sourcePlatformInstanceId: string): string => {
+  const settings = getContextSettings(targetContextId)
+  if (settings === null) return sourcePlatformInstanceId
+  return settings.platformInstanceId
+}
+
+const canManageTargetContext = (userId: string, targetContextId: string, sourcePlatformInstanceId: string): boolean =>
+  isAdmin(userId, getTargetPlatformInstanceId(targetContextId, sourcePlatformInstanceId))
 
 function buildPluginListMessage(): string {
   const allStates = getAllPluginAdminStates()
@@ -165,42 +183,76 @@ async function handleDisable(
   await reply.text(`⭕ Plugin \`${pluginId}\` disabled.`)
 }
 
-async function runPluginSubcommand(subcommand: string, args: string[], userId: string, reply: ReplyFn): Promise<void> {
+async function runApproveSubcommand(ctx: PluginCommandContext): Promise<void> {
+  const id = ctx.args[1]
+  if (id === undefined) {
+    await ctx.reply.text('Usage: /plugin approve <plugin-id>')
+    return
+  }
+  if (!isSuperAdmin(ctx.userId)) {
+    await ctx.reply.text('Only the super admin can approve or reject plugins.')
+    return
+  }
+  await handleApprove(id, ctx.userId, ctx.reply)
+}
+
+async function runRejectSubcommand(ctx: PluginCommandContext): Promise<void> {
+  const id = ctx.args[1]
+  if (id === undefined) {
+    await ctx.reply.text('Usage: /plugin reject <plugin-id>')
+    return
+  }
+  if (!isSuperAdmin(ctx.userId)) {
+    await ctx.reply.text('Only the super admin can approve or reject plugins.')
+    return
+  }
+  await handleReject(id, ctx.userId, ctx.reply)
+}
+
+async function runEnableSubcommand(ctx: PluginCommandContext): Promise<void> {
+  const id = ctx.args[1]
+  if (id === undefined) {
+    await ctx.reply.text('Usage: /plugin enable <plugin-id> [context-id]')
+    return
+  }
+  const targetContextId = getTargetContextId(ctx.args, ctx.sourceContextId)
+  if (!canManageTargetContext(ctx.userId, targetContextId, ctx.sourcePlatformInstanceId)) {
+    await ctx.reply.text('You are not authorized to manage plugins for that context.')
+    return
+  }
+  await handleEnable(id, targetContextId, ctx.userId, ctx.reply)
+}
+
+async function runDisableSubcommand(ctx: PluginCommandContext): Promise<void> {
+  const id = ctx.args[1]
+  if (id === undefined) {
+    await ctx.reply.text('Usage: /plugin disable <plugin-id> [context-id]')
+    return
+  }
+  const targetContextId = getTargetContextId(ctx.args, ctx.sourceContextId)
+  if (!canManageTargetContext(ctx.userId, targetContextId, ctx.sourcePlatformInstanceId)) {
+    await ctx.reply.text('You are not authorized to manage plugins for that context.')
+    return
+  }
+  await handleDisable(id, targetContextId, ctx.userId, ctx.reply)
+}
+
+async function runPluginSubcommand(subcommand: string, ctx: PluginCommandContext): Promise<void> {
   if (subcommand === 'list') {
-    await reply.text(buildPluginListMessage())
+    await ctx.reply.text(buildPluginListMessage())
   } else if (subcommand === 'info') {
-    const id = args[1]
-    await reply.text(id === undefined ? 'Usage: /plugin info <plugin-id>' : buildPluginInfoMessage(id))
+    const id = ctx.args[1]
+    await ctx.reply.text(id === undefined ? 'Usage: /plugin info <plugin-id>' : buildPluginInfoMessage(id))
   } else if (subcommand === 'approve') {
-    const id = args[1]
-    if (id === undefined) {
-      await reply.text('Usage: /plugin approve <plugin-id>')
-      return
-    }
-    await handleApprove(id, userId, reply)
+    await runApproveSubcommand(ctx)
   } else if (subcommand === 'reject') {
-    const id = args[1]
-    if (id === undefined) {
-      await reply.text('Usage: /plugin reject <plugin-id>')
-      return
-    }
-    await handleReject(id, userId, reply)
+    await runRejectSubcommand(ctx)
   } else if (subcommand === 'enable') {
-    const id = args[1]
-    if (id === undefined) {
-      await reply.text('Usage: /plugin enable <plugin-id> [context-id]')
-      return
-    }
-    await handleEnable(id, getTargetContextId(args, userId), userId, reply)
+    await runEnableSubcommand(ctx)
   } else if (subcommand === 'disable') {
-    const id = args[1]
-    if (id === undefined) {
-      await reply.text('Usage: /plugin disable <plugin-id> [context-id]')
-      return
-    }
-    await handleDisable(id, getTargetContextId(args, userId), userId, reply)
+    await runDisableSubcommand(ctx)
   } else {
-    await reply.text(`Unknown plugin subcommand. ${PLUGIN_USAGE}`)
+    await ctx.reply.text(`Unknown plugin subcommand. ${PLUGIN_USAGE}`)
   }
 }
 
@@ -221,6 +273,12 @@ export function registerPluginCommand(chat: ChatProvider, _adminUserId: string):
       .filter((s) => s !== '')
     const subcommand = getSubcommand(args)
     log.debug({ userId: msg.user.id, subcommand, args }, '/plugin command called')
-    await runPluginSubcommand(subcommand, args, msg.user.id, reply)
+    await runPluginSubcommand(subcommand, {
+      args,
+      userId: msg.user.id,
+      sourceContextId: msg.contextId,
+      sourcePlatformInstanceId: msg.platformInstanceId,
+      reply,
+    })
   })
 }
