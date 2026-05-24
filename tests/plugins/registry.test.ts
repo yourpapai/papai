@@ -21,11 +21,12 @@ import {
   isPluginEnabledForContext as storeIsEnabled,
   updatePluginAdminStateField,
 } from '../../src/plugins/store.js'
-import type { DiscoveredPlugin } from '../../src/plugins/types.js'
+import type { DiscoveredPlugin, PluginState } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-function makePlugin(overrides: Partial<DiscoveredPlugin> = {}): DiscoveredPlugin {
+function makePlugin(...overrides: readonly Partial<DiscoveredPlugin>[]): DiscoveredPlugin {
+  const pluginOverrides = overrides[0]
   return {
     manifest: {
       id: 'test-plugin',
@@ -45,8 +46,20 @@ function makePlugin(overrides: Partial<DiscoveredPlugin> = {}): DiscoveredPlugin
     pluginDir: '/fake/plugin-dir/test-plugin',
     entryPoint: '/fake/plugin-dir/test-plugin/index.ts',
     manifestHash: 'hash-abc',
-    ...overrides,
+    ...pluginOverrides,
   }
+}
+
+function expectEntryState(registry: PluginRegistry, pluginId: string, state: PluginState): void {
+  const entry = registry.getEntry(pluginId)
+  expect(entry).toBeDefined()
+  expect(entry!.state).toBe(state)
+}
+
+function expectEntryReason(registry: PluginRegistry, pluginId: string, reason: string): void {
+  const entry = registry.getEntry(pluginId)
+  expect(entry).toBeDefined()
+  expect(entry!.compatibilityReason).toBe(reason)
 }
 
 describe('checkPluginCompatibility', () => {
@@ -102,9 +115,7 @@ describe('PluginRegistry', () => {
   test('registers a discovered plugin', () => {
     const plugin = makePlugin()
     registry.registerDiscovered(plugin)
-    const entry = registry.getEntry('test-plugin')
-    expect(entry).toBeDefined()
-    expect(entry?.state).toBe('discovered')
+    expectEntryState(registry, 'test-plugin', 'discovered')
   })
 
   test('approve transitions state to approved', () => {
@@ -112,7 +123,7 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     const ok = registry.approve('test-plugin', 'admin', 'hash-abc')
     expect(ok).toBe(true)
-    expect(registry.getEntry('test-plugin')?.state).toBe('approved')
+    expectEntryState(registry, 'test-plugin', 'approved')
   })
 
   test('approve returns false for unknown plugin', () => {
@@ -125,7 +136,7 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     const ok = registry.reject('test-plugin')
     expect(ok).toBe(true)
-    expect(registry.getEntry('test-plugin')?.state).toBe('rejected')
+    expectEntryState(registry, 'test-plugin', 'rejected')
   })
 
   test('reject returns false for unknown plugin', () => {
@@ -137,7 +148,7 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
     registry.markActive('test-plugin')
-    expect(registry.getEntry('test-plugin')?.state).toBe('active')
+    expectEntryState(registry, 'test-plugin', 'active')
   })
 
   test('markError records reason and sets error state', () => {
@@ -145,9 +156,8 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
     registry.markError('test-plugin', 'timeout')
-    const entry = registry.getEntry('test-plugin')
-    expect(entry?.state).toBe('error')
-    expect(entry?.compatibilityReason).toBe('timeout')
+    expectEntryState(registry, 'test-plugin', 'error')
+    expectEntryReason(registry, 'test-plugin', 'timeout')
   })
 
   test('markDeactivated transitions active plugin back to approved', () => {
@@ -156,7 +166,7 @@ describe('PluginRegistry', () => {
     registry.approve('test-plugin', 'admin', 'hash-abc')
     registry.markActive('test-plugin')
     registry.markDeactivated('test-plugin')
-    expect(registry.getEntry('test-plugin')?.state).toBe('approved')
+    expectEntryState(registry, 'test-plugin', 'approved')
   })
 
   test('evaluateCompatibility marks incompatible when capability missing', () => {
@@ -166,7 +176,7 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
     registry.evaluateCompatibility('test-plugin', new Set(), new Set())
-    expect(registry.getEntry('test-plugin')?.state).toBe('incompatible')
+    expectEntryState(registry, 'test-plugin', 'incompatible')
   })
 
   test('evaluateCompatibility leaves compatible plugin as approved', () => {
@@ -176,7 +186,52 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
     registry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
-    expect(registry.getEntry('test-plugin')?.state).toBe('approved')
+    expectEntryState(registry, 'test-plugin', 'approved')
+  })
+
+  test('evaluateCompatibilityAcrossInstances keeps approved when any capability set satisfies requirements', () => {
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        requiredTaskCapabilities: ['workItems.list'],
+        requiredChatCapabilities: ['messages.buttons'],
+      },
+    })
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(), chatCapabilities: new Set(['messages.buttons']) },
+      { taskCapabilities: new Set(['workItems.list']), chatCapabilities: new Set(['messages.buttons']) },
+    ])
+
+    expectEntryState(registry, 'test-plugin', 'approved')
+  })
+
+  test('evaluateCompatibilityAcrossInstances marks approved plugin incompatible when no set satisfies requirements', () => {
+    const plugin = makePlugin({
+      manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['workItems.list'] },
+    })
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(['comments.read']), chatCapabilities: new Set() },
+      { taskCapabilities: new Set(['tasks.delete']), chatCapabilities: new Set() },
+    ])
+
+    expectEntryState(registry, 'test-plugin', 'incompatible')
+    expectEntryReason(registry, 'test-plugin', 'No active instance satisfies required capabilities')
+  })
+
+  test('evaluateCompatibilityAcrossInstances keeps plugins with no requirements approved when no instances are active', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.evaluateCompatibilityAcrossInstances([])
+
+    expectEntryState(registry, 'test-plugin', 'approved')
   })
 
   test('getApprovedCompatiblePlugins returns approved plugins', () => {
@@ -200,10 +255,11 @@ describe('PluginRegistry', () => {
     registry.approve('test-plugin', 'admin', 'hash-abc')
     // Re-discover with a different hash
     registry.registerDiscovered({ ...plugin, manifestHash: 'hash-new' })
-    expect(registry.getEntry('test-plugin')?.state).toBe('discovered')
+    expectEntryState(registry, 'test-plugin', 'discovered')
     const adminState = getPluginAdminState('test-plugin')
-    expect(adminState?.approvedManifestHash).toBeNull()
-    expect(adminState?.approvedBy).toBeNull()
+    expect(adminState).toBeDefined()
+    expect(adminState!.approvedManifestHash).toBeNull()
+    expect(adminState!.approvedBy).toBeNull()
   })
 
   test('startup normalizes persisted active state back to approved when approval hash exists', () => {
@@ -215,7 +271,7 @@ describe('PluginRegistry', () => {
     const restartedRegistry = new PluginRegistry()
     restartedRegistry.registerDiscovered(plugin)
 
-    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expectEntryState(restartedRegistry, 'test-plugin', 'approved')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
   })
 
@@ -228,7 +284,7 @@ describe('PluginRegistry', () => {
     const restartedRegistry = new PluginRegistry()
     restartedRegistry.registerDiscovered(plugin)
 
-    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expectEntryState(restartedRegistry, 'test-plugin', 'approved')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
   })
 
@@ -239,13 +295,13 @@ describe('PluginRegistry', () => {
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
     registry.evaluateCompatibility('test-plugin', new Set(), new Set())
-    expect(registry.getEntry('test-plugin')?.state).toBe('incompatible')
+    expectEntryState(registry, 'test-plugin', 'incompatible')
 
     const restartedRegistry = new PluginRegistry()
     restartedRegistry.registerDiscovered(plugin)
     restartedRegistry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
 
-    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('approved')
+    expectEntryState(restartedRegistry, 'test-plugin', 'approved')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)
   })
 
@@ -261,7 +317,7 @@ describe('PluginRegistry', () => {
     const restartedRegistry = new PluginRegistry()
     restartedRegistry.registerDiscovered(plugin)
 
-    expect(restartedRegistry.getEntry('test-plugin')?.state).toBe('discovered')
+    expectEntryState(restartedRegistry, 'test-plugin', 'discovered')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(0)
   })
 })
