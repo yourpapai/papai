@@ -26,7 +26,6 @@ import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
-import { resolveCurrentPlatformInstanceId } from './setup/platform-instance.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
 import { addUser } from './users.js'
@@ -77,7 +76,14 @@ addUser(adminUserId, adminUserId)
 const activePlatformInstances = listActivePlatformInstances()
 const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
 for (const instance of activePlatformInstances) {
-  chatProvider.addInstance(instance.id, instance.type, instance.config)
+  try {
+    chatProvider.addInstance(instance.id, instance.type, instance.config)
+  } catch (error) {
+    log.error(
+      { platformInstanceId: instance.id, type: instance.type, error: error instanceof Error ? error.message : String(error) },
+      'Skipping invalid active platform instance during startup',
+    )
+  }
 }
 
 log.info(
@@ -114,8 +120,9 @@ await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
-const announcementPlatformInstanceId = resolveCurrentPlatformInstanceId()
-if (announcementPlatformInstanceId === null) {
+const [firstActivePlatformInstance] = activePlatformInstances
+const announcementPlatformInstanceId = firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
+if (announcementPlatformInstanceId === undefined) {
   log.warn('Skipping startup announcement: cannot determine current platform instance')
 } else {
   void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)

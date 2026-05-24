@@ -15,10 +15,10 @@ const indexModuleCoverage: null | typeof import('../src/index.js') = null
 void indexModuleCoverage
 
 type LoggerMethods = {
-  info: () => void
-  error: () => void
-  warn: () => void
-  debug: () => void
+  info: (...args: readonly unknown[]) => void
+  error: (...args: readonly unknown[]) => void
+  warn: (...args: readonly unknown[]) => void
+  debug: (...args: readonly unknown[]) => void
 }
 
 type MessageQueueModule = Pick<
@@ -86,10 +86,19 @@ describe('index.ts - graceful shutdown', () => {
       status: 'active',
       createdAt: '2026-05-24T00:00:00.000Z',
     } as const satisfies PlatformInstance
+    const invalidPlatformInstance = {
+      id: 'telegram-invalid',
+      type: 'telegram',
+      config: { token: '' },
+      status: 'active',
+      createdAt: '2026-05-24T00:00:01.000Z',
+    } as const satisfies PlatformInstance
+    const activePlatformInstances = [activePlatformInstance, invalidPlatformInstance] as const
     const addedInstances: Array<Pick<PlatformInstance, 'id' | 'type' | 'config'>> = []
     let capturedDeps: BotDeps | undefined
     let capturedAnnouncementPlatformInstanceId: string | undefined
     const resolverContexts: string[] = []
+    const loggedErrors: Array<readonly unknown[]> = []
     let telegramFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
     let mattermostFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
     let createChatProviderCalls = 0
@@ -146,14 +155,21 @@ describe('index.ts - graceful shutdown', () => {
         capturedDeps = deps
       },
     }))
+    const providerFactoriesById: Record<string, () => ChatProvider> = {
+      [activePlatformInstance.id]: (): ChatProvider => chatProvider,
+      [invalidPlatformInstance.id]: (): ChatProvider => {
+        throw new Error('invalid platform config')
+      },
+    }
+
     void mock.module('../src/chat/registry.js', () => ({
       createChatProvider: (): ChatProvider => {
         createChatProviderCalls += 1
         return chatProvider
       },
-      createChatProviderFromConfig: (_id: string, _type: PlatformInstanceType, _config: InstanceConfig): ChatProvider => {
+      createChatProviderFromConfig: (id: string, _type: PlatformInstanceType, _config: InstanceConfig): ChatProvider => {
         createChatProviderFromConfigCalls += 1
-        return chatProvider
+        return providerFactoriesById[id]!()
       },
     }))
     void mock.module('../src/chat/router.js', () => ({
@@ -167,8 +183,8 @@ describe('index.ts - graceful shutdown', () => {
         constructor(private readonly factory: (id: string, type: PlatformInstanceType, config: InstanceConfig) => ChatProvider) {}
 
         addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): void {
-          addedInstances.push({ id, type, config })
           void this.factory(id, type, config)
+          addedInstances.push({ id, type, config })
         }
 
         registerCommand(name: string, handler: Parameters<ChatProvider['registerCommand']>[1]): void {
@@ -233,7 +249,7 @@ describe('index.ts - graceful shutdown', () => {
       }),
     }))
     void mock.module('../src/instances/platform-store.js', () => ({
-      listActivePlatformInstances: (): readonly PlatformInstance[] => [activePlatformInstance],
+      listActivePlatformInstances: (): readonly PlatformInstance[] => activePlatformInstances,
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (_chat: ChatProvider, resolveProvider: (contextId: string) => TaskProvider | null): void => {
@@ -243,7 +259,12 @@ describe('index.ts - graceful shutdown', () => {
     }))
     void mock.module('../src/logger.js', () => ({
       logger: {
-        child: (): LoggerMethods => createMockChildLogger(),
+        child: (): LoggerMethods => ({
+          ...createMockChildLogger(),
+          error: (...args: readonly unknown[]): void => {
+            loggedErrors.push(args)
+          },
+        }),
       },
     }))
     void mock.module('../src/message-cache/index.js', () => ({
@@ -301,8 +322,9 @@ describe('index.ts - graceful shutdown', () => {
       },
     ])
     expect(createChatProviderCalls).toBe(0)
-    expect(createChatProviderFromConfigCalls).toBe(1)
-    expect(capturedAnnouncementPlatformInstanceId).toBe('telegram-active-instance')
+    expect(createChatProviderFromConfigCalls).toBe(2)
+    expect(loggedErrors.length).toBeGreaterThan(0)
+    expect(capturedAnnouncementPlatformInstanceId).toBe(activePlatformInstance.id)
     expect(resolverContexts).toEqual(['poller-context-1', 'admin-1'])
     assert.ok(capturedDeps !== undefined)
     assert.ok(capturedDeps.stagedDownloadFn !== undefined)
