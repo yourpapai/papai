@@ -21,7 +21,9 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
-function makePlugin(id: string, hash = `hash-${id}`): DiscoveredPlugin {
+function makePlugin(...args: [id: string] | [id: string, hash: string]): DiscoveredPlugin {
+  const [id] = args
+  const hash = args.length === 1 ? `hash-${id}` : args[1]
   return {
     manifest: {
       id,
@@ -52,7 +54,9 @@ function registerCommandForTest(): CommandHandler {
   return handler
 }
 
-async function runPluginCommand(commandMatch: string, userId = 'admin-user'): Promise<string> {
+async function runPluginCommand(...args: [commandMatch: string] | [commandMatch: string, userId: string]): Promise<string> {
+  const [commandMatch] = args
+  const userId = args.length === 1 ? 'admin-user' : args[1]
   const handler = registerCommandForTest()
   const { reply, textCalls } = createMockReply()
   await handler(
@@ -60,7 +64,9 @@ async function runPluginCommand(commandMatch: string, userId = 'admin-user'): Pr
     reply,
     createAuth(userId, { isBotAdmin: true }),
   )
-  return textCalls[0] ?? ''
+  const firstText = textCalls[0]
+  if (firstText === undefined) return ''
+  return firstText
 }
 
 describe('registerPluginCommand', () => {
@@ -99,6 +105,32 @@ describe('registerPluginCommand', () => {
     expect(textCalls[0]).toContain('Only the bot admin')
   })
 
+  test('denies env admin id when auth is not bot admin', async () => {
+    const handler = registerCommandForTest()
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      { ...createDmMessage('admin-user', '/plugin list'), commandMatch: 'list' },
+      reply,
+      createAuth('admin-user', { isBotAdmin: false }),
+    )
+
+    expect(textCalls[0]).toContain('Only the bot admin')
+  })
+
+  test('allows bot admin row even when user id differs from registered admin id', async () => {
+    const handler = registerCommandForTest()
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      { ...createDmMessage('row-admin', '/plugin list'), commandMatch: 'list' },
+      reply,
+      createAuth('row-admin', { isBotAdmin: true }),
+    )
+
+    expect(textCalls[0]).toContain('No plugins discovered')
+  })
+
   test('denies plugin management in groups', async () => {
     const handler = registerCommandForTest()
     const { reply, textCalls } = createMockReply()
@@ -118,7 +150,9 @@ describe('registerPluginCommand', () => {
 
     const output = await runPluginCommand('approve approve-plugin')
 
-    expect(getPluginAdminState('approve-plugin')?.state).toBe('approved')
+    const state = getPluginAdminState('approve-plugin')
+    expect(state).toBeDefined()
+    expect(state!.state).toBe('approved')
     expect(output).toContain('approved')
     expect(output).toContain('next startup')
   })
@@ -130,7 +164,9 @@ describe('registerPluginCommand', () => {
 
     const output = await runPluginCommand('reject reject-plugin')
 
-    expect(getPluginAdminState('reject-plugin')?.state).toBe('rejected')
+    const state = getPluginAdminState('reject-plugin')
+    expect(state).toBeDefined()
+    expect(state!.state).toBe('rejected')
     expect(output).toContain('rejected')
     expect(output).toContain('next startup')
   })

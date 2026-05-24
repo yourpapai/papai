@@ -20,7 +20,8 @@ import {
 
 const TEST_PLATFORM_ID = 'legacy-single'
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args.length === 0 ? undefined : args[0]
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
 }
 
@@ -86,5 +87,38 @@ describe('/clear command — history and memory only', () => {
     // Attachments must remain in the workspace
     expect(listActiveAttachments('victim-user')).toHaveLength(1)
     expect(textCalls[0]).toContain('history')
+  })
+
+  test('allows bot admin from auth to clear a target even when user id differs from env admin id', async () => {
+    addUser('victim-user', adminUserId)
+    await persistIncomingAttachments({
+      contextId: 'victim-user',
+      sourceProvider: 'telegram',
+      files: [{ fileId: 'tg-1', filename: 'a.txt', content: Buffer.from('a') }],
+    })
+    expect(listActiveAttachments('victim-user')).toHaveLength(1)
+
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage('row-admin', '/clear victim-user')
+    adminMsg.commandMatch = 'victim-user'
+    const auth = createAuth('row-admin', { isBotAdmin: true })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(listActiveAttachments('victim-user')).toHaveLength(1)
+    expect(textCalls[0]).toContain('history')
+  })
+
+  test('denies env admin id from clearing a target when auth is not bot admin', async () => {
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage(adminUserId, '/clear victim-user')
+    adminMsg.commandMatch = 'victim-user'
+    const auth = createAuth(adminUserId, { isBotAdmin: false })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(textCalls[0]).toContain("Only the admin can clear other users' history")
   })
 })

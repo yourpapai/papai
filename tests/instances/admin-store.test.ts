@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   addAdmin,
   isAdmin,
+  isPlatformAdmin,
+  isSuperAdmin,
   listAdminsForPlatform,
   removeAdmin,
   SUPER_ADMIN_PLATFORM_ID,
@@ -29,6 +31,24 @@ describe('admin-store', () => {
     expect(isAdmin('u1', SUPER_ADMIN_PLATFORM_ID)).toBe(true)
     // super-admin is admin of all platforms
     expect(isAdmin('u1', 'tg-default')).toBe(true)
+  })
+
+  test('isSuperAdmin returns true only for super-admin rows', () => {
+    addAdmin('super-user', SUPER_ADMIN_PLATFORM_ID)
+    addAdmin('platform-user', 'tg-default')
+
+    expect(isSuperAdmin('super-user')).toBe(true)
+    expect(isSuperAdmin('platform-user')).toBe(false)
+    expect(isSuperAdmin('nobody')).toBe(false)
+  })
+
+  test('isPlatformAdmin returns true only for matching platform rows', () => {
+    addAdmin('platform-user', 'tg-default')
+    addAdmin('super-user', SUPER_ADMIN_PLATFORM_ID)
+
+    expect(isPlatformAdmin('platform-user', 'tg-default')).toBe(true)
+    expect(isPlatformAdmin('platform-user', 'mm-default')).toBe(false)
+    expect(isPlatformAdmin('super-user', 'tg-default')).toBe(false)
   })
 
   test('addAdmin + isAdmin for platform-only admin', () => {

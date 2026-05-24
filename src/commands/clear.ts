@@ -46,8 +46,8 @@ async function clearUser(msg: { user: { id: string } }, reply: ReplyFn, targetId
 
 export function registerClearCommand(
   chat: ChatProvider,
-  _checkAuthorization: (userId: string, username?: string | null) => boolean,
-  adminUserId: string,
+  _checkAuthorization: unknown,
+  _adminUserId: string,
 ): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
@@ -58,14 +58,15 @@ export function registerClearCommand(
     }
 
     log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/clear command called')
-    const arg = (msg.commandMatch ?? '').trim()
+    const commandMatch = typeof msg.commandMatch === 'string' ? msg.commandMatch : ''
+    const arg = commandMatch.trim()
 
     if (arg === '') {
       await clearSelf(msg, reply, auth)
       return
     }
 
-    if (msg.user.id !== adminUserId) {
+    if (!auth.isBotAdmin) {
       await reply.text("Only the admin can clear other users' history.")
       return
     }

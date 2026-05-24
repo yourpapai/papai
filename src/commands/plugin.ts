@@ -26,7 +26,25 @@ function formatState(state: PluginState): string {
     active: '🟢',
     error: '🔴',
   }
-  return `${stateEmoji[state] ?? '❓'} ${state}`
+  const emoji = stateEmoji[state]
+  return `${emoji} ${state}`
+}
+
+const getCommandText = (commandMatch: string | RegExpMatchArray | null | undefined): string => {
+  if (typeof commandMatch === 'string') return commandMatch
+  return ''
+}
+
+const getSubcommand = (args: string[]): string => {
+  const subcommand = args[0]
+  if (subcommand === undefined) return 'list'
+  return subcommand
+}
+
+const getTargetContextId = (args: string[], userId: string): string => {
+  const targetContextId = args[2]
+  if (targetContextId === undefined) return userId
+  return targetContextId
 }
 
 function buildPluginListMessage(): string {
@@ -173,23 +191,23 @@ async function runPluginSubcommand(subcommand: string, args: string[], userId: s
       await reply.text('Usage: /plugin enable <plugin-id> [context-id]')
       return
     }
-    await handleEnable(id, args[2] ?? userId, userId, reply)
+    await handleEnable(id, getTargetContextId(args, userId), userId, reply)
   } else if (subcommand === 'disable') {
     const id = args[1]
     if (id === undefined) {
       await reply.text('Usage: /plugin disable <plugin-id> [context-id]')
       return
     }
-    await handleDisable(id, args[2] ?? userId, userId, reply)
+    await handleDisable(id, getTargetContextId(args, userId), userId, reply)
   } else {
     await reply.text(`Unknown plugin subcommand. ${PLUGIN_USAGE}`)
   }
 }
 
-export function registerPluginCommand(chat: ChatProvider, adminUserId: string): void {
+export function registerPluginCommand(chat: ChatProvider, _adminUserId: string): void {
   chat.registerCommand('plugin', async (msg, reply, auth) => {
     if (!auth.allowed) return
-    if (!auth.isBotAdmin && msg.user.id !== adminUserId) {
+    if (!auth.isBotAdmin) {
       await reply.text('Only the bot admin can manage plugins.')
       return
     }
@@ -197,11 +215,11 @@ export function registerPluginCommand(chat: ChatProvider, adminUserId: string): 
       await reply.text('Plugin management is only available in direct messages.')
       return
     }
-    const args = (msg.commandMatch ?? '')
+    const args = getCommandText(msg.commandMatch)
       .trim()
       .split(/\s+/u)
       .filter((s) => s !== '')
-    const subcommand = args[0] ?? 'list'
+    const subcommand = getSubcommand(args)
     log.debug({ userId: msg.user.id, subcommand, args }, '/plugin command called')
     await runPluginSubcommand(subcommand, args, msg.user.id, reply)
   })
