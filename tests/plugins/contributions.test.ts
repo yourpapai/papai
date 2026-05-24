@@ -5,6 +5,10 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { ChatRouter } from '../../src/chat/router.js'
+import type { ChatCapability } from '../../src/chat/types.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import { namespacedCommandName, registerPluginCommands } from '../../src/plugins/command-contributions.js'
 import {
   buildPluginToolSet,
@@ -95,6 +99,19 @@ function markPluginActive(manifest: PluginManifest): void {
   pluginRegistry.markActive(manifest.id)
 }
 
+class ThrowingCapabilityRouter extends ChatRouter {
+  constructor() {
+    super(() => {
+      throw new Error('unused test factory')
+    })
+  }
+
+  override getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
+    if (platformInstanceId === 'platform-a') throw new Error('eligibility boom')
+    return new Set(['messages.buttons'])
+  }
+}
+
 describe('sanitizePluginId', () => {
   test('replaces hyphens with underscores', () => {
     expect(sanitizePluginId('my-plugin')).toBe('my_plugin')
@@ -140,6 +157,7 @@ describe('PluginContributionRegistry', () => {
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
     resetPluginRegistryForTesting()
+    clearRuntimeChatRouter()
   })
 
   test('registers and retrieves contributions', () => {
@@ -384,6 +402,120 @@ describe('PluginContributionRegistry', () => {
     })
 
     expect(seenContexts).toEqual(['ctx-b'])
+  })
+
+  test('scheduled jobs continue after one context eligibility check throws', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      requiredChatCapabilities: ['messages.buttons'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setRuntimeChatRouter(new ThrowingCapabilityRouter())
+    setContextSettings({ contextId: 'ctx-a', taskInstanceId: 'task-a', platformInstanceId: 'platform-a' })
+    setContextSettings({ contextId: 'ctx-b', taskInstanceId: 'task-b', platformInstanceId: 'platform-b' })
+    setPluginEnabledForContext('test-plugin', 'ctx-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-b', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toEqual(['ctx-b'])
+  })
+
+  test('scheduled jobs require resolver for tasks.write plugins', async () => {
+    const seenContexts: string[] = []
+    const resolvedContexts: string[] = []
+    const manifest = makeManifest({
+      permissions: ['tasks.write'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        resolvedContexts.push(contextId)
+        return null
+      },
+    })
+
+    expect(resolvedContexts).toEqual(['ctx-enabled'])
+    expect(seenContexts).toEqual([])
+  })
+
+  test('scheduled jobs require resolver for required task capabilities', async () => {
+    const seenContexts: string[] = []
+    const resolvedContexts: string[] = []
+    const manifest = makeManifest({
+      requiredTaskCapabilities: ['workItems.list'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        resolvedContexts.push(contextId)
+        return null
+      },
+    })
+
+    expect(resolvedContexts).toEqual(['ctx-enabled'])
+    expect(seenContexts).toEqual([])
   })
 
   test('scheduled jobs continue after one context throws', async () => {
