@@ -46,28 +46,29 @@ See LICENSE in the project root for details.
 
 ## File Structure
 
-| File | Responsibility | Change |
-| ---- | -------------- | ------ |
-| `src/plugins/types.ts` | Manifest Zod schema, permission list, contribution types | Modify: add permissions, provider-type fields, cross-field refine |
-| `src/providers/registry.ts` | Built-in provider factory map + `createProvider` | Modify: add contributed-provider map + register/unregister setters |
-| `src/plugins/provider-runtime.ts` | `ctx.providerRuntime` facade builder (allowlisted fetch) | Create |
-| `src/plugins/identity-facade.ts` | `ctx.identity` facade builder over the mapping store | Create |
-| `src/plugins/context.ts` | `PluginContext`, `PluginRegistration`, `buildPluginContext` | Modify: add `registerTaskProviderType`, wire the two facades |
-| `src/plugins/loader.ts` | Activation/deactivation lifecycle | Modify: unregister contributed types on deactivate/failure |
-| `tests/providers/contributed-registry.test.ts` | Registry map register/unregister/duplicate | Create |
-| `tests/plugins/provider-runtime.test.ts` | Allowlist + SSRF behavior of `httpFetch` | Create |
-| `tests/plugins/identity-facade.test.ts` | `lookupForChatUser` / `recordClaim` mapping | Create |
-| `tests/plugins/types.test.ts` | Manifest schema validation | Modify: add cases + update `baseManifest` |
-| `tests/plugins/context.test.ts` | Context building + registration gating | Modify: add cases + update `makeManifest` |
-| `tests/plugins/contributions.test.ts` | (manifest literal builder) | Modify: update `makeManifest` for new required output fields |
-| `tests/plugins/loader.test.ts` | (manifest literal builder) | Modify: update `makeManifest` for new required output fields |
-| `tests/bot.test.ts` | (manifest literal builder) | Modify: update `makePluginCommandManifest` for new required output fields |
+| File                                           | Responsibility                                              | Change                                                                    |
+| ---------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/plugins/types.ts`                         | Manifest Zod schema, permission list, contribution types    | Modify: add permissions, provider-type fields, cross-field refine         |
+| `src/providers/registry.ts`                    | Built-in provider factory map + `createProvider`            | Modify: add contributed-provider map + register/unregister setters        |
+| `src/plugins/provider-runtime.ts`              | `ctx.providerRuntime` facade builder (allowlisted fetch)    | Create                                                                    |
+| `src/plugins/identity-facade.ts`               | `ctx.identity` facade builder over the mapping store        | Create                                                                    |
+| `src/plugins/context.ts`                       | `PluginContext`, `PluginRegistration`, `buildPluginContext` | Modify: add `registerTaskProviderType`, wire the two facades              |
+| `src/plugins/loader.ts`                        | Activation/deactivation lifecycle                           | Modify: unregister contributed types on deactivate/failure                |
+| `tests/providers/contributed-registry.test.ts` | Registry map register/unregister/duplicate                  | Create                                                                    |
+| `tests/plugins/provider-runtime.test.ts`       | Allowlist + SSRF behavior of `httpFetch`                    | Create                                                                    |
+| `tests/plugins/identity-facade.test.ts`        | `lookupForChatUser` / `recordClaim` mapping                 | Create                                                                    |
+| `tests/plugins/types.test.ts`                  | Manifest schema validation                                  | Modify: add cases + update `baseManifest`                                 |
+| `tests/plugins/context.test.ts`                | Context building + registration gating                      | Modify: add cases + update `makeManifest`                                 |
+| `tests/plugins/contributions.test.ts`          | (manifest literal builder)                                  | Modify: update `makeManifest` for new required output fields              |
+| `tests/plugins/loader.test.ts`                 | (manifest literal builder)                                  | Modify: update `makeManifest` for new required output fields              |
+| `tests/bot.test.ts`                            | (manifest literal builder)                                  | Modify: update `makePluginCommandManifest` for new required output fields |
 
 ---
 
 ## Task 1: Add `provider.task` and `identity` permissions
 
 **Files:**
+
 - Modify: `src/plugins/types.ts:17-24` (`PLUGIN_PERMISSIONS`)
 - Test: `tests/plugins/types.test.ts`
 
@@ -127,6 +128,7 @@ git commit -m "feat(plugins): add provider.task and identity permissions"
 ## Task 2: Add provider-type manifest fields + cross-field validation
 
 **Files:**
+
 - Modify: `src/plugins/types.ts` (schemas)
 - Test: `tests/plugins/types.test.ts`
 - Modify (typecheck fixups): `tests/plugins/context.test.ts`, `tests/plugins/contributions.test.ts`, `tests/plugins/loader.test.ts`, `tests/bot.test.ts`
@@ -257,6 +259,7 @@ git commit -m "feat(plugins): add task provider type manifest fields and validat
 ## Task 3: Contributed-provider registry map + register/unregister setters
 
 **Files:**
+
 - Modify: `src/providers/registry.ts`
 - Test: `tests/providers/contributed-registry.test.ts` (create)
 
@@ -385,6 +388,7 @@ git commit -m "feat(providers): add contributed task provider registry map"
 ## Task 4: `registerTaskProviderType` on `PluginRegistration`
 
 **Files:**
+
 - Modify: `src/plugins/context.ts`
 - Test: `tests/plugins/context.test.ts`
 
@@ -395,10 +399,7 @@ git commit -m "feat(providers): add contributed task provider registry map"
 Add to `tests/plugins/context.test.ts`. Import the registry helpers at the top:
 
 ```typescript
-import {
-  getContributedTaskProviderType,
-  unregisterContributedTaskProviderType,
-} from '../../src/providers/registry.js'
+import { getContributedTaskProviderType, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
 ```
 
 Add a `describe` block:
@@ -519,6 +520,7 @@ git commit -m "feat(plugins): add registerTaskProviderType to plugin registratio
 ## Task 5: `ctx.providerRuntime` facade (allowlisted httpFetch)
 
 **Files:**
+
 - Create: `src/plugins/provider-runtime.ts`
 - Modify: `src/plugins/context.ts` (`PluginContext` type + `buildPluginContext` wiring)
 - Test: `tests/plugins/provider-runtime.test.ts` (create)
@@ -654,19 +656,19 @@ import { buildProviderRuntime, type PluginProviderRuntime } from './provider-run
 In `buildPluginContext`, after computing `permissions`, build the runtime and add it to the frozen `ctx`:
 
 ```typescript
-  const providerRuntime = permissions.has('provider.task')
-    ? buildProviderRuntime(manifest.providerAllowedHosts, buildPluginLogger(manifest.id))
-    : undefined
+const providerRuntime = permissions.has('provider.task')
+  ? buildProviderRuntime(manifest.providerAllowedHosts, buildPluginLogger(manifest.id))
+  : undefined
 
-  const ctx: PluginContext = Object.freeze({
-    pluginId: manifest.id,
-    contextId,
-    permissions,
-    kv,
-    log: buildPluginLogger(manifest.id),
-    registration: buildRegistration(manifest, collected),
-    providerRuntime,
-  })
+const ctx: PluginContext = Object.freeze({
+  pluginId: manifest.id,
+  contextId,
+  permissions,
+  kv,
+  log: buildPluginLogger(manifest.id),
+  registration: buildRegistration(manifest, collected),
+  providerRuntime,
+})
 ```
 
 - [ ] **Step 6: Add a context-gating test**
@@ -704,6 +706,7 @@ git commit -m "feat(plugins): add provider.task-gated providerRuntime facade"
 ## Task 6: `ctx.identity` facade over the mapping store
 
 **Files:**
+
 - Create: `src/plugins/identity-facade.ts`
 - Modify: `src/plugins/context.ts` (`PluginContext` type + `buildPluginContext` wiring)
 - Test: `tests/plugins/identity-facade.test.ts` (create)
@@ -782,7 +785,10 @@ const defaultDeps: IdentityFacadeDeps = {
   setIdentityMapping: defaultSetIdentityMapping,
 }
 
-export function buildIdentityFacade(providerName: string, deps: IdentityFacadeDeps = defaultDeps): PluginIdentityFacade {
+export function buildIdentityFacade(
+  providerName: string,
+  deps: IdentityFacadeDeps = defaultDeps,
+): PluginIdentityFacade {
   return Object.freeze({
     lookupForChatUser(chatUserId: string) {
       const mapping = deps.getIdentityMapping(chatUserId, providerName)
@@ -831,11 +837,11 @@ import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facad
 In `buildPluginContext`, after the `providerRuntime` block:
 
 ```typescript
-  const declaredTypes = manifest.contributes.taskProviderTypes
-  const identity =
-    permissions.has('identity') && declaredTypes.length === 1
-      ? buildIdentityFacade(declaredTypes[0] as string)
-      : undefined
+const declaredTypes = manifest.contributes.taskProviderTypes
+const identity =
+  permissions.has('identity') && declaredTypes.length === 1
+    ? buildIdentityFacade(declaredTypes[0] as string)
+    : undefined
 ```
 
 Add `identity,` to the frozen `ctx` object literal.
@@ -886,6 +892,7 @@ git commit -m "feat(plugins): add identity-gated ctx.identity facade"
 ## Task 7: Loader cleanup wiring
 
 **Files:**
+
 - Modify: `src/plugins/loader.ts`
 - Test: `tests/plugins/loader.test.ts`
 
@@ -926,13 +933,13 @@ import { unregisterContributedTaskProviderType } from '../providers/registry.js'
 In `deactivateOne`, after `contributionRegistry.deregister(pluginId)` (both the success path and the catch path), add:
 
 ```typescript
-    unregisterContributedTaskProviderType(pluginId)
+unregisterContributedTaskProviderType(pluginId)
 ```
 
 In `activateOne`'s catch block, after the existing `contributionRegistry.deregister(manifest.id)`, add:
 
 ```typescript
-    unregisterContributedTaskProviderType(manifest.id)
+unregisterContributedTaskProviderType(manifest.id)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
