@@ -23,33 +23,32 @@ import { getSnapshotsForUser, updateSnapshots } from './snapshots.js'
 import type { AlertPrompt, ScheduledPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:poller' })
-const SCHEDULED_POLL_MS = 60_000
-const ALERT_POLL_MS = 5 * 60_000
-const MAX_CONCURRENT_LLM_CALLS = 5
-const MAX_CONCURRENT_USERS = 10
+const ALERT_POLL_MS = 5 * 60_000, MAX_CONCURRENT_LLM_CALLS = 5, MAX_CONCURRENT_USERS = 10, SCHEDULED_POLL_MS = 60_000
 let isRunning = false
 type AlertDeliveryResult = { matched: boolean; delivered: boolean }
+type RouterInstanceLookup = { getInstance: (id: string) => unknown }
 const inFlightPrompts = new Set<string>()
-function formatTaskStatus(status: string | undefined): string {
-  return status === undefined ? '' : ` (${status})`
-}
+const formatTaskStatus = (status: string | undefined): string => (status === undefined ? '' : ` (${status})`)
 function logSettledErrors(results: PromiseSettledResult<unknown>[], context: string): void {
   for (const r of results) {
     if (r.status === 'rejected') log.error({ error: String(r.reason) }, context)
   }
 }
-function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
-  return { createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget }
-}
-
-function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
-  return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
-}
+const promptToExecCtx = (prompt: ScheduledPrompt): DeferredExecutionContext => ({ createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget })
+const alertToExecCtx = (alert: AlertPrompt): DeferredExecutionContext => ({ createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget })
 const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
+
+const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
+  typeof Reflect.get(chat, 'getInstance') === 'function'
 
 async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return false
+  if (hasRouterInstanceLookup(chat)) {
+    const instance = chat.getInstance(platformInstanceId)
+    if (instance === undefined) return false
+    if (instance === null) return false
+  }
   await chat.sendMessage(platformInstanceId, target, markdown)
   return true
 }

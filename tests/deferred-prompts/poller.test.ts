@@ -48,6 +48,8 @@ type GenerateTextResult = {
   response: { messages: ModelMessage[] }
 }
 
+type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
+
 // --- Tests ---
 
 describe('pollScheduledOnce', () => {
@@ -113,6 +115,21 @@ describe('pollScheduledOnce', () => {
 
     expect(sentMessages).toHaveLength(0)
     const updated = getScheduledPrompt(created.id, unroutedUser)
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('active')
+    expect(updated!.lastExecutedAt).toBeNull()
+  })
+
+  test('keeps due prompt active when router instance is stale', async () => {
+    setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'stale-platform' })
+    chat = { ...chat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(0)
+    const updated = getScheduledPrompt(created.id, USER_ID)
     expect(updated).not.toBeNull()
     expect(updated!.status).toBe('active')
     expect(updated!.lastExecutedAt).toBeNull()
@@ -443,6 +460,30 @@ describe('pollAlertsOnce', () => {
 
     expect(sentMessages).toHaveLength(0)
     const updated = getAlertPrompt(created.id, unroutedUser)
+    expect(updated).not.toBeNull()
+    expect(updated!.lastTriggeredAt).toBeNull()
+  })
+
+  test('keeps alert eligible when router instance is stale', async () => {
+    setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'stale-platform' })
+    chat = { ...chat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    const created = createAlertPrompt(USER_ID, 'Notify on done', {
+      field: 'task.status',
+      op: 'eq',
+      value: 'done',
+    })
+
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(0)
+    const updated = getAlertPrompt(created.id, USER_ID)
     expect(updated).not.toBeNull()
     expect(updated!.lastTriggeredAt).toBeNull()
   })
