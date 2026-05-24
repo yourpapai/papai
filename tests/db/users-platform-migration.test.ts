@@ -6,8 +6,17 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { MIGRATIONS } from '../../src/db/index.js'
 import { migration041UsersPlatformInstanceIndex } from '../../src/db/migrations/041_users_platform_instance_index.js'
+import type { Migration } from '../../src/db/migrate.js'
 import { mockLogger } from '../utils/test-helpers.js'
+
+const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
+
+const requireDefined = <T>(value: T | null | undefined): T => {
+  if (value === undefined || value === null) throw new Error('expected value to be defined')
+  return value
+}
 
 const createPre041UsersTable = (db: Database): void => {
   db.run(`
@@ -33,6 +42,19 @@ const createPlatformInstancesTable = (db: Database): void => {
     )
   `)
 }
+
+const createUserConfigTable = (db: Database): void => {
+  db.run(`
+    CREATE TABLE user_config (
+      user_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      PRIMARY KEY (user_id, key)
+    )
+  `)
+}
+
+const getMigration = (id: string): Migration => requireDefined(MIGRATIONS.find((migration) => migration.id === id))
 
 const getUsers = (db: Database): Array<{ platform_user_id: string; platform_instance_id: string; username: string | null }> =>
   db
@@ -85,5 +107,21 @@ describe('migration 041 users platform scoping', () => {
       { platform_user_id: '111', platform_instance_id: 'discord-default', username: 'alice' },
       { platform_user_id: '111', platform_instance_id: 'telegram-default', username: 'alice' },
     ])
+  })
+
+  test('backfills Kaneo workspace IDs into context config', () => {
+    createUserConfigTable(db)
+    db.run(`INSERT INTO platform_instances (id, type, config, status) VALUES ('telegram-default', 'telegram', '{}', 'active')`)
+    db.run(
+      `INSERT INTO users (platform_user_id, username, added_by, kaneo_workspace_id) VALUES ('111', 'alice', 'admin', 'workspace-111')`,
+    )
+    migration041UsersPlatformInstanceIndex.up(db)
+
+    getMigration('042_user_workspace_config_backfill').up(db)
+
+    const row = db
+      .query<{ value: string }, [string, string]>(`SELECT value FROM user_config WHERE user_id = ? AND key = ?`)
+      .get('111', KANEO_WORKSPACE_CONFIG_KEY)
+    expect(requireDefined(row).value).toBe('workspace-111')
   })
 })
