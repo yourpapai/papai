@@ -10,7 +10,9 @@ import type { Migration } from '../migrate.js'
 const UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID = '__unscoped_legacy__'
 
 const getSingleActivePlatformInstanceId = (db: Database): string | null => {
-  const rows = db.query<{ id: string }, []>(`SELECT id FROM platform_instances WHERE status = 'active' ORDER BY id`).all()
+  const rows = db
+    .query<{ id: string }, []>(`SELECT id FROM platform_instances WHERE status = 'active' ORDER BY id`)
+    .all()
   if (rows.length !== 1) return null
   const row = rows[0]
   if (row === undefined) return null
@@ -75,7 +77,9 @@ const createIndexes = (db: Database): void => {
 }
 
 const tableExists = (db: Database, tableName: string): boolean => {
-  const row = db.query<{ name: string }, [string]>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(tableName)
+  const row = db
+    .query<{ name: string }, [string]>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(tableName)
   return row !== null
 }
 

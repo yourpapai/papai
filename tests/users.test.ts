@@ -95,8 +95,18 @@ describe('addUser', () => {
   })
 
   test('allows the same username placeholder on different platform instances', () => {
-    addUser({ userId: 'tg-placeholder-alice', platformInstanceId: 'telegram-default', addedBy: 'admin-1', username: 'alice' })
-    addUser({ userId: 'ds-placeholder-alice', platformInstanceId: 'discord-default', addedBy: 'admin-2', username: 'alice' })
+    addUser({
+      userId: 'tg-placeholder-alice',
+      platformInstanceId: 'telegram-default',
+      addedBy: 'admin-1',
+      username: 'alice',
+    })
+    addUser({
+      userId: 'ds-placeholder-alice',
+      platformInstanceId: 'discord-default',
+      addedBy: 'admin-2',
+      username: 'alice',
+    })
 
     expect(resolveUserByUsername('tg-real-alice', 'alice', 'telegram-default')).toBe(true)
     expect(resolveUserByUsername('ds-real-alice', 'alice', 'discord-default')).toBe(true)

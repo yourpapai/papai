@@ -58,7 +58,10 @@ export function removeUser(identifier: string, platformInstanceId: string): bool
   const deleted = db
     .delete(users)
     .where(
-      and(eq(users.platformInstanceId, platformInstanceId), or(eq(users.username, identifier), eq(users.platformUserId, identifier))),
+      and(
+        eq(users.platformInstanceId, platformInstanceId),
+        or(eq(users.username, identifier), eq(users.platformUserId, identifier)),
+      ),
     )
     .returning({ platformUserId: users.platformUserId })
     .all()
