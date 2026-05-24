@@ -31,7 +31,12 @@ const addUser = (userId: string, addedBy: string, ...args: [] | [username: strin
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
 }
 
-const addUserOnPlatform = (userId: string, platformInstanceId: string, addedBy: string, ...args: [] | [username: string]): void => {
+const addUserOnPlatform = (
+  userId: string,
+  platformInstanceId: string,
+  addedBy: string,
+  ...args: [] | [username: string]
+): void => {
   const username = args[0]
   addScopedUser({ userId, platformInstanceId, addedBy, username })
 }
@@ -102,12 +107,16 @@ describe('Admin Commands', () => {
       const handler = commandHandlers.get('user')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
-      await handler!({ ...createDmMessage('mattermost-admin', 'add 444'), platformInstanceId: 'mattermost-default' }, reply, {
-        allowed: true,
-        isBotAdmin: true,
-        isGroupAdmin: false,
-        storageContextId: 'mattermost-admin',
-      })
+      await handler!(
+        { ...createDmMessage('mattermost-admin', 'add 444'), platformInstanceId: 'mattermost-default' },
+        reply,
+        {
+          allowed: true,
+          isBotAdmin: true,
+          isGroupAdmin: false,
+          storageContextId: 'mattermost-admin',
+        },
+      )
 
       expect(getReplies()[0]).toContain('444 authorized.')
       expect(isAuthorizedScoped('444', 'mattermost-default')).toBe(true)
@@ -442,12 +451,16 @@ describe('Admin Commands', () => {
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply } = createMockReply()
-      await handler!({ ...createDmMessage(ADMIN_ID, 'Hello platform!'), platformInstanceId: 'mattermost-default' }, reply, {
-        allowed: true,
-        isBotAdmin: true,
-        isGroupAdmin: false,
-        storageContextId: ADMIN_ID,
-      })
+      await handler!(
+        { ...createDmMessage(ADMIN_ID, 'Hello platform!'), platformInstanceId: 'mattermost-default' },
+        reply,
+        {
+          allowed: true,
+          isBotAdmin: true,
+          isGroupAdmin: false,
+          storageContextId: ADMIN_ID,
+        },
+      )
 
       expect(sentMessages.map((m) => m.userId)).toEqual(['mattermost-user'])
       expect(sentMessages.every((m) => m.platformInstanceId === 'mattermost-default')).toBe(true)
@@ -467,12 +480,16 @@ describe('Admin Commands', () => {
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply } = createMockReply()
-      await handler!({ ...createDmMessage('mattermost-admin', 'Hello scoped admins'), platformInstanceId: 'mattermost-default' }, reply, {
-        allowed: true,
-        isBotAdmin: true,
-        isGroupAdmin: false,
-        storageContextId: 'mattermost-admin',
-      })
+      await handler!(
+        { ...createDmMessage('mattermost-admin', 'Hello scoped admins'), platformInstanceId: 'mattermost-default' },
+        reply,
+        {
+          allowed: true,
+          isBotAdmin: true,
+          isGroupAdmin: false,
+          storageContextId: 'mattermost-admin',
+        },
+      )
 
       expect(sentMessages.map((m) => m.userId)).toEqual(['mattermost-user'])
     })

@@ -5,7 +5,10 @@
 
 import { describe, expect, test, beforeEach } from 'bun:test'
 
-import { checkAuthorizationExtended as checkAuthorizationExtendedScoped, getThreadScopedStorageContextId } from '../src/auth.js'
+import {
+  checkAuthorizationExtended as checkAuthorizationExtendedScoped,
+  getThreadScopedStorageContextId,
+} from '../src/auth.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import type { AuthorizationResult } from '../src/chat/types.js'
 import { addGroupMember } from '../src/groups.js'
@@ -14,8 +17,13 @@ import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
-  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args[0]
+  if (username === undefined) {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy })
+  } else {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+  }
 }
 
 const checkAuthorizationExtended = (
@@ -26,7 +34,15 @@ const checkAuthorizationExtended = (
   threadId: string | undefined,
   isPlatformAdmin: boolean,
 ): AuthorizationResult =>
-  checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
+  checkAuthorizationExtendedScoped(
+    userId,
+    username,
+    contextId,
+    contextType,
+    threadId,
+    isPlatformAdmin,
+    TEST_PLATFORM_ID,
+  )
 
 describe('auth', () => {
   beforeEach(async () => {

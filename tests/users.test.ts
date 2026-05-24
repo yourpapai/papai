@@ -14,6 +14,7 @@ import {
   addUser,
   removeUser,
   isAuthorized,
+  isDemoUser,
   resolveUserByUsername,
   listUsers,
   getKaneoWorkspace,
@@ -180,6 +181,20 @@ describe('isAuthorized', () => {
 
   test('returns false for unknown user', () => {
     expect(isAuthorized('222', TEST_PLATFORM_ID)).toBe(false)
+  })
+})
+
+describe('isDemoUser', () => {
+  beforeEach(async () => {
+    await setupTestDb()
+  })
+
+  test('classifies demo users within the platform instance only', () => {
+    addUser({ userId: 'shared-user', platformInstanceId: 'telegram-default', addedBy: 'demo-auto' })
+    addUser({ userId: 'shared-user', platformInstanceId: 'discord-default', addedBy: 'admin' })
+
+    expect(isDemoUser('shared-user', 'telegram-default')).toBe(true)
+    expect(isDemoUser('shared-user', 'discord-default')).toBe(false)
   })
 })
 

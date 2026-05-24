@@ -7,12 +7,12 @@ import pLimit from 'p-limit'
 
 import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
 import { dmTarget } from '../chat/types.js'
+import { isAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import {
   provisionAndConfigure as defaultProvisionAndConfigure,
   type ProvisionOutcome,
 } from '../providers/kaneo/provision.js'
-import { isAdmin } from '../instances/admin-store.js'
 import { addUser, listUsers, removeUser } from '../users.js'
 
 const MAX_CONCURRENT_SENDS = 5

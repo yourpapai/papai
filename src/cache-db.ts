@@ -146,7 +146,9 @@ export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
       if (user === undefined) return
       db.update(users)
         .set({ kaneoWorkspaceId: workspaceId })
-        .where(and(eq(users.platformUserId, user.platformUserId), eq(users.platformInstanceId, user.platformInstanceId)))
+        .where(
+          and(eq(users.platformUserId, user.platformUserId), eq(users.platformInstanceId, user.platformInstanceId)),
+        )
         .run()
       log.debug({ userId, platformInstanceId: user.platformInstanceId }, 'Workspace synced to DB (updated)')
     } catch (error) {

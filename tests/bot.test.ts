@@ -9,7 +9,10 @@ import assert from 'node:assert/strict'
 import { and, eq } from 'drizzle-orm'
 
 import { listActiveAttachments } from '../src/attachments/index.js'
-import { checkAuthorizationExtended as checkAuthorizationExtendedScoped, getThreadScopedStorageContextId } from '../src/auth.js'
+import {
+  checkAuthorizationExtended as checkAuthorizationExtendedScoped,
+  getThreadScopedStorageContextId,
+} from '../src/auth.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot, type BotDeps } from '../src/bot.js'
 import type {
@@ -37,7 +40,11 @@ import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
-import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped, removeUser as removeScopedUser } from '../src/users.js'
+import {
+  addUser as addScopedUser,
+  isAuthorized as isAuthorizedScoped,
+  removeUser as removeScopedUser,
+} from '../src/users.js'
 import { cancelWizard, createWizard } from '../src/wizard/index.js'
 import {
   createAuth,
@@ -54,12 +61,27 @@ import {
 
 const TEST_PLATFORM_ID = 'test-instance'
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
-  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args[0]
+  if (username === undefined) {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy })
+  } else {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+  }
 }
 
-const addUserOnPlatform = (userId: string, platformInstanceId: string, addedBy: string, username?: string): void => {
-  addScopedUser({ userId, platformInstanceId, addedBy, username })
+const addUserOnPlatform = (
+  userId: string,
+  platformInstanceId: string,
+  addedBy: string,
+  ...args: [] | [username: string]
+): void => {
+  const username = args[0]
+  if (username === undefined) {
+    addScopedUser({ userId, platformInstanceId, addedBy })
+  } else {
+    addScopedUser({ userId, platformInstanceId, addedBy, username })
+  }
 }
 
 const isAuthorized = (userId: string): boolean => isAuthorizedScoped(userId, TEST_PLATFORM_ID)
@@ -74,7 +96,15 @@ const checkAuthorizationExtended = (
   threadId: string | undefined,
   isPlatformAdmin: boolean,
 ): AuthorizationResult =>
-  checkAuthorizationExtendedScoped(userId, username, contextId, contextType, threadId, isPlatformAdmin, TEST_PLATFORM_ID)
+  checkAuthorizationExtendedScoped(
+    userId,
+    username,
+    contextId,
+    contextType,
+    threadId,
+    isPlatformAdmin,
+    TEST_PLATFORM_ID,
+  )
 
 const enqueueMessageSynchronously: NonNullable<BotDeps['enqueueMessage']> = (item, reply, handler): void => {
   void handler({

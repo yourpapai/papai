@@ -38,7 +38,7 @@ export async function autoStartWizardIfNeeded(
   reply: ReplyFn,
 ): Promise<boolean> {
   if (hasActiveWizard(userId, storageContextId)) return false
-  if (process.env['DEMO_MODE'] === 'true' && isDemoUser(userId)) return false
+  if (process.env['DEMO_MODE'] === 'true' && isDemoUser(userId, platformInstanceId)) return false
   if (!userNeedsSetup(storageContextId)) return false
 
   const settings = getContextSettings(storageContextId)

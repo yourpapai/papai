@@ -143,10 +143,14 @@ export function listUsers(...args: [] | [platformInstanceId: string]): UserRecor
   return query.where(eq(users.platformInstanceId, platformInstanceId)).all()
 }
 
-export function isDemoUser(userId: string): boolean {
-  log.debug({ userId }, 'isDemoUser called')
+export function isDemoUser(userId: string, platformInstanceId: string): boolean {
+  log.debug({ platformInstanceId }, 'isDemoUser called')
   const db = getDrizzleDb()
-  const row = db.select({ addedBy: users.addedBy }).from(users).where(eq(users.platformUserId, userId)).get()
+  const row = db
+    .select({ addedBy: users.addedBy })
+    .from(users)
+    .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
+    .get()
   return row === undefined ? false : row.addedBy === 'demo-auto'
 }
 

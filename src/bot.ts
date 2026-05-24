@@ -48,7 +48,11 @@ const TRANSITIONAL_PLATFORM_INSTANCE_ID = 'legacy-single'
 const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
   log.debug({ userId }, 'Checking authorization')
   if (isAuthorized(userId, TRANSITIONAL_PLATFORM_INSTANCE_ID)) return true
-  if (username !== undefined && username !== null && resolveUserByUsername(userId, username, TRANSITIONAL_PLATFORM_INSTANCE_ID))
+  if (
+    username !== undefined &&
+    username !== null &&
+    resolveUserByUsername(userId, username, TRANSITIONAL_PLATFORM_INSTANCE_ID)
+  )
     return true
   log.warn({ attemptedUserId: userId }, 'Unauthorized access attempt')
   return false

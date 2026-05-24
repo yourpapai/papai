@@ -100,8 +100,31 @@ const maybeAuthorizeDemoModeUser = (
   }
 
   log.info({ userId, username }, 'Demo mode: auto-adding user')
-  addUser({ userId, platformInstanceId, addedBy: 'demo-auto', username: username ?? undefined })
+  if (username === null) {
+    addUser({ userId, platformInstanceId, addedBy: 'demo-auto' })
+  } else {
+    addUser({ userId, platformInstanceId, addedBy: 'demo-auto', username })
+  }
   return getGroupMemberAuth(contextId, contextType, threadId, false)
+}
+
+const getAuthorizedUserAuth = (
+  userId: string,
+  contextId: string,
+  contextType: ContextType,
+  threadId: string | undefined,
+  isPlatformAdmin: boolean,
+  platformInstanceId: string,
+): AuthorizationResult => {
+  if (contextType === 'dm' && isDemoUser(userId, platformInstanceId)) {
+    return getGroupMemberAuth(contextId, contextType, threadId, false)
+  }
+  if (contextType === 'dm') {
+    return getDmUserAuth(userId)
+  }
+  return isConfiguredBotAdmin(userId)
+    ? getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin)
+    : getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin)
 }
 
 export const checkAuthorizationExtended = (
@@ -119,21 +142,20 @@ export const checkAuthorizationExtended = (
     return getUnauthorizedGroupAuth(contextId, 'group_not_allowed')
   }
 
-  const demoModeAuth = maybeAuthorizeDemoModeUser(userId, username, contextId, contextType, threadId, platformInstanceId)
+  const demoModeAuth = maybeAuthorizeDemoModeUser(
+    userId,
+    username,
+    contextId,
+    contextType,
+    threadId,
+    platformInstanceId,
+  )
   if (demoModeAuth !== null) {
     return demoModeAuth
   }
 
   if (isAuthorized(userId, platformInstanceId)) {
-    if (contextType === 'dm' && isDemoUser(userId)) {
-      return getGroupMemberAuth(contextId, contextType, threadId, false)
-    }
-    if (contextType === 'dm') {
-      return getDmUserAuth(userId)
-    }
-    return isConfiguredBotAdmin(userId)
-      ? getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin)
-      : getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin)
+    return getAuthorizedUserAuth(userId, contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 
   if (contextType === 'group') {
