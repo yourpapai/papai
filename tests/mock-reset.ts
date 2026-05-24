@@ -34,6 +34,7 @@ import * as _bot from '../src/bot.js'
 import * as _interactionRouter from '../src/chat/interaction-router.js'
 import * as _chatMattermost from '../src/chat/mattermost/index.js'
 import * as _chatRegistry from '../src/chat/registry.js'
+import * as _chatRouter from '../src/chat/router.js'
 import * as _chatStartup from '../src/chat/startup.js'
 import * as _chatTelegram from '../src/chat/telegram/index.js'
 import { resetDrizzleDbForTesting } from '../src/db/drizzle.js'
@@ -53,6 +54,7 @@ import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
 import * as _scheduler from '../src/scheduler.js'
+import * as _setupPlatformInstance from '../src/setup/platform-instance.js'
 import * as _systemConfig from '../src/system-config.js'
 import * as _users from '../src/users.js'
 
@@ -70,6 +72,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/bot.js', { ..._bot }],
   ['../src/chat/mattermost/index.js', { ..._chatMattermost }],
   ['../src/chat/registry.js', { ..._chatRegistry }],
+  ['../src/chat/router.js', { ..._chatRouter }],
   ['../src/chat/startup.js', { ..._chatStartup }],
   ['../src/chat/telegram/index.js', { ..._chatTelegram }],
   ['../src/db/drizzle.js', { ..._dbDrizzle }],
@@ -85,6 +88,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],
+  ['../src/setup/platform-instance.js', { ..._setupPlatformInstance }],
   ['../src/system-config.js', { ..._systemConfig }],
   ['../src/users.js', { ..._users }],
 ]
