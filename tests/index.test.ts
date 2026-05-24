@@ -79,6 +79,7 @@ describe('index.ts - graceful shutdown', () => {
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {
     const callOrder: string[] = []
     let capturedDeps: BotDeps | undefined
+    let capturedAnnouncementPlatformInstanceId: string | undefined
     const resolverContexts: string[] = []
     let telegramFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
     const originalExit = process.exit.bind(process)
@@ -105,7 +106,10 @@ describe('index.ts - graceful shutdown', () => {
     }
 
     void mock.module('../src/announcements.js', () => ({
-      announceNewVersion: (): Promise<void> => Promise.resolve(),
+      announceNewVersion: (_chat: ChatProvider, platformInstanceId: string): Promise<void> => {
+        capturedAnnouncementPlatformInstanceId = platformInstanceId
+        return Promise.resolve()
+      },
     }))
     void mock.module('../src/attachments/index.js', () => ({
       isS3Configured: (): boolean => true,
@@ -127,6 +131,9 @@ describe('index.ts - graceful shutdown', () => {
     }))
     void mock.module('../src/chat/startup.js', () => ({
       registerCommandMenuIfSupported: (): Promise<void> => Promise.resolve(),
+    }))
+    void mock.module('../src/setup/platform-instance.js', () => ({
+      resolveCurrentPlatformInstanceId: (): string | null => 'telegram-active-instance',
     }))
     void mock.module('../src/chat/telegram/index.js', () => ({
       getTelegramFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => telegramFetcher,
@@ -204,8 +211,8 @@ describe('index.ts - graceful shutdown', () => {
       addUser: (): void => undefined,
     }))
 
-    process.exit = ((code?: string | number | null): never => {
-      throw new Error(`process.exit:${String(code)}`)
+    process.exit = ((...args: [] | [code: string | number | null]): never => {
+      throw new Error(`process.exit:${String(args[0])}`)
     }) as typeof process.exit
 
     try {
@@ -215,6 +222,7 @@ describe('index.ts - graceful shutdown', () => {
     }
 
     expect(callOrder).toEqual(['setupBot', 'start'])
+    expect(capturedAnnouncementPlatformInstanceId).toBe('telegram-active-instance')
     expect(resolverContexts).toEqual(['poller-context-1', 'admin-1'])
     assert.ok(capturedDeps !== undefined)
     assert.ok(capturedDeps.stagedDownloadFn !== undefined)

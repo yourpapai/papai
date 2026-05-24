@@ -24,6 +24,10 @@ const defaultAnnouncementsDeps: AnnouncementsDeps = {
 const log = logger.child({ scope: 'announcements' })
 
 const VERSION: string = packageJson.version
+type RouterInstanceLookup = { getInstance: (id: string) => unknown }
+
+const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
+  typeof Reflect.get(chat, 'getInstance') === 'function'
 
 function isVersionAnnounced(version: string): boolean {
   const row = getDrizzleDb().select().from(versionAnnouncements).where(eq(versionAnnouncements.version, version)).get()
@@ -48,6 +52,10 @@ async function sendAnnouncementToAdmin(
   chat: ChatProvider,
 ): Promise<boolean> {
   try {
+    if (hasRouterInstanceLookup(chat)) {
+      const instance = chat.getInstance(platformInstanceId)
+      if (instance === undefined || instance === null) return false
+    }
     await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
     log.debug({ version: VERSION }, 'Announcement sent to admin')
     return true

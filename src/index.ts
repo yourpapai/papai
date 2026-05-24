@@ -24,6 +24,7 @@ import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
+import { resolveCurrentPlatformInstanceId } from './setup/platform-instance.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
 import { addUser } from './users.js'
@@ -119,7 +120,12 @@ await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
-void announceNewVersion(chatProvider, `${chatProvider.name}-default`, adminUserId)
+const announcementPlatformInstanceId = resolveCurrentPlatformInstanceId()
+if (announcementPlatformInstanceId === null) {
+  log.warn('Skipping startup announcement: cannot determine current platform instance')
+} else {
+  void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)
+}
 
 startScheduler(chatProvider)
 

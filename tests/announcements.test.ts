@@ -27,6 +27,8 @@ import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpe
 const ADMIN_USER_ID = 'admin123'
 const PLATFORM_INSTANCE_ID = 'telegram-default'
 
+type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
+
 const MIGRATIONS = [
   migration001Initial,
   migration002ConversationHistory,
@@ -244,6 +246,23 @@ describe('announceNewVersion', () => {
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+  })
+
+  test('retries announcement when router instance is unknown', async () => {
+    const routerChat = { ...mockChat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+
+    await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    expect(sentMessages).toHaveLength(0)
+
+    mockChat = createMockChat({
+      sendMessage: (platformInstanceId, target, text): Promise<void> =>
+        sendMessageImpl(platformInstanceId, target.contextId, text),
+    })
     await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     expect(sentMessages).toHaveLength(1)
