@@ -59,7 +59,10 @@ const recreateUsersTable = (db: Database): void => {
   const singleActivePlatformInstanceId = getSingleActivePlatformInstanceId(db)
   // Ambiguous unscoped legacy users are preserved under a sentinel that never
   // matches a real platform id, so authorization still requires explicit scope.
-  const legacyPlatformInstanceId = singleActivePlatformInstanceId ?? UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID
+  let legacyPlatformInstanceId = UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID
+  if (singleActivePlatformInstanceId !== null) {
+    legacyPlatformInstanceId = singleActivePlatformInstanceId
+  }
   createUsersNewTable(db)
   copyUsers(db, legacyPlatformInstanceId)
   db.run(`DROP TABLE users`)
