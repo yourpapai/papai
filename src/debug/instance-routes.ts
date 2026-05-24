@@ -156,7 +156,7 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
 
 const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Response> => {
   const router = deps.getRuntimeChatRouter()
-  if (router === null) return textResponse('Runtime chat router unavailable', 503)
+  if (router === null) return jsonResponse({ error: 'router not initialised' }, { status: 503 })
 
   const activeInstances = deps.listActivePlatformInstances()
   const activeIds = new Set(activeInstances.map((instance) => instance.id))
@@ -265,7 +265,7 @@ export const handleInstanceApiRouteWithDeps = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error({ method: req.method, path: url.pathname, error: message }, 'instance API route failed')
-    return textResponse('Internal server error', 500)
+    return jsonResponse({ error: 'config unreadable' }, { status: 500 })
   }
 }
 

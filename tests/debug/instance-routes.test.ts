@@ -169,6 +169,31 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(503)
+    expect(await readJson(res)).toEqual({ error: 'router not initialised' })
+  })
+
+  test('returns config unreadable JSON when instance config loading fails', async () => {
+    const router = new ChatRouter(() =>
+      fakeProvider(
+        mock(async () => {}),
+        mock(async () => {}),
+      ),
+    )
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        {
+          getRuntimeChatRouter: () => router,
+          listActivePlatformInstances: () => {
+            throw new Error('decrypt failed')
+          },
+        },
+        { method: 'POST', headers: jsonHeaders },
+      ),
+    )
+
+    expect(res.status).toBe(500)
+    expect(await readJson(res)).toEqual({ error: 'config unreadable' })
   })
 
   test('apply starts active DB platform instances missing from the runtime router and returns applied count', async () => {
