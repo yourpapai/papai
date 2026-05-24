@@ -158,10 +158,18 @@
     }
   }
 
-  async function removeTask(id: string): Promise<void> {
-    if (!confirmDestructive(`Delete task instance ${id}?`)) return
+  function taskDeleteConfirmation(instance: TaskInstanceView): string {
+    const contextIds = instance.referencingContextIds === undefined ? [] : instance.referencingContextIds
+    const contextCount = instance.referencingContextCount === undefined ? contextIds.length : instance.referencingContextCount
+    if (contextCount === 0) return `Delete task instance ${instance.id}?`
+    const contextList = contextIds.length === 0 ? `${contextCount} context settings` : contextIds.join(', ')
+    return `Delete task instance ${instance.id}? This will delete ${contextCount} context settings: ${contextList}.`
+  }
+
+  async function removeTask(instance: TaskInstanceView): Promise<void> {
+    if (!confirmDestructive(taskDeleteConfirmation(instance))) return
     try {
-      await deleteTaskInstance(id)
+      await deleteTaskInstance(instance.id)
       await loadTaskInstances()
       setSuccess('Task instance deleted.')
     } catch (err) {
@@ -277,7 +285,7 @@
             {#each taskInstances as instance (instance.id)}
               <tr data-testid="task-instance-row">
                 <td>{instance.id}</td><td>{instance.type}</td><td>{instance.status}</td><td>{configLabel(instance.config)}</td><td>{instance.createdAt}</td>
-                <td><button type="button" data-testid={`task-delete-${instance.id}`} onclick={() => void removeTask(instance.id)}>Delete</button></td>
+                <td><button type="button" data-testid={`task-delete-${instance.id}`} onclick={() => void removeTask(instance)}>Delete</button></td>
               </tr>
             {/each}
           </tbody>

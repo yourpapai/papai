@@ -182,13 +182,14 @@ export type PlatformInstanceView = {
   readonly createdAt: string
 }
 
-export type TaskInstanceView = {
-  readonly id: string
-  readonly type: 'kaneo' | 'youtrack'
-  readonly config: InstanceConfigView
-  readonly status: InstanceStatusView
-  readonly createdAt: string
-}
+export type TaskInstanceView = Readonly<{
+  id: string
+  type: 'kaneo' | 'youtrack'
+  config: InstanceConfigView
+  status: InstanceStatusView
+  createdAt: string
+}> &
+  Partial<Readonly<{ referencingContextIds: readonly string[]; referencingContextCount: number }>>
 
 export type AdminInstanceView = Readonly<
   { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>

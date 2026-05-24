@@ -7,7 +7,11 @@ import { z } from 'zod'
 
 import type { ChatRouter } from '../chat/router.js'
 import { addAdmin, listAdmins, removeAdmin, SUPER_ADMIN_PLATFORM_ID } from '../instances/admin-store.js'
-import { deleteContextsByPlatformInstance, deleteContextsByTaskInstance } from '../instances/context-store.js'
+import {
+  deleteContextsByPlatformInstance,
+  deleteContextsByTaskInstance,
+  listContextsByTaskInstance,
+} from '../instances/context-store.js'
 import { maskConfig } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
@@ -73,6 +77,19 @@ const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
   ...instance,
   config: maskConfig(instance.config),
 })
+
+const taskInstanceView = (
+  instance: TaskInstance,
+): TaskInstance & { readonly referencingContextCount: number; readonly referencingContextIds: readonly string[] } => {
+  const referencingContextIds = listContextsByTaskInstance(instance.id)
+    .map((context) => context.contextId)
+    .toSorted((a, b) => a.localeCompare(b))
+  return {
+    ...maskedTaskInstance(instance),
+    referencingContextCount: referencingContextIds.length,
+    referencingContextIds,
+  }
+}
 
 const INSTANCE_API_PREFIXES = ['/api/admins', '/api/platform-instances', '/api/task-instances'] as const
 
@@ -184,7 +201,7 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   const parts = splitPath(url)
 
   if (url.pathname === '/api/task-instances' && req.method === 'GET') {
-    return jsonResponse(listTaskInstances().map((instance) => maskedTaskInstance(instance)))
+    return jsonResponse(listTaskInstances().map((instance) => taskInstanceView(instance)))
   }
 
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {

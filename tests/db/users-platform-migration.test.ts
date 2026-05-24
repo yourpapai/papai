@@ -79,7 +79,7 @@ describe('migration 041 users platform scoping', () => {
     db.close()
   })
 
-  test('backfills unscoped legacy users when exactly one active platform exists', () => {
+  test('keeps unscoped legacy users inaccessible when exactly one active platform exists', () => {
     db.run(
       `INSERT INTO platform_instances (id, type, config, status) VALUES ('telegram-default', 'telegram', '{}', 'active')`,
     )
@@ -88,7 +88,7 @@ describe('migration 041 users platform scoping', () => {
     migration041UsersPlatformInstanceIndex.up(db)
 
     expect(getUsers(db)).toEqual([
-      { platform_user_id: '111', platform_instance_id: 'telegram-default', username: 'alice' },
+      { platform_user_id: '111', platform_instance_id: '__unscoped_legacy__', username: 'alice' },
     ])
   })
 

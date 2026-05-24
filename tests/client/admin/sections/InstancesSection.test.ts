@@ -24,6 +24,8 @@ const taskInstance = {
   status: 'active',
   config: { KANEO_INTERNAL_URL: 'http://kaneo:1337' },
   createdAt: '2026-05-24T00:01:00.000Z',
+  referencingContextIds: ['ctx-1', 'ctx-2'],
+  referencingContextCount: 2,
 } as const
 
 const stoppedPlatformInstance = {
@@ -125,6 +127,16 @@ const setConfirm = (value: boolean): void => {
   Object.defineProperty(window, 'confirm', {
     configurable: true,
     value: (): boolean => value,
+  })
+}
+
+const recordConfirm = (value: boolean, messages: string[]): void => {
+  Object.defineProperty(window, 'confirm', {
+    configurable: true,
+    value: (message: string): boolean => {
+      messages.push(message)
+      return value
+    },
   })
 }
 
@@ -293,8 +305,9 @@ describe('InstancesSection', () => {
 
   test('does not delete task instances when confirmation is cancelled', async () => {
     const calls: RecordedCall[] = []
+    const confirmMessages: string[] = []
     installFetch(calls)
-    setConfirm(false)
+    recordConfirm(false, confirmMessages)
 
     const { target, component } = render()
     await drain()
@@ -303,6 +316,9 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+    expect(confirmMessages).toEqual([
+      'Delete task instance kaneo-main? This will delete 2 context settings: ctx-1, ctx-2.',
+    ])
 
     void unmount(component)
   })

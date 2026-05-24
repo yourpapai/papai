@@ -9,16 +9,6 @@ import type { Migration } from '../migrate.js'
 
 const UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID = '__unscoped_legacy__'
 
-const getSingleActivePlatformInstanceId = (db: Database): string | null => {
-  const rows = db
-    .query<{ id: string }, []>(`SELECT id FROM platform_instances WHERE status = 'active' ORDER BY id`)
-    .all()
-  if (rows.length !== 1) return null
-  const row = rows[0]
-  if (row === undefined) return null
-  return row.id
-}
-
 const createUsersNewTable = (db: Database): void => {
   db.run(`
     CREATE TABLE users_new (
@@ -58,15 +48,10 @@ const copyUsers = (db: Database, legacyPlatformInstanceId: string): void => {
 }
 
 const recreateUsersTable = (db: Database): void => {
-  const singleActivePlatformInstanceId = getSingleActivePlatformInstanceId(db)
   // Ambiguous unscoped legacy users are preserved under a sentinel that never
   // matches a real platform id, so authorization still requires explicit scope.
-  let legacyPlatformInstanceId = UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID
-  if (singleActivePlatformInstanceId !== null) {
-    legacyPlatformInstanceId = singleActivePlatformInstanceId
-  }
   createUsersNewTable(db)
-  copyUsers(db, legacyPlatformInstanceId)
+  copyUsers(db, UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID)
   db.run(`DROP TABLE users`)
   db.run(`ALTER TABLE users_new RENAME TO users`)
 }

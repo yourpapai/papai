@@ -96,6 +96,8 @@ describe('instance API schemas', () => {
       config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
       status: 'pending',
       createdAt: '2026-05-24T00:00:00.000Z',
+      referencingContextIds: ['ctx-1', 'ctx-2'],
+      referencingContextCount: 2,
     })
     expect(result.success).toBe(true)
   })

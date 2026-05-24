@@ -306,6 +306,19 @@ describe('instance API routes', () => {
     expect(listContextsByTaskInstance('tasks-main')).toEqual([])
   })
 
+  test('lists task instances with referencing context IDs', async () => {
+    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-main', platformInstanceId: 'discord-main' })
+
+    const res = expectResponse(await route('/api/task-instances'))
+
+    expect(res.status).toBe(200)
+    const row = assertObject(assertArray(await readJson(res))[0])
+    expect(pick(row, 'referencingContextIds')).toEqual(['ctx-1', 'ctx-2'])
+    expect(pick(row, 'referencingContextCount')).toBe(2)
+  })
+
   test('creates and lists masked task instances', async () => {
     const created = expectResponse(
       await route('/api/task-instances', {
