@@ -21,7 +21,7 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
-const TEST_PLATFORM_ID = 'legacy-single'
+const TEST_PLATFORM_ID = 'test-instance'
 
 const addUser = (userId: string, addedBy: string, username?: string): void => {
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })

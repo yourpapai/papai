@@ -81,6 +81,28 @@ describe('addUser', () => {
     expect(user).toBeDefined()
     expect(user!.username).toBeNull()
   })
+
+  test('allows the same platform user ID on different platform instances', () => {
+    addUser({ userId: 'shared-user', platformInstanceId: 'telegram-default', addedBy: 'admin-1' })
+    addUser({ userId: 'shared-user', platformInstanceId: 'discord-default', addedBy: 'admin-2' })
+
+    expect(listUsers('telegram-default').map((u) => `${u.platform_instance_id}:${u.platform_user_id}`)).toEqual([
+      'telegram-default:shared-user',
+    ])
+    expect(listUsers('discord-default').map((u) => `${u.platform_instance_id}:${u.platform_user_id}`)).toEqual([
+      'discord-default:shared-user',
+    ])
+  })
+
+  test('allows the same username placeholder on different platform instances', () => {
+    addUser({ userId: 'tg-placeholder-alice', platformInstanceId: 'telegram-default', addedBy: 'admin-1', username: 'alice' })
+    addUser({ userId: 'ds-placeholder-alice', platformInstanceId: 'discord-default', addedBy: 'admin-2', username: 'alice' })
+
+    expect(resolveUserByUsername('tg-real-alice', 'alice', 'telegram-default')).toBe(true)
+    expect(resolveUserByUsername('ds-real-alice', 'alice', 'discord-default')).toBe(true)
+    expect(isAuthorized('tg-real-alice', 'telegram-default')).toBe(true)
+    expect(isAuthorized('ds-real-alice', 'discord-default')).toBe(true)
+  })
 })
 
 describe('removeUser', () => {

@@ -136,6 +136,7 @@ export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
         db.insert(users)
           .values({
             platformUserId: userId,
+            platformInstanceId: 'legacy-single',
             addedAt: new Date().toISOString(),
             // System-provisioned workspace
             addedBy: 'system',

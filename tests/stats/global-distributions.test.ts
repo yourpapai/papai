@@ -29,7 +29,7 @@ describe('distributionsGlobal', () => {
 
     getDrizzleDb()
       .insert(users)
-      .values(subjects.map((id) => ({ platformUserId: id, addedBy: 'admin' })))
+      .values(subjects.map((id) => ({ platformUserId: id, platformInstanceId: 'legacy-single', addedBy: 'admin' })))
       .run()
 
     const memoRows = subjects.flatMap((id, idx) =>

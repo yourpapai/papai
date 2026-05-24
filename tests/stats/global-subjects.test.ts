@@ -34,9 +34,9 @@ describe('subjectsGlobal', () => {
     getDrizzleDb()
       .insert(users)
       .values([
-        { platformUserId: 'u1', addedAt: isoToday, addedBy: 'admin' },
-        { platformUserId: 'u2', addedAt: tenDaysAgo, addedBy: 'admin' },
-        { platformUserId: 'u3', addedAt: fortyDaysAgo, addedBy: 'admin' },
+        { platformUserId: 'u1', platformInstanceId: 'legacy-single', addedAt: isoToday, addedBy: 'admin' },
+        { platformUserId: 'u2', platformInstanceId: 'legacy-single', addedAt: tenDaysAgo, addedBy: 'admin' },
+        { platformUserId: 'u3', platformInstanceId: 'legacy-single', addedAt: fortyDaysAgo, addedBy: 'admin' },
       ])
       .run()
 

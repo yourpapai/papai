@@ -17,8 +17,8 @@ describe('recurringForSubject', () => {
     getDrizzleDb()
       .insert(users)
       .values([
-        { platformUserId: 'u1', addedBy: 'test' },
-        { platformUserId: 'other', addedBy: 'test' },
+        { platformUserId: 'u1', platformInstanceId: 'legacy-single', addedBy: 'test' },
+        { platformUserId: 'other', platformInstanceId: 'legacy-single', addedBy: 'test' },
       ])
       .run()
   })

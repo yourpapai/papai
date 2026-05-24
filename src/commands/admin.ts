@@ -15,7 +15,6 @@ import {
 import { addUser, listUsers, removeUser } from '../users.js'
 
 const MAX_CONCURRENT_SENDS = 5
-const TRANSITIONAL_PLATFORM_INSTANCE_ID = 'legacy-single'
 
 const log = logger.child({ scope: 'admin' })
 
@@ -25,6 +24,12 @@ export interface AdminCommandsDeps {
 
 const defaultAdminDeps: AdminCommandsDeps = {
   provisionAndConfigure: (...args): Promise<ProvisionOutcome> => defaultProvisionAndConfigure(...args),
+}
+
+const resolveAdminDeps = (args: [] | [deps: AdminCommandsDeps]): AdminCommandsDeps => {
+  const deps = args[0]
+  if (deps === undefined) return defaultAdminDeps
+  return deps
 }
 
 const parseUserIdentifier = (
@@ -42,8 +47,9 @@ const parseUserIdentifier = (
 export function registerAdminCommands(
   chat: ChatProvider,
   adminUserId: string,
-  deps: AdminCommandsDeps = defaultAdminDeps,
+  ...args: [] | [deps: AdminCommandsDeps]
 ): void {
+  const resolvedDeps = resolveAdminDeps(args)
   const checkAdmin = (userId: string): boolean => userId === adminUserId
 
   const userHandler: CommandHandler = async (msg, reply) => {
@@ -56,7 +62,7 @@ export function registerAdminCommands(
       await reply.text('Only the admin can manage users.')
       return
     }
-    await handleUserCommand(msg, reply, msg.user.id, adminUserId, deps)
+    await handleUserCommand(msg, reply, msg.user.id, adminUserId, resolvedDeps, msg.platformInstanceId)
   }
 
   const usersHandler: CommandHandler = async (msg, reply) => {
@@ -69,7 +75,7 @@ export function registerAdminCommands(
       await reply.text('Only the admin can list users.')
       return
     }
-    await handleUsersCommand(reply, msg.user.id, adminUserId)
+    await handleUsersCommand(reply, msg.user.id, adminUserId, msg.platformInstanceId)
   }
 
   const announceHandler: CommandHandler = async (msg, reply) => {
@@ -95,22 +101,32 @@ async function handleUserCommand(
   userId: string,
   adminUserId: string,
   deps: AdminCommandsDeps,
+  platformInstanceId: string,
 ): Promise<void> {
-  const matchStr = msg.commandMatch ?? ''
+  const matchStr = msg.commandMatch
+  if (matchStr === undefined || matchStr === null) {
+    await reply.text('Usage: /user add <id|@username> or /user remove <id|@username>')
+    return
+  }
   const args = matchStr.trim().split(/\s+/u)
   const subcommand = args[0]
   const identifier = args[1]
   if (subcommand === 'add') {
-    await handleUserAdd(reply, userId, identifier, deps)
+    await handleUserAdd(reply, userId, identifier, deps, platformInstanceId)
   } else if (subcommand === 'remove') {
-    await handleUserRemove(reply, userId, identifier, adminUserId)
+    await handleUserRemove(reply, userId, identifier, adminUserId, platformInstanceId)
   } else {
     await reply.text('Usage: /user add <id|@username> or /user remove <id|@username>')
   }
 }
 
-async function handleUsersCommand(reply: ReplyFn, userId: string, adminUserId: string): Promise<void> {
-  const users = listUsers()
+async function handleUsersCommand(
+  reply: ReplyFn,
+  userId: string,
+  adminUserId: string,
+  platformInstanceId: string,
+): Promise<void> {
+  const users = listUsers(platformInstanceId)
   if (users.length === 0) {
     await reply.text('No authorized users.')
     return
@@ -140,6 +156,7 @@ async function handleUserAdd(
   adminId: string,
   identifier: string | undefined,
   deps: AdminCommandsDeps,
+  platformInstanceId: string,
 ): Promise<void> {
   if (identifier === undefined || identifier === '') {
     await reply.text('Usage: /user add <user_id|@username>')
@@ -153,7 +170,7 @@ async function handleUserAdd(
   }
 
   if (parsed.type === 'id') {
-    addUser({ userId: parsed.value, platformInstanceId: TRANSITIONAL_PLATFORM_INSTANCE_ID, addedBy: adminId })
+    addUser({ userId: parsed.value, platformInstanceId, addedBy: adminId })
     log.info({ adminId, newUserId: parsed.value }, '/user add command executed')
     await reply.text(`User ${parsed.value} authorized.`)
     await provisionUserKaneo(reply, parsed.value, deps)
@@ -161,7 +178,7 @@ async function handleUserAdd(
     const placeholderId = `placeholder-${crypto.randomUUID()}`
     addUser({
       userId: placeholderId,
-      platformInstanceId: TRANSITIONAL_PLATFORM_INSTANCE_ID,
+      platformInstanceId,
       addedBy: adminId,
       username: parsed.value,
     })
@@ -175,6 +192,7 @@ async function handleUserRemove(
   adminId: string,
   identifier: string | undefined,
   adminUserId: string,
+  platformInstanceId: string,
 ): Promise<void> {
   if (identifier === undefined || identifier === '') {
     await reply.text('Usage: /user remove <user_id|@username>')
@@ -193,7 +211,7 @@ async function handleUserRemove(
     return
   }
 
-  const removed = removeUser(parsed.value, TRANSITIONAL_PLATFORM_INSTANCE_ID)
+  const removed = removeUser(parsed.value, platformInstanceId)
   if (removed) {
     log.info({ adminId, identifier: parsed.value }, '/user remove command executed')
     await reply.text(`User ${identifier} removed.`)
@@ -204,13 +222,18 @@ async function handleUserRemove(
 }
 
 async function handleAnnounce(chat: ChatProvider, reply: ReplyFn, msg: IncomingMessage): Promise<void> {
-  const message = (msg.commandMatch ?? '').trim()
+  const commandMatch = msg.commandMatch
+  if (commandMatch === undefined || commandMatch === null) {
+    await reply.text('Usage: /announce <message>')
+    return
+  }
+  const message = commandMatch.trim()
   if (message === '') {
     await reply.text('Usage: /announce <message>')
     return
   }
 
-  const users = listUsers().filter((u) => !u.platform_user_id.startsWith('placeholder-'))
+  const users = listUsers(msg.platformInstanceId).filter((u) => !u.platform_user_id.startsWith('placeholder-'))
   if (users.length === 0) {
     await reply.text('No authorized users to announce to.')
     return

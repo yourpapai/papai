@@ -3,11 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq, or } from 'drizzle-orm'
+import { and, eq, inArray, or } from 'drizzle-orm'
 
 import { evictUser, getCachedWorkspace, setCachedWorkspace } from './cache.js'
 import { getDrizzleDb } from './db/drizzle.js'
-import { users } from './db/schema.js'
+import { recurringTaskOccurrences, recurringTasks, users } from './db/schema.js'
 import { isAdmin } from './instances/admin-store.js'
 import { logger } from './logger.js'
 
@@ -15,7 +15,7 @@ const log = logger.child({ scope: 'users' })
 
 export interface UserRecord {
   platform_user_id: string
-  platform_instance_id: string | null
+  platform_instance_id: string
   username: string | null
   added_at: string
   added_by: string
@@ -43,7 +43,7 @@ export function addUser(input: AddUserInput): void {
       addedBy: input.addedBy,
     })
     .onConflictDoUpdate({
-      target: users.platformUserId,
+      target: [users.platformInstanceId, users.platformUserId],
       set: { platformInstanceId: input.platformInstanceId, username },
     })
     .run()
@@ -65,6 +65,16 @@ export function removeUser(identifier: string, platformInstanceId: string): bool
 
   const removed = deleted.length > 0
   if (removed) {
+    const deletedIds = deleted.map((row) => row.platformUserId)
+    db.delete(recurringTaskOccurrences)
+      .where(
+        inArray(
+          recurringTaskOccurrences.templateId,
+          db.select({ id: recurringTasks.id }).from(recurringTasks).where(inArray(recurringTasks.userId, deletedIds)),
+        ),
+      )
+      .run()
+    db.delete(recurringTasks).where(inArray(recurringTasks.userId, deletedIds)).run()
     for (const row of deleted) {
       evictUser(row.platformUserId)
     }

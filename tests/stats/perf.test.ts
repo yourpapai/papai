@@ -24,10 +24,12 @@ function seedFixtures(): void {
 
   sqlite.run('BEGIN')
   try {
-    const insertUser = sqlite.prepare('INSERT INTO users (platform_user_id, added_by, added_at) VALUES (?, ?, ?)')
+    const insertUser = sqlite.prepare(
+      'INSERT INTO users (platform_user_id, platform_instance_id, added_by, added_at) VALUES (?, ?, ?, ?)',
+    )
     const insertGroup = sqlite.prepare('INSERT INTO authorized_groups (group_id, added_by, added_at) VALUES (?, ?, ?)')
     const baseAddedAt = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
-    for (let i = 0; i < DM_SUBJECTS; i++) insertUser.run(`u${i}`, 'admin', baseAddedAt)
+    for (let i = 0; i < DM_SUBJECTS; i++) insertUser.run(`u${i}`, 'legacy-single', 'admin', baseAddedAt)
     for (let i = 0; i < GROUP_SUBJECTS; i++) insertGroup.run(`g${i}`, 'admin', baseAddedAt)
 
     const insertMessage = sqlite.prepare(

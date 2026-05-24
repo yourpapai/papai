@@ -9,9 +9,9 @@ import { blob, sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm
 export const users = sqliteTable(
   'users',
   {
-    platformUserId: text('platform_user_id').primaryKey(),
-    platformInstanceId: text('platform_instance_id'),
-    username: text('username').unique(),
+    platformUserId: text('platform_user_id').notNull(),
+    platformInstanceId: text('platform_instance_id').notNull(),
+    username: text('username'),
     addedAt: text('added_at')
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -19,6 +19,7 @@ export const users = sqliteTable(
     kaneoWorkspaceId: text('kaneo_workspace_id'),
   },
   (table) => [
+    primaryKey({ columns: [table.platformInstanceId, table.platformUserId] }),
     index('idx_users_platform_user').on(table.platformInstanceId, table.platformUserId),
     index('idx_users_platform_username').on(table.platformInstanceId, table.username),
   ],
@@ -95,9 +96,7 @@ export const recurringTasks = sqliteTable(
   'recurring_tasks',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.platformUserId, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
     projectId: text('project_id').notNull(),
     title: text('title').notNull(),
     description: text('description'),

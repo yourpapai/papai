@@ -93,10 +93,10 @@ describe('identityMixGlobal', () => {
     getDrizzleDb()
       .insert(users)
       .values([
-        { platformUserId: 'u1', addedBy: 'admin', kaneoWorkspaceId: 'w1' },
-        { platformUserId: 'u2', addedBy: 'admin', kaneoWorkspaceId: 'w2' },
-        { platformUserId: 'u3', addedBy: 'admin' },
-        { platformUserId: 'u4', addedBy: 'admin', kaneoWorkspaceId: '' },
+        { platformUserId: 'u1', platformInstanceId: 'legacy-single', addedBy: 'admin', kaneoWorkspaceId: 'w1' },
+        { platformUserId: 'u2', platformInstanceId: 'legacy-single', addedBy: 'admin', kaneoWorkspaceId: 'w2' },
+        { platformUserId: 'u3', platformInstanceId: 'legacy-single', addedBy: 'admin' },
+        { platformUserId: 'u4', platformInstanceId: 'legacy-single', addedBy: 'admin', kaneoWorkspaceId: '' },
       ])
       .run()
 
@@ -134,8 +134,8 @@ describe('surfaceMixGlobal', () => {
     getDrizzleDb()
       .insert(users)
       .values([
-        { platformUserId: 'u1', addedBy: 'admin' },
-        { platformUserId: 'u2', addedBy: 'admin' },
+        { platformUserId: 'u1', platformInstanceId: 'legacy-single', addedBy: 'admin' },
+        { platformUserId: 'u2', platformInstanceId: 'legacy-single', addedBy: 'admin' },
       ])
       .run()
     getDrizzleDb()
