@@ -6,7 +6,7 @@
 import type { HttpHandler } from 'msw'
 
 import { adminState } from '../../admin/admin.svelte.js'
-import { adminGlobals } from '../../admin/global-stats.svelte.js'
+import { adminGlobals, refreshGlobals } from '../../admin/global-stats.svelte.js'
 import { scenarios } from '../msw/scenarios.js'
 import { sseStub } from '../stubs/sse.js'
 
@@ -33,6 +33,10 @@ export function resetAllSingletons(): void {
 // connections from the previous story, then registers the scenario's MSW
 // handlers and replays seed SSE events. getWorker is imported lazily so the
 // happy-dom unit suite never pulls in msw/browser.
+//
+// `refreshGlobals: true` primes the adminGlobals rune through the real fetch
+// path (served by the active scenario) so components that read adminGlobals.data
+// without fetching themselves (e.g. OverviewSection) can show a populated state.
 export async function fixturesLoader(context: LoaderContext): Promise<Record<string, never>> {
   resetAllSingletons()
   sseStub.reset()
@@ -44,6 +48,8 @@ export async function fixturesLoader(context: LoaderContext): Promise<Record<str
     worker.resetHandlers()
     const handlers = resolveScenario(scenario)
     if (handlers.length > 0) worker.use(...handlers)
+
+    if (context.parameters['refreshGlobals'] === true) await refreshGlobals()
 
     const seed = context.parameters['sseSeed']
     if (Array.isArray(seed)) sseStub.seed(seed)
