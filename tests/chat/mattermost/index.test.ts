@@ -380,21 +380,19 @@ describe('MattermostChatProvider', () => {
     Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
     Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
     Reflect.set(provider, 'buildReplyFn', () => reply)
+    const post: MattermostPost = {
+      id: 'post-1',
+      user_id: 'user-1',
+      channel_id: 'chan-1',
+      message: '@papai hi',
+      user_name: 'alice',
+      file_ids: [],
+    }
+    const replyToMessageId = post.root_id
 
-    const result = await provider.buildPostedMessage(
-      {
-        id: 'post-1',
-        user_id: 'user-1',
-        channel_id: 'chan-1',
-        message: '@papai hi',
-        user_name: 'alice',
-        file_ids: [],
-      },
-      'alice',
-      undefined,
-    )
+    const result = await provider.buildPostedMessage(post, 'alice', replyToMessageId)
 
-    assert(result !== null)
+    assert.ok(result !== null)
     expect(result.msg.platformInstanceId).toBe('mattermost-default')
   })
 

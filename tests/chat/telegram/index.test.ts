@@ -356,7 +356,7 @@ describe('TelegramChatProvider', () => {
       const provider = new TelegramChatProvider('test-token')
       const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
       expect(extractMessage).toBeInstanceOf(Function)
-      assert(typeof extractMessage === 'function', 'extractMessage not available')
+      assert.ok(typeof extractMessage === 'function', 'extractMessage not available')
 
       const result: unknown = await Promise.resolve(
         extractMessage.call(
@@ -370,7 +370,7 @@ describe('TelegramChatProvider', () => {
         ),
       )
 
-      assert(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
+      assert.ok(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
       expect(result.platformInstanceId).toBe('telegram-default')
     })
 
