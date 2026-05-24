@@ -28,18 +28,16 @@ const ALERT_POLL_MS = 5 * 60_000
 const MAX_CONCURRENT_LLM_CALLS = 5
 const MAX_CONCURRENT_USERS = 10
 let isRunning = false
-
-// In-flight prompt tracking to prevent multiple executions if poller interval is short or task is slow
+type AlertDeliveryResult = { matched: boolean; delivered: boolean }
 const inFlightPrompts = new Set<string>()
 function formatTaskStatus(status: string | undefined): string {
   return status === undefined ? '' : ` (${status})`
 }
-function logSettledErrors(results: PromiseSettledResult<void>[], context: string): void {
+function logSettledErrors(results: PromiseSettledResult<unknown>[], context: string): void {
   for (const r of results) {
     if (r.status === 'rejected') log.error({ error: String(r.reason) }, context)
   }
 }
-
 function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
   return { createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget }
 }
@@ -133,9 +131,9 @@ async function executeSingleAlert(
   chat: ChatProvider,
   buildProviderFn: BuildProviderFn,
   evalNow: Date,
-): Promise<void> {
+): Promise<AlertDeliveryResult> {
   const matchedTasks = tasks.filter((task) => evaluateCondition(alert.condition, task, snapshots, evalNow))
-  if (matchedTasks.length === 0) return
+  if (matchedTasks.length === 0) return { matched: false, delivered: false }
 
   const conditionDesc = describeCondition(alert.condition)
   const taskList = matchedTasks.map((t) => `- [${t.title}](${t.url})${formatTaskStatus(t.status)}`).join('\n')
@@ -159,21 +157,29 @@ async function executeSingleAlert(
       'Alert prompt execution failed before delivery',
     )
     const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, `Sorry, something went wrong while preparing this update: ${errMsg}`)
-    if (!delivered) return
+    if (!delivered) return { matched: true, delivered: false }
     const now = new Date().toISOString()
     updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
     log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
-    return
+    return { matched: true, delivered: true }
   }
 
   const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, response)
-  if (!delivered) return
+  if (!delivered) return { matched: true, delivered: false }
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
   emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
   emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
+  return { matched: true, delivered: true }
 }
+
+const shouldAdvanceAlertSnapshots = (results: PromiseSettledResult<AlertDeliveryResult>[]): boolean =>
+  results.every((result) => {
+    if (result.status === 'rejected') return false
+    if (!result.value.matched) return true
+    return result.value.delivered
+  })
 
 async function executeAlertsForUser(
   userId: string,
@@ -200,11 +206,12 @@ async function executeAlertsForUser(
   const alertLimit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   const alertResults = await Promise.allSettled(
     alerts.map((alert) =>
-      alertLimit((): Promise<void> => executeSingleAlert(alert, tasks, snapshots, chat, buildProviderFn, evalNow)),
+      alertLimit((): Promise<AlertDeliveryResult> => executeSingleAlert(alert, tasks, snapshots, chat, buildProviderFn, evalNow)),
     ),
   )
   logSettledErrors(alertResults, 'Error evaluating alert')
 
+  if (!shouldAdvanceAlertSnapshots(alertResults)) return
   updateSnapshots(storageContextId, tasks)
 }
 
@@ -264,12 +271,10 @@ export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderF
 
 export function stopPollers(): void {
   log.info('Stopping deferred prompt pollers')
-
   scheduler.stop('deferred-scheduled-poll')
   scheduler.stop('deferred-alert-poll')
   scheduler.unregister('deferred-scheduled-poll')
   scheduler.unregister('deferred-alert-poll')
-
   isRunning = false
 }
 

@@ -447,6 +447,36 @@ describe('pollAlertsOnce', () => {
     expect(updated!.lastTriggeredAt).toBeNull()
   })
 
+  test('keeps transition alert retryable when delivery route is unresolved', async () => {
+    const unroutedUser = 'missing-transition-route-user'
+    setConfig(unroutedUser, 'timezone', 'UTC')
+    updateSnapshots(unroutedUser, [{ id: 'task-1', title: 'Task', status: 'todo', url: 'http://test/1' }])
+    const created = createAlertPrompt(unroutedUser, 'Notify on done transition', {
+      field: 'task.status',
+      op: 'changed_to',
+      value: 'done',
+    })
+
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(0)
+    expect(getSnapshotsForUser(unroutedUser).get('task-1:status')).toBe('todo')
+    expect(getAlertPrompt(created.id, unroutedUser)!.lastTriggeredAt).toBeNull()
+
+    setContextSettings({ contextId: unroutedUser, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(getAlertPrompt(created.id, unroutedUser)!.lastTriggeredAt).not.toBeNull()
+  })
+
   test('enriches tasks via getTask when condition references assignee', async () => {
     createAlertPrompt(USER_ID, 'Notify on alice assignment', {
       field: 'task.assignee',
