@@ -47,13 +47,13 @@ function promptToExecCtx(prompt: ScheduledPrompt): DeferredExecutionContext {
 function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
   return { createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget }
 }
-
 const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
 
-async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
-  if (platformInstanceId === null) return
+  if (platformInstanceId === null) return false
   await chat.sendMessage(platformInstanceId, target, markdown)
+  return true
 }
 
 async function executeScheduledPromptsForGroup(
@@ -82,12 +82,14 @@ async function executeScheduledPromptsForGroup(
       { userId: createdByUserId, promptIds, error: errMsg },
       'Scheduled prompt execution failed before delivery',
     )
-    await sendProactiveMessage(chat, execCtx.deliveryTarget, `I ran into an error while working on that: ${errMsg}`)
+    const delivered = await sendProactiveMessage(chat, execCtx.deliveryTarget, `I ran into an error while working on that: ${errMsg}`)
+    if (!delivered) return
     finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
     return
   }
 
-  await sendProactiveMessage(chat, execCtx.deliveryTarget, response)
+  const delivered = await sendProactiveMessage(chat, execCtx.deliveryTarget, response)
+  if (!delivered) return
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
   for (const prompt of prompts) {
     emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })
@@ -156,18 +158,16 @@ async function executeSingleAlert(
       { id: alert.id, userId: alert.createdByUserId, error: errMsg },
       'Alert prompt execution failed before delivery',
     )
-    await sendProactiveMessage(
-      chat,
-      alert.deliveryTarget,
-      `Sorry, something went wrong while preparing this update: ${errMsg}`,
-    )
+    const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, `Sorry, something went wrong while preparing this update: ${errMsg}`)
+    if (!delivered) return
     const now = new Date().toISOString()
     updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
     log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
     return
   }
 
-  await sendProactiveMessage(chat, alert.deliveryTarget, response)
+  const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, response)
+  if (!delivered) return
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
@@ -245,9 +245,7 @@ export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderF
     log.warn('Pollers already running')
     return
   }
-
   isRunning = true
-
   scheduler.register('deferred-scheduled-poll', {
     interval: SCHEDULED_POLL_MS,
     handler: () => pollScheduledOnce(chat, buildProviderFn),
@@ -259,10 +257,8 @@ export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderF
     handler: () => pollAlertsOnce(chat, buildProviderFn),
     options: { immediate: true },
   })
-
   scheduler.start('deferred-scheduled-poll')
   scheduler.start('deferred-alert-poll')
-
   log.info({ scheduledPollMs: SCHEDULED_POLL_MS, alertPollMs: ALERT_POLL_MS }, 'Started deferred prompt pollers')
 }
 

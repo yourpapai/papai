@@ -103,6 +103,21 @@ describe('pollScheduledOnce', () => {
     expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
   })
 
+  test('keeps due prompt active when delivery route is unresolved', async () => {
+    const unroutedUser = 'missing-route-user'
+    setConfig(unroutedUser, 'timezone', 'UTC')
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    const created = createScheduledPrompt(unroutedUser, 'Check my overdue tasks', { fireAt: pastTime })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(0)
+    const updated = getScheduledPrompt(created.id, unroutedUser)
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('active')
+    expect(updated!.lastExecutedAt).toBeNull()
+  })
+
   test('does not execute future prompts', async () => {
     const futureTime = new Date(Date.now() + 3_600_000).toISOString()
     createScheduledPrompt(USER_ID, 'Future task', { fireAt: futureTime })
@@ -406,6 +421,30 @@ describe('pollAlertsOnce', () => {
 
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
+  })
+
+  test('keeps alert eligible when delivery route is unresolved', async () => {
+    const unroutedUser = 'missing-alert-route-user'
+    setConfig(unroutedUser, 'timezone', 'UTC')
+    const created = createAlertPrompt(unroutedUser, 'Notify on done', {
+      field: 'task.status',
+      op: 'eq',
+      value: 'done',
+    })
+
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(0)
+    const updated = getAlertPrompt(created.id, unroutedUser)
+    expect(updated).not.toBeNull()
+    expect(updated!.lastTriggeredAt).toBeNull()
   })
 
   test('enriches tasks via getTask when condition references assignee', async () => {
