@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import packageJson from '../package.json' with { type: 'json' }
 import { eq } from 'drizzle-orm'
+
+import packageJson from '../package.json' with { type: 'json' }
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'

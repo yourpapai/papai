@@ -73,7 +73,10 @@ export function createChatProviderFromConfig(
   const deps: RegistryDeps = { env: configToEnv(type, config), platformInstanceId: id }
   const validation = validateChatProviderEnv(type, deps.env)
   if (!validation.ok) {
-    log.error({ reason: validation.reason, missing: validation.missing, type, id }, 'Invalid chat provider instance config')
+    log.error(
+      { reason: validation.reason, missing: validation.missing, type, id },
+      'Invalid chat provider instance config',
+    )
     throw new Error(missingConfigMessage(type))
   }
   return createChatProvider(type, deps)

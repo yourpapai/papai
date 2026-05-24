@@ -139,7 +139,10 @@ describe('index.ts - graceful shutdown', () => {
       createStagedDownloader: (deps: {
         telegramFetcher: (fileId: string) => Promise<Buffer | null>
         mattermostFetcher: (fileId: string) => Promise<Buffer | null>
-      }): ((fileId: string, sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown') => Promise<Buffer | null>) => {
+      }): ((
+        fileId: string,
+        sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
+      ) => Promise<Buffer | null>) => {
         const fetchers = {
           telegram: deps.telegramFetcher,
           mattermost: deps.mattermostFetcher,
@@ -167,7 +170,11 @@ describe('index.ts - graceful shutdown', () => {
         createChatProviderCalls += 1
         return chatProvider
       },
-      createChatProviderFromConfig: (id: string, _type: PlatformInstanceType, _config: InstanceConfig): ChatProvider => {
+      createChatProviderFromConfig: (
+        id: string,
+        _type: PlatformInstanceType,
+        _config: InstanceConfig,
+      ): ChatProvider => {
         createChatProviderFromConfigCalls += 1
         return providerFactoriesById[id]!()
       },
@@ -180,7 +187,9 @@ describe('index.ts - graceful shutdown', () => {
         readonly traits = chatProvider.traits
         readonly configRequirements = []
 
-        constructor(private readonly factory: (id: string, type: PlatformInstanceType, config: InstanceConfig) => ChatProvider) {}
+        constructor(
+          private readonly factory: (id: string, type: PlatformInstanceType, config: InstanceConfig) => ChatProvider,
+        ) {}
 
         addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): void {
           void this.factory(id, type, config)
@@ -199,7 +208,9 @@ describe('index.ts - graceful shutdown', () => {
           return chatProvider.sendMessage(...args)
         }
 
-        renderContext(snapshot: Parameters<ChatProvider['renderContext']>[0]): ReturnType<ChatProvider['renderContext']> {
+        renderContext(
+          snapshot: Parameters<ChatProvider['renderContext']>[0],
+        ): ReturnType<ChatProvider['renderContext']> {
           return chatProvider.renderContext(snapshot)
         }
 

@@ -80,7 +80,11 @@ for (const instance of activePlatformInstances) {
     chatProvider.addInstance(instance.id, instance.type, instance.config)
   } catch (error) {
     log.error(
-      { platformInstanceId: instance.id, type: instance.type, error: error instanceof Error ? error.message : String(error) },
+      {
+        platformInstanceId: instance.id,
+        type: instance.type,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'Skipping invalid active platform instance during startup',
     )
   }
@@ -121,7 +125,8 @@ await chatProvider.start()
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
 const [firstActivePlatformInstance] = activePlatformInstances
-const announcementPlatformInstanceId = firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
+const announcementPlatformInstanceId =
+  firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
 if (announcementPlatformInstanceId === undefined) {
   log.warn('Skipping startup announcement: cannot determine current platform instance')
 } else {

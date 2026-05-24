@@ -307,12 +307,16 @@ describe('Admin Commands', () => {
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
-      await handler!({ ...createDmMessage(ADMIN_ID, 'Hello everyone!'), platformInstanceId: 'mattermost-default' }, reply, {
-        allowed: true,
-        isBotAdmin: true,
-        isGroupAdmin: false,
-        storageContextId: ADMIN_ID,
-      })
+      await handler!(
+        { ...createDmMessage(ADMIN_ID, 'Hello everyone!'), platformInstanceId: 'mattermost-default' },
+        reply,
+        {
+          allowed: true,
+          isBotAdmin: true,
+          isGroupAdmin: false,
+          storageContextId: ADMIN_ID,
+        },
+      )
       // Should send to all users (admin + user-a + user-b)
       expect(sentMessages.length).toBe(3)
       expect(sentMessages.every((m) => m.markdown.includes('Hello everyone!'))).toBe(true)

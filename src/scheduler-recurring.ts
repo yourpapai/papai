@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatProvider } from './chat/types.js'
 import { resolveDeliveryPlatformInstanceId } from './chat/delivery-routing.js'
+import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
@@ -61,7 +61,11 @@ export const notifyUser = async (
   if (platformInstanceId === null) return
 
   try {
-    await chatProviderRef.sendMessage(platformInstanceId, target, `Recurring task created: **${created.title}** in project.`)
+    await chatProviderRef.sendMessage(
+      platformInstanceId,
+      target,
+      `Recurring task created: **${created.title}** in project.`,
+    )
   } catch (notifyError) {
     log.warn(
       { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },

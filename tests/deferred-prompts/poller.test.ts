@@ -270,7 +270,11 @@ describe('pollScheduledOnce', () => {
     resetSystemConfigCacheForTesting()
 
     const unconfiguredUser = 'unconfigured-user'
-    setContextSettings({ contextId: unconfiguredUser, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
+    setContextSettings({
+      contextId: unconfiguredUser,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mock-default',
+    })
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     createScheduledPrompt(unconfiguredUser, 'No config', { fireAt: pastTime })
 
@@ -692,7 +696,11 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: null,
     })
-    setContextSettings({ contextId: '-1001:42', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: '-1001:42',
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     await pollScheduledOnce(chat, () => provider)
 
@@ -721,7 +729,11 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    setContextSettings({ contextId: groupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: groupContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     const matchingProvider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
@@ -763,7 +775,11 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    setContextSettings({ contextId: firstGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: firstGroupContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
     createAlertPrompt(
       USER_ID,
       'Notify second channel',
@@ -780,7 +796,11 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    setContextSettings({ contextId: secondGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: secondGroupContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     const providerByContext = new Map<string, TaskProvider>([
       [
@@ -830,7 +850,11 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    setContextSettings({ contextId: firstGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: firstGroupContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
     createAlertPrompt(
       USER_ID,
       'Track second channel snapshots',
@@ -847,7 +871,11 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    setContextSettings({ contextId: secondGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: secondGroupContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     const providerByContext = new Map<string, TaskProvider>([
       [
@@ -915,7 +943,11 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
-    setContextSettings({ contextId: groupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: groupContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     const matchingProvider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'project-1', name: 'First', url: 'http://test/proj/1' }])),
@@ -953,7 +985,11 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: null,
     })
-    setContextSettings({ contextId: '-1001', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: '-1001',
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     await pollScheduledOnce(chat, () => provider)
 
@@ -986,7 +1022,11 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: 'alice',
     })
-    setContextSettings({ contextId: '-1001:42', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: '-1001:42',
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     await pollScheduledOnce(chat, () => provider)
 
@@ -1021,7 +1061,11 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: 'alice',
     })
-    setContextSettings({ contextId: '-1001:42', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
+    setContextSettings({
+      contextId: '-1001:42',
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'mattermost-default',
+    })
 
     await pollScheduledOnce(chat, () => provider)
 

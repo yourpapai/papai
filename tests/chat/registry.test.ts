@@ -88,8 +88,8 @@ describe('chat registry', () => {
   test('createChatProviderFromConfig rejects missing config values before adapter construction', async () => {
     const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
 
-    expect(() => createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' })).toThrow(
-      'Missing mattermost instance config',
-    )
+    expect(() =>
+      createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' }),
+    ).toThrow('Missing mattermost instance config')
   })
 })

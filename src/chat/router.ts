@@ -8,6 +8,13 @@ import pLimit from 'p-limit'
 import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
+import {
+  activeInstanceStatuses,
+  errorMessage,
+  fallbackContextRendered,
+  fallbackThreadCapabilities,
+  fallbackTraits,
+} from './router-helpers.js'
 import type {
   ChatCapability,
   ChatProvider,
@@ -30,22 +37,14 @@ export type ManagedChatInstance = {
   status: InstanceStatus
 }
 
-export type ManagedChatInstanceFactory = (id: string, type: PlatformInstanceType, config: InstanceConfig) => ChatProvider
+export type ManagedChatInstanceFactory = (
+  id: string,
+  type: PlatformInstanceType,
+  config: InstanceConfig,
+) => ChatProvider
 
 const log = logger.child({ scope: 'chat:router' })
 const ROUTER_LIFECYCLE_CONCURRENCY = 4
-const activeInstanceStatuses = new Set<InstanceStatus>(['active', 'pending'])
-
-const fallbackThreadCapabilities: ThreadCapabilities = { supportsThreads: false, canCreateThreads: false, threadScope: 'message' }
-
-const fallbackTraits: ChatProviderTraits = { observedGroupMessages: 'all' }
-
-const fallbackContextRendered: ContextRendered = {
-  method: 'text',
-  content: 'No active chat provider is available to render this context.',
-}
-
-const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 export class ChatRouter implements ChatProvider {
   readonly name = 'router'
@@ -100,9 +99,7 @@ export class ChatRouter implements ChatProvider {
   }
 
   getInstance(id: string): ManagedChatInstance | null {
-    const instance = this.instances.get(id)
-    if (instance === undefined) return null
-    return instance
+    return this.instances.get(id) ?? null
   }
 
   async startInstance(id: string): Promise<void> {
@@ -187,7 +184,9 @@ export class ChatRouter implements ChatProvider {
 
   async setCommands(adminUserId: string): Promise<void> {
     const limit = pLimit(ROUTER_LIFECYCLE_CONCURRENCY)
-    await Promise.all(this.activeInstances().map((instance) => limit(() => this.setCommandsForInstance(instance, adminUserId))))
+    await Promise.all(
+      this.activeInstances().map((instance) => limit(() => this.setCommandsForInstance(instance, adminUserId))),
+    )
   }
 
   getInstanceTraits(platformInstanceId: string): ChatProviderTraits | null {
@@ -259,7 +258,9 @@ export class ChatRouter implements ChatProvider {
     handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>,
   ): void {
     if (instance.provider.onInteraction === undefined) return
-    instance.provider.onInteraction((interaction, reply) => handler({ ...interaction, platformInstanceId: instance.id }, reply))
+    instance.provider.onInteraction((interaction, reply) =>
+      handler({ ...interaction, platformInstanceId: instance.id }, reply),
+    )
   }
 
   private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {

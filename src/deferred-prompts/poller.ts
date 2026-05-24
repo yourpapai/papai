@@ -5,8 +5,7 @@
 
 import pLimit from 'p-limit'
 
-import { resolveDeliveryPlatformInstanceId } from '../chat/delivery-routing.js'
-import type { ChatProvider, DeferredDeliveryTarget } from '../chat/types.js'
+import type { ChatProvider } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
@@ -16,6 +15,7 @@ import { describeCondition, evaluateCondition, getEligibleAlertPrompts, updateAl
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
+import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
 import { getStorageContextId } from './proactive-llm-helpers.js'
 import { dispatchExecution, type BuildProviderFn, type DeferredExecutionContext } from './proactive-llm.js'
 import { getScheduledPromptsDue } from './scheduled.js'
@@ -23,10 +23,12 @@ import { getSnapshotsForUser, updateSnapshots } from './snapshots.js'
 import type { AlertPrompt, ScheduledPrompt } from './types.js'
 
 const log = logger.child({ scope: 'deferred:poller' })
-const ALERT_POLL_MS = 5 * 60_000, MAX_CONCURRENT_LLM_CALLS = 5, MAX_CONCURRENT_USERS = 10, SCHEDULED_POLL_MS = 60_000
+const ALERT_POLL_MS = 5 * 60_000,
+  MAX_CONCURRENT_LLM_CALLS = 5,
+  MAX_CONCURRENT_USERS = 10,
+  SCHEDULED_POLL_MS = 60_000
 let isRunning = false
 type AlertDeliveryResult = { matched: boolean; delivered: boolean }
-type RouterInstanceLookup = { getInstance: (id: string) => unknown }
 const inFlightPrompts = new Set<string>()
 const formatTaskStatus = (status: string | undefined): string => (status === undefined ? '' : ` (${status})`)
 function logSettledErrors(results: PromiseSettledResult<unknown>[], context: string): void {
@@ -34,29 +36,15 @@ function logSettledErrors(results: PromiseSettledResult<unknown>[], context: str
     if (r.status === 'rejected') log.error({ error: String(r.reason) }, context)
   }
 }
-const promptToExecCtx = (prompt: ScheduledPrompt): DeferredExecutionContext => ({ createdByUserId: prompt.createdByUserId, deliveryTarget: prompt.deliveryTarget })
-const alertToExecCtx = (alert: AlertPrompt): DeferredExecutionContext => ({ createdByUserId: alert.createdByUserId, deliveryTarget: alert.deliveryTarget })
+const promptToExecCtx = (prompt: ScheduledPrompt): DeferredExecutionContext => ({
+  createdByUserId: prompt.createdByUserId,
+  deliveryTarget: prompt.deliveryTarget,
+})
+const alertToExecCtx = (alert: AlertPrompt): DeferredExecutionContext => ({
+  createdByUserId: alert.createdByUserId,
+  deliveryTarget: alert.deliveryTarget,
+})
 const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
-
-const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
-  typeof Reflect.get(chat, 'getInstance') === 'function'
-
-function resolveProactivePlatformInstanceId(chat: ChatProvider, target: DeferredDeliveryTarget): string | null {
-  const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
-  if (platformInstanceId === null) return null
-  if (hasRouterInstanceLookup(chat)) {
-    const instance = chat.getInstance(platformInstanceId)
-    if (instance === undefined || instance === null) return null
-  }
-  return platformInstanceId
-}
-
-async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
-  const platformInstanceId = resolveProactivePlatformInstanceId(chat, target)
-  if (platformInstanceId === null) return false
-  await chat.sendMessage(platformInstanceId, target, markdown)
-  return true
-}
 
 async function executeScheduledPromptsForGroup(
   execCtx: DeferredExecutionContext,
@@ -85,7 +73,11 @@ async function executeScheduledPromptsForGroup(
       { userId: createdByUserId, promptIds, error: errMsg },
       'Scheduled prompt execution failed before delivery',
     )
-    const delivered = await sendProactiveMessage(chat, execCtx.deliveryTarget, `I ran into an error while working on that: ${errMsg}`)
+    const delivered = await sendProactiveMessage(
+      chat,
+      execCtx.deliveryTarget,
+      `I ran into an error while working on that: ${errMsg}`,
+    )
     if (!delivered) return
     finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
     return
@@ -129,6 +121,17 @@ export async function pollScheduledOnce(chat: ChatProvider, buildProviderFn: Bui
   }
 }
 
+function markAlertDelivered(alert: AlertPrompt, matchedCount: number, emitNotifications: boolean): AlertDeliveryResult {
+  const now = new Date().toISOString()
+  updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
+  log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount }, 'Alert triggered')
+  if (emitNotifications) {
+    emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
+    emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
+  }
+  return { matched: true, delivered: true }
+}
+
 async function executeSingleAlert(
   alert: AlertPrompt,
   tasks: Task[],
@@ -145,7 +148,8 @@ async function executeSingleAlert(
   const matchedTasksSummary = `Alert condition: ${conditionDesc}\n${taskList}`
 
   const execCtx = alertToExecCtx(alert)
-  if (resolveProactivePlatformInstanceId(chat, alert.deliveryTarget) === null) return { matched: true, delivered: false }
+  if (resolveProactivePlatformInstanceId(chat, alert.deliveryTarget) === null)
+    return { matched: true, delivered: false }
   let response: string
   try {
     response = await dispatchExecution(
@@ -162,22 +166,18 @@ async function executeSingleAlert(
       { id: alert.id, userId: alert.createdByUserId, error: errMsg },
       'Alert prompt execution failed before delivery',
     )
-    const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, `Sorry, something went wrong while preparing this update: ${errMsg}`)
+    const delivered = await sendProactiveMessage(
+      chat,
+      alert.deliveryTarget,
+      `Sorry, something went wrong while preparing this update: ${errMsg}`,
+    )
     if (!delivered) return { matched: true, delivered: false }
-    const now = new Date().toISOString()
-    updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
-    log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
-    return { matched: true, delivered: true }
+    return markAlertDelivered(alert, matchedTasks.length, false)
   }
 
   const delivered = await sendProactiveMessage(chat, alert.deliveryTarget, response)
   if (!delivered) return { matched: true, delivered: false }
-  const now = new Date().toISOString()
-  updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
-  log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
-  emitUser('deferred:alerted', alert.createdByUserId, { promptId: alert.id })
-  emitUser('notify:deferred_alert', alert.createdByUserId, { promptId: alert.id })
-  return { matched: true, delivered: true }
+  return markAlertDelivered(alert, matchedTasks.length, true)
 }
 
 const shouldAdvanceAlertSnapshots = (results: PromiseSettledResult<AlertDeliveryResult>[]): boolean =>
@@ -212,7 +212,9 @@ async function executeAlertsForUser(
   const alertLimit = pLimit(MAX_CONCURRENT_LLM_CALLS)
   const alertResults = await Promise.allSettled(
     alerts.map((alert) =>
-      alertLimit((): Promise<AlertDeliveryResult> => executeSingleAlert(alert, tasks, snapshots, chat, buildProviderFn, evalNow)),
+      alertLimit(
+        (): Promise<AlertDeliveryResult> => executeSingleAlert(alert, tasks, snapshots, chat, buildProviderFn, evalNow),
+      ),
     ),
   )
   logSettledErrors(alertResults, 'Error evaluating alert')

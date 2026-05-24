@@ -6,11 +6,11 @@
 import pLimit from 'p-limit'
 
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
-import { supportsUserResolution } from '../chat/capabilities.js'
 import { resolveChatGroupDisplayLabel, resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn, ResolveUserContext } from '../chat/types.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.js'
 import { logger } from '../logger.js'
+import { extractGroupUserId } from './group-user-id.js'
 
 const log = logger.child({ scope: 'commands:group' })
 const GROUP_CHAT_USAGE = 'Usage: /group adduser <user-id|@username> | /group deluser <user-id|@username> | /group users'
@@ -34,7 +34,11 @@ function makeDisplayLabel(label: string | null, fallback: string): string {
 function resolveUserContextForLabelLookup(resolverContext: LabelResolverContext): ResolveUserContext {
   return resolverContext.platformInstanceId === undefined
     ? { contextId: resolverContext.contextId, contextType: resolverContext.contextType }
-    : { contextId: resolverContext.contextId, contextType: resolverContext.contextType, platformInstanceId: resolverContext.platformInstanceId }
+    : {
+        contextId: resolverContext.contextId,
+        contextType: resolverContext.contextType,
+        platformInstanceId: resolverContext.platformInstanceId,
+      }
 }
 function resolveUserLabelCached(
   resolverContext: LabelResolverContext,
@@ -221,7 +225,7 @@ async function handleGroupMemberUpdate(
     return
   }
 
-  const result = await extractUserId(chat, targetUser, {
+  const result = await extractGroupUserId(chat, targetUser, {
     contextId: msg.contextId,
     contextType: msg.contextType,
     platformInstanceId: msg.platformInstanceId,
@@ -272,29 +276,4 @@ async function handleListUsers(chat: ChatProvider, msg: IncomingMessage, reply: 
     }),
   )
   await reply.text(`Group members:\n${lines.join('\n')}`)
-}
-
-async function extractUserId(
-  chat: ChatProvider,
-  input: string,
-  context: ResolveUserContext,
-): Promise<{ kind: 'resolved'; userId: string } | { kind: 'error'; message: string }> {
-  if (input.startsWith('@')) {
-    if (!supportsUserResolution(chat)) {
-      return { kind: 'error', message: 'This chat provider does not support username lookup. Use an explicit user ID.' }
-    }
-    const resolveUserId = chat.resolveUserId
-    if (resolveUserId === undefined) {
-      return { kind: 'error', message: 'This chat provider does not support username lookup. Use an explicit user ID.' }
-    }
-    const resolved = await resolveUserId(input, context)
-    if (resolved === null || resolved === undefined) {
-      return { kind: 'error', message: "Couldn't resolve that username. Use an explicit user ID." }
-    }
-    return { kind: 'resolved', userId: resolved }
-  }
-  if (/^\d+$/u.test(input) || /^[a-zA-Z0-9_-]+$/u.test(input)) {
-    return { kind: 'resolved', userId: input }
-  }
-  return { kind: 'error', message: 'Please provide a valid user mention or ID.' }
 }

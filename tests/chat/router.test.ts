@@ -107,10 +107,7 @@ const stopForOptions = (options: FakeProviderOptions): (() => Promise<void>) => 
   return options.stop
 }
 
-const makeProvider = (
-  name: string,
-  options: FakeProviderOptions,
-): FakeProvider => {
+const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider => {
   let messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   let interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   const sent: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; markdown: string }> = []
@@ -255,7 +252,9 @@ describe('ChatRouter', () => {
     await getProvider('telegram-main').deliverInteraction(makeInteraction('wrong-id'))
 
     expect(forwardedMessages.map((msg): string => msg.platformInstanceId)).toEqual(['telegram-main'])
-    expect(forwardedInteractions.map((interaction): string => interaction.platformInstanceId)).toEqual(['telegram-main'])
+    expect(forwardedInteractions.map((interaction): string => interaction.platformInstanceId)).toEqual([
+      'telegram-main',
+    ])
   })
 
   test('routes proactive sends only to the named instance', async () => {
@@ -279,7 +278,9 @@ describe('ChatRouter', () => {
 
     expect(routerInstance('same-id').provider).toBe(firstProvider)
     await router.sendMessage('same-id', dmTarget('user-1'), 'hello')
-    expect(firstProvider.sent).toEqual([{ platformInstanceId: 'same-id', target: dmTarget('user-1'), markdown: 'hello' }])
+    expect(firstProvider.sent).toEqual([
+      { platformInstanceId: 'same-id', target: dmTarget('user-1'), markdown: 'hello' },
+    ])
   })
 
   test('isolates start failures and starts remaining instances', async () => {
@@ -454,7 +455,11 @@ describe('ChatRouter', () => {
 
     expect([...router.capabilities].toSorted()).toEqual(['messages.buttons', 'users.resolve'])
     expect(router.traits).toEqual({ observedGroupMessages: 'mentions_only' })
-    expect(router.threadCapabilities).toEqual({ supportsThreads: false, canCreateThreads: false, threadScope: 'message' })
+    expect(router.threadCapabilities).toEqual({
+      supportsThreads: false,
+      canCreateThreads: false,
+      threadScope: 'message',
+    })
     expect(getProvider('stopped').setCommandsCalls).toEqual([])
     expect(getProvider('pending').setCommandsCalls).toEqual(['admin-1'])
     expect(getProvider('active').setCommandsCalls).toEqual(['admin-1'])

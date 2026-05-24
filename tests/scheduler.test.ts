@@ -107,7 +107,11 @@ describe('scheduler', () => {
     testSqlite.run('INSERT OR IGNORE INTO users (platform_user_id, added_by) VALUES (?, ?)', [resolvedUserId, 'admin'])
     clearUserCache(resolvedUserId)
     setCachedConfig(resolvedUserId, 'kaneo_apikey', 'test-api-key')
-    setContextSettings({ contextId: resolvedUserId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: resolvedUserId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
     setKaneoWorkspace(resolvedUserId, 'workspace-1')
   }
 

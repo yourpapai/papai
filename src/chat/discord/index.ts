@@ -68,7 +68,10 @@ export class DiscordChatProvider implements ChatProvider {
     this.token = token
     this.platformInstanceId = platformInstanceId
     this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory
-    log.debug({ platformInstanceId: this.platformInstanceId, tokenLength: this.token.length }, 'DiscordChatProvider constructed')
+    log.debug(
+      { platformInstanceId: this.platformInstanceId, tokenLength: this.token.length },
+      'DiscordChatProvider constructed',
+    )
   }
 
   registerCommand(name: string, handler: CommandHandler): void {

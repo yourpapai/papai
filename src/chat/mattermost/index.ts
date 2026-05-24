@@ -18,6 +18,7 @@ import type {
   ResolveUserContext,
 } from '../types.js'
 import { checkChannelAdmin } from './channel-helpers.js'
+import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
@@ -46,12 +47,6 @@ type PostedMessageResult = {
   isAdmin: boolean
 }
 
-type MattermostConstructorConfig = Partial<{
-  url: string
-  token: string
-  platformInstanceId: string
-}>
-
 export class MattermostChatProvider implements ChatProvider {
   readonly name = 'mattermost'
   readonly threadCapabilities = {
@@ -73,17 +68,10 @@ export class MattermostChatProvider implements ChatProvider {
   private wsSeq = 1
 
   constructor(config: MattermostConstructorConfig = {}) {
-    const url = config.url ?? process.env['MATTERMOST_URL']
-    const token = config.token ?? process.env['MATTERMOST_BOT_TOKEN']
-    if (url === undefined || url.trim() === '') {
-      throw new Error('MATTERMOST_URL environment variable is required')
-    }
-    if (token === undefined || token.trim() === '') {
-      throw new Error('MATTERMOST_BOT_TOKEN environment variable is required')
-    }
-    this.baseUrl = url.replace(/\/+$/u, '')
-    this.token = token
-    this.platformInstanceId = config.platformInstanceId ?? 'legacy-single'
+    const resolved = resolveMattermostConfig(config)
+    this.baseUrl = resolved.baseUrl
+    this.token = resolved.token
+    this.platformInstanceId = resolved.platformInstanceId
     log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
 
