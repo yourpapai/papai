@@ -97,6 +97,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('registers plugin management list command for bot admin', async () => {
+    addAdmin('admin-user', 'test-instance')
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
     registerPluginCommand(provider, 'admin-user')
 
@@ -123,7 +124,50 @@ describe('registerPluginCommand', () => {
       createAuth('user-1', { isBotAdmin: false }),
     )
 
-    expect(textCalls[0]).toContain('Only the bot admin')
+    expect(textCalls[0]).toContain('Only an admin')
+  })
+
+  test('allows platform admin to list plugins without bot-admin auth flag', async () => {
+    addAdmin('platform-admin', 'test-instance')
+    const handler = registerCommandForTest()
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      { ...createDmMessage('platform-admin', '/plugin list'), commandMatch: 'list' },
+      reply,
+      createAuth('platform-admin', { isBotAdmin: false }),
+    )
+
+    expect(textCalls[0]).toContain('No plugins discovered')
+  })
+
+  test('denies user with bot-admin auth flag but no admin row', async () => {
+    const handler = registerCommandForTest()
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      { ...createDmMessage('auth-only-admin', '/plugin list'), commandMatch: 'list' },
+      reply,
+      createAuth('auth-only-admin', { isBotAdmin: true }),
+    )
+
+    expect(textCalls[0]).toContain('Only an admin')
+  })
+
+  test('allows platform admin to inspect plugin info without bot-admin auth flag', async () => {
+    addAdmin('platform-admin', 'test-instance')
+    const plugin = makePlugin('platform-info-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    const handler = registerCommandForTest()
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      { ...createDmMessage('platform-admin', '/plugin info platform-info-plugin'), commandMatch: 'info platform-info-plugin' },
+      reply,
+      createAuth('platform-admin', { isBotAdmin: false }),
+    )
+
+    expect(textCalls[0]).toContain('platform-info-plugin')
   })
 
   test('denies env admin id when auth is not bot admin', async () => {
@@ -136,10 +180,11 @@ describe('registerPluginCommand', () => {
       createAuth('admin-user', { isBotAdmin: false }),
     )
 
-    expect(textCalls[0]).toContain('Only the bot admin')
+    expect(textCalls[0]).toContain('Only an admin')
   })
 
   test('allows bot admin row even when user id differs from registered admin id', async () => {
+    addAdmin('row-admin', 'test-instance')
     const handler = registerCommandForTest()
     const { reply, textCalls } = createMockReply()
 
@@ -153,6 +198,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('denies plugin management in groups', async () => {
+    addAdmin('admin-user', 'test-instance')
     const handler = registerCommandForTest()
     const { reply, textCalls } = createMockReply()
 
@@ -260,7 +306,11 @@ describe('registerPluginCommand', () => {
     pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
     pluginRegistry.markActive(plugin.manifest.id)
 
-    const output = await runPluginCommand('enable matching-platform-plugin other-context', 'platform-admin')
+    const output = await runPluginCommandFromPlatform(
+      'enable matching-platform-plugin other-context',
+      'platform-admin',
+      'other-platform',
+    )
 
     expect(isPluginEnabledForContext('matching-platform-plugin', 'other-context')).toBe(true)
     expect(output).toContain('enabled')
@@ -313,6 +363,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('shows manifest-change reapproval diagnostics in plugin info', async () => {
+    addAdmin('admin-user', 'test-instance')
     const plugin = makePlugin('changed-plugin', 'hash-old')
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -325,6 +376,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('shows contribution details in plugin info', async () => {
+    addAdmin('admin-user', 'test-instance')
     const plugin = makePlugin('details-plugin')
     pluginRegistry.registerDiscovered({
       ...plugin,
@@ -350,6 +402,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('shows incompatible diagnostics in plugin info', async () => {
+    addAdmin('admin-user', 'test-instance')
     const plugin = makePlugin('incompatible-plugin')
     pluginRegistry.registerDiscovered({
       ...plugin,
@@ -365,6 +418,7 @@ describe('registerPluginCommand', () => {
   })
 
   test('shows runtime error diagnostics in plugin info', async () => {
+    addAdmin('admin-user', 'test-instance')
     const plugin = makePlugin('error-plugin')
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)

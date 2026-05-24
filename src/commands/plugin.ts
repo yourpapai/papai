@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatProvider, ReplyFn } from '../chat/types.js'
-import { isSuperAdmin } from '../instances/admin-store.js'
+import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
 import {
@@ -255,8 +255,8 @@ async function runPluginSubcommand(subcommand: string, ctx: PluginCommandContext
 export function registerPluginCommand(chat: ChatProvider, _adminUserId: string): void {
   chat.registerCommand('plugin', async (msg, reply, auth) => {
     if (!auth.allowed) return
-    if (!auth.isBotAdmin) {
-      await reply.text('Only the bot admin can manage plugins.')
+    if (!isAdmin(msg.user.id, msg.platformInstanceId)) {
+      await reply.text('Only an admin for this platform can manage plugins.')
       return
     }
     if (msg.contextType === 'group') {
