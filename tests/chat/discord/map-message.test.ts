@@ -16,12 +16,14 @@ describe('mapDiscordMessage', () => {
   const botId = 'bot-snowflake'
   const adminId = 'admin-snowflake'
 
-  function makeMsg(overrides: Partial<DiscordMessageLike> = {}): DiscordMessageLike {
+  function makeMsg(...args: [] | [overrides: Partial<DiscordMessageLike>]): DiscordMessageLike {
+    const overrides = args.length === 0 ? {} : args[0]
     return {
       id: 'msg-1',
       author: { id: 'user-1', username: 'alice', bot: false },
       content: 'hello',
-      channel: { id: 'chan-1', type: 0 },
+      channel: { id: 'chan-1', type: 0, name: undefined },
+      guild: undefined,
       mentions: { has: (id) => id === botId },
       reference: null,
       type: 0,
@@ -45,7 +47,7 @@ describe('mapDiscordMessage', () => {
 
   test('maps a DM message', () => {
     const msg = makeMsg({
-      channel: { id: 'dm-1', type: 1 },
+      channel: { id: 'dm-1', type: 1, name: undefined },
       content: 'what is the status?',
       mentions: { has: () => false },
     })
@@ -57,14 +59,14 @@ describe('mapDiscordMessage', () => {
     expect(result!.text).toBe('what is the status?')
   })
 
-  test('marks admin users via ADMIN_USER_ID equality', () => {
+  test('does not mark admin users via ADMIN_USER_ID equality', () => {
     const msg = makeMsg({
       author: { id: adminId, username: 'admin', bot: false },
       content: `<@${botId}> hello`,
     })
     const result = mapDiscordMessage(msg, botId, adminId)
     expect(result).not.toBeNull()
-    expect(result!.user.isAdmin).toBe(true)
+    expect(result!.user.isAdmin).toBe(false)
   })
 
   test('returns null for bot-authored messages', () => {
@@ -108,14 +110,16 @@ describe('mapDiscordMessage', () => {
       adminId,
     )
 
-    expect(mapped?.contextName).toBe('operations')
-    expect(mapped?.contextParentName).toBe('Platform')
+    expect(mapped).not.toBeNull()
+    expect(mapped!.contextName).toBe('operations')
+    expect(mapped!.contextParentName).toBe('Platform')
   })
 
   test('uses the provided platform instance ID', () => {
     const msg = makeMsg({ content: `<@${botId}> /help` })
     const result = mapDiscordMessage(msg, botId, adminId, 'discord-secondary')
 
-    expect(result?.platformInstanceId).toBe('discord-secondary')
+    expect(result).not.toBeNull()
+    expect(result!.platformInstanceId).toBe('discord-secondary')
   })
 })

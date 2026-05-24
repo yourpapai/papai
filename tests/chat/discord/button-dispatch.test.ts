@@ -10,17 +10,19 @@ import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
 import type { CommandHandler } from '../../../src/chat/types.js'
 import { addGroupMember } from '../../../src/groups.js'
+import { addAdmin } from '../../../src/instances/admin-store.js'
 import { addUser as addScopedUser } from '../../../src/users.js'
 import { createMockReply, mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args.length === 0 ? undefined : args[0]
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
 }
 
 const stringCommandMatch = (commandMatch: string | RegExpMatchArray | null | undefined): string => {
-  assert(typeof commandMatch === 'string')
+  assert.ok(typeof commandMatch === 'string')
   return commandMatch
 }
 
@@ -155,6 +157,7 @@ describe('routeButtonFallback', () => {
 
     test('allows configured bot admin to execute commands via buttons in allowlisted groups', async () => {
       addAuthorizedGroup('channel-123', 'admin-123')
+      addAdmin('admin-123', TEST_PLATFORM_ID)
 
       const interaction = createMockInteraction({
         userId: 'admin-123',
@@ -297,9 +300,9 @@ describe('routeButtonFallback', () => {
       expect(auth.isGroupAdmin).toBe(true)
     })
 
-    test('bot admin has both isBotAdmin and isGroupAdmin true in groups', async () => {
+    test('bot admin row does not imply group admin in groups', async () => {
       addAuthorizedGroup('channel-123', 'admin-123')
-      // The configured admin user
+      addAdmin('admin-123', TEST_PLATFORM_ID)
       const interaction = createMockInteraction({
         userId: 'admin-123',
         username: 'adminuser',
@@ -313,7 +316,7 @@ describe('routeButtonFallback', () => {
       expect(commandCalled).toBe(true)
       const auth = requireCapturedAuth(capturedAuth)
       expect(auth.isBotAdmin).toBe(true)
-      expect(auth.isGroupAdmin).toBe(true)
+      expect(auth.isGroupAdmin).toBe(false)
     })
   })
 
@@ -550,14 +553,13 @@ describe('routeButtonFallback', () => {
       expect(requireCapturedAuth(capturedAuth).isGroupAdmin).toBe(true)
     })
 
-    test('detects platform admin from bot admin ID match', async () => {
+    test('detects bot admin from admin row without platform admin ID fallback', async () => {
       addAuthorizedGroup('channel-123', 'admin-123')
-      // User matches adminUserId but doesn't have explicit isAdmin property
+      addAdmin('admin-123', TEST_PLATFORM_ID)
       const interaction = createMockInteraction({
         userId: 'admin-123',
         username: 'adminuser',
         customId: '/help',
-        // isAdmin not set explicitly
       })
       const commands = new Map<string, CommandHandler>([['help', mockCommandHandler]])
 
@@ -566,7 +568,7 @@ describe('routeButtonFallback', () => {
       expect(commandCalled).toBe(true)
       const auth = requireCapturedAuth(capturedAuth)
       expect(auth.isBotAdmin).toBe(true)
-      expect(auth.isGroupAdmin).toBe(true)
+      expect(auth.isGroupAdmin).toBe(false)
     })
   })
 

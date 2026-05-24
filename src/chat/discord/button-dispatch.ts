@@ -11,6 +11,26 @@ import { buildDiscordInteraction } from './interaction-helpers.js'
 import { createDiscordReplyFn } from './reply-helpers.js'
 
 const log = logger.child({ scope: 'chat:discord' })
+type RouteButtonFallbackArgs =
+  | [
+      interaction: ButtonInteractionLike,
+      channel: NonNullable<ButtonInteractionLike['channel']>,
+      contextId: string,
+      contextType: 'dm' | 'group',
+      _adminUserId: string,
+      commands: Map<string, CommandHandler>,
+      messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
+    ]
+  | [
+      interaction: ButtonInteractionLike,
+      channel: NonNullable<ButtonInteractionLike['channel']>,
+      contextId: string,
+      contextType: 'dm' | 'group',
+      _adminUserId: string,
+      commands: Map<string, CommandHandler>,
+      messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
+      platformInstanceId: string,
+    ]
 
 export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promise<void> {
   try {
@@ -24,18 +44,20 @@ export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promis
 }
 
 export function buildInteraction(
-  interaction: ButtonInteractionLike,
-  adminUserId: string,
-  platformInstanceId = 'discord-default',
+  ...args:
+    | [interaction: ButtonInteractionLike, _adminUserId: string]
+    | [interaction: ButtonInteractionLike, _adminUserId: string, platformInstanceId: string]
 ): {
   incoming: IncomingInteraction
   channel: NonNullable<ButtonInteractionLike['channel']>
   reply: ReplyFn
 } | null {
+  const [interaction] = args
+  const platformInstanceId = args.length === 3 ? args[2] : 'discord-default'
   const channel = interaction.channel
   if (channel === null) return null
 
-  const isAdmin = interaction.user.id === adminUserId
+  const isAdmin = interaction.user.isAdmin === true
   const incomingInteraction = buildDiscordInteraction(
     {
       user: interaction.user,
@@ -68,12 +90,18 @@ function supportsEditableMessage(
 }
 
 export function createFallbackMessage(
-  interaction: ButtonInteractionLike,
-  contextId: string,
-  contextType: 'dm' | 'group',
-  isPlatformAdmin: boolean,
-  platformInstanceId = 'discord-default',
+  ...args:
+    | [interaction: ButtonInteractionLike, contextId: string, contextType: 'dm' | 'group', isPlatformAdmin: boolean]
+    | [
+        interaction: ButtonInteractionLike,
+        contextId: string,
+        contextType: 'dm' | 'group',
+        isPlatformAdmin: boolean,
+        platformInstanceId: string,
+      ]
 ): IncomingMessage {
+  const [interaction, contextId, contextType, isPlatformAdmin] = args
+  const platformInstanceId = args.length === 5 ? args[4] : 'discord-default'
   return {
     user: {
       id: interaction.user.id,
@@ -141,22 +169,14 @@ async function executeCommand(
   await handler(mapped, reply, auth)
 }
 
-export async function routeButtonFallback(
-  interaction: ButtonInteractionLike,
-  channel: NonNullable<ButtonInteractionLike['channel']>,
-  contextId: string,
-  contextType: 'dm' | 'group',
-  adminUserId: string,
-  commands: Map<string, CommandHandler>,
-  messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
-  platformInstanceId = 'discord-default',
-): Promise<void> {
+export async function routeButtonFallback(...args: RouteButtonFallbackArgs): Promise<void> {
+  const [interaction, channel, contextId, contextType, , commands, messageHandler] = args
+  const platformInstanceId = args.length === 8 ? args[7] : 'discord-default'
   const data = interaction.customId
 
   log.debug({ customId: data }, 'Unhandled button interaction in routeButtonFallback')
 
-  // Use user's platform admin status if true, otherwise check if user is bot admin
-  const isPlatformAdmin = interaction.user.isAdmin === true ? true : interaction.user.id === adminUserId
+  const isPlatformAdmin = interaction.user.isAdmin === true
   const mapped = createFallbackMessage(interaction, contextId, contextType, isPlatformAdmin, platformInstanceId)
   const reply = createDiscordReplyFn({
     channel,

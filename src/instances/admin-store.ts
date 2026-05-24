@@ -37,6 +37,20 @@ export const removeAdmin = (userId: string, platformInstanceId: string): void =>
   log.info({ userId, platformInstanceId }, 'admin removed')
 }
 
+const hasAdminRow = (userId: string, platformInstanceId: string): boolean => {
+  const row = getDrizzleDb()
+    .select({ userId: admins.userId })
+    .from(admins)
+    .where(and(eq(admins.userId, userId), eq(admins.platformInstanceId, platformInstanceId)))
+    .get()
+  return row !== undefined
+}
+
+export const isSuperAdmin = (userId: string): boolean => hasAdminRow(userId, SUPER_ADMIN_PLATFORM_ID)
+
+export const isPlatformAdmin = (userId: string, platformInstanceId: string): boolean =>
+  hasAdminRow(userId, platformInstanceId)
+
 export const isAdmin = (userId: string, platformInstanceId: string): boolean => {
   const row = getDrizzleDb()
     .select({ userId: admins.userId })

@@ -36,6 +36,7 @@ import { listManageableGroups } from '../src/group-settings/access.js'
 import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src/group-settings/state.js'
 import { addGroupMember } from '../src/groups.js'
 import { getContextSettings, setContextSettings } from '../src/instances/context-store.js'
+import { addAdmin } from '../src/instances/admin-store.js'
 import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
@@ -152,7 +153,7 @@ describe('Authorization Logic', () => {
   describe('Bot Admin Authorization', () => {
     test('Bot admin in DM → allowed with isBotAdmin, storageContextId=userId', () => {
       addUser('admin-1', 'system', 'admin')
-      process.env['ADMIN_USER_ID'] = 'admin-1'
+      addAdmin('admin-1', TEST_PLATFORM_ID)
 
       const result = checkAuthorizationExtended('admin-1', 'admin', 'admin-1', 'dm', undefined, false)
       expect(result).toEqual({
@@ -166,6 +167,7 @@ describe('Authorization Logic', () => {
 
     test('Bot admin in group → allowed with isBotAdmin, storageContextId=groupId', () => {
       addUser('admin-1', 'system', 'admin')
+      addAdmin('admin-1', TEST_PLATFORM_ID)
       addAuthorizedGroup('group-1', 'system')
 
       const result = checkAuthorizationExtended('admin-1', 'admin', 'group-1', 'group', undefined, false)
@@ -180,6 +182,7 @@ describe('Authorization Logic', () => {
 
     test('Bot admin who is also platform admin → isGroupAdmin=true', () => {
       addUser('admin-1', 'system', 'admin')
+      addAdmin('admin-1', TEST_PLATFORM_ID)
       addAuthorizedGroup('group-1', 'system')
 
       const result = checkAuthorizationExtended('admin-1', 'admin', 'group-1', 'group', undefined, true)
@@ -292,6 +295,7 @@ describe('Authorization Logic', () => {
   describe('Priority: Bot Admin Wins Over Group Check', () => {
     test('User who is BOTH bot admin AND group member → returns bot admin result (isBotAdmin=true)', () => {
       addUser('admin-1', 'system', 'admin')
+      addAdmin('admin-1', TEST_PLATFORM_ID)
       addAuthorizedGroup('group-1', 'system')
       addGroupMember('group-1', 'admin-1', 'system')
 
