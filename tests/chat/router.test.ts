@@ -405,6 +405,18 @@ describe('ChatRouter', () => {
     expect(userId).toBe('discord:alice')
   })
 
+  test('getPlatformInstanceCapabilities returns capabilities for a managed instance', () => {
+    const capabilityRouter = new ChatRouter((id: string, type: PlatformInstanceType, _config: InstanceConfig) => {
+      const fakeProvider = makeProvider(type, { capabilities: ['messages.buttons'] })
+      providers[id] = fakeProvider
+      return fakeProvider
+    })
+    capabilityRouter.addInstance('telegram-a', 'telegram', { token: 'x' })
+
+    expect(capabilityRouter.getPlatformInstanceCapabilities('telegram-a')).toEqual(new Set(['messages.buttons']))
+    expect(capabilityRouter.getPlatformInstanceCapabilities('missing')).toEqual(new Set())
+  })
+
   test('uses context settings to resolve users and groups when platform instance context is absent', async () => {
     router.addInstance('telegram-main', 'telegram', {})
     router.addInstance('discord-main', 'discord', {})

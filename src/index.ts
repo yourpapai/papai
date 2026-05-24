@@ -18,12 +18,14 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-route
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
 import { listActivePlatformInstances } from './instances/platform-store.js'
+import { listTaskInstances } from './instances/task-store.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
 import { discoverPlugins } from './plugins/discovery.js'
 import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
 import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
+import { collectStartupCompatibilityInstances } from './plugins/startup-compatibility.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
@@ -148,12 +150,12 @@ if (pluginErrors.length > 0) {
 }
 syncRegistryFromDb(discoveredPlugins)
 try {
-  const adminProvider = defaultTaskProviderResolver.resolve(adminUserId)
-  if (adminProvider !== null) {
-    for (const plugin of discoveredPlugins) {
-      pluginRegistry.evaluateCompatibility(plugin.manifest.id, adminProvider.capabilities, chatProvider.capabilities)
-    }
-  }
+  const compatibilityInstances = collectStartupCompatibilityInstances(
+    chatProvider,
+    listTaskInstances(),
+    activePlatformInstances,
+  )
+  pluginRegistry.evaluateCompatibilityAcrossInstances(compatibilityInstances)
 } catch (error) {
   log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Plugin compatibility evaluation skipped')
 }

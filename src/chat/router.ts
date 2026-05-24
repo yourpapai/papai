@@ -9,11 +9,12 @@ import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import {
-  activeInstanceStatuses,
+  activeManagedInstances,
   errorMessage,
   fallbackContextRendered,
   fallbackThreadCapabilities,
   fallbackTraits,
+  firstActiveManagedInstance,
 } from './router-helpers.js'
 import type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
@@ -48,7 +49,7 @@ export class ChatRouter implements ChatProvider {
   constructor(private readonly factory: ManagedChatInstanceFactory) {}
 
   get threadCapabilities(): ThreadCapabilities {
-    const instance = this.firstActiveInstance()
+    const instance = firstActiveManagedInstance(this.instances.values())
     if (instance === null) return fallbackThreadCapabilities
     return instance.provider.threadCapabilities
   }
@@ -58,7 +59,7 @@ export class ChatRouter implements ChatProvider {
   }
 
   get traits(): ChatProviderTraits {
-    const instance = this.firstActiveInstance()
+    const instance = firstActiveManagedInstance(this.instances.values())
     if (instance === null) return fallbackTraits
     return instance.provider.traits
   }
@@ -171,7 +172,7 @@ export class ChatRouter implements ChatProvider {
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {
-    const instance = this.firstActiveInstance()
+    const instance = firstActiveManagedInstance(this.instances.values())
     if (instance === null) return fallbackContextRendered
     return instance.provider.renderContext(snapshot)
   }
@@ -193,6 +194,12 @@ export class ChatRouter implements ChatProvider {
     const instance = this.instances.get(platformInstanceId)
     if (instance === undefined) return null
     return instance.provider.traits
+  }
+
+  getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
+    const instance = this.instances.get(platformInstanceId)
+    if (instance === undefined) return new Set()
+    return instance.provider.capabilities
   }
 
   resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
@@ -219,13 +226,7 @@ export class ChatRouter implements ChatProvider {
   }
 
   private activeInstances(): ManagedChatInstance[] {
-    return [...this.instances.values()].filter((instance) => activeInstanceStatuses.has(instance.status))
-  }
-
-  private firstActiveInstance(): ManagedChatInstance | null {
-    const instance = this.activeInstances()[0]
-    if (instance === undefined) return null
-    return instance
+    return activeManagedInstances(this.instances.values())
   }
 
   private registerExistingHandlers(instance: ManagedChatInstance): void {
