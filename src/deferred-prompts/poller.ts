@@ -41,14 +41,19 @@ const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContex
 const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
   typeof Reflect.get(chat, 'getInstance') === 'function'
 
-async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
+function resolveProactivePlatformInstanceId(chat: ChatProvider, target: DeferredDeliveryTarget): string | null {
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
-  if (platformInstanceId === null) return false
+  if (platformInstanceId === null) return null
   if (hasRouterInstanceLookup(chat)) {
     const instance = chat.getInstance(platformInstanceId)
-    if (instance === undefined) return false
-    if (instance === null) return false
+    if (instance === undefined || instance === null) return null
   }
+  return platformInstanceId
+}
+
+async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
+  const platformInstanceId = resolveProactivePlatformInstanceId(chat, target)
+  if (platformInstanceId === null) return false
   await chat.sendMessage(platformInstanceId, target, markdown)
   return true
 }
@@ -70,6 +75,7 @@ async function executeScheduledPromptsForGroup(
     { userId: createdByUserId, promptCount: prompts.length, promptIds, mode: metadata.mode },
     'Executing scheduled prompts',
   )
+  if (resolveProactivePlatformInstanceId(chat, execCtx.deliveryTarget) === null) return
   let response: string
   try {
     response = await dispatchExecution(execCtx, 'scheduled', mergedPrompt, metadata, buildProviderFn)
@@ -139,6 +145,7 @@ async function executeSingleAlert(
   const matchedTasksSummary = `Alert condition: ${conditionDesc}\n${taskList}`
 
   const execCtx = alertToExecCtx(alert)
+  if (resolveProactivePlatformInstanceId(chat, alert.deliveryTarget) === null) return { matched: true, delivered: false }
   let response: string
   try {
     response = await dispatchExecution(
@@ -213,28 +220,19 @@ async function executeAlertsForUser(
   if (!shouldAdvanceAlertSnapshots(alertResults)) return
   updateSnapshots(storageContextId, tasks)
 }
-
 export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildProviderFn): Promise<void> {
   log.debug('pollAlertsOnce called')
-
   const eligibleAlerts = getEligibleAlertPrompts()
   emitGlobal('poller:alerts', { eligibleCount: eligibleAlerts.length })
-
   if (eligibleAlerts.length === 0) return
-
   const now = new Date()
-
   const byDeliveryContext = new Map<string, AlertPrompt[]>()
   for (const alert of eligibleAlerts) {
     const key = alertDeliveryContextKey(alert)
     const existing = byDeliveryContext.get(key)
-    if (existing === undefined) {
-      byDeliveryContext.set(key, [alert])
-    } else {
-      existing.push(alert)
-    }
+    if (existing === undefined) byDeliveryContext.set(key, [alert])
+    else existing.push(alert)
   }
-
   const userLimit = pLimit(MAX_CONCURRENT_USERS)
   const results = await Promise.allSettled(
     [...byDeliveryContext.values()].map((alerts) =>
@@ -245,7 +243,6 @@ export async function pollAlertsOnce(chat: ChatProvider, buildProviderFn: BuildP
   )
   logSettledErrors(results, 'Error polling alerts for user')
 }
-
 export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderFn): void {
   if (isRunning) {
     log.warn('Pollers already running')
@@ -267,7 +264,6 @@ export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderF
   scheduler.start('deferred-alert-poll')
   log.info({ scheduledPollMs: SCHEDULED_POLL_MS, alertPollMs: ALERT_POLL_MS }, 'Started deferred prompt pollers')
 }
-
 export function stopPollers(): void {
   log.info('Stopping deferred prompt pollers')
   scheduler.stop('deferred-scheduled-poll')
@@ -276,7 +272,6 @@ export function stopPollers(): void {
   scheduler.unregister('deferred-alert-poll')
   isRunning = false
 }
-
 export type PollerSnapshot = {
   scheduledRunning: boolean
   alertsRunning: boolean
@@ -285,7 +280,6 @@ export type PollerSnapshot = {
   maxConcurrentLlmCalls: number
   maxConcurrentUsers: number
 }
-
 export function getPollerSnapshot(): PollerSnapshot {
   return {
     scheduledRunning: isRunning,

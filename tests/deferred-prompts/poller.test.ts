@@ -108,11 +108,17 @@ describe('pollScheduledOnce', () => {
   test('keeps due prompt active when delivery route is unresolved', async () => {
     const unroutedUser = 'missing-route-user'
     setConfig(unroutedUser, 'timezone', 'UTC')
+    let callCount = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      callCount++
+      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(unroutedUser, 'Check my overdue tasks', { fireAt: pastTime })
 
     await pollScheduledOnce(chat, () => provider)
 
+    expect(callCount).toBe(0)
     expect(sentMessages).toHaveLength(0)
     const updated = getScheduledPrompt(created.id, unroutedUser)
     expect(updated).not.toBeNull()
@@ -123,11 +129,17 @@ describe('pollScheduledOnce', () => {
   test('keeps due prompt active when router instance is stale', async () => {
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'stale-platform' })
     chat = { ...chat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    let callCount = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      callCount++
+      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    }
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
 
     await pollScheduledOnce(chat, () => provider)
 
+    expect(callCount).toBe(0)
     expect(sentMessages).toHaveLength(0)
     const updated = getScheduledPrompt(created.id, USER_ID)
     expect(updated).not.toBeNull()
@@ -443,6 +455,11 @@ describe('pollAlertsOnce', () => {
   test('keeps alert eligible when delivery route is unresolved', async () => {
     const unroutedUser = 'missing-alert-route-user'
     setConfig(unroutedUser, 'timezone', 'UTC')
+    let callCount = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      callCount++
+      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    }
     const created = createAlertPrompt(unroutedUser, 'Notify on done', {
       field: 'task.status',
       op: 'eq',
@@ -458,6 +475,7 @@ describe('pollAlertsOnce', () => {
 
     await pollAlertsOnce(chat, () => provider)
 
+    expect(callCount).toBe(0)
     expect(sentMessages).toHaveLength(0)
     const updated = getAlertPrompt(created.id, unroutedUser)
     expect(updated).not.toBeNull()
@@ -467,6 +485,11 @@ describe('pollAlertsOnce', () => {
   test('keeps alert eligible when router instance is stale', async () => {
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'stale-platform' })
     chat = { ...chat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    let callCount = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      callCount++
+      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    }
     const created = createAlertPrompt(USER_ID, 'Notify on done', {
       field: 'task.status',
       op: 'eq',
@@ -482,6 +505,7 @@ describe('pollAlertsOnce', () => {
 
     await pollAlertsOnce(chat, () => provider)
 
+    expect(callCount).toBe(0)
     expect(sentMessages).toHaveLength(0)
     const updated = getAlertPrompt(created.id, USER_ID)
     expect(updated).not.toBeNull()

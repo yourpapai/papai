@@ -230,4 +230,23 @@ describe('announceNewVersion', () => {
     // No messages sent due to failure
     expect(sentMessages).toHaveLength(0)
   })
+
+  test('retries announcement after send failure', async () => {
+    const sendResponses: Array<(platformInstanceId: string, userId: string, text: string) => Promise<void>> = [
+      () => Promise.reject(new Error('API error')),
+      (platformInstanceId, userId, text) => {
+        sentMessages.push({ platformInstanceId, userId, text })
+        return Promise.resolve()
+      },
+    ]
+    sendMessageImpl = (platformInstanceId, userId, text): Promise<void> =>
+      sendResponses.shift()!(platformInstanceId, userId, text)
+    changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+  })
 })

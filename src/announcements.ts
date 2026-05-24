@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import packageJson from '../package.json' with { type: 'json' }
+import { eq } from 'drizzle-orm'
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
@@ -23,6 +24,11 @@ const defaultAnnouncementsDeps: AnnouncementsDeps = {
 const log = logger.child({ scope: 'announcements' })
 
 const VERSION: string = packageJson.version
+
+function isVersionAnnounced(version: string): boolean {
+  const row = getDrizzleDb().select().from(versionAnnouncements).where(eq(versionAnnouncements.version, version)).get()
+  return row !== undefined
+}
 
 function markVersionAnnounced(version: string): boolean {
   try {
@@ -66,8 +72,7 @@ export async function announceNewVersion(
   const changelogSection = await loadChangelogSection(effectiveDeps)
   if (changelogSection === null) return
 
-  const claimed = markVersionAnnounced(VERSION)
-  if (!claimed) {
+  if (isVersionAnnounced(VERSION)) {
     log.debug({ version: VERSION }, 'Version already announced, skipping')
     return
   }
@@ -76,6 +81,7 @@ export async function announceNewVersion(
 
   const message = `🆕 papai v${VERSION} has been released!\n\n${changelogSection}`
   const success = await sendAnnouncementToAdmin(platformInstanceId, adminUserId, message, chat)
+  if (success) markVersionAnnounced(VERSION)
 
   log.info({ version: VERSION, success }, 'Version announcement complete')
 }
