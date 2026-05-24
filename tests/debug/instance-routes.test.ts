@@ -12,9 +12,15 @@ import type { ChatProvider, ContextSnapshot } from '../../src/chat/types.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { handleInstanceApiRoute, handleInstanceApiRouteWithDeps } from '../../src/debug/instance-routes.js'
 import { addAdmin, listAdmins, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
-import { listContextsByTaskInstance, setContextSettings } from '../../src/instances/context-store.js'
+import {
+  listContextsByPlatformInstance,
+  listContextsByTaskInstance,
+  setContextSettings,
+} from '../../src/instances/context-store.js'
+import { insertPlatformInstance } from '../../src/instances/platform-store.js'
+import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import type { PlatformInstance } from '../../src/instances/types.js'
+import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const TOKEN = 'instance-api-token'
@@ -62,6 +68,12 @@ const pick = (value: object, key: string): unknown => Reflect.get(value, key)
 const expectInstance = (router: ChatRouter, id: string): ManagedChatInstance => {
   const instance = router.getInstance(id)
   if (instance === null) throw new Error(`expected router instance ${id}`)
+  return instance
+}
+
+const expectTaskInstance = (id: string): TaskInstance => {
+  const instance = getTaskInstance(id)
+  if (instance === null) throw new Error(`expected task instance ${id}`)
   return instance
 }
 
@@ -116,6 +128,24 @@ describe('instance API routes', () => {
     expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '***', label: 'main' })
   })
 
+  test('returns null for unrelated API paths', async () => {
+    const res = await route('/api/not-instances')
+
+    expect(res).toBeNull()
+  })
+
+  test('rejects invalid platform instance schema with 400', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ id: '', type: 'telegram', config: { token: 'secret' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+  })
+
   test('rejects writes when DEBUG_TOKEN is unset', async () => {
     delete process.env['DEBUG_TOKEN']
 
@@ -141,7 +171,7 @@ describe('instance API routes', () => {
     expect(res.status).toBe(503)
   })
 
-  test('apply starts active DB platform instances missing from the runtime router', async () => {
+  test('apply starts active DB platform instances missing from the runtime router and returns applied count', async () => {
     const start = mock(async () => {})
     const stop = mock(async () => {})
     const router = new ChatRouter(() => fakeProvider(start, stop))
@@ -168,9 +198,53 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(200)
     expect(start.mock.calls.length).toBeGreaterThanOrEqual(1)
-    const body = assertObject(await readJson(res))
-    expect(assertArray(pick(body, 'added'))).toContain(instanceId)
+    expect(await readJson(res)).toEqual({ applied: 1 })
     expect(expectInstance(router, instanceId).status).toBe('active')
+  })
+
+  test('apply starts stopped runtime instances whose DB rows are active', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    const instanceId = `telegram-stopped-${randomUUID()}`
+    const instance: PlatformInstance = {
+      id: instanceId,
+      type: 'telegram',
+      config: { token: 'secret' },
+      status: 'active',
+      createdAt: '2026-05-24 00:00:00',
+    }
+
+    router.addInstance(instance.id, instance.type, instance.config)
+    await router.stopInstance(instance.id)
+    start.mockClear()
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(expectInstance(router, instanceId).status).toBe('active')
+  })
+
+  test('deletes platform instance context settings before deleting the platform instance', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(listContextsByPlatformInstance('telegram-main')).toEqual([])
   })
 
   test('updates platform instance status', async () => {
@@ -205,6 +279,36 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(204)
     expect(listContextsByTaskInstance('tasks-main')).toEqual([])
+  })
+
+  test('creates and lists masked task instances', async () => {
+    const created = expectResponse(
+      await route('/api/task-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          id: 'tasks-main',
+          type: 'kaneo',
+          config: { api_key: 'secret', url: 'https://kaneo.invalid' },
+        }),
+      }),
+    )
+
+    expect(created.status).toBe(201)
+    expect(pick(assertObject(await readJson(created)), 'config')).toEqual({
+      api_key: '***',
+      url: 'https://kaneo.invalid',
+    })
+    expect(expectTaskInstance('tasks-main').status).toBe('active')
+
+    const listed = expectResponse(await route('/api/task-instances'))
+
+    expect(listed.status).toBe(200)
+    expect(listTaskInstances()).toHaveLength(1)
+    expect(pick(assertObject(assertArray(await readJson(listed))[0]), 'config')).toEqual({
+      api_key: '***',
+      url: 'https://kaneo.invalid',
+    })
   })
 
   test('creates and deletes super-admin rows', async () => {

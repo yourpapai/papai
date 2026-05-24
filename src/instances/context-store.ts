@@ -72,3 +72,13 @@ export const deleteContextsByTaskInstance = (taskInstanceId: string): number => 
   log.info({ taskInstanceId, deletedCount: deletedRows.length }, 'context settings deleted for task instance')
   return deletedRows.length
 }
+
+export const deleteContextsByPlatformInstance = (platformInstanceId: string): number => {
+  const deletedRows = getDrizzleDb()
+    .delete(contextSettings)
+    .where(eq(contextSettings.platformInstanceId, platformInstanceId))
+    .returning({ contextId: contextSettings.contextId })
+    .all()
+  log.info({ platformInstanceId, deletedCount: deletedRows.length }, 'context settings deleted for platform instance')
+  return deletedRows.length
+}

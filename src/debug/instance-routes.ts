@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import type { ChatRouter } from '../chat/router.js'
 import { addAdmin, listAdmins, removeAdmin, SUPER_ADMIN_PLATFORM_ID } from '../instances/admin-store.js'
-import { deleteContextsByTaskInstance } from '../instances/context-store.js'
+import { deleteContextsByPlatformInstance, deleteContextsByTaskInstance } from '../instances/context-store.js'
 import { maskConfig } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
@@ -146,6 +146,7 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
     if (instanceId === undefined) return textResponse('Not found', 404)
     const router = getRuntimeChatRouter()
     if (router !== null) await router.removeInstance(instanceId)
+    deleteContextsByPlatformInstance(instanceId)
     deletePlatformInstance(instanceId)
     return new Response(null, { status: 204 })
   }
@@ -162,6 +163,10 @@ const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Response> 
   const runtimeIds = router.listInstances().map((instance) => instance.id)
   const removed = runtimeIds.filter((id) => !activeIds.has(id))
   const missing = activeInstances.filter((instance) => router.getInstance(instance.id) === null)
+  const stopped = activeInstances.filter((instance) => {
+    const runtimeInstance = router.getInstance(instance.id)
+    return runtimeInstance !== null && runtimeInstance.status === 'stopped'
+  })
 
   await Promise.all(removed.map((id) => router.removeInstance(id)))
   await Promise.all(
@@ -170,8 +175,9 @@ const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Response> 
       return router.startInstance(instance.id)
     }),
   )
+  await Promise.all(stopped.map((instance) => router.startInstance(instance.id)))
 
-  return jsonResponse({ added: missing.map((instance) => instance.id), removed })
+  return jsonResponse({ applied: activeInstances.length })
 }
 
 const handleTaskInstances = async (req: Request, url: URL): Promise<Response | null> => {
