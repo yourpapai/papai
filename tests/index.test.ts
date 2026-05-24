@@ -348,7 +348,7 @@ describe('index.ts - graceful shutdown', () => {
     expect(runtimeRouterCalls).toHaveLength(1)
     expect(loggedErrors.length).toBeGreaterThan(0)
     expect(capturedAnnouncementPlatformInstanceId).toBe(activePlatformInstance.id)
-    expect(resolverContexts).toEqual(['poller-context-1', 'admin-1'])
+    expect(resolverContexts).toEqual(['poller-context-1'])
     assert.ok(capturedDeps !== undefined)
     assert.ok(capturedDeps.stagedDownloadFn !== undefined)
 

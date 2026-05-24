@@ -45,11 +45,15 @@ import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _identityMapping from '../src/identity/mapping.js'
 import * as _instancesBootstrap from '../src/instances/bootstrap.js'
+import * as _platformStore from '../src/instances/platform-store.js'
+import * as _taskStore from '../src/instances/task-store.js'
 import * as _logger from '../src/logger.js'
 import * as _memos from '../src/memos.js'
 import * as _messageCache from '../src/message-cache/cache.js'
 import * as _messageCacheIndex from '../src/message-cache/index.js'
 import * as _messageQueueIndex from '../src/message-queue/index.js'
+import * as _pluginDiscovery from '../src/plugins/discovery.js'
+import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
 import * as _provision from '../src/providers/kaneo/provision.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
@@ -57,6 +61,7 @@ import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
 import * as _scheduler from '../src/scheduler.js'
 import * as _systemConfig from '../src/system-config.js'
+import * as _usageIndex from '../src/usage/index.js'
 import * as _users from '../src/users.js'
 
 const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
@@ -83,15 +88,20 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
   ['../src/instances/bootstrap.js', { ..._instancesBootstrap }],
+  ['../src/instances/platform-store.js', { ..._platformStore }],
+  ['../src/instances/task-store.js', { ..._taskStore }],
   ['../src/memos.js', { ..._memos }],
   ['../src/message-cache/index.js', { ..._messageCacheIndex }],
   ['../src/message-queue/index.js', { ..._messageQueueIndex }],
+  ['../src/plugins/discovery.js', { ..._pluginDiscovery }],
+  ['../src/plugins/loader.js', { ..._pluginLoader }],
   ['../src/plugins/registry.js', { ..._pluginRegistry }],
   ['../src/providers/resolver.js', { ..._taskProviderResolver }],
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],
   ['../src/system-config.js', { ..._systemConfig }],
+  ['../src/usage/index.js', { ..._usageIndex }],
   ['../src/users.js', { ..._users }],
 ]
 
