@@ -76,6 +76,8 @@ describe('index.ts - graceful shutdown', () => {
     expect(source).toContain("process.on('SIGINT'")
     expect(countMatches(source, /flushOnShutdown\(\s*\{\s*timeoutMs:\s*5000\s*\}\s*\)/gu)).toBe(1)
     expect(source).toContain('clearRuntimeChatRouter()')
+    expect(countMatches(source, /clearRuntimeChatRouter\(\)/gu)).toBe(1)
+    expect(source.indexOf('clearRuntimeChatRouter()')).toBeLessThan(source.indexOf('chatProvider.stop()'))
   })
 
   test('startup registers bot wiring before provider start and passes a lazy staged downloader', async () => {

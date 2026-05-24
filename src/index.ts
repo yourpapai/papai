@@ -175,6 +175,7 @@ if (process.env['DEBUG_SERVER'] === 'true') {
 // Graceful shutdown handlers
 const shutdown = (signal: string): void => {
   log.info(`${signal} received, starting graceful shutdown...`)
+  clearRuntimeChatRouter()
   void flushOnShutdown({ timeoutMs: 5000 })
     .then(async () => {
       await deactivateAllPlugins()
@@ -185,7 +186,6 @@ const shutdown = (signal: string): void => {
       return chatProvider.stop()
     })
     .then(() => {
-      clearRuntimeChatRouter()
       closeDrizzleDb()
       closeMigrationDbInstance()
       process.exit(0)
