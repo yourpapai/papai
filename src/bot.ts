@@ -32,7 +32,6 @@ import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
-import { isAuthorized, resolveUserByUsername } from './users.js'
 
 type ProcessMessageFn = typeof defaultProcessMessage
 type EnqueueMessageFn = typeof enqueueMessage
@@ -44,19 +43,6 @@ const defaultBotDeps: BotDeps = {
   enqueueMessage,
 }
 const log = logger.child({ scope: 'bot' })
-const TRANSITIONAL_PLATFORM_INSTANCE_ID = 'legacy-single'
-const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
-  log.debug({ userId }, 'Checking authorization')
-  if (isAuthorized(userId, TRANSITIONAL_PLATFORM_INSTANCE_ID)) return true
-  if (
-    username !== undefined &&
-    username !== null &&
-    resolveUserByUsername(userId, username, TRANSITIONAL_PLATFORM_INSTANCE_ID)
-  )
-    return true
-  log.warn({ attemptedUserId: userId }, 'Unauthorized access attempt')
-  return false
-}
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
   if (auth.reason === 'group_not_allowed')
@@ -124,10 +110,10 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   const observedChat = createObservedChatProvider(chat)
   registerHelpCommand(observedChat)
   registerStartCommand(observedChat)
-  registerSetupCommand(observedChat, checkAuthorization)
-  registerConfigCommand(observedChat, checkAuthorization)
+  registerSetupCommand(observedChat)
+  registerConfigCommand(observedChat)
   registerContextCommand(observedChat)
-  registerClearCommand(observedChat, checkAuthorization, adminUserId)
+  registerClearCommand(observedChat, undefined, adminUserId)
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
   registerPluginCommand(observedChat, adminUserId)

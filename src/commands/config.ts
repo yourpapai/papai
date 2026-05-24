@@ -172,10 +172,7 @@ async function replyWithConfigSelection(reply: ReplyFn, userId: string, interact
   }
 }
 
-export function registerConfigCommand(
-  chat: ChatProvider,
-  _checkAuthorization: (userId: string, username: string | null | undefined) => boolean,
-): void {
+export function registerConfigCommand(chat: ChatProvider, ..._rest: [] | [_checkAuthorization: unknown]): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
 

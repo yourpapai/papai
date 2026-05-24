@@ -199,10 +199,7 @@ async function replyWithSetupSelection(
   }
 }
 
-export function registerSetupCommand(
-  chat: ChatProvider,
-  _checkAuthorization: (userId: string, username: string | null | undefined) => boolean,
-): void {
+export function registerSetupCommand(chat: ChatProvider, ..._rest: [] | [_checkAuthorization: unknown]): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) {
       await reply.text(getUnauthorizedReplyText(auth, msg.contextId))

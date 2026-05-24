@@ -38,7 +38,7 @@ export const resolveInstanceConfigKey = (): Buffer => {
 export const encryptInstanceConfig = (plain: InstanceConfig): string => {
   const key = resolveInstanceConfigKey()
   const iv = randomBytes(IV_LEN)
-  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_LEN })
   const plaintext = Buffer.from(JSON.stringify(plain), 'utf8')
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
   const tag = cipher.getAuthTag()
@@ -54,7 +54,7 @@ export const decryptInstanceConfig = (encoded: string): InstanceConfig => {
   const tag = buf.subarray(IV_LEN, IV_LEN + TAG_LEN)
   const ciphertext = buf.subarray(IV_LEN + TAG_LEN)
   const key = resolveInstanceConfigKey()
-  const decipher = createDecipheriv('aes-256-gcm', key, iv)
+  const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_LEN })
   decipher.setAuthTag(tag)
   const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
   const parsed: unknown = JSON.parse(plaintext)
@@ -64,7 +64,7 @@ export const decryptInstanceConfig = (encoded: string): InstanceConfig => {
   const result: InstanceConfig = {}
   for (const [key2, value] of Object.entries(parsed)) {
     if (typeof value !== 'string') {
-      throw new Error(`Decrypted payload field "${key2}" is not a string`)
+      throw new TypeError(`Decrypted payload field "${key2}" is not a string`)
     }
     result[key2] = value
   }

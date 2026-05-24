@@ -65,6 +65,11 @@ export const isAdmin = (userId: string, platformInstanceId: string): boolean => 
   return row !== undefined
 }
 
+export const listAdmins = (): AdminRecord[] => {
+  const rows = getDrizzleDb().select().from(admins).all()
+  return rows.map((row) => rowToRecord(row))
+}
+
 export const listAdminsForPlatform = (platformInstanceId: string): AdminRecord[] => {
   const rows = getDrizzleDb().select().from(admins).where(eq(admins.platformInstanceId, platformInstanceId)).all()
   return rows.map((row) => rowToRecord(row))

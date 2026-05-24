@@ -10,6 +10,7 @@ import {
   isAdmin,
   isPlatformAdmin,
   isSuperAdmin,
+  listAdmins,
   listAdminsForPlatform,
   removeAdmin,
   SUPER_ADMIN_PLATFORM_ID,
@@ -84,5 +85,17 @@ describe('admin-store', () => {
       .map((a) => a.userId)
       .toSorted()
     expect(ids).toEqual(['u1', 'u2'])
+  })
+
+  test('listAdmins returns all admin rows', () => {
+    addAdmin('u1', 'tg-default')
+    addAdmin('u2', SUPER_ADMIN_PLATFORM_ID)
+    addAdmin('u3', 'mm-default')
+
+    const ids = listAdmins()
+      .map((a) => `${a.platformInstanceId}:${a.userId}`)
+      .toSorted()
+
+    expect(ids).toEqual(['__super__:u2', 'mm-default:u3', 'tg-default:u1'])
   })
 })
