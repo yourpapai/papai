@@ -679,6 +679,31 @@ describe('group commands', () => {
       expect(textCalls[0]).toContain('group-456 (added by Alice Two (@admin1))')
     })
 
+    test('does not pass DM platform instance into /groups added-by label lookups', async () => {
+      const seenContexts: Array<ResolveUserContext | undefined> = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const labeledChat = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveGroupLabel: (groupId: string): Promise<string | null> => Promise.resolve(groupId),
+        resolveUserLabel: (_userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
+          seenContexts.push(context)
+          return Promise.resolve(null)
+        },
+      })
+      registerGroupCommand(labeledChat)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      addAuthorizedGroup('group-123', 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(seenContexts).toEqual([{ contextId: 'group-123', contextType: 'group' }])
+    })
+
     test('lists group users with resolved member and adder labels', async () => {
       const labeledHandlers = new Map<string, CommandHandler>()
       const labeledChat = createMockChat({

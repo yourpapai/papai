@@ -13,7 +13,6 @@ import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.j
 import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'commands:group' })
-
 const GROUP_CHAT_USAGE = 'Usage: /group adduser <user-id|@username> | /group deluser <user-id|@username> | /group users'
 const DM_ADMIN_USAGE = 'Usage: /group add <group-id> | /group remove <group-id> | /groups'
 const MAX_CONCURRENT_LABEL_LOOKUPS = 5
@@ -22,7 +21,7 @@ type LabelResolverContext = {
   readonly chat: ChatProvider
   readonly contextId: string
   readonly contextType: 'dm' | 'group'
-  readonly platformInstanceId: string
+  readonly platformInstanceId: string | undefined
 }
 
 type ScheduleLookup = (lookup: () => Promise<string | null>) => Promise<string | null>
@@ -32,6 +31,11 @@ function makeDisplayLabel(label: string | null, fallback: string): string {
   return label
 }
 
+function resolveUserContextForLabelLookup(resolverContext: LabelResolverContext): ResolveUserContext {
+  return resolverContext.platformInstanceId === undefined
+    ? { contextId: resolverContext.contextId, contextType: resolverContext.contextType }
+    : { contextId: resolverContext.contextId, contextType: resolverContext.contextType, platformInstanceId: resolverContext.platformInstanceId }
+}
 function resolveUserLabelCached(
   resolverContext: LabelResolverContext,
   userId: string,
@@ -42,22 +46,20 @@ function resolveUserLabelCached(
   const existing = cache.get(cacheKey)
   if (existing !== undefined) return existing
   const pending = scheduleLookup(() =>
-    resolveChatUserDisplayLabel(resolverContext.chat, userId, {
-      contextId: resolverContext.contextId,
-      contextType: resolverContext.contextType,
-      platformInstanceId: resolverContext.platformInstanceId,
-    }).catch((error: unknown): string | null => {
-      log.warn(
-        {
-          userId,
-          contextId: resolverContext.contextId,
-          contextType: resolverContext.contextType,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'User label lookup failed in group command',
-      )
-      return null
-    }),
+    resolveChatUserDisplayLabel(resolverContext.chat, userId, resolveUserContextForLabelLookup(resolverContext)).catch(
+      (error: unknown): string | null => {
+        log.warn(
+          {
+            userId,
+            contextId: resolverContext.contextId,
+            contextType: resolverContext.contextType,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'User label lookup failed in group command',
+        )
+        return null
+      },
+    ),
   )
 
   cache.set(cacheKey, pending)
@@ -115,7 +117,7 @@ export function registerGroupCommand(chat: ChatProvider): void {
         const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
           resolveGroupLabelCached(chat, group.group_id, groupLabelCache, limit),
           resolveUserLabelCached(
-            { chat, contextId: group.group_id, contextType: 'group', platformInstanceId: msg.platformInstanceId },
+            { chat, contextId: group.group_id, contextType: 'group', platformInstanceId: undefined },
             group.added_by,
             userLabelCache,
             limit,

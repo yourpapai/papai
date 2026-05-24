@@ -159,20 +159,12 @@ async function sendContextResponse(
   }
 }
 
-type InstanceContextRenderer = ChatProvider & {
-  renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
-}
-
-function hasInstanceContextRenderer(chat: ChatProvider): chat is InstanceContextRenderer {
-  return typeof Reflect.get(chat, 'renderContextForInstance') === 'function'
-}
-
 function renderContextForMessage(
   chat: ChatProvider,
   msg: { readonly platformInstanceId: string },
   snapshot: ContextSnapshot,
 ): ContextRendered {
-  if (hasInstanceContextRenderer(chat)) {
+  if (chat.renderContextForInstance !== undefined) {
     return chat.renderContextForInstance(msg.platformInstanceId, snapshot)
   }
   return chat.renderContext(snapshot)

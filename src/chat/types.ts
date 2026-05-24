@@ -205,7 +205,6 @@ export type ChatButton = {
 
 /** Extended reply options with buttons */
 export interface ButtonReplyOptions extends ReplyOptions, Partial<{ buttons: ChatButton[] }> {}
-
 import type { ContextSnapshot } from './context-types.js'
 export type { ContextSection, ContextSnapshot } from './context-types.js'
 
@@ -279,18 +278,14 @@ export type ChatProvider = {
 
   /** Register a slash command handler (e.g., 'help' for /help). */
   registerCommand(name: string, handler: CommandHandler): void
-
   /** Register the catch-all handler for non-command messages. */
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void
-
   /** Send a formatted markdown message to a delivery target (for proactive/announcement sends). */
   sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void>
   /** Render a context snapshot into a platform-native representation. */
   renderContext(snapshot: ContextSnapshot): ContextRendered
-
   /** Start the bot event loop. */
   start(): Promise<void>
-
   /** Graceful shutdown. */
   stop(): Promise<void>
 } & Partial<{
@@ -299,6 +294,7 @@ export type ChatProvider = {
   resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
   resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
   resolveGroupLabel: (groupId: string) => Promise<string | null>
+  renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
   /** Register the bot's command list with the platform (for command menus). */
   setCommands: (adminUserId: string) => Promise<void>
 }>
