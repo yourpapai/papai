@@ -4,13 +4,25 @@
 // See LICENSE in the project root for details.
 
 import type { Preview } from '@storybook/svelte-vite'
+import { initialize } from 'msw-storybook-addon'
 
-// Stub preview. The mock layer (MSW, SSE stub, fixture decorator, theme
-// decorator) is wired in during Phase B (Task B9).
+import { fixturesLoader } from '../client/stories/decorators/withFixtures.js'
+import { assertFixturesMatchSchemas } from '../client/stories/fixtures/schemas.js'
+import { installIntersectionObserverStub } from '../client/stories/stubs/intersection-observer.js'
+import { installSseStub } from '../client/stories/stubs/sse.js'
+
+// Fail fast at preview boot if any fixture has drifted from its live schema.
+assertFixturesMatchSchemas()
+
+initialize({ onUnhandledRequest: 'bypass' })
+installSseStub()
+installIntersectionObserverStub()
+
 const preview: Preview = {
   parameters: {
     layout: 'fullscreen',
   },
+  loaders: [fixturesLoader],
 }
 
 export default preview

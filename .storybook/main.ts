@@ -13,7 +13,7 @@ const ROOT = path.resolve(__dirname, '..')
 const config: StorybookConfig = {
   framework: { name: '@storybook/svelte-vite', options: {} },
   stories: ['../client/**/*.stories.svelte'],
-  addons: ['@storybook/addon-svelte-csf', '@storybook/addon-a11y', '@storybook/addon-themes', 'msw-storybook-addon'],
+  addons: ['@storybook/addon-svelte-csf', '@storybook/addon-a11y', 'msw-storybook-addon'],
   staticDirs: ['../public'],
   typescript: { check: false },
   // The Svelte plugin is injected by @storybook/svelte-vite; here we only add

@@ -86,7 +86,6 @@
     "@opencode-ai/sdk": "^1.15.2",
     "@storybook/addon-a11y": "^9",
     "@storybook/addon-svelte-csf": "^5",
-    "@storybook/addon-themes": "^9",
     "@storybook/svelte-vite": "^9",
     "@stryker-mutator/core": "^9.6.0",
     "@stryker-mutator/typescript-checker": "^9.6.0",
