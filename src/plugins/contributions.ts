@@ -8,9 +8,12 @@ import { tool } from 'ai'
 import { z } from 'zod'
 
 import { logger } from '../logger.js'
+import { defaultTaskProviderResolver } from '../providers/resolver.js'
+import type { TaskProvider } from '../providers/types.js'
 import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import { namespacedJobName, namespacedToolName } from './contribution-names.js'
+import { getPluginContextEligibility } from './registry.js'
 import { getEnabledContextsForPlugin } from './store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from './tool-runtime.js'
 import type {
@@ -36,6 +39,35 @@ export type ActivePluginContributions = {
 }
 
 export type { PluginToolSetRuntime } from './tool-runtime.js'
+
+export type PluginScheduledJobDeps = Readonly<{
+  resolveTaskProvider: (contextId: string) => TaskProvider | null
+}>
+
+const defaultScheduledJobDeps: PluginScheduledJobDeps = {
+  resolveTaskProvider: (contextId) => defaultTaskProviderResolver.resolve(contextId),
+}
+
+const pluginNeedsTaskProvider = (manifest: PluginManifest): boolean => {
+  if (manifest.permissions.includes('tasks.read')) return true
+  if (manifest.permissions.includes('tasks.write')) return true
+  return manifest.requiredTaskCapabilities.length > 0
+}
+
+const getRawCommands = (rawContributions: PluginContributions): readonly PluginCommand[] => {
+  if (rawContributions.commands === undefined) return []
+  return rawContributions.commands
+}
+
+const getRawJobs = (rawContributions: PluginContributions): readonly PluginScheduledJob[] => {
+  if (rawContributions.jobs === undefined) return []
+  return rawContributions.jobs
+}
+
+const getInputSchema = (pluginTool: PluginTool): z.ZodType => {
+  if (pluginTool.inputSchema === undefined) return z.object({})
+  return pluginTool.inputSchema
+}
 
 /** Registry of active plugin contributions (in-memory, per-process). */
 class PluginContributionRegistry {
@@ -95,7 +127,7 @@ class PluginContributionRegistry {
     manifest: PluginManifest,
   ): PluginCommand[] {
     const declaredCommands = new Set(manifest.contributes.commands)
-    return (rawContributions.commands ?? []).filter((command) => {
+    return getRawCommands(rawContributions).filter((command) => {
       if (declaredCommands.has(command.name)) return true
       log.warn({ pluginId, commandName: command.name }, 'Plugin contributed undeclared command — skipping')
       return false
@@ -108,7 +140,7 @@ class PluginContributionRegistry {
     manifest: PluginManifest,
   ): PluginScheduledJob[] {
     const declaredJobs = new Set(manifest.contributes.jobs)
-    return (rawContributions.jobs ?? []).filter((job) => {
+    return getRawJobs(rawContributions).filter((job) => {
       if (declaredJobs.has(job.name)) return true
       log.warn({ pluginId, jobName: job.name }, 'Plugin contributed undeclared scheduled job — skipping')
       return false
@@ -165,15 +197,47 @@ class PluginContributionRegistry {
 /** Singleton contribution registry. */
 export const contributionRegistry = new PluginContributionRegistry()
 
-export async function runPluginScheduledJob(pluginId: string, jobName: string): Promise<void> {
+type RunPluginScheduledJobArgs =
+  | readonly [pluginId: string, jobName: string]
+  | readonly [pluginId: string, jobName: string, deps: PluginScheduledJobDeps]
+
+const getScheduledJobDeps = (args: RunPluginScheduledJobArgs): PluginScheduledJobDeps => {
+  if (args.length === 3) return args[2]
+  return defaultScheduledJobDeps
+}
+
+export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs): Promise<void> {
+  const [pluginId, jobName] = args
   const contributions = contributionRegistry.getContributions(pluginId)
-  const job = contributions?.jobs.find((candidate) => candidate.name === jobName)
+  if (contributions === undefined) return
+
+  const job = contributions.jobs.find((candidate) => candidate.name === jobName)
   if (job === undefined) return
 
-  await getEnabledContextsForPlugin(pluginId).reduce(
-    (chain, contextId) => chain.then(() => Promise.resolve(job.execute(contextId))),
-    Promise.resolve(),
-  )
+  const deps = getScheduledJobDeps(args)
+
+  await getEnabledContextsForPlugin(pluginId).reduce(async (chain, contextId) => {
+    await chain
+    const eligibility = getPluginContextEligibility(pluginId, contextId)
+    if (!eligibility.eligible) {
+      log.warn({ pluginId, jobName, contextId, reason: eligibility.reason }, 'Plugin job skipping ineligible context')
+      return
+    }
+
+    if (pluginNeedsTaskProvider(contributions.manifest) && deps.resolveTaskProvider(contextId) === null) {
+      log.warn({ pluginId, jobName, contextId }, 'Plugin job skipping context with unresolved task provider')
+      return
+    }
+
+    try {
+      await job.execute(contextId)
+    } catch (error) {
+      log.error(
+        { pluginId, jobName, contextId, error: error instanceof Error ? error.message : String(error) },
+        'Plugin job execution threw',
+      )
+    }
+  }, Promise.resolve())
 }
 
 /**
@@ -202,7 +266,7 @@ export function buildPluginToolSet(
 
       usedNames.add(namespacedName)
 
-      const schema = pluginTool.inputSchema ?? z.object({})
+      const schema = getInputSchema(pluginTool)
       const wrappedExecute = wrapToolExecution((input, options) => {
         return pluginTool.execute(
           input,
