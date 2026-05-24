@@ -169,3 +169,29 @@ export type AdminSystemSummary = {
   debugServer: boolean
   adminUserSet: boolean
 }
+
+export type InstanceConfigView = Record<string, string>
+
+export type InstanceStatusView = 'pending' | 'active' | 'stopped'
+
+export type PlatformInstanceView = {
+  readonly id: string
+  readonly type: 'telegram' | 'mattermost' | 'discord'
+  readonly config: InstanceConfigView
+  readonly status: InstanceStatusView
+  readonly createdAt: string
+}
+
+export type TaskInstanceView = {
+  readonly id: string
+  readonly type: 'kaneo' | 'youtrack'
+  readonly config: InstanceConfigView
+  readonly status: InstanceStatusView
+  readonly createdAt: string
+}
+
+export type AdminInstanceView =
+  | { readonly userId: string; readonly platformInstanceId: string; readonly createdAt: string }
+  | { readonly userId: string; readonly platformInstanceId: string }
+
+export type ApplyInstancesResult = { readonly applied: number }

@@ -199,19 +199,33 @@ export const AdminLlmSnapshotSchema = z.object({
   small_model: AdminLlmKeyStateSchema,
   embedding_model: AdminLlmKeyStateSchema,
 })
-
 const AdminChatProviderSchema = z.enum(['telegram', 'mattermost', 'discord', 'unknown'])
 const AdminTaskProviderSchema = z.enum(['kaneo', 'youtrack', 'unknown'])
-
 export const AdminSystemSummarySchema = z.object({
   chatProvider: AdminChatProviderSchema,
   taskProvider: AdminTaskProviderSchema,
   debugServer: z.boolean(),
   adminUserSet: z.boolean(),
 })
-
+export const InstanceConfigViewSchema = z.record(z.string(), z.string())
+const InstanceStatusViewSchema = z.enum(['pending', 'active', 'stopped'])
+const InstanceViewBaseSchema = z.object({
+  id: z.string(),
+  config: InstanceConfigViewSchema,
+  status: InstanceStatusViewSchema,
+  createdAt: z.string(),
+})
+export const PlatformInstanceViewSchema = InstanceViewBaseSchema.extend({
+  type: z.enum(['telegram', 'mattermost', 'discord']),
+})
+export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({ type: z.enum(['kaneo', 'youtrack']) })
+export const AdminInstanceViewSchema = z.object({
+  userId: z.string(),
+  platformInstanceId: z.string(),
+  createdAt: z.string().optional(),
+})
+export const ApplyInstancesResultSchema = z.object({ applied: z.number() })
 const AdminLlmKeySchema = z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model'])
-
 export const SubmitAdminLlmResponseSchema = z.object({
   ok: z.literal(true),
   key: AdminLlmKeySchema,
