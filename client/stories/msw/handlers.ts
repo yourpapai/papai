@@ -7,7 +7,13 @@ import { HttpResponse, delay, http } from 'msw'
 import type { HttpHandler } from 'msw'
 
 import type { AdminSystemSummary } from '../../shared/api-types.js'
-import { makeAdminLlmSnapshot, makeBillingDetail, makeBillingSubject, makeGlobalStats } from '../fixtures/index.js'
+import {
+  makeAdminLlmSnapshot,
+  makeBillingDetail,
+  makeBillingSubject,
+  makeGlobalStats,
+  makeSubjectStats,
+} from '../fixtures/index.js'
 
 const NEVER_RESOLVE_MS = 60_000
 
@@ -100,13 +106,24 @@ export const billingHandlers: HandlerFamily = {
 }
 
 export const statsHandlers: HandlerFamily = {
-  populated: [http.get('/stats/global', () => HttpResponse.json(makeGlobalStats()))],
+  populated: [
+    http.get('/stats/global', () => HttpResponse.json(makeGlobalStats())),
+    http.get('/stats/subject/:id', ({ params }) =>
+      HttpResponse.json(makeSubjectStats({ storageContextId: String(params['id']) })),
+    ),
+  ],
   empty: [
     http.get('/stats/global', () =>
       HttpResponse.json(makeGlobalStats({ subjects: { dmTotal: 0, groupTotal: 0, growthLast30d: [] } })),
     ),
+    http.get('/stats/subject/:id', ({ params }) =>
+      HttpResponse.json(makeSubjectStats({ storageContextId: String(params['id']) })),
+    ),
   ],
-  error: [http.get('/stats/global', () => HttpResponse.json({ error: 'boom' }, { status: 500 }))],
+  error: [
+    http.get('/stats/global', () => HttpResponse.json({ error: 'boom' }, { status: 500 })),
+    http.get('/stats/subject/:id', () => HttpResponse.json({ error: 'boom' }, { status: 500 })),
+  ],
   loading: [
     http.get('/stats/global', async () => {
       await delay(NEVER_RESOLVE_MS)

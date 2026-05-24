@@ -5,10 +5,11 @@
 
 import type { z } from 'zod'
 
-import type { GlobalStatsSchema } from '../../admin/fetcher-schemas.js'
+import type { GlobalStatsSchema, SubjectStatsSchema } from '../../admin/fetcher-schemas.js'
 import type { AdminLlmSnapshot, BillingDetail, BillingRoleTotals, BillingSubject } from '../../shared/api-types.js'
 
 type GlobalStats = z.infer<typeof GlobalStatsSchema>
+type SubjectStats = z.infer<typeof SubjectStatsSchema>
 
 const FIXED_TS = Date.UTC(2026, 4, 20, 12, 0, 0)
 
@@ -93,6 +94,81 @@ export function makeAdminLlmSnapshot(overrides: Partial<AdminLlmSnapshot> = {}):
     main_model: { ...base, value: 'gpt-4o-mini' },
     small_model: { ...base, value: 'gpt-4o-mini' },
     embedding_model: { ...base, value: 'text-embedding-3-small' },
+    ...overrides,
+  }
+}
+
+function subjectMemos(): SubjectStats['memos'] {
+  return {
+    total: 9,
+    byStatus: { active: 7, archived: 2 },
+    tagCardinality: { distinct: 5, meanPerMemo: 1.6 },
+    contentBytesTotal: 4_096,
+    embeddingBytesTotal: 12_288,
+    withEmbedding: 7,
+    oldestCreatedAt: FIXED_TS,
+    newestCreatedAt: FIXED_TS,
+  }
+}
+
+function subjectAttachments(): SubjectStats['attachments'] {
+  return {
+    total: 6,
+    byStatus: { stored: 5, pending: 1 },
+    bySourceProvider: { telegram: 6 },
+    storedBytesTotal: 1_048_576,
+    active: 5,
+    byExtension: { pdf: 3, png: 2, txt: 1 },
+  }
+}
+
+function subjectToolCalls(): SubjectStats['toolCalls'] {
+  return {
+    total: 30,
+    success: 28,
+    failure: 2,
+    topTools: [
+      { toolName: 'create_task', count: 12 },
+      { toolName: 'search_tasks', count: 9 },
+    ],
+    errorTypeCounts: { validation: 2 },
+  }
+}
+
+export function makeSubjectStats(overrides: Partial<SubjectStats> = {}): SubjectStats {
+  return {
+    storageContextId: 'tg:1001',
+    chatUserId: 'tg:1001',
+    contextType: 'dm',
+    displayName: 'demo-user',
+    memos: subjectMemos(),
+    scheduledPrompts: { total: 3, byStatus: { pending: 2, sent: 1 }, distinctDeliveryTargets: 2 },
+    alertPrompts: { total: 1, byStatus: { active: 1 } },
+    recurringTasks: {
+      total: 4,
+      enabled: 3,
+      disabled: 1,
+      distinctProjects: 2,
+      nextRunWithin7d: 2,
+      distinctRrulePatterns: 3,
+    },
+    userInstructions: { total: 2, textBytesTotal: 512 },
+    attachments: subjectAttachments(),
+    messageMetadata: {
+      total: 120,
+      authoredBySubject: 64,
+      oldestTimestamp: FIXED_TS,
+      newestTimestamp: FIXED_TS,
+      textBytesTotal: 32_768,
+    },
+    conversationHistory: { turnCount: 18, summaryPresent: true },
+    userIdentityMappings: { kaneo: 1 },
+    stagedFiles: { total: 1, byStatus: { staged: 1 }, bytesTotal: 2_048 },
+    userBlock: { addedAt: '2026-05-01T00:00:00.000Z', addedByPresent: true, kaneoWorkspacePresent: true },
+    groupBlock: null,
+    webFetches: { totalRequests: 11 },
+    llmUsage: { rowCount: 42, inputTokensTotal: 18_400, outputTokensTotal: 9_200 },
+    toolCalls: subjectToolCalls(),
     ...overrides,
   }
 }

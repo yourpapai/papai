@@ -22,7 +22,7 @@ describe('msw scenarios', () => {
   })
 
   test('admin-populated composes admin, billing, and stats families', () => {
-    // admin (2) + billing (2) + stats (1) populated handlers
-    expect(scenarios['admin-populated'].length).toBe(5)
+    // admin (2) + billing (2) + stats (2: /stats/global + /stats/subject/:id) populated handlers
+    expect(scenarios['admin-populated'].length).toBe(6)
   })
 })

@@ -10,6 +10,7 @@ import {
   makeBillingDetail,
   makeBillingSubject,
   makeGlobalStats,
+  makeSubjectStats,
 } from '../../../../client/stories/fixtures/index.js'
 
 describe('fixture factories', () => {
@@ -40,5 +41,13 @@ describe('fixture factories', () => {
     expect(snap.llm_apikey).toBeDefined()
     expect(snap.main_model).toBeDefined()
     expect(snap.embedding_model).toBeDefined()
+  })
+
+  test('makeSubjectStats produces a fully-populated per-subject snapshot', () => {
+    const stats = makeSubjectStats({ storageContextId: 'tg:9' })
+    expect(stats.storageContextId).toBe('tg:9')
+    expect(stats.memos.total).toBeGreaterThanOrEqual(0)
+    expect(stats.toolCalls.total).toBeGreaterThanOrEqual(0)
+    expect(stats.contextType).toBeDefined()
   })
 })

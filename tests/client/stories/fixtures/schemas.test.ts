@@ -20,4 +20,8 @@ describe('fixture schema validation', () => {
   test('makeGlobalStats output parses through the strict GlobalStatsSchema', () => {
     expect(() => assertFixturesMatchSchemas([makeGlobalStats()])).not.toThrow()
   })
+
+  test('default factory output (incl. makeSubjectStats) passes', () => {
+    expect(() => assertFixturesMatchSchemas()).not.toThrow()
+  })
 })

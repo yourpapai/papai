@@ -5,13 +5,13 @@
 
 import { z } from 'zod'
 
-import { BillingSubjectSchema, GlobalStatsSchema } from '../../admin/fetcher-schemas.js'
-import { makeBillingSubject, makeGlobalStats } from './index.js'
+import { BillingSubjectSchema, GlobalStatsSchema, SubjectStatsSchema } from '../../admin/fetcher-schemas.js'
+import { makeBillingSubject, makeGlobalStats, makeSubjectStats } from './index.js'
 
-const KnownFixtureSchema = z.union([BillingSubjectSchema, GlobalStatsSchema])
+const KnownFixtureSchema = z.union([BillingSubjectSchema, GlobalStatsSchema, SubjectStatsSchema])
 
 export function assertFixturesMatchSchemas(extras: readonly unknown[] = []): void {
-  const candidates: readonly unknown[] = [makeBillingSubject(), makeGlobalStats(), ...extras]
+  const candidates: readonly unknown[] = [makeBillingSubject(), makeGlobalStats(), makeSubjectStats(), ...extras]
   for (const candidate of candidates) {
     const result = KnownFixtureSchema.safeParse(candidate)
     if (!result.success) {
