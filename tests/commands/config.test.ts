@@ -157,6 +157,33 @@ describe('/config Command', () => {
       expect(buttonCalls[0]).toContain('*(not set)*')
     })
 
+    test('plugin rows show missing capability status for selected context', async () => {
+      const plugin = makePlugin('config-capability-plugin', {
+        defaultEnabled: true,
+        requiredTaskCapabilities: ['workItems.list'],
+      })
+      pluginRegistry.registerDiscovered(plugin)
+      pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+      pluginRegistry.markActive(plugin.manifest.id)
+      insertTaskInstance({
+        id: `${USER_ID}-missing-capability`,
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: USER_ID,
+        taskInstanceId: `${USER_ID}-missing-capability`,
+        platformInstanceId: 'telegram-default',
+      })
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, USER_ID, true)
+
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('unavailable (missing capability: workItems.list)')
+    })
+
     test('masks sensitive plugin config values in config output', async () => {
       const pluginId = 'config-render-sensitive-plugin'
       registerActivePlugin(

@@ -5,7 +5,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { ChatRouter } from '../../src/chat/router.js'
 import { setPluginConfig } from '../../src/config.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import {
   PluginRegistry,
   checkPluginCompatibility,
@@ -23,7 +27,7 @@ import {
 } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginState } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { createMockChat, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 function makePlugin(...overrides: readonly Partial<DiscoveredPlugin>[]): DiscoveredPlugin {
   const pluginOverrides = overrides[0]
@@ -329,7 +333,7 @@ describe('singleton registry helpers', () => {
   })
 
   afterEach(() => {
-    // no-op: each test gets fresh setupTestDb
+    clearRuntimeChatRouter()
   })
 
   test('syncRegistryFromDb calls registerDiscovered for each plugin', () => {
@@ -419,5 +423,82 @@ describe('singleton registry helpers', () => {
 
     expect(getPluginContextEligibility(pluginId, contextId)).toEqual({ eligible: true })
     expect(getPluginsForContext(contextId).map((p) => p.manifest.id)).toContain(pluginId)
+  })
+
+  test('returns capability_missing when assigned task instance lacks a required task capability', () => {
+    const pluginId = 'task-capability-plugin'
+    const contextId = 'ctx-task-capability'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Task Capability Plugin',
+        defaultEnabled: true,
+        requiredTaskCapabilities: ['workItems.list'],
+      },
+      manifestHash: 'hash-task-capability',
+    })
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId, taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-a' })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-task-capability')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({
+      eligible: false,
+      reason: 'capability_missing',
+      missingCapabilities: ['workItems.list'],
+    })
+    expect(getPluginsForContext(contextId)).toEqual([])
+  })
+
+  test('returns capability_missing when assigned platform instance lacks a required chat capability', () => {
+    const pluginId = 'chat-capability-plugin'
+    const contextId = 'ctx-chat-capability'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Chat Capability Plugin',
+        defaultEnabled: true,
+        requiredChatCapabilities: ['messages.buttons'],
+      },
+      manifestHash: 'hash-chat-capability',
+    })
+    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
+    const router = new ChatRouter(() => createMockChat({ capabilities: new Set() }))
+    router.addInstance('telegram-a', 'telegram', { token: 'x' })
+    setRuntimeChatRouter(router)
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-chat-capability')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({
+      eligible: false,
+      reason: 'capability_missing',
+      missingCapabilities: ['messages.buttons'],
+    })
+  })
+
+  test('skips capability checks when context settings are absent', () => {
+    const pluginId = 'pre-setup-plugin'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Pre Setup Plugin',
+        defaultEnabled: true,
+        requiredTaskCapabilities: ['workItems.list'],
+      },
+      manifestHash: 'hash-pre-setup',
+    })
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-pre-setup')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, 'ctx-without-settings')).toEqual({ eligible: true })
   })
 })

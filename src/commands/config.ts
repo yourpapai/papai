@@ -90,6 +90,9 @@ function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string)
   const eligibility = getPluginContextEligibility(entry.discoveredPlugin.manifest.id, targetContextId)
   if (eligibility.eligible) return `enabled${source}`
   if (eligibility.reason === 'config_missing') return 'unavailable (missing config)'
+  if (eligibility.reason === 'capability_missing') {
+    return `unavailable (missing capability: ${eligibility.missingCapabilities.join(', ')})`
+  }
   return 'disabled'
 }
 

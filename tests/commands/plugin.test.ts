@@ -3,12 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { ChatRouter } from '../../src/chat/router.js'
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerPluginCommand } from '../../src/commands/plugin.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getPluginAdminState, isPluginEnabledForContext, recordRuntimeEvent } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
@@ -17,6 +20,7 @@ import {
   createAuth,
   createDmMessage,
   createGroupMessage,
+  createMockChat,
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
@@ -96,6 +100,10 @@ describe('registerPluginCommand', () => {
     await setupTestDb()
   })
 
+  afterEach(() => {
+    clearRuntimeChatRouter()
+  })
+
   test('registers plugin management list command for bot admin', async () => {
     addAdmin('admin-user', 'test-instance')
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
@@ -171,6 +179,44 @@ describe('registerPluginCommand', () => {
     )
 
     expect(textCalls[0]).toContain('platform-info-plugin')
+  })
+
+  test('plugin info reports source-context missing capabilities', async () => {
+    const basePlugin = makePlugin('capability-info-plugin')
+    const plugin: DiscoveredPlugin = {
+      ...basePlugin,
+      manifest: {
+        ...basePlugin.manifest,
+        defaultEnabled: true,
+        requiredTaskCapabilities: ['workItems.list'],
+        requiredChatCapabilities: ['messages.buttons'],
+      },
+    }
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'root-admin', plugin.manifestHash)
+    pluginRegistry.markActive(plugin.manifest.id)
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId: 'root-admin', taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-default' })
+    const router = new ChatRouter(() => createMockChat({ capabilities: new Set() }))
+    router.addInstance('telegram-default', 'telegram', { token: 'x' })
+    setRuntimeChatRouter(router)
+    addAdmin('root-admin', SUPER_ADMIN_PLATFORM_ID)
+    const handler = registerCommandForTest()
+    const { reply, textCalls } = createMockReply()
+
+    await handler(
+      {
+        ...createDmMessage('root-admin', '/plugin info capability-info-plugin'),
+        commandMatch: 'info capability-info-plugin',
+        platformInstanceId: 'telegram-default',
+      },
+      reply,
+      createAuth('root-admin'),
+    )
+
+    expect(textCalls[0]).toContain('Required task capabilities: workItems.list')
+    expect(textCalls[0]).toContain('Required chat capabilities: messages.buttons')
+    expect(textCalls[0]).toContain('Missing for this context: workItems.list, messages.buttons')
   })
 
   test('denies env admin id when auth is not bot admin', async () => {

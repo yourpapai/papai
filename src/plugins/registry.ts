@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import type { ChatCapability } from '../chat/types.js'
-import { getPluginConfig } from '../config.js'
 import { logger } from '../logger.js'
 import type { TaskCapability } from '../providers/types.js'
 import { checkPluginCompatibility } from './compatibility.js'
@@ -13,10 +12,9 @@ import {
   normalizeCompatibilityInstances,
   type PluginCompatibilityInstance,
 } from './registry-compatibility.js'
+import { getPluginContextEligibilityForEntry, type PluginContextEligibility } from './registry-context-eligibility.js'
 import {
   getPluginAdminState,
-  getPluginContextState,
-  isPluginEnabledForContext,
   setPluginContextEnabled,
   upsertPluginAdminState,
   updatePluginAdminStateField,
@@ -60,11 +58,7 @@ function toOptionalReason(value: string | null | undefined): string | undefined 
 }
 
 export { checkPluginCompatibility } from './compatibility.js'
-
-export type PluginContextEligibility =
-  | { eligible: true }
-  | { eligible: false; reason: 'inactive' | 'disabled' }
-  | { eligible: false; reason: 'config_missing'; missingKeys: readonly string[] }
+export type { PluginContextEligibility } from './registry-context-eligibility.js'
 
 export type PluginRegistryEntry = {
   discoveredPlugin: DiscoveredPlugin
@@ -244,17 +238,6 @@ export class PluginRegistry {
   }
 }
 
-function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
-  return plugin.manifest.configRequirements
-    .filter((requirement) => requirement.required)
-    .filter((requirement) => {
-      const value = getPluginConfig(contextId, plugin.manifest.id, requirement.key)
-      if (value === null) return true
-      return value.trim() === ''
-    })
-    .map((requirement) => requirement.key)
-}
-
 export const pluginRegistry = new PluginRegistry()
 
 export function resetPluginRegistryForTesting(): void {
@@ -270,19 +253,7 @@ export function isPluginActiveForContext(pluginId: string, contextId: string): b
 }
 
 export function getPluginContextEligibility(pluginId: string, contextId: string): PluginContextEligibility {
-  const entry = pluginRegistry.getEntry(pluginId)
-  if (entry === undefined || entry.state !== 'active') return { eligible: false, reason: 'inactive' }
-  const contextState = getPluginContextState(pluginId, contextId)
-  const enabled =
-    contextState === undefined
-      ? entry.discoveredPlugin.manifest.defaultEnabled
-      : isPluginEnabledForContext(pluginId, contextId)
-  if (!enabled) return { eligible: false, reason: 'disabled' }
-
-  const missingKeys = getMissingRequiredConfigKeys(entry.discoveredPlugin, contextId)
-  if (missingKeys.length > 0) return { eligible: false, reason: 'config_missing', missingKeys }
-
-  return { eligible: true }
+  return getPluginContextEligibilityForEntry(pluginRegistry.getEntry(pluginId), pluginId, contextId)
 }
 
 export function syncRegistryFromDb(discoveredPlugins: DiscoveredPlugin[]): void {

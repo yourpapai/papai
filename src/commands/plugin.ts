@@ -6,7 +6,7 @@
 import type { ChatProvider, ReplyFn } from '../chat/types.js'
 import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
-import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
+import { getPluginContextEligibility, pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
 import {
   getAllPluginAdminStates,
   getEnabledPluginsForContext,
@@ -72,7 +72,7 @@ function buildPluginListMessage(): string {
   return lines.join('\n')
 }
 
-function buildPluginInfoMessage(pluginId: string): string {
+function buildPluginInfoMessage(pluginId: string, sourceContextId: string): string {
   const entry = pluginRegistry.getEntry(pluginId)
   if (entry === undefined) {
     const dbState = getPluginAdminState(pluginId)
@@ -91,8 +91,14 @@ function buildPluginInfoMessage(pluginId: string): string {
     `Commands: ${manifest.contributes.commands.length > 0 ? manifest.contributes.commands.join(', ') : 'none'}`,
     `Jobs: ${manifest.contributes.jobs.length > 0 ? manifest.contributes.jobs.join(', ') : 'none'}`,
     `Config keys: ${manifest.contributes.configKeys.length > 0 ? manifest.contributes.configKeys.join(', ') : 'none'}`,
+    `Required task capabilities: ${manifest.requiredTaskCapabilities.length > 0 ? manifest.requiredTaskCapabilities.join(', ') : 'none'}`,
+    `Required chat capabilities: ${manifest.requiredChatCapabilities.length > 0 ? manifest.requiredChatCapabilities.join(', ') : 'none'}`,
   ]
   if (entry.compatibilityReason !== undefined) lines.push(`Note: ${entry.compatibilityReason}`)
+  const eligibility = getPluginContextEligibility(pluginId, sourceContextId)
+  if (!eligibility.eligible && eligibility.reason === 'capability_missing') {
+    lines.push(`Missing for this context: ${eligibility.missingCapabilities.join(', ')}`)
+  }
   const recentEvents = getRecentRuntimeEvents(pluginId, 3)
   if (recentEvents.length > 0) {
     lines.push('Recent events:')
@@ -238,7 +244,9 @@ async function runPluginSubcommand(subcommand: string, ctx: PluginCommandContext
     await ctx.reply.text(buildPluginListMessage())
   } else if (subcommand === 'info') {
     const id = ctx.args[1]
-    await ctx.reply.text(id === undefined ? 'Usage: /plugin info <plugin-id>' : buildPluginInfoMessage(id))
+    await ctx.reply.text(
+      id === undefined ? 'Usage: /plugin info <plugin-id>' : buildPluginInfoMessage(id, ctx.sourceContextId),
+    )
   } else if (subcommand === 'approve') {
     await runApproveSubcommand(ctx)
   } else if (subcommand === 'reject') {
