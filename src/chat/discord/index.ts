@@ -30,6 +30,7 @@ import {
   type DispatchableMessage,
   defaultClientFactory,
 } from './client-factory.js'
+import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
 import { handleDiscordGroupSettingsSelection } from './group-settings.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
@@ -267,7 +268,7 @@ export class DiscordChatProvider implements ChatProvider {
       mapped.threadId,
       mapped.user.isAdmin,
     )
-    const command = this.matchCommand(mapped.text)
+    const command = matchDiscordCommand(mapped.text, this.commands)
     if (command !== null) {
       mapped.commandMatch = command.match
       await command.handler(mapped, reply, auth)
@@ -283,18 +284,6 @@ export class DiscordChatProvider implements ChatProvider {
       }
       await this.messageHandler(mapped, reply)
     }
-  }
-
-  private matchCommand(text: string): { handler: CommandHandler; match: string } | null {
-    const trimmed = text.trim()
-    if (!trimmed.startsWith('/')) return null
-    for (const [name, handler] of this.commands) {
-      if (trimmed === `/${name}` || trimmed.startsWith(`/${name} `)) {
-        const match = trimmed.slice(name.length + 2).trim()
-        return { handler, match }
-      }
-    }
-    return null
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {
