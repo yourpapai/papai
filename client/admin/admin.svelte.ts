@@ -14,6 +14,7 @@ export const adminSections = [
   { id: 'reminders', label: 'Reminders' },
   { id: 'identities', label: 'Identities' },
   { id: 'groups', label: 'Groups' },
+  { id: 'instances', label: 'Instances' },
   { id: 'system', label: 'System' },
 ] as const
 
