@@ -250,7 +250,7 @@ describe('group commands', () => {
       expect(members.some((m) => m.user_id === 'unknown_user')).toBe(false)
     })
 
-    test('passes msg context into ChatProvider.resolveUserId', async () => {
+    test('passes msg context and platform instance into ChatProvider.resolveUserId', async () => {
       let lastResolveContext: ResolveUserContext | null = null
       const contextHandlers = new Map<string, CommandHandler>()
       const contextChat = createMockChat({
@@ -274,6 +274,7 @@ describe('group commands', () => {
       expect(lastResolveContext).not.toBeNull()
       expect(lastResolveContext!.contextId).toBe('channel-42')
       expect(lastResolveContext!.contextType).toBe('group')
+      expect(lastResolveContext!.platformInstanceId).toBe('test-instance')
     })
   })
 
@@ -697,6 +698,33 @@ describe('group commands', () => {
 
       expect(textCalls[0]).toContain('John Johnson (@itsmike)')
       expect(textCalls[0]).toContain('added by Jane Admin (@janeadmin)')
+    })
+
+    test('passes source platform instance into /group users label lookups', async () => {
+      const seenContexts: Array<ResolveUserContext | undefined> = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const labeledChat = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveUserLabel: (_userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
+          seenContexts.push(context)
+          return Promise.resolve(null)
+        },
+      })
+      registerGroupCommand(labeledChat)
+
+      const { addGroupMember } = await import('../../src/groups.js')
+      addGroupMember('group1', 'user1', 'admin1')
+
+      const handler = labeledHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const { reply } = createMockReply()
+      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+
+      expect(seenContexts).toEqual([
+        { contextId: 'group1', contextType: 'group', platformInstanceId: 'test-instance' },
+        { contextId: 'group1', contextType: 'group', platformInstanceId: 'test-instance' },
+      ])
     })
 
     test('bounds concurrent /groups label lookups', async () => {

@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import type { ToolSet } from 'ai'
 
 import { userCachesForTesting } from '../../src/cache.js'
-import type { ChatProvider, CommandHandler, ContextSnapshot } from '../../src/chat/types.js'
+import type { ChatProvider, CommandHandler, ContextRendered, ContextSnapshot } from '../../src/chat/types.js'
 import {
   resolveActiveToolDefinitions,
   resolveContextToolSurface,
@@ -335,6 +335,32 @@ describe('registerContextCommand', () => {
       await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
 
       expect(textCalls).toContain('RAW TEXT PAYLOAD')
+    })
+
+    test('renders through source platform instance when chat supports instance rendering', async () => {
+      const commands = new Map<string, CommandHandler>()
+      const seenPlatformInstanceIds: string[] = []
+      const seenSnapshots: ContextSnapshot[] = []
+      const chat: ChatProvider & {
+        renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
+      } = {
+        ...createMockChat({ commandHandlers: commands }),
+        renderContext: () => ({ method: 'text', content: 'fallback rendering' }),
+        renderContextForInstance: (platformInstanceId, snapshot) => {
+          seenPlatformInstanceIds.push(platformInstanceId)
+          seenSnapshots.push(snapshot)
+          return { method: 'text', content: 'instance rendering' }
+        },
+      }
+      const handler = await registerContextHandler(commands, chat, snapshotDeps(null))
+
+      const { reply, textCalls } = createMockReply()
+
+      await handler(createDmMessage('user1'), reply, createAuth('user1', { isBotAdmin: true }))
+
+      expect(seenPlatformInstanceIds).toEqual(['test-instance'])
+      expect(seenSnapshots).toHaveLength(1)
+      expect(textCalls).toContain('instance rendering')
     })
 
     test('dispatches formatted output via reply.formatted', async () => {

@@ -22,6 +22,7 @@ type LabelResolverContext = {
   readonly chat: ChatProvider
   readonly contextId: string
   readonly contextType: 'dm' | 'group'
+  readonly platformInstanceId: string
 }
 
 type ScheduleLookup = (lookup: () => Promise<string | null>) => Promise<string | null>
@@ -44,6 +45,7 @@ function resolveUserLabelCached(
     resolveChatUserDisplayLabel(resolverContext.chat, userId, {
       contextId: resolverContext.contextId,
       contextType: resolverContext.contextType,
+      platformInstanceId: resolverContext.platformInstanceId,
     }).catch((error: unknown): string | null => {
       log.warn(
         {
@@ -113,7 +115,7 @@ export function registerGroupCommand(chat: ChatProvider): void {
         const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
           resolveGroupLabelCached(chat, group.group_id, groupLabelCache, limit),
           resolveUserLabelCached(
-            { chat, contextId: group.group_id, contextType: 'group' },
+            { chat, contextId: group.group_id, contextType: 'group', platformInstanceId: msg.platformInstanceId },
             group.added_by,
             userLabelCache,
             limit,
@@ -220,6 +222,7 @@ async function handleGroupMemberUpdate(
   const result = await extractUserId(chat, targetUser, {
     contextId: msg.contextId,
     contextType: msg.contextType,
+    platformInstanceId: msg.platformInstanceId,
   })
   if (result.kind === 'error') {
     await reply.text(result.message)
@@ -252,6 +255,7 @@ async function handleListUsers(chat: ChatProvider, msg: IncomingMessage, reply: 
     chat,
     contextId: msg.contextId,
     contextType: msg.contextType,
+    platformInstanceId: msg.platformInstanceId,
   }
   const lines = await Promise.all(
     members.map(async (member) => {
