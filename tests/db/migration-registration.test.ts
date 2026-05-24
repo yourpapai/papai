@@ -7,6 +7,11 @@ import { describe, expect, test } from 'bun:test'
 
 import { MIGRATIONS } from '../../src/db/index.js'
 
+const requireDefined = <T>(value: T | undefined): T => {
+  if (value === undefined) throw new Error('expected value to be defined')
+  return value
+}
+
 describe('MIGRATIONS list', () => {
   test('includes migration 040_platform_instances', () => {
     const ids = MIGRATIONS.map((m) => m.id)
@@ -14,6 +19,7 @@ describe('MIGRATIONS list', () => {
   })
 
   test('041 is the last migration', () => {
-    expect(MIGRATIONS.at(-1)?.id).toBe('041_users_platform_instance_index')
+    const lastMigration = requireDefined(MIGRATIONS.at(-1))
+    expect(lastMigration.id).toBe('041_users_platform_instance_index')
   })
 })
