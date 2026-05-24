@@ -162,7 +162,10 @@ describe('registerPluginCommand', () => {
     const { reply, textCalls } = createMockReply()
 
     await handler(
-      { ...createDmMessage('platform-admin', '/plugin info platform-info-plugin'), commandMatch: 'info platform-info-plugin' },
+      {
+        ...createDmMessage('platform-admin', '/plugin info platform-info-plugin'),
+        commandMatch: 'info platform-info-plugin',
+      },
       reply,
       createAuth('platform-admin', { isBotAdmin: false }),
     )
