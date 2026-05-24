@@ -18,9 +18,11 @@ import type {
   IncomingInteraction,
   IncomingMessage,
   ReplyFn,
+  ThreadCapabilities,
 } from '../../src/chat/types.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../../src/instances/types.js'
-import { mockLogger } from '../utils/test-helpers.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type FakeProvider = ChatProvider & {
   deliverMessage: (msg: IncomingMessage) => Promise<void>
@@ -60,6 +62,8 @@ const makeProvider = (
     start: () => Promise<void>
     stop: () => Promise<void>
     render: ContextRendered
+    setCommands: (adminUserId: string, calls: string[]) => Promise<void>
+    threadCapabilities: ThreadCapabilities
   }> = {},
 ): FakeProvider => {
   let messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
@@ -70,7 +74,7 @@ const makeProvider = (
   const setCommandsCalls: string[] = []
   return {
     name,
-    threadCapabilities: { supportsThreads: true, canCreateThreads: false, threadScope: 'message' },
+    threadCapabilities: options.threadCapabilities ?? { supportsThreads: true, canCreateThreads: false, threadScope: 'message' },
     capabilities: new Set(options.capabilities ?? []),
     traits: { observedGroupMessages: name === 'discord' ? 'mentions_only' : 'all' },
     configRequirements: [],
@@ -93,7 +97,7 @@ const makeProvider = (
     resolveGroupLabel: (groupId): Promise<string | null> => Promise.resolve(`${name}:${groupId}`),
     setCommands: (adminUserId): Promise<void> => {
       setCommandsCalls.push(adminUserId)
-      return Promise.resolve()
+      return options.setCommands?.(adminUserId, setCommandsCalls) ?? Promise.resolve()
     },
     renderContext: () => options.render ?? { method: 'text', content: `${name} context` },
     start: options.start ?? (() => Promise.resolve()),
@@ -137,8 +141,9 @@ describe('ChatRouter', () => {
   let factory: ManagedChatInstanceFactory
   let router: ChatRouter
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockLogger()
+    await setupTestDb()
     providers = {}
     factory = (id: string, type: PlatformInstanceType, _config: InstanceConfig): ChatProvider => {
       const provider = makeProvider(type)
@@ -260,6 +265,72 @@ describe('ChatRouter', () => {
     expect(providers['telegram-main']?.setCommandsCalls).toEqual(['admin-1'])
     expect(providers['discord-main']?.setCommandsCalls).toEqual(['admin-1'])
     expect(userId).toBe('discord:alice')
+  })
+
+  test('uses context settings to resolve users and groups when platform instance context is absent', async () => {
+    router.addInstance('telegram-main', 'telegram', {})
+    router.addInstance('discord-main', 'discord', {})
+    setContextSettings({ contextId: 'group-1', taskInstanceId: 'tasks-1', platformInstanceId: 'discord-main' })
+
+    const userId = await router.resolveUserId?.('alice', { contextId: 'group-1', contextType: 'group' })
+    const userLabel = await router.resolveUserLabel?.('user-42', { contextId: 'group-1', contextType: 'group' })
+    const groupLabel = await router.resolveGroupLabel?.('group-1')
+
+    expect(userId).toBe('discord:alice')
+    expect(userLabel).toBe('discord:user-42')
+    expect(groupLabel).toBe('discord:group-1')
+  })
+
+  test('continues setting commands when one instance fails', async () => {
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const provider = makeProvider(type, {
+        setCommands: id === 'bad' ? () => Promise.reject(new Error('command menu failed')) : undefined,
+      })
+      providers[id] = provider
+      return provider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('bad', 'telegram', {})
+    router.addInstance('good', 'discord', {})
+
+    await expect(router.setCommands?.('admin-1')).resolves.toBeUndefined()
+
+    expect(providers['bad']?.setCommandsCalls).toEqual(['admin-1'])
+    expect(providers['good']?.setCommandsCalls).toEqual(['admin-1'])
+  })
+
+  test('excludes stopped instances from aggregate metadata and command menus', async () => {
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const provider = makeProvider(type, {
+        capabilities:
+          id === 'stopped'
+            ? ['commands.menu']
+            : id === 'pending'
+              ? ['messages.buttons']
+              : ['users.resolve'],
+        threadCapabilities:
+          id === 'stopped'
+            ? { supportsThreads: true, canCreateThreads: true, threadScope: 'post' }
+            : { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+      })
+      providers[id] = provider
+      return provider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('stopped', 'telegram', {})
+    router.addInstance('pending', 'discord', {})
+    router.addInstance('active', 'mattermost', {})
+    await router.stopInstance('stopped')
+    await router.startInstance('active')
+
+    await router.setCommands?.('admin-1')
+
+    expect([...router.capabilities].sort()).toEqual(['messages.buttons', 'users.resolve'])
+    expect(router.traits).toEqual({ observedGroupMessages: 'mentions_only' })
+    expect(router.threadCapabilities).toEqual({ supportsThreads: false, canCreateThreads: false, threadScope: 'message' })
+    expect(providers['stopped']?.setCommandsCalls).toEqual([])
+    expect(providers['pending']?.setCommandsCalls).toEqual(['admin-1'])
+    expect(providers['active']?.setCommandsCalls).toEqual(['admin-1'])
   })
 
   test('registered command handlers receive managed platform instance IDs', async () => {
