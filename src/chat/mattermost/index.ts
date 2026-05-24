@@ -46,6 +46,12 @@ type PostedMessageResult = {
   isAdmin: boolean
 }
 
+type MattermostConstructorConfig = Partial<{
+  url: string
+  token: string
+  platformInstanceId: string
+}>
+
 export class MattermostChatProvider implements ChatProvider {
   readonly name = 'mattermost'
   readonly threadCapabilities = {
@@ -58,6 +64,7 @@ export class MattermostChatProvider implements ChatProvider {
   readonly configRequirements = mattermostConfigRequirements
   private readonly baseUrl: string
   private readonly token: string
+  private readonly platformInstanceId: string
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private ws: WebSocket | null = null
@@ -65,9 +72,9 @@ export class MattermostChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private wsSeq = 1
 
-  constructor() {
-    const url = process.env['MATTERMOST_URL']
-    const token = process.env['MATTERMOST_BOT_TOKEN']
+  constructor(config: MattermostConstructorConfig = {}) {
+    const url = config.url ?? process.env['MATTERMOST_URL']
+    const token = config.token ?? process.env['MATTERMOST_BOT_TOKEN']
     if (url === undefined || url.trim() === '') {
       throw new Error('MATTERMOST_URL environment variable is required')
     }
@@ -76,6 +83,8 @@ export class MattermostChatProvider implements ChatProvider {
     }
     this.baseUrl = url.replace(/\/+$/u, '')
     this.token = token
+    this.platformInstanceId = config.platformInstanceId ?? 'legacy-single'
+    log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
 
   registerCommand(name: string, handler: CommandHandler): void {

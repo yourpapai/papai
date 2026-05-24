@@ -68,16 +68,19 @@ export class TelegramChatProvider implements ChatProvider {
   readonly configRequirements = telegramConfigRequirements
   private readonly bot: Bot
   private readonly token: string
+  private readonly platformInstanceId: string
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(tokenOverride?: string) {
+  constructor(tokenOverride?: string, platformInstanceId = 'legacy-single') {
     const token = tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }
     this.token = token
+    this.platformInstanceId = platformInstanceId
     this.bot = new Bot(token)
+    log.debug({ platformInstanceId: this.platformInstanceId }, 'TelegramChatProvider constructed')
     createTelegramFileFetcher(this.bot.api, this.token, log)
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }

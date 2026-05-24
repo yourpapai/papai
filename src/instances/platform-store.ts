@@ -71,6 +71,9 @@ export const listPlatformInstances = (): PlatformInstance[] => {
   return rows.map((row) => rowToInstance(row))
 }
 
+export const listActivePlatformInstances = (): PlatformInstance[] =>
+  listPlatformInstances().filter((instance) => instance.status === 'active')
+
 export const updatePlatformInstance = (id: string, patch: UpdatePlatformInstanceInput): void => {
   const set: Partial<typeof platformInstances.$inferInsert> = {}
   if (patch.config !== undefined) set.config = encryptInstanceConfig(patch.config)

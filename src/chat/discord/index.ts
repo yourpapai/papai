@@ -54,19 +54,21 @@ export class DiscordChatProvider implements ChatProvider {
   readonly traits = discordTraits
   readonly configRequirements = discordConfigRequirements
   private readonly token: string
+  private readonly platformInstanceId: string
   private readonly clientFactory: DiscordClientFactory
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
-  constructor(clientFactory?: DiscordClientFactory, tokenOverride?: string) {
+  constructor(clientFactory?: DiscordClientFactory, tokenOverride?: string, platformInstanceId = 'legacy-single') {
     const token = tokenOverride ?? process.env['DISCORD_BOT_TOKEN']
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
     this.token = token
+    this.platformInstanceId = platformInstanceId
     this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory
-    log.debug({ tokenLength: this.token.length }, 'DiscordChatProvider constructed')
+    log.debug({ platformInstanceId: this.platformInstanceId, tokenLength: this.token.length }, 'DiscordChatProvider constructed')
   }
 
   registerCommand(name: string, handler: CommandHandler): void {

@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { validateChatProviderEnv } from '../env-validation.js'
+import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { DiscordChatProvider } from './discord/index.js'
 import { MattermostChatProvider } from './mattermost/index.js'
@@ -16,15 +17,30 @@ type ChatProviderFactory = (deps: RegistryDeps) => ChatProvider
 
 export interface RegistryDeps {
   env: Record<string, string | undefined>
+  platformInstanceId?: string
 }
 
 const defaultDeps: RegistryDeps = { env: process.env }
 
 const providers = new Map<string, ChatProviderFactory>()
 
-registerChatProvider('telegram', (deps) => new TelegramChatProvider(deps.env['TELEGRAM_BOT_TOKEN']))
-registerChatProvider('mattermost', () => new MattermostChatProvider())
-registerChatProvider('discord', (deps) => new DiscordChatProvider(undefined, deps.env['DISCORD_BOT_TOKEN']))
+registerChatProvider(
+  'telegram',
+  (deps) => new TelegramChatProvider(deps.env['TELEGRAM_BOT_TOKEN'], deps.platformInstanceId),
+)
+registerChatProvider(
+  'mattermost',
+  (deps) =>
+    new MattermostChatProvider({
+      url: deps.env['MATTERMOST_URL'],
+      token: deps.env['MATTERMOST_BOT_TOKEN'],
+      platformInstanceId: deps.platformInstanceId,
+    }),
+)
+registerChatProvider(
+  'discord',
+  (deps) => new DiscordChatProvider(undefined, deps.env['DISCORD_BOT_TOKEN'], deps.platformInstanceId),
+)
 
 function registerChatProvider(name: string, factory: ChatProviderFactory): void {
   providers.set(name, factory)
@@ -39,4 +55,26 @@ export function createChatProvider(name: string, deps: RegistryDeps = defaultDep
   const factory = providers.get(name)!
   log.debug({ name }, 'Creating chat provider instance')
   return factory(deps)
+}
+
+const configToEnv = (type: PlatformInstanceType, config: InstanceConfig): Record<string, string | undefined> => {
+  if (type === 'telegram') return { TELEGRAM_BOT_TOKEN: config['token'] }
+  if (type === 'mattermost') return { MATTERMOST_URL: config['url'], MATTERMOST_BOT_TOKEN: config['token'] }
+  return { DISCORD_BOT_TOKEN: config['token'] }
+}
+
+const missingConfigMessage = (type: PlatformInstanceType): string => `Missing ${type} instance config`
+
+export function createChatProviderFromConfig(
+  id: string,
+  type: PlatformInstanceType,
+  config: InstanceConfig,
+): ChatProvider {
+  const deps: RegistryDeps = { env: configToEnv(type, config), platformInstanceId: id }
+  const validation = validateChatProviderEnv(type, deps.env)
+  if (!validation.ok) {
+    log.error({ reason: validation.reason, missing: validation.missing, type, id }, 'Invalid chat provider instance config')
+    throw new Error(missingConfigMessage(type))
+  }
+  return createChatProvider(type, deps)
 }
