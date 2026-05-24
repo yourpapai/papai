@@ -26,6 +26,11 @@ const taskInstance = {
   createdAt: '2026-05-24T00:01:00.000Z',
 } as const
 
+const stoppedPlatformInstance = {
+  ...platformInstance,
+  status: 'stopped',
+} as const
+
 const admin = {
   userId: 'admin-user',
   platformInstanceId: 'telegram-main',
@@ -33,6 +38,8 @@ const admin = {
 } as const
 
 type RecordedCall = { readonly method: string; readonly url: string; readonly body: string | null }
+
+const originalConfirm = window.confirm
 
 const drain = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await Promise.resolve()
@@ -66,6 +73,13 @@ const responseFor = (method: string, url: string): Response => {
   if (method === 'GET' && url === '/api/admins') return jsonResponse([admin])
   if (method === 'POST' && url === '/api/platform-instances') return jsonResponse(platformInstance)
   if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse({ applied: 1 })
+  if (method === 'POST' && url === '/api/platform-instances/telegram-main/status')
+    return jsonResponse(stoppedPlatformInstance)
+  if (method === 'DELETE' && url === '/api/platform-instances/telegram-main') return jsonResponse({ ok: true })
+  if (method === 'POST' && url === '/api/task-instances') return jsonResponse(taskInstance)
+  if (method === 'DELETE' && url === '/api/task-instances/kaneo-main') return jsonResponse({ ok: true })
+  if (method === 'POST' && url === '/api/admins') return jsonResponse(admin)
+  if (method === 'DELETE' && url === '/api/admins/admin-user/telegram-main') return jsonResponse({ ok: true })
   return jsonResponse({ error: `not mocked: ${method} ${url}` }, 500)
 }
 
@@ -107,8 +121,19 @@ const enterValue = (el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEleme
   el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
+const setConfirm = (value: boolean): void => {
+  Object.defineProperty(window, 'confirm', {
+    configurable: true,
+    value: (): boolean => value,
+  })
+}
+
 afterEach(() => {
   restoreFetch()
+  Object.defineProperty(window, 'confirm', {
+    configurable: true,
+    value: originalConfirm,
+  })
 })
 
 describe('InstancesSection', () => {
@@ -186,6 +211,136 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(target.textContent).toContain('Config must be a JSON object with string values')
+    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+
+    void unmount(component)
+  })
+
+  test('creates super-admins by omitting blank platform instance IDs', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    enterValue(input(target, 'admin-user-id-input'), 'super-admin')
+    enterValue(input(target, 'admin-platform-id-input'), '   ')
+    click(target, 'admin-create-button')
+    await drain()
+
+    expect(expectCall(calls[3], 3).body).toBe(JSON.stringify({ userId: 'super-admin' }))
+
+    void unmount(component)
+  })
+
+  test('updates platform status and confirms platform deletes', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+    setConfirm(true)
+
+    const { target, component } = render()
+    await drain()
+
+    click(target, 'platform-status-telegram-main')
+    await drain()
+    click(target, 'platform-delete-telegram-main')
+    await drain()
+
+    expect(callNames(calls)).toContain('POST /api/platform-instances/telegram-main/status')
+    expect(callNames(calls)).toContain('DELETE /api/platform-instances/telegram-main')
+
+    void unmount(component)
+  })
+
+  test('does not delete platform instances when confirmation is cancelled', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+    setConfirm(false)
+
+    const { target, component } = render()
+    await drain()
+
+    click(target, 'platform-delete-telegram-main')
+    await drain()
+
+    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+
+    void unmount(component)
+  })
+
+  test('creates task instances and confirms task deletes', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+    setConfirm(true)
+
+    const { target, component } = render()
+    await drain()
+
+    enterValue(input(target, 'task-id-input'), 'kaneo-main')
+    enterValue(input(target, 'task-config-input'), '{"KANEO_INTERNAL_URL":"http://kaneo:1337"}')
+    click(target, 'task-create-button')
+    await drain()
+    click(target, 'task-delete-kaneo-main')
+    await drain()
+
+    expect(expectCall(calls[3], 3).body).toBe(
+      JSON.stringify({ id: 'kaneo-main', type: 'kaneo', config: { KANEO_INTERNAL_URL: 'http://kaneo:1337' } }),
+    )
+    expect(callNames(calls)).toContain('DELETE /api/task-instances/kaneo-main')
+
+    void unmount(component)
+  })
+
+  test('does not delete task instances when confirmation is cancelled', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+    setConfirm(false)
+
+    const { target, component } = render()
+    await drain()
+
+    click(target, 'task-delete-kaneo-main')
+    await drain()
+
+    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+
+    void unmount(component)
+  })
+
+  test('creates admins and confirms admin removal', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+    setConfirm(true)
+
+    const { target, component } = render()
+    await drain()
+
+    enterValue(input(target, 'admin-user-id-input'), 'admin-user')
+    enterValue(input(target, 'admin-platform-id-input'), 'telegram-main')
+    click(target, 'admin-create-button')
+    await drain()
+    click(target, 'admin-remove-admin-user')
+    await drain()
+
+    expect(expectCall(calls[3], 3).body).toBe(
+      JSON.stringify({ userId: 'admin-user', platformInstanceId: 'telegram-main' }),
+    )
+    expect(callNames(calls)).toContain('DELETE /api/admins/admin-user/telegram-main')
+
+    void unmount(component)
+  })
+
+  test('does not remove admins when confirmation is cancelled', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+    setConfirm(false)
+
+    const { target, component } = render()
+    await drain()
+
+    click(target, 'admin-remove-admin-user')
+    await drain()
+
     expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
 
     void unmount(component)

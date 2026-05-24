@@ -70,6 +70,10 @@
     return parsed
   }
 
+  function confirmDestructive(message: string): boolean {
+    return window.confirm(message)
+  }
+
   async function loadPlatformInstances(): Promise<void> {
     platformInstances = await fetchPlatformInstances()
   }
@@ -120,6 +124,7 @@
   }
 
   async function removePlatform(id: string): Promise<void> {
+    if (!confirmDestructive(`Delete platform instance ${id}?`)) return
     try {
       await deletePlatformInstance(id)
       platformDirty = true
@@ -154,6 +159,7 @@
   }
 
   async function removeTask(id: string): Promise<void> {
+    if (!confirmDestructive(`Delete task instance ${id}?`)) return
     try {
       await deleteTaskInstance(id)
       await loadTaskInstances()
@@ -165,7 +171,13 @@
 
   async function addAdmin(): Promise<void> {
     try {
-      await createAdmin({ userId: adminUserId.trim(), platformInstanceId: adminPlatformInstanceId.trim() })
+      const userId = adminUserId.trim()
+      const platformInstanceId = adminPlatformInstanceId.trim()
+      if (platformInstanceId === '') {
+        await createAdmin({ userId })
+      } else {
+        await createAdmin({ userId, platformInstanceId })
+      }
       adminUserId = ''
       adminPlatformInstanceId = ''
       await loadAdmins()
@@ -176,6 +188,7 @@
   }
 
   async function removeAdmin(userId: string, platformInstanceId: string): Promise<void> {
+    if (!confirmDestructive(`Remove admin ${userId}?`)) return
     try {
       await deleteAdmin(userId, platformInstanceId)
       await loadAdmins()
