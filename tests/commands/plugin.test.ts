@@ -56,7 +56,9 @@ function registerCommandForTest(): CommandHandler {
   return handler
 }
 
-async function runPluginCommand(...args: [commandMatch: string] | [commandMatch: string, userId: string]): Promise<string> {
+async function runPluginCommand(
+  ...args: [commandMatch: string] | [commandMatch: string, userId: string]
+): Promise<string> {
   const [commandMatch] = args
   const userId = args.length === 1 ? 'admin-user' : args[1]
   const handler = registerCommandForTest()
@@ -71,7 +73,11 @@ async function runPluginCommand(...args: [commandMatch: string] | [commandMatch:
   return firstText
 }
 
-async function runPluginCommandFromPlatform(commandMatch: string, userId: string, platformInstanceId: string): Promise<string> {
+async function runPluginCommandFromPlatform(
+  commandMatch: string,
+  userId: string,
+  platformInstanceId: string,
+): Promise<string> {
   const handler = registerCommandForTest()
   const { reply, textCalls } = createMockReply()
   await handler(
@@ -218,6 +224,7 @@ describe('registerPluginCommand', () => {
 
   test('enables and disables an active plugin for a context', async () => {
     addAdmin('admin-user', 'test-instance')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-1', platformInstanceId: 'test-instance' })
     const plugin = makePlugin('toggle-plugin')
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -259,17 +266,37 @@ describe('registerPluginCommand', () => {
     expect(output).toContain('enabled')
   })
 
-  test('uses source platform when target context settings are missing', async () => {
+  test('denies explicit target context when settings are missing', async () => {
     addAdmin('platform-admin', 'source-platform')
     const plugin = makePlugin('source-platform-plugin')
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
     pluginRegistry.markActive(plugin.manifest.id)
 
-    const output = await runPluginCommandFromPlatform('enable source-platform-plugin missing-context', 'platform-admin', 'source-platform')
+    const output = await runPluginCommandFromPlatform(
+      'enable source-platform-plugin missing-context',
+      'platform-admin',
+      'source-platform',
+    )
 
-    expect(isPluginEnabledForContext('source-platform-plugin', 'missing-context')).toBe(true)
-    expect(output).toContain('enabled')
+    expect(isPluginEnabledForContext('source-platform-plugin', 'missing-context')).toBe(false)
+    expect(output).toContain('not configured')
+  })
+
+  test('denies explicit disable target context when settings are missing', async () => {
+    addAdmin('platform-admin', 'source-platform')
+    const plugin = makePlugin('missing-disable-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'super-admin', plugin.manifestHash)
+    pluginRegistry.markActive(plugin.manifest.id)
+
+    const output = await runPluginCommandFromPlatform(
+      'disable missing-disable-plugin missing-context',
+      'platform-admin',
+      'source-platform',
+    )
+
+    expect(output).toContain('not configured')
   })
 
   test('defaults omitted enable target to requester DM context', async () => {

@@ -4,8 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatProvider, ReplyFn } from '../chat/types.js'
-import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
-import { getContextSettings } from '../instances/context-store.js'
+import { isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
 import {
@@ -15,15 +14,15 @@ import {
   getRecentRuntimeEvents,
 } from '../plugins/store.js'
 import type { PluginState } from '../plugins/types.js'
+import {
+  canManageTargetContext,
+  getTargetContextId,
+  hasExplicitTargetContext,
+  type PluginCommandContext,
+  replyTargetAuthorizationFailure,
+} from './plugin-auth.js'
 
 const log = logger.child({ scope: 'commands:plugin' })
-type PluginCommandContext = Readonly<{
-  args: string[]
-  userId: string
-  sourceContextId: string
-  sourcePlatformInstanceId: string
-  reply: ReplyFn
-}>
 
 function formatState(state: PluginState): string {
   const stateEmoji: Record<PluginState, string> = {
@@ -49,21 +48,6 @@ const getSubcommand = (args: string[]): string => {
   if (subcommand === undefined) return 'list'
   return subcommand
 }
-
-const getTargetContextId = (args: string[], requesterContextId: string): string => {
-  const targetContextId = args[2]
-  if (targetContextId === undefined) return requesterContextId
-  return targetContextId
-}
-
-const getTargetPlatformInstanceId = (targetContextId: string, sourcePlatformInstanceId: string): string => {
-  const settings = getContextSettings(targetContextId)
-  if (settings === null) return sourcePlatformInstanceId
-  return settings.platformInstanceId
-}
-
-const canManageTargetContext = (userId: string, targetContextId: string, sourcePlatformInstanceId: string): boolean =>
-  isAdmin(userId, getTargetPlatformInstanceId(targetContextId, sourcePlatformInstanceId))
 
 function buildPluginListMessage(): string {
   const allStates = getAllPluginAdminStates()
@@ -216,8 +200,14 @@ async function runEnableSubcommand(ctx: PluginCommandContext): Promise<void> {
     return
   }
   const targetContextId = getTargetContextId(ctx.args, ctx.sourceContextId)
-  if (!canManageTargetContext(ctx.userId, targetContextId, ctx.sourcePlatformInstanceId)) {
-    await ctx.reply.text('You are not authorized to manage plugins for that context.')
+  const authorization = canManageTargetContext(
+    ctx.userId,
+    targetContextId,
+    ctx.sourcePlatformInstanceId,
+    hasExplicitTargetContext(ctx.args),
+  )
+  if (!authorization.allowed) {
+    await replyTargetAuthorizationFailure(authorization, ctx.reply)
     return
   }
   await handleEnable(id, targetContextId, ctx.userId, ctx.reply)
@@ -230,8 +220,14 @@ async function runDisableSubcommand(ctx: PluginCommandContext): Promise<void> {
     return
   }
   const targetContextId = getTargetContextId(ctx.args, ctx.sourceContextId)
-  if (!canManageTargetContext(ctx.userId, targetContextId, ctx.sourcePlatformInstanceId)) {
-    await ctx.reply.text('You are not authorized to manage plugins for that context.')
+  const authorization = canManageTargetContext(
+    ctx.userId,
+    targetContextId,
+    ctx.sourcePlatformInstanceId,
+    hasExplicitTargetContext(ctx.args),
+  )
+  if (!authorization.allowed) {
+    await replyTargetAuthorizationFailure(authorization, ctx.reply)
     return
   }
   await handleDisable(id, targetContextId, ctx.userId, ctx.reply)
