@@ -218,23 +218,23 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
 
   await getEnabledContextsForPlugin(pluginId).reduce(async (chain, contextId) => {
     await chain
-    const eligibility = getPluginContextEligibility(pluginId, contextId)
-    if (!eligibility.eligible) {
-      log.warn({ pluginId, jobName, contextId, reason: eligibility.reason }, 'Plugin job skipping ineligible context')
-      return
-    }
-
-    if (pluginNeedsTaskProvider(contributions.manifest) && deps.resolveTaskProvider(contextId) === null) {
-      log.warn({ pluginId, jobName, contextId }, 'Plugin job skipping context with unresolved task provider')
-      return
-    }
-
     try {
+      const eligibility = getPluginContextEligibility(pluginId, contextId)
+      if (!eligibility.eligible) {
+        log.warn({ pluginId, jobName, contextId, reason: eligibility.reason }, 'Plugin job skipping ineligible context')
+        return
+      }
+
+      if (pluginNeedsTaskProvider(contributions.manifest) && deps.resolveTaskProvider(contextId) === null) {
+        log.warn({ pluginId, jobName, contextId }, 'Plugin job skipping context with unresolved task provider')
+        return
+      }
+
       await job.execute(contextId)
     } catch (error) {
       log.error(
         { pluginId, jobName, contextId, error: error instanceof Error ? error.message : String(error) },
-        'Plugin job execution threw',
+        'Plugin job context processing threw',
       )
     }
   }, Promise.resolve())

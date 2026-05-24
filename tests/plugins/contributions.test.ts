@@ -13,6 +13,7 @@ import {
   namespacedToolName,
   runPluginScheduledJob,
   sanitizePluginId,
+  type PluginScheduledJobDeps,
   type PluginToolSetRuntime,
 } from '../../src/plugins/contributions.js'
 import {
@@ -335,6 +336,54 @@ describe('PluginContributionRegistry', () => {
 
     expect(resolvedContexts).toEqual(['ctx-enabled'])
     expect(seenContexts).toEqual([])
+  })
+
+  test('scheduled jobs continue after one context task resolver throws', async () => {
+    const seenContexts: string[] = []
+    const resolverByContext = new Map([
+      [
+        'ctx-a',
+        (): ReturnType<PluginScheduledJobDeps['resolveTaskProvider']> => {
+          throw new Error('resolver boom')
+        },
+      ],
+      ['ctx-b', (): ReturnType<PluginScheduledJobDeps['resolveTaskProvider']> => createMockProvider()],
+    ])
+    const manifest = makeManifest({
+      permissions: ['tasks.read'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-b', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        const resolver = resolverByContext.get(contextId)
+        expect(resolver).toBeDefined()
+        return resolver!()
+      },
+    })
+
+    expect(seenContexts).toEqual(['ctx-b'])
   })
 
   test('scheduled jobs continue after one context throws', async () => {
