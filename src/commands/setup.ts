@@ -5,6 +5,7 @@
 
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
+import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { getConfig } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
@@ -214,10 +215,11 @@ export function registerSetupCommand(
     }
 
     log.info({ userId: msg.user.id, contextId: auth.storageContextId }, '/setup command executed')
-    if (!supportsMessageDeletion(chat)) {
+    const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
+    if (!supportsMessageDeletion(sourceChat)) {
       await reply.text(NO_DELETE_WARNING)
     }
-    await replyWithSetupSelection(reply, msg.user.id, msg.platformInstanceId, supportsInteractiveButtons(chat))
+    await replyWithSetupSelection(reply, msg.user.id, msg.platformInstanceId, supportsInteractiveButtons(sourceChat))
   }
 
   chat.registerCommand('setup', handler)

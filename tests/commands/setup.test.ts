@@ -4,9 +4,10 @@
 // See LICENSE in the project root for details.
 
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
-import type { CommandHandler, ReplyFn } from '../../src/chat/types.js'
+import type { ChatCapability, ChatProvider, CommandHandler, ReplyFn } from '../../src/chat/types.js'
 import { registerSetupCommand } from '../../src/commands/setup.js'
 import type { SetupCommandDeps } from '../../src/commands/setup.js'
 import { setConfig } from '../../src/config.js'
@@ -35,6 +36,25 @@ const startSetupForTarget = async (
 const getConfigWithExistingApiKey = (_contextId: string, key: string): string | null => {
   const values: Record<string, string> = { kaneo_apikey: 'existing-key' }
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
+}
+
+function createRouterLikeSetupChat(sourceProvider: ChatProvider, commandHandlers: Map<string, CommandHandler>): ChatProvider {
+  return {
+    ...createMockChatWithCommandHandlers({
+      capabilities: new Set<ChatCapability>([
+        'interactions.callbacks',
+        'messages.buttons',
+        'messages.delete',
+        'messages.files',
+        'files.receive',
+      ]),
+    }).provider,
+    name: 'router',
+    registerCommand: (name: string, handler: CommandHandler): void => {
+      commandHandlers.set(name, handler)
+    },
+    getInstance: (id: string) => (id === 'mattermost-no-affordances' ? { provider: sourceProvider } : null),
+  } as ChatProvider
 }
 
 describe('/setup command', () => {
@@ -71,6 +91,22 @@ describe('/setup command', () => {
     await requireSetupHandler()(createDmMessage('user-1'), reply, createAuth('user-1'))
 
     expect(buttonCalls[0]).toContain('What do you want to configure?')
+  })
+
+  test('uses source instance affordances instead of router aggregate affordances', async () => {
+    const commandHandlers = new Map<string, CommandHandler>()
+    const sourceProvider = createMockChatWithCommandHandlers({ capabilities: new Set<ChatCapability>() }).provider
+    registerSetupCommand(createRouterLikeSetupChat(sourceProvider, commandHandlers), (_userId: string) => true)
+    const handler = commandHandlers.get('setup')
+    assert.ok(handler !== undefined, 'setup handler was not registered')
+    const { reply, textCalls, buttonCalls } = createMockReply()
+    const msg = { ...createDmMessage('user-1'), platformInstanceId: 'mattermost-no-affordances' }
+
+    await handler(msg, reply, createAuth('user-1'))
+
+    expect(buttonCalls).toHaveLength(0)
+    expect(textCalls.some((text) => text.includes('does not support automatic deletion'))).toBe(true)
+    expect(textCalls.some((text) => text.includes('What do you want to configure?'))).toBe(true)
   })
 
   test('group admin gets a DM-only redirect', async () => {

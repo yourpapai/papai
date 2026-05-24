@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
+import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
 import { getConfigKeysForContext } from '../config-keys.js'
@@ -37,7 +38,9 @@ function getFieldEmoji(key: ConfigKey): string {
     youtrack_token: '🔐',
     timezone: '🌍',
   }
-  return emojiMap[key] ?? '⚙️'
+  const emoji = emojiMap[key]
+  if (emoji === undefined) return '⚙️'
+  return emoji
 }
 
 function formatConfigLine(key: ConfigKey, value: string | undefined): string {
@@ -171,7 +174,7 @@ async function replyWithConfigSelection(reply: ReplyFn, userId: string, interact
 
 export function registerConfigCommand(
   chat: ChatProvider,
-  _checkAuthorization: (userId: string, username?: string | null) => boolean,
+  _checkAuthorization: (userId: string, username: string | null | undefined) => boolean,
 ): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
@@ -182,10 +185,11 @@ export function registerConfigCommand(
     }
 
     log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command called')
-    const interactiveButtons = supportsInteractiveButtons(chat)
+    const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
+    const interactiveButtons = supportsInteractiveButtons(sourceChat)
 
     log.info({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command executed')
-    if (!supportsMessageDeletion(chat)) {
+    if (!supportsMessageDeletion(sourceChat)) {
       await reply.text(NO_DELETE_WARNING)
     }
     await replyWithConfigSelection(reply, msg.user.id, interactiveButtons)

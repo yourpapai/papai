@@ -12,6 +12,7 @@ import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-trackin
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
+import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
@@ -36,12 +37,12 @@ import { isAuthorized, resolveUserByUsername } from './users.js'
 type ProcessMessageFn = typeof defaultProcessMessage
 type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
-export interface BotDeps {
-  processMessage: ProcessMessageFn
-  stagedDownloadFn?: StagedFileDownloadFn
-  enqueueMessage?: EnqueueMessageFn
+export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
+  Readonly<Partial<Record<'stagedDownloadFn', StagedFileDownloadFn> & Record<'enqueueMessage', EnqueueMessageFn>>>
+const defaultBotDeps: BotDeps = {
+  processMessage: defaultProcessMessage,
+  enqueueMessage,
 }
-const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
 const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
   log.debug({ userId }, 'Checking authorization')
@@ -163,7 +164,8 @@ async function handleMessage(
   }
   if (shouldIgnoreGroupMessage(msg)) return
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  const queueMessage = deps.enqueueMessage ?? enqueueMessage
+  let queueMessage = enqueueMessage
+  if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage
   queueMessage(
     {
       text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
@@ -187,7 +189,11 @@ function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationRes
 function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
   if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return
   try {
-    stageGroupFileCandidates({ storageContextId, msg, sourceProvider: toSourceProvider(chat.name) })
+    stageGroupFileCandidates({
+      storageContextId,
+      msg,
+      sourceProvider: toSourceProvider(resolveSourceProviderName(chat, msg.platformInstanceId)),
+    })
   } catch (error: unknown) {
     log.warn(
       {

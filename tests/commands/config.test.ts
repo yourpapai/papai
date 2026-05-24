@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import type { ChatCapability, CommandHandler } from '../../src/chat/types.js'
+import type { ChatCapability, ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerConfigCommand, renderConfigForTarget } from '../../src/commands/config.js'
 import { setConfig, setPluginConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
@@ -26,6 +26,23 @@ import {
 
 const USER_ID = 'config-test-user'
 
+function createRouterLikeChat(sourceProvider: ChatProvider): ChatProvider {
+  const router = createMockChatWithCommandHandlers({
+    capabilities: new Set<ChatCapability>([
+      'interactions.callbacks',
+      'messages.buttons',
+      'messages.delete',
+      'messages.files',
+      'files.receive',
+    ]),
+  })
+  return {
+    ...router.provider,
+    name: 'router',
+    getInstance: (id: string) => (id === 'mattermost-no-buttons' ? { provider: sourceProvider } : null),
+  } as ChatProvider
+}
+
 function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
     id: `${contextId}-kaneo`,
@@ -36,7 +53,8 @@ function assignKaneoContext(contextId: string): void {
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
 }
 
-function makePlugin(pluginId: string, overrides: Partial<DiscoveredPlugin['manifest']> = {}): DiscoveredPlugin {
+function makePlugin(pluginId: string, ...rest: [] | [Partial<DiscoveredPlugin['manifest']>]): DiscoveredPlugin {
+  const overrides = rest.length === 0 ? {} : rest[0]
   return {
     manifest: {
       id: pluginId,
@@ -77,7 +95,9 @@ describe('/config Command', () => {
 
       const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
       registerConfigCommand(mockChat, (_userId: string) => true)
-      configHandler = commandHandlers.get('config') ?? null
+      const handler = commandHandlers.get('config')
+      configHandler = null
+      if (handler !== undefined) configHandler = handler
     })
 
     test('shows all config keys with values and masked secrets', async () => {
@@ -92,7 +112,7 @@ describe('/config Command', () => {
     test('shows unset placeholder for unconfigured keys', async () => {
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
-      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
       const output = buttonCalls[0]
       expect(output.length).toBeGreaterThan(0)
       const lines = output.split('\n').filter((line) => line.trim().length > 0)
@@ -111,7 +131,7 @@ describe('/config Command', () => {
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
 
-      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
       expect(buttonCalls[0]).toContain('YouTrack Token')
       expect(buttonCalls[0]).toContain('Timezone')
       expect(buttonCalls[0]).not.toContain('Kaneo API Key')
@@ -129,7 +149,7 @@ describe('/config Command', () => {
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
 
-      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
       expect(buttonCalls[0]).toContain('Missing Config Plugin')
       expect(buttonCalls[0]).toContain('unavailable')
       expect(buttonCalls[0]).toContain('API Token')
@@ -150,7 +170,7 @@ describe('/config Command', () => {
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
 
-      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
       expect(buttonCalls[0]).toContain('API Token')
       expect(buttonCalls[0]).toContain('****1234')
       expect(buttonCalls[0]).not.toContain('secret-token-1234')
@@ -175,6 +195,28 @@ describe('/config Command', () => {
       )
       expect(buttonCalls).toHaveLength(0)
     })
+
+    test('uses source instance button capabilities instead of router aggregate capabilities', async () => {
+      const sourceProvider = createMockChatWithCommandHandlers({ capabilities: new Set<ChatCapability>() }).provider
+      const routerChat = createRouterLikeChat(sourceProvider)
+      const commandHandlers = new Map<string, CommandHandler>()
+      const chat = {
+        ...routerChat,
+        registerCommand: (name: string, handler: CommandHandler): void => {
+          commandHandlers.set(name, handler)
+        },
+      } as ChatProvider
+      registerConfigCommand(chat, (_userId: string) => true)
+      const handler = commandHandlers.get('config')
+      assert.ok(handler !== undefined, 'expected config handler to be registered')
+      const msg = { ...createDmMessage(USER_ID), platformInstanceId: 'mattermost-no-buttons' }
+      const { reply, textCalls, buttonCalls } = createMockReply()
+
+      await handler(msg, reply, createAuth(USER_ID))
+
+      expect(buttonCalls).toHaveLength(0)
+      expect(textCalls.some((text) => text.includes('What do you want to configure?'))).toBe(true)
+    })
   })
 
   describe('without interactive button support', () => {
@@ -194,7 +236,9 @@ describe('/config Command', () => {
       ])
       const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers({ capabilities })
       registerConfigCommand(mockChat, (_userId: string) => true)
-      configHandler = commandHandlers.get('config') ?? null
+      const handler = commandHandlers.get('config')
+      configHandler = null
+      if (handler !== undefined) configHandler = handler
     })
 
     test('falls back to plain text with config output', async () => {
@@ -204,7 +248,7 @@ describe('/config Command', () => {
       await renderConfigForTarget(reply, USER_ID, false)
       expect(buttonCalls).toHaveLength(0)
       expect(textCalls).toHaveLength(1)
-      assert(textCalls[0] !== undefined, 'expected textCalls[0] to be defined')
+      assert.ok(textCalls[0] !== undefined, 'expected textCalls[0] to be defined')
       const output = textCalls[0]
       expect(output).toContain('****1234')
     })
@@ -212,7 +256,7 @@ describe('/config Command', () => {
     test('includes note that interactive editing is unavailable', async () => {
       const { reply, textCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, false)
-      assert(textCalls[0] !== undefined, 'expected textCalls[0] to be defined')
+      assert.ok(textCalls[0] !== undefined, 'expected textCalls[0] to be defined')
       const output = textCalls[0]
       expect(output).toContain('not available')
     })

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingMessage } from './chat/types.js'
 import {
   upsertGroupAdminObservation,
@@ -13,11 +14,14 @@ import {
 export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void {
   if (msg.contextType !== 'group') return
   if (msg.commandMatch === undefined && !msg.isMentioned) return
-  const displayName = msg.contextName ?? msg.contextId
-  const parentName = msg.contextParentName ?? null
-  upsertKnownGroupContext({ contextId: msg.contextId, provider: chat.name, displayName, parentName })
+  const provider = resolveSourceProviderName(chat, msg.platformInstanceId)
+  let displayName = msg.contextId
+  if (msg.contextName !== undefined) displayName = msg.contextName
+  let parentName: string | null = null
+  if (msg.contextParentName !== undefined) parentName = msg.contextParentName
+  upsertKnownGroupContext({ contextId: msg.contextId, provider, displayName, parentName })
   upsertGroupAdminObservation({
-    provider: chat.name,
+    provider,
     contextId: msg.contextId,
     userId: msg.user.id,
     username: msg.user.username,
@@ -25,7 +29,7 @@ export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage)
   })
   if (msg.user.displayLabel !== undefined && msg.user.displayLabel !== '') {
     upsertGroupUserObservation({
-      provider: chat.name,
+      provider,
       contextId: msg.contextId,
       userId: msg.user.id,
       username: msg.user.username,

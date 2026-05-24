@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import {
   createInMemoryBlobStoreForTesting,
@@ -11,27 +12,56 @@ import {
   setBlobStoreForTesting,
 } from '../src/attachments/blob-store.js'
 import { listActiveAttachments } from '../src/attachments/index.js'
+import { loadAttachmentRecord } from '../src/attachments/store.js'
 import { findStagedFilesByMessageId } from '../src/attachments/staged.js'
 import type { StagedFileRef, StageFileParams } from '../src/attachments/types.js'
+import { addAuthorizedGroup } from '../src/authorized-groups.js'
+import { setupBot } from '../src/bot.js'
+import type { ChatProvider, ReplyFn } from '../src/chat/types.js'
 import type { IncomingFile, IncomingFileCandidate, IncomingMessage } from '../src/chat/types.js'
 import { mockLogger, setupTestDb, createMockChat, createDmMessage, createGroupMessage } from './utils/test-helpers.js'
 
-const makeFile = (overrides: Partial<IncomingFile> = {}): IncomingFile => ({
-  fileId: 'f-1',
-  filename: 'report.pdf',
-  content: Buffer.from('pdf-data'),
-  mimeType: 'application/pdf',
-  size: 8,
-  ...overrides,
-})
+const makeFile = (...rest: [] | [Partial<IncomingFile>]): IncomingFile => {
+  const overrides = rest.length === 0 ? {} : rest[0]
+  return {
+    fileId: 'f-1',
+    filename: 'report.pdf',
+    content: Buffer.from('pdf-data'),
+    mimeType: 'application/pdf',
+    size: 8,
+    ...overrides,
+  }
+}
 
-const makeCandidate = (overrides: Partial<IncomingFileCandidate> = {}): IncomingFileCandidate => ({
-  fileId: 'f-1',
-  filename: 'report.pdf',
-  mimeType: 'application/pdf',
-  size: 8,
-  ...overrides,
-})
+const makeCandidate = (...rest: [] | [Partial<IncomingFileCandidate>]): IncomingFileCandidate => {
+  const overrides = rest.length === 0 ? {} : rest[0]
+  return {
+    fileId: 'f-1',
+    filename: 'report.pdf',
+    mimeType: 'application/pdf',
+    size: 8,
+    ...overrides,
+  }
+}
+
+function createRouterLikeChat(sourceProvider: ChatProvider): {
+  chat: ChatProvider
+  getMessageHandler: () => ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null
+} {
+  let messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
+  return {
+    chat: {
+      ...createMockChat({
+        onMessageHandler: (handler): void => {
+          messageHandler = handler
+        },
+      }),
+      name: 'router',
+      getInstance: (id: string) => (id === 'mattermost-source' ? { provider: sourceProvider } : null),
+    } as ChatProvider,
+    getMessageHandler: () => messageHandler,
+  }
+}
 
 describe('bot-attachments', () => {
   let blobs: ReturnType<typeof createInMemoryBlobStoreForTesting>
@@ -66,6 +96,24 @@ describe('bot-attachments', () => {
       expect(result.newAttachmentIds).toHaveLength(1)
       expect(result.newAttachmentIds[0]!.startsWith('att_')).toBe(true)
       expect(listActiveAttachments('dm-user')).toHaveLength(1)
+    })
+
+    test('uses source instance provider when ingesting router-delivered files', async () => {
+      const { ingestDmAttachments } = await import('../src/bot-attachments.js')
+      const sourceProvider = { ...createMockChat(), name: 'mattermost' }
+      const { chat } = createRouterLikeChat(sourceProvider)
+      const msg: IncomingMessage = {
+        ...createDmMessage('dm-user'),
+        platformInstanceId: 'mattermost-source',
+        files: [makeFile()],
+      }
+
+      const result = await ingestDmAttachments({ chat, msg, storageContextId: 'dm-user', files: msg.files! })
+      const stored = await loadAttachmentRecord('dm-user', result.newAttachmentIds[0]!)
+
+      expect(stored).not.toBeNull()
+      assert.ok(stored !== null, 'expected stored attachment')
+      expect(stored.sourceProvider).toBe('mattermost')
     })
   })
 
@@ -132,6 +180,31 @@ describe('bot-attachments', () => {
 
       const staged = findStagedFilesByMessageId('group-1', 'msg-multi')
       expect(staged).toHaveLength(2)
+    })
+
+    test('uses source instance provider when staging router-delivered candidates', async () => {
+      const sourceProvider = { ...createMockChat(), name: 'mattermost' }
+      const { chat, getMessageHandler } = createRouterLikeChat(sourceProvider)
+      setupBot(chat, 'admin-user', {
+        processMessage: () => Promise.resolve(),
+        enqueueMessage: () => {},
+      })
+      const handler = getMessageHandler()
+      assert.ok(handler !== null, 'message handler was not registered')
+      addAuthorizedGroup('group-1', 'admin-user')
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', '@bot remember this', true, 'group-1'),
+        platformInstanceId: 'mattermost-source',
+        messageId: 'msg-router',
+        fileCandidates: [makeCandidate({ fileId: 'mm_platform_123' })],
+      }
+
+      await handler(msg, { text: async () => {}, formatted: async () => {}, buttons: async () => {}, typing: () => {} })
+
+      const staged = findStagedFilesByMessageId('group-1', 'msg-router')
+      expect(staged[0]).not.toBeUndefined()
+      assert.ok(staged[0] !== undefined, 'expected staged attachment')
+      expect(staged[0].sourceProvider).toBe('mattermost')
     })
 
     test('continues staging remaining candidates when one throws', async () => {
