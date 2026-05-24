@@ -14,6 +14,7 @@ import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/al
 import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { setSystemConfig } from '../../src/system-config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -26,6 +27,7 @@ import {
 
 function setupUserConfig(userId: string): void {
   setConfig(userId, 'timezone', 'UTC')
+  setContextSettings({ contextId: userId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
   resetSystemConfigCacheForTesting()
   setSystemConfig('llm_apikey', 'test-key', 'env')
   setSystemConfig('llm_baseurl', 'http://localhost:11434/v1', 'env')
@@ -49,11 +51,10 @@ type GenerateTextResult = {
 // --- Tests ---
 
 describe('pollScheduledOnce', () => {
-  let sentMessages: Array<{ target: { contextId: string; contextType: string }; text: string }>
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
   let chat: ChatProvider
   let provider: TaskProvider
-  let generateTextImpl = (): Promise<GenerateTextResult> =>
-    Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+  let generateTextImpl: () => Promise<GenerateTextResult>
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
@@ -89,6 +90,17 @@ describe('pollScheduledOnce', () => {
     expect(updated).not.toBeNull()
     expect(updated!.status).toBe('completed')
     expect(updated!.lastExecutedAt).not.toBeNull()
+  })
+
+  test('platformInstanceId routes through context settings', async () => {
+    setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
   })
 
   test('does not execute future prompts', async () => {
@@ -214,6 +226,7 @@ describe('pollScheduledOnce', () => {
     resetSystemConfigCacheForTesting()
 
     const unconfiguredUser = 'unconfigured-user'
+    setContextSettings({ contextId: unconfiguredUser, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     createScheduledPrompt(unconfiguredUser, 'No config', { fireAt: pastTime })
 
@@ -225,10 +238,9 @@ describe('pollScheduledOnce', () => {
 })
 
 describe('pollScheduledOnce — error handling', () => {
-  let sentMessages: Array<{ target: { contextId: string; contextType: string }; text: string }>
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
   let chat: ChatProvider
-  let generateTextImpl = (): Promise<GenerateTextResult> =>
-    Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+  let generateTextImpl: () => Promise<GenerateTextResult>
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
@@ -298,8 +310,8 @@ describe('pollScheduledOnce — error handling', () => {
     const created = createScheduledPrompt(userId, 'one-time task', { fireAt: pastTime })
 
     const failOnceThenRecord = mock(
-      (_platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
-        sentMessages.push({ target: _target, text })
+      (platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
+        sentMessages.push({ platformInstanceId, target: _target, text })
         return Promise.resolve()
       },
     )
@@ -317,10 +329,9 @@ describe('pollScheduledOnce — error handling', () => {
 })
 
 describe('pollAlertsOnce', () => {
-  let sentMessages: Array<{ target: { contextId: string; contextType: string }; text: string }>
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
   let chat: ChatProvider
-  let generateTextImpl = (): Promise<GenerateTextResult> =>
-    Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+  let generateTextImpl: () => Promise<GenerateTextResult>
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
@@ -380,6 +391,23 @@ describe('pollAlertsOnce', () => {
     expect(sentMessages[0]!.text).toBe('Alert triggered.')
   })
 
+  test('platformInstanceId routes through context settings', async () => {
+    setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
+  })
+
   test('enriches tasks via getTask when condition references assignee', async () => {
     createAlertPrompt(USER_ID, 'Notify on alice assignment', {
       field: 'task.assignee',
@@ -412,8 +440,8 @@ describe('pollAlertsOnce', () => {
   test('does not update alert trigger time when delivery fails', async () => {
     const created = createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
     const failOnceThenRecord = mock(
-      (_platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
-        sentMessages.push({ target: _target, text })
+      (platformInstanceId: string, _target: DeferredDeliveryTarget, text: string): Promise<void> => {
+        sentMessages.push({ platformInstanceId, target: _target, text })
         return Promise.resolve()
       },
     )
@@ -437,7 +465,7 @@ describe('pollAlertsOnce', () => {
 })
 
 describe('pollScheduledOnce Race Condition', () => {
-  let sentMessages: Array<{ target: { contextId: string; contextType: string }; text: string }>
+  let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
   let chat: ChatProvider
   let provider: TaskProvider
   let resolveLlm: (result: GenerateTextResult) => void
@@ -499,8 +527,7 @@ describe('delivery target routing', () => {
   let sentMessages: Array<{ target: DeferredDeliveryTarget; text: string }>
   let chat: ChatProvider
   let provider: TaskProvider
-  let generateTextImpl = (): Promise<GenerateTextResult> =>
-    Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+  let generateTextImpl: () => Promise<GenerateTextResult>
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
@@ -531,6 +558,7 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: null,
     })
+    setContextSettings({ contextId: '-1001:42', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     await pollScheduledOnce(chat, () => provider)
 
@@ -559,6 +587,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
+    setContextSettings({ contextId: groupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     const matchingProvider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
@@ -600,6 +629,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
+    setContextSettings({ contextId: firstGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
     createAlertPrompt(
       USER_ID,
       'Notify second channel',
@@ -616,6 +646,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
+    setContextSettings({ contextId: secondGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     const providerByContext = new Map<string, TaskProvider>([
       [
@@ -665,6 +696,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
+    setContextSettings({ contextId: firstGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
     createAlertPrompt(
       USER_ID,
       'Track second channel snapshots',
@@ -681,6 +713,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
+    setContextSettings({ contextId: secondGroupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     const providerByContext = new Map<string, TaskProvider>([
       [
@@ -748,6 +781,7 @@ describe('delivery target routing', () => {
         createdByUsername: null,
       },
     )
+    setContextSettings({ contextId: groupContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     const matchingProvider = createMockProvider({
       listProjects: mock(() => Promise.resolve([{ id: 'project-1', name: 'First', url: 'http://test/proj/1' }])),
@@ -785,6 +819,7 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: null,
     })
+    setContextSettings({ contextId: '-1001', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     await pollScheduledOnce(chat, () => provider)
 
@@ -817,12 +852,13 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: 'alice',
     })
+    setContextSettings({ contextId: '-1001:42', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     await pollScheduledOnce(chat, () => provider)
 
     expect(callCount).toBe(2)
     expect(sentMessages).toHaveLength(2)
-    expect(sentMessages.map((message) => message.target.audience).sort()).toEqual(['personal', 'shared'])
+    expect(sentMessages.map((message) => message.target.audience).toSorted()).toEqual(['personal', 'shared'])
   })
 
   test('shared scheduled prompts still batch together when one stored target has stale mention ids', async () => {
@@ -851,6 +887,7 @@ describe('delivery target routing', () => {
       createdByUserId: USER_ID,
       createdByUsername: 'alice',
     })
+    setContextSettings({ contextId: '-1001:42', taskInstanceId: 'kaneo-default', platformInstanceId: 'mattermost-default' })
 
     await pollScheduledOnce(chat, () => provider)
 

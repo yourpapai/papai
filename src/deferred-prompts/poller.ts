@@ -5,7 +5,8 @@
 
 import pLimit from 'p-limit'
 
-import type { ChatProvider } from '../chat/types.js'
+import { resolveDeliveryPlatformInstanceId } from '../chat/delivery-routing.js'
+import type { ChatProvider, DeferredDeliveryTarget } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { Task } from '../providers/types.js'
@@ -49,6 +50,12 @@ function alertToExecCtx(alert: AlertPrompt): DeferredExecutionContext {
 
 const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
 
+async function sendProactiveMessage(chat: ChatProvider, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
+  if (platformInstanceId === null) return
+  await chat.sendMessage(platformInstanceId, target, markdown)
+}
+
 async function executeScheduledPromptsForGroup(
   execCtx: DeferredExecutionContext,
   prompts: ScheduledPrompt[],
@@ -75,16 +82,12 @@ async function executeScheduledPromptsForGroup(
       { userId: createdByUserId, promptIds, error: errMsg },
       'Scheduled prompt execution failed before delivery',
     )
-    await chat.sendMessage(
-      `${chat.name}-default`,
-      execCtx.deliveryTarget,
-      `I ran into an error while working on that: ${errMsg}`,
-    )
+    await sendProactiveMessage(chat, execCtx.deliveryTarget, `I ran into an error while working on that: ${errMsg}`)
     finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
     return
   }
 
-  await chat.sendMessage(`${chat.name}-default`, execCtx.deliveryTarget, response)
+  await sendProactiveMessage(chat, execCtx.deliveryTarget, response)
   finalizeAllPrompts(prompts, new Date().toISOString(), timezone)
   for (const prompt of prompts) {
     emitUser('deferred:fired', prompt.createdByUserId, { promptId: prompt.id })
@@ -153,8 +156,8 @@ async function executeSingleAlert(
       { id: alert.id, userId: alert.createdByUserId, error: errMsg },
       'Alert prompt execution failed before delivery',
     )
-    await chat.sendMessage(
-      `${chat.name}-default`,
+    await sendProactiveMessage(
+      chat,
       alert.deliveryTarget,
       `Sorry, something went wrong while preparing this update: ${errMsg}`,
     )
@@ -164,7 +167,7 @@ async function executeSingleAlert(
     return
   }
 
-  await chat.sendMessage(`${chat.name}-default`, alert.deliveryTarget, response)
+  await sendProactiveMessage(chat, alert.deliveryTarget, response)
   const now = new Date().toISOString()
   updateAlertTriggerTime(alert.id, alert.createdByUserId, now)
   log.info({ id: alert.id, userId: alert.createdByUserId, matchedCount: matchedTasks.length }, 'Alert triggered')
@@ -245,21 +248,18 @@ export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderF
 
   isRunning = true
 
-  // Register scheduled poll task
   scheduler.register('deferred-scheduled-poll', {
     interval: SCHEDULED_POLL_MS,
     handler: () => pollScheduledOnce(chat, buildProviderFn),
     options: { immediate: true },
   })
 
-  // Register alert poll task
   scheduler.register('deferred-alert-poll', {
     interval: ALERT_POLL_MS,
     handler: () => pollAlertsOnce(chat, buildProviderFn),
     options: { immediate: true },
   })
 
-  // Start both tasks
   scheduler.start('deferred-scheduled-poll')
   scheduler.start('deferred-alert-poll')
 

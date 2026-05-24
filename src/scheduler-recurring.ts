@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatProvider } from './chat/types.js'
+import { resolveDeliveryPlatformInstanceId } from './chat/delivery-routing.js'
 import { dmTarget } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
@@ -55,12 +56,12 @@ export const notifyUser = async (
 ): Promise<void> => {
   if (chatProviderRef === null) return
 
+  const target = dmTarget(userId)
+  const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
+  if (platformInstanceId === null) return
+
   try {
-    await chatProviderRef.sendMessage(
-      `${chatProviderRef.name}-default`,
-      dmTarget(userId),
-      `Recurring task created: **${created.title}** in project.`,
-    )
+    await chatProviderRef.sendMessage(platformInstanceId, target, `Recurring task created: **${created.title}** in project.`)
   } catch (notifyError) {
     log.warn(
       { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },

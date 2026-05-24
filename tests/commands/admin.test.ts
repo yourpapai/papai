@@ -296,16 +296,18 @@ describe('Admin Commands', () => {
     test('sends announcement to all registered users', async () => {
       addUser('user-a', ADMIN_ID)
       addUser('user-b', ADMIN_ID)
-      const sentMessages: Array<{ userId: string; markdown: string }> = []
-      const { mockChat, handlers } = createMockChatWithHandler((userId, markdown) => {
-        sentMessages.push({ userId, markdown })
-        return Promise.resolve()
+      const sentMessages: Array<{ platformInstanceId: string; userId: string; markdown: string }> = []
+      const { provider: mockChat, commandHandlers: handlers } = createMockChatWithCommandHandlers({
+        sendMessage: (platformInstanceId, target, markdown) => {
+          sentMessages.push({ platformInstanceId, userId: target.contextId, markdown })
+          return Promise.resolve()
+        },
       })
       registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
-      await handler!(createDmMessage(ADMIN_ID, 'Hello everyone!'), reply, {
+      await handler!({ ...createDmMessage(ADMIN_ID, 'Hello everyone!'), platformInstanceId: 'mattermost-default' }, reply, {
         allowed: true,
         isBotAdmin: true,
         isGroupAdmin: false,
@@ -314,6 +316,7 @@ describe('Admin Commands', () => {
       // Should send to all users (admin + user-a + user-b)
       expect(sentMessages.length).toBe(3)
       expect(sentMessages.every((m) => m.markdown.includes('Hello everyone!'))).toBe(true)
+      expect(sentMessages.every((m) => m.platformInstanceId === 'mattermost-default')).toBe(true)
       // Should confirm to admin
       expect(getReplies()[0]).toContain('3')
     })

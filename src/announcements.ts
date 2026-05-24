@@ -35,9 +35,14 @@ function markVersionAnnounced(version: string): boolean {
   }
 }
 
-async function sendAnnouncementToAdmin(adminUserId: string, markdown: string, chat: ChatProvider): Promise<boolean> {
+async function sendAnnouncementToAdmin(
+  platformInstanceId: string,
+  adminUserId: string,
+  markdown: string,
+  chat: ChatProvider,
+): Promise<boolean> {
   try {
-    await chat.sendMessage(`${chat.name}-default`, dmTarget(adminUserId), markdown)
+    await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
     log.debug({ version: VERSION }, 'Announcement sent to admin')
     return true
   } catch (error) {
@@ -51,12 +56,14 @@ async function sendAnnouncementToAdmin(adminUserId: string, markdown: string, ch
 
 export async function announceNewVersion(
   chat: ChatProvider,
+  platformInstanceId: string,
   adminUserId: string,
-  deps: AnnouncementsDeps = defaultAnnouncementsDeps,
+  ...args: [] | [deps: AnnouncementsDeps]
 ): Promise<void> {
   log.debug({ version: VERSION }, 'Checking if version announcement is needed')
 
-  const changelogSection = await loadChangelogSection(deps)
+  const effectiveDeps = args.length === 0 ? defaultAnnouncementsDeps : args[0]
+  const changelogSection = await loadChangelogSection(effectiveDeps)
   if (changelogSection === null) return
 
   const claimed = markVersionAnnounced(VERSION)
@@ -68,7 +75,7 @@ export async function announceNewVersion(
   log.info({ version: VERSION }, 'Sending version announcement to admin')
 
   const message = `🆕 papai v${VERSION} has been released!\n\n${changelogSection}`
-  const success = await sendAnnouncementToAdmin(adminUserId, message, chat)
+  const success = await sendAnnouncementToAdmin(platformInstanceId, adminUserId, message, chat)
 
   log.info({ version: VERSION, success }, 'Version announcement complete')
 }

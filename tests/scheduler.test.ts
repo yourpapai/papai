@@ -11,7 +11,9 @@ import { drizzle } from 'drizzle-orm/bun-sqlite'
 
 import { setCachedConfig } from '../src/cache.js'
 import type { ChatProvider } from '../src/chat/types.js'
+import { dmTarget, type DeferredDeliveryTarget } from '../src/chat/types.js'
 import * as schema from '../src/db/schema.js'
+import { setContextSettings } from '../src/instances/context-store.js'
 import type { TaskCapability, Task, TaskProvider } from '../src/providers/types.js'
 import { createRecurringTask, getDueRecurringTasks } from '../src/recurring.js'
 import type { SchedulerDeps } from '../src/scheduler.js'
@@ -19,16 +21,26 @@ import { tick, createMissedTasks, startScheduler, stopScheduler } from '../src/s
 import { setKaneoWorkspace } from '../src/users.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { clearUserCache } from './utils/test-cache.js'
-import { createMockChatWithHandler, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
+import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
 
 process.env['KANEO_CLIENT_URL'] = 'http://localhost:11337'
 
 const USER_ID = 'user-1'
 
+type MockTask = { id: string; title: string; projectId: string; status: string; priority: string; url: string }
+
+const defaultCreateTask = (): Promise<MockTask> =>
+  Promise.resolve({
+    id: 'new-task-1',
+    title: 'Recurring Test',
+    projectId: 'proj-1',
+    status: 'todo',
+    priority: 'medium',
+    url: 'https://test.com/task/new-task-1',
+  })
+
 describe('scheduler', () => {
   // ---- Mutable mock state ----
-
-  type MockTask = { id: string; title: string; projectId: string; status: string; priority: string; url: string }
 
   let createTaskImpl: (...args: unknown[]) => Promise<MockTask>
   let addTaskLabelImpl: (taskId: string, labelId: string) => Promise<{ taskId: string; labelId: string }>
@@ -40,8 +52,8 @@ describe('scheduler', () => {
 
   // ---- Chat provider mock for notifications ----
 
-  let sendMessageCalls: Array<{ userId: string; text: string }>
-  let sendMessageImpl: (userId: string, text: string) => Promise<void>
+  let sendMessageCalls: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
+  let sendMessageImpl: (platformInstanceId: string, target: DeferredDeliveryTarget, text: string) => Promise<void>
 
   let mockChatProvider: ChatProvider
 
@@ -49,16 +61,6 @@ describe('scheduler', () => {
 
   let testSqlite: Database
   let testDb: ReturnType<typeof drizzle<typeof schema>>
-
-  const defaultCreateTask = (): Promise<MockTask> =>
-    Promise.resolve({
-      id: 'new-task-1',
-      title: 'Recurring Test',
-      projectId: 'proj-1',
-      status: 'todo',
-      priority: 'medium',
-      url: 'https://test.com/task/new-task-1',
-    })
 
   const setupDb = (): void => {
     testSqlite = new Database(':memory:')
@@ -91,37 +93,55 @@ describe('scheduler', () => {
         created_at TEXT DEFAULT (datetime('now')) NOT NULL
       )
     `)
+    testSqlite.run(`
+      CREATE TABLE IF NOT EXISTS context_settings (
+        context_id TEXT PRIMARY KEY,
+        task_instance_id TEXT NOT NULL,
+        platform_instance_id TEXT NOT NULL
+      )
+    `)
   }
 
-  const seedUser = (userId: string = USER_ID): void => {
-    testSqlite.run('INSERT OR IGNORE INTO users (platform_user_id, added_by) VALUES (?, ?)', [userId, 'admin'])
-    clearUserCache(userId)
-    setCachedConfig(userId, 'kaneo_apikey', 'test-api-key')
-    setKaneoWorkspace(userId, 'workspace-1')
+  const seedUser = (...args: [] | [userId: string]): void => {
+    const resolvedUserId = args.length === 0 ? USER_ID : args[0]
+    testSqlite.run('INSERT OR IGNORE INTO users (platform_user_id, added_by) VALUES (?, ?)', [resolvedUserId, 'admin'])
+    clearUserCache(resolvedUserId)
+    setCachedConfig(resolvedUserId, 'kaneo_apikey', 'test-api-key')
+    setContextSettings({ contextId: resolvedUserId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    setKaneoWorkspace(resolvedUserId, 'workspace-1')
   }
 
   const createDueTask = (
-    overrides: Partial<{
-      userId: string
-      projectId: string
-      title: string
-      labels: string[]
-      priority: string
-      status: string
-    }> = {},
+    ...args: [
+      overrides?: Partial<{
+        userId: string
+        projectId: string
+        title: string
+        labels: string[]
+        priority: string
+        status: string
+      }>,
+    ]
   ): string => {
+    const overrides = args[0]
+    const userId = overrides === undefined || overrides.userId === undefined ? USER_ID : overrides.userId
+    const projectId = overrides === undefined || overrides.projectId === undefined ? 'proj-1' : overrides.projectId
+    const title = overrides === undefined || overrides.title === undefined ? 'Recurring Test' : overrides.title
+    const labels = overrides === undefined ? undefined : overrides.labels
+    const priority = overrides === undefined ? undefined : overrides.priority
+    const status = overrides === undefined ? undefined : overrides.status
     const record = createRecurringTask({
-      userId: overrides.userId ?? USER_ID,
-      projectId: overrides.projectId ?? 'proj-1',
-      title: overrides.title ?? 'Recurring Test',
+      userId,
+      projectId,
+      title,
       triggerType: 'cron',
       rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0',
       dtstartUtc: '2026-04-20T09:00:00Z',
       timezone: 'UTC',
       catchUp: false,
-      labels: overrides.labels,
-      priority: overrides.priority,
-      status: overrides.status,
+      labels,
+      priority,
+      status,
     })
     testSqlite.run(`UPDATE recurring_tasks SET next_run = datetime('now', '-1 minute') WHERE id = '${record.id}'`)
     return record.id
@@ -162,11 +182,12 @@ describe('scheduler', () => {
     }
 
     // Build mockChatProvider (uses mutable sendMessageImpl/sendMessageCalls)
-    const { mockChat } = createMockChatWithHandler((userId: string, text: string): Promise<void> => {
-      sendMessageCalls.push({ userId, text })
-      return sendMessageImpl(userId, text)
+    mockChatProvider = createMockChat({
+      sendMessage: (platformInstanceId, target, text): Promise<void> => {
+        sendMessageCalls.push({ platformInstanceId, target, text })
+        return sendMessageImpl(platformInstanceId, target, text)
+      },
     })
-    mockChatProvider = mockChat
 
     setupDb()
     setTestDrizzleDb(testDb)
@@ -200,7 +221,7 @@ describe('scheduler', () => {
       await Promise.resolve()
       await Promise.resolve()
 
-      assert(resolveCreateTask !== null, 'resolveCreateTask should be set by now')
+      assert.ok(resolveCreateTask !== null, 'resolveCreateTask should be set by now')
       resolveCreateTask()
 
       await firstTick
@@ -341,8 +362,18 @@ describe('scheduler', () => {
       // startScheduler calls tick() immediately, which processes the due task
       await Bun.sleep(50)
       expect(sendMessageCalls.length).toBeGreaterThanOrEqual(1)
-      expect(sendMessageCalls[0]!.userId).toBe(USER_ID)
+      expect(sendMessageCalls[0]!.target).toEqual(dmTarget(USER_ID))
       expect(sendMessageCalls[0]!.text).toContain('Recurring Test')
+    })
+
+    test('tick() sends notification with context platformInstanceId', async () => {
+      createDueTask()
+      startScheduler(mockChatProvider, schedulerDeps)
+
+      await Bun.sleep(50)
+
+      expect(sendMessageCalls.length).toBeGreaterThanOrEqual(1)
+      expect(sendMessageCalls[0]!.platformInstanceId).toBe('telegram-default')
     })
 
     test('tick() continues when notifyUser throws', async () => {

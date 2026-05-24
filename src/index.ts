@@ -119,7 +119,7 @@ await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
-void announceNewVersion(chatProvider, adminUserId)
+void announceNewVersion(chatProvider, `${chatProvider.name}-default`, adminUserId)
 
 startScheduler(chatProvider)
 
