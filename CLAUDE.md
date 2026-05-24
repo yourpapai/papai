@@ -20,6 +20,9 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun start` — build the debug/admin clients and run the bot
 - `bun start:debug` — build the debug/admin clients and run the bot with `DEBUG_SERVER=true`
 - `bun build:client` — bundle the debug/admin UIs from `client/{debug,admin}/` to `public/`
+- `bun storybook` — run the dashboard component harness on http://localhost:6006 (Storybook + Vite, dev-only)
+- `bun build:storybook` — build the static story site to `storybook-static/` (git-ignored)
+- `bun check:bundle-isolation` — rebuild the client and assert the dev-only `client/stories/**` harness never leaked into the production debug/admin bundles
 - `bun review-loop:start` — run the review-loop workflow
 - `bun lint` — lint with oxlint
 - `bun lint:agent-strict -- <paths...>` — stricter agent-focused lint pass for selected paths
