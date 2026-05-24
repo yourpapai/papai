@@ -12,11 +12,16 @@ export const migration042UserWorkspaceConfigBackfill: Migration = {
   up(db) {
     db.run(
       `
-        INSERT INTO user_config (user_id, key, value)
+        INSERT OR IGNORE INTO user_config (user_id, key, value)
         SELECT platform_user_id, ?, kaneo_workspace_id
         FROM users
         WHERE kaneo_workspace_id IS NOT NULL
-        ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
+          AND platform_user_id IN (
+            SELECT platform_user_id
+            FROM users
+            GROUP BY platform_user_id
+            HAVING COUNT(*) = 1
+          )
       `,
       [KANEO_WORKSPACE_CONFIG_KEY],
     )
