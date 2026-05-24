@@ -9,6 +9,7 @@ import type { CommandHandler } from '../../src/chat/types.js'
 import type { AdminCommandsDeps } from '../../src/commands/admin.js'
 import { registerAdminCommands } from '../../src/commands/admin.js'
 import * as schema from '../../src/db/schema.js'
+import { addAdmin } from '../../src/instances/admin-store.js'
 import type { ProvisionOutcome } from '../../src/providers/kaneo/provision.js'
 import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped, listUsers } from '../../src/users.js'
 import {
@@ -54,6 +55,7 @@ describe('Admin Commands', () => {
 
     // Add admin user to DB
     addUser(ADMIN_ID, ADMIN_ID)
+    addAdmin(ADMIN_ID, TEST_PLATFORM_ID)
 
     adminDeps = {
       provisionAndConfigure: (): Promise<ProvisionOutcome> => provisionImpl(),
@@ -80,6 +82,7 @@ describe('Admin Commands', () => {
     })
 
     test('adds user on the command source platform instance', async () => {
+      addAdmin(ADMIN_ID, 'mattermost-default')
       const handler = commandHandlers.get('user')
       expect(handler).toBeDefined()
       const { reply } = createMockReply()
@@ -92,6 +95,22 @@ describe('Admin Commands', () => {
 
       expect(isAuthorizedScoped('123456', 'mattermost-default')).toBe(true)
       expect(isAuthorizedScoped('123456', TEST_PLATFORM_ID)).toBe(false)
+    })
+
+    test('allows platform-scoped admin even when they are not the bootstrap admin id', async () => {
+      addAdmin('mattermost-admin', 'mattermost-default')
+      const handler = commandHandlers.get('user')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+      await handler!({ ...createDmMessage('mattermost-admin', 'add 444'), platformInstanceId: 'mattermost-default' }, reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: 'mattermost-admin',
+      })
+
+      expect(getReplies()[0]).toContain('444 authorized.')
+      expect(isAuthorizedScoped('444', 'mattermost-default')).toBe(true)
     })
 
     test('adds user by @username and confirms', async () => {
@@ -215,6 +234,7 @@ describe('Admin Commands', () => {
     })
 
     test('removes user only from the command source platform instance', async () => {
+      addAdmin(ADMIN_ID, 'mattermost-default')
       addUserOnPlatform('999', 'mattermost-default', ADMIN_ID)
       addUser('999', ADMIN_ID)
       const handler = commandHandlers.get('user')
@@ -309,6 +329,7 @@ describe('Admin Commands', () => {
     })
 
     test('lists only users on the command source platform instance', async () => {
+      addAdmin(ADMIN_ID, 'mattermost-default')
       addUserOnPlatform('mattermost-user', 'mattermost-default', ADMIN_ID)
       addUser('legacy-user', ADMIN_ID)
       const handler = commandHandlers.get('users')
@@ -323,6 +344,22 @@ describe('Admin Commands', () => {
 
       expect(getReplies()[0]).toContain('mattermost-user')
       expect(getReplies()[0]).not.toContain('legacy-user')
+    })
+
+    test('allows platform-scoped admin to list their platform users', async () => {
+      addAdmin('mattermost-admin', 'mattermost-default')
+      addUserOnPlatform('mattermost-user', 'mattermost-default', ADMIN_ID)
+      const handler = commandHandlers.get('users')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+      await handler!({ ...createDmMessage('mattermost-admin', ''), platformInstanceId: 'mattermost-default' }, reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: 'mattermost-admin',
+      })
+
+      expect(getReplies()[0]).toContain('mattermost-user')
     })
 
     test('shows empty message when no users except admin', async () => {
@@ -357,6 +394,7 @@ describe('Admin Commands', () => {
 
   describe('/announce', () => {
     test('sends announcement to all registered users', async () => {
+      addAdmin(ADMIN_ID, 'mattermost-default')
       addUserOnPlatform(ADMIN_ID, 'mattermost-default', ADMIN_ID)
       addUserOnPlatform('user-a', 'mattermost-default', ADMIN_ID)
       addUserOnPlatform('user-b', 'mattermost-default', ADMIN_ID)
@@ -390,6 +428,7 @@ describe('Admin Commands', () => {
     })
 
     test('announces only to users on the command source platform instance', async () => {
+      addAdmin(ADMIN_ID, 'mattermost-default')
       addUserOnPlatform('mattermost-user', 'mattermost-default', ADMIN_ID)
       addUser('legacy-user', ADMIN_ID)
       const sentMessages: Array<{ platformInstanceId: string; userId: string; markdown: string }> = []
@@ -412,6 +451,30 @@ describe('Admin Commands', () => {
 
       expect(sentMessages.map((m) => m.userId)).toEqual(['mattermost-user'])
       expect(sentMessages.every((m) => m.platformInstanceId === 'mattermost-default')).toBe(true)
+    })
+
+    test('allows platform-scoped admin to announce to their platform users', async () => {
+      addAdmin('mattermost-admin', 'mattermost-default')
+      addUserOnPlatform('mattermost-user', 'mattermost-default', ADMIN_ID)
+      const sentMessages: Array<{ platformInstanceId: string; userId: string; markdown: string }> = []
+      const { provider: mockChat, commandHandlers: handlers } = createMockChatWithCommandHandlers({
+        sendMessage: (platformInstanceId, target, markdown) => {
+          sentMessages.push({ platformInstanceId, userId: target.contextId, markdown })
+          return Promise.resolve()
+        },
+      })
+      registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+      const handler = handlers.get('announce')
+      expect(handler).toBeDefined()
+      const { reply } = createMockReply()
+      await handler!({ ...createDmMessage('mattermost-admin', 'Hello scoped admins'), platformInstanceId: 'mattermost-default' }, reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: 'mattermost-admin',
+      })
+
+      expect(sentMessages.map((m) => m.userId)).toEqual(['mattermost-user'])
     })
 
     test('rejects non-admin caller', async () => {

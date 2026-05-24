@@ -125,29 +125,22 @@ export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
   queueMicrotask(() => {
     try {
       const db = getDrizzleDb()
-      // Check if user/group exists first
-      const existing = db
-        .select({ platformUserId: users.platformUserId })
+      const matchingUsers = db
+        .select({ platformUserId: users.platformUserId, platformInstanceId: users.platformInstanceId })
         .from(users)
         .where(eq(users.platformUserId, userId))
-        .get()
-      if (existing === undefined) {
-        // Insert new row for groups that don't exist in users table yet
-        db.insert(users)
-          .values({
-            platformUserId: userId,
-            platformInstanceId: 'legacy-single',
-            addedAt: new Date().toISOString(),
-            // System-provisioned workspace
-            addedBy: 'system',
-            kaneoWorkspaceId: workspaceId,
-          })
-          .run()
-        log.debug({ userId }, 'Workspace synced to DB (new row)')
-      } else {
-        db.update(users).set({ kaneoWorkspaceId: workspaceId }).where(eq(users.platformUserId, userId)).run()
-        log.debug({ userId }, 'Workspace synced to DB (updated)')
+        .all()
+      if (matchingUsers.length !== 1) {
+        log.debug({ userId, matchCount: matchingUsers.length }, 'Workspace DB sync skipped without exact user scope')
+        return
       }
+      const user = matchingUsers[0]
+      if (user === undefined) return
+      db.update(users)
+        .set({ kaneoWorkspaceId: workspaceId })
+        .where(and(eq(users.platformUserId, user.platformUserId), eq(users.platformInstanceId, user.platformInstanceId)))
+        .run()
+      log.debug({ userId, platformInstanceId: user.platformInstanceId }, 'Workspace synced to DB (updated)')
     } catch (error) {
       log.error(
         { userId, error: error instanceof Error ? error.message : String(error) },

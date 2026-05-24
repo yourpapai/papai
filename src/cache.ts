@@ -79,7 +79,7 @@ export function getCachedHistory(userId: string): readonly ModelMessage[] {
       .from(conversationHistory)
       .where(sql`${conversationHistory.userId} = ${userId}`)
       .get()
-    if (row?.messages !== undefined) {
+    if (row !== undefined) {
       const parsed = parseHistoryFromDb(row.messages)
       if (parsed !== null) {
         cache.history = parsed
@@ -114,7 +114,7 @@ export function getCachedSummary(userId: string): string | null {
       .from(memorySummary)
       .where(sql`${memorySummary.userId} = ${userId}`)
       .get()
-    cache.summary = row?.summary ?? null
+    cache.summary = row === undefined ? null : row.summary
     cache.config.set('summary_loaded', 'true')
     emitUser('cache:load', userId, { field: 'summary' })
   }
@@ -175,10 +175,14 @@ export function getCachedConfig(userId: string, key: string): string | null {
       .from(userConfig)
       .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${key}`)
       .get()
-    cache.config.set(key, row?.value ?? null)
+    cache.config.set(key, row === undefined ? null : row.value)
     emitUser('cache:load', userId, { field: 'config' })
   }
-  return cache.config.get(key) ?? null
+  const value = cache.config.get(key)
+  if (value === undefined) {
+    return null
+  }
+  return value
 }
 
 export function setCachedConfig(userId: string, key: string, value: string): void {
@@ -196,8 +200,13 @@ export function getCachedWorkspace(userId: string): string | null {
       .select({ kaneoWorkspaceId: users.kaneoWorkspaceId })
       .from(users)
       .where(sql`${users.platformUserId} = ${userId}`)
-      .get()
-    cache.workspaceId = row?.kaneoWorkspaceId ?? null
+      .all()
+    const [workspaceRow] = row
+    if (row.length === 1 && workspaceRow !== undefined) {
+      cache.workspaceId = workspaceRow.kaneoWorkspaceId
+    } else {
+      cache.workspaceId = null
+    }
     cache.config.set('workspace_loaded', 'true')
     emitUser('cache:load', userId, { field: 'workspace' })
   }
@@ -269,7 +278,9 @@ export function getCachedInstructions(contextId: string): readonly CachedInstruc
 
 export function addCachedInstruction(contextId: string, instruction: { id: string; text: string }): void {
   const cache = getOrCreateCache(contextId)
-  cache.instructions ??= []
+  if (!Array.isArray(cache.instructions)) {
+    cache.instructions = []
+  }
   const createdAt = new Date().toISOString()
   cache.instructions.push({ ...instruction, createdAt })
   syncInstructionToDb(contextId, { ...instruction, createdAt })

@@ -12,6 +12,7 @@ import {
   provisionAndConfigure as defaultProvisionAndConfigure,
   type ProvisionOutcome,
 } from '../providers/kaneo/provision.js'
+import { isAdmin } from '../instances/admin-store.js'
 import { addUser, listUsers, removeUser } from '../users.js'
 
 const MAX_CONCURRENT_SENDS = 5
@@ -32,6 +33,8 @@ const resolveAdminDeps = (args: [] | [deps: AdminCommandsDeps]): AdminCommandsDe
   return deps
 }
 
+const checkAdmin = (userId: string, platformInstanceId: string): boolean => isAdmin(userId, platformInstanceId)
+
 const parseUserIdentifier = (
   input: string,
 ): { type: 'id'; value: string } | { type: 'username'; value: string } | null => {
@@ -50,7 +53,6 @@ export function registerAdminCommands(
   ...args: [] | [deps: AdminCommandsDeps]
 ): void {
   const resolvedDeps = resolveAdminDeps(args)
-  const checkAdmin = (userId: string): boolean => userId === adminUserId
 
   const userHandler: CommandHandler = async (msg, reply) => {
     // Reject in groups - these commands are only available in direct messages
@@ -58,7 +60,7 @@ export function registerAdminCommands(
       await reply.text('This command is only available in direct messages.')
       return
     }
-    if (!checkAdmin(msg.user.id)) {
+    if (!checkAdmin(msg.user.id, msg.platformInstanceId)) {
       await reply.text('Only the admin can manage users.')
       return
     }
@@ -71,7 +73,7 @@ export function registerAdminCommands(
       await reply.text('This command is only available in direct messages.')
       return
     }
-    if (!checkAdmin(msg.user.id)) {
+    if (!checkAdmin(msg.user.id, msg.platformInstanceId)) {
       await reply.text('Only the admin can list users.')
       return
     }
@@ -83,7 +85,7 @@ export function registerAdminCommands(
       await reply.text('This command is only available in direct messages.')
       return
     }
-    if (!checkAdmin(msg.user.id)) {
+    if (!checkAdmin(msg.user.id, msg.platformInstanceId)) {
       await reply.text('Only the admin can send announcements.')
       return
     }

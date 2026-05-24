@@ -28,7 +28,6 @@ import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
-import { addUser } from './users.js'
 
 const log = logger.child({ scope: 'main' })
 
@@ -71,7 +70,6 @@ initUsageRecorder()
 initializeMessageCache()
 
 const adminUserId = process.env['ADMIN_USER_ID']!
-addUser({ userId: adminUserId, platformInstanceId: 'legacy-single', addedBy: adminUserId })
 
 const activePlatformInstances = listActivePlatformInstances()
 const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
