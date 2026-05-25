@@ -29,7 +29,8 @@ const formatLocalDateTime = (date: Date, timezone: string): string => {
     const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '00'
     const weekday = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long' }).format(date)
     // Some runtimes emit '24' for midnight under hour12:false; normalize to '00'.
-    const hour = get('hour') === '24' ? '00' : get('hour')
+    const rawHour = get('hour')
+    const hour = rawHour === '24' ? '00' : rawHour
     return `${get('year')}-${get('month')}-${get('day')} ${hour}:${get('minute')} (${weekday})`
   } catch {
     const iso = date.toISOString()

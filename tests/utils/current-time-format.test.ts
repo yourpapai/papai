@@ -31,4 +31,9 @@ describe('formatCurrentTimeTag', () => {
     expect(out.endsWith('</current_time>')).toBe(true)
     expect(out.split('<current_time>').length).toBe(2)
   })
+
+  test('renders midnight as 00:00', () => {
+    const midnight = new Date('2026-05-25T00:00:00Z')
+    expect(formatCurrentTimeTag(midnight, 'UTC')).toBe('<current_time>2026-05-25 00:00 (Monday)</current_time>')
+  })
 })
