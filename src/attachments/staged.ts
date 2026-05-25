@@ -17,23 +17,13 @@ import type {
   StageFileParams,
   StagedFileDownloadFn,
   StagedFileRef,
-  StagedFileStatus,
   StagedResolutionError,
 } from './types.js'
-import { toSourceProvider } from './types.js'
+import { toSourceProvider, toStagedStatus, toUndefinedIfNull } from './types.js'
 
 const log = logger.child({ scope: 'attachments:staged' })
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
-
-const STAGED_STATUS_BY_VALUE: Readonly<Record<string, StagedFileStatus>> = {
-  staged: 'staged',
-  resolved: 'resolved',
-  failed: 'failed',
-  expired: 'expired',
-}
-
-const toStagedStatus = (value: string): StagedFileStatus => STAGED_STATUS_BY_VALUE[value] ?? 'expired'
 
 type StagedRow = typeof stagedFiles.$inferSelect
 type StagedInsert = typeof stagedFiles.$inferInsert
@@ -64,12 +54,12 @@ const buildStagedValues = (
 ): StagedInsert => ({
   stagedId,
   contextId: params.contextId,
-  messageId: params.messageId ?? null,
+  messageId: params.messageId === undefined ? null : params.messageId,
   senderId: params.senderId,
-  senderUsername: params.senderUsername ?? null,
+  senderUsername: params.senderUsername === undefined ? null : params.senderUsername,
   filename: params.filename,
-  mimeType: params.mimeType ?? null,
-  size: params.size ?? null,
+  mimeType: params.mimeType === undefined ? null : params.mimeType,
+  size: params.size === undefined ? null : params.size,
   platformFileId: params.platformFileId,
   sourceProvider: params.sourceProvider,
   sourcePlatformInstanceId: params.sourcePlatformInstanceId,
@@ -94,12 +84,12 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
     .onConflictDoUpdate({
       target: [stagedFiles.platformFileId, stagedFiles.contextId],
       set: {
-        messageId: params.messageId ?? null,
+        messageId: params.messageId === undefined ? null : params.messageId,
         senderId: params.senderId,
-        senderUsername: params.senderUsername ?? null,
+        senderUsername: params.senderUsername === undefined ? null : params.senderUsername,
         filename: params.filename,
-        mimeType: params.mimeType ?? null,
-        size: params.size ?? null,
+        mimeType: params.mimeType === undefined ? null : params.mimeType,
+        size: params.size === undefined ? null : params.size,
         sourcePlatformInstanceId: params.sourcePlatformInstanceId,
         createdAt: nowIso,
         expiresAt: expiresIso,
@@ -128,10 +118,15 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
   return toRef(row)
 }
 
-export function searchStagedFiles(contextId: string, query: string, limit: number = 10): StagedFileRef[] {
+export function searchStagedFiles(
+  contextId: string,
+  query: string,
+  ...limitArg: [] | [number | undefined]
+): StagedFileRef[] {
   const db = getDrizzleDb()
-  const escaped = query.replace(/\\/gu, '\\\\').replace(/[%_]/gu, '\\$&')
+  const escaped = query.replaceAll('\\', '\\\\').replaceAll(/[%_]/gu, '\\$&')
   const pattern = `%${escaped}%`
+  const queryLimit = limitArg.length === 0 || limitArg[0] === undefined ? 10 : limitArg[0]
 
   return db
     .select()
@@ -146,9 +141,9 @@ export function searchStagedFiles(contextId: string, query: string, limit: numbe
         ),
       ),
     )
-    .limit(limit)
+    .limit(queryLimit)
     .all()
-    .map(toRef)
+    .map((row) => toRef(row))
 }
 
 export function findStagedFilesByMessageId(contextId: string, messageId: string): StagedFileRef[] {
@@ -160,7 +155,7 @@ export function findStagedFilesByMessageId(contextId: string, messageId: string)
       and(eq(stagedFiles.contextId, contextId), eq(stagedFiles.messageId, messageId), eq(stagedFiles.status, 'staged')),
     )
     .all()
-    .map(toRef)
+    .map((row) => toRef(row))
 }
 
 export function purgeExpiredStagedFiles(): void {
@@ -207,7 +202,8 @@ const resolveSourcePlatformInstanceId = (row: StagedRow, stagedId: string): stri
 
 const checkStagedRowState = (row: StagedRow, stagedId: string): StagedResolutionError | null => {
   if (row.status === 'resolved') {
-    return { status: 'already_resolved', attachmentId: row.attachmentId ?? 'unknown' }
+    if (row.attachmentId === null) return { status: 'already_resolved', attachmentId: 'unknown' }
+    return { status: 'already_resolved', attachmentId: row.attachmentId }
   }
 
   if (row.status === 'failed') {
@@ -243,15 +239,19 @@ const downloadAndPersist = async (
     }
   }
 
+  const mimeType = toUndefinedIfNull(row.mimeType)
+  const size = toUndefinedIfNull(row.size)
+  const sourceMessageId = toUndefinedIfNull(row.messageId)
+
   const attachmentRef = await saveAttachment({
     contextId: row.contextId,
     sourceProvider: toSourceProvider(row.sourceProvider),
     filename: row.filename,
-    mimeType: row.mimeType ?? undefined,
-    size: row.size ?? undefined,
+    mimeType,
+    size,
     content,
     status: 'available',
-    sourceMessageId: row.messageId ?? undefined,
+    sourceMessageId,
     sourceFileId: row.platformFileId,
   })
 
