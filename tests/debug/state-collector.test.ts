@@ -220,7 +220,12 @@ describe('state-collector', () => {
       const { ctrl, enqueueMock } = createMockController()
       addClient(track(ctrl))
 
-      emitGlobal('llm:start', { userId: 'admin-1', model: 'gpt-4', messageCount: 5, toolCount: 10 })
+      emitGlobal('llm:start', {
+        userId: 'admin-1',
+        model: 'gpt-4',
+        messageCount: 5,
+        toolCount: 10,
+      })
       emitGlobal('llm:tool_result', {
         userId: 'admin-1',
         toolName: 'create_task',

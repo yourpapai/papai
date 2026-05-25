@@ -73,7 +73,10 @@ type ConsolidatedArtifactRecord = {
   readonly context: string
   readonly sourceTestKeys: readonly string[]
   readonly sourceBehaviorIds: readonly string[]
-  readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+  readonly supportingInternalRefs: readonly {
+    readonly behaviorId: string
+    readonly summary: string
+  }[]
 }
 
 type EvaluatedArtifactRecord = {
@@ -156,9 +159,24 @@ async function readEvaluatedArtifact(root: string, featureKey: string): Promise<
   const EvaluatedArtifactRecordSchema = z
     .object({
       consolidatedId: z.string(),
-      maria: z.object({ discover: z.number(), use: z.number(), retain: z.number(), notes: z.string() }),
-      dani: z.object({ discover: z.number(), use: z.number(), retain: z.number(), notes: z.string() }),
-      viktor: z.object({ discover: z.number(), use: z.number(), retain: z.number(), notes: z.string() }),
+      maria: z.object({
+        discover: z.number(),
+        use: z.number(),
+        retain: z.number(),
+        notes: z.string(),
+      }),
+      dani: z.object({
+        discover: z.number(),
+        use: z.number(),
+        retain: z.number(),
+        notes: z.string(),
+      }),
+      viktor: z.object({
+        discover: z.number(),
+        use: z.number(),
+        retain: z.number(),
+        notes: z.string(),
+      }),
       flaws: z.array(z.string()),
       improvements: z.array(z.string()),
       evaluatedAt: z.string(),
@@ -273,7 +291,12 @@ describe('behavior-audit phase 3 incremental selection', () => {
               flaws: ['Selected flaw'],
               improvements: ['Selected improvement'],
             }),
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
       },
     )
@@ -357,7 +380,12 @@ describe('behavior-audit phase 3 incremental selection', () => {
               flaws: ['Selected flaw'],
               improvements: ['Selected improvement'],
             }),
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
       },
     )
@@ -546,7 +574,12 @@ describe('behavior-audit phase 3 incremental selection', () => {
               flaws: ['Selected flaw'],
               improvements: ['Selected improvement'],
             }),
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
         writeEvaluatedFile: () => {
           order.push('persist:writeEvaluatedFile')
@@ -721,7 +754,12 @@ describe('behavior-audit phase 3 incremental selection', () => {
               flaws: ['Selected flaw'],
               improvements: ['Selected improvement'],
             }),
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
       },
     )
@@ -790,7 +828,12 @@ describe('behavior-audit phase 3 incremental selection', () => {
               flaws: ['Fresh flaw'],
               improvements: ['Fresh improvement'],
             }),
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
       },
     )
@@ -895,7 +938,12 @@ describe('behavior-audit phase 3 incremental selection', () => {
               flaws: ['Scoped flaw'],
               improvements: ['Scoped improvement'],
             }),
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           })
         },
       },
@@ -1172,7 +1220,12 @@ describe('behavior-audit later phase reporter output', () => {
                 verifierVersion: 'test',
                 evidenceFilesRead: [],
                 dependencyPaths: [],
-                codeindex: { enabled: false, mode: 'unavailable', indexStatus: 'unknown', queries: [] },
+                codeindex: {
+                  enabled: false,
+                  mode: 'unavailable',
+                  indexStatus: 'unknown',
+                  queries: [],
+                },
               },
               verification: {
                 behaviorVerdict: 'not-verified',
@@ -1290,7 +1343,12 @@ describe('behavior-audit later phase reporter output', () => {
                 verifierVersion: 'test',
                 evidenceFilesRead: [],
                 dependencyPaths: [],
-                codeindex: { enabled: false, mode: 'unavailable', indexStatus: 'unknown', queries: [] },
+                codeindex: {
+                  enabled: false,
+                  mode: 'unavailable',
+                  indexStatus: 'unknown',
+                  queries: [],
+                },
               },
               verification: {
                 behaviorVerdict: 'not-verified',
@@ -1332,7 +1390,12 @@ describe('behavior-audit later phase reporter output', () => {
                 },
               },
             ],
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
         writeConsolidatedFile: () => {
           order.push('persist:writeConsolidatedFile')
@@ -1423,7 +1486,12 @@ describe('behavior-audit later phase reporter output', () => {
                 verifierVersion: 'test',
                 evidenceFilesRead: [],
                 dependencyPaths: [],
-                codeindex: { enabled: false, mode: 'unavailable', indexStatus: 'unknown', queries: [] },
+                codeindex: {
+                  enabled: false,
+                  mode: 'unavailable',
+                  indexStatus: 'unknown',
+                  queries: [],
+                },
               },
               verification: {
                 behaviorVerdict: 'not-verified',
@@ -1465,7 +1533,12 @@ describe('behavior-audit later phase reporter output', () => {
                 },
               },
             ],
-            usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 200,
+              outputTokens: 100,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
         writeConsolidatedFile: (key, records) =>
           writeJsonArtifact(path.join(root, buildRelativeArtifactPath('consolidated', key)), records),
@@ -1559,7 +1632,12 @@ test('runPhase3 reads consolidated artifacts using feature keys from manifest en
             flaws: [],
             improvements: [],
           }),
-          usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         }),
     },
   )

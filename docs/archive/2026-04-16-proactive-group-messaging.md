@@ -917,7 +917,12 @@ Change line 120-141 (`updateScheduledPrompt`) signature:
 export function updateScheduledPrompt(
   id: string,
   contextId: string,
-  updates: { prompt?: string; fireAt?: string; cronExpression?: string; executionMetadata?: ExecutionMetadata },
+  updates: {
+    prompt?: string
+    fireAt?: string
+    cronExpression?: string
+    executionMetadata?: ExecutionMetadata
+  },
 ): ScheduledPrompt | null {
   log.debug({ id, contextId }, 'updateScheduledPrompt called')
 
@@ -1317,7 +1322,12 @@ function createAlert(
     executionMetadata,
   )
   log.info({ id: result.id, contextId, contextType, type: 'alert' }, 'Deferred prompt created')
-  return { status: 'created', type: 'alert', id: result.id, cooldownMinutes: result.cooldownMinutes }
+  return {
+    status: 'created',
+    type: 'alert',
+    id: result.id,
+    cooldownMinutes: result.cooldownMinutes,
+  }
 }
 ```
 
@@ -1335,7 +1345,9 @@ export function executeCreate(
   log.debug({ contextId, contextType, createdByUserId, hasSchedule, hasCondition }, 'create_deferred_prompt called')
   if (hasSchedule && hasCondition) return { error: 'Provide either a schedule or a condition, not both.' }
   if (!hasSchedule && !hasCondition) {
-    return { error: 'Provide either a schedule (for time-based) or a condition (for event-based).' }
+    return {
+      error: 'Provide either a schedule (for time-based) or a condition (for event-based).',
+    }
   }
 
   const executionMetadata = parseExecution(input.execution)
@@ -1363,7 +1375,12 @@ export function executeList(
   createdByUserId?: string,
 ): ListResult {
   log.debug(
-    { contextId, type: input.type, status: input.status, hasCreator: createdByUserId !== undefined },
+    {
+      contextId,
+      type: input.type,
+      status: input.status,
+      hasCreator: createdByUserId !== undefined,
+    },
     'list_deferred_prompts called',
   )
   const prompts: ListResult['prompts'] = []
@@ -1391,7 +1408,9 @@ Change line 157-186 (`updateScheduledFields`) - update to use `contextId`:
 ```typescript
 function updateScheduledFields(contextId: string, input: UpdateInput): UpdateResult {
   if (input.condition !== undefined)
-    return { error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.' }
+    return {
+      error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.',
+    }
   // ... rest of function using contextId instead of userId ...
   const result = updateScheduledPrompt(input.id, contextId, updates)
   // ...

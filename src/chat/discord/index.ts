@@ -240,7 +240,10 @@ export class DiscordChatProvider implements ChatProvider {
     if (this.messageHandler !== null) {
       if (message.channel.messages !== undefined) {
         mapped.replyContext = await buildDiscordReplyContext(
-          { reference: message.reference, channel: { id: message.channel.id, messages: message.channel.messages } },
+          {
+            reference: message.reference,
+            channel: { id: message.channel.id, messages: message.channel.messages },
+          },
           mapped.contextId,
         )
       }

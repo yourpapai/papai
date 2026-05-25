@@ -378,7 +378,10 @@ import { mount, unmount } from 'svelte'
 
 import Dot from '../../../../client/shared/ui/Dot.svelte'
 
-function render(props: Record<string, unknown>): { target: HTMLElement; component: ReturnType<typeof mount> } {
+function render(props: Record<string, unknown>): {
+  target: HTMLElement
+  component: ReturnType<typeof mount>
+} {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.body.querySelector<HTMLElement>('#root')!
   const component = mount(Dot, { target, props })
@@ -492,7 +495,10 @@ import { mount, unmount } from 'svelte'
 
 import HR from '../../../../client/shared/ui/HR.svelte'
 
-function render(props: Record<string, unknown>): { target: HTMLElement; component: ReturnType<typeof mount> } {
+function render(props: Record<string, unknown>): {
+  target: HTMLElement
+  component: ReturnType<typeof mount>
+} {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.body.querySelector<HTMLElement>('#root')!
   const component = mount(HR, { target, props })
@@ -699,7 +705,10 @@ describe('KV.svelte', () => {
   test('applies custom value color via vColor', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
-    const component = mount(KV, { target, props: { k: 'active', v: '4', vColor: 'var(--accent)' } })
+    const component = mount(KV, {
+      target,
+      props: { k: 'active', v: '4', vColor: 'var(--accent)' },
+    })
     const v = target.querySelector('.ui-kv__v') as HTMLElement
     expect(v.style.color).toContain('var(--accent)')
     void unmount(component)

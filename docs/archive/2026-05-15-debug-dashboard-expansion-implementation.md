@@ -180,7 +180,13 @@ export type DebugEvent = {
 
 export function emitUser(type: string, userId: string, data: Record<string, unknown>, turnId?: string): void {
   if (listeners.size === 0) return
-  const event: DebugEvent = { type, timestamp: Date.now(), data, __scope: { kind: 'user', userId }, turnId }
+  const event: DebugEvent = {
+    type,
+    timestamp: Date.now(),
+    data,
+    __scope: { kind: 'user', userId },
+    turnId,
+  }
   for (const fn of listeners) fn(event)
 }
 
@@ -192,7 +198,13 @@ export function emitGroup(
   threadId?: string,
 ): void {
   if (listeners.size === 0) return
-  const event: DebugEvent = { type, timestamp: Date.now(), data, __scope: { kind: 'group', groupId, threadId }, turnId }
+  const event: DebugEvent = {
+    type,
+    timestamp: Date.now(),
+    data,
+    __scope: { kind: 'group', groupId, threadId },
+    turnId,
+  }
   for (const fn of listeners) fn(event)
 }
 
@@ -496,7 +508,14 @@ it('mints a turnId on flush', async () => {
   const handler = mock().returns(Promise.resolve())
   queue.setHandler(handler)
   queue.enqueue(
-    { text: 'hello', userId: 'u1', username: null, storageContextId: 'ctx-1', newAttachmentIds: [], contextType: 'dm' },
+    {
+      text: 'hello',
+      userId: 'u1',
+      username: null,
+      storageContextId: 'ctx-1',
+      newAttachmentIds: [],
+      contextType: 'dm',
+    },
     mockReply,
   )
   queue.forceFlush()

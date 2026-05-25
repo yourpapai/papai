@@ -30,7 +30,11 @@ export function makeUpdateLabelTool(provider: TaskProvider): ToolSet[string] {
         return await provider.updateLabel!(labelId, { name, color })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), labelId, tool: 'update_label' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            labelId,
+            tool: 'update_label',
+          },
           'Tool execution failed',
         )
         throw error

@@ -407,7 +407,12 @@ if (currentSession !== null) {
   }
 }
 
-return { handled: true, response: result.prompt, requiresInput: true, isSensitiveKey: stepIsSensitive }
+return {
+  handled: true,
+  response: result.prompt,
+  requiresInput: true,
+  isSensitiveKey: stepIsSensitive,
+}
 ```
 
 Remove the old `const currentSession = ...` block that was inside this function (lines 267-276) since we moved it up.

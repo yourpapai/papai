@@ -24,7 +24,12 @@ function buildRuntimeKv(
 ): PluginToolRuntimeContext['kv'] {
   if (!hasStoragePermission) {
     const denyStorage = (): never => deny(pluginId, 'storage')
-    return Object.freeze({ get: denyStorage, set: denyStorage, delete: denyStorage, list: denyStorage })
+    return Object.freeze({
+      get: denyStorage,
+      set: denyStorage,
+      delete: denyStorage,
+      list: denyStorage,
+    })
   }
 
   return Object.freeze({

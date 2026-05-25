@@ -117,7 +117,9 @@ function routeSecureCookieProvision(url: string): Promise<Response> {
     return Promise.resolve(
       new Response(JSON.stringify({ user: { id: 'user-123' }, token: 'json-token-123' }), {
         status: 200,
-        headers: { 'Set-Cookie': '__Secure-better-auth.session_token=secure-cookie-123; Path=/; HttpOnly; Secure' },
+        headers: {
+          'Set-Cookie': '__Secure-better-auth.session_token=secure-cookie-123; Path=/; HttpOnly; Secure',
+        },
       }),
     )
   }
@@ -167,7 +169,9 @@ function routeSplitDeployProvision(url: string): Promise<Response> {
 function routeSignUpDisabled(url: string): Promise<Response> {
   if (url.includes('/sign-up')) {
     return Promise.resolve(
-      new Response(JSON.stringify({ code: 'signup_disabled', message: 'Sign up is disabled' }), { status: 403 }),
+      new Response(JSON.stringify({ code: 'signup_disabled', message: 'Sign up is disabled' }), {
+        status: 403,
+      }),
     )
   }
   return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
@@ -351,7 +355,10 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     const result = await provisionAndConfigure('user-generic-failure', 'testuser')
 
-    expect(result).toEqual({ status: 'failed', error: 'Sign-up failed (500): database unavailable' })
+    expect(result).toEqual({
+      status: 'failed',
+      error: 'Sign-up failed (500): database unavailable',
+    })
   })
 
   test('provisionAndConfigure clears all group-scoped tool cache variants after success', async () => {

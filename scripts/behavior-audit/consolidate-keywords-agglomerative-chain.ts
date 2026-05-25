@@ -8,6 +8,18 @@ import type { ClusteringProfile } from './clustering-profile.js'
 import { findNearestActiveCluster, getDistance } from './consolidate-keywords-agglomerative-helpers.js'
 import type { MutableDistanceMatrix } from './consolidate-keywords-agglomerative-helpers.js'
 
+type Cluster = readonly number[]
+
+export function getClusterMembers(members: ReadonlyMap<number, Cluster>, id: number): Cluster {
+  const cluster = members.get(id)
+  if (cluster === undefined) return []
+  return cluster
+}
+
+export function filterClusters(clusters: readonly Cluster[], minClusterSize: number): readonly Cluster[] {
+  return clusters.filter((cluster) => cluster.length >= minClusterSize)
+}
+
 const DISTANCE_EPSILON = 1e-6
 
 type ChainAction =
@@ -58,7 +70,11 @@ export function tryExtendOrMergeChain(
   }
   if (chain.length > 1 && nearestResult.nearest === chain.at(-2)) {
     return completeChainAction(
-      { kind: 'merge', a: Math.min(current, nearestResult.nearest), b: Math.max(current, nearestResult.nearest) },
+      {
+        kind: 'merge',
+        a: Math.min(current, nearestResult.nearest),
+        b: Math.max(current, nearestResult.nearest),
+      },
       currentProfile,
       startedAt,
     )

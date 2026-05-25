@@ -237,7 +237,11 @@ export function createMockReply(): MockReplyResult {
 /**
  * Create a mock reply with getter function (legacy compatibility).
  */
-export function createMockReplyLegacy(): { reply: ReplyFn; getReplies: () => string[]; getRedactions: () => string[] } {
+export function createMockReplyLegacy(): {
+  reply: ReplyFn
+  getReplies: () => string[]
+  getRedactions: () => string[]
+} {
   const { reply, getReplies, getRedactions } = createMockReply()
   return { reply, getReplies, getRedactions }
 }

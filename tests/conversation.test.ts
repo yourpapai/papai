@@ -37,7 +37,9 @@ function makeSystemConfigLookup(
 // Define local type and mutable implementation BEFORE mocking
 type GenerateTextResult = { text: string }
 const defaultGenerateTextImpl = (): Promise<GenerateTextResult> =>
-  Promise.resolve({ text: JSON.stringify({ keep_indices: [0, 1], summary: 'Updated summary text' }) })
+  Promise.resolve({
+    text: JSON.stringify({ keep_indices: [0, 1], summary: 'Updated summary text' }),
+  })
 
 describe('shouldTriggerTrim', () => {
   const makeMessages = (count: number, userEvery = 2): ModelMessage[] =>
@@ -377,7 +379,9 @@ describe('runTrimInBackground', () => {
     )
 
     generateTextImpl = (): Promise<GenerateTextResult> =>
-      Promise.resolve({ text: JSON.stringify({ keep_indices: [0], summary: 'Concurrent trim summary' }) })
+      Promise.resolve({
+        text: JSON.stringify({ keep_indices: [0], summary: 'Concurrent trim summary' }),
+      })
 
     trackSpy(spyOn(cacheModule, 'getCachedConfig').mockImplementation(mockConfigLookup(concurrentConfigs)))
     trackSpy(

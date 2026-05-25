@@ -62,7 +62,12 @@ describe('TaskProvider provisioning capability', () => {
       classifyError: () => ({ type: 'system', code: 'unexpected', message: '' }),
       getPromptAddendum: () => '',
       // Optional provisioning method
-      provisionUser: async () => ({ status: 'provisioned', email: 'test@test.com', password: 'pass', url: '' }),
+      provisionUser: async () => ({
+        status: 'provisioned',
+        email: 'test@test.com',
+        password: 'pass',
+        url: '',
+      }),
     }
 
     expect(typeof mockProvider.provisionUser).toBe('function')

@@ -25,7 +25,11 @@ export function makeRunSavedQueryTool(provider: Readonly<TaskProvider>): ToolSet
         return tasks
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), queryId, tool: 'run_saved_query' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            queryId,
+            tool: 'run_saved_query',
+          },
           'Tool execution failed',
         )
         throw error

@@ -79,7 +79,12 @@ const createMockInteraction = (overrides: MockInteractionOverrides | undefined):
 }
 
 const requireCapturedAuth = (
-  auth: { allowed: boolean; isBotAdmin: boolean; isGroupAdmin: boolean; storageContextId: string } | null,
+  auth: {
+    allowed: boolean
+    isBotAdmin: boolean
+    isGroupAdmin: boolean
+    storageContextId: string
+  } | null,
 ): { allowed: boolean; isBotAdmin: boolean; isGroupAdmin: boolean; storageContextId: string } => {
   if (auth === null) {
     throw new Error('Expected captured auth to be set')
@@ -91,8 +96,12 @@ const requireCapturedAuth = (
 describe('routeButtonFallback', () => {
   const originalAdminUserId = process.env['ADMIN_USER_ID']
   let routeButtonFallback: typeof import('../../../src/chat/discord/button-dispatch.js').routeButtonFallback
-  let capturedAuth: { allowed: boolean; isBotAdmin: boolean; isGroupAdmin: boolean; storageContextId: string } | null =
-    null
+  let capturedAuth: {
+    allowed: boolean
+    isBotAdmin: boolean
+    isGroupAdmin: boolean
+    storageContextId: string
+  } | null = null
   let commandCalled = false
 
   const mockCommandHandler: CommandHandler = (_msg, _reply, auth): Promise<void> => {

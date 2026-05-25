@@ -444,7 +444,13 @@ describe('Bot Authorization Gate (setupBot)', () => {
       {
         tools: [],
         promptFragments: [],
-        commands: [{ name: 'sync', description: 'Sync data', execute: (): Promise<void> => Promise.resolve() }],
+        commands: [
+          {
+            name: 'sync',
+            description: 'Sync data',
+            execute: (): Promise<void> => Promise.resolve(),
+          },
+        ],
         jobs: [],
       },
       makePluginCommandManifest(pluginId),

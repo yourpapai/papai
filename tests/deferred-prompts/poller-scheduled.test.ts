@@ -46,9 +46,15 @@ beforeEach(() => {
 describe('mergeExecutionMetadata', () => {
   test('uses highest-priority mode across prompts', () => {
     const prompts = [
-      makePrompt({ executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null } }),
-      makePrompt({ executionMetadata: { mode: 'full', delivery_brief: '', context_snapshot: null } }),
-      makePrompt({ executionMetadata: { mode: 'context', delivery_brief: '', context_snapshot: null } }),
+      makePrompt({
+        executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      }),
+      makePrompt({
+        executionMetadata: { mode: 'full', delivery_brief: '', context_snapshot: null },
+      }),
+      makePrompt({
+        executionMetadata: { mode: 'context', delivery_brief: '', context_snapshot: null },
+      }),
     ]
     const result = mergeExecutionMetadata(prompts)
     expect(result.mode).toBe('full')
@@ -56,9 +62,15 @@ describe('mergeExecutionMetadata', () => {
 
   test('concatenates non-empty delivery briefs', () => {
     const prompts = [
-      makePrompt({ executionMetadata: { mode: 'lightweight', delivery_brief: 'alpha', context_snapshot: null } }),
-      makePrompt({ executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null } }),
-      makePrompt({ executionMetadata: { mode: 'lightweight', delivery_brief: 'beta', context_snapshot: null } }),
+      makePrompt({
+        executionMetadata: { mode: 'lightweight', delivery_brief: 'alpha', context_snapshot: null },
+      }),
+      makePrompt({
+        executionMetadata: { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      }),
+      makePrompt({
+        executionMetadata: { mode: 'lightweight', delivery_brief: 'beta', context_snapshot: null },
+      }),
     ]
     const result = mergeExecutionMetadata(prompts)
     expect(result.delivery_brief).toBe('alpha\n---\nbeta')
@@ -71,7 +83,11 @@ describe('mergeExecutionMetadata', () => {
   })
 
   test('single prompt returns its own metadata unchanged', () => {
-    const meta: ExecutionMetadata = { mode: 'context', delivery_brief: 'brief', context_snapshot: 'snap' }
+    const meta: ExecutionMetadata = {
+      mode: 'context',
+      delivery_brief: 'brief',
+      context_snapshot: 'snap',
+    }
     const result = mergeExecutionMetadata([makePrompt({ executionMetadata: meta })])
     expect(result).toEqual(meta)
   })

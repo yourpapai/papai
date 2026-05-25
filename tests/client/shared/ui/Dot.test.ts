@@ -9,7 +9,10 @@ import { mount, unmount } from 'svelte'
 
 import Dot from '../../../../client/shared/ui/Dot.svelte'
 
-function render(props: Record<string, unknown>): { target: HTMLElement; component: ReturnType<typeof mount> } {
+function render(props: Record<string, unknown>): {
+  target: HTMLElement
+  component: ReturnType<typeof mount>
+} {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.body.querySelector<HTMLElement>('#root')!
   const component = mount(Dot, { target, props })

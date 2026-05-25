@@ -191,8 +191,18 @@ describe('Task Scenarios', () => {
         listTasks: mock(() =>
           Promise.resolve([
             { id: 'task-1', title: 'Blocked task', status: 'todo', url: 'https://test.com/task/1' },
-            { id: 'task-2', title: 'Regular task', status: 'in-progress', url: 'https://test.com/task/2' },
-            { id: 'task-3', title: 'Another blocked task', status: 'todo', url: 'https://test.com/task/3' },
+            {
+              id: 'task-2',
+              title: 'Regular task',
+              status: 'in-progress',
+              url: 'https://test.com/task/2',
+            },
+            {
+              id: 'task-3',
+              title: 'Another blocked task',
+              status: 'todo',
+              url: 'https://test.com/task/3',
+            },
           ]),
         ),
         getTask: mock(
@@ -253,7 +263,12 @@ describe('Task Scenarios', () => {
       const provider = createMockProvider({
         listTasks: mock(() =>
           Promise.resolve([
-            { id: 'task-1', title: 'Blocking task', status: 'in-progress', url: 'https://test.com/task/1' },
+            {
+              id: 'task-1',
+              title: 'Blocking task',
+              status: 'in-progress',
+              url: 'https://test.com/task/1',
+            },
             { id: 'task-2', title: 'Regular task', status: 'todo', url: 'https://test.com/task/2' },
           ]),
         ),
@@ -287,9 +302,24 @@ describe('Task Scenarios', () => {
       const provider = createMockProvider({
         listTasks: mock(() =>
           Promise.resolve([
-            { id: 'task-1', title: 'Task 1', status: 'in-progress', url: 'https://test.com/task/1' },
-            { id: 'task-2', title: 'Task 2', status: 'in-progress', url: 'https://test.com/task/2' },
-            { id: 'task-3', title: 'Task 3', status: 'in-progress', url: 'https://test.com/task/3' },
+            {
+              id: 'task-1',
+              title: 'Task 1',
+              status: 'in-progress',
+              url: 'https://test.com/task/1',
+            },
+            {
+              id: 'task-2',
+              title: 'Task 2',
+              status: 'in-progress',
+              url: 'https://test.com/task/2',
+            },
+            {
+              id: 'task-3',
+              title: 'Task 3',
+              status: 'in-progress',
+              url: 'https://test.com/task/3',
+            },
           ]),
         ),
         updateTask,
@@ -321,9 +351,19 @@ describe('Task Scenarios', () => {
       const provider = createMockProvider({
         listTasks: mock(() =>
           Promise.resolve([
-            { id: 'task-1', title: 'Task 1', status: 'in-progress', url: 'https://test.com/task/1' },
+            {
+              id: 'task-1',
+              title: 'Task 1',
+              status: 'in-progress',
+              url: 'https://test.com/task/1',
+            },
             { id: 'task-2', title: 'Task 2', status: 'done', url: 'https://test.com/task/2' },
-            { id: 'task-3', title: 'Task 3', status: 'in-progress', url: 'https://test.com/task/3' },
+            {
+              id: 'task-3',
+              title: 'Task 3',
+              status: 'in-progress',
+              url: 'https://test.com/task/3',
+            },
           ]),
         ),
         updateTask,
@@ -352,9 +392,24 @@ describe('Task Scenarios', () => {
       const provider = createMockProvider({
         listTasks: mock(() =>
           Promise.resolve([
-            { id: 'task-1', title: 'Task 1', status: 'in-progress', url: 'https://test.com/task/1' },
-            { id: 'task-2', title: 'Task 2', status: 'in-progress', url: 'https://test.com/task/2' },
-            { id: 'task-3', title: 'Task 3', status: 'in-progress', url: 'https://test.com/task/3' },
+            {
+              id: 'task-1',
+              title: 'Task 1',
+              status: 'in-progress',
+              url: 'https://test.com/task/1',
+            },
+            {
+              id: 'task-2',
+              title: 'Task 2',
+              status: 'in-progress',
+              url: 'https://test.com/task/2',
+            },
+            {
+              id: 'task-3',
+              title: 'Task 3',
+              status: 'in-progress',
+              url: 'https://test.com/task/3',
+            },
           ]),
         ),
         updateTask,

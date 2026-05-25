@@ -101,7 +101,13 @@ export function emptyPhase1b(): Phase1bProgress {
     embeddingModel: '',
     embeddingBaseUrl: '',
     embeddingCachePath: null,
-    stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+    stats: {
+      slugsBefore: 0,
+      slugsAfter: 0,
+      mergesApplied: 0,
+      behaviorsUpdated: 0,
+      keywordsRemapped: 0,
+    },
   }
 }
 
@@ -244,7 +250,11 @@ export function markFeatureKeyDone(
 
 export function markFeatureKeyFailed(progress: Progress, featureKey: string, error: string, attempts: number): void {
   const existing = progress.phase2b.failedFeatureKeys[featureKey]
-  progress.phase2b.failedFeatureKeys[featureKey] = { error, attempts, lastAttempt: new Date().toISOString() }
+  progress.phase2b.failedFeatureKeys[featureKey] = {
+    error,
+    attempts,
+    lastAttempt: new Date().toISOString(),
+  }
   if (existing === undefined) {
     progress.phase2b.stats.featureKeysFailed++
   }
@@ -272,7 +282,11 @@ export function markBehaviorDone(progress: Progress, key: string): void {
 
 export function markBehaviorFailed(progress: Progress, key: string, error: string, attempts: number): void {
   const existing = progress.phase3.failedConsolidatedIds[key]
-  progress.phase3.failedConsolidatedIds[key] = { error, attempts, lastAttempt: new Date().toISOString() }
+  progress.phase3.failedConsolidatedIds[key] = {
+    error,
+    attempts,
+    lastAttempt: new Date().toISOString(),
+  }
   if (existing === undefined) {
     progress.phase3.stats.consolidatedIdsFailed++
   }

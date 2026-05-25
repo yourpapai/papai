@@ -182,7 +182,12 @@ export async function addYouTrackCommentReaction(
     return mappedReaction
   } catch (error) {
     log.error(
-      { error: error instanceof Error ? error.message : String(error), taskId, commentId, reaction },
+      {
+        error: error instanceof Error ? error.message : String(error),
+        taskId,
+        commentId,
+        reaction,
+      },
       'Failed to add comment reaction',
     )
     throw classifyYouTrackError(error, { taskId, commentId })
@@ -202,7 +207,12 @@ export async function removeYouTrackCommentReaction(
     return { id: reactionId, taskId, commentId }
   } catch (error) {
     log.error(
-      { error: error instanceof Error ? error.message : String(error), taskId, commentId, reactionId },
+      {
+        error: error instanceof Error ? error.message : String(error),
+        taskId,
+        commentId,
+        reactionId,
+      },
       'Failed to remove comment reaction',
     )
     throw classifyYouTrackError(error, { taskId, commentId })

@@ -295,7 +295,13 @@ describe('recurring-tools', () => {
             title: 'Task',
             projectId: 'p1',
             triggerType: 'cron',
-            schedule: { freq: 'WEEKLY', byDay: ['MO'], byHour: [9], byMinute: [0], timezone: 'UTC' },
+            schedule: {
+              freq: 'WEEKLY',
+              byDay: ['MO'],
+              byHour: [9],
+              byMinute: [0],
+              timezone: 'UTC',
+            },
           },
           toolCtx,
         )
@@ -405,7 +411,12 @@ describe('recurring-tools', () => {
 
   describe('makeUpdateRecurringTaskTool', () => {
     test('returns updated record fields when task exists', async () => {
-      const record = makeRecord({ id: 'rec-2', title: 'Updated title', projectId: 'p2', enabled: true })
+      const record = makeRecord({
+        id: 'rec-2',
+        title: 'Updated title',
+        projectId: 'p2',
+        enabled: true,
+      })
       updateRecurringTaskResult = record
       const tool = makeUpdateRecurringTaskTool('user-1', updateRecurringTaskDeps)
       expect(tool.execute).toBeDefined()
@@ -614,7 +625,11 @@ describe('recurring-tools', () => {
 
   describe('makeSkipRecurringTaskTool', () => {
     test('returns skipped status with next run when task exists', async () => {
-      const record = makeRecord({ id: 'rec-4', title: 'Standup', nextRun: '2026-03-29T09:00:00.000Z' })
+      const record = makeRecord({
+        id: 'rec-4',
+        title: 'Standup',
+        nextRun: '2026-03-29T09:00:00.000Z',
+      })
       skipNextOccurrenceResult = record
       const tool = makeSkipRecurringTaskTool(skipRecurringTaskDeps)
       expect(tool.execute).toBeDefined()

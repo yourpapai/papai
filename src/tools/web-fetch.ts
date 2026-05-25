@@ -68,7 +68,14 @@ function createWebFetchExecutor(
   return async ({ url, goal }: WebFetchToolInput, { abortSignal }: ToolExecutionOptions) => {
     try {
       log.debug({ storageContextId, actorUserId, url, hasGoal: goal !== undefined }, 'Executing web_fetch')
-      const result = await deps.fetchAndExtract({ storageContextId, actorUserId, contextType, url, goal, abortSignal })
+      const result = await deps.fetchAndExtract({
+        storageContextId,
+        actorUserId,
+        contextType,
+        url,
+        goal,
+        abortSignal,
+      })
       logWebFetchSuccess(storageContextId, actorUserId, result)
       return result
     } catch (error) {

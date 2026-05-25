@@ -22,7 +22,12 @@ export async function kaneoCreateProject(
   workspaceId: string,
   params: { name: string; description?: string },
 ): Promise<Project> {
-  const result = await createProject({ config, workspaceId, name: params.name, description: params.description })
+  const result = await createProject({
+    config,
+    workspaceId,
+    name: params.name,
+    description: params.description,
+  })
   return mapProject(result, buildProjectUrl(config.baseUrl, workspaceId, result.id))
 }
 

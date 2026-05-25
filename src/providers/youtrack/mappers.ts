@@ -92,7 +92,14 @@ const mapParent = (
 
 const mapSubtasks = (
   subtasks:
-    | { issues: Array<{ id: string; idReadable?: string; summary: string; resolved?: number | null | undefined }> }
+    | {
+        issues: Array<{
+          id: string
+          idReadable?: string
+          summary: string
+          resolved?: number | null | undefined
+        }>
+      }
     | undefined,
 ): Array<{ id: string; idReadable?: string; title: string; status?: string }> | undefined =>
   subtasks?.issues.map((s) => ({

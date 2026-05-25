@@ -132,7 +132,14 @@ describe('getSessionSnapshots', () => {
     userCachesForTesting.set('admin-1', {
       history: [{ role: 'user', content: 'hello' }],
       summary: 'test summary',
-      facts: [{ identifier: 'TASK-1', title: 'Fix bug', url: 'http://example.com', last_seen: '2026-03-28' }],
+      facts: [
+        {
+          identifier: 'TASK-1',
+          title: 'Fix bug',
+          url: 'http://example.com',
+          last_seen: '2026-03-28',
+        },
+      ],
       instructions: [{ id: 'i1', text: 'be concise', createdAt: '2026-03-28' }],
       config: new Map([
         ['llm_apikey', 'sk-test'],

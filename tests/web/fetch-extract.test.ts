@@ -116,7 +116,11 @@ describe('fetchAndExtract', () => {
         extractPdfText: (): Promise<string> => {
           throw createUnexpectedCallError('extractPdfText')
         },
-        distillWebContent: (): Promise<{ summary: string; excerpt: string; truncated: boolean }> => {
+        distillWebContent: (): Promise<{
+          summary: string
+          excerpt: string
+          truncated: boolean
+        }> => {
           throw createUnexpectedCallError('distillWebContent')
         },
         now: (): number => 1_000,
@@ -321,7 +325,11 @@ describe('fetchAndExtract', () => {
           extractPdfText: (): Promise<string> => {
             throw createUnexpectedCallError('extractPdfText')
           },
-          distillWebContent: (): Promise<{ summary: string; excerpt: string; truncated: boolean }> => {
+          distillWebContent: (): Promise<{
+            summary: string
+            excerpt: string
+            truncated: boolean
+          }> => {
             throw createUnexpectedCallError('distillWebContent')
           },
           now: (): number => 8_000,
@@ -374,7 +382,11 @@ describe('fetchAndExtract', () => {
           extractPdfText: (): Promise<string> => {
             throw createUnexpectedCallError('extractPdfText')
           },
-          distillWebContent: (): Promise<{ summary: string; excerpt: string; truncated: boolean }> => {
+          distillWebContent: (): Promise<{
+            summary: string
+            excerpt: string
+            truncated: boolean
+          }> => {
             throw createUnexpectedCallError('distillWebContent')
           },
           now: (): number => 9_000,
@@ -488,7 +500,11 @@ describe('fetchAndExtract', () => {
           extractPdfText: (): Promise<string> => {
             throw createUnexpectedCallError('extractPdfText')
           },
-          distillWebContent: (): Promise<{ summary: string; excerpt: string; truncated: boolean }> => {
+          distillWebContent: (): Promise<{
+            summary: string
+            excerpt: string
+            truncated: boolean
+          }> => {
             throw new Error('llm exploded')
           },
           now: (): number => 11_000,

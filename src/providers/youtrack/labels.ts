@@ -40,7 +40,11 @@ export async function findYouTrackLabelsByName(config: Readonly<YouTrackConfig>,
       10,
       100,
     )
-    const labels = tags.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color?.background }))
+    const labels = tags.map((tag) => ({
+      id: tag.id,
+      name: tag.name,
+      color: tag.color?.background,
+    }))
     log.info({ labelName, count: labels.length }, 'Tags looked up by name')
     return labels.filter((label) => label.name === labelName)
   } catch (error) {

@@ -24,9 +24,24 @@ describe('identityForSubject', () => {
     getDrizzleDb()
       .insert(userIdentityMappings)
       .values([
-        { contextId: 'u1', providerName: 'kaneo', providerUserId: 'k1', matchedAt: '2026-01-01T00:00:00Z' },
-        { contextId: 'u1', providerName: 'youtrack', providerUserId: 'y1', matchedAt: '2026-01-02T00:00:00Z' },
-        { contextId: 'other', providerName: 'kaneo', providerUserId: 'k2', matchedAt: '2026-01-03T00:00:00Z' },
+        {
+          contextId: 'u1',
+          providerName: 'kaneo',
+          providerUserId: 'k1',
+          matchedAt: '2026-01-01T00:00:00Z',
+        },
+        {
+          contextId: 'u1',
+          providerName: 'youtrack',
+          providerUserId: 'y1',
+          matchedAt: '2026-01-02T00:00:00Z',
+        },
+        {
+          contextId: 'other',
+          providerName: 'kaneo',
+          providerUserId: 'k2',
+          matchedAt: '2026-01-03T00:00:00Z',
+        },
       ])
       .run()
 

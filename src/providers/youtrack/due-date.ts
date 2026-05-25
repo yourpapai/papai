@@ -9,7 +9,10 @@ import { providerError } from '../../errors.js'
 import type { ListTasksParams } from '../types.js'
 import { YouTrackClassifiedError } from './classify-error.js'
 
-export const DueDateCustomFieldSchema = z.object({ name: z.string(), value: z.unknown().optional() })
+export const DueDateCustomFieldSchema = z.object({
+  name: z.string(),
+  value: z.unknown().optional(),
+})
 
 const isDateOnlyValue = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/u.test(value)
 

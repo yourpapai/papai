@@ -47,7 +47,11 @@ export function makeResolveStagedFileTool(contextId: string, downloadFn: StagedF
       log.debug({ contextId, stagedId }, 'resolve_staged_file called')
       const result = await resolveStagedFile(stagedId, contextId, downloadFn)
       if ('contextId' in result) {
-        return { status: 'resolved' as const, attachmentId: result.attachmentId, filename: result.filename }
+        return {
+          status: 'resolved' as const,
+          attachmentId: result.attachmentId,
+          filename: result.filename,
+        }
       }
       return result
     },

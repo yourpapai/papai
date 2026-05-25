@@ -377,7 +377,11 @@ export function getIdentityMapping(contextId: string, providerName: string): Ide
  */
 export function setIdentityMapping(params: SetIdentityMappingParams): void {
   log.debug(
-    { contextId: params.contextId, providerName: params.providerName, login: params.providerUserLogin },
+    {
+      contextId: params.contextId,
+      providerName: params.providerName,
+      login: params.providerUserLogin,
+    },
     'setIdentityMapping called',
   )
 

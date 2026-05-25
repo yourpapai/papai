@@ -38,7 +38,11 @@ export function makeReorderStatusesTool(provider: TaskProvider): ToolSet[string]
         return { success: true }
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, tool: 'reorder_statuses' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            tool: 'reorder_statuses',
+          },
           'Tool execution failed',
         )
         throw error

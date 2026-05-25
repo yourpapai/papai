@@ -352,7 +352,10 @@ export interface ClassifiedBehavior {
   readonly visibility: 'user-facing' | 'internal' | 'ambiguous'
   readonly candidateFeatureKey: string | null
   readonly candidateFeatureLabel: string | null
-  readonly supportingBehaviorRefs: readonly { readonly behaviorId: string; readonly reason: string }[]
+  readonly supportingBehaviorRefs: readonly {
+    readonly behaviorId: string
+    readonly reason: string
+  }[]
   readonly relatedBehaviorHints: readonly {
     readonly testKey: string
     readonly relation: 'same-feature' | 'supporting-detail' | 'possibly-related'
@@ -420,7 +423,10 @@ export interface ConsolidatedBehavior {
   readonly context: string
   readonly sourceTestKeys: readonly string[]
   readonly sourceBehaviorIds: readonly string[]
-  readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+  readonly supportingInternalRefs: readonly {
+    readonly behaviorId: string
+    readonly summary: string
+  }[]
 }
 
 const ConsolidatedBehaviorSchema = z.object({
@@ -1213,7 +1219,10 @@ test('runPhase2b consolidates user-facing candidate features and preserves suppo
           readonly context: string
           readonly sourceBehaviorIds: readonly string[]
           readonly sourceTestKeys: readonly string[]
-          readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+          readonly supportingInternalRefs: readonly {
+            readonly behaviorId: string
+            readonly summary: string
+          }[]
         }
       }[]
     > =>

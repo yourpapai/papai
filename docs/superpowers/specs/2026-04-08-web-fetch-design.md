@@ -217,7 +217,12 @@ export function makeWebFetchTool(userId: string): ToolSet[string] {
         return result
       } catch (error) {
         log.error(
-          { userId, url, error: error instanceof Error ? error.message : String(error), tool: 'web_fetch' },
+          {
+            userId,
+            url,
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'web_fetch',
+          },
           'Tool execution failed',
         )
         throw error

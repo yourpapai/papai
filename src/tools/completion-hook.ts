@@ -75,7 +75,11 @@ const createNextOccurrence = async (
     )
   } catch (error) {
     log.error(
-      { templateId: template.id, taskId, error: error instanceof Error ? error.message : String(error) },
+      {
+        templateId: template.id,
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'Failed to create on_complete recurring task instance',
     )
   }

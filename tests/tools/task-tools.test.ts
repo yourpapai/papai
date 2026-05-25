@@ -217,7 +217,13 @@ describe('Task Tools', () => {
       const provider = createMockYouTrackProvider({
         createTask: mock((input: Readonly<{ dueDate?: string; title: string }>) => {
           capturedDueDate = input.dueDate
-          return Promise.resolve({ id: 'task-1', title: input.title, status: 'todo', url: '', dueDate: '2026-03-25' })
+          return Promise.resolve({
+            id: 'task-1',
+            title: input.title,
+            status: 'todo',
+            url: '',
+            dueDate: '2026-03-25',
+          })
         }),
       })
 
@@ -249,7 +255,13 @@ describe('Task Tools', () => {
       const provider = createMockYouTrackProvider({
         createTask: mock((input: Readonly<{ dueDate?: string; title: string }>) => {
           capturedDueDate = input.dueDate
-          return Promise.resolve({ id: 'task-1', title: input.title, status: 'todo', url: '', dueDate: '2026-03-25' })
+          return Promise.resolve({
+            id: 'task-1',
+            title: input.title,
+            status: 'todo',
+            url: '',
+            dueDate: '2026-03-25',
+          })
         }),
       })
 
@@ -363,7 +375,13 @@ describe('Task Tools', () => {
       const provider = createMockYouTrackProvider({
         updateTask: mock((_id: string, updates: Readonly<{ dueDate?: string }>) => {
           capturedDueDate = updates.dueDate
-          return Promise.resolve({ id: 'task-1', title: 'Test', status: 'todo', url: '', dueDate: '2026-03-25' })
+          return Promise.resolve({
+            id: 'task-1',
+            title: 'Test',
+            status: 'todo',
+            url: '',
+            dueDate: '2026-03-25',
+          })
         }),
       })
 
@@ -392,7 +410,13 @@ describe('Task Tools', () => {
       const provider = createMockYouTrackProvider({
         updateTask: mock((_id: string, updates: Readonly<{ dueDate?: string }>) => {
           capturedDueDate = updates.dueDate
-          return Promise.resolve({ id: 'task-1', title: 'Test', status: 'todo', url: '', dueDate: '2026-03-25' })
+          return Promise.resolve({
+            id: 'task-1',
+            title: 'Test',
+            status: 'todo',
+            url: '',
+            dueDate: '2026-03-25',
+          })
         }),
       })
 
@@ -736,7 +760,13 @@ describe('Task Tools', () => {
       const provider = createMockProvider({
         listTasks: mock(() =>
           Promise.resolve([
-            { id: 'task-1', title: 'A', status: 'todo', url: '', dueDate: '2026-03-25T12:00:00.000Z' },
+            {
+              id: 'task-1',
+              title: 'A',
+              status: 'todo',
+              url: '',
+              dueDate: '2026-03-25T12:00:00.000Z',
+            },
             { id: 'task-2', title: 'B', status: 'todo', url: '', dueDate: undefined },
           ]),
         ),

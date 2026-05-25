@@ -105,7 +105,9 @@ export async function youtrackUpload(
   const blob =
     file.content instanceof Blob
       ? file.content
-      : new Blob([Buffer.from(file.content)], { type: file.mimeType ?? 'application/octet-stream' })
+      : new Blob([Buffer.from(file.content)], {
+          type: file.mimeType ?? 'application/octet-stream',
+        })
   const form = new FormData()
   form.append('upload', blob, file.name)
 

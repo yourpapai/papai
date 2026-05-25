@@ -164,7 +164,12 @@ export function syncInstructionToDb(
     try {
       const db = getDrizzleDb()
       db.insert(userInstructions)
-        .values({ id: instruction.id, contextId, text: instruction.text, createdAt: instruction.createdAt })
+        .values({
+          id: instruction.id,
+          contextId,
+          text: instruction.text,
+          createdAt: instruction.createdAt,
+        })
         .onConflictDoNothing()
         .run()
       log.debug({ contextId, id: instruction.id }, 'Instruction synced to DB')

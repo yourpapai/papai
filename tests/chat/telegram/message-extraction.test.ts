@@ -65,7 +65,11 @@ describe('message-extraction', () => {
     const isBotMentioned = (text: string): boolean => text.includes('@bot')
 
     test('returns null when from.id is undefined', () => {
-      const ctx: MinimalContext = { from: undefined, chat: { id: 123, type: 'private' }, message: { text: 'hi' } }
+      const ctx: MinimalContext = {
+        from: undefined,
+        chat: { id: 123, type: 'private' },
+        message: { text: 'hi' },
+      }
       const result = extractContextInfo(ctx, isBotMentioned)
       expect(result).toBeNull()
     })

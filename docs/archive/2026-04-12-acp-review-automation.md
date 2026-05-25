@@ -1180,7 +1180,12 @@ export async function createAcpProcessClient(spec: AcpProcessSpec): Promise<AcpP
       await connection.loadSession({ sessionId, cwd, mcpServers: [] })
     },
     async setConfigOption(sessionId: string, configId: string, value: string): Promise<void> {
-      await appendTranscript('out', { method: 'session/set_config_option', sessionId, configId, value })
+      await appendTranscript('out', {
+        method: 'session/set_config_option',
+        sessionId,
+        configId,
+        value,
+      })
       await connection.setSessionConfigOption({ sessionId, configId, value })
     },
     async prompt(sessionId: string, text: string): Promise<{ stopReason: string }> {
@@ -1350,7 +1355,9 @@ describe('decidePermissionOptionId', () => {
           title: 'Run tests',
           kind: 'execute',
           locations: [],
-          rawInput: { command: 'bun test tests/review-loop/loop-controller.test.ts --reporter=dot' },
+          rawInput: {
+            command: 'bun test tests/review-loop/loop-controller.test.ts --reporter=dot',
+          },
           options,
         },
         '/repo',

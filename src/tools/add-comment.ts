@@ -24,7 +24,11 @@ export function makeAddCommentTool(provider: TaskProvider): ToolSet[string] {
         return await provider.addComment!(taskId, comment)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'add_comment' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'add_comment',
+          },
           'Tool execution failed',
         )
         throw error

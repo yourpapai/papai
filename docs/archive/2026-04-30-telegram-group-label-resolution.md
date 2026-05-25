@@ -531,7 +531,12 @@ function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage): void 
   if (msg.contextName !== undefined) displayName = msg.contextName
   let parentName: string | null = null
   if (msg.contextParentName !== undefined) parentName = msg.contextParentName
-  upsertKnownGroupContext({ contextId: msg.contextId, provider: chat.name, displayName, parentName })
+  upsertKnownGroupContext({
+    contextId: msg.contextId,
+    provider: chat.name,
+    displayName,
+    parentName,
+  })
   upsertGroupAdminObservation({
     contextId: msg.contextId,
     userId: msg.user.id,
@@ -875,7 +880,10 @@ async function resolveCommandUserLabel(resolverContext: LabelResolverContext, us
 
   const fn = resolverContext.chat.resolveUserLabel
   if (fn === undefined) return null
-  return fn(userId, { contextId: resolverContext.contextId, contextType: resolverContext.contextType })
+  return fn(userId, {
+    contextId: resolverContext.contextId,
+    contextType: resolverContext.contextType,
+  })
 }
 
 async function resolveCommandGroupLabel(chat: ChatProvider, groupId: string): Promise<string | null> {

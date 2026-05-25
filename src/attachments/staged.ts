@@ -194,7 +194,10 @@ const checkStagedRowState = (row: StagedRow, stagedId: string): StagedResolution
   }
 
   if (row.status === 'failed') {
-    return { status: 'download_failed', message: 'Previous download attempt failed. Please re-send the file.' }
+    return {
+      status: 'download_failed',
+      message: 'Previous download attempt failed. Please re-send the file.',
+    }
   }
 
   const now = new Date()

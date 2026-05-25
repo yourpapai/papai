@@ -37,7 +37,11 @@ export function makeGetTaskHistoryTool(provider: Readonly<TaskProvider>): ToolSe
         return history
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'get_task_history' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'get_task_history',
+          },
           'Tool execution failed',
         )
         throw error

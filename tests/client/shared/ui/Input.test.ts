@@ -11,7 +11,9 @@ import type { Snippet } from 'svelte'
 import Input from '../../../../client/shared/ui/Input.svelte'
 
 function textSnippet(text: string): Snippet {
-  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<span>${text}</span>` }))
+  return createRawSnippet((): { render: () => string } => ({
+    render: (): string => `<span>${text}</span>`,
+  }))
 }
 
 describe('Input.svelte', () => {

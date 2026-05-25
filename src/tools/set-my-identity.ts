@@ -126,6 +126,52 @@ const defaultDeps: SetMyIdentityDeps = {
   getDrizzleDb: defaultGetDrizzleDb,
 }
 
+async function executeSetMyIdentity(
+  provider: TaskProvider,
+  chatUserId: string,
+  claim: string,
+  deps: SetMyIdentityDeps,
+): Promise<ErrorResult | SuccessResult> {
+  log.debug({ chatUserId, claim }, 'set_my_identity called')
+
+  const resolverError = validateResolver(provider)
+  if (resolverError !== null) return resolverError
+
+  const { result, login } = parseClaim(claim)
+  if (result !== null) return result
+  if (login === null) return { status: 'error', message: 'Failed to parse identity claim.' }
+
+  try {
+    const resolver = provider.identityResolver!
+    const matched = await findUser(resolver, login, provider.name)
+
+    if (matched === null) {
+      log.warn({ claimedLogin: login }, 'User not found in provider')
+      return {
+        status: 'error',
+        message: `I couldn't find user '${login}' in ${provider.name}. Check the username and try again.`,
+      }
+    }
+
+    return storeIdentity(chatUserId, provider.name, matched, (params): void => {
+      deps.setIdentityMapping(params, deps)
+    })
+  } catch (error) {
+    log.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        chatUserId,
+        claimedLogin: login,
+      },
+      'Failed to set identity',
+    )
+    return {
+      status: 'error',
+      message: 'Failed to set identity. Please try again.',
+    }
+  }
+}
+
 export function makeSetMyIdentityTool(
   provider: TaskProvider,
   chatUserId: string,
@@ -137,41 +183,6 @@ export function makeSetMyIdentityTool(
     inputSchema: z.object({
       claim: z.string().describe("The user's natural language claim about their identity"),
     }),
-    execute: async ({ claim }) => {
-      log.debug({ chatUserId, claim }, 'set_my_identity called')
-
-      const resolverError = validateResolver(provider)
-      if (resolverError !== null) return resolverError
-
-      const { result, login } = parseClaim(claim)
-      if (result !== null) return result
-      if (login === null) return { status: 'error', message: 'Failed to parse identity claim.' }
-
-      try {
-        const resolver = provider.identityResolver!
-        const matched = await findUser(resolver, login, provider.name)
-
-        if (matched === null) {
-          log.warn({ claimedLogin: login }, 'User not found in provider')
-          return {
-            status: 'error',
-            message: `I couldn't find user '${login}' in ${provider.name}. Check the username and try again.`,
-          }
-        }
-
-        return storeIdentity(chatUserId, provider.name, matched, (params): void => {
-          deps.setIdentityMapping(params, deps)
-        })
-      } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error), chatUserId, claimedLogin: login },
-          'Failed to set identity',
-        )
-        return {
-          status: 'error',
-          message: 'Failed to set identity. Please try again.',
-        }
-      }
-    },
+    execute: ({ claim }) => executeSetMyIdentity(provider, chatUserId, claim, deps),
   })
 }

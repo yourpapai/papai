@@ -185,7 +185,12 @@ export function handleTurnSummary(state: DashboardState, d: Record<string, unkno
 }
 
 export function handleNotificationEvent(state: DashboardState, type: string, d: Record<string, unknown>): void {
-  state.notifications.unshift({ timestamp: Date.now(), type, scope: parseScope(d['scope']), data: d })
+  state.notifications.unshift({
+    timestamp: Date.now(),
+    type,
+    scope: parseScope(d['scope']),
+    data: d,
+  })
   if (state.notifications.length > CAPS.NOTIFICATION) state.notifications.pop()
 }
 

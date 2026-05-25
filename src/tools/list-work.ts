@@ -31,7 +31,13 @@ export function makeListWorkTool(provider: TaskProvider): ToolSet[string] {
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, limit, offset, tool: 'list_work' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            limit,
+            offset,
+            tool: 'list_work',
+          },
           'Tool execution failed',
         )
         throw error

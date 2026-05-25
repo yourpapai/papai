@@ -108,8 +108,22 @@ describe('toolMixGlobal', () => {
     getDrizzleDb()
       .insert(toolCallEvents)
       .values([
-        { eventId: 't1', storageContextId: 'u1', occurredAt: 1, toolName: 'search_tasks', success: 1, ...base },
-        { eventId: 't2', storageContextId: 'u1', occurredAt: 2, toolName: 'search_tasks', success: 1, ...base },
+        {
+          eventId: 't1',
+          storageContextId: 'u1',
+          occurredAt: 1,
+          toolName: 'search_tasks',
+          success: 1,
+          ...base,
+        },
+        {
+          eventId: 't2',
+          storageContextId: 'u1',
+          occurredAt: 2,
+          toolName: 'search_tasks',
+          success: 1,
+          ...base,
+        },
         {
           eventId: 't3',
           storageContextId: 'u2',
@@ -128,7 +142,14 @@ describe('toolMixGlobal', () => {
           ...base,
           errorType: 'network',
         },
-        { eventId: 't5', storageContextId: 'u2', occurredAt: 5, toolName: 'create_task', success: 1, ...base },
+        {
+          eventId: 't5',
+          storageContextId: 'u2',
+          occurredAt: 5,
+          toolName: 'create_task',
+          success: 1,
+          ...base,
+        },
       ])
       .run()
 

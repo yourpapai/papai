@@ -28,13 +28,23 @@ const installFetchMock = (handler: () => Promise<Response>): void => {
 
 const mockFetchResponse = (data: unknown, status = 200): void => {
   installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })),
+    Promise.resolve(
+      new Response(JSON.stringify(data), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 
 const mockFetchError = (status: number, body: unknown = { error: 'Something went wrong' }): void => {
   installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })),
+    Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 

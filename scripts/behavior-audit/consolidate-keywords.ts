@@ -77,7 +77,13 @@ async function markDoneAndSave(
     embeddingModel: deps.embeddingModel,
     embeddingBaseUrl: deps.embeddingBaseUrl,
     embeddingCachePath: deps.embeddingCachePath,
-    stats: { slugsBefore, slugsAfter: slugsBefore, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+    stats: {
+      slugsBefore,
+      slugsAfter: slugsBefore,
+      mergesApplied: 0,
+      behaviorsUpdated: 0,
+      keywordsRemapped: 0,
+    },
   }
   await deps.saveProgress(progress)
 }

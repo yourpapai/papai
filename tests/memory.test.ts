@@ -41,7 +41,9 @@ describe('memory', () => {
   beforeEach(async () => {
     // Reset mutable state to defaults
     generateTextImpl = (): Promise<GenerateTextResult> =>
-      Promise.resolve({ text: JSON.stringify({ keep_indices: [0, 1], summary: 'Updated summary text' }) })
+      Promise.resolve({
+        text: JSON.stringify({ keep_indices: [0, 1], summary: 'Updated summary text' }),
+      })
 
     // Register mocks
     mockLogger()
@@ -61,7 +63,11 @@ describe('memory', () => {
     test('returns summary string when row exists', () => {
       testDb
         .insert(schema.memorySummary)
-        .values({ userId: '1', summary: 'Previous conversation summary', updatedAt: new Date().toISOString() })
+        .values({
+          userId: '1',
+          summary: 'Previous conversation summary',
+          updatedAt: new Date().toISOString(),
+        })
         .run()
       expect(loadSummary('1')).toBe('Previous conversation summary')
     })
@@ -102,7 +108,13 @@ describe('memory', () => {
       // Insert a fact first
       testDb
         .insert(schema.memoryFacts)
-        .values({ userId: '1', identifier: '#42', title: 'Test', url: '', lastSeen: new Date().toISOString() })
+        .values({
+          userId: '1',
+          identifier: '#42',
+          title: 'Test',
+          url: '',
+          lastSeen: new Date().toISOString(),
+        })
         .run()
       clearFacts('1')
       const rows = testDb.select().from(schema.memoryFacts).where(eq(schema.memoryFacts.userId, '1')).all()
@@ -224,7 +236,10 @@ describe('memory', () => {
     })
 
     test('caps list_projects at 10 entries', () => {
-      const projects = Array.from({ length: 12 }, (_, i) => ({ id: `proj-${i}`, name: `Project ${i}` }))
+      const projects = Array.from({ length: 12 }, (_, i) => ({
+        id: `proj-${i}`,
+        name: `Project ${i}`,
+      }))
       const results = [{ toolName: 'list_projects', result: projects }]
       const facts = extractFacts(results)
       expect(facts).toHaveLength(10)
@@ -283,7 +298,11 @@ describe('memory', () => {
       const results = [
         {
           toolName: 'create_project',
-          result: { id: 'proj-123', name: 'Backend Migration', url: 'https://kaneo.app/project/proj-123' },
+          result: {
+            id: 'proj-123',
+            name: 'Backend Migration',
+            url: 'https://kaneo.app/project/proj-123',
+          },
         },
       ]
       const facts = extractFacts(results)
@@ -430,7 +449,10 @@ describe('memory', () => {
       const history = makeMessages(10)
       generateTextImpl = (): Promise<GenerateTextResult> =>
         Promise.resolve({
-          text: JSON.stringify({ keep_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], summary: 'Summary' }),
+          text: JSON.stringify({
+            keep_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            summary: 'Summary',
+          }),
         })
 
       const result = await trimWithMemoryModel(history, 1, 3, null, mockModel)
@@ -625,7 +647,12 @@ describe('memory', () => {
     test('extracts fact from update_project with url', () => {
       const facts = extractFactsFromSdkResults(
         [],
-        [{ toolName: 'update_project', output: { id: 'proj-2', name: 'Frontend', url: 'https://example.com' } }],
+        [
+          {
+            toolName: 'update_project',
+            output: { id: 'proj-2', name: 'Frontend', url: 'https://example.com' },
+          },
+        ],
       )
       expect(facts).toHaveLength(1)
       expect(facts[0]!.url).toBe('https://example.com')
@@ -637,7 +664,10 @@ describe('memory', () => {
     })
 
     test('extracts facts from list_projects result capped at 10', () => {
-      const projects = Array.from({ length: 12 }, (_, i) => ({ id: `proj-${i}`, name: `Project ${i}` }))
+      const projects = Array.from({ length: 12 }, (_, i) => ({
+        id: `proj-${i}`,
+        name: `Project ${i}`,
+      }))
       const facts = extractFactsFromSdkResults([], [{ toolName: 'list_projects', output: projects }])
       expect(facts).toHaveLength(10)
       expect(facts[0]!.identifier).toBe('proj:proj-0')

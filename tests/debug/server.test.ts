@@ -79,8 +79,18 @@ function findBufferStreamLevel(multistream: unknown, target: unknown): unknown {
  * logger mock pollution from other test files in the full suite).
  */
 function seedLogBuffer(): void {
-  logBuffer.push({ level: 30, time: '2026-03-28T10:00:00.000Z', scope: 'debug-server', msg: 'Debug server started' })
-  logBuffer.push({ level: 50, time: '2026-03-28T10:00:01.000Z', scope: 'bot', msg: 'Something failed' })
+  logBuffer.push({
+    level: 30,
+    time: '2026-03-28T10:00:00.000Z',
+    scope: 'debug-server',
+    msg: 'Debug server started',
+  })
+  logBuffer.push({
+    level: 50,
+    time: '2026-03-28T10:00:01.000Z',
+    scope: 'bot',
+    msg: 'Something failed',
+  })
 }
 
 function mockDebugServerDependencies(): void {
@@ -252,7 +262,12 @@ describe('debug-server', () => {
   })
 
   test('GET /logs supports turnId filter', async () => {
-    logBuffer.push({ level: 30, time: '2026-03-28T10:00:02.000Z', msg: 'turn msg', turnId: 'turn-test-123' })
+    logBuffer.push({
+      level: 30,
+      time: '2026-03-28T10:00:02.000Z',
+      msg: 'turn msg',
+      turnId: 'turn-test-123',
+    })
     const res = await fetch(`http://localhost:${TEST_PORT}/logs?turnId=turn-test-123`)
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))

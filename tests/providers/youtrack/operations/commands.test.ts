@@ -43,7 +43,12 @@ describe('applyYouTrackCommand', () => {
       silent: true,
     })
 
-    expect(result).toEqual({ query: 'for me', taskIds: ['TEST-1'], comment: 'Assigning to myself', silent: true })
+    expect(result).toEqual({
+      query: 'for me',
+      taskIds: ['TEST-1'],
+      comment: 'Assigning to myself',
+      silent: true,
+    })
     expect(fetchMock.current?.mock.calls).toHaveLength(1)
     const body = getLastFetchBody(fetchMock.current)
     expect(body).toEqual({

@@ -158,7 +158,12 @@ async function attemptConsolidation(
   remaining: number,
   accumulatedUsage: AgentUsage,
 ): Promise<{
-  items: readonly { readonly id: string; readonly item: ConsolidationResult['consolidations'][number] }[] | null
+  items:
+    | readonly {
+        readonly id: string
+        readonly item: ConsolidationResult['consolidations'][number]
+      }[]
+    | null
   usage: AgentUsage
 }> {
   if (remaining <= 0) return { items: null, usage: accumulatedUsage }

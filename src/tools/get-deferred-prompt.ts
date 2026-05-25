@@ -21,7 +21,10 @@ export function makeGetDeferredPromptTool(userId: string): ToolSet[string] {
         return executeGet(userId, input)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'get_deferred_prompt' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'get_deferred_prompt',
+          },
           'Tool execution failed',
         )
         throw error

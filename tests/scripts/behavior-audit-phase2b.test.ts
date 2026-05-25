@@ -42,7 +42,10 @@ type ClassifiedArtifactRecord = {
   readonly visibility: 'user-facing' | 'internal' | 'ambiguous'
   readonly featureKey: string | null
   readonly featureLabel: string | null
-  readonly supportingBehaviorRefs: readonly { readonly behaviorId: string; readonly reason: string }[]
+  readonly supportingBehaviorRefs: readonly {
+    readonly behaviorId: string
+    readonly reason: string
+  }[]
   readonly relatedBehaviorHints: readonly {
     readonly testKey: string
     readonly relation: 'same-feature' | 'supporting-detail' | 'possibly-related'
@@ -247,7 +250,12 @@ test('runPhase2b joins classified and extracted artifacts by behavior id and wri
         ]
         return Promise.resolve({
           result: consolidationItems,
-          usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         })
       },
       writeConsolidatedFile: (featureKey, consolidations): Promise<void> => {
@@ -410,7 +418,12 @@ test('runPhase2b groups joined artifact inputs by feature key and preserves cros
               },
             },
           ],
-          usage: { inputTokens: 200, outputTokens: 100, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         })
       },
       writeConsolidatedFile: async (): Promise<void> => {},

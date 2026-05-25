@@ -37,7 +37,10 @@ export function clearStatsCacheForTesting(): void {
   globalCache.clear()
 }
 
-function resolveContextType(storageContextId: string): { contextType: StatsContextType; chatUserId: string | null } {
+function resolveContextType(storageContextId: string): {
+  contextType: StatsContextType
+  chatUserId: string | null
+} {
   const userRow = getDrizzleDb()
     .select({ id: users.platformUserId })
     .from(users)

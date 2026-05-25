@@ -101,7 +101,10 @@ describe('completionHook', () => {
 
     // Should have recorded the new occurrence
     expect(deps.recordOccurrenceCalls).toHaveLength(1)
-    expect(deps.recordOccurrenceCalls[0]).toEqual({ templateId: TEMPLATE_ID, taskId: 'new-task-1' })
+    expect(deps.recordOccurrenceCalls[0]).toEqual({
+      templateId: TEMPLATE_ID,
+      taskId: 'new-task-1',
+    })
 
     // Should have marked the template as executed
     expect(deps.markExecutedCalls).toEqual([TEMPLATE_ID])

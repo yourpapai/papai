@@ -30,7 +30,11 @@ describe('consumeWebFetchQuota', () => {
       consumeWebFetchQuota('actor-1', 0)
     }
 
-    expect(consumeWebFetchQuota('actor-1', 0)).toEqual({ allowed: false, remaining: 0, retryAfterSec: 300 })
+    expect(consumeWebFetchQuota('actor-1', 0)).toEqual({
+      allowed: false,
+      remaining: 0,
+      retryAfterSec: 300,
+    })
   })
 
   test('reports the remaining time for a blocked mid-window request', () => {

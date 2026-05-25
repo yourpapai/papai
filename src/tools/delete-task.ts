@@ -35,7 +35,11 @@ export function makeDeleteTaskTool(provider: TaskProvider): ToolSet[string] {
         return await provider.deleteTask!(taskId)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'delete_task' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'delete_task',
+          },
           'Tool execution failed',
         )
         throw error

@@ -36,7 +36,10 @@ export const TddEnforcement: Plugin = async ({ client, directory }) => {
         const command = (output.args?.command as string) ?? ''
         const gitStashResult = blockGitStash({ tool_name: 'bash', tool_input: { command } })
         if (gitStashResult) throw new Error(gitStashResult.reason)
-        const gitCheckoutResult = blockGitCheckoutDiscard({ tool_name: 'bash', tool_input: { command } })
+        const gitCheckoutResult = blockGitCheckoutDiscard({
+          tool_name: 'bash',
+          tool_input: { command },
+        })
         if (gitCheckoutResult) throw new Error(gitCheckoutResult.reason)
       }
 

@@ -208,7 +208,11 @@ function willQueueAuthorizedMessage(msg: IncomingMessage, auth: AuthorizationRes
 function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, storageContextId: string): void {
   if (msg.contextType !== 'group' || msg.fileCandidates === undefined || msg.fileCandidates.length === 0) return
   try {
-    stageGroupFileCandidates({ storageContextId, msg, sourceProvider: toSourceProvider(chat.name) })
+    stageGroupFileCandidates({
+      storageContextId,
+      msg,
+      sourceProvider: toSourceProvider(chat.name),
+    })
   } catch (error: unknown) {
     log.warn(
       {

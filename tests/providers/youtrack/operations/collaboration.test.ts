@@ -52,7 +52,12 @@ describe('listYouTrackWatchers', () => {
         issueWatchers: [
           {
             isStarred: true,
-            user: { id: 'user-1', login: 'alice', fullName: 'Alice Example', email: 'alice@example.com' },
+            user: {
+              id: 'user-1',
+              login: 'alice',
+              fullName: 'Alice Example',
+              email: 'alice@example.com',
+            },
           },
           {
             isStarred: false,
@@ -82,7 +87,10 @@ describe('addYouTrackWatcher', () => {
     expect(result).toEqual({ taskId: 'TEST-1', userId: 'user-1' })
     expect(getLastFetchUrl(fetchMock.current).pathname).toBe('/api/issues/TEST-1/watchers/issueWatchers')
     expect(getLastFetchMethod(fetchMock.current)).toBe('POST')
-    expect(getLastFetchBody(fetchMock.current)).toEqual({ user: { id: 'user-1' }, isStarred: true })
+    expect(getLastFetchBody(fetchMock.current)).toEqual({
+      user: { id: 'user-1' },
+      isStarred: true,
+    })
   })
 })
 
@@ -192,7 +200,12 @@ describe('addYouTrackCommentReaction', () => {
     mockFetchResponse(fetchMock, {
       id: 'reaction-1',
       reaction: 'thumbs_up',
-      author: { id: 'user-1', login: 'alice', fullName: 'Alice Example', email: 'alice@example.com' },
+      author: {
+        id: 'user-1',
+        login: 'alice',
+        fullName: 'Alice Example',
+        email: 'alice@example.com',
+      },
     })
 
     const result = await addYouTrackCommentReaction(config, 'TEST-1', 'comment-1', 'thumbs_up')

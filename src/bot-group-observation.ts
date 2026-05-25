@@ -15,7 +15,12 @@ export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage)
   if (msg.commandMatch === undefined && !msg.isMentioned) return
   const displayName = msg.contextName ?? msg.contextId
   const parentName = msg.contextParentName ?? null
-  upsertKnownGroupContext({ contextId: msg.contextId, provider: chat.name, displayName, parentName })
+  upsertKnownGroupContext({
+    contextId: msg.contextId,
+    provider: chat.name,
+    displayName,
+    parentName,
+  })
   upsertGroupAdminObservation({
     provider: chat.name,
     contextId: msg.contextId,

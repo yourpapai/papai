@@ -11,7 +11,9 @@ import type { Snippet } from 'svelte'
 import Btn from '../../../../client/shared/ui/Btn.svelte'
 
 function textSnippet(text: string): Snippet {
-  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<span>${text}</span>` }))
+  return createRawSnippet((): { render: () => string } => ({
+    render: (): string => `<span>${text}</span>`,
+  }))
 }
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'

@@ -136,7 +136,13 @@ describe('ProjectResource', () => {
 
     test('auto-generates slug from name', async () => {
       const captured = { value: undefined as unknown }
-      setMockFetch(makeCaptureOnMethodFetch('POST', captured, { id: 'proj-1', name: 'My Project', slug: 'my-project' }))
+      setMockFetch(
+        makeCaptureOnMethodFetch('POST', captured, {
+          id: 'proj-1',
+          name: 'My Project',
+          slug: 'my-project',
+        }),
+      )
 
       const resource = new ProjectResource(mockConfig)
       await resource.create({

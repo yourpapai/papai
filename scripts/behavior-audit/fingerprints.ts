@@ -50,8 +50,18 @@ export function buildPhase3EvaluationFingerprint(input: {
   readonly consolidatedId: string
   readonly phase2Fingerprint: string | null
   readonly evaluation: {
-    readonly maria: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-    readonly dani: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
+    readonly maria: {
+      readonly discover: number
+      readonly use: number
+      readonly retain: number
+      readonly notes: string
+    }
+    readonly dani: {
+      readonly discover: number
+      readonly use: number
+      readonly retain: number
+      readonly notes: string
+    }
     readonly viktor: {
       readonly discover: number
       readonly use: number

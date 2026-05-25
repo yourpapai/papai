@@ -264,7 +264,11 @@ describe('create_task identity resolution', () => {
       })
     })
 
-    const provider = createMockProvider({ createTask, name: 'youtrack', supportsCustomFields: true })
+    const provider = createMockProvider({
+      createTask,
+      name: 'youtrack',
+      supportsCustomFields: true,
+    })
     const tool = makeCreateTaskTool(provider, 'test-user-456')
 
     assert(tool.execute, 'Tool execute is undefined')
@@ -291,7 +295,12 @@ describe('create_task identity resolution', () => {
 
   test('create_task rejects customFields for providers that do not support them', async () => {
     const createTask = mock(() =>
-      Promise.resolve({ id: 'task-1', title: 'Test Task', status: 'todo', url: 'https://test.com/task/1' }),
+      Promise.resolve({
+        id: 'task-1',
+        title: 'Test Task',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      }),
     )
     const provider = createMockProvider({
       createTask,
@@ -324,7 +333,12 @@ describe('create_task identity resolution', () => {
     let capturedCustomFields: Array<{ name: string; value: string }> | undefined
     const createTask = mock((params: { title: string; customFields?: Array<{ name: string; value: string }> }) => {
       capturedCustomFields = params.customFields
-      return Promise.resolve({ id: 'task-1', title: params.title, status: 'todo', url: 'https://test.com/task/1' })
+      return Promise.resolve({
+        id: 'task-1',
+        title: params.title,
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      })
     })
     const provider = createMockProvider({
       createTask,

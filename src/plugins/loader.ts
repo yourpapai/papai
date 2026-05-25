@@ -39,7 +39,10 @@ async function importPluginModule(entryPoint: string): Promise<PluginInstance> {
   return instance
 }
 
-function buildActivationTimeout(timeoutMs: number): { promise: Promise<never>; cancel: () => void } {
+function buildActivationTimeout(timeoutMs: number): {
+  promise: Promise<never>
+  cancel: () => void
+} {
   let timeout: ReturnType<typeof setTimeout> | undefined
   const promise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {

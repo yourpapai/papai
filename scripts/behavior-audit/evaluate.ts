@@ -112,7 +112,9 @@ async function persistPhase3Outputs(input: {
 }
 
 export async function runPhase3(
-  input: Omit<Phase3RunInput, 'selectedFeatureKeys'> & { readonly selectedFeatureKeys?: ReadonlySet<string> },
+  input: Omit<Phase3RunInput, 'selectedFeatureKeys'> & {
+    readonly selectedFeatureKeys?: ReadonlySet<string>
+  },
   depsInput: Partial<Phase3Deps> | undefined,
 ): Promise<ConsolidatedManifest | null>
 export async function runPhase3(
@@ -121,7 +123,9 @@ export async function runPhase3(
     selectedConsolidatedIds,
     selectedFeatureKeys,
     consolidatedManifest,
-  }: Omit<Phase3RunInput, 'selectedFeatureKeys'> & { readonly selectedFeatureKeys?: ReadonlySet<string> },
+  }: Omit<Phase3RunInput, 'selectedFeatureKeys'> & {
+    readonly selectedFeatureKeys?: ReadonlySet<string>
+  },
   depsInput: Partial<Phase3Deps> | undefined,
 ): Promise<ConsolidatedManifest | null> {
   if (consolidatedManifest === null) {

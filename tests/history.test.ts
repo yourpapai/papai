@@ -118,7 +118,11 @@ describe('loadHistory', () => {
     assert(Array.isArray(assistantContent))
     expect(assistantContent).toHaveLength(1)
     // Verify structure of first item in array content
-    expect(assistantContent[0]).toMatchObject({ type: 'tool-call', toolCallId: 'tc1', toolName: 'list_tasks' })
+    expect(assistantContent[0]).toMatchObject({
+      type: 'tool-call',
+      toolCallId: 'tc1',
+      toolName: 'list_tasks',
+    })
 
     // Verify tool message has tool-result content
     const toolMsg = result[2]
@@ -127,7 +131,11 @@ describe('loadHistory', () => {
     assert(Array.isArray(toolContent))
     expect(toolContent).toHaveLength(1)
     // Verify structure of first item in array content
-    expect(toolContent[0]).toMatchObject({ type: 'tool-result', toolCallId: 'tc1', toolName: 'list_tasks' })
+    expect(toolContent[0]).toMatchObject({
+      type: 'tool-result',
+      toolCallId: 'tc1',
+      toolName: 'list_tasks',
+    })
   })
 
   test('rejects messages where content is neither string nor array', () => {
@@ -247,7 +255,14 @@ describe('appendHistory', () => {
       { role: 'assistant', content: 'answer' },
       {
         role: 'tool',
-        content: [{ type: 'tool-result', toolCallId: 'tc1', toolName: 'test', output: { type: 'text', value: 'ok' } }],
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'tc1',
+            toolName: 'test',
+            output: { type: 'text', value: 'ok' },
+          },
+        ],
       },
     ]
     appendHistory('append-3', messages)

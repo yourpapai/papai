@@ -84,7 +84,10 @@ export function makeResumeRecurringTaskTool(deps: ResumeRecurringTaskDeps = defa
         return await executeResume(input, deps)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'resume_recurring_task' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'resume_recurring_task',
+          },
           'Tool execution failed',
         )
         throw error

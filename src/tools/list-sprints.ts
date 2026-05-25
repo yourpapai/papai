@@ -25,7 +25,11 @@ export function makeListSprintsTool(provider: Readonly<TaskProvider>): ToolSet[s
         return sprints
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), agileId, tool: 'list_sprints' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            agileId,
+            tool: 'list_sprints',
+          },
           'Tool execution failed',
         )
         throw error

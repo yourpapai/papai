@@ -15,7 +15,12 @@ import type { KeywordVocabularyEntry } from '../../../scripts/behavior-audit/key
 
 function makeEntry(slug: string, createdAt: string | null): KeywordVocabularyEntry {
   if (createdAt === null) {
-    return { slug, description: 'desc', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }
+    return {
+      slug,
+      description: 'desc',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
   }
   return { slug, description: 'desc', createdAt, updatedAt: '2026-01-01T00:00:00.000Z' }
 }
@@ -158,8 +163,18 @@ describe('buildConsolidatedVocabulary', () => {
 
   test('returns entries sorted by slug', () => {
     const vocabulary = [
-      { slug: 'zebra', description: '', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-      { slug: 'alpha', description: '', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      {
+        slug: 'zebra',
+        description: '',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        slug: 'alpha',
+        description: '',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
     ]
     const result = buildConsolidatedVocabulary(vocabulary, new Map(), '2026-04-27T00:00:00.000Z')
     expect(result[0]!.slug).toBe('alpha')

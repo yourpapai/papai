@@ -275,11 +275,17 @@ async function extractUserId(
 ): Promise<{ kind: 'resolved'; userId: string } | { kind: 'error'; message: string }> {
   if (input.startsWith('@')) {
     if (!supportsUserResolution(chat)) {
-      return { kind: 'error', message: 'This chat provider does not support username lookup. Use an explicit user ID.' }
+      return {
+        kind: 'error',
+        message: 'This chat provider does not support username lookup. Use an explicit user ID.',
+      }
     }
     const resolveUserId = chat.resolveUserId
     if (resolveUserId === undefined) {
-      return { kind: 'error', message: 'This chat provider does not support username lookup. Use an explicit user ID.' }
+      return {
+        kind: 'error',
+        message: 'This chat provider does not support username lookup. Use an explicit user ID.',
+      }
     }
     const resolved = await resolveUserId(input, context)
     if (resolved === null || resolved === undefined) {

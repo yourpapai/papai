@@ -20,7 +20,9 @@ interface RenderConfirmOptions {
 }
 
 function textSnippet(text: string): Snippet {
-  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<div>${text}</div>` }))
+  return createRawSnippet((): { render: () => string } => ({
+    render: (): string => `<div>${text}</div>`,
+  }))
 }
 
 function findButtonByText(target: HTMLElement, text: string): HTMLButtonElement | null {

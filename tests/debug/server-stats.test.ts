@@ -69,20 +69,26 @@ describe('debug-server stats routes', () => {
   })
 
   test('GET /stats/global?window=7d returns body with window 7d', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/stats/global?window=7d`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/stats/global?window=7d`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(200)
     const body = await readJson(res)
     expect(pick(body, 'window')).toBe('7d')
   })
 
   test('GET /stats/global rejects unknown window with 400', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/stats/global?window=foo`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/stats/global?window=foo`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(400)
     await res.body?.cancel()
   })
 
   test('GET /stats/subject/<unknown> returns 404', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/nobody`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/nobody`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(404)
     await res.body?.cancel()
   })
@@ -90,7 +96,9 @@ describe('debug-server stats routes', () => {
   test('GET /stats/subject/<seeded> returns SubjectStats shape', async () => {
     getTestDb().insert(users).values({ platformUserId: 'u1', username: 'alice', addedBy: 'admin' }).run()
 
-    const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/u1`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/u1`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(200)
     const body = await readJson(res)
     expect(pick(body, 'storageContextId')).toBe('u1')

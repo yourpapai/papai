@@ -42,7 +42,12 @@ describe('Agile tools', () => {
       start: '2026-04-15T00:00:00.000Z',
       finish: '2026-04-22T00:00:00.000Z',
     })
-    expect(result).toEqual({ id: 'sprint-1', agileId: 'agile-1', name: 'Sprint 24', archived: false })
+    expect(result).toEqual({
+      id: 'sprint-1',
+      agileId: 'agile-1',
+      name: 'Sprint 24',
+      archived: false,
+    })
     expect(createSprint).toHaveBeenCalledWith('agile-1', {
       name: 'Sprint 24',
       goal: 'Ship commands',

@@ -804,7 +804,11 @@ const defaultDeps: LookupGroupHistoryDeps = {
     }
 
     const { createOpenAICompatible } = require('@ai-sdk/openai-compatible')
-    return createOpenAICompatible({ name: 'openai-compatible', apiKey: llmApiKey, baseURL: llmBaseUrl })(smallModel)
+    return createOpenAICompatible({
+      name: 'openai-compatible',
+      apiKey: llmApiKey,
+      baseURL: llmBaseUrl,
+    })(smallModel)
   },
 }
 

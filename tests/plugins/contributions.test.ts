@@ -119,7 +119,13 @@ describe('PluginContributionRegistry', () => {
   test('registers and retrieves contributions', () => {
     const manifest = makeManifest()
     const contributions: PluginContributions = {
-      tools: [{ name: 'my_tool', description: 'A test tool', execute: () => Promise.resolve<unknown>('ok') }],
+      tools: [
+        {
+          name: 'my_tool',
+          description: 'A test tool',
+          execute: () => Promise.resolve<unknown>('ok'),
+        },
+      ],
       promptFragments: [{ name: 'hint', content: 'Use this hint' }],
     }
     contributionRegistry.register('test-plugin', contributions, manifest)
@@ -131,10 +137,23 @@ describe('PluginContributionRegistry', () => {
 
   test('filters out undeclared tools', () => {
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     const contributions: PluginContributions = {
-      tools: [{ name: 'undeclared_tool', description: 'Not in manifest', execute: () => Promise.resolve<unknown>('') }],
+      tools: [
+        {
+          name: 'undeclared_tool',
+          description: 'Not in manifest',
+          execute: () => Promise.resolve<unknown>(''),
+        },
+      ],
       promptFragments: [],
     }
     contributionRegistry.register('test-plugin', contributions, manifest)
@@ -144,7 +163,14 @@ describe('PluginContributionRegistry', () => {
 
   test('filters out undeclared prompt fragments', () => {
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     const contributions: PluginContributions = {
       tools: [],
@@ -300,7 +326,11 @@ describe('buildPluginToolSet', () => {
       'test-plugin',
       {
         tools: [
-          { name: 'my_tool', description: 'A test tool', execute: (): Promise<unknown> => Promise.resolve('ok') },
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
         ],
         promptFragments: [],
       },
@@ -453,7 +483,11 @@ describe('buildPluginToolSet', () => {
       'test-plugin',
       {
         tools: [
-          { name: 'my_tool', description: 'A test tool', execute: (): Promise<unknown> => Promise.resolve('ok') },
+          {
+            name: 'my_tool',
+            description: 'A test tool',
+            execute: (): Promise<unknown> => Promise.resolve('ok'),
+          },
         ],
         promptFragments: [],
       },

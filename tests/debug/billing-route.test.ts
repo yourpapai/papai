@@ -109,7 +109,9 @@ describe('debug-server billing routes', () => {
     insertUser('user-A', 'alice')
     seedUsage({ storageContextId: 'user-A', chatUserId: 'user-A', contextType: 'dm' })
 
-    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subjects?window=all`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subjects?window=all`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(200)
     const body = await readJson(res)
     expect(pick(body, 'window')).toBe('all')
@@ -122,22 +124,36 @@ describe('debug-server billing routes', () => {
 
   test('GET /billing/subjects defaults window to 30d', async () => {
     seedUsage({ storageContextId: 'ctx-A' })
-    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subjects`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subjects`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(200)
     const body = await readJson(res)
     expect(pick(body, 'window')).toBe('30d')
   })
 
   test('GET /billing/subjects rejects unknown window with 400', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subjects?window=foo`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subjects?window=foo`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(400)
     await res.body?.cancel()
   })
 
   test('GET /billing/subject/:id returns detail with subject and requests', async () => {
     insertUser('user-A', 'alice')
-    seedUsage({ storageContextId: 'user-A', chatUserId: 'user-A', contextType: 'dm', occurredAt: NOW })
-    seedUsage({ storageContextId: 'user-A', chatUserId: 'user-A', contextType: 'dm', occurredAt: NOW - 1 })
+    seedUsage({
+      storageContextId: 'user-A',
+      chatUserId: 'user-A',
+      contextType: 'dm',
+      occurredAt: NOW,
+    })
+    seedUsage({
+      storageContextId: 'user-A',
+      chatUserId: 'user-A',
+      contextType: 'dm',
+      occurredAt: NOW - 1,
+    })
 
     const res = await fetch(`http://localhost:${TEST_PORT}/billing/subject/user-A?window=all`, {
       headers: authHeaders,
@@ -153,7 +169,9 @@ describe('debug-server billing routes', () => {
   })
 
   test('GET /billing/subject/:id returns 404 when no rows exist', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subject/missing`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/billing/subject/missing`, {
+      headers: authHeaders,
+    })
     expect(res.status).toBe(404)
     await res.body?.cancel()
   })

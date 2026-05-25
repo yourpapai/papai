@@ -67,7 +67,10 @@ describe('listYouTrackAgiles', () => {
   test('paginates beyond the first agile page', async () => {
     mockFetchSequence(fetchMock, [
       {
-        data: Array.from({ length: 100 }, (_, index) => ({ id: `agile-${index + 1}`, name: `Agile ${index + 1}` })),
+        data: Array.from({ length: 100 }, (_, index) => ({
+          id: `agile-${index + 1}`,
+          name: `Agile ${index + 1}`,
+        })),
       },
       {
         data: [{ id: 'agile-101', name: 'Agile 101' }],

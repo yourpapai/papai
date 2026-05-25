@@ -249,7 +249,14 @@ describe('validateToolResults', () => {
       },
       {
         role: 'tool',
-        content: [{ type: 'tool-result', toolCallId: 'call-1', toolName: 'create_task', result: { id: '1' } }],
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'create_task',
+            result: { id: '1' },
+          },
+        ],
       },
     ]
 
@@ -280,7 +287,10 @@ describe('validateToolResults', () => {
         },
       ],
     })
-    const toolContent = result[2]!.content as Array<{ type: string; result: { recovered: boolean } }>
+    const toolContent = result[2]!.content as Array<{
+      type: string
+      result: { recovered: boolean }
+    }>
     expect(toolContent[0]!.result.recovered).toBe(true)
   })
 

@@ -39,7 +39,10 @@ export const GlobalStatsSchema = z.object({
     attachmentBytesPerSubject: PercentilesSchema,
   }),
   storage: z.object({ sqliteBytes: z.number(), s3AttachmentBytes: z.number() }),
-  identityMix: z.object({ byProvider: z.record(z.string(), z.number()), kaneoWorkspaces: z.number() }),
+  identityMix: z.object({
+    byProvider: z.record(z.string(), z.number()),
+    kaneoWorkspaces: z.number(),
+  }),
   surfaceMix: z.object({
     subjectsWithRecurring: z.number(),
     subjectsWithDeferred: z.number(),

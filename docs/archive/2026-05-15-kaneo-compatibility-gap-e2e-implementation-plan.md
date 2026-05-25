@@ -461,8 +461,16 @@ test('adapts the live search envelope and still finds tasks with null dates', as
 
 test('respects projectId and limit together', async () => {
   const uniqueKeyword = `projectlimit${Date.now()}`
-  const sameProjectA = await createTask({ config: kaneoConfig, projectId, title: `A ${uniqueKeyword}` })
-  const sameProjectB = await createTask({ config: kaneoConfig, projectId, title: `B ${uniqueKeyword}` })
+  const sameProjectA = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `A ${uniqueKeyword}`,
+  })
+  const sameProjectB = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `B ${uniqueKeyword}`,
+  })
   testClient.trackTask(sameProjectA.id)
   testClient.trackTask(sameProjectB.id)
 
@@ -544,10 +552,22 @@ import { kaneoApiJson } from './kaneo-api-helpers.js'
 
 test('keeps comment IDs stable through provider update and delete flows', async () => {
   const suffix = generateUniqueSuffix()
-  const task = await createTask({ config: kaneoConfig, projectId, title: `Stable Comment ${suffix}` })
+  const task = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `Stable Comment ${suffix}`,
+  })
 
-  const original = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Original body' })
-  const untouched = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Untouched body' })
+  const original = await addComment({
+    config: kaneoConfig,
+    taskId: task.id,
+    comment: 'Original body',
+  })
+  const untouched = await addComment({
+    config: kaneoConfig,
+    taskId: task.id,
+    comment: 'Untouched body',
+  })
 
   const { updateComment } = await import('../../src/providers/kaneo/update-comment.js')
   const updated = await updateComment({
@@ -655,12 +675,25 @@ Update `tests/e2e/task-relations.test.ts` with this import and these tests:
 import { kaneoApiJson } from './kaneo-api-helpers.js'
 
 test('maps blocks to blocked_by on the target task', async () => {
-  const source = await createTask({ config: kaneoConfig, projectId, title: `Source ${Date.now()}` })
-  const target = await createTask({ config: kaneoConfig, projectId, title: `Target ${Date.now()}` })
+  const source = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `Source ${Date.now()}`,
+  })
+  const target = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `Target ${Date.now()}`,
+  })
   testClient.trackTask(source.id)
   testClient.trackTask(target.id)
 
-  await addTaskRelation({ config: kaneoConfig, taskId: source.id, relatedTaskId: target.id, type: 'blocks' })
+  await addTaskRelation({
+    config: kaneoConfig,
+    taskId: source.id,
+    relatedTaskId: target.id,
+    type: 'blocks',
+  })
 
   const sourceTask = await getTask({ config: kaneoConfig, taskId: source.id })
   const targetTask = await getTask({ config: kaneoConfig, taskId: target.id })
@@ -670,12 +703,21 @@ test('maps blocks to blocked_by on the target task', async () => {
 })
 
 test('maps subtask relations back to parent and child in opposite directions', async () => {
-  const parent = await createTask({ config: kaneoConfig, projectId, title: `Parent ${Date.now()}` })
+  const parent = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `Parent ${Date.now()}`,
+  })
   const child = await createTask({ config: kaneoConfig, projectId, title: `Child ${Date.now()}` })
   testClient.trackTask(parent.id)
   testClient.trackTask(child.id)
 
-  await addTaskRelation({ config: kaneoConfig, taskId: child.id, relatedTaskId: parent.id, type: 'parent' })
+  await addTaskRelation({
+    config: kaneoConfig,
+    taskId: child.id,
+    relatedTaskId: parent.id,
+    type: 'parent',
+  })
 
   const childTask = await getTask({ config: kaneoConfig, taskId: child.id })
   const parentTask = await getTask({ config: kaneoConfig, taskId: parent.id })
@@ -690,8 +732,18 @@ test('relation update leaves exactly one live relation in the raw Kaneo payload'
   testClient.trackTask(taskA.id)
   testClient.trackTask(taskB.id)
 
-  await addTaskRelation({ config: kaneoConfig, taskId: taskA.id, relatedTaskId: taskB.id, type: 'related' })
-  await updateTaskRelation({ config: kaneoConfig, taskId: taskA.id, relatedTaskId: taskB.id, type: 'blocks' })
+  await addTaskRelation({
+    config: kaneoConfig,
+    taskId: taskA.id,
+    relatedTaskId: taskB.id,
+    type: 'related',
+  })
+  await updateTaskRelation({
+    config: kaneoConfig,
+    taskId: taskA.id,
+    relatedTaskId: taskB.id,
+    type: 'blocks',
+  })
 
   const rawRelations = (await kaneoApiJson(`/task-relation/${taskA.id}`)) as Array<{
     sourceTaskId: string
@@ -778,7 +830,11 @@ test('keeps unattached label deletion blocked and allows attached label deletion
     name: `Attached ${Date.now()}`,
   })
 
-  const task = await createTask({ config: kaneoConfig, projectId, title: `Delete Label Task ${Date.now()}` })
+  const task = await createTask({
+    config: kaneoConfig,
+    projectId,
+    title: `Delete Label Task ${Date.now()}`,
+  })
   testClient.trackTask(task.id)
 
   await addTaskLabel({

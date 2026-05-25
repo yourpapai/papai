@@ -62,7 +62,11 @@ describe('listYouTrackLabels', () => {
   test('returns mapped labels', async () => {
     mockFetchResponse(fetchMock, [
       makeTagResponse(),
-      makeTagResponse({ id: 'tag-2', name: 'feature', color: { id: 'c-2', background: '#00ff00' } }),
+      makeTagResponse({
+        id: 'tag-2',
+        name: 'feature',
+        color: { id: 'c-2', background: '#00ff00' },
+      }),
     ])
 
     const labels = await listYouTrackLabels(config)
@@ -147,7 +151,11 @@ describe('createYouTrackLabel', () => {
   test('sends color in request body when provided', async () => {
     mockFetchResponse(
       fetchMock,
-      makeTagResponse({ id: 'tag-123', name: 'Colored Tag', color: { id: 'color-1', background: '#FF5722' } }),
+      makeTagResponse({
+        id: 'tag-123',
+        name: 'Colored Tag',
+        color: { id: 'color-1', background: '#FF5722' },
+      }),
     )
 
     await createYouTrackLabel(config, { name: 'Colored Tag', color: '#FF5722' })
@@ -307,7 +315,11 @@ describe('updateYouTrackLabel', () => {
   test('updateLabel sends color in request body', async () => {
     mockFetchResponse(
       fetchMock,
-      makeTagResponse({ id: 'tag-123', name: 'Updated Tag', color: { id: 'color-1', background: '#FF5722' } }),
+      makeTagResponse({
+        id: 'tag-123',
+        name: 'Updated Tag',
+        color: { id: 'color-1', background: '#FF5722' },
+      }),
     )
 
     await updateYouTrackLabel(config, 'tag-123', { name: 'Updated Tag', color: '#FF5722' })

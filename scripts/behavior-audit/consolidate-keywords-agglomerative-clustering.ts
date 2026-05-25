@@ -4,14 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { incrementClusteringCounter, recordClusteringCounterMax, recordClusteringTiming } from './clustering-profile.js'
-import { tryExtendOrMergeChain } from './consolidate-keywords-agglomerative-chain.js'
+import { filterClusters, getClusterMembers, tryExtendOrMergeChain } from './consolidate-keywords-agglomerative-chain.js'
 import {
   activeIndices,
   buildCondensedDistanceMatrix,
   createActiveState,
-  filterClusters,
   findChainStart,
-  getClusterMembers,
   hasMergeCandidate,
   isActive,
   mergePassesGap,

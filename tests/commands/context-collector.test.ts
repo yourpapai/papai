@@ -31,7 +31,12 @@ function makeDeps(overrides: Partial<ContextCollectorDeps> | null): ContextColle
     getHistory: (): readonly ModelMessage[] => [],
     getMemoryMessage: (): string | null => null,
     getSummary: (): string | null => null,
-    getFacts: (): readonly { identifier: string; title: string; url: string; last_seen: string }[] => [],
+    getFacts: (): readonly {
+      identifier: string
+      title: string
+      url: string
+      last_seen: string
+    }[] => [],
     getActiveToolDefinitions: (): Record<string, unknown> => ({}),
     getProviderName: (): string => 'kaneo',
     countTokens: (text: string): number => Math.ceil(text.length / 4),

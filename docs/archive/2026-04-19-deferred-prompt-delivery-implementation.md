@@ -884,7 +884,12 @@ test('same creator but different delivery targets do not merge into one schedule
   let callCount = 0
   generateTextImpl = (): Promise<GenerateTextResult> => {
     callCount++
-    return Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    return Promise.resolve({
+      text: 'Done.',
+      toolCalls: [],
+      toolResults: [],
+      response: { messages: [] },
+    })
   }
 
   const pastTime = new Date(Date.now() - 60_000).toISOString()

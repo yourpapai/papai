@@ -273,7 +273,10 @@ export async function classifyMessage(model: LanguageModel, userText: string): P
   })
 
   log.debug(
-    { classification: result.output.classification, hasInstruction: result.output.instruction !== undefined },
+    {
+      classification: result.output.classification,
+      hasInstruction: result.output.instruction !== undefined,
+    },
     'Classification complete',
   )
 
@@ -596,7 +599,10 @@ export async function classifyMessage(
     })
 
     log.debug(
-      { classification: result.output.classification, hasInstruction: result.output.instruction !== undefined },
+      {
+        classification: result.output.classification,
+        hasInstruction: result.output.instruction !== undefined,
+      },
       'Classification complete',
     )
 

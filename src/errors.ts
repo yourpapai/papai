@@ -39,9 +39,17 @@ export type WebFetchError =
 export type AppError = ProviderError | LlmError | ValidationError | SystemError | WebFetchError
 
 export const systemError = {
-  configMissing: (variable: string): AppError => ({ type: 'system', code: 'config-missing', variable }),
+  configMissing: (variable: string): AppError => ({
+    type: 'system',
+    code: 'config-missing',
+    variable,
+  }),
   networkError: (message: string): AppError => ({ type: 'system', code: 'network-error', message }),
-  unexpected: (originalError: Error): AppError => ({ type: 'system', code: 'unexpected', originalError }),
+  unexpected: (originalError: Error): AppError => ({
+    type: 'system',
+    code: 'unexpected',
+    originalError,
+  }),
 }
 
 export const webFetchError = {

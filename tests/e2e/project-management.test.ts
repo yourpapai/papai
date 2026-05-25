@@ -27,7 +27,10 @@ describe('E2E: Project Management', () => {
     const project = await testClient.createTestProject(`To Delete ${Date.now()}`)
     await deleteProject({ config: kaneoConfig, projectId: project.id })
 
-    const projects = await listProjects({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const projects = await listProjects({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const found = projects.find((p) => p.id === project.id)
     expect(found).toBeUndefined()
   })
@@ -47,7 +50,10 @@ describe('E2E: Project Management', () => {
     expect(updated.description).toBe('Updated description')
 
     // Verify via re-fetch
-    const projects = await listProjects({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const projects = await listProjects({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const refetched = projects.find((p) => p.id === project.id)
     expect(refetched?.name).toBe('Updated Project Name')
   })
@@ -56,7 +62,10 @@ describe('E2E: Project Management', () => {
     const project1 = await testClient.createTestProject(`Project A ${Date.now()}`)
     const project2 = await testClient.createTestProject(`Project B ${Date.now()}`)
 
-    const projects = await listProjects({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const projects = await listProjects({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
 
     const ids = projects.map((p) => p.id)
     expect(ids).toContain(project1.id)

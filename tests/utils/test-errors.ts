@@ -24,5 +24,9 @@ export const validationError = {
     field,
     reason,
   }),
-  missingRequired: (field: string): AppError => ({ type: 'validation', code: 'missing-required', field }),
+  missingRequired: (field: string): AppError => ({
+    type: 'validation',
+    code: 'missing-required',
+    field,
+  }),
 }

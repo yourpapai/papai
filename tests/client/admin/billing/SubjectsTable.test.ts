@@ -26,7 +26,11 @@ const makeSubject = (overrides: Partial<BillingSubject>): BillingSubject => ({
   ...overrides,
 })
 
-type Mounted = { target: HTMLElement; component: ReturnType<typeof mount>; selected: BillingSubject[] }
+type Mounted = {
+  target: HTMLElement
+  component: ReturnType<typeof mount>
+  selected: BillingSubject[]
+}
 
 const render = (subjects: BillingSubject[]): Mounted => {
   document.body.innerHTML = '<div id="root"></div>'

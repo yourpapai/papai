@@ -99,7 +99,11 @@ export function makeListTasksTool(provider: TaskProvider, userId?: string, stora
         }))
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, tool: 'list_tasks' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            tool: 'list_tasks',
+          },
           'Tool execution failed',
         )
         throw error

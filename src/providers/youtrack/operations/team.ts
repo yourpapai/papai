@@ -107,7 +107,10 @@ async function resolveProjectRingId(config: YouTrackConfig, projectId: string): 
         }
       } catch (fallbackError) {
         log.error(
-          { error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError), projectId },
+          {
+            error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            projectId,
+          },
           'Failed to resolve project Hub ringId from project list',
         )
         throw classifyYouTrackError(fallbackError, { projectId })

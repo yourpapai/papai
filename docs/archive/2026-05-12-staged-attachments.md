@@ -836,7 +836,10 @@ export async function resolveStagedFile(
     .get()
 
   if (row === undefined) {
-    return { status: 'not_found', message: `Staged file ${stagedId} not found in context ${contextId}.` }
+    return {
+      status: 'not_found',
+      message: `Staged file ${stagedId} not found in context ${contextId}.`,
+    }
   }
 
   if (row.status === 'resolved') {
@@ -844,7 +847,10 @@ export async function resolveStagedFile(
   }
 
   if (row.status === 'failed') {
-    return { status: 'download_failed', message: 'Previous download attempt failed. Please re-send the file.' }
+    return {
+      status: 'download_failed',
+      message: 'Previous download attempt failed. Please re-send the file.',
+    }
   }
 
   const now = new Date()
@@ -1349,7 +1355,12 @@ async function handleMessage(
   if (msg.contextType === 'dm') {
     const files: readonly IncomingFile[] = msg.files ?? []
     if (files.length > 0) {
-      const result = await ingestDmAttachments({ chat, msg, storageContextId: auth.storageContextId, files })
+      const result = await ingestDmAttachments({
+        chat,
+        msg,
+        storageContextId: auth.storageContextId,
+        files,
+      })
       newAttachmentIds = result.newAttachmentIds
       activeAttachments = result.activeAttachments
     }
@@ -1962,7 +1973,13 @@ In `getOrCreateTools`, pass the downloader:
 
 ```typescript
 const stagedDownloadFn = getStagedDownloader() ?? undefined
-const tools = makeTools(provider, { storageContextId: contextId, chatUserId, username, contextType, stagedDownloadFn })
+const tools = makeTools(provider, {
+  storageContextId: contextId,
+  chatUserId,
+  username,
+  contextType,
+  stagedDownloadFn,
+})
 ```
 
 - [ ] **Step 2: Update `src/index.ts` — initialize staged downloader at startup**

@@ -2250,9 +2250,11 @@ function loadLlmConfig(userId: string): LlmConfig | null {
 }
 
 function buildSmallModel(config: LlmConfig): ReturnType<ReturnType<typeof createOpenAICompatible>> {
-  return createOpenAICompatible({ name: 'openai-compatible', apiKey: config.apiKey, baseURL: config.baseUrl })(
-    config.model,
-  )
+  return createOpenAICompatible({
+    name: 'openai-compatible',
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl,
+  })(config.model)
 }
 
 export interface RememberToolDeps {

@@ -95,7 +95,11 @@ describe('llm-orchestrator-events', () => {
               usage: { inputTokens: 10, outputTokens: 5 },
             },
           ],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }], id: 'resp-1', modelId: 'gpt-4' },
+          response: {
+            messages: [{ role: 'assistant' as const, content: 'Done!' }],
+            id: 'resp-1',
+            modelId: 'gpt-4',
+          },
           usage: { inputTokens: 10, outputTokens: 5 },
           finishReason: 'stop',
         }

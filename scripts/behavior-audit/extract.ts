@@ -152,7 +152,10 @@ function runAllTestFiles(input: {
 
 function mergeFileResults(
   manifest: IncrementalManifest,
-  fileResults: readonly { readonly manifest: IncrementalManifest; readonly anyPhase1Changed: boolean }[],
+  fileResults: readonly {
+    readonly manifest: IncrementalManifest
+    readonly anyPhase1Changed: boolean
+  }[],
 ): { readonly mergedManifest: IncrementalManifest; readonly anyPhase1Changed: boolean } {
   const anyPhase1Changed = fileResults.some((result) => result.anyPhase1Changed)
   const mergedTests: IncrementalManifest['tests'] = { ...manifest.tests }

@@ -47,7 +47,11 @@ export const setSystemConfig = (key: SystemConfigKey, value: string, updatedBy: 
     .values({ key, value, updatedAt, updatedBy })
     .onConflictDoUpdate({
       target: systemConfig.key,
-      set: { value: sql`excluded.value`, updatedAt: sql`excluded.updated_at`, updatedBy: sql`excluded.updated_by` },
+      set: {
+        value: sql`excluded.value`,
+        updatedAt: sql`excluded.updated_at`,
+        updatedBy: sql`excluded.updated_by`,
+      },
     })
     .run()
   cache.set(key, value)
@@ -101,7 +105,12 @@ export const listSystemConfigEntries = (): SystemConfigEntry[] => {
   const entries: SystemConfigEntry[] = []
   for (const row of rows) {
     if (!isSystemConfigKey(row.key)) continue
-    entries.push({ key: row.key, value: row.value, updatedAt: row.updatedAt, updatedBy: row.updatedBy })
+    entries.push({
+      key: row.key,
+      value: row.value,
+      updatedAt: row.updatedAt,
+      updatedBy: row.updatedBy,
+    })
   }
   return entries
 }

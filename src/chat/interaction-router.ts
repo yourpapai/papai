@@ -96,7 +96,12 @@ async function handleEditorConfigInteraction(
     }
   }
   log.debug(
-    { userId: interaction.user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },
+    {
+      userId: interaction.user.id,
+      contextId: targetContextId,
+      action: parsed.action,
+      key: parsed.key,
+    },
     'Handling config editor callback',
   )
 
@@ -167,12 +172,18 @@ async function handleWizardEdit(userId: string, storageContextId: string, reply:
   return true
 }
 
-function parseWizardContextId(callbackData: string): { action: string; targetContextId: string | undefined } {
+function parseWizardContextId(callbackData: string): {
+  action: string
+  targetContextId: string | undefined
+} {
   const atIdx = callbackData.indexOf('@')
   if (atIdx === -1) return { action: callbackData, targetContextId: undefined }
   try {
     const encoded = callbackData.slice(atIdx + 1)
-    return { action: callbackData.slice(0, atIdx), targetContextId: Buffer.from(encoded, 'base64url').toString('utf8') }
+    return {
+      action: callbackData.slice(0, atIdx),
+      targetContextId: Buffer.from(encoded, 'base64url').toString('utf8'),
+    }
   } catch {
     return { action: callbackData, targetContextId: undefined }
   }

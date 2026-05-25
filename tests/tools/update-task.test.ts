@@ -275,7 +275,12 @@ describe('update_task identity resolution', () => {
     let capturedCustomFields: Array<{ name: string; value: string }> | undefined
     const updateTask = mock((_taskId: string, params: { customFields?: Array<{ name: string; value: string }> }) => {
       capturedCustomFields = params.customFields
-      return Promise.resolve({ id: 'TEST-1', title: 'Test Task', status: 'todo', url: 'https://test.com/task/1' })
+      return Promise.resolve({
+        id: 'TEST-1',
+        title: 'Test Task',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      })
     })
 
     const tool = makeUpdateTaskTool(createMockYouTrackProvider({ updateTask, supportsCustomFields: true }))
@@ -299,7 +304,12 @@ describe('update_task identity resolution', () => {
 
   test('update_task rejects customFields for providers that do not support them', async () => {
     const updateTask = mock(() =>
-      Promise.resolve({ id: 'task-1', title: 'Test Task', status: 'todo', url: 'https://test.com/task/1' }),
+      Promise.resolve({
+        id: 'task-1',
+        title: 'Test Task',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      }),
     )
     const provider = createMockProvider({
       updateTask,
@@ -331,7 +341,12 @@ describe('update_task identity resolution', () => {
     let capturedCustomFields: Array<{ name: string; value: string }> | undefined
     const updateTask = mock((_taskId: string, params: { customFields?: Array<{ name: string; value: string }> }) => {
       capturedCustomFields = params.customFields
-      return Promise.resolve({ id: 'TEST-1', title: 'Test Task', status: 'todo', url: 'https://test.com/task/1' })
+      return Promise.resolve({
+        id: 'TEST-1',
+        title: 'Test Task',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      })
     })
     const provider = createMockProvider({
       updateTask,

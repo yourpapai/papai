@@ -484,7 +484,9 @@ describe('tool-proxy-modes', () => {
     expect(missing.content[0].text).toContain('Use search to find available tools')
 
     const notExecutable = await executeProxyCall(runtime, 'queued_tool', '{}', toolOptions)
-    expect(notExecutable).toMatchObject({ details: { mode: 'call', error: 'tool_not_executable' } })
+    expect(notExecutable).toMatchObject({
+      details: { mode: 'call', error: 'tool_not_executable' },
+    })
     expect(notExecutable.content[0].text).toContain('cannot be executed directly')
   })
 })
@@ -760,7 +762,12 @@ describe('makeToolProxy', () => {
     const proxy = makeToolProxy(internalTools)
 
     const result = await getToolExecutor(proxy)(
-      { tool: 'get_task', search: 'comment', describe: 'search_tasks', args: '{"taskId":"task-1"}' },
+      {
+        tool: 'get_task',
+        search: 'comment',
+        describe: 'search_tasks',
+        args: '{"taskId":"task-1"}',
+      },
       toolOptions,
     )
 
@@ -786,7 +793,11 @@ describe('makeTools proxy integration', () => {
   it('exposes only papai_tool by default', () => {
     const provider = createMockProvider()
 
-    const tools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+      contextType: 'dm',
+    })
 
     expect(Object.keys(tools)).toEqual(['papai_tool'])
   })
@@ -798,7 +809,11 @@ describe('makeTools proxy integration', () => {
       },
     })
 
-    const dmTools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const dmTools = makeTools(provider, {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+      contextType: 'dm',
+    })
     const groupTools = makeTools(provider, {
       storageContextId: 'group-123',
       chatUserId: 'user-123',
@@ -1083,7 +1098,10 @@ type FakeState = {
 type Scenario = {
   readonly name: string
   readonly prompt: string
-  readonly evaluate: (state: FakeState) => { readonly success: boolean; readonly failureCategory: string | null }
+  readonly evaluate: (state: FakeState) => {
+    readonly success: boolean
+    readonly failureCategory: string | null
+  }
 }
 
 const defaultArgs = (): BenchmarkArgs => ({
@@ -1114,9 +1132,15 @@ function parseArgsRecursive(args: readonly string[], index: number, current: Ben
   const value = args[index + 1]
   if (flag === undefined) return current
   if (flag === '--base-url')
-    return parseArgsRecursive(args, index + 2, { ...current, baseUrl: requireFlagValue(flag, value) })
+    return parseArgsRecursive(args, index + 2, {
+      ...current,
+      baseUrl: requireFlagValue(flag, value),
+    })
   if (flag === '--api-key-env')
-    return parseArgsRecursive(args, index + 2, { ...current, apiKeyEnv: requireFlagValue(flag, value) })
+    return parseArgsRecursive(args, index + 2, {
+      ...current,
+      apiKeyEnv: requireFlagValue(flag, value),
+    })
   if (flag === '--models') {
     const models = requireFlagValue(flag, value)
       .split(',')
@@ -1125,7 +1149,10 @@ function parseArgsRecursive(args: readonly string[], index: number, current: Ben
     return parseArgsRecursive(args, index + 2, { ...current, models })
   }
   if (flag === '--output')
-    return parseArgsRecursive(args, index + 2, { ...current, outputPath: requireFlagValue(flag, value) })
+    return parseArgsRecursive(args, index + 2, {
+      ...current,
+      outputPath: requireFlagValue(flag, value),
+    })
   if (flag === '--repetitions') {
     return parseArgsRecursive(args, index + 2, {
       ...current,

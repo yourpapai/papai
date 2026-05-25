@@ -1479,7 +1479,11 @@ describe('extractReferenceCandidates', () => {
     ])
     expect(references.references).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ edgeType: 'imports', targetName: 'helper', targetModuleSpecifier: './helper.js' }),
+        expect.objectContaining({
+          edgeType: 'imports',
+          targetName: 'helper',
+          targetModuleSpecifier: './helper.js',
+        }),
         expect.objectContaining({ edgeType: 'calls', targetName: 'helper' }),
       ]),
     )
@@ -2091,7 +2095,13 @@ export const indexCodebase = async (input: Readonly<IndexCodebaseInput>): Promis
 
       const storedSymbols = db
         .query<
-          { id: number; qualified_name: string; local_name: string; module_key: string; export_names: string },
+          {
+            id: number
+            qualified_name: string
+            local_name: string
+            module_key: string
+            export_names: string
+          },
           [number]
         >('SELECT id, qualified_name, local_name, module_key, export_names FROM symbols WHERE file_id = ?')
         .all(fileId)
@@ -2138,9 +2148,16 @@ export const indexCodebase = async (input: Readonly<IndexCodebaseInput>): Promis
   }
 
   const allSymbols = db
-    .query<{ id: number; qualified_name: string; local_name: string; module_key: string; export_names: string }, []>(
-      'SELECT id, qualified_name, local_name, module_key, export_names FROM symbols',
-    )
+    .query<
+      {
+        id: number
+        qualified_name: string
+        local_name: string
+        module_key: string
+        export_names: string
+      },
+      []
+    >('SELECT id, qualified_name, local_name, module_key, export_names FROM symbols')
     .all()
     .map((row) => ({
       id: row.id,
@@ -2774,7 +2791,10 @@ export const createCodeindexServer = (deps: Readonly<CodeindexToolDeps>): McpSer
     { description: 'Search indexed symbols', inputSchema: CodeSearchInputSchema },
     async ({ query, limit, kinds, scopeTiers, pathPrefix }) => ({
       content: [
-        { type: 'text', text: JSON.stringify(await deps.codeSearch({ query, limit, kinds, scopeTiers, pathPrefix })) },
+        {
+          type: 'text',
+          text: JSON.stringify(await deps.codeSearch({ query, limit, kinds, scopeTiers, pathPrefix })),
+        },
       ],
     }),
   )

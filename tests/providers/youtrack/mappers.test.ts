@@ -37,7 +37,11 @@ describe('mapIssueToTask', () => {
           name: 'Priority',
           value: { $type: 'EnumBundleElement' as const, name: 'High' },
         },
-        { $type: 'SingleUserIssueCustomField' as const, name: 'Assignee', value: { id: 'u-1', login: 'alice' } },
+        {
+          $type: 'SingleUserIssueCustomField' as const,
+          name: 'Assignee',
+          value: { id: 'u-1', login: 'alice' },
+        },
       ],
       tags: [{ id: 'tag-1', name: 'bug', color: { background: '#ff0000' } }],
     } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
@@ -98,7 +102,11 @@ describe('mapIssueToTask', () => {
       updated: 1704153600000,
       project: { id: 'proj-1' },
       customFields: [
-        { $type: 'DateIssueCustomField' as const, name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
+        {
+          $type: 'DateIssueCustomField' as const,
+          name: 'Due Date',
+          value: Date.parse('2026-03-25T12:00:00.000Z'),
+        },
       ],
     } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
 

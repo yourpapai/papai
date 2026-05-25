@@ -1136,7 +1136,11 @@ describe('group settings state', () => {
   })
 
   test('expires selector sessions after the 30 minute TTL', () => {
-    const session = createGroupSettingsSession({ userId: 'user-1', command: 'config', stage: 'choose_scope' })
+    const session = createGroupSettingsSession({
+      userId: 'user-1',
+      command: 'config',
+      stage: 'choose_scope',
+    })
     session.startedAt = new Date(Date.now() - 31 * 60 * 1000)
 
     cleanupExpiredGroupSettingsSessions()
@@ -1462,14 +1466,20 @@ export function handleGroupSettingsSelectorCallback(userId: string, callbackData
     const groupId = callbackData.slice('gsel:group:'.length)
     const match = matchManageableGroup(userId, groupId)
     if (match.kind !== 'match') {
-      return { handled: true, response: 'That group is no longer available. Run /config or /setup again.' }
+      return {
+        handled: true,
+        response: 'That group is no longer available. Run /config or /setup again.',
+      }
     }
     updateGroupSettingsSession(userId, { stage: 'active', targetContextId: match.group.contextId })
     log.info(
       { userId, command: session.command, targetContextId: match.group.contextId },
       'Selected group settings target from callback',
     )
-    return { handled: true, continueWith: { command: session.command, targetContextId: match.group.contextId } }
+    return {
+      handled: true,
+      continueWith: { command: session.command, targetContextId: match.group.contextId },
+    }
   }
 
   return { handled: false }
@@ -1499,12 +1509,18 @@ export function handleGroupSettingsSelectorMessage(
   if (session.stage === 'choose_group') {
     const match = matchManageableGroup(userId, text)
     if (match.kind === 'match') {
-      updateGroupSettingsSession(userId, { stage: 'active', targetContextId: match.group.contextId })
+      updateGroupSettingsSession(userId, {
+        stage: 'active',
+        targetContextId: match.group.contextId,
+      })
       log.info(
         { userId, command: session.command, targetContextId: match.group.contextId },
         'Selected group settings target from text',
       )
-      return { handled: true, continueWith: { command: session.command, targetContextId: match.group.contextId } }
+      return {
+        handled: true,
+        continueWith: { command: session.command, targetContextId: match.group.contextId },
+      }
     }
     if (match.kind === 'ambiguous') {
       return {

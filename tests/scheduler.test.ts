@@ -29,7 +29,14 @@ const USER_ID = 'user-1'
 describe('scheduler', () => {
   // ---- Mutable mock state ----
 
-  type MockTask = { id: string; title: string; projectId: string; status: string; priority: string; url: string }
+  type MockTask = {
+    id: string
+    title: string
+    projectId: string
+    status: string
+    priority: string
+    url: string
+  }
 
   let createTaskImpl: (...args: unknown[]) => Promise<MockTask>
   let addTaskLabelImpl: (taskId: string, labelId: string) => Promise<{ taskId: string; labelId: string }>

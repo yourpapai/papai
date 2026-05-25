@@ -84,7 +84,10 @@ describe('search_memos tool', () => {
   test('returns empty for no matches', async () => {
     saveMemo('user1', 'some content', [])
 
-    const result = await exec(makeSearchMemosTool('user1'), { query: 'nonexistent', mode: 'keyword' })
+    const result = await exec(makeSearchMemosTool('user1'), {
+      query: 'nonexistent',
+      mode: 'keyword',
+    })
     expect(result).toHaveProperty('results', [])
   })
 })
@@ -141,7 +144,10 @@ describe('archive_memos tool', () => {
     const memo = saveMemo('user1', 'specific note', [])
     saveMemo('user1', 'other', [])
 
-    const result = await exec(makeArchiveMemosTool('user1'), { memoIds: [memo.id], confidence: 0.5 })
+    const result = await exec(makeArchiveMemosTool('user1'), {
+      memoIds: [memo.id],
+      confidence: 0.5,
+    })
     expect(result).toHaveProperty('status', 'archived')
     expect(result).toHaveProperty('count', 1)
   })
@@ -158,7 +164,10 @@ describe('promote_memo tool', () => {
     const memo = saveMemo('user1', 'lease renewal deadline June 15', ['landlord'])
     const provider = createMockProvider()
 
-    const result = await exec(makePromoteMemoTool(provider, 'user1'), { memoId: memo.id, projectId: 'proj-1' })
+    const result = await exec(makePromoteMemoTool(provider, 'user1'), {
+      memoId: memo.id,
+      projectId: 'proj-1',
+    })
     expect(result).toHaveProperty('status', 'promoted')
     expect(result).toHaveProperty('taskId', 'task-1')
     expect(result).toHaveProperty('memoId', memo.id)

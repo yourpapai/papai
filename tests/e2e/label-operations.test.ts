@@ -94,7 +94,10 @@ describe('E2E: Label Operations', () => {
     expect(label.color).toBe('#FF0000')
 
     // Verify label appears in listLabels
-    const labels = await listLabels({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const labels = await listLabels({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const found = labels.find((l) => l.id === label.id)
     expect(found?.name).toBe('Bug')
     expect(found?.color).toBe('#FF0000')
@@ -122,7 +125,10 @@ describe('E2E: Label Operations', () => {
     expect(updated.color).toBe('#FFFFFF')
 
     // Verify via re-fetch
-    const labels = await listLabels({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const labels = await listLabels({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const refetched = labels.find((l) => l.id === label.id)
     expect(refetched?.name).toBe('New Name')
     expect(refetched?.color).toBe('#FFFFFF')
@@ -138,7 +144,10 @@ describe('E2E: Label Operations', () => {
     })
     testClient.trackLabel(label.id)
 
-    const labels = await listLabels({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const labels = await listLabels({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const ids = labels.map((l) => l.id)
     expect(ids).toContain(label.id)
 
@@ -177,7 +186,11 @@ describe('E2E: Label Operations', () => {
     const attachedWorkspaceLabel = requireWorkspaceLabel(workspaceLabelsAfterAttach, label.id)
     expect(attachedWorkspaceLabel.taskId).toBe(task.id)
 
-    const removeResult = await removeTaskLabel({ config: kaneoConfig, taskId: task.id, labelId: label.id })
+    const removeResult = await removeTaskLabel({
+      config: kaneoConfig,
+      taskId: task.id,
+      labelId: label.id,
+    })
     expect(removeResult.taskId).toBe(task.id)
     expect(removeResult.labelId).toBe(label.id)
 
@@ -204,7 +217,11 @@ describe('E2E: Label Operations', () => {
 
     await expect(removeLabel({ config: kaneoConfig, labelId: unattachedLabel.id })).rejects.toThrow()
 
-    const task = await createTask({ config: kaneoConfig, projectId, title: 'Task for label deletion' })
+    const task = await createTask({
+      config: kaneoConfig,
+      projectId,
+      title: 'Task for label deletion',
+    })
     testClient.trackTask(task.id)
 
     await addTaskLabel({
@@ -244,7 +261,10 @@ describe('E2E: Label Operations', () => {
     )
     expect(rawWorkspaceLabels.find((workspaceLabel) => workspaceLabel.id === attachedLabel.id)).toBeUndefined()
 
-    const labels = await listLabels({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const labels = await listLabels({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     expect(labels.find((workspaceLabel) => workspaceLabel.id === attachedLabel.id)).toBeUndefined()
   })
 

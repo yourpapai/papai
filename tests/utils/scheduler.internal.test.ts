@@ -77,7 +77,12 @@ describe('executeTask', () => {
   test('calls emitTick on success', async () => {
     const emitTick = mock(() => {})
     const task = makeTask(() => {})
-    const emitters: Emitters = { emitTick, emitError: () => {}, emitRetry: () => {}, emitFatalError: () => {} }
+    const emitters: Emitters = {
+      emitTick,
+      emitError: () => {},
+      emitRetry: () => {},
+      emitFatalError: () => {},
+    }
 
     await executeTask(task, DEFAULT_OPTIONS, emitters, () => {})
 

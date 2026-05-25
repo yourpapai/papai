@@ -187,9 +187,18 @@ describe('KaneoProvider', () => {
     test('updates column and returns it', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ id: 'col-1', name: 'Updated', icon: null, color: null, isFinal: false }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              id: 'col-1',
+              name: 'Updated',
+              icon: null,
+              color: null,
+              isFinal: false,
+            }),
+            {
+              status: 200,
+            },
+          ),
         ),
       )
 

@@ -75,10 +75,25 @@ describe('Message Cache Integration', () => {
   test('should handle partial chain with gap in middle', () => {
     // Cache messages 0, 1, 3, 4 but NOT 2
     cacheMessage({ messageId: '0', contextId: 'chat-1', timestamp: Date.now() })
-    cacheMessage({ messageId: '1', contextId: 'chat-1', replyToMessageId: '0', timestamp: Date.now() })
+    cacheMessage({
+      messageId: '1',
+      contextId: 'chat-1',
+      replyToMessageId: '0',
+      timestamp: Date.now(),
+    })
     // Message 2 is missing
-    cacheMessage({ messageId: '3', contextId: 'chat-1', replyToMessageId: '2', timestamp: Date.now() })
-    cacheMessage({ messageId: '4', contextId: 'chat-1', replyToMessageId: '3', timestamp: Date.now() })
+    cacheMessage({
+      messageId: '3',
+      contextId: 'chat-1',
+      replyToMessageId: '2',
+      timestamp: Date.now(),
+    })
+    cacheMessage({
+      messageId: '4',
+      contextId: 'chat-1',
+      replyToMessageId: '3',
+      timestamp: Date.now(),
+    })
 
     const result = buildReplyChain('chat-1', '4')
     expect(result.chain).toEqual(['3', '4'])

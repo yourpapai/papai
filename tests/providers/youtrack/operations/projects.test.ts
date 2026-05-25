@@ -81,7 +81,10 @@ function makeUrlCapturingFetchHandler(): {
     handler: (url: string): Promise<Response> => {
       firstUrl ??= new URL(url)
       return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     },
     getFirstUrl: (): URL | undefined => firstUrl,

@@ -748,7 +748,11 @@ const TELEGRAM_CONFIG_REQUIREMENTS: readonly ChatProviderConfigRequirement[] = [
 
 export class TelegramChatProvider implements ChatProvider {
   readonly name = 'telegram'
-  readonly threadCapabilities = { supportsThreads: true, canCreateThreads: true, threadScope: 'message' } as const
+  readonly threadCapabilities = {
+    supportsThreads: true,
+    canCreateThreads: true,
+    threadScope: 'message',
+  } as const
   readonly capabilities = TELEGRAM_CAPABILITIES
   readonly traits = TELEGRAM_TRAITS
   readonly configRequirements = TELEGRAM_CONFIG_REQUIREMENTS
@@ -1353,7 +1357,11 @@ const MATTERMOST_CONFIG_REQUIREMENTS: readonly ChatProviderConfigRequirement[] =
 
 export class MattermostChatProvider implements ChatProvider {
   readonly name = 'mattermost'
-  readonly threadCapabilities = { supportsThreads: true, canCreateThreads: false, threadScope: 'post' } as const
+  readonly threadCapabilities = {
+    supportsThreads: true,
+    canCreateThreads: false,
+    threadScope: 'post',
+  } as const
   readonly capabilities = MATTERMOST_CAPABILITIES
   readonly traits = MATTERMOST_TRAITS
   readonly configRequirements = MATTERMOST_CONFIG_REQUIREMENTS

@@ -11,7 +11,9 @@ import type { Snippet } from 'svelte'
 import Panel from '../../../../client/shared/ui/Panel.svelte'
 
 function textSnippet(text: string): Snippet {
-  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<span>${text}</span>` }))
+  return createRawSnippet((): { render: () => string } => ({
+    render: (): string => `<span>${text}</span>`,
+  }))
 }
 
 describe('Panel.svelte', () => {

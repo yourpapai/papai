@@ -49,7 +49,14 @@ const statsSubject = (id: string): SubjectStats => ({
     distinctRrulePatterns: 0,
   },
   userInstructions: { total: 0, textBytesTotal: 0 },
-  attachments: { total: 0, byStatus: {}, bySourceProvider: {}, storedBytesTotal: 0, active: 0, byExtension: {} },
+  attachments: {
+    total: 0,
+    byStatus: {},
+    bySourceProvider: {},
+    storedBytesTotal: 0,
+    active: 0,
+    byExtension: {},
+  },
   messageMetadata: {
     total: 0,
     authoredBySubject: 0,

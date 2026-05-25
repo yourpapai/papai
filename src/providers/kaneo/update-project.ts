@@ -31,7 +31,12 @@ export async function updateProject({
   description?: string
 }): Promise<KaneoProject> {
   log.debug(
-    { projectId, workspaceId, hasName: name !== undefined, hasDescription: description !== undefined },
+    {
+      projectId,
+      workspaceId,
+      hasName: name !== undefined,
+      hasDescription: description !== undefined,
+    },
     'updateProject called',
   )
 

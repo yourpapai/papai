@@ -23,7 +23,10 @@ const installFetch = (status: number, payload: unknown): void => {
   setMockFetch((url, init) => {
     captured.push({ url, init })
     return Promise.resolve(
-      new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(payload), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   })
 }

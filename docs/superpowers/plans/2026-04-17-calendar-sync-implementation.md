@@ -164,7 +164,10 @@ describe('calendar errors', () => {
   })
 
   test('calendarSyncConflictError creates correct shape', () => {
-    const err = calendarSyncConflictError('uid-123', { remote: { title: 'A' }, local: { title: 'B' } })
+    const err = calendarSyncConflictError('uid-123', {
+      remote: { title: 'A' },
+      local: { title: 'B' },
+    })
     expect(err.type).toBe('calendar')
     expect(err.code).toBe('sync-conflict')
     expect(err.eventUid).toBe('uid-123')
@@ -1194,11 +1197,24 @@ import { mockLogger } from '../utils/test-helpers.js'
 const mockCreateDAVClient = mock(async (opts: any) => ({
   login: mock(async () => {}),
   fetchCalendars: mock(async () => [
-    { url: 'https://caldav.example.com/cal1/', displayName: 'Work', ctag: 'ctag-1', syncToken: 'token-1' },
+    {
+      url: 'https://caldav.example.com/cal1/',
+      displayName: 'Work',
+      ctag: 'ctag-1',
+      syncToken: 'token-1',
+    },
   ]),
   fetchCalendarObjects: mock(async () => []),
-  createCalendarObject: mock(async () => ({ ok: true, status: 201, headers: { get: () => '"etag-new"' } })),
-  updateCalendarObject: mock(async () => ({ ok: true, status: 204, headers: { get: () => '"etag-upd"' } })),
+  createCalendarObject: mock(async () => ({
+    ok: true,
+    status: 201,
+    headers: { get: () => '"etag-new"' },
+  })),
+  updateCalendarObject: mock(async () => ({
+    ok: true,
+    status: 204,
+    headers: { get: () => '"etag-upd"' },
+  })),
   deleteCalendarObject: mock(async () => ({ ok: true, status: 204 })),
   isCollectionDirty: mock(async () => ({ isDirty: true })),
   syncCalendars: mock(async () => ({ created: [], updated: [], deleted: [] })),
@@ -1854,7 +1870,13 @@ describe('sync-state', () => {
 
   describe('sync links', () => {
     test('createSyncLink and getSyncLinkByEventUid', () => {
-      createConnection({ id: 'conn-3', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+      createConnection({
+        id: 'conn-3',
+        userId: USER_ID,
+        provider: 'google',
+        calendarId: 'cal-1',
+        calendarName: 'Work',
+      })
       createSyncLink({
         id: 'link-1',
         userId: USER_ID,
@@ -1868,7 +1890,13 @@ describe('sync-state', () => {
     })
 
     test('getSyncLinkByRecurringTaskId', () => {
-      createConnection({ id: 'conn-4', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+      createConnection({
+        id: 'conn-4',
+        userId: USER_ID,
+        provider: 'google',
+        calendarId: 'cal-1',
+        calendarName: 'Work',
+      })
       createSyncLink({
         id: 'link-2',
         userId: USER_ID,
@@ -1882,7 +1910,13 @@ describe('sync-state', () => {
     })
 
     test('updateSyncLinkEtag and updateSyncLinkHash', () => {
-      createConnection({ id: 'conn-5', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+      createConnection({
+        id: 'conn-5',
+        userId: USER_ID,
+        provider: 'google',
+        calendarId: 'cal-1',
+        calendarName: 'Work',
+      })
       createSyncLink({
         id: 'link-3',
         userId: USER_ID,
@@ -1898,7 +1932,13 @@ describe('sync-state', () => {
     })
 
     test('setConflictState and getPendingConflicts', () => {
-      createConnection({ id: 'conn-6', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+      createConnection({
+        id: 'conn-6',
+        userId: USER_ID,
+        provider: 'google',
+        calendarId: 'cal-1',
+        calendarName: 'Work',
+      })
       createSyncLink({
         id: 'link-4',
         userId: USER_ID,
@@ -1906,7 +1946,10 @@ describe('sync-state', () => {
         calendarEventUid: 'evt-uid-4',
         recurringTaskId: 'task-4',
       })
-      setConflictState('link-4', 'pending_resolution', { remote: { title: 'A' }, local: { title: 'B' } })
+      setConflictState('link-4', 'pending_resolution', {
+        remote: { title: 'A' },
+        local: { title: 'B' },
+      })
       const conflicts = getPendingConflicts(USER_ID)
       expect(conflicts).toHaveLength(1)
       expect(conflicts[0].conflictState).toBe('pending_resolution')
@@ -1915,7 +1958,13 @@ describe('sync-state', () => {
 
   describe('reminders', () => {
     test('insertReminder and getDueReminders', () => {
-      createConnection({ id: 'conn-7', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+      createConnection({
+        id: 'conn-7',
+        userId: USER_ID,
+        provider: 'google',
+        calendarId: 'cal-1',
+        calendarName: 'Work',
+      })
       const past = new Date(Date.now() - 1000).toISOString()
       insertReminder({
         userId: USER_ID,
@@ -1930,7 +1979,13 @@ describe('sync-state', () => {
     })
 
     test('markReminded', () => {
-      createConnection({ id: 'conn-8', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+      createConnection({
+        id: 'conn-8',
+        userId: USER_ID,
+        provider: 'google',
+        calendarId: 'cal-1',
+        calendarName: 'Work',
+      })
       const past = new Date(Date.now() - 1000).toISOString()
       insertReminder({
         userId: USER_ID,
@@ -2005,7 +2060,12 @@ export function getEnabledConnections(userId: string) {
 export function updateConnectionSyncState(id: string, syncToken: string | null, ctag: string | null): void {
   const db = getDrizzleDb()
   db.update(calendarConnections)
-    .set({ syncToken, ctag, lastSyncAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .set({
+      syncToken,
+      ctag,
+      lastSyncAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
     .where(eq(calendarConnections.id, id))
     .run()
 }
@@ -2090,7 +2150,11 @@ export function updateSyncLinkHash(id: string, hash: string): void {
 export function setConflictState(id: string, state: string, details: Record<string, unknown>): void {
   const db = getDrizzleDb()
   db.update(calendarSyncLinks)
-    .set({ conflictState: state, conflictDetails: JSON.stringify(details), updatedAt: new Date().toISOString() })
+    .set({
+      conflictState: state,
+      conflictDetails: JSON.stringify(details),
+      updatedAt: new Date().toISOString(),
+    })
     .where(eq(calendarSyncLinks.id, id))
     .run()
 }
@@ -2254,7 +2318,13 @@ describe('sync-engine', () => {
   })
 
   test('detects new recurring events and returns proposals', async () => {
-    createConnection({ id: 'conn-1', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+    createConnection({
+      id: 'conn-1',
+      userId: USER_ID,
+      provider: 'google',
+      calendarId: 'cal-1',
+      calendarName: 'Work',
+    })
     const provider = createMockProvider(recurringEvents)
 
     const result = await syncForConnection(USER_ID, 'conn-1', provider, {
@@ -2269,7 +2339,13 @@ describe('sync-engine', () => {
   })
 
   test('skips events that already have sync links', async () => {
-    createConnection({ id: 'conn-2', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+    createConnection({
+      id: 'conn-2',
+      userId: USER_ID,
+      provider: 'google',
+      calendarId: 'cal-1',
+      calendarName: 'Work',
+    })
     const provider = createMockProvider(recurringEvents)
 
     const deps = {
@@ -2371,7 +2447,10 @@ export async function syncForConnection(
     const rangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const rangeEnd = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString()
 
-    const events = await provider.listEvents(connection.calendarId, { start: rangeStart, end: rangeEnd })
+    const events = await provider.listEvents(connection.calendarId, {
+      start: rangeStart,
+      end: rangeEnd,
+    })
     const syncState = await provider.getSyncState(connection.calendarId)
     updateConnectionSyncState(connectionId, syncState.syncToken, syncState.ctag)
 
@@ -2417,7 +2496,11 @@ export async function syncForConnection(
             if (newHash !== currentHash) {
               setConflictState(existingLink.id, 'pending_resolution', {
                 remote: { title: event.title, start: event.start, rrule: event.rrule },
-                local: { title: localTask.title, cron: localTask.cronExpression, timezone: localTask.timezone },
+                local: {
+                  title: localTask.title,
+                  cron: localTask.cronExpression,
+                  timezone: localTask.timezone,
+                },
               })
               result.conflictCount++
               continue
@@ -2445,7 +2528,12 @@ export function hashTaskFields(task: {
   timezone: string
   description: string | null
 }): string {
-  const raw = JSON.stringify({ t: task.title, c: task.cronExpression, tz: task.timezone, d: task.description })
+  const raw = JSON.stringify({
+    t: task.title,
+    c: task.cronExpression,
+    tz: task.timezone,
+    d: task.description,
+  })
   let hash = 0
   for (let i = 0; i < raw.length; i++) {
     const char = raw.charCodeAt(i)
@@ -2539,7 +2627,13 @@ describe('notification-scheduler', () => {
   })
 
   test('processDueReminders returns due reminders', () => {
-    createConnection({ id: 'conn-1', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+    createConnection({
+      id: 'conn-1',
+      userId: USER_ID,
+      provider: 'google',
+      calendarId: 'cal-1',
+      calendarName: 'Work',
+    })
     const past = new Date(Date.now() - 10000).toISOString()
     insertReminder({
       userId: USER_ID,
@@ -2560,7 +2654,13 @@ describe('notification-scheduler', () => {
   })
 
   test('scheduleUpcomingReminders inserts reminders for future events', async () => {
-    createConnection({ id: 'conn-2', userId: USER_ID, provider: 'google', calendarId: 'cal-1', calendarName: 'Work' })
+    createConnection({
+      id: 'conn-2',
+      userId: USER_ID,
+      provider: 'google',
+      calendarId: 'cal-1',
+      calendarName: 'Work',
+    })
 
     const events = [
       {
@@ -2618,7 +2718,11 @@ export function processDueReminders(sendMessage: (userId: string, message: strin
 
 function formatReminderMessage(eventUid: string, eventStart: string): string {
   const start = new Date(eventStart)
-  const time = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  const time = start.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
   return `📅 "${eventUid}" starts soon (${time})`
 }
 
@@ -2868,7 +2972,10 @@ export function makeConnectCalendarTool(userId: string, deps: ConnectCalendarDep
       try {
         if (input.provider === 'google') {
           const authUrl = await deps.initiateGoogleOAuth(userId)
-          return { success: true, message: `Open this URL to authorize Google Calendar: ${authUrl}` }
+          return {
+            success: true,
+            message: `Open this URL to authorize Google Calendar: ${authUrl}`,
+          }
         }
 
         if (input.provider === 'apple' && input.username && input.password) {

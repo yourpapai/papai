@@ -26,7 +26,10 @@ describe('E2E: Project Lifecycle', () => {
   test('creates and lists projects', async () => {
     const project = await testClient.createTestProject(`List Test ${Date.now()}`)
 
-    const projects = await listProjects({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const projects = await listProjects({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const found = projects.find((p) => p.id === project.id)
     expect(found?.name).toBe(project.name)
   })
@@ -44,7 +47,10 @@ describe('E2E: Project Lifecycle', () => {
     expect(updated.name).toBe('Updated Project Name')
 
     // Verify via re-fetch
-    const projects = await listProjects({ config: kaneoConfig, workspaceId: testClient.getWorkspaceId() })
+    const projects = await listProjects({
+      config: kaneoConfig,
+      workspaceId: testClient.getWorkspaceId(),
+    })
     const refetched = projects.find((p) => p.id === project.id)
     expect(refetched?.name).toBe('Updated Project Name')
   })

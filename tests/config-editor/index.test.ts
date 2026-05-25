@@ -54,7 +54,10 @@ describe('config-editor public API', () => {
     expect(parseCallbackData('cfg:cancel')).toEqual({ action: 'cancel', key: null })
     expect(parseCallbackData('cfg:back')).toEqual({ action: 'back', key: null })
     expect(parseCallbackData('cfg:setup')).toEqual({ action: 'setup', key: null })
-    expect(parseCallbackData('cfg:edit:kaneo_apikey')).toEqual({ action: 'edit', key: 'kaneo_apikey' })
+    expect(parseCallbackData('cfg:edit:kaneo_apikey')).toEqual({
+      action: 'edit',
+      key: 'kaneo_apikey',
+    })
     expect(parseCallbackData('cfg:save:timezone')).toEqual({ action: 'save', key: 'timezone' })
     expect(parseCallbackData('invalid')).toEqual({ action: null, key: null })
   })

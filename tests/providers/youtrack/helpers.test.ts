@@ -33,7 +33,12 @@ const installFetchMock = (handler: () => Promise<Response>): void => {
 
 const mockFetchResponse = (data: unknown, status = 200): void => {
   installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })),
+    Promise.resolve(
+      new Response(JSON.stringify(data), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 
@@ -159,11 +164,20 @@ describe('paginate', () => {
   })
 
   test('paginates through multiple pages', async () => {
-    const page1: Item[] = Array.from({ length: 5 }, (_, i) => ({ id: String(i), name: `item-${i}` }))
+    const page1: Item[] = Array.from({ length: 5 }, (_, i) => ({
+      id: String(i),
+      name: `item-${i}`,
+    }))
     const page2: Item[] = [{ id: '5', name: 'item-5' }]
     const responses = [
-      new Response(JSON.stringify(page1), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      new Response(JSON.stringify(page2), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(page1), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      new Response(JSON.stringify(page2), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     ]
     installFetchMock(() => Promise.resolve(responses.shift()!))
     const result = await paginate(config, '/api/items', {}, ItemSchema.array(), 10, 5)
@@ -171,12 +185,18 @@ describe('paginate', () => {
   })
 
   test('stops at maxPages', async () => {
-    const fullPage: Item[] = Array.from({ length: 5 }, (_, i) => ({ id: String(i), name: `item-${i}` }))
+    const fullPage: Item[] = Array.from({ length: 5 }, (_, i) => ({
+      id: String(i),
+      name: `item-${i}`,
+    }))
     let callCount = 0
     installFetchMock(() => {
       callCount++
       return Promise.resolve(
-        new Response(JSON.stringify(fullPage), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify(fullPage), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     })
     await paginate(config, '/api/items', {}, ItemSchema.array(), 2, 5)

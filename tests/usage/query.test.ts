@@ -122,9 +122,27 @@ describe('getSubjectDetail', () => {
   })
 
   test('returns rows for the given storage_context_id, ordered by occurred_at desc', () => {
-    seed({ storageContextId: 'ctx', occurredAt: 1000, turnId: 'turn-a', model: 'm', modelRole: 'main' })
-    seed({ storageContextId: 'ctx', occurredAt: 3000, turnId: 'turn-c', model: 'm', modelRole: 'small' })
-    seed({ storageContextId: 'ctx', occurredAt: 2000, turnId: 'turn-b', model: 'm', modelRole: 'main' })
+    seed({
+      storageContextId: 'ctx',
+      occurredAt: 1000,
+      turnId: 'turn-a',
+      model: 'm',
+      modelRole: 'main',
+    })
+    seed({
+      storageContextId: 'ctx',
+      occurredAt: 3000,
+      turnId: 'turn-c',
+      model: 'm',
+      modelRole: 'small',
+    })
+    seed({
+      storageContextId: 'ctx',
+      occurredAt: 2000,
+      turnId: 'turn-b',
+      model: 'm',
+      modelRole: 'main',
+    })
     seed({ storageContextId: 'other', occurredAt: 4000, turnId: 'turn-other' })
 
     const rows = getSubjectDetail('ctx', { windowMs: null })

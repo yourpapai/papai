@@ -49,7 +49,13 @@ export function getCachedWebFetch(normalizedUrl: string, nowMs: number = Date.no
 
 export function putCachedWebFetch(normalizedUrl: string, result: WebFetchResult, expiresAt: number): void {
   log.debug(
-    { normalizedUrl, finalUrl: result.url, fetchedAt: result.fetchedAt, expiresAt, truncated: result.truncated },
+    {
+      normalizedUrl,
+      finalUrl: result.url,
+      fetchedAt: result.fetchedAt,
+      expiresAt,
+      truncated: result.truncated,
+    },
     'putCachedWebFetch called',
   )
 

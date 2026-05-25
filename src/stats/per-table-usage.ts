@@ -40,7 +40,11 @@ export function llmUsageForSubject(storageContextId: string): LlmUsageSubjectSta
 
 export function toolCallsForSubject(storageContextId: string): ToolCallSubjectStats {
   const rows = getDrizzleDb()
-    .select({ toolName: toolCallEvents.toolName, success: toolCallEvents.success, errorType: toolCallEvents.errorType })
+    .select({
+      toolName: toolCallEvents.toolName,
+      success: toolCallEvents.success,
+      errorType: toolCallEvents.errorType,
+    })
     .from(toolCallEvents)
     .where(eq(toolCallEvents.storageContextId, storageContextId))
     .all()

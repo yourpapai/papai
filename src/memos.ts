@@ -79,7 +79,16 @@ export function saveMemo(userId: string, content: string, tags: readonly string[
     .run()
   log.info({ userId, memoId: id }, 'Memo saved')
   emitUser('memo:created', userId, { memoId: id, content })
-  return { id, userId, content, summary: summary ?? null, tags, status: 'active', createdAt: now, updatedAt: now }
+  return {
+    id,
+    userId,
+    content,
+    summary: summary ?? null,
+    tags,
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  }
 }
 
 export function getMemo(userId: string, memoId: string): Memo | null {

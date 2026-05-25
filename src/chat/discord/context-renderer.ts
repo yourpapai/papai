@@ -56,7 +56,13 @@ const buildFields = (snapshot: ContextSnapshot): EmbedField[] =>
 
 export const renderDiscordContext = (snapshot: ContextSnapshot): ContextRendered => {
   const color = pickColor(snapshot)
-  const embed: { title: string; description: string; fields: EmbedField[]; footer: string; color?: number } = {
+  const embed: {
+    title: string
+    description: string
+    fields: EmbedField[]
+    footer: string
+    color?: number
+  } = {
     title: `Context · ${snapshot.modelName}`,
     description: buildContextGrid(snapshot),
     fields: buildFields(snapshot),

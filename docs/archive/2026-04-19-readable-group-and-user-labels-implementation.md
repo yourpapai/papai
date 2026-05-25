@@ -664,7 +664,10 @@ test('resolveUserLabel prefers guild member display name and username', async ()
               search: (): Promise<Map<string, { id: string }>> => Promise.resolve(new Map()),
               fetch: (id: string): Promise<{ displayName: string; user: { username: string } }> => {
                 expect(id).toBe('user-9')
-                return Promise.resolve({ displayName: 'John Johnson', user: { username: 'itsmike' } })
+                return Promise.resolve({
+                  displayName: 'John Johnson',
+                  user: { username: 'itsmike' },
+                })
               },
             },
           },
@@ -673,7 +676,10 @@ test('resolveUserLabel prefers guild member display name and username', async ()
     },
   })
 
-  const label = await provider.resolveUserLabel?.('user-9', { contextId: 'chan-7', contextType: 'group' })
+  const label = await provider.resolveUserLabel?.('user-9', {
+    contextId: 'chan-7',
+    contextType: 'group',
+  })
   expect(label).toBe('John Johnson (@itsmike)')
 })
 
@@ -701,7 +707,10 @@ test('resolveUserLabel falls back to global user fetch when guild context is una
     },
   })
 
-  const label = await provider.resolveUserLabel?.('user-12', { contextId: 'dm-user', contextType: 'dm' })
+  const label = await provider.resolveUserLabel?.('user-12', {
+    contextId: 'dm-user',
+    contextType: 'dm',
+  })
   expect(label).toBe('Jane Admin (@janeadmin)')
 })
 ```
@@ -918,7 +927,10 @@ test('resolveUserLabel returns full name and username from getChatMember', async
     })
   }
 
-  const label = await provider.resolveUserLabel?.('164696606', { contextId: '-1003768634358', contextType: 'group' })
+  const label = await provider.resolveUserLabel?.('164696606', {
+    contextId: '-1003768634358',
+    contextType: 'group',
+  })
   expect(label).toBe('John Johnson (@itsmike)')
   delete process.env['TELEGRAM_BOT_TOKEN']
 })
@@ -927,7 +939,10 @@ test('resolveUserLabel returns null for non-numeric Telegram user IDs', async ()
   process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
   const provider = new TelegramChatProvider()
 
-  const label = await provider.resolveUserLabel?.('not-a-number', { contextId: '-1003768634358', contextType: 'group' })
+  const label = await provider.resolveUserLabel?.('not-a-number', {
+    contextId: '-1003768634358',
+    contextType: 'group',
+  })
   expect(label).toBeNull()
   delete process.env['TELEGRAM_BOT_TOKEN']
 })

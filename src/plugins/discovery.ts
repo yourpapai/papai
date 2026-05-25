@@ -93,7 +93,10 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const pluginDir = join(pluginsRootDir, dirName)
 
   if (!isRealDirectory(pluginDir)) {
-    return { directoryName: dirName, reason: `${dirName} is not a real directory (may be a symlink)` }
+    return {
+      directoryName: dirName,
+      reason: `${dirName} is not a real directory (may be a symlink)`,
+    }
   }
 
   const manifestPath = join(pluginDir, 'plugin.json')
@@ -107,7 +110,10 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const { manifest, manifestContent } = parsed
   const entryPoint = resolveEntryPoint(pluginDir, manifest.main)
   if (entryPoint === null) {
-    return { directoryName: dirName, reason: `Entry point "${manifest.main}" resolves outside the plugin directory` }
+    return {
+      directoryName: dirName,
+      reason: `Entry point "${manifest.main}" resolves outside the plugin directory`,
+    }
   }
 
   let entryPointContent: string

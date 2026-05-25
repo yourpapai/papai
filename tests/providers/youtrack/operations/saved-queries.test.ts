@@ -77,8 +77,16 @@ describe('listYouTrackSavedQueries', () => {
     const queries = await listYouTrackSavedQueries(config)
 
     expect(queries).toHaveLength(101)
-    expect(queries[0]).toEqual({ id: 'query-1', name: 'Saved Query 1', query: 'project: TEST sort by: created 1' })
-    expect(queries[100]).toEqual({ id: 'query-101', name: 'Saved Query 101', query: 'project: TEST #Unresolved' })
+    expect(queries[0]).toEqual({
+      id: 'query-1',
+      name: 'Saved Query 1',
+      query: 'project: TEST sort by: created 1',
+    })
+    expect(queries[100]).toEqual({
+      id: 'query-101',
+      name: 'Saved Query 101',
+      query: 'project: TEST #Unresolved',
+    })
     expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('$top')).toBe('100')
     expect(getFetchUrlAt(fetchMock.current, 0).searchParams.get('$skip')).toBe('0')
     expect(getFetchUrlAt(fetchMock.current, 1).searchParams.get('$top')).toBe('100')

@@ -18,7 +18,10 @@ export interface ClassifiedBehavior {
   readonly visibility: 'user-facing' | 'internal' | 'ambiguous'
   readonly featureKey: string | null
   readonly featureLabel: string | null
-  readonly supportingBehaviorRefs: readonly { readonly behaviorId: string; readonly reason: string }[]
+  readonly supportingBehaviorRefs: readonly {
+    readonly behaviorId: string
+    readonly reason: string
+  }[]
   readonly relatedBehaviorHints: readonly {
     readonly testKey: string
     readonly relation: 'same-feature' | 'supporting-detail' | 'possibly-related'

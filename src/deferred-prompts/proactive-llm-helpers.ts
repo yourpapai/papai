@@ -3,10 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ModelMessage } from 'ai'
+import type { ModelMessage, ToolSet } from 'ai'
 
+import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
+import { getConfig } from '../config.js'
+import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
+import { appendHistory } from '../history.js'
+import { logger } from '../logger.js'
+import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
+import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
+import type { TaskProvider } from '../providers/types.js'
+import { makeTools } from '../tools/index.js'
+import { routeToolsForMessage } from '../tools/tool-router.js'
+import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
+
+const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
 
 export type ProactiveLlmDispatchBaseArgs<TBuildProvider> = readonly [
   DeferredExecutionContextLike,
@@ -21,7 +34,10 @@ export type ProactiveLlmDispatchArgs<TDeps, TBuildProvider> =
   | readonly [...ProactiveLlmDispatchBaseArgs<TBuildProvider>, undefined, TDeps]
   | readonly [...ProactiveLlmDispatchBaseArgs<TBuildProvider>, string, TDeps]
 
-type DeferredExecutionContextLike = Readonly<{ createdByUserId: string; deliveryTarget: DeferredDeliveryTarget }>
+type DeferredExecutionContextLike = Readonly<{
+  createdByUserId: string
+  deliveryTarget: DeferredDeliveryTarget
+}>
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -72,3 +88,70 @@ export function buildMetadataMessages(m: ExecutionMetadata): ModelMessage[] {
 }
 
 export const wrapPrompt = (prompt: string): string => `===DEFERRED_TASK===\n${prompt}\n===END_DEFERRED_TASK===`
+
+type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls?: unknown[] }
+
+export function persistProactiveResults(
+  creatorId: string,
+  storageContextId: string,
+  result: LlmResult,
+  history: readonly ModelMessage[],
+): void {
+  const newFacts = extractFactsFromSdkResults(extractFactToolCalls(result), extractFactToolResults(result))
+  for (const fact of newFacts) upsertFact(storageContextId, fact)
+  if (newFacts.length > 0)
+    log.info(
+      { userId: creatorId, storageContextId, factsExtracted: newFacts.length },
+      'Facts persisted from proactive results',
+    )
+
+  const msgs = result.response.messages
+  if (msgs.length > 0) {
+    appendHistory(storageContextId, msgs)
+    const updated = [...history, ...msgs]
+    if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated)
+  }
+  log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
+}
+
+export function buildFullToolSet(
+  provider: TaskProvider,
+  createdByUserId: string,
+  storageContextId: string,
+  contextType: 'dm' | 'group',
+  prompt: string,
+): { tools: ToolSet; enabledToolNames: ReadonlySet<string> } {
+  const fullTools = makeTools(provider, {
+    storageContextId,
+    chatUserId: createdByUserId,
+    mode: 'proactive',
+    contextType,
+  })
+  return {
+    tools: routeToolsForMessage(prompt, fullTools).tools,
+    enabledToolNames: new Set(Object.keys(fullTools)),
+  }
+}
+
+export function buildFullMessages(
+  createdByUserId: string,
+  storageContextId: string,
+  type: 'scheduled' | 'alert',
+  prompt: string,
+  matchedTasksSummary: string | undefined,
+  metadata: ExecutionMetadata,
+): { messages: ModelMessage[]; systemPrompt: string } {
+  const timezone = timezoneOrUtc(getConfig(createdByUserId, 'timezone'))
+  const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)
+  const history = getCachedHistory(storageContextId)
+  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
+  return {
+    messages: [
+      ...messagesWithMemory,
+      { role: 'system', content: trigger.systemContext },
+      ...buildMetadataMessages(metadata),
+      { role: 'user', content: trigger.userContent },
+    ],
+    systemPrompt: trigger.systemContext,
+  }
+}

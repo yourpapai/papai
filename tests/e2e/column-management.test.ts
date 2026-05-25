@@ -129,9 +129,21 @@ describe('E2E: Column Management', () => {
   })
 
   test('reorders columns', async () => {
-    const col1 = await createColumn({ config: kaneoConfig, projectId, name: `First ${Date.now()}` })
-    const col2 = await createColumn({ config: kaneoConfig, projectId, name: `Second ${Date.now()}` })
-    const col3 = await createColumn({ config: kaneoConfig, projectId, name: `Third ${Date.now()}` })
+    const col1 = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `First ${Date.now()}`,
+    })
+    const col2 = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `Second ${Date.now()}`,
+    })
+    const col3 = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `Third ${Date.now()}`,
+    })
     createdColumnIds.push(col1.id, col2.id, col3.id)
 
     // Reverse the order
@@ -154,7 +166,11 @@ describe('E2E: Column Management', () => {
   })
 
   test('deletes a column', async () => {
-    const column = await createColumn({ config: kaneoConfig, projectId, name: `To Delete ${Date.now()}` })
+    const column = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `To Delete ${Date.now()}`,
+    })
 
     await deleteColumn({ config: kaneoConfig, columnId: column.id })
 

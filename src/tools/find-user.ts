@@ -26,7 +26,12 @@ export function makeFindUserTool(provider: TaskProvider): ToolSet[string] {
         return users
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), query, limit, tool: 'find_user' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            query,
+            limit,
+            tool: 'find_user',
+          },
           'Tool execution failed',
         )
         throw error

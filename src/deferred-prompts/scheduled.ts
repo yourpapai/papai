@@ -78,7 +78,10 @@ function toScheduledPrompt(row: ScheduledPromptRow): ScheduledPrompt {
 export function createScheduledPrompt(
   userId: string,
   prompt: string,
-  schedule: { fireAt: string; cronCompiled?: { rrule: string; dtstartUtc: string; timezone?: string } },
+  schedule: {
+    fireAt: string
+    cronCompiled?: { rrule: string; dtstartUtc: string; timezone?: string }
+  },
   executionMetadata?: ExecutionMetadata,
   delivery?: DeferredPromptDeliveryInput,
 ): ScheduledPrompt {

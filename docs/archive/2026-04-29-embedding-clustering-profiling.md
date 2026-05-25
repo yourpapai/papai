@@ -81,7 +81,12 @@ import {
 
 describe('clustering profile helpers', () => {
   test('recordClusteringTiming updates one phase immutably', () => {
-    const initial = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.9, size: 3 })
+    const initial = createClusteringProfile({
+      enabled: true,
+      linkage: 'average',
+      threshold: 0.9,
+      size: 3,
+    })
     const updated = recordClusteringTiming(initial, 'nearestNeighborMs', 12.5)
 
     expect(initial.timings.nearestNeighborMs).toBe(0)
@@ -90,7 +95,12 @@ describe('clustering profile helpers', () => {
   })
 
   test('incrementClusteringCounter updates one counter immutably', () => {
-    const initial = createClusteringProfile({ enabled: true, linkage: 'complete', threshold: 0.91, size: 4 })
+    const initial = createClusteringProfile({
+      enabled: true,
+      linkage: 'complete',
+      threshold: 0.91,
+      size: 4,
+    })
     const updated = incrementClusteringCounter(initial, 'nearestNeighborCalls', 7)
 
     expect(initial.counters.nearestNeighborCalls).toBe(0)

@@ -600,9 +600,24 @@ export interface EvaluatedBehavior {
   readonly testName: string
   readonly behavior: string
   readonly userStory: string
-  readonly maria: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly dani: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly viktor: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
+  readonly maria: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly dani: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly viktor: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
   readonly flaws: readonly string[]
   readonly improvements: readonly string[]
 }
@@ -1075,9 +1090,24 @@ function buildUserMessage(b: ParsedBehavior): string {
 
 interface EvalResult {
   readonly userStory: string
-  readonly maria: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly dani: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly viktor: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
+  readonly maria: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly dani: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly viktor: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
   readonly flaws: readonly string[]
   readonly improvements: readonly string[]
 }
@@ -1244,7 +1274,12 @@ export async function runPhase2(progress: Progress): Promise<void> {
   // Collect failed items
   const failedItems = Object.entries(progress.phase2.failedBehaviors).map(([key, entry]) => {
     const [testFile, ...nameParts] = key.split('::')
-    return { testFile, testName: nameParts.join('::'), error: entry.error, attempts: entry.attempts }
+    return {
+      testFile,
+      testName: nameParts.join('::'),
+      error: entry.error,
+      attempts: entry.attempts,
+    }
   })
 
   await writeIndexFile(

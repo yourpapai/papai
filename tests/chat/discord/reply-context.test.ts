@@ -12,7 +12,11 @@ const fetchKnownParent = (
   id: unknown,
 ): Promise<{ id: string; author: { id: string; username: string }; content: string }> =>
   id === 'parent-1'
-    ? Promise.resolve({ id: 'parent-1', author: { id: 'user-9', username: 'bob' }, content: 'the parent text' })
+    ? Promise.resolve({
+        id: 'parent-1',
+        author: { id: 'user-9', username: 'bob' },
+        content: 'the parent text',
+      })
     : Promise.reject(new Error('404'))
 
 describe('buildDiscordReplyContext', () => {
@@ -24,7 +28,10 @@ describe('buildDiscordReplyContext', () => {
   test('returns undefined when message has no reference', async () => {
     const msg: DiscordReplyMessageLike = {
       reference: null,
-      channel: { id: 'chan', messages: { fetch: () => Promise.reject(new Error('should not be called')) } },
+      channel: {
+        id: 'chan',
+        messages: { fetch: () => Promise.reject(new Error('should not be called')) },
+      },
     }
     const result = await buildDiscordReplyContext(msg, 'chan-1')
     expect(result).toBeUndefined()

@@ -24,7 +24,10 @@ import {
 export { summarizeBenchmarkResults }
 
 export type BenchmarkArgs = Readonly<
-  Record<'baseUrl' | 'apiKeyEnv' | 'outputPath', string> & { models: readonly string[]; repetitions: number }
+  Record<'baseUrl' | 'apiKeyEnv' | 'outputPath', string> & {
+    models: readonly string[]
+    repetitions: number
+  }
 >
 
 type RawBenchmarkArgs = Omit<BenchmarkArgs, 'models'> & { models: string | readonly string[] }
@@ -40,7 +43,10 @@ type GenerateScenarioTextInput = Readonly<{
 }>
 type GenerateScenarioText = (input: GenerateScenarioTextInput) => Promise<GenerateScenarioTextResult>
 type RunScenarioDeps = Readonly<{ generateScenarioText: GenerateScenarioText }>
-type AttemptSetup = Readonly<{ store: ReturnType<typeof createBenchmarkStore>; setup: ReturnType<typeof toolsForMode> }>
+type AttemptSetup = Readonly<{
+  store: ReturnType<typeof createBenchmarkStore>
+  setup: ReturnType<typeof toolsForMode>
+}>
 type ScenarioContext = Readonly<{
   model: string
   mode: BenchmarkMode
@@ -237,7 +243,11 @@ export const runScenario = (
       model,
       mode,
       scenario,
-      provider: createOpenAICompatible({ name: 'tool-surface-benchmark', apiKey, baseURL: args.baseUrl })(model),
+      provider: createOpenAICompatible({
+        name: 'tool-surface-benchmark',
+        apiKey,
+        baseURL: args.baseUrl,
+      })(model),
       deps,
     },
     1,

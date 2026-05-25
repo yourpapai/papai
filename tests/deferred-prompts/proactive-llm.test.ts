@@ -199,7 +199,10 @@ describe('dispatchExecution', () => {
 
     test('includes context snapshot when present', async () => {
       setupUserConfig()
-      const withSnapshot: ExecutionMetadata = { ...metadata, context_snapshot: 'User discussed migration' }
+      const withSnapshot: ExecutionMetadata = {
+        ...metadata,
+        context_snapshot: 'User discussed migration',
+      }
       await dispatchExecution(makeExecCtx(), 'scheduled', 'remind about migration', withSnapshot, () => null)
       const messages = generateTextCalls[0]!.messages
       const systemMsgs = messages.filter((m) => m.role === 'system')
@@ -355,11 +358,21 @@ describe('dispatchExecution', () => {
           steps: [
             {
               toolCalls: [{ toolName: 'create_task', input: { title: 'Earlier task' } }],
-              toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Earlier task', number: 18 } }],
+              toolResults: [
+                {
+                  toolName: 'create_task',
+                  output: { id: 'task-1', title: 'Earlier task', number: 18 },
+                },
+              ],
             },
             {
               toolCalls: [{ toolName: 'create_task', input: { title: 'Later task' } }],
-              toolResults: [{ toolName: 'create_task', output: { id: 'task-2', title: 'Later task', number: 19 } }],
+              toolResults: [
+                {
+                  toolName: 'create_task',
+                  output: { id: 'task-2', title: 'Later task', number: 19 },
+                },
+              ],
             },
           ],
           response: { messages: [] },
@@ -378,7 +391,11 @@ describe('dispatchExecution', () => {
   describe('fallback behavior', () => {
     test('treats empty metadata as full mode', async () => {
       setupUserConfig()
-      const emptyMetadata: ExecutionMetadata = { mode: 'full', delivery_brief: '', context_snapshot: null }
+      const emptyMetadata: ExecutionMetadata = {
+        mode: 'full',
+        delivery_brief: '',
+        context_snapshot: null,
+      }
       const provider = createMockProvider()
       await dispatchExecution(makeExecCtx(), 'scheduled', 'test', emptyMetadata, () => provider)
       expect(generateTextCalls[0]!.tools).toBeDefined()
@@ -438,7 +455,10 @@ describe('dispatchExecution', () => {
       // as a disabled override and emits the "Unavailable tools" safety-net line.
       // When the bug is present (uses creator context), getToolPrefs(USER_ID) is empty
       // so buildUnavailableLine returns null and the line is absent.
-      setToolPrefs(deliveryStorageContextId, { disabledDomains: [], toolOverrides: { save_memo: false } })
+      setToolPrefs(deliveryStorageContextId, {
+        disabledDomains: [],
+        toolOverrides: { save_memo: false },
+      })
 
       await dispatchExecution(
         {

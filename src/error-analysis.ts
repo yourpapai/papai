@@ -130,7 +130,11 @@ const getProviderErrorDetails = (error: ProviderError): AppErrorDetails => {
     case 'validation-failed':
       return { field: error.field, reason: error.reason }
     case 'workflow-validation-failed':
-      return { projectId: error.projectId, message: error.message, requiredFields: error.requiredFields }
+      return {
+        projectId: error.projectId,
+        message: error.message,
+        requiredFields: error.requiredFields,
+      }
     case 'unsupported-operation':
       return { operation: error.operation }
     case 'status-not-found':

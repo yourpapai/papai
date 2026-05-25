@@ -25,7 +25,11 @@ const defaultDeps: ListRecurringTasksDeps = {
 
 const describeSchedule = (t: RecurringTaskRecord): string => {
   if (t.triggerType === 'cron' && t.rrule !== null && t.dtstartUtc !== null) {
-    return describeCompiledRecurrence({ rrule: t.rrule, dtstartUtc: t.dtstartUtc, timezone: t.timezone })
+    return describeCompiledRecurrence({
+      rrule: t.rrule,
+      dtstartUtc: t.dtstartUtc,
+      timezone: t.timezone,
+    })
   }
   return 'after completion'
 }
@@ -61,7 +65,10 @@ export function makeListRecurringTasksTool(
         }))
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'list_recurring_tasks' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'list_recurring_tasks',
+          },
           'Tool execution failed',
         )
         throw error

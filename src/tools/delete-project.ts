@@ -37,7 +37,11 @@ export function makeDeleteProjectTool(provider: TaskProvider): ToolSet[string] {
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, tool: 'delete_project' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            tool: 'delete_project',
+          },
           'Tool execution failed',
         )
         throw error

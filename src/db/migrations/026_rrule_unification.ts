@@ -134,7 +134,13 @@ const backfillScheduledPromptRrules = (db: Database): BackfillResult => {
   return { migratedCount, skippedNullCount }
 }
 
-type ColInfo = { name: string; type: string; notnull: number; dflt_value: string | null; pk: number }
+type ColInfo = {
+  name: string
+  type: string
+  notnull: number
+  dflt_value: string | null
+  pk: number
+}
 
 const rebuildScheduledPromptsTable = (db: Database): void => {
   const colInfo = db.query<ColInfo, []>("PRAGMA table_info('scheduled_prompts')").all()

@@ -23,7 +23,11 @@ export function makeGetProjectTool(provider: Readonly<TaskProvider>): ToolSet[st
         return project
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, tool: 'get_project' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            tool: 'get_project',
+          },
           'Tool execution failed',
         )
         throw error

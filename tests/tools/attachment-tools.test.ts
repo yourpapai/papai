@@ -99,7 +99,11 @@ describe('Attachment Tools', () => {
     })
 
     test('uploads file when attachmentId is found in the workspace', async () => {
-      const file = makeIncomingFile({ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg' })
+      const file = makeIncomingFile({
+        fileId: 'platform-1',
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+      })
       const refs = await persistIncomingAttachments({
         contextId: CTX,
         sourceProvider: 'telegram',
@@ -111,7 +115,10 @@ describe('Attachment Tools', () => {
       const provider = createMockProvider({ uploadAttachment })
 
       const execute = getToolExecutor(makeUploadAttachmentTool(provider, CTX))
-      const result: unknown = await execute({ taskId: 'task-1', attachmentId: refs[0]!.attachmentId })
+      const result: unknown = await execute({
+        taskId: 'task-1',
+        attachmentId: refs[0]!.attachmentId,
+      })
 
       expect(result).toEqual(attachment)
       expect(uploadAttachment).toHaveBeenCalledWith('task-1', {
@@ -122,7 +129,11 @@ describe('Attachment Tools', () => {
     })
 
     test('uploads file without mimeType when not present', async () => {
-      const file = makeIncomingFile({ fileId: 'platform-1', filename: 'data.csv', mimeType: undefined })
+      const file = makeIncomingFile({
+        fileId: 'platform-1',
+        filename: 'data.csv',
+        mimeType: undefined,
+      })
       const refs = await persistIncomingAttachments({
         contextId: CTX,
         sourceProvider: 'telegram',
@@ -186,7 +197,11 @@ describe('Attachment Tools', () => {
       const deleteAttachment = mock(() => Promise.resolve({ id: 'att-1' }))
       const provider = createMockProvider({ deleteAttachment })
       const execute = getToolExecutor(makeRemoveAttachmentTool(provider))
-      const result: unknown = await execute({ taskId: 't1', attachmentId: 'att-1', confidence: 0.9 })
+      const result: unknown = await execute({
+        taskId: 't1',
+        attachmentId: 'att-1',
+        confidence: 0.9,
+      })
       expect(result).toEqual({ id: 'att-1' })
       expect(deleteAttachment).toHaveBeenCalledWith('t1', 'att-1')
     })

@@ -519,8 +519,16 @@ describe('createSTTClient', () => {
       return new Response(JSON.stringify({ text: 'Hello world', language: 'en' }), { status: 200 })
     })
 
-    const client = createSTTClient({ baseUrl: 'https://api.openai.com', apiKey: 'test-key', model: 'whisper-1' })
-    await client.transcribe({ audio: Buffer.from('audio data'), mimeType: 'audio/ogg', filename: 'voice.ogg' })
+    const client = createSTTClient({
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'test-key',
+      model: 'whisper-1',
+    })
+    await client.transcribe({
+      audio: Buffer.from('audio data'),
+      mimeType: 'audio/ogg',
+      filename: 'voice.ogg',
+    })
 
     expect(capturedForm).not.toBeNull()
   })
@@ -532,18 +540,32 @@ describe('createSTTClient', () => {
       return new Response(JSON.stringify({ text: 'Hello' }), { status: 200 })
     })
 
-    const client = createSTTClient({ baseUrl: 'https://api.example.com/', apiKey: 'key', model: 'whisper-1' })
-    await client.transcribe({ audio: Buffer.from('audio'), mimeType: 'audio/ogg', filename: 'voice.ogg' })
+    const client = createSTTClient({
+      baseUrl: 'https://api.example.com/',
+      apiKey: 'key',
+      model: 'whisper-1',
+    })
+    await client.transcribe({
+      audio: Buffer.from('audio'),
+      mimeType: 'audio/ogg',
+      filename: 'voice.ogg',
+    })
 
     expect(capturedUrl).toBe('https://api.example.com/v1/audio/transcriptions')
   })
 
   test('returns text, model, and language on success', async () => {
     setMockFetch(async () => {
-      return new Response(JSON.stringify({ text: 'Transcribed text', language: 'en' }), { status: 200 })
+      return new Response(JSON.stringify({ text: 'Transcribed text', language: 'en' }), {
+        status: 200,
+      })
     })
 
-    const client = createSTTClient({ baseUrl: 'https://api.openai.com', apiKey: 'key', model: 'whisper-1' })
+    const client = createSTTClient({
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'key',
+      model: 'whisper-1',
+    })
     const result = await client.transcribe({
       audio: Buffer.from('audio'),
       mimeType: 'audio/ogg',
@@ -560,8 +582,16 @@ describe('createSTTClient', () => {
       return new Response('Error', { status: 429 })
     })
 
-    const client = createSTTClient({ baseUrl: 'https://api.openai.com', apiKey: 'key', model: 'whisper-1' })
-    const promise = client.transcribe({ audio: Buffer.from('audio'), mimeType: 'audio/ogg', filename: 'voice.ogg' })
+    const client = createSTTClient({
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'key',
+      model: 'whisper-1',
+    })
+    const promise = client.transcribe({
+      audio: Buffer.from('audio'),
+      mimeType: 'audio/ogg',
+      filename: 'voice.ogg',
+    })
 
     await expect(promise).rejects.toThrow(STTError)
     await expect(promise).rejects.toThrow('Whisper returned 429')
@@ -579,8 +609,16 @@ describe('createSTTClient', () => {
       return new Response(JSON.stringify({ text: '' }), { status: 200 })
     })
 
-    const client = createSTTClient({ baseUrl: 'https://api.openai.com', apiKey: 'key', model: 'whisper-1' })
-    const promise = client.transcribe({ audio: Buffer.from('audio'), mimeType: 'audio/ogg', filename: 'voice.ogg' })
+    const client = createSTTClient({
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'key',
+      model: 'whisper-1',
+    })
+    const promise = client.transcribe({
+      audio: Buffer.from('audio'),
+      mimeType: 'audio/ogg',
+      filename: 'voice.ogg',
+    })
 
     await expect(promise).rejects.toThrow(STTError)
     await expect(promise).rejects.toThrow('Whisper returned empty transcription')
@@ -591,8 +629,16 @@ describe('createSTTClient', () => {
       return new Response(JSON.stringify({}), { status: 200 })
     })
 
-    const client = createSTTClient({ baseUrl: 'https://api.openai.com', apiKey: 'key', model: 'whisper-1' })
-    const promise = client.transcribe({ audio: Buffer.from('audio'), mimeType: 'audio/ogg', filename: 'voice.ogg' })
+    const client = createSTTClient({
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'key',
+      model: 'whisper-1',
+    })
+    const promise = client.transcribe({
+      audio: Buffer.from('audio'),
+      mimeType: 'audio/ogg',
+      filename: 'voice.ogg',
+    })
 
     await expect(promise).rejects.toThrow(STTError)
   })
@@ -606,7 +652,11 @@ describe('createSTTClient', () => {
       { baseUrl: 'https://api.openai.com', apiKey: 'key', model: 'whisper-1' },
       { fetch: mockFetch },
     )
-    await client.transcribe({ audio: Buffer.from('audio'), mimeType: 'audio/ogg', filename: 'voice.ogg' })
+    await client.transcribe({
+      audio: Buffer.from('audio'),
+      mimeType: 'audio/ogg',
+      filename: 'voice.ogg',
+    })
 
     expect(mockFetch).toHaveBeenCalled()
   })
@@ -1278,8 +1328,20 @@ export interface ExtractFilesInput {
   message?: {
     document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number }
     photo?: Array<{ file_id: string; file_size?: number }>
-    audio?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number; duration?: number }
-    video?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number; duration?: number }
+    audio?: {
+      file_id: string
+      file_name?: string
+      mime_type?: string
+      file_size?: number
+      duration?: number
+    }
+    video?: {
+      file_id: string
+      file_name?: string
+      mime_type?: string
+      file_size?: number
+      duration?: number
+    }
     voice?: { file_id: string; file_size?: number; duration?: number }
   }
 }

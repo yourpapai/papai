@@ -28,7 +28,11 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
   const payload: GlobalStats = {
     generatedAt: 0,
     window: '30d',
-    subjects: { dmTotal: 42, groupTotal: 7, growthLast30d: [{ date: '2026-05-01', dmAdded: 1, groupAdded: 0 }] },
+    subjects: {
+      dmTotal: 42,
+      groupTotal: 7,
+      growthLast30d: [{ date: '2026-05-01', dmAdded: 1, groupAdded: 0 }],
+    },
     active: { activeIn1d: 3, activeIn7d: 9, activeIn30d: 21 },
     distributions: {
       memosPerSubject: { ...emptyPercentiles, count: 10, p50: 5, p90: 12, max: 30, mean: 6 },
@@ -45,7 +49,10 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
       subjectsWithInstructions: 2,
     },
     webFetches: { topHosts: [{ hostHash: 'abc', count: 5 }] },
-    toolMix: { topTools: [{ toolName: 'create_task', count: 8, successRate: 1 }], errorTypeCounts: {} },
+    toolMix: {
+      topTools: [{ toolName: 'create_task', count: 8, successRate: 1 }],
+      errorTypeCounts: {},
+    },
     llmUsage: {
       totalCalls: 0,
       mainCalls: 0,

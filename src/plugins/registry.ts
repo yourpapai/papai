@@ -53,7 +53,11 @@ export { checkPluginCompatibility } from './compatibility.js'
 
 export type PluginContextEligibility =
   | { eligible: true }
-  | { eligible: false; reason: 'inactive' | 'disabled' | 'config_missing'; missingKeys?: readonly string[] }
+  | {
+      eligible: false
+      reason: 'inactive' | 'disabled' | 'config_missing'
+      missingKeys?: readonly string[]
+    }
 
 export type PluginRegistryEntry = {
   discoveredPlugin: DiscoveredPlugin

@@ -114,7 +114,10 @@ describe('registerPluginCommand', () => {
     const { reply, textCalls } = createMockReply()
 
     await handler(
-      { ...createGroupMessage('admin-user', '/plugin list', true, 'group-1'), commandMatch: 'list' },
+      {
+        ...createGroupMessage('admin-user', '/plugin list', true, 'group-1'),
+        commandMatch: 'list',
+      },
       reply,
       createAuth('admin-user', { isBotAdmin: true, isGroupAdmin: true }),
     )

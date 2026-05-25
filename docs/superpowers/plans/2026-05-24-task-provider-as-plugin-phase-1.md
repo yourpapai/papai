@@ -286,7 +286,11 @@ import type { TaskProvider } from '../../src/providers/types.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 const fakeProvider = { name: 'kaneo' } as unknown as TaskProvider
-const entry = { pluginId: 'task-provider-kaneo', factory: () => fakeProvider, capabilities: new Set<never>() }
+const entry = {
+  pluginId: 'task-provider-kaneo',
+  factory: () => fakeProvider,
+  capabilities: new Set<never>(),
+}
 
 describe('contributed task provider registry', () => {
   afterEach(() => {
@@ -424,7 +428,9 @@ describe('registerTaskProviderType', () => {
       providerCapabilities: ['labels.list'],
     })
     const { ctx } = buildPluginContext(manifest, 'ctx-1')
-    ctx.registration.registerTaskProviderType('kaneo', { factory: () => ({ name: 'kaneo' }) as never })
+    ctx.registration.registerTaskProviderType('kaneo', {
+      factory: () => ({ name: 'kaneo' }) as never,
+    })
     expect(getContributedTaskProviderType('kaneo')?.pluginId).toBe('test-plugin')
   })
 
@@ -551,7 +557,10 @@ describe('buildProviderRuntime.httpFetch', () => {
     mockLogger()
     const fetchSpy = mock(() => Promise.resolve(new Response('ok')))
     const assertPublicUrl = mock(() => Promise.resolve())
-    const runtime = buildProviderRuntime(['api.kaneo.io'], logger(), { fetch: fetchSpy as never, assertPublicUrl })
+    const runtime = buildProviderRuntime(['api.kaneo.io'], logger(), {
+      fetch: fetchSpy as never,
+      assertPublicUrl,
+    })
 
     await expect(runtime.httpFetch('https://evil.example.com/x')).rejects.toThrow()
     expect(fetchSpy).not.toHaveBeenCalled()
@@ -562,7 +571,10 @@ describe('buildProviderRuntime.httpFetch', () => {
     mockLogger()
     const fetchSpy = mock(() => Promise.resolve(new Response('ok')))
     const assertPublicUrl = mock(() => Promise.resolve())
-    const runtime = buildProviderRuntime(['api.kaneo.io'], logger(), { fetch: fetchSpy as never, assertPublicUrl })
+    const runtime = buildProviderRuntime(['api.kaneo.io'], logger(), {
+      fetch: fetchSpy as never,
+      assertPublicUrl,
+    })
 
     const res = await runtime.httpFetch('https://api.kaneo.io/v1/tasks', { method: 'POST' })
     expect(await res.text()).toBe('ok')

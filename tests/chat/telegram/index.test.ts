@@ -530,7 +530,10 @@ describe('TelegramChatProvider', () => {
       const botValue = Reflect.get(provider as object, 'bot') as unknown
       assert(isBotWithLifecycleMethods(botValue), 'Expected Telegram provider bot to expose lifecycle methods')
 
-      const onCalls: Array<{ filter: string | string[]; handler: (...args: unknown[]) => unknown }> = []
+      const onCalls: Array<{
+        filter: string | string[]
+        handler: (...args: unknown[]) => unknown
+      }> = []
       let startCalls = 0
 
       botValue.on = (filter, handler): void => {
@@ -596,7 +599,11 @@ describe('TelegramChatProvider', () => {
 
   describe('message extraction helpers', () => {
     test('extractContextInfo returns null when from.id is undefined', () => {
-      const ctx: MinimalContext = { from: undefined, chat: { id: 123, type: 'private' }, message: { text: 'hi' } }
+      const ctx: MinimalContext = {
+        from: undefined,
+        chat: { id: 123, type: 'private' },
+        message: { text: 'hi' },
+      }
       const result = extractContextInfo(ctx, isBotMentionedFalse)
       expect(result).toBeNull()
     })
@@ -799,7 +806,12 @@ describe('extractFilesFromContext', () => {
   test('skips file when fetcher returns null', async () => {
     const ctx = {
       message: {
-        document: { file_id: 'doc-123', file_name: 'file.txt', mime_type: 'text/plain', file_size: 10 },
+        document: {
+          file_id: 'doc-123',
+          file_name: 'file.txt',
+          mime_type: 'text/plain',
+          file_size: 10,
+        },
       },
     }
     const result = await extractFilesFromContext(ctx, makeFileFetcher(null))
@@ -847,16 +859,25 @@ describe('TelegramChatProvider reverse label resolution', () => {
           userId: number,
         ): Promise<{
           user:
-            | { first_name: string | undefined; last_name: string | undefined; username: string | undefined }
+            | {
+                first_name: string | undefined
+                last_name: string | undefined
+                username: string | undefined
+              }
             | undefined
         }> => {
           expect(userId).toBe(164696606)
-          return Promise.resolve({ user: { first_name: 'John', last_name: 'Johnson', username: 'itsmike' } })
+          return Promise.resolve({
+            user: { first_name: 'John', last_name: 'Johnson', username: 'itsmike' },
+          })
         },
       },
     })
 
-    const label = await provider.resolveUserLabel?.('164696606', { contextId: '-1003768634358', contextType: 'group' })
+    const label = await provider.resolveUserLabel?.('164696606', {
+      contextId: '-1003768634358',
+      contextType: 'group',
+    })
     expect(label).toBe('John Johnson (@itsmike)')
     delete process.env['TELEGRAM_BOT_TOKEN']
   })

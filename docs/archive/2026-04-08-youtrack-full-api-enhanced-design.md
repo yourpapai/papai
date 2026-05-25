@@ -435,22 +435,42 @@ export const buildCustomFields = (
   const fields: Array<{ name: string; $type: string; value: unknown }> = []
 
   if (params.priority !== undefined) {
-    fields.push({ name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: params.priority } })
+    fields.push({
+      name: 'Priority',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: params.priority },
+    })
   }
   if (params.status !== undefined) {
     fields.push({ name: 'State', $type: 'StateIssueCustomField', value: { name: params.status } })
   }
   if (params.assignee !== undefined) {
-    fields.push({ name: 'Assignee', $type: 'SingleUserIssueCustomField', value: { login: params.assignee } })
+    fields.push({
+      name: 'Assignee',
+      $type: 'SingleUserIssueCustomField',
+      value: { login: params.assignee },
+    })
   }
   if (params.type !== undefined) {
-    fields.push({ name: 'Type', $type: 'SingleEnumIssueCustomField', value: { name: params.type } })
+    fields.push({
+      name: 'Type',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: params.type },
+    })
   }
   if (params.subsystem !== undefined) {
-    fields.push({ name: 'Subsystem', $type: 'SingleEnumIssueCustomField', value: { name: params.subsystem } })
+    fields.push({
+      name: 'Subsystem',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: params.subsystem },
+    })
   }
   if (params.estimation !== undefined) {
-    fields.push({ name: 'Estimation', $type: 'PeriodIssueCustomField', value: { presentation: params.estimation } })
+    fields.push({
+      name: 'Estimation',
+      $type: 'PeriodIssueCustomField',
+      value: { presentation: params.estimation },
+    })
   }
   if (params.affectedVersions !== undefined && params.affectedVersions.length > 0) {
     fields.push({

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -19,11 +19,10 @@ import {
   toNormalizedFloat64Arrays,
 } from './consolidate-keywords-helpers.js'
 import { getOrEmbed } from './embedding-cache.js'
-import type { ExtractedBehaviorRecord } from './extracted-store.js'
-import { normalizeKeywordSlug } from './keyword-vocabulary.js'
 import type { KeywordVocabularyEntry } from './keyword-vocabulary.js'
 import { parseArgs } from './tune-embedding-args.js'
 import type { TuneParams } from './tune-embedding-args.js'
+import { collectUniqueKeywords } from './tune-embedding-io.js'
 
 interface TuneEmbeddingDeps {
   readonly extractedDir: string
@@ -37,7 +36,7 @@ interface TuneEmbeddingDeps {
   readonly subdivideOversizedClusters: typeof subdivideOversizedClusters
   readonly toNormalizedFloat64Arrays: typeof toNormalizedFloat64Arrays
   readonly getOrEmbed: typeof getOrEmbed
-  readonly normalizeKeywordSlug: typeof normalizeKeywordSlug
+  readonly collectUniqueKeywords: typeof collectUniqueKeywords
 }
 
 const defaultTuneEmbeddingDeps: TuneEmbeddingDeps = {
@@ -52,7 +51,7 @@ const defaultTuneEmbeddingDeps: TuneEmbeddingDeps = {
   subdivideOversizedClusters,
   toNormalizedFloat64Arrays,
   getOrEmbed,
-  normalizeKeywordSlug,
+  collectUniqueKeywords,
 }
 
 interface TuneResult {
@@ -62,44 +61,6 @@ interface TuneResult {
   readonly initialKeywords: readonly string[]
   readonly finalKeywords: readonly string[]
   readonly mergePairs: ReadonlyArray<readonly [string, string]>
-}
-
-async function collectJsonFiles(dir: string): Promise<readonly string[]> {
-  const entries = await readdir(dir, { withFileTypes: true, recursive: true })
-  return entries.filter((e) => e.isFile() && e.name.endsWith('.json')).map((e) => join(e.parentPath, e.name))
-}
-
-async function readAllRecords(files: readonly string[]): Promise<readonly ExtractedBehaviorRecord[]> {
-  const parsed = await Promise.all(
-    files.map(async (filePath) => {
-      const raw: unknown = JSON.parse(await Bun.file(filePath).text())
-      return Array.isArray(raw) ? (raw as readonly ExtractedBehaviorRecord[]) : []
-    }),
-  )
-  return parsed.flat()
-}
-
-async function collectUniqueKeywords(deps: TuneEmbeddingDeps): Promise<readonly string[]> {
-  let files: readonly string[]
-  try {
-    files = await collectJsonFiles(deps.extractedDir)
-  } catch {
-    return []
-  }
-
-  const records = await readAllRecords(files)
-  const keywordSet = new Set<string>()
-  for (const record of records) {
-    if (!Array.isArray(record.keywords)) continue
-    for (const kw of record.keywords) {
-      if (typeof kw !== 'string') continue
-      const slug = deps.normalizeKeywordSlug(kw)
-      if (slug.length > 0) {
-        keywordSet.add(slug)
-      }
-    }
-  }
-  return [...keywordSet].toSorted()
 }
 
 function toVocabulary(keywords: readonly string[], now: string): readonly KeywordVocabularyEntry[] {
@@ -209,7 +170,7 @@ function buildTuneClusterResult(
 async function runTune(params: TuneParams, deps: TuneEmbeddingDeps): Promise<TuneResult> {
   deps.reloadBehaviorAuditConfig()
 
-  const initialKeywords = await collectUniqueKeywords(deps)
+  const initialKeywords = await deps.collectUniqueKeywords(deps.extractedDir)
   const initialCount = initialKeywords.length
   if (initialCount === 0) {
     return {
@@ -243,7 +204,14 @@ async function runTune(params: TuneParams, deps: TuneEmbeddingDeps): Promise<Tun
   const finalCount = finalKeywords.length
   const mergePairs = extractMergePairs(mergeMap)
 
-  return { initialCount, finalCount, merges: mergeMap.size, initialKeywords, finalKeywords, mergePairs }
+  return {
+    initialCount,
+    finalCount,
+    merges: mergeMap.size,
+    initialKeywords,
+    finalKeywords,
+    mergePairs,
+  }
 }
 
 function printSummary(result: TuneResult, params: TuneParams): void {

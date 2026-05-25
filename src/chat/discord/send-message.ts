@@ -11,7 +11,10 @@ import { discordTraits } from './metadata.js'
 
 const log = logger.child({ scope: 'chat:discord' })
 
-type SendableChannel = { send: (opts: { content: string }) => Promise<unknown>; isSendable?: () => boolean }
+type SendableChannel = {
+  send: (opts: { content: string }) => Promise<unknown>
+  isSendable?: () => boolean
+}
 
 const isSendableChannel = (val: unknown): val is SendableChannel => {
   if (typeof val !== 'object' || val === null) return false

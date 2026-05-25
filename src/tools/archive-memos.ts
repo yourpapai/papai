@@ -38,12 +38,18 @@ export function makeArchiveMemosTool(userId: string): ToolSet[string] {
 
       if (filterCount === 0) {
         log.warn({ userId }, 'archive_memos rejected — no filter provided')
-        return { status: 'error', message: 'Exactly one filter (tag, beforeDate, or memoIds) is required.' }
+        return {
+          status: 'error',
+          message: 'Exactly one filter (tag, beforeDate, or memoIds) is required.',
+        }
       }
 
       if (filterCount > 1) {
         log.warn({ userId, tag, beforeDate, memoIdCount: memoIds?.length }, 'archive_memos rejected — multiple filters')
-        return { status: 'error', message: 'Exactly one filter (tag, beforeDate, or memoIds) must be provided.' }
+        return {
+          status: 'error',
+          message: 'Exactly one filter (tag, beforeDate, or memoIds) must be provided.',
+        }
       }
 
       const isIdBased = memoIds !== undefined && memoIds.length > 0

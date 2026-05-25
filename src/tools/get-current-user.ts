@@ -23,7 +23,10 @@ export function makeGetCurrentUserTool(provider: Readonly<TaskProvider>): ToolSe
         return user
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'get_current_user' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'get_current_user',
+          },
           'Tool execution failed',
         )
         throw error

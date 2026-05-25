@@ -59,7 +59,10 @@ async function sendChunksSequentially(
   await Promise.all(
     chunks.map((chunk) =>
       limit(async () => {
-        const msg = await channel.send({ content: chunk, reply: buildReply(replyToMessageId, options) })
+        const msg = await channel.send({
+          content: chunk,
+          reply: buildReply(replyToMessageId, options),
+        })
         sent.push(msg)
       }),
     ),
@@ -117,7 +120,11 @@ async function sendButtonsReply(
   options: ButtonReplyOptions,
 ): Promise<void> {
   const rows = options.buttons === undefined ? [] : toActionRows(options.buttons)
-  const sent = await channel.send({ content, components: rows, reply: buildReply(replyToMessageId, options) })
+  const sent = await channel.send({
+    content,
+    components: rows,
+    reply: buildReply(replyToMessageId, options),
+  })
   sentMessages.push(sent)
 }
 

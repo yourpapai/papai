@@ -51,7 +51,12 @@ const mockFetchSequence = (responses: Array<{ data: unknown; status?: number }>)
 
 const mockFetchError = (status: number, body: unknown = { error: 'Something went wrong' }): void => {
   installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })),
+    Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 
@@ -123,7 +128,9 @@ describe('listYouTrackProjectTeam', () => {
   test('lists mapped team members from the project team endpoint', async () => {
     mockFetchSequence([
       { data: makeProject() },
-      { data: [makeTeamUser(), makeTeamUser({ id: 'ring-user-2', login: 'bob', name: 'Bob Example' })] },
+      {
+        data: [makeTeamUser(), makeTeamUser({ id: 'ring-user-2', login: 'bob', name: 'Bob Example' })],
+      },
     ])
 
     const team = await listYouTrackProjectTeam(config, 'proj-1')
@@ -183,7 +190,15 @@ describe('addYouTrackProjectMember', () => {
   test('adds a project member using the team users endpoint', async () => {
     mockFetchSequence([
       { data: makeProject() },
-      { data: makeUser({ id: 'user-7', login: 'user7', ringId: 'ring-user-7', name: 'User 7', fullName: 'User 7' }) },
+      {
+        data: makeUser({
+          id: 'user-7',
+          login: 'user7',
+          ringId: 'ring-user-7',
+          name: 'User 7',
+          fullName: 'User 7',
+        }),
+      },
       { data: null, status: 204 },
     ])
 
@@ -220,7 +235,15 @@ describe('removeYouTrackProjectMember', () => {
   test('removes a project member using the team member endpoint', async () => {
     mockFetchSequence([
       { data: makeProject() },
-      { data: makeUser({ id: 'user-7', login: 'user7', ringId: 'ring-user-7', name: 'User 7', fullName: 'User 7' }) },
+      {
+        data: makeUser({
+          id: 'user-7',
+          login: 'user7',
+          ringId: 'ring-user-7',
+          name: 'User 7',
+          fullName: 'User 7',
+        }),
+      },
       { data: null, status: 204 },
     ])
 

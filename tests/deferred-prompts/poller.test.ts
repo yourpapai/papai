@@ -56,7 +56,12 @@ describe('pollScheduledOnce', () => {
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
-      Promise.resolve({ text: 'Task completed.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      Promise.resolve({
+        text: 'Task completed.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
       stepCountIs: (_n: number): unknown => undefined,
@@ -172,7 +177,12 @@ describe('pollScheduledOnce', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Done.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     }
 
     const otherUser = 'poller-user-2'
@@ -231,7 +241,12 @@ describe('pollScheduledOnce — error handling', () => {
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
-      Promise.resolve({ text: 'Task completed.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      Promise.resolve({
+        text: 'Task completed.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
       stepCountIs: (_n: number): unknown => undefined,
@@ -321,7 +336,12 @@ describe('pollAlertsOnce', () => {
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
-      Promise.resolve({ text: 'Alert triggered.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      Promise.resolve({
+        text: 'Alert triggered.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
       tool: (opts: unknown): unknown => opts,
@@ -407,7 +427,11 @@ describe('pollAlertsOnce', () => {
   })
 
   test('does not update alert trigger time when delivery fails', async () => {
-    const created = createAlertPrompt(USER_ID, 'Notify on done', { field: 'task.status', op: 'eq', value: 'done' })
+    const created = createAlertPrompt(USER_ID, 'Notify on done', {
+      field: 'task.status',
+      op: 'eq',
+      value: 'done',
+    })
     const failOnceThenRecord = mock((_target: DeferredDeliveryTarget, text: string): Promise<void> => {
       sentMessages.push({ target: _target, text })
       return Promise.resolve()
@@ -499,7 +523,12 @@ describe('delivery target routing', () => {
 
   beforeEach(async () => {
     generateTextImpl = (): Promise<GenerateTextResult> =>
-      Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      Promise.resolve({
+        text: 'Done.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     void mock.module('ai', () => ({
       generateText: (..._args: unknown[]): Promise<GenerateTextResult> => generateTextImpl(),
       stepCountIs: (_n: number): unknown => undefined,
@@ -571,7 +600,12 @@ describe('delivery target routing', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Done.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     }
 
     const pastTime = new Date(Date.now() - 60_000).toISOString()
@@ -595,7 +629,12 @@ describe('delivery target routing', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Done.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     }
 
     const pastTime = new Date(Date.now() - 60_000).toISOString()
@@ -629,7 +668,12 @@ describe('delivery target routing', () => {
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
-      return Promise.resolve({ text: 'Done.', toolCalls: [], toolResults: [], response: { messages: [] } })
+      return Promise.resolve({
+        text: 'Done.',
+        toolCalls: [],
+        toolResults: [],
+        response: { messages: [] },
+      })
     }
 
     const pastTime = new Date(Date.now() - 60_000).toISOString()

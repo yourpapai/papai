@@ -71,7 +71,13 @@ export const createWizardSession = (params: CreateWizardSessionParams): WizardSe
   emitUser('wizard:created', userId, { storageContextId, totalSteps, taskProvider })
 
   log.info(
-    { userId, storageContextId, totalSteps, taskProvider, hasInitialData: initialData !== undefined },
+    {
+      userId,
+      storageContextId,
+      totalSteps,
+      taskProvider,
+      hasInitialData: initialData !== undefined,
+    },
     'Wizard session created',
   )
 
@@ -133,7 +139,13 @@ export const updateWizardSession = (userId: string, storageContextId: string, up
   emitUser('wizard:updated', userId, { storageContextId, currentStep: session.currentStep })
 
   log.info(
-    { userId, storageContextId, currentStep, hasData: data !== undefined, hasSkipped: skippedSteps !== undefined },
+    {
+      userId,
+      storageContextId,
+      currentStep,
+      hasData: data !== undefined,
+      hasSkipped: skippedSteps !== undefined,
+    },
     'Wizard session updated',
   )
 }

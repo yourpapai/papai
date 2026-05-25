@@ -31,12 +31,22 @@ export function makeLogWorkTool(provider: TaskProvider): ToolSet[string] {
     execute: async ({ taskId, duration, date, description, type, author }) => {
       log.debug({ taskId, duration, date }, 'log_work called')
       try {
-        const result = await provider.createWorkItem!(taskId, { duration, date, description, type, author })
+        const result = await provider.createWorkItem!(taskId, {
+          duration,
+          date,
+          description,
+          type,
+          author,
+        })
         log.info({ taskId, workItemId: result.id, duration }, 'Work item created')
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'log_work' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'log_work',
+          },
           'Tool execution failed',
         )
         throw error

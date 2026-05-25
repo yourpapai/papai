@@ -8,7 +8,6 @@ import type { ClusteringProfile } from './clustering-profile.js'
 import { dotProduct } from './consolidate-keywords-clustering.js'
 import type { LinkageMode } from './consolidate-keywords-clustering.js'
 
-type Cluster = readonly number[]
 const DISTANCE_EPSILON = 1e-6
 
 export type MutableDistanceMatrix = {
@@ -108,7 +107,10 @@ function selectNearestCandidate(
         fallbackCandidates.push({ candidate: other, distance: fallbackDistance })
       }
       const fallbackNearest = fallbackCandidates.toSorted(compareNearest)[0]
-      return { nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate, distanceReads }
+      return {
+        nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate,
+        distanceReads,
+      }
     }
 
     if (nearest === undefined) {
@@ -285,14 +287,4 @@ export function findChainStart(
     start,
     profile: recordClusteringTiming(currentProfile, 'candidateScanMs', performance.now() - startedAt),
   }
-}
-
-export function getClusterMembers(members: ReadonlyMap<number, Cluster>, id: number): Cluster {
-  const cluster = members.get(id)
-  if (cluster === undefined) return []
-  return cluster
-}
-
-export function filterClusters(clusters: readonly Cluster[], minClusterSize: number): readonly Cluster[] {
-  return clusters.filter((cluster) => cluster.length >= minClusterSize)
 }

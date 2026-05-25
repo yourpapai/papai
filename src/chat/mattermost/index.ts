@@ -130,7 +130,11 @@ export class MattermostChatProvider implements ChatProvider {
     this.ws = ws
     ws.addEventListener('open', () => {
       log.debug('Mattermost WebSocket connected, authenticating')
-      this.wsSend({ seq: this.wsSeq++, action: 'authentication_challenge', data: { token: this.token } })
+      this.wsSend({
+        seq: this.wsSeq++,
+        action: 'authentication_challenge',
+        data: { token: this.token },
+      })
     })
     ws.addEventListener('message', (event) => {
       void this.handleWsMessage(event)

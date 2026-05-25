@@ -21,7 +21,11 @@ import {
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'user-1'
-const toolCtx = { toolCallId: 'tc1', messages: [] as never[], abortSignal: new AbortController().signal }
+const toolCtx = {
+  toolCallId: 'tc1',
+  messages: [] as never[],
+  abortSignal: new AbortController().signal,
+}
 
 function getTools(): ToolSet {
   return {
@@ -420,7 +424,11 @@ describe('execution metadata', () => {
       {
         prompt: 'Check tasks',
         schedule: { fire_at: futureFireAt() },
-        execution: { mode: 'context', delivery_brief: 'Remind about standup', context_snapshot: 'Sprint discussion' },
+        execution: {
+          mode: 'context',
+          delivery_brief: 'Remind about standup',
+          context_snapshot: 'Sprint discussion',
+        },
       },
       toolCtx,
     )

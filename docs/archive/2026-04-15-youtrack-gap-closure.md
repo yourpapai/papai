@@ -179,7 +179,12 @@ describe('Agile tools', () => {
       start: '2026-04-15T00:00:00.000Z',
       finish: '2026-04-22T00:00:00.000Z',
     })
-    expect(result).toEqual({ id: 'sprint-1', agileId: 'agile-1', name: 'Sprint 24', archived: false })
+    expect(result).toEqual({
+      id: 'sprint-1',
+      agileId: 'agile-1',
+      name: 'Sprint 24',
+      archived: false,
+    })
     expect(createSprint).toHaveBeenCalledWith('agile-1', {
       name: 'Sprint 24',
       goal: 'Ship commands',
@@ -344,7 +349,11 @@ export function makeListSprintsTool(provider: Readonly<TaskProvider>): ToolSet[s
         return sprints
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), agileId, tool: 'list_sprints' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            agileId,
+            tool: 'list_sprints',
+          },
           'Tool execution failed',
         )
         throw error
@@ -385,7 +394,11 @@ export function makeCreateSprintTool(provider: Readonly<TaskProvider>): ToolSet[
         return sprint
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), agileId, tool: 'create_sprint' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            agileId,
+            tool: 'create_sprint',
+          },
           'Tool execution failed',
         )
         throw error
@@ -436,7 +449,12 @@ export function makeUpdateSprintTool(provider: Readonly<TaskProvider>): ToolSet[
         return sprint
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), agileId, sprintId, tool: 'update_sprint' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            agileId,
+            sprintId,
+            tool: 'update_sprint',
+          },
           'Tool execution failed',
         )
         throw error
@@ -732,7 +750,11 @@ export function makeGetTaskHistoryTool(provider: Readonly<TaskProvider>): ToolSe
         return history
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'get_task_history' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'get_task_history',
+          },
           'Tool execution failed',
         )
         throw error
@@ -765,7 +787,10 @@ export function makeListSavedQueriesTool(provider: Readonly<TaskProvider>): Tool
         return queries
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'list_saved_queries' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'list_saved_queries',
+          },
           'Tool execution failed',
         )
         throw error
@@ -800,7 +825,11 @@ export function makeRunSavedQueryTool(provider: Readonly<TaskProvider>): ToolSet
         return tasks
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), queryId, tool: 'run_saved_query' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            queryId,
+            tool: 'run_saved_query',
+          },
           'Tool execution failed',
         )
         throw error
@@ -888,10 +917,18 @@ test('returns normalized read-only custom fields alongside the standard task fie
   mockFetchResponse(
     makeIssueResponse({
       customFields: [
-        { $type: 'SingleEnumIssueCustomField', name: 'Priority', value: { $type: 'EnumBundleElement', name: 'High' } },
+        {
+          $type: 'SingleEnumIssueCustomField',
+          name: 'Priority',
+          value: { $type: 'EnumBundleElement', name: 'High' },
+        },
         { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
         { $type: 'SimpleIssueCustomField', name: 'Environment', value: 'staging' },
-        { $type: 'TextIssueCustomField', name: 'Steps', value: { $type: 'TextFieldValue', text: 'Click login' } },
+        {
+          $type: 'TextIssueCustomField',
+          name: 'Steps',
+          value: { $type: 'TextFieldValue', text: 'Click login' },
+        },
       ],
     }),
   )
@@ -993,7 +1030,12 @@ test('update_task forwards customFields to the provider', async () => {
   let capturedCustomFields: Array<{ name: string; value: string }> | undefined
   const updateTask = mock((_taskId: string, params: { customFields?: Array<{ name: string; value: string }> }) => {
     capturedCustomFields = params.customFields
-    return Promise.resolve({ id: 'TEST-1', title: 'Test Task', status: 'todo', url: 'https://test.com/task/1' })
+    return Promise.resolve({
+      id: 'TEST-1',
+      title: 'Test Task',
+      status: 'todo',
+      url: 'https://test.com/task/1',
+    })
   })
 
   const tool = makeUpdateTaskTool(createMockProvider({ updateTask }))
@@ -1029,7 +1071,9 @@ test('get_task returns normalized customFields when the provider includes them',
     }),
   )
 
-  const result = await getToolExecutor(makeGetTaskTool(createMockProvider({ getTask })))({ taskId: 'TEST-1' })
+  const result = await getToolExecutor(makeGetTaskTool(createMockProvider({ getTask })))({
+    taskId: 'TEST-1',
+  })
   expect(result).toMatchObject({
     customFields: [
       { name: 'Environment', value: 'staging' },
@@ -1352,7 +1396,12 @@ test('posts a command using readable issue IDs', async () => {
     silent: true,
   })
 
-  expect(result).toEqual({ query: 'for me', taskIds: ['TEST-1'], comment: 'Assigning to myself', silent: true })
+  expect(result).toEqual({
+    query: 'for me',
+    taskIds: ['TEST-1'],
+    comment: 'Assigning to myself',
+    silent: true,
+  })
   expect(getFetchBody()).toEqual({
     query: 'for me',
     issues: [{ idReadable: 'TEST-1' }],
@@ -1386,7 +1435,11 @@ describe('apply_youtrack_command', () => {
   test('forwards the command payload to the provider', async () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'for me', taskIds: ['TEST-1'], silent: true }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
-    const result = await getToolExecutor(tool)({ query: 'for me', taskIds: ['TEST-1'], silent: true })
+    const result = await getToolExecutor(tool)({
+      query: 'for me',
+      taskIds: ['TEST-1'],
+      silent: true,
+    })
     expect(result).toEqual({ query: 'for me', taskIds: ['TEST-1'], silent: true })
     expect(applyCommand).toHaveBeenCalledWith({
       query: 'for me',
@@ -1559,7 +1612,11 @@ export function makeApplyYouTrackCommandTool(provider: Readonly<TaskProvider>): 
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), query, tool: 'apply_youtrack_command' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            query,
+            tool: 'apply_youtrack_command',
+          },
           'Tool execution failed',
         )
         throw error

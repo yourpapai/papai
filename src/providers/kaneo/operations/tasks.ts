@@ -92,7 +92,13 @@ export async function kaneoListTasks(
 export async function kaneoSearchTasks(
   config: KaneoConfig,
   workspaceId: string,
-  params: { query: string; projectId?: string; assigneeId?: string; limit?: number; offset?: number },
+  params: {
+    query: string
+    projectId?: string
+    assigneeId?: string
+    limit?: number
+    offset?: number
+  },
 ): Promise<TaskSearchResult[]> {
   const result = await searchTasks({
     config,

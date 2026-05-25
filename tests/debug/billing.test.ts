@@ -161,7 +161,11 @@ describe('listBillingSubjects', () => {
   test('filters by window', () => {
     const now = Date.now()
     seed({ storageContextId: 'ctx-fresh', occurredAt: now - 1000, chatUserId: 'user-A' })
-    seed({ storageContextId: 'ctx-stale', occurredAt: now - 10 * ONE_DAY_MS, chatUserId: 'user-B' })
+    seed({
+      storageContextId: 'ctx-stale',
+      occurredAt: now - 10 * ONE_DAY_MS,
+      chatUserId: 'user-B',
+    })
 
     const fresh = listBillingSubjects('24h')
     expect(fresh.map((s) => s.storageContextId)).toEqual(['ctx-fresh'])

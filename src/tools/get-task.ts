@@ -33,7 +33,11 @@ export function makeGetTaskTool(
         return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'get_task' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'get_task',
+          },
           'Tool execution failed',
         )
         throw error

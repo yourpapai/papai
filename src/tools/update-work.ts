@@ -29,12 +29,22 @@ export function makeUpdateWorkTool(provider: TaskProvider): ToolSet[string] {
     execute: async ({ taskId, workItemId, duration, date, description, type }) => {
       log.debug({ taskId, workItemId, duration, date }, 'update_work called')
       try {
-        const result = await provider.updateWorkItem!(taskId, workItemId, { duration, date, description, type })
+        const result = await provider.updateWorkItem!(taskId, workItemId, {
+          duration,
+          date,
+          description,
+          type,
+        })
         log.info({ taskId, workItemId }, 'Work item updated')
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, workItemId, tool: 'update_work' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            workItemId,
+            tool: 'update_work',
+          },
           'Tool execution failed',
         )
         throw error

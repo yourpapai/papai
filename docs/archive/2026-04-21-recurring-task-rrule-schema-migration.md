@@ -132,7 +132,11 @@ function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDe
 
   const schedule =
     record.triggerType === 'cron' && record.rrule !== null && record.dtstartUtc !== null
-      ? describeCompiledRecurrence({ rrule: record.rrule, dtstartUtc: record.dtstartUtc, timezone: record.timezone })
+      ? describeCompiledRecurrence({
+          rrule: record.rrule,
+          dtstartUtc: record.dtstartUtc,
+          timezone: record.timezone,
+        })
       : 'after completion of current instance'
 
   log.info({ id: record.id, title: input.title, schedule }, 'Recurring task created via tool')
@@ -161,7 +165,10 @@ export function makeCreateRecurringTaskTool(
         return executeCreate(userId, input, deps)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'create_recurring_task' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'create_recurring_task',
+          },
           'Tool execution failed',
         )
         throw error

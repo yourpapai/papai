@@ -299,7 +299,10 @@ describe('updateYouTrackWorkItem', () => {
       fetchMock,
       makeWorkItemResponse({ duration: { minutes: 120, presentation: '2h' }, text: 'Updated' }),
     )
-    const result = await updateYouTrackWorkItem(config, 'PROJ-1', '8-1', { duration: '2h', description: 'Updated' })
+    const result = await updateYouTrackWorkItem(config, 'PROJ-1', '8-1', {
+      duration: '2h',
+      description: 'Updated',
+    })
     expect(result.id).toBe('8-1')
     expect(result.duration).toBe('PT2H')
     expect(result.description).toBe('Updated')

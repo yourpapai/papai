@@ -176,7 +176,10 @@ const makeSearchTasksHandler = (): (() => Promise<Response>) => {
       )
     }
     return Promise.resolve(
-      new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   }
 }
@@ -511,8 +514,18 @@ describe('YouTrackProvider', () => {
 
     test('getComments lists comments', async () => {
       mockFetchResponse([
-        { id: 'c-1', text: 'First', author: { id: 'u-alice', login: 'alice' }, created: 1700000000000 },
-        { id: 'c-2', text: 'Second', author: { id: 'u-bob', login: 'bob', name: 'Bob' }, created: 1700000001000 },
+        {
+          id: 'c-1',
+          text: 'First',
+          author: { id: 'u-alice', login: 'alice' },
+          created: 1700000000000,
+        },
+        {
+          id: 'c-2',
+          text: 'Second',
+          author: { id: 'u-bob', login: 'bob', name: 'Bob' },
+          created: 1700000001000,
+        },
       ])
 
       const comments = await provider.getComments('TEST-1')
@@ -583,8 +596,20 @@ describe('YouTrackProvider', () => {
   describe('phase 4 collaboration wiring', () => {
     test('listUsers delegates to the users endpoint and maps results', async () => {
       mockFetchResponse([
-        { id: 'user-1', login: 'alice', name: 'Alice Example', fullName: 'Alice Example', email: 'alice@example.com' },
-        { id: 'user-2', login: 'bob', name: 'Bob Example', fullName: 'Bob Example', email: 'bob@example.com' },
+        {
+          id: 'user-1',
+          login: 'alice',
+          name: 'Alice Example',
+          fullName: 'Alice Example',
+          email: 'alice@example.com',
+        },
+        {
+          id: 'user-2',
+          login: 'bob',
+          name: 'Bob Example',
+          fullName: 'Bob Example',
+          email: 'bob@example.com',
+        },
       ])
 
       const users = await provider.listUsers?.('ali', 5)
@@ -615,7 +640,9 @@ describe('YouTrackProvider', () => {
 
     test('project team methods delegate to team endpoints', async () => {
       mockFetchSequence([
-        { data: { id: 'proj-1', ringId: 'project-ring-1', shortName: 'PROJ', name: 'Project One' } },
+        {
+          data: { id: 'proj-1', ringId: 'project-ring-1', shortName: 'PROJ', name: 'Project One' },
+        },
         { data: [{ id: 'ring-user-1', login: 'alice', name: 'Alice Example', type: 'user' }] },
       ])
 
@@ -630,7 +657,9 @@ describe('YouTrackProvider', () => {
       expect(getFetchMethodAt(1)).toBe('GET')
 
       mockFetchSequence([
-        { data: { id: 'proj-1', ringId: 'project-ring-1', shortName: 'PROJ', name: 'Project One' } },
+        {
+          data: { id: 'proj-1', ringId: 'project-ring-1', shortName: 'PROJ', name: 'Project One' },
+        },
         {
           data: {
             id: 'user-7',
@@ -652,7 +681,9 @@ describe('YouTrackProvider', () => {
       expect(getFetchBodyAt(2)).toEqual({ id: 'ring-user-7' })
 
       mockFetchSequence([
-        { data: { id: 'proj-1', ringId: 'project-ring-1', shortName: 'PROJ', name: 'Project One' } },
+        {
+          data: { id: 'proj-1', ringId: 'project-ring-1', shortName: 'PROJ', name: 'Project One' },
+        },
         {
           data: {
             id: 'user-7',
@@ -681,7 +712,12 @@ describe('YouTrackProvider', () => {
           issueWatchers: [
             {
               isStarred: true,
-              user: { id: 'user-1', login: 'alice', fullName: 'Alice Example', email: 'alice@example.com' },
+              user: {
+                id: 'user-1',
+                login: 'alice',
+                fullName: 'Alice Example',
+                email: 'alice@example.com',
+              },
             },
           ],
         },
@@ -764,7 +800,12 @@ describe('YouTrackProvider', () => {
       mockFetchResponse({
         id: 'reaction-1',
         reaction: 'thumbs_up',
-        author: { id: 'user-1', login: 'alice', fullName: 'Alice Example', email: 'alice@example.com' },
+        author: {
+          id: 'user-1',
+          login: 'alice',
+          fullName: 'Alice Example',
+          email: 'alice@example.com',
+        },
       })
 
       const reaction = await provider.addCommentReaction?.('TEST-1', 'comment-1', 'thumbs_up')
@@ -782,7 +823,11 @@ describe('YouTrackProvider', () => {
       mockFetchNoContent()
       const removedReaction = await provider.removeCommentReaction?.('TEST-1', 'comment-1', 'reaction-1')
 
-      expect(removedReaction).toEqual({ id: 'reaction-1', taskId: 'TEST-1', commentId: 'comment-1' })
+      expect(removedReaction).toEqual({
+        id: 'reaction-1',
+        taskId: 'TEST-1',
+        commentId: 'comment-1',
+      })
       expect(getFetchUrlAt(0).pathname).toBe('/api/issues/TEST-1/comments/comment-1/reactions/reaction-1')
       expect(getFetchMethodAt(0)).toBe('DELETE')
     })
@@ -883,7 +928,15 @@ describe('YouTrackProvider', () => {
   describe('listStatuses', () => {
     test('returns list of columns from state bundle', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }] } } },
         { data: [{ id: '57-1', name: 'Open', isResolved: false, ordinal: 0 }] },
       ])
@@ -899,7 +952,15 @@ describe('YouTrackProvider', () => {
   describe('createStatus', () => {
     test('creates status and returns column', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }] } } },
         { data: { id: '57-2', name: 'Ready', isResolved: false, ordinal: 1 } },
       ])
@@ -913,7 +974,15 @@ describe('YouTrackProvider', () => {
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } } },
       ])
 
@@ -928,12 +997,23 @@ describe('YouTrackProvider', () => {
   describe('updateStatus', () => {
     test('updates status and returns column', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }] } } },
         { data: { id: '57-1', name: 'Updated', isResolved: true, ordinal: 0 } },
       ])
 
-      const result = await provider.updateStatus('proj-1', '57-1', { name: 'Updated', isFinal: true })
+      const result = await provider.updateStatus('proj-1', '57-1', {
+        name: 'Updated',
+        isFinal: true,
+      })
 
       assert(!('status' in result), 'Should not require confirmation')
       expect(result.id).toBe('57-1')
@@ -942,7 +1022,15 @@ describe('YouTrackProvider', () => {
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } } },
       ])
 
@@ -957,7 +1045,15 @@ describe('YouTrackProvider', () => {
   describe('deleteStatus', () => {
     test('deletes status and returns id', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }] } } },
         { data: {} },
       ])
@@ -970,7 +1066,15 @@ describe('YouTrackProvider', () => {
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } } },
       ])
 
@@ -985,7 +1089,15 @@ describe('YouTrackProvider', () => {
   describe('reorderStatuses', () => {
     test('reorders statuses', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }] } } },
         { data: { id: '57-1', name: 'Open', isResolved: false, ordinal: 0 } },
         { data: { id: '57-2', name: 'Done', isResolved: true, ordinal: 1 } },
@@ -1001,7 +1113,15 @@ describe('YouTrackProvider', () => {
 
     test('returns confirmation_required for shared bundles without confirm', async () => {
       mockFetchSequence([
-        { data: [{ $type: 'StateProjectCustomField', field: { name: 'State' }, bundle: { id: 'bundle-1' } }] },
+        {
+          data: [
+            {
+              $type: 'StateProjectCustomField',
+              field: { name: 'State' },
+              bundle: { id: 'bundle-1' },
+            },
+          ],
+        },
         { data: { id: 'bundle-1', aggregated: { project: [{ id: 'proj-1' }, { id: 'proj-2' }] } } },
       ])
 

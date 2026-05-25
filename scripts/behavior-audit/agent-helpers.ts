@@ -17,7 +17,11 @@ declare global {
 export const fetchWithoutTimeout: typeof fetch = (input, init) => fetch(input, { ...init, timeout: false })
 fetchWithoutTimeout.preconnect = fetch.preconnect
 
-const log = pino({ level: VERBOSE ? 'debug' : 'silent', base: undefined, timestamp: pino.stdTimeFunctions.isoTime })
+const log = pino({
+  level: VERBOSE ? 'debug' : 'silent',
+  base: undefined,
+  timestamp: pino.stdTimeFunctions.isoTime,
+})
 
 type GenerateTextInput = Parameters<typeof generateText>[0]
 type GenerateTextOutput = Awaited<ReturnType<typeof generateText>>
@@ -45,20 +49,33 @@ const verboseCallbacks: Pick<GenerateTextInput, CallbackKeys> = {
       log.debug({ tool: toolCall.toolName, durationMs }, 'tool call finish')
     } else {
       log.warn(
-        { tool: toolCall.toolName, durationMs, error: error instanceof Error ? error.message : String(error) },
+        {
+          tool: toolCall.toolName,
+          durationMs,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'tool call error',
       )
     }
   },
   onStepFinish: ({ stepNumber, finishReason, usage }) => {
     log.debug(
-      { stepNumber, finishReason, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
+      {
+        stepNumber,
+        finishReason,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+      },
       'step finish',
     )
   },
   onFinish: ({ totalUsage, steps }) => {
     log.debug(
-      { steps: steps.length, totalInputTokens: totalUsage.inputTokens, totalOutputTokens: totalUsage.outputTokens },
+      {
+        steps: steps.length,
+        totalInputTokens: totalUsage.inputTokens,
+        totalOutputTokens: totalUsage.outputTokens,
+      },
       'done',
     )
   },

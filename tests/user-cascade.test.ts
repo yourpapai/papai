@@ -61,12 +61,24 @@ describe('user removal cascade integration', () => {
 
     testDb
       .insert(schema.recurringTasks)
-      .values({ id: 'rt-a', userId: 'user-a', projectId: 'project-a', title: 'Recurring A', triggerType: 'cron' })
+      .values({
+        id: 'rt-a',
+        userId: 'user-a',
+        projectId: 'project-a',
+        title: 'Recurring A',
+        triggerType: 'cron',
+      })
       .run()
     testDb.insert(schema.recurringTaskOccurrences).values({ id: 'occ-a', templateId: 'rt-a', taskId: 'task-a' }).run()
     testDb
       .insert(schema.recurringTasks)
-      .values({ id: 'rt-b', userId: 'user-b', projectId: 'project-b', title: 'Recurring B', triggerType: 'cron' })
+      .values({
+        id: 'rt-b',
+        userId: 'user-b',
+        projectId: 'project-b',
+        title: 'Recurring B',
+        triggerType: 'cron',
+      })
       .run()
     testDb.insert(schema.recurringTaskOccurrences).values({ id: 'occ-b', templateId: 'rt-b', taskId: 'task-b' }).run()
 

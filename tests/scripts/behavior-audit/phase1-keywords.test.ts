@@ -142,7 +142,12 @@ test('runPhase1 stores keywords from extraction directly', async () => {
             context: 'Resolves target context and forwards execution through the group routing path.',
             keywords: ['group-routing', 'group-targeting'],
           }),
-          usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         }),
     },
   )
@@ -203,7 +208,12 @@ test('runPhase1 fails cleanly when extracted keywords all normalize to empty slu
             context: 'Routes through group context selection.',
             keywords: ['   ', '!!!', '---'],
           }),
-          usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         }),
     },
   )
@@ -360,7 +370,12 @@ test('runPhase1 marks test done after extraction completes', async () => {
             context: 'Routes through group context selection.',
             keywords: ['group-targeting'],
           }),
-          usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         }),
     },
   )
@@ -453,7 +468,12 @@ test('runPhase1 re-extracts selected changed tests even when prior extraction ex
             context: 'Reprocesses changed test dependencies.',
             keywords: ['group-targeting-updated'],
           }),
-          usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         })
       },
     },
@@ -509,7 +529,12 @@ test('runPhase1 stores normalized keywords in the extracted record without mutab
             context: 'Routes through group context selection.',
             keywords: ['Group Targeting', 'group-targeting'],
           }),
-          usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            toolCalls: 2,
+            toolNames: ['readFile', 'grep'],
+          },
         }),
     },
   )

@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ContextType } from '../chat/types.js'
-import { dmTarget } from '../chat/types.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
@@ -13,7 +11,13 @@ import type { RecurrenceSpec } from '../types/recurrence.js'
 import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
-import { buildScheduleUpdates, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
+import {
+  buildDeliveryInput,
+  buildScheduleUpdates,
+  parseExecution,
+  type CreateDeliveryContext,
+  type ScheduleFieldUpdates,
+} from './schedule-update-helpers.js'
 import {
   cancelScheduledPrompt,
   createScheduledPrompt,
@@ -23,7 +27,6 @@ import {
 } from './scheduled.js'
 import {
   alertConditionSchema,
-  DEFAULT_EXECUTION_METADATA,
   executionMetadataSchema,
   type AlertCondition,
   type CancelResult,
@@ -36,47 +39,23 @@ import {
   type UpdateResult,
 } from './types.js'
 
+export type { CreateDeliveryContext } from './schedule-update-helpers.js'
+
 const log = logger.child({ scope: 'deferred:tools' })
 
 // --- Input types ---
-
-export type CreateDeliveryContext = {
-  userId: string
-  storageContextId: string
-  contextType: ContextType
-  username?: string | null
-}
 
 export type CreateInput = {
   prompt: string
   schedule?: ScheduleInput
   condition?: AlertCondition
   cooldown_minutes?: number
-  execution?: { mode: 'lightweight' | 'context' | 'full'; delivery_brief: string; context_snapshot?: string }
+  execution?: {
+    mode: 'lightweight' | 'context' | 'full'
+    delivery_brief: string
+    context_snapshot?: string
+  }
   delivery?: { audience?: 'personal' | 'shared'; mention_user_ids?: string[] }
-}
-
-function buildDeliveryInput(
-  ctx: CreateDeliveryContext,
-  policy?: { audience?: 'personal' | 'shared'; mention_user_ids?: string[] },
-): DeferredPromptDeliveryInput {
-  if (ctx.contextType === 'dm') {
-    return { ...dmTarget(ctx.userId), createdByUsername: ctx.username ?? null }
-  }
-  const colonIdx = ctx.storageContextId.indexOf(':')
-  const contextId = colonIdx >= 0 ? ctx.storageContextId.slice(0, colonIdx) : ctx.storageContextId
-  const threadId = colonIdx >= 0 ? ctx.storageContextId.slice(colonIdx + 1) : null
-  const audience = policy?.audience === 'shared' ? 'shared' : 'personal'
-  const mentionUserIds = audience === 'shared' ? [] : (policy?.mention_user_ids ?? [ctx.userId])
-  return {
-    contextId,
-    contextType: 'group',
-    threadId,
-    audience,
-    mentionUserIds,
-    createdByUserId: ctx.userId,
-    createdByUsername: ctx.username ?? null,
-  }
 }
 
 export type UpdateInput = {
@@ -85,10 +64,17 @@ export type UpdateInput = {
   schedule?: ScheduleInput
   condition?: AlertCondition
   cooldown_minutes?: number
-  execution?: { mode: 'lightweight' | 'context' | 'full'; delivery_brief: string; context_snapshot?: string }
+  execution?: {
+    mode: 'lightweight' | 'context' | 'full'
+    delivery_brief: string
+    context_snapshot?: string
+  }
 }
 
-export type ListInput = { type?: 'scheduled' | 'alert'; status?: 'active' | 'completed' | 'cancelled' }
+export type ListInput = {
+  type?: 'scheduled' | 'alert'
+  status?: 'active' | 'completed' | 'cancelled'
+}
 
 // --- Handlers ---
 
@@ -161,17 +147,12 @@ function createAlert(
 
   const result = createAlertPrompt(userId, prompt, parseResult.data, cooldownMinutes, executionMetadata, delivery)
   log.info({ id: result.id, userId, type: 'alert' }, 'Deferred prompt created')
-  return { status: 'created', type: 'alert', id: result.id, cooldownMinutes: result.cooldownMinutes }
-}
-
-function parseExecution(
-  input: { mode: 'lightweight' | 'context' | 'full'; delivery_brief: string; context_snapshot?: string } | undefined,
-): ExecutionMetadata {
-  if (input === undefined) return DEFAULT_EXECUTION_METADATA
-  const parseResult = executionMetadataSchema.safeParse(input)
-  if (parseResult.success) return parseResult.data
-  log.warn({ error: parseResult.error.message }, 'Invalid execution metadata, using default')
-  return DEFAULT_EXECUTION_METADATA
+  return {
+    status: 'created',
+    type: 'alert',
+    id: result.id,
+    cooldownMinutes: result.cooldownMinutes,
+  }
 }
 
 export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: CreateDeliveryContext): CreateResult {
@@ -180,7 +161,9 @@ export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: 
   log.debug({ userId, hasSchedule, hasCondition }, 'create_deferred_prompt called')
   if (hasSchedule && hasCondition) return { error: 'Provide either a schedule or a condition, not both.' }
   if (!hasSchedule && !hasCondition) {
-    return { error: 'Provide either a schedule (for time-based) or a condition (for event-based).' }
+    return {
+      error: 'Provide either a schedule (for time-based) or a condition (for event-based).',
+    }
   }
 
   const executionMetadata = parseExecution(input.execution)
@@ -217,7 +200,9 @@ export function executeGet(userId: string, input: { id: string }): GetResult {
 
 function updateScheduledFields(id: string, userId: string, input: UpdateInput): UpdateResult {
   if (input.condition !== undefined)
-    return { error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.' }
+    return {
+      error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.',
+    }
   const updates: {
     prompt?: string
     executionMetadata?: ExecutionMetadata

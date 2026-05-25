@@ -26,7 +26,11 @@ export function makeListAttachmentsTool(provider: TaskProvider): ToolSet[string]
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'list_attachments' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'list_attachments',
+          },
           'Tool execution failed',
         )
         throw error

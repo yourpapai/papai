@@ -153,7 +153,10 @@ export async function resolveYouTrackUserRingId(config: YouTrackConfig, userId: 
         throw new YouTrackClassifiedError(`User "${userId}" not found`, providerError.notFound('User', userId))
       } catch (fallbackError) {
         log.error(
-          { error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError), userId },
+          {
+            error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            userId,
+          },
           'Failed to resolve user Hub ringId from query search',
         )
         throw classifyYouTrackError(fallbackError)

@@ -52,8 +52,18 @@ describe('listYouTrackUsers', () => {
       {
         data: [
           makeUser(),
-          makeUser({ id: 'user-2', login: 'bob', fullName: 'Bob Example', email: 'alice.bob@example.com' }),
-          makeUser({ id: 'user-3', login: 'charlie', fullName: 'Alice Johnson', email: 'charlie@example.com' }),
+          makeUser({
+            id: 'user-2',
+            login: 'bob',
+            fullName: 'Bob Example',
+            email: 'alice.bob@example.com',
+          }),
+          makeUser({
+            id: 'user-3',
+            login: 'charlie',
+            fullName: 'Alice Johnson',
+            email: 'charlie@example.com',
+          }),
         ],
       },
     ])

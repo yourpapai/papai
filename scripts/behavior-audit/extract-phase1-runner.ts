@@ -77,6 +77,28 @@ function buildSkippedSingleTestResult(currentManifest: IncrementalManifest): {
   return { result: null, manifest: currentManifest, phase1Changed: false }
 }
 
+function handleExtractionFailure(input: {
+  readonly deps: Phase1RunnerDeps
+  readonly testKey: string
+  readonly testFilePath: string
+  readonly title: string
+  readonly displayIndex: number
+  readonly totalTests: number
+  readonly detail: string
+  readonly currentManifest: IncrementalManifest
+}): { readonly result: SingleTestResult; readonly manifest: IncrementalManifest; readonly phase1Changed: boolean } {
+  emitSingleTestFailure({
+    deps: input.deps,
+    testKey: input.testKey,
+    testFilePath: input.testFilePath,
+    title: input.title,
+    displayIndex: input.displayIndex,
+    totalTests: input.totalTests,
+    detail: input.detail,
+  })
+  return buildSkippedSingleTestResult(input.currentManifest)
+}
+
 function extractStartedTestCase(input: {
   readonly testCase: TestCase
   readonly testFile: ParsedTestFile
@@ -110,7 +132,7 @@ function buildSuccessfulSingleTestResult(input: {
   }
 }
 
-async function extractSingleTestCase(input: {
+type SingleTestCaseInput = {
   readonly testCase: TestCase
   readonly index: number
   readonly totalTests: number
@@ -118,7 +140,9 @@ async function extractSingleTestCase(input: {
   readonly progress: Progress
   readonly currentManifest: IncrementalManifest
   readonly deps: Phase1RunnerDeps
-}): Promise<{
+}
+
+async function extractSingleTestCase(input: SingleTestCaseInput): Promise<{
   readonly result: SingleTestResult
   readonly manifest: IncrementalManifest
   readonly phase1Changed: boolean
@@ -144,7 +168,7 @@ async function extractSingleTestCase(input: {
     deps: input.deps,
   })
   if (extraction.kind === 'failed') {
-    emitSingleTestFailure({
+    return handleExtractionFailure({
       deps: input.deps,
       testKey: started.testKey,
       testFilePath: input.testFile.filePath,
@@ -152,11 +176,14 @@ async function extractSingleTestCase(input: {
       displayIndex: input.index + 1,
       totalTests: input.totalTests,
       detail: extraction.detail,
+      currentManifest: input.currentManifest,
     })
-    return buildSkippedSingleTestResult(input.currentManifest)
   }
 
-  return buildSuccessfulSingleTestResult({ result: extraction.result, currentManifest: input.currentManifest })
+  return buildSuccessfulSingleTestResult({
+    result: extraction.result,
+    currentManifest: input.currentManifest,
+  })
 }
 
 async function runSelectedExtractions(input: {

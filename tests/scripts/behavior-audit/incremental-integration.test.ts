@@ -1090,7 +1090,13 @@ describe('behavior-audit incremental manifest', () => {
             embeddingModel: '',
             embeddingBaseUrl: '',
             embeddingCachePath: null,
-            stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+            stats: {
+              slugsBefore: 0,
+              slugsAfter: 0,
+              mergesApplied: 0,
+              behaviorsUpdated: 0,
+              keywordsRemapped: 0,
+            },
           },
           phase2a: {
             status: 'not-started',
