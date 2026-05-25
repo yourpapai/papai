@@ -128,7 +128,7 @@ function formatToolStarted(event: ToolStartedEvent, settings: AiOutputSettings):
 
 function formatReasoningText(text: string, settings: AiOutputSettings): string {
   if (settings.detailLevel === 'raw') return text.trim()
-  return stableStringify(sanitizeRootValue(text.trim()))
+  return `Provider reasoning available (${text.trim().length} characters). Enable raw detail to view.`
 }
 
 export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSettings): AiProgressReporter {

@@ -206,7 +206,7 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('secret result')
   })
 
-  test('emits provider reasoning only when reasoning visibility is on', async () => {
+  test('emits sanitized reasoning availability without provider reasoning text', async () => {
     const { reply, textCalls } = createMockReply()
     const reporter = createAiProgressReporter(reply, {
       toolVisibility: 'off',
@@ -214,15 +214,19 @@ describe('createAiProgressReporter', () => {
       detailLevel: 'sanitized',
     })
 
-    reporter.reasoning('Provider exposed reasoning text')
+    reporter.reasoning('Provider copied task title, user content, and attachment text into reasoning')
     await reporter.flush()
 
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Reasoning')
-    expect(textCalls[0]).toContain('Provider exposed reasoning text')
+    expect(textCalls[0]).toContain('Provider reasoning available')
+    expect(textCalls[0]).toContain('Enable raw detail to view')
+    expect(textCalls[0]).not.toContain('copied task title')
+    expect(textCalls[0]).not.toContain('user content')
+    expect(textCalls[0]).not.toContain('attachment text')
   })
 
-  test('redacts sanitized reasoning secret-like text and URLs', async () => {
+  test('does not emit sanitized reasoning secret-like text or URLs', async () => {
     const { reply, textCalls } = createMockReply()
     const reporter = createAiProgressReporter(reply, {
       toolVisibility: 'off',
@@ -235,9 +239,9 @@ describe('createAiProgressReporter', () => {
 
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Reasoning')
+    expect(textCalls[0]).toContain('Provider reasoning available')
     expect(textCalls[0]).not.toContain('secret-token')
     expect(textCalls[0]).not.toContain('https://private.example/path')
-    expect(textCalls[0]).toContain('[redacted]')
   })
 
   test('flushes a started tool when no finish arrives', async () => {
@@ -293,6 +297,20 @@ describe('createAiProgressReporter', () => {
     await reporter.flush()
 
     expect(textCalls[0]).toContain('raw reasoning payload')
+  })
+
+  test('raw detail level uses raw provider reasoning text when no raw payload is supplied', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'raw',
+    })
+
+    reporter.reasoning('Raw provider reasoning text')
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('Raw provider reasoning text')
   })
 
   test('does not emit an empty reasoning section', async () => {

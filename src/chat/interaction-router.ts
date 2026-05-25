@@ -251,6 +251,9 @@ export function routeInteraction(
   }
 
   if (callbackData.startsWith('cfg:')) {
+    if (callbackData.startsWith('cfg:ai:') && interaction.contextType === 'group' && !auth.isGroupAdmin) {
+      return reply.text('Only group admins can change AI output visibility for this group.').then(() => true)
+    }
     return resolvedDeps.handleConfigInteraction(interaction, reply)
   }
 

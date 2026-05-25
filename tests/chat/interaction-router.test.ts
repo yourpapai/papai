@@ -424,6 +424,7 @@ describe('routeInteraction', () => {
       {
         ...createMockAuth(true),
         storageContextId: 'group-9',
+        isGroupAdmin: true,
       },
     )
 
@@ -431,6 +432,33 @@ describe('routeInteraction', () => {
     expect(getAiOutputSettings('other-context').toolVisibility).toBe('off')
     expect(getAiOutputSettings('group-9').toolVisibility).toBe('off')
     expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
+  test('blocks non-admin group member from changing group AI output settings', async () => {
+    const replies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        contextId: 'group-9',
+        contextType: 'group',
+        storageContextId: 'group-9',
+        callbackData: 'cfg:ai:detailLevel:raw',
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      {
+        ...createMockAuth(true),
+        storageContextId: 'group-9',
+        isGroupAdmin: false,
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(getAiOutputSettings('group-9').detailLevel).toBe('sanitized')
+    expect(replies).toEqual(['Only group admins can change AI output visibility for this group.'])
   })
 
   test('starts setup for the selected group target', async () => {
