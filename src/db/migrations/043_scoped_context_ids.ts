@@ -59,6 +59,8 @@ const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'staged_files', column: 'context_id', conflictColumns: ['platform_file_id'] },
   { table: 'llm_usage_events', column: 'storage_context_id', conflictColumns: null },
   { table: 'tool_call_events', column: 'storage_context_id', conflictColumns: null },
+  { table: 'plugin_context_state', column: 'context_id', conflictColumns: ['plugin_id'] },
+  { table: 'plugin_kv', column: 'context_id', conflictColumns: ['plugin_id', 'key'] },
 ]
 
 const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u

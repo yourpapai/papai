@@ -79,6 +79,12 @@ describe('migration043ScopedContextIds', () => {
       `CREATE TABLE tool_call_events (event_id TEXT PRIMARY KEY, turn_id TEXT NOT NULL, occurred_at INTEGER NOT NULL, storage_context_id TEXT NOT NULL, context_type TEXT NOT NULL, chat_user_id TEXT NOT NULL, model TEXT NOT NULL, model_role TEXT NOT NULL, tool_name TEXT NOT NULL, tool_call_id TEXT NOT NULL, success INTEGER NOT NULL, duration_ms INTEGER, error_type TEXT, error_code TEXT, retryable INTEGER, recovered INTEGER, args_bytes INTEGER, result_bytes INTEGER, response_id TEXT, forwarded_at INTEGER, forward_attempts INTEGER NOT NULL DEFAULT 0, forward_error TEXT)`,
     )
     db.run(
+      `CREATE TABLE plugin_context_state (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY (plugin_id, context_id))`,
+    )
+    db.run(
+      `CREATE TABLE plugin_kv (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (plugin_id, context_id, key))`,
+    )
+    db.run(
       `CREATE TABLE users (platform_user_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL, username TEXT, added_at TEXT NOT NULL, added_by TEXT NOT NULL, PRIMARY KEY (platform_instance_id, platform_user_id))`,
     )
   })
@@ -174,9 +180,6 @@ describe('migration043ScopedContextIds', () => {
     db.run(
       `INSERT INTO tool_call_events (event_id, turn_id, occurred_at, storage_context_id, context_type, chat_user_id, model, model_role, tool_name, tool_call_id, success) VALUES ('tool-1', 'turn-1', 1, 'user-1', 'dm', 'user-1', 'model', 'main', 'create_task', 'call-1', 1)`,
     )
-    db.run(
-      `CREATE TABLE plugin_context_state (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, enabled INTEGER NOT NULL)`,
-    )
     db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', 'user-1', 1)`)
 
     migration043ScopedContextIds.up(db)
@@ -199,7 +202,26 @@ describe('migration043ScopedContextIds', () => {
     expect(db.query(`SELECT storage_context_id FROM tool_call_events`).get()).toEqual({
       storage_context_id: scopedUser,
     })
-    expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: 'user-1' })
+    expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: scopedUser })
+  })
+
+  test('scopes plugin context data and handles raw and scoped duplicates idempotently', () => {
+    const scopedUser = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' })
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', 'user-1', 1)`)
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 0)`, [scopedUser])
+    db.run(`INSERT INTO plugin_kv VALUES ('hello-world', 'user-1', 'token', 'raw-value', 'raw', 'raw')`)
+    db.run(`INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'scoped-value', 'scoped', 'scoped')`, [scopedUser])
+
+    migration043ScopedContextIds.up(db)
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT context_id, enabled FROM plugin_context_state`).all()).toEqual([
+      { context_id: scopedUser, enabled: 0 },
+    ])
+    expect(db.query(`SELECT context_id, key, value FROM plugin_kv`).all()).toEqual([
+      { context_id: scopedUser, key: 'token', value: 'scoped-value' },
+    ])
   })
 
   test('handles raw and scoped staged file duplicates with same platform file id', () => {
@@ -284,15 +306,21 @@ describe('migration043ScopedContextIds', () => {
     ])
   })
 
-  test('does not mutate plugin tables', () => {
-    db.run(
-      `CREATE TABLE plugin_context_state (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, enabled INTEGER NOT NULL)`,
-    )
+  test('does not change plugin table schema while scoping plugin context ids', () => {
     db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', 'user-1', 1)`)
     db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
 
     migration043ScopedContextIds.up(db)
 
-    expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: 'user-1' })
+    expect(db.query(`SELECT plugin_id, enabled FROM plugin_context_state`).get()).toEqual({
+      plugin_id: 'hello-world',
+      enabled: 1,
+    })
+    expect(
+      db
+        .query<{ name: string }, []>(`PRAGMA table_info(plugin_context_state)`)
+        .all()
+        .map((row) => row.name),
+    ).toEqual(['plugin_id', 'context_id', 'enabled'])
   })
 })

@@ -6,6 +6,7 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 
 import { eq, sql } from 'drizzle-orm'
+import { getTableConfig } from 'drizzle-orm/sqlite-core'
 
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { stagedFiles } from '../../src/db/staged-schema.js'
@@ -27,6 +28,12 @@ describe('stagedFiles schema', () => {
     expect(stagedFiles.platformFileId).toBeDefined()
     expect(stagedFiles.status).toBeDefined()
     expect(stagedFiles.expiresAt).toBeDefined()
+  })
+
+  it('declares the platform file and context unique index', () => {
+    const indexNames = getTableConfig(stagedFiles).indexes.map((index) => index.config.name)
+
+    expect(indexNames).toContain('idx_staged_platform_context')
   })
 
   it('rejects inserting NULL into NOT NULL columns', () => {
