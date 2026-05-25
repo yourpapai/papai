@@ -21,6 +21,8 @@ export const PLUGIN_PERMISSIONS = [
   'chat.send',
   'tasks.read',
   'tasks.write',
+  'provider.task',
+  'identity',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]

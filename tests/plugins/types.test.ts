@@ -126,6 +126,16 @@ describe('pluginManifestSchema', () => {
     })
   })
 
+  describe('provider permissions', () => {
+    test('accepts provider.task and identity permissions', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task', 'identity'],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('activationTimeoutMs validation', () => {
     test('accepts values in 100–10000 range', () => {
       expect(pluginManifestSchema.safeParse({ ...baseManifest, activationTimeoutMs: 100 }).success).toBe(true)
