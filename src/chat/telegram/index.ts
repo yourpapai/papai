@@ -103,7 +103,18 @@ export class TelegramChatProvider implements ChatProvider {
         allowed: true,
         isBotAdmin: isAdmin,
         isGroupAdmin: isAdmin,
-        storageContextId: getThreadScopedStorageContextId(msg.contextId, msg.contextType, msg.threadId),
+        storageContextId: getThreadScopedStorageContextId(
+          msg.contextId,
+          msg.contextType,
+          msg.threadId,
+          this.platformInstanceId,
+        ),
+        configContextId: getThreadScopedStorageContextId(
+          msg.contextId,
+          msg.contextType,
+          undefined,
+          this.platformInstanceId,
+        ),
       }
       await handler(msg, reply, auth)
     })

@@ -8,12 +8,15 @@ import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
 import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
+import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
+import type { AuthorizationResult } from '../../../src/chat/types.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
+type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
 
 function isIncomingMessage(value: unknown): value is IncomingMessage {
   return (
@@ -28,6 +31,17 @@ function isIncomingMessage(value: unknown): value is IncomingMessage {
 
 function isBuiltPostedMessage(value: unknown): value is BuiltPostedMessage {
   return typeof value === 'object' && value !== null && 'msg' in value && isIncomingMessage(value.msg)
+}
+
+function getPostedEventHandler(provider: MattermostChatProvider): PostedEventHandler {
+  const handler = Reflect.get(provider as object, 'handlePostedEvent') as unknown
+  if (typeof handler !== 'function') throw new Error('Expected Mattermost posted event handler')
+  return handler as PostedEventHandler
+}
+
+function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult {
+  if (auth === undefined) throw new Error('Expected command auth to be captured')
+  return auth
 }
 
 // ---------------------------------------------------------------------------
@@ -488,6 +502,39 @@ describe('MattermostChatProvider', () => {
 
       // Verify threadId is properly set in the IncomingMessage
       expect(result.msg.threadId).toBe('threadRoot')
+
+      restoreFetch()
+    })
+
+    test('command auth uses scoped storage context for active platform instance', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+      provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+      let auth: AuthorizationResult | undefined
+      provider.registerCommand('test', (_msg, _reply, commandAuth): Promise<void> => {
+        auth = commandAuth
+        return Promise.resolve()
+      })
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '/test',
+          root_id: 'threadRoot',
+          parent_id: '',
+        }),
+      })
+
+      expect(requireAuth(auth).storageContextId).toBe(
+        toScopedThreadContextId({
+          platformInstanceId: 'mattermost-secondary',
+          nativeContextId: 'channel789',
+          threadId: 'threadRoot',
+        }),
+      )
 
       restoreFetch()
     })

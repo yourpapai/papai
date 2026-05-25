@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
 import { TelegramChatProvider, getTelegramFileFetcher } from '../../../src/chat/telegram/index.js'
+import type { AuthorizationResult } from '../../../src/chat/types.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -29,6 +30,7 @@ type SendMessageCall = [
   text: string,
   options: Partial<{ entities: unknown[]; message_thread_id: number }> | undefined,
 ]
+type BotCommandRegistrar = { command: (name: string, handler: (ctx: unknown) => Promise<void>) => void }
 
 const isBotMentionedFalse = (): boolean => false
 const includesTestBotMention = (text: string): boolean => text.includes('@testbot')
@@ -55,6 +57,21 @@ function isIncomingMessage(value: unknown): value is IncomingMessage {
 
 function isReplyFn(value: unknown): value is ReplyFn {
   return typeof value === 'object' && value !== null && 'text' in value && 'buttons' in value && 'formatted' in value
+}
+
+function isBotCommandRegistrar(value: unknown): value is BotCommandRegistrar {
+  return typeof value === 'object' && value !== null && 'command' in value
+}
+
+function encodeScoped(platformInstanceId: string, contextId: string, threadId: string | undefined): string {
+  const scoped = `pi:${Buffer.from(platformInstanceId).toString('base64url')}:ctx:${Buffer.from(contextId).toString('base64url')}`
+  if (threadId === undefined) return scoped
+  return `${scoped}:thread:${Buffer.from(threadId).toString('base64url')}`
+}
+
+function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult {
+  if (auth === undefined) throw new Error('Expected command auth to be captured')
+  return auth
 }
 
 function isBotWithSendMessage(
@@ -87,7 +104,9 @@ void mock.module('../../../src/auth.js', () => ({
     contextId: string,
     _contextType: 'dm' | 'group',
     threadId: string | undefined,
+    platformInstanceId: string | undefined,
   ): string => {
+    if (platformInstanceId !== undefined) return encodeScoped(platformInstanceId, contextId, threadId)
     // Thread-scoped: groupId:threadId for threads
     if (threadId !== undefined) return `${contextId}:${threadId}`
     return contextId
@@ -393,6 +412,46 @@ describe('TelegramChatProvider', () => {
       provider.registerCommand('test', async () => {
         // Handler
       })
+
+      delete process.env['TELEGRAM_BOT_TOKEN']
+    })
+
+    test('registerCommand passes scoped storage context for active platform instance', async () => {
+      process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
+      const provider = new TelegramChatProvider('test-token', 'telegram-secondary')
+      const bot = Reflect.get(provider as object, 'bot') as unknown
+      if (!isBotCommandRegistrar(bot)) throw new Error('Expected Telegram bot command registrar')
+      let registeredHandler: ((ctx: unknown) => Promise<void>) | undefined
+      bot.command = (_name, handler): void => {
+        registeredHandler = handler
+      }
+      Reflect.set(provider as object, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(true))
+      Reflect.set(provider as object, 'extractMessage', (): Promise<IncomingMessage> =>
+        Promise.resolve({
+          user: { id: '42', username: 'alice', isAdmin: true },
+          contextId: '100',
+          contextType: 'group',
+          isMentioned: true,
+          text: '/setup',
+          platformInstanceId: 'telegram-secondary',
+          threadId: '5',
+        }),
+      )
+      Reflect.set(provider as object, 'buildReplyFn', (): ReplyFn => ({
+        text: async (): Promise<void> => {},
+        formatted: async (): Promise<void> => {},
+        buttons: async (): Promise<void> => {},
+        typing: (): void => {},
+      }))
+      let auth: AuthorizationResult | undefined
+      provider.registerCommand('setup', (_msg, _reply, commandAuth): Promise<void> => {
+        auth = commandAuth
+        return Promise.resolve()
+      })
+
+      await registeredHandler!({ match: '', from: { id: 42 } })
+
+      expect(requireAuth(auth).storageContextId).toBe(encodeScoped('telegram-secondary', '100', '5'))
 
       delete process.env['TELEGRAM_BOT_TOKEN']
     })

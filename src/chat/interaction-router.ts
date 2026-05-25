@@ -240,6 +240,10 @@ const defaultDeps: InteractionRouteDeps = {
   handlePluginInteraction,
 }
 
+function getRoutedInteraction(interaction: IncomingInteraction, auth: AuthorizationResult): IncomingInteraction {
+  return { ...interaction, storageContextId: auth.storageContextId }
+}
+
 export function routeInteraction(
   interaction: IncomingInteraction,
   reply: ReplyFn,
@@ -254,22 +258,23 @@ export function routeInteraction(
   if (!auth.allowed) {
     return reply.text('You are not authorized to use this bot.').then(() => true)
   }
-  const { callbackData } = interaction
+  const routedInteraction = getRoutedInteraction(interaction, auth)
+  const { callbackData } = routedInteraction
 
   if (callbackData.startsWith('gsel:')) {
-    return resolvedDeps.handleGroupSettingsInteraction(interaction, reply)
+    return resolvedDeps.handleGroupSettingsInteraction(routedInteraction, reply)
   }
 
   if (callbackData.startsWith('cfg:')) {
-    return resolvedDeps.handleConfigInteraction(interaction, reply)
+    return resolvedDeps.handleConfigInteraction(routedInteraction, reply)
   }
 
   if (callbackData.startsWith('wizard_')) {
-    return resolvedDeps.handleWizardInteraction(interaction, reply)
+    return resolvedDeps.handleWizardInteraction(routedInteraction, reply)
   }
 
   if (callbackData.startsWith('plg:')) {
-    return resolvedDeps.handlePluginInteraction(interaction, reply)
+    return resolvedDeps.handlePluginInteraction(routedInteraction, reply)
   }
 
   log.debug({ callbackData }, 'No route matched for interaction callback')

@@ -8,7 +8,10 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../../src/authorized-groups.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { buildDiscordInteraction } from '../../src/chat/discord/interaction-helpers.js'
 import { routeInteraction } from '../../src/chat/interaction-router.js'
+import { buildTelegramInteraction } from '../../src/chat/telegram/interaction-helpers.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
 import { handleEditorMessage } from '../../src/config-editor/handlers.js'
 import { createEditorSession, deleteEditorSession } from '../../src/config-editor/state.js'
@@ -136,6 +139,70 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(calls).toEqual(['cfg'])
+  })
+
+  test('routes telegram cfg fallback with scoped auth context instead of native interaction storage', async () => {
+    const telegramInteraction = buildTelegramInteraction(
+      {
+        from: { id: 42, username: 'alice' },
+        chat: { id: 100, type: 'supergroup' },
+        callbackQuery: { data: 'cfg:edit:timezone', message: { message_id: 7, message_thread_id: 5 } },
+      },
+      true,
+      'telegram-secondary',
+    )
+    expect(telegramInteraction).not.toBeNull()
+    const scopedThreadId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-secondary',
+      nativeContextId: '100',
+      threadId: '5',
+    })
+    const seenStorageIds: string[] = []
+
+    const handled = await routeInteraction(telegramInteraction!, reply, { ...createMockAuth(true), storageContextId: scopedThreadId }, {
+      handleGroupSettingsInteraction: () => Promise.resolve(false),
+      handleConfigInteraction: (routedInteraction) => {
+        seenStorageIds.push(routedInteraction.storageContextId)
+        return Promise.resolve(true)
+      },
+      handleWizardInteraction: () => Promise.resolve(false),
+      handlePluginInteraction: () => Promise.resolve(false),
+    })
+
+    expect(handled).toBe(true)
+    expect(telegramInteraction!.storageContextId).toBe('100:5')
+    expect(seenStorageIds).toEqual([scopedThreadId])
+  })
+
+  test('routes discord plugin fallback with scoped auth context instead of native interaction storage', async () => {
+    const discordInteraction = buildDiscordInteraction(
+      {
+        user: { id: 'user-1', username: 'alice' },
+        customId: 'plg:toggle',
+        channelId: 'channel-1',
+        channel: { type: 0 },
+        message: { id: 'message-1' },
+      },
+      true,
+      'discord-secondary',
+    )
+    expect(discordInteraction).not.toBeNull()
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'discord-secondary', nativeContextId: 'channel-1' })
+    const seenStorageIds: string[] = []
+
+    const handled = await routeInteraction(discordInteraction!, reply, { ...createMockAuth(true), storageContextId: scopedContextId }, {
+      handleGroupSettingsInteraction: () => Promise.resolve(false),
+      handleConfigInteraction: () => Promise.resolve(false),
+      handleWizardInteraction: () => Promise.resolve(false),
+      handlePluginInteraction: (routedInteraction) => {
+        seenStorageIds.push(routedInteraction.storageContextId)
+        return Promise.resolve(true)
+      },
+    })
+
+    expect(handled).toBe(true)
+    expect(discordInteraction!.storageContextId).toBe('channel-1')
+    expect(seenStorageIds).toEqual([scopedContextId])
   })
 
   test('routes wizard callbacks through the wizard interaction dependency', async () => {

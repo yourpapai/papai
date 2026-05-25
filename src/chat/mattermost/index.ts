@@ -168,7 +168,18 @@ export class MattermostChatProvider implements ChatProvider {
         allowed: true,
         isBotAdmin: isAdmin,
         isGroupAdmin: isAdmin,
-        storageContextId: getThreadScopedStorageContextId(msg.contextId, msg.contextType, msg.threadId),
+        storageContextId: getThreadScopedStorageContextId(
+          msg.contextId,
+          msg.contextType,
+          msg.threadId,
+          this.platformInstanceId,
+        ),
+        configContextId: getThreadScopedStorageContextId(
+          msg.contextId,
+          msg.contextType,
+          undefined,
+          this.platformInstanceId,
+        ),
       }
       await command.handler(msg, reply, auth)
     } else if (this.messageHandler !== null) {
