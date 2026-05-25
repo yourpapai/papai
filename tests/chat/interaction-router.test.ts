@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
+import { getAiOutputSettings } from '../../src/ai-output-settings.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../../src/authorized-groups.js'
 import { routeInteraction } from '../../src/chat/interaction-router.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
@@ -378,6 +379,31 @@ describe('routeInteraction', () => {
 
     expect(getConfig('group-9', 'timezone')).toBe('Europe/Berlin')
     expect(getConfig(interaction.user.id, 'timezone')).toBeNull()
+  })
+
+  test('updates AI output setting for encoded target context', async () => {
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const buttonReplies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `cfg:ai:toolVisibility:on@${Buffer.from('group-9').toString('base64url')}`,
+      },
+      {
+        ...reply,
+        buttons: (content: string): Promise<void> => {
+          buttonReplies.push(content)
+          return Promise.resolve()
+        },
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(getAiOutputSettings('group-9').toolVisibility).toBe('on')
+    expect(getAiOutputSettings(interaction.user.id).toolVisibility).toBe('off')
+    expect(buttonReplies[0]).toContain('Tool calls: on')
   })
 
   test('starts setup for the selected group target', async () => {

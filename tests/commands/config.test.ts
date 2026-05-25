@@ -76,6 +76,32 @@ describe('/config Command', () => {
       expect(buttonCalls[0]).toContain('*(not set)*')
     })
 
+    test('includes AI output section and controls', async () => {
+      const buttonTexts: string[] = []
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(
+        {
+          ...reply,
+          buttons: (content, options): Promise<void> => {
+            buttonCalls.push(content)
+            assert.ok(options.buttons !== undefined, 'expected options.buttons to be defined')
+            buttonTexts.push(...options.buttons.map((button) => button.text))
+            return Promise.resolve()
+          },
+        },
+        USER_ID,
+        true,
+      )
+
+      expect(buttonCalls[0]).toContain('AI Output')
+      expect(buttonCalls[0]).toContain('Tool calls: off')
+      expect(buttonCalls[0]).toContain('Reasoning: off')
+      expect(buttonCalls[0]).toContain('Detail level: sanitized')
+      expect(buttonTexts).toContain('Show tool calls')
+      expect(buttonTexts).toContain('Show reasoning')
+      expect(buttonTexts).toContain('Use raw detail')
+    })
+
     test('shows unset placeholder for unconfigured keys', async () => {
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
@@ -84,10 +110,8 @@ describe('/config Command', () => {
       expect(output.length).toBeGreaterThan(0)
       const lines = output.split('\n').filter((line) => line.trim().length > 0)
       expect(lines.length).toBeGreaterThan(0)
-      // Every config line should show "(not set)" since no keys are configured
-      // (exclude the hint line at the end)
-      const configLines = lines.filter((line) => line.includes(':'))
-      expect(configLines.every((line) => line.includes('(not set)'))).toBe(true)
+      expect(lines).toContain('🔐 Kaneo API Key: *(not set)*')
+      expect(lines).toContain('🌍 Timezone: *(not set)*')
     })
 
     test('shows missing required plugin config under an unavailable plugin', async () => {

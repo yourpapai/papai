@@ -3,16 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { handleParsedAiOutputConfigCallback, parseAiOutputCallbackData } from '../ai-output-config-ui.js'
 import { handleEditorCallback, parseCallbackData, serializeCallbackData } from '../config-editor/index.js'
-import { listManageableGroups } from '../group-settings/access.js'
 import { dispatchGroupSelectorResult } from '../group-settings/dispatch.js'
 import { handleGroupSettingsSelectorCallback } from '../group-settings/selector.js'
-import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
 import { cancelWizard, getNextPrompt } from '../wizard/engine.js'
 import { validateAndSaveWizardConfig } from '../wizard/save.js'
 import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
+import { getValidatedDmCallbackTargetContextId, validateImplicitDmConfigTarget } from './config-target-validation.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import { getResponseText, getTargetContextId } from './interaction-router-support.js'
 import { handlePluginInteraction } from './plugin-interaction-handler.js'
@@ -20,11 +20,19 @@ import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.
 
 const log = logger.child({ scope: 'chat:interaction-router' })
 
+type ParsedEditorCallbackData = ReturnType<typeof parseCallbackData> & {
+  action: Exclude<ReturnType<typeof parseCallbackData>['action'], null>
+}
+
 function getEditorCallbackKey(
   key: ReturnType<typeof parseCallbackData>['key'],
 ): Parameters<typeof handleEditorCallback>[3] {
   if (key === null) return undefined
   return key
+}
+
+function isParsedEditorCallbackData(parsed: ReturnType<typeof parseCallbackData>): parsed is ParsedEditorCallbackData {
+  return parsed.action !== null
 }
 
 async function replyConfigEditorResult(
@@ -58,84 +66,68 @@ function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction,
   return dispatchGroupSelectorResult(result, reply, interaction.user.id)
 }
 
-function getValidatedDmTargetContextId(userId: string): string | null {
-  const activeGroupTarget = getActiveGroupSettingsTarget(userId)
-  if (activeGroupTarget === null) return null
-
-  const hasAccess = listManageableGroups(userId).some((group) => group.contextId === activeGroupTarget)
-  if (hasAccess) {
-    return activeGroupTarget
-  }
-
-  deleteGroupSettingsSession(userId)
-  return null
-}
-
-function getValidatedDmCallbackTargetContextId(userId: string, targetContextId: string): string | null {
-  if (targetContextId === userId) return targetContextId
-
-  const hasAccess = listManageableGroups(userId).some((group) => group.contextId === targetContextId)
-  if (hasAccess) {
-    return targetContextId
-  }
-
-  deleteGroupSettingsSession(userId)
-  return null
-}
-
-async function validateImplicitDmConfigTarget(userId: string, reply: ReplyFn): Promise<boolean> {
-  if (getActiveGroupSettingsTarget(userId) === null) return true
-
-  const previousActiveTarget = getActiveGroupSettingsTarget(userId)
-  const validatedTargetContextId = getValidatedDmTargetContextId(userId)
-  if (validatedTargetContextId !== null) return true
-
-  const message =
-    previousActiveTarget === null
-      ? 'That group is no longer available. Run /config or /setup again.'
-      : getMissingGroupTargetMessage(userId, previousActiveTarget)
-  await replyTextPreferReplace(reply, message)
-  return false
-}
-
 async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): Promise<true> {
   log.warn({ callbackData }, 'Unknown config editor callback data')
   await replyTextPreferReplace(reply, 'This action is no longer valid. Please start over with /config.')
   return true
 }
 
-async function defaultHandleConfigInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
-  const { callbackData, user } = interaction
-  if (!callbackData.startsWith('cfg:')) return false
-
-  const parsed = parseCallbackData(callbackData)
-
-  if (parsed.action === null) {
-    return replyUnknownConfigAction(reply, callbackData)
-  }
-
+async function handleAiOutputConfigInteraction(
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+  parsed: NonNullable<ReturnType<typeof parseAiOutputCallbackData>>,
+): Promise<boolean> {
   const targetContextId = getTargetContextId(parsed.targetContextId, interaction)
   if (
     interaction.contextType === 'dm' &&
     parsed.targetContextId === undefined &&
-    !(await validateImplicitDmConfigTarget(user.id, reply))
+    !(await validateImplicitDmConfigTarget(interaction.user.id, reply))
   ) {
     return true
   }
   if (interaction.contextType === 'dm' && parsed.targetContextId !== undefined) {
-    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(user.id, targetContextId)
+    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(interaction.user.id, targetContextId)
     if (validatedTargetContextId === null) {
-      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(user.id, targetContextId))
+      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, targetContextId))
+      return true
+    }
+  }
+
+  const section = handleParsedAiOutputConfigCallback(targetContextId, parsed)
+  if (section === null) {
+    return replyUnknownConfigAction(reply, interaction.callbackData)
+  }
+  await replyButtonsPreferReplace(reply, section.lines.join('\n'), section.buttons)
+  return true
+}
+
+async function handleEditorConfigInteraction(
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+  parsed: ParsedEditorCallbackData,
+): Promise<boolean> {
+  const targetContextId = getTargetContextId(parsed.targetContextId, interaction)
+  if (
+    interaction.contextType === 'dm' &&
+    parsed.targetContextId === undefined &&
+    !(await validateImplicitDmConfigTarget(interaction.user.id, reply))
+  ) {
+    return true
+  }
+  if (interaction.contextType === 'dm' && parsed.targetContextId !== undefined) {
+    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(interaction.user.id, targetContextId)
+    if (validatedTargetContextId === null) {
+      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, targetContextId))
       return true
     }
   }
   log.debug(
-    { userId: user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },
+    { userId: interaction.user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },
     'Handling config editor callback',
   )
 
   const key = getEditorCallbackKey(parsed.key)
-  const result = handleEditorCallback(user.id, targetContextId, parsed.action, key)
+  const result = handleEditorCallback(interaction.user.id, targetContextId, parsed.action, key)
 
   if (!result.handled) {
     log.warn({ action: parsed.action, key: parsed.key }, 'Config editor callback not handled')
@@ -144,8 +136,23 @@ async function defaultHandleConfigInteraction(interaction: IncomingInteraction, 
   }
 
   await replyConfigEditorResult(reply, targetContextId, result)
-
   return true
+}
+
+function defaultHandleConfigInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
+  const { callbackData } = interaction
+  if (!callbackData.startsWith('cfg:')) return Promise.resolve(false)
+
+  const aiOutputCallback = parseAiOutputCallbackData(callbackData)
+  if (aiOutputCallback !== null) return handleAiOutputConfigInteraction(interaction, reply, aiOutputCallback)
+
+  const parsed = parseCallbackData(callbackData)
+
+  if (!isParsedEditorCallbackData(parsed)) {
+    return replyUnknownConfigAction(reply, callbackData)
+  }
+
+  return handleEditorConfigInteraction(interaction, reply, parsed)
 }
 
 async function replyWithWizardButtons(

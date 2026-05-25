@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { buildAiOutputConfigSection } from '../ai-output-config-ui.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
@@ -139,6 +140,8 @@ export async function renderConfigForTarget(
   CONFIG_KEYS.forEach((key) => {
     lines.push(formatConfigLine(key, config[key]))
   })
+  const aiOutputSection = buildAiOutputConfigSection(targetContextId)
+  lines.push(...aiOutputSection.lines)
   appendPluginConfigLines(lines, targetContextId)
 
   if (!interactiveButtons) {
@@ -149,7 +152,11 @@ export async function renderConfigForTarget(
 
   lines.push('\n💡 Click a field below to edit it, or use `/setup` to configure everything.')
   await reply.buttons(lines.join('\n'), {
-    buttons: [...buildConfigButtons(config, targetContextId), ...buildPluginButtons(targetContextId)],
+    buttons: [
+      ...buildConfigButtons(config, targetContextId),
+      ...aiOutputSection.buttons,
+      ...buildPluginButtons(targetContextId),
+    ],
   })
 }
 
