@@ -6,6 +6,7 @@
 import type { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { generateText, stepCountIs, ModelMessage, ToolSet } from 'ai'
 
+import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ReplyFn } from './chat/types.js'
 import type { TaskProvider } from './providers/types.js'
@@ -63,6 +64,7 @@ export type InvokeModelArgs = {
   toolRouting: ToolRoutingInfo | undefined
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
+  progressReporter?: AiProgressReporter
 }
 
 export type StepOutput = {

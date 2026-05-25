@@ -5,6 +5,7 @@
 
 import { generateText } from 'ai'
 
+import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
@@ -21,6 +22,7 @@ export type ToolCallContext = {
   model: string
   modelRole: 'main' | 'small'
   turnId: string
+  progressReporter?: AiProgressReporter
 }
 
 const safeByteLength = (value: unknown): number | null => {
@@ -65,6 +67,11 @@ export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEv
     },
     ctx.turnId,
   )
+  ctx.progressReporter?.toolStarted({
+    toolName: event.toolCall.toolName,
+    toolCallId: event.toolCall.toolCallId,
+    input: event.toolCall.input,
+  })
 }
 
 export const buildToolCallStartHandler =
@@ -132,7 +139,16 @@ export const handleToolCallFinishEvent = (
     ctx.turnId,
   )
   emitFailureClassified(ctx, event)
-  handleToolCallFinish(ctx.contextId, reply, event)
+  ctx.progressReporter?.toolFinished({
+    toolName: event.toolCall.toolName,
+    toolCallId: event.toolCall.toolCallId,
+    input: event.toolCall.input,
+    durationMs: event.durationMs,
+    success: event.success,
+    output: event.output,
+    error: event.error,
+  })
+  handleToolCallFinish(ctx.contextId, undefined, event)
 }
 
 export const buildToolCallFinishHandler =
@@ -157,6 +173,7 @@ export const invokeModel = async (
     model: mainModel,
     modelRole: 'main',
     turnId,
+    progressReporter: args.progressReporter,
   }
   const result = await deps.generateText({
     model,
