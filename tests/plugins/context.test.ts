@@ -221,4 +221,32 @@ describe('buildPluginContext', () => {
       )
     })
   })
+
+  describe('identity gating', () => {
+    test('present with identity permission and a declared task provider type', () => {
+      const manifest = makeManifest({
+        permissions: ['identity', 'provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['kaneo'],
+        },
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      expect(ctx.identity).toBeDefined()
+    })
+
+    test('absent without identity permission', () => {
+      const { ctx } = buildPluginContext(makeManifest({ permissions: ['storage'] }), 'ctx-1')
+      expect(ctx.identity).toBeUndefined()
+    })
+
+    test('absent when identity is held but no task provider type is declared', () => {
+      const { ctx } = buildPluginContext(makeManifest({ permissions: ['identity'] }), 'ctx-1')
+      expect(ctx.identity).toBeUndefined()
+    })
+  })
 })

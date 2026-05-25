@@ -5,6 +5,7 @@
 
 import { logger } from '../logger.js'
 import { registerContributedTaskProviderType, type TaskProviderFactory } from '../providers/registry.js'
+import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
@@ -57,6 +58,8 @@ export type PluginContext = {
   readonly registration: PluginRegistration
   /** Present only when the 'provider.task' permission is held. */
   readonly providerRuntime?: PluginProviderRuntime
+  /** Present only when 'identity' is held and the plugin declares one task provider type. */
+  readonly identity?: PluginIdentityFacade
 }
 
 function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
@@ -169,6 +172,13 @@ export function buildPluginContext(
     ? buildProviderRuntime(manifest.providerAllowedHosts, log)
     : undefined
 
+  const declaredTypes = manifest.contributes.taskProviderTypes
+  const [declaredProviderType] = declaredTypes
+  const identity =
+    permissions.has('identity') && declaredTypes.length === 1 && declaredProviderType !== undefined
+      ? buildIdentityFacade(declaredProviderType)
+      : undefined
+
   const ctx: PluginContext = Object.freeze({
     pluginId: manifest.id,
     contextId,
@@ -177,6 +187,7 @@ export function buildPluginContext(
     log,
     registration: buildRegistration(manifest, collected),
     providerRuntime,
+    identity,
   })
 
   return { ctx, collected }
