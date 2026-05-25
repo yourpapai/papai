@@ -3,13 +3,19 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { makeTools } from '../../src/tools/index.js'
+import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 describe('makeTools', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   test('exposes lookup_group_history only for scoped thread context ids', () => {
     const provider = createMockProvider()
     const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })

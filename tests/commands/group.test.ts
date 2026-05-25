@@ -853,8 +853,47 @@ describe('group commands', () => {
       await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
 
       expect(seenGroupIds).toEqual(['group-123'])
-      expect(seenContexts).toEqual([{ contextId: 'group-123', contextType: 'group' }])
+      expect(seenContexts).toEqual([
+        { contextId: 'group-123', contextType: 'group', platformInstanceId: 'telegram-default' },
+      ])
       expect(textCalls[0]).toContain('Native Group Label (added by Admin Label)')
+    })
+
+    test('routes scoped authorized group labels through the source platform instance', async () => {
+      const seenSourceGroupIds: string[] = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const sourceProvider = createMockChat({
+        resolveGroupLabel: (groupId: string): Promise<string | null> => {
+          seenSourceGroupIds.push(groupId)
+          return Promise.resolve('Source Group Label')
+        },
+        resolveUserLabel: (): Promise<string | null> => Promise.resolve('Source Admin Label'),
+      })
+      const aggregateProvider = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveGroupLabel: (): Promise<string | null> => Promise.resolve(null),
+        resolveUserLabel: (): Promise<string | null> => Promise.resolve(null),
+      })
+      const routerProvider: ChatProvider & {
+        readonly getInstance: (id: string) => { readonly provider: ChatProvider } | null
+      } = {
+        ...aggregateProvider,
+        getInstance: (_id: string): { readonly provider: ChatProvider } | null => ({ provider: sourceProvider }),
+      }
+      registerGroupCommand(routerProvider)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-123' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(seenSourceGroupIds).toEqual(['group-123'])
+      expect(textCalls[0]).toContain('Source Group Label')
     })
 
     test('does not pass DM platform instance into /groups added-by label lookups', async () => {

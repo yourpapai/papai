@@ -22,9 +22,8 @@ const decodeComponent = (value: string): string | null => {
     return null
   }
 }
-const SCOPED_CONTEXT_PREFIX = 'pi:'
-const SCOPED_CONTEXT_MARKER = ':ctx:'
 const SCOPED_THREAD_MARKER = ':thread:'
+const SCOPED_CONTEXT_PATTERN = /^pi:([A-Za-z0-9_-]+):ctx:([A-Za-z0-9_-]+)(?::thread:([A-Za-z0-9_-]+))?$/u
 
 export const toScopedContextId = (input: PlatformScopedContext): string =>
   `pi:${encodeComponent(input.platformInstanceId)}:ctx:${encodeComponent(input.nativeContextId)}`
@@ -35,8 +34,23 @@ export const toScopedThreadContextId = (input: PlatformScopedThreadContext): str
   return `${scoped}:thread:${encodeComponent(input.threadId)}`
 }
 
-export const isScopedContextId = (contextId: string): boolean =>
-  contextId.startsWith(SCOPED_CONTEXT_PREFIX) && contextId.includes(SCOPED_CONTEXT_MARKER)
+export const parseScopedContextId = (contextId: string): PlatformScopedThreadContext | null => {
+  const match = SCOPED_CONTEXT_PATTERN.exec(contextId)
+  if (match === null) return null
+  const platformComponent = match[1]
+  const contextComponent = match[2]
+  if (platformComponent === undefined || contextComponent === undefined) return null
+  const platformInstanceId = decodeComponent(platformComponent)
+  const nativeContextId = decodeComponent(contextComponent)
+  const encodedThreadId = match[3]
+  const threadId = encodedThreadId === undefined ? undefined : decodeComponent(encodedThreadId)
+  if (platformInstanceId === null || nativeContextId === null || threadId === null) return null
+  if (platformInstanceId.length === 0 || nativeContextId.length === 0) return null
+  if (threadId !== undefined && threadId.length === 0) return null
+  return { platformInstanceId, nativeContextId, threadId }
+}
+
+export const isScopedContextId = (contextId: string): boolean => parseScopedContextId(contextId) !== null
 
 export const toStorageContextId = (platformInstanceId: string, nativeOrScopedContextId: string): string => {
   if (isScopedContextId(nativeOrScopedContextId)) return nativeOrScopedContextId
@@ -44,17 +58,9 @@ export const toStorageContextId = (platformInstanceId: string, nativeOrScopedCon
 }
 
 export const getNativeContextId = (scopedOrNativeContextId: string): string => {
-  if (!isScopedContextId(scopedOrNativeContextId)) return scopedOrNativeContextId
-  const scopedBody = scopedOrNativeContextId.slice(SCOPED_CONTEXT_PREFIX.length)
-  const contextMarkerIndex = scopedBody.indexOf(SCOPED_CONTEXT_MARKER)
-  if (contextMarkerIndex === -1) return scopedOrNativeContextId
-  const contextStart = contextMarkerIndex + SCOPED_CONTEXT_MARKER.length
-  const threadMarkerIndex = scopedBody.indexOf(SCOPED_THREAD_MARKER, contextStart)
-  const encodedContext =
-    threadMarkerIndex === -1 ? scopedBody.slice(contextStart) : scopedBody.slice(contextStart, threadMarkerIndex)
-  const nativeContextId = decodeComponent(encodedContext)
-  if (nativeContextId === null) return scopedOrNativeContextId
-  return nativeContextId
+  const parsed = parseScopedContextId(scopedOrNativeContextId)
+  if (parsed === null) return scopedOrNativeContextId
+  return parsed.nativeContextId
 }
 
 export const isScopedThreadContextId = (contextId: string): boolean =>

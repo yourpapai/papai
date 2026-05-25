@@ -5,12 +5,13 @@
 
 import pLimit from 'p-limit'
 
-import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
-import { resolveChatGroupDisplayLabel, resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
-import { getNativeContextId, toStorageContextId } from '../chat/scoped-context.js'
+import { addAuthorizedGroup, removeAuthorizedGroup } from '../authorized-groups.js'
+import { resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
+import { toStorageContextId } from '../chat/scoped-context.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn, ResolveUserContext } from '../chat/types.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.js'
 import { logger } from '../logger.js'
+import { listAuthorizedGroupDisplayLines } from './group-authorized-list.js'
 import { extractGroupUserId } from './group-user-id.js'
 
 const log = logger.child({ scope: 'commands:group' })
@@ -76,27 +77,6 @@ function resolveUserLabelCached(
   return pending
 }
 
-function resolveGroupLabelCached(
-  chat: ChatProvider,
-  groupId: string,
-  cache: Map<string, Promise<string | null>>,
-  scheduleLookup: ScheduleLookup,
-): Promise<string | null> {
-  const existing = cache.get(groupId)
-  if (existing !== undefined) return existing
-  const pending = scheduleLookup(() =>
-    resolveChatGroupDisplayLabel(chat, groupId).catch((error: unknown): string | null => {
-      log.warn(
-        { groupId, error: error instanceof Error ? error.message : String(error) },
-        'Group label lookup failed in group command',
-      )
-      return null
-    }),
-  )
-  cache.set(groupId, pending)
-  return pending
-}
-
 export function registerGroupCommand(chat: ChatProvider): void {
   chat.registerCommand('group', async (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => {
     if (msg.contextType === 'dm') {
@@ -114,32 +94,11 @@ export function registerGroupCommand(chat: ChatProvider): void {
       await reply.text('Only bot admins can list authorized groups.')
       return
     }
-    const groups = listAuthorizedGroups()
-    if (groups.length === 0) {
+    const lines = await listAuthorizedGroupDisplayLines(chat)
+    if (lines.length === 0) {
       await reply.text('No authorized groups.')
       return
     }
-    const groupLabelCache = new Map<string, Promise<string | null>>()
-    const userLabelCache = new Map<string, Promise<string | null>>()
-    const limit = pLimit(MAX_CONCURRENT_LABEL_LOOKUPS)
-    const lines = await Promise.all(
-      groups.map(async (group) => {
-        const nativeGroupId = getNativeContextId(group.group_id)
-        const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
-          resolveGroupLabelCached(chat, nativeGroupId, groupLabelCache, limit),
-          resolveUserLabelCached(
-            { chat, contextId: nativeGroupId, contextType: 'group', platformInstanceId: undefined },
-            group.added_by,
-            userLabelCache,
-            limit,
-          ),
-        ])
-
-        const groupLabel = makeDisplayLabel(resolvedGroupLabel, nativeGroupId)
-        const userLabel = makeDisplayLabel(resolvedUserLabel, group.added_by)
-        return `${groupLabel} (added by ${userLabel})`
-      }),
-    )
     await reply.text(`Authorized groups:\n${lines.join('\n')}`)
   })
 }

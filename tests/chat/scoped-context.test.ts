@@ -42,11 +42,24 @@ describe('scoped chat context ids', () => {
     expect(isScopedContextId('group-123')).toBe(false)
   })
 
+  test('rejects malformed scoped-looking context ids', () => {
+    expect(isScopedContextId('pi:not-valid:ctx:')).toBe(false)
+    expect(isScopedContextId('pi:abc:ctx:def')).toBe(false)
+    expect(isScopedContextId('pi:dGVsZWdyYW0:ctx:')).toBe(false)
+    expect(isScopedContextId('pi::ctx:MTIz')).toBe(false)
+  })
+
   test('converts native ids to storage ids exactly once', () => {
     const scoped = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-123' })
 
     expect(toStorageContextId('telegram-default', 'group-123')).toBe(scoped)
     expect(toStorageContextId('telegram-default', scoped)).toBe(scoped)
+  })
+
+  test('does not pass through malformed scoped-looking ids as storage ids', () => {
+    expect(toStorageContextId('telegram-default', 'pi:abc:ctx:def')).toBe(
+      'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:cGk6YWJjOmN0eDpkZWY',
+    )
   })
 
   test('returns native ids from scoped ids', () => {
@@ -58,5 +71,6 @@ describe('scoped chat context ids', () => {
 
   test('returns original input for invalid scoped-looking ids', () => {
     expect(getNativeContextId('pi:not-base64:ctx:also-not-base64')).toBe('pi:not-base64:ctx:also-not-base64')
+    expect(getNativeContextId('pi:abc:ctx:def')).toBe('pi:abc:ctx:def')
   })
 })
