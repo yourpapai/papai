@@ -25,13 +25,18 @@ export type AiOutputConfigSection = {
 
 const encodeContextId = (contextId: string): string => Buffer.from(contextId).toString('base64url')
 const BASE64URL_RE = /^[A-Za-z0-9_-]+$/u
+const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 
 function decodeContextId(encoded: string): string | null {
   if (encoded.length === 0 || !BASE64URL_RE.test(encoded)) return null
 
-  const decoded = Buffer.from(encoded, 'base64url').toString('utf8')
-  if (decoded.length === 0) return null
-  return decoded
+  try {
+    const decoded = STRICT_UTF8_DECODER.decode(Buffer.from(encoded, 'base64url'))
+    if (decoded.length === 0) return null
+    return decoded
+  } catch {
+    return null
+  }
 }
 
 function appendContext(data: string, targetContextId: string | undefined): string {

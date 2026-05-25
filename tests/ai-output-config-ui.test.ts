@@ -55,6 +55,8 @@ describe('ai-output-config-ui', () => {
   test('rejects malformed encoded target callback data', () => {
     expect(parseAiOutputCallbackData('cfg:ai:toolVisibility:on@!!!')).toBeNull()
     expect(parseAiOutputCallbackData('cfg:ai:toolVisibility:on@')).toBeNull()
+    expect(parseAiOutputCallbackData('cfg:ai:toolVisibility:on@____')).toBeNull()
+    expect(parseAiOutputCallbackData('cfg:ai:toolVisibility:on@8A')).toBeNull()
   })
 
   test('callback writes target context and returns refreshed section', () => {
