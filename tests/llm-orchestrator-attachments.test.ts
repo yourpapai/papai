@@ -67,13 +67,13 @@ describe('llm-orchestrator-attachments', () => {
       // The configured-timezone tag must also match the full pattern (which enforces two-digit HH:MM).
       expect(tzResult.modelMessage.content).toMatch(TAG_THEN_HELLO)
 
-      // Confirm the two results carry different string content (UTC+0 vs UTC+5 differ unless run at midnight).
+      // The +5h Asia/Karachi offset shifts the hour field, so the two tags can never be identical:
+      // a regression that ignored chatUserId and always resolved UTC would make these equal.
       const utcContent = utcResult.modelMessage.content
       const tzContent = tzResult.modelMessage.content
       assert(typeof utcContent === 'string', 'expected string content')
       assert(typeof tzContent === 'string', 'expected string content')
-      expect(typeof utcContent).toBe('string')
-      expect(typeof tzContent).toBe('string')
+      expect(utcContent).not.toBe(tzContent)
     })
   })
 })

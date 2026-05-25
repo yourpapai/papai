@@ -184,8 +184,6 @@ export const emitLlmError = (
   )
 }
 
-const orchestratorLog = logger.child({ scope: 'llm-orchestrator' })
-
 export const logProcessMessage = (
   contextId: string,
   configContextId: string | undefined,
@@ -194,11 +192,11 @@ export const logProcessMessage = (
   attachmentIds: readonly string[],
   turnId: string,
 ): void => {
-  orchestratorLog.debug(
+  log.debug(
     { contextId, configContextId, chatUserId, userText, newAttachmentIds: attachmentIds, turnId },
     'processMessage called',
   )
-  orchestratorLog.info({ contextId, chatUserId, messageLength: userText.length, turnId }, 'Message received from user')
+  log.info({ contextId, chatUserId, messageLength: userText.length, turnId }, 'Message received from user')
 }
 
 type HandleLlmTurnErrorArgs = {

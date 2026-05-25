@@ -1319,6 +1319,8 @@ describe('processMessage', () => {
       const persisted = getCachedHistory(attachmentCtx)[0]
       expect(persisted).toBeDefined()
       expect(typeof persisted!.content).toBe('string')
+      // The attachment-parts history string also carries the leading <current_time> tag (spec).
+      expect(persisted!.content).toMatch(/^<current_time>.*<\/current_time>\n/u)
       expect(persisted!.content).toContain('[User attached')
     })
 
