@@ -903,6 +903,259 @@ explanation for the low headline score.
 
 ### C2. Quality assessment
 
+#### Test-infrastructure verdict
+
+The suite is structurally sound. DI-first adoption stands at a 120:26 file ratio (~4.6:1), and
+the majority of the 26 `mock.module()` users target modules with no `Deps` interface — external
+SDKs (`ai`, `@ai-sdk/openai-compatible`), infrastructure modules (`src/logger.ts`, DB, scheduler,
+startup glue) — where `mock.module()` is the only available isolation technique. Of the
+in-scope modules that receive `mock.module()` treatment, only 4 distinct modules across 16
+combined occurrences are inside the mutate scope: `src/providers/factory.ts` (13 occurrences),
+`src/providers/kaneo/provision.ts` (1), `src/recurring.ts` (1), and `src/users.ts` (1) (B2).
+The global `beforeEach` in `mock-reset.ts` re-mocks all four on every one of ~4,817 tests (B1,
+B2). The most acute consequence of this is `src/providers/factory.ts`: 49 NoCoverage mutants,
+0 killed — not because factory logic is untested, but because the instrumented module binding
+is replaced in virtually every test before any `cover()` call can fire (B2, B4).
+
+The genuine test-quality gaps identified from the survived-mutant list are narrow and confined:
+`providers/kaneo/label-resource.ts` (16 survived, 1 killed — a 6% kill rate despite a 459-line
+test file) and `tools/update-status.ts` (18 survived, 6 killed). `providers/kaneo/update-label.ts`
+and `providers/kaneo/update-project.ts` have no main-suite tests at all, but both are
+provider-layer helpers whose coverage path runs entirely through the E2E suite (excluded from
+the mutation run) and whose NoCoverage mutants are also partly attributable to the A2 static
+collapse (B4).
+
+#### Issue ranking by axis
+
+The two axes are: (a) impact on **measurement accuracy** — how much does this issue distort
+the reported mutation score? — and (b) impact on **genuine confidence** in the code — does
+fixing it reveal real test gaps or merely change a number?
+
+| Rank | Issue                                                                                                 | Measurement-accuracy impact                                                                                                                                                                                                     | Genuine-confidence impact                                                                                                                                                                                                                    |
+| ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Eager-import static bucketing (`@hughescr/stryker-bun-runner` coverage-preload, `ignoreStatic: true`) | **Critical** — drives 77.2% Ignored share (8,032 mutants); headline 23.54% is computed over only 16.1% of instrumented mutants; A6 shows the real per-file score can be 66.7% on a file that scores 0% under the current config | **None** — this is a pure measurement artifact; the static bucket hides real kills rather than revealing test absences                                                                                                                       |
+| 2    | `factory.ts` over-mocking (global reset + 13 explicit call sites while DI slots exist)                | **High** — produces 49 NoCoverage / 0 killed for `factory.ts`; eliminates all perTest hits for its mutants independent of the static-collapse mechanism (B2, B4)                                                                | **Moderate** — a DI migration would expose whether `factory.ts` mutations are genuinely killed by existing path-exercising tests or whether the mocks were also hiding real gaps                                                             |
+| 3    | Weak assertions in `label-resource.ts` and `update-status.ts`                                         | **Low** — survived mutants are already scored; they correctly appear in the 613-survived total and do not distort the headline number (they make it worse, not wrong)                                                           | **High** — 16 survivors / 1 kill on `label-resource.ts` and 18 survivors / 6 kills on `update-status.ts` are the clearest actionable signals in the dataset; these tests exercise the files but under-assert on branches and boundaries (B4) |
+| 4    | Untested files (`update-label.ts`, `update-project.ts`)                                               | **Low** — both files resolve to NoCoverage, which is already included in the valid-mutant denominator; they add 46 NoCoverage entries but do not shift the percentage materially                                                | **High** — no main-suite unit test exists for either file; all kills must come from E2E (excluded) or indirect paths through eagerly imported wrappers; the absence is a genuine gap                                                         |
+| 5    | `provision.ts`, `recurring.ts`, `users.ts` mocking (1 occurrence each, no DI surface)                 | **Marginal** — one occurrence each; the impact on the aggregate score is small                                                                                                                                                  | **Low** — B3 Divergence 3 and the B3 analysis classify these as legitimate fallbacks; no DI surface exists on these modules                                                                                                                  |
+
+#### Overall verdict
+
+The suite is fundamentally DI-first and healthier than the 23.54% headline implies. The
+dominant issue — issue 1 above — is a runner configuration artifact: the
+`@hughescr/stryker-bun-runner` deliberately eager-imports every mutated module before any test
+runs, routing all module-level mutant hits to the `static` bucket, which `ignoreStatic: true`
+then discards entirely. A6 demonstrated directly that this same codebase produces 66.7% on a
+representative file when `ignoreStatic: false` is used, confirming that the existing tests do
+actively kill mutants. The 23.54% figure is therefore not a credible measure of suite quality
+in its current measurement configuration: it measures what fraction of the surviving perTest
+mutants are killed after 77.2% of all mutants have been silently excluded. Genuine improvements
+are available (issues 3 and 4), but they are secondary to first obtaining a trustworthy
+measurement baseline.
+
 ### C3. Options for a future effort (deferred — not executed)
+
+Each option below is tagged **Deferred — not executed**. These are trade-off presentations for
+a future brainstorming/approval cycle, not decisions.
+
+---
+
+#### Area 1: Measurement configuration (fixing the static-bucket discard)
+
+The root problem is that `ignoreStatic: true` discards 77.2% of instrumented mutants because
+the `@hughescr/stryker-bun-runner` eager-import preload writes all module-level hits to the
+`static` bucket before any `beforeEach` sets `currentTestId` (A2 §3). A6 established that
+flipping `ignoreStatic` to `false` on a single file moves the score from 0% to 66.7%, with the
+trade-off that every static mutant then runs against the full 4,817-test suite. The Stryker
+planner's own warning at A6 quantified this: 43 static mutants (88% of that file's total) were
+estimated to consume 100% of the run time for that file alone.
+
+**Option 1a — `ignoreStatic: false` repo-wide** _(Deferred — not executed)_
+
+Set `ignoreStatic: false` in `stryker.config.json` globally.
+
+- Pro: produces a single, correct repo-wide mutation score that attributes static mutants to
+  the full suite; directly matches the A6 result pattern.
+- Con: extremely long wall-clock runtime. With ~8,032 currently-static mutants each requiring a
+  full 4,817-test run (per the A6 planner warning that 88% of one file's mutants were static
+  and consumed 100% of that file's run time), the repo-wide run is estimated at many hours even
+  at `concurrency: 8`. This makes it unsuitable as a local gate or a fast CI check.
+
+**Option 1b — `ignoreStatic: false` scoped to specific areas or via incremental/changed-files
+runs** _(Deferred — not executed)_
+
+Use a per-area Stryker config (e.g., `mutate` scoped to a single subdirectory or the changed
+files in a PR) with `ignoreStatic: false`, keeping the baseline full-run config at
+`ignoreStatic: true` for speed.
+
+- Pro: tractable cost per run; A6 showed a single-file `ignoreStatic: false` run completes in
+  ~7 minutes; a handful of files or a directory is feasible in CI.
+- Con: no single repo-wide comparable number; different areas must be measured independently
+  and the results cannot be summed into one score without a full run. Requires discipline to
+  keep the scoped configs up to date as the codebase changes.
+
+**Option 1c — Evaluate, patch, or replace `@hughescr/stryker-bun-runner`** _(Deferred — not
+executed)_
+
+The eager-import behavior is partly inherent to the pinned `@hughescr/stryker-bun-runner`:
+A2 §3 shows the runner's coverage-preload template explicitly comments that it imports every
+mutated module before any `beforeEach` so that module-level code lands in the static bucket.
+A5 confirmed that the preload list is forwarded unconditionally from `bunfig.toml` with no
+mechanism to override it from an ephemeral Stryker config.
+
+- Sub-option: contribute a patch upstream to make the eager-import loop opt-out or
+  configurable, so that module-level hits can be recorded under the first test that imports the
+  module rather than during preload.
+- Sub-option: evaluate whether a newer version of the runner (or an alternative Bun-compatible
+  Stryker runner) has addressed the static-bucket attribution behavior.
+- Sub-option: replace the runner with a custom runner that does not perform the eager-import
+  preload, accepting the trade-off that module-load-time non-determinism must then be managed
+  by the test suite itself.
+- Pro: if resolved at the runner level, `ignoreStatic: true` would no longer be needed, or the
+  static bucket would shrink to only genuinely measurement-neutral mutants; the headline score
+  would become accurate without the cost of `ignoreStatic: false` full-suite runs.
+- Con: `@hughescr/stryker-bun-runner` is a third-party dependency; patching requires
+  understanding its internal template system (A2 §2–3) and coordinating a fork or upstream PR;
+  a replacement runner requires equivalent coverage-preload infrastructure to be rebuilt.
+
+**Note on concurrency tuning:** Adjusting `concurrency` is **not** a viable option for reducing
+the static share. A4 disproved this hypothesis conclusively: changing from `concurrency: 8` to
+`concurrency: 1` produced bit-for-bit identical mutant-status counts (69 Ignored, 12
+NoCoverage, 4 CompileError, 0 Killed, 0 Survived). The runner forces `--concurrency=1` inside
+every Bun worker regardless of the Stryker-level `concurrency` setting (A2 §5).
+
+**Note on preload reordering:** Reordering the project preloads in `bunfig.toml` is similarly
+**not viable** as a remedy. A5 showed that (a) dropping `mock-reset.ts` from the preload
+requires editing the committed `bunfig.toml`, which is out of scope for a Stryker-only config
+change, and (b) even if removed, the runner's own eager-import loop runs before any project
+preload and would continue to route module-level hits to `cov.static` independently of what
+the project preloads contain (A2 §3, A5 conclusion).
+
+---
+
+#### Area 2: Reducing in-scope `mock.module()` via DI migration
+
+The factory.ts over-mocking (B2, B3 Divergences 1 and 2, B4) is the second independent
+measurement-suppression mechanism. `src/providers/factory.ts` accrues 49 NoCoverage / 0 killed
+because the instrumented module is replaced process-wide on every test — first by the global
+`beforeEach` in `mock-reset.ts` (which is in `mock-reset.ts`'s 29-module loop) and then by 13
+additional explicit call sites across `tests/commands/context.test.ts` (5 sites) and
+`tests/llm-orchestrator.test.ts` (6 sites, plus others).
+
+**Option 2a — Migrate redundant `factory.ts` mocks to DI-based overrides in the two highest-
+impact files** _(Deferred — not executed)_
+
+B3 established that both divergence files already have DI injection slots available:
+`ContextCommandDeps.buildProvider` (in `tests/commands/context.test.ts`) and
+`LlmOrchestratorDeps.buildProviderForUser` (in `tests/llm-orchestrator.test.ts`). In both
+cases the `mock.module()` call and the DI override are wiring the same logical call, making the
+module mock redundant alongside the Deps-based approach.
+
+- Pro: replacing the redundant `mock.module()` calls with direct DI overrides (`snapshotDeps({
+buildProvider: () => provider })` pattern) would allow Stryker's instrumented `factory.ts` to
+  remain loaded during those tests, converting its NoCoverage mutants into Killed or Survived
+  classifications and making the mutation data actionable for `factory.ts`.
+- Con: touches existing stable tests; the repo convention (B3 §Stated preference) explicitly
+  states "Do not rewrite existing stable tests just to match DI unless the work already touches
+  that area." The migration should be scoped only to the highest-impact divergences (Divergences
+  1 and 2) and deferred until the relevant test files are already being modified for another
+  reason, or until measurement correctness is established as a sufficient justification on its
+  own.
+- Scope note: `users.ts`, `recurring.ts`, and `provision.ts` mocks (1 occurrence each) are
+  **not targets** — B3 Divergence 3 classified `users.ts` as a legitimate fallback (no DI
+  surface on `src/users.ts`) and the B3 analysis extends the same reasoning to `recurring.ts`
+  and `provision.ts`. Migrating these would require adding `Deps` interfaces to the source
+  modules themselves, which is a wider change than a test refactor.
+
+---
+
+#### Area 3: Full-repo true-score run
+
+The A6 probe gave a single-file true score of 66.7% for `search-tasks.ts` under `ignoreStatic:
+false`. Extrapolating this to the repo as a whole is uncertain (A6 §Extrapolation uncertainty
+statement), but the direction is clear: the true repo-wide score is materially higher than
+23.54%.
+
+**Option 3a — One-off full `ignoreStatic: false` run** _(Deferred — not executed)_
+
+Run a single full mutation suite with `ignoreStatic: false` (and the current `concurrency: 8`)
+to obtain the actual repo-wide score.
+
+- Pro: produces a definitive reference number; reveals how much of the 613 currently-scored
+  survived mutants are already covered by the existing suite once static attribution is removed;
+  provides the correct baseline against which to set a meaningful threshold (see Area 4).
+- Con: very long runtime; with ~8,032 static mutants each requiring a full 4,817-test run, the
+  estimated wall-clock time is many hours even at `concurrency: 8` (per the A6 planner
+  warning). Should be treated as a one-time calibration run, not a routine gate.
+
+**Option 3b — Scheduled nightly or weekly CI `ignoreStatic: false` full run** _(Deferred — not
+executed)_
+
+Configure a CI schedule (e.g., nightly or weekly) to run the full `ignoreStatic: false` suite
+on a dedicated machine with high concurrency, and publish the score as a tracked metric over
+time.
+
+- Pro: the runtime cost is amortized; the trend line becomes a quality indicator independent of
+  the per-PR gate; regressions are visible without blocking development.
+- Con: requires CI infrastructure with enough cores to make the run tractable; the result is
+  not available at PR time for blocking-gate purposes; the score lags the codebase by up to one
+  day/week.
+
+---
+
+#### Area 4: Threshold policy for the `break` gate
+
+The current `stryker.config.json` sets `break: 40` (fail the run if the score falls below 40%).
+The baseline score is 23.54% — below the threshold — but C1 established that this is a
+measurement artifact, not a quality deficit. The gate currently fails for the wrong reason.
+
+**Option 4a — Keep the `break: 40` gate, but only after measurement is corrected** _(Deferred
+— not executed)_
+
+Leave the threshold value unchanged and defer re-enabling it as a hard gate until either the
+runner's static-bucket issue is resolved (Area 1, option 1c) or a correct repo-wide score is
+established via a full `ignoreStatic: false` run (Area 3).
+
+- Pro: no architectural change needed; the gate value of 40% may prove to be in the right range
+  once the true score is known.
+- Con: the gate remains broken (always fails) until measurement is corrected; this creates noise
+  in CI and may be ignored.
+
+**Option 4b — Ratchet / baseline approach** _(Deferred — not executed)_
+
+Record the correct repo-wide score (from Area 3) as a baseline and configure Stryker to fail
+only when the score regresses below that baseline by more than a defined tolerance (e.g., 2
+percentage points), rather than failing against a fixed absolute threshold.
+
+- Pro: focuses the gate on regressions rather than absolute levels; a team that starts at 66%
+  (hypothetical true score) is protected against dropping to 60% without needing to pre-commit
+  to what the "right" absolute floor is.
+- Con: requires tooling to persist the baseline across runs; baseline drift must be managed
+  (e.g., a deliberate score improvement should update the baseline); more operational overhead
+  than a simple fixed threshold.
+
+**Option 4c — Scope the gate to incremental / changed-files runs only** _(Deferred — not
+executed)_
+
+Disable the repo-wide `break` threshold and instead apply a per-PR incremental mutation run
+(`--changed-since=origin/master` or equivalent) with a threshold applied only to the mutants
+in changed files.
+
+- Pro: tractable runtime on changed files; focuses quality enforcement where code is actively
+  being modified; avoids penalizing legacy files with known measurement issues.
+- Con: no protection against gradual degradation of unchanged files; incremental mutation
+  results depend on `git diff` scope and may miss regressions in files touched by indirect
+  changes; still requires measurement to be correct for the changed-files subset.
+
+**Important constraint across all options:** None of the threshold options (4a, 4b, 4c) should
+be applied as an enforced gate until the measurement is corrected. Today the gate fails because
+77.2% of mutants are excluded by the `ignoreStatic: true` + eager-import-preload interaction,
+not because the tests are inadequate. Applying a tighter threshold to a broken measurement
+instrument produces false pressure without guiding meaningful improvement.
+
+---
+
+These options are recorded for a separate, future brainstorming/approval cycle and nothing here
+is acted upon.
 
 ## 5. Appendix — Commands & Raw Outputs
