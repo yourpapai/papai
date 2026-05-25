@@ -7,6 +7,7 @@ import pLimit from 'p-limit'
 
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
 import { resolveChatGroupDisplayLabel, resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
+import { toScopedContextId } from '../chat/scoped-context.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn, ResolveUserContext } from '../chat/types.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.js'
 import { logger } from '../logger.js'
@@ -194,17 +195,19 @@ async function handleAuthorizedGroupCommand(
     return
   }
 
+  const storageGroupId = toScopedContextId({ platformInstanceId: msg.platformInstanceId, nativeContextId: groupId })
+
   if (subcommand === 'add') {
-    addAuthorizedGroup(groupId, msg.user.id)
+    addAuthorizedGroup(storageGroupId, msg.user.id)
     await reply.text(`Group ${groupId} authorized.`)
-    log.info({ groupId, userId: msg.user.id }, 'Authorized group added')
+    log.info({ groupId: storageGroupId, nativeGroupId: groupId, userId: msg.user.id }, 'Authorized group added')
     return
   }
 
   if (subcommand === 'remove') {
-    const removed = removeAuthorizedGroup(groupId)
+    const removed = removeAuthorizedGroup(storageGroupId)
     await reply.text(removed ? `Group ${groupId} removed.` : `Group ${groupId} was not authorized.`)
-    log.info({ groupId, userId: msg.user.id, removed }, 'Authorized group removal attempted')
+    log.info({ groupId: storageGroupId, nativeGroupId: groupId, userId: msg.user.id, removed }, 'Authorized group removal attempted')
     return
   }
 

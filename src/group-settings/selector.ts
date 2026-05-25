@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatButton } from '../chat/types.js'
-import { toScopedContextId } from '../chat/scoped-context.js'
+import { isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
 import { listManageableGroups, matchManageableGroup } from './access.js'
 import {
@@ -39,8 +39,10 @@ const buildGroupButtons = (groups: readonly KnownGroupContext[]): ChatButton[] =
     style: 'primary',
   }))
 
-const toTargetContextId = (platformInstanceId: string, nativeContextId: string): string =>
-  toScopedContextId({ platformInstanceId, nativeContextId })
+const toTargetContextId = (platformInstanceId: string, nativeContextId: string): string => {
+  if (isScopedContextId(nativeContextId)) return nativeContextId
+  return toScopedContextId({ platformInstanceId, nativeContextId })
+}
 
 const buildScopeResponse = (interactiveButtons: boolean): GroupSettingsSelectorResult => {
   const buttons: ChatButton[] = [

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { isAuthorizedGroup } from '../authorized-groups.js'
-import { toScopedContextId } from '../chat/scoped-context.js'
+import { isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
 import { listAdminGroupContextsForUser } from './registry.js'
 import type { KnownGroupContext } from './types.js'
@@ -27,6 +27,7 @@ const getMatchCandidates = (group: KnownGroupContext): readonly string[] => {
 }
 
 const getAuthorizedGroupId = (group: KnownGroupContext, platformInstanceId: string | undefined): string => {
+  if (isScopedContextId(group.contextId)) return group.contextId
   if (platformInstanceId === undefined) return group.contextId
   return toScopedContextId({ platformInstanceId, nativeContextId: group.contextId })
 }

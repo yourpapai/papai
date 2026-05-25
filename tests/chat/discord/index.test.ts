@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
 import type { DiscordClientFactory } from '../../../src/chat/discord/index.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { dmTarget } from '../../../src/chat/types.js'
 import { setConfig } from '../../../src/config.js'
@@ -20,6 +21,13 @@ import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.
 import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
+
+const scopedContextId = (nativeContextId: string): string =>
+  toScopedContextId({ platformInstanceId: TEST_PLATFORM_ID, nativeContextId })
+
+const addAuthorizedDiscordGroup = (nativeContextId: string, addedBy: string): void => {
+  addAuthorizedGroup(scopedContextId(nativeContextId), addedBy)
+}
 
 const addUser = (userId: string, addedBy: string, username?: string): void => {
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
@@ -942,7 +950,7 @@ describe('DiscordChatProvider', () => {
       const provider = new DiscordChatProvider(undefined)
 
       // Authorize the user
-      addAuthorizedGroup('guild-channel-99', 'admin-id')
+      addAuthorizedDiscordGroup('guild-channel-99', 'admin-id')
       addUser('user-88', 'admin-id', 'dave')
 
       const seen: IncomingMessage[] = []
@@ -1065,7 +1073,7 @@ describe('DiscordChatProvider', () => {
         displayName: 'Operations',
         parentName: 'Platform',
       })
-      addAuthorizedGroup('group-1', 'admin-id')
+      addAuthorizedDiscordGroup('group-1', 'admin-id')
       upsertGroupAdminObservation({
         provider: 'discord',
         contextId: 'group-1',
@@ -1118,10 +1126,10 @@ describe('DiscordChatProvider', () => {
         username: 'alice',
         isAdmin: true,
       })
-      addAuthorizedGroup('group-1', 'admin-id')
-      assignKaneoContext('group-1')
-      setConfig('group-1', 'kaneo_apikey', 'existing-key')
-      setKaneoWorkspace('group-1', 'existing-workspace')
+      addAuthorizedDiscordGroup('group-1', 'admin-id')
+      assignKaneoContext(scopedContextId('group-1'))
+      setConfig(scopedContextId('group-1'), 'kaneo_apikey', 'existing-key')
+      setKaneoWorkspace(scopedContextId('group-1'), 'existing-workspace')
       startGroupSettingsSelection('user-1', 'setup', true, 'discord-default')
 
       const groupSelectorInteraction: ButtonInteractionLike = {

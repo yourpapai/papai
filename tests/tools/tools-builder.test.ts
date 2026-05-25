@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { persistIncomingAttachments } from '../../src/attachments/index.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { IncomingFile } from '../../src/chat/types.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
@@ -249,11 +250,31 @@ describe('buildTools', () => {
     expect(tools).not.toHaveProperty('save_instruction')
   })
 
-  it('should add lookup_group_history when contextId is a group', () => {
+  it('should add lookup_group_history when contextId is a legacy thread', () => {
     const provider = createMockProvider()
     const tools = buildTools(provider, 'user-123', 'user-123:group-1', 'normal')
 
     expect(tools).toHaveProperty('lookup_group_history')
+  })
+
+  it('should add lookup_group_history when contextId is a scoped thread', () => {
+    const provider = createMockProvider()
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-1',
+    })
+    const tools = buildTools(provider, 'user-123', scopedThreadContextId, 'normal')
+
+    expect(tools).toHaveProperty('lookup_group_history')
+  })
+
+  it('should not add lookup_group_history when contextId is scoped but not threaded', () => {
+    const provider = createMockProvider()
+    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
+    const tools = buildTools(provider, 'user-123', scopedMainContextId, 'normal')
+
+    expect(tools).not.toHaveProperty('lookup_group_history')
   })
 
   it('should not add lookup_group_history when contextId is a DM', () => {

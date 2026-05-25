@@ -7,6 +7,7 @@ import type { ToolSet } from 'ai'
 
 import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
+import { hasThreadContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeAddCommentReactionTool } from './add-comment-reaction.js'
@@ -236,7 +237,7 @@ function addRecurringTools(tools: ToolSet, userId: string | undefined): void {
 }
 function addLookupGroupHistoryTool(tools: ToolSet, userId: string | undefined, contextId: string | undefined): void {
   if (userId === undefined || contextId === undefined) return
-  if (!contextId.includes(':')) return
+  if (!hasThreadContextId(contextId)) return
   tools['lookup_group_history'] = makeLookupGroupHistoryTool(userId, contextId)
 }
 

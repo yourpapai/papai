@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { AuthorizationResult, ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
 import { registerGroupCommand } from '../../src/commands/group.js'
+import { checkAuthorizationExtended } from '../../src/auth.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { upsertGroupUserObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
   createAuth,
@@ -484,12 +486,30 @@ describe('group commands', () => {
       expect(textCalls[0]).toBe('Group group-123 authorized.')
 
       const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      expect(isAuthorizedGroup('group-123')).toBe(true)
+      expect(isAuthorizedGroup(toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' }))).toBe(true)
+    })
+
+    test('adds native group id as platform-scoped authorized group in DM', async () => {
+      const handler = commandHandlers.get('group')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', 'add shared-group')
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe('Group shared-group authorized.')
+      const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(true)
+      const auth = checkAuthorizationExtended('platform-admin', null, 'shared-group', 'group', undefined, true, 'telegram-default')
+      expect(auth.allowed).toBe(true)
     })
 
     test('removes an authorized group in DM for bot admin', async () => {
       const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      addAuthorizedGroup('group-123', 'admin1')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
 
       const handler = commandHandlers.get('group')
       expect(handler).toBeDefined()
@@ -498,7 +518,23 @@ describe('group commands', () => {
       await handler!(createDmMessage('admin1', 'remove group-123'), reply, createAuth('admin1', { isBotAdmin: true }))
 
       expect(textCalls[0]).toBe('Group group-123 removed.')
-      expect(isAuthorizedGroup('group-123')).toBe(false)
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
+    })
+
+    test('removes native group id as platform-scoped authorized group in DM', async () => {
+      const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+      const handler = commandHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', 'remove shared-group')
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe('Group shared-group removed.')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
     })
 
     test('reports when removing a group that was not authorized', async () => {

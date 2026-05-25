@@ -102,4 +102,31 @@ describe('group settings selector', () => {
     })
     expect(getActiveGroupSettingsTarget('user-1')).toBe(scopedGroup1)
   })
+
+  test('does not double-scope an already-scoped manageable group context', () => {
+    upsertKnownGroupContext({
+      contextId: scopedGroup1,
+      provider: 'telegram',
+      displayName: 'Operations',
+      parentName: 'Platform',
+    })
+    addAuthorizedGroup(scopedGroup1, 'admin-id')
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: scopedGroup1,
+      userId: 'user-1',
+      username: 'alice',
+      isAdmin: true,
+    })
+
+    startGroupSettingsSelection('user-1', 'setup', true, 'telegram-default')
+    handleGroupSettingsSelectorCallback('user-1', 'gsel:scope:group', 'telegram-default')
+    const result = handleGroupSettingsSelectorMessage('user-1', 'Operations', true, 'telegram-default')
+
+    expect(result).toEqual({
+      handled: true,
+      continueWith: { command: 'setup', targetContextId: scopedGroup1 },
+    })
+    expect(getActiveGroupSettingsTarget('user-1')).toBe(scopedGroup1)
+  })
 })

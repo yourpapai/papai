@@ -5,11 +5,11 @@
 
 import { listManageableGroups } from '../group-settings/access.js'
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
-import { toScopedContextId } from './scoped-context.js'
+import { isScopedContextId, toScopedContextId } from './scoped-context.js'
 import type { IncomingInteraction } from './types.js'
 
 const toScopedGroupTarget = (platformInstanceId: string, nativeContextId: string): string =>
-  toScopedContextId({ platformInstanceId, nativeContextId })
+  isScopedContextId(nativeContextId) ? nativeContextId : toScopedContextId({ platformInstanceId, nativeContextId })
 
 export function getValidatedDmTargetContextId(userId: string, platformInstanceId: string): string | null {
   const activeGroupTarget = getActiveGroupSettingsTarget(userId)
