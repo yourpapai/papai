@@ -106,7 +106,11 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
-import { AI_REASONING_VISIBILITY_KEY, AI_TOOL_VISIBILITY_KEY } from '../src/ai-output-settings.js'
+import {
+  AI_OUTPUT_DETAIL_LEVEL_KEY,
+  AI_REASONING_VISIBILITY_KEY,
+  AI_TOOL_VISIBILITY_KEY,
+} from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
@@ -698,7 +702,38 @@ describe('processMessage', () => {
 
       expect(textCalls[0]).toBe('Done!')
       expect(textCalls[1]).toContain('AI execution details')
-      expect(textCalls[1]).toContain('visible reasoning summary')
+      expect(textCalls[1]).toContain('Provider reasoning available')
+      expect(textCalls[1]).not.toContain('visible reasoning summary')
+    })
+
+    test('reasoning visibility raw mode shows provider reasoning payload', async () => {
+      seedConfigForContext('reasoning-raw-ctx')
+      setCachedConfig('reasoning-raw-ctx', AI_REASONING_VISIBILITY_KEY, 'on')
+      setCachedConfig('reasoning-raw-ctx', AI_OUTPUT_DETAIL_LEVEL_KEY, 'raw')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'Provider reasoning text',
+          reasoning: [{ type: 'reasoning', text: 'raw reasoning payload' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, 'reasoning-raw-ctx', 'user-1', null, 'think', 'dm')
+
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('raw reasoning payload')
     })
 
     test('group thread reasoning setting uses active storage context over config target', async () => {
@@ -730,7 +765,8 @@ describe('processMessage', () => {
 
       expect(textCalls[0]).toBe('Done!')
       expect(textCalls[1]).toContain('AI execution details')
-      expect(textCalls[1]).toContain('thread scoped reasoning')
+      expect(textCalls[1]).toContain('Provider reasoning available')
+      expect(textCalls[1]).not.toContain('thread scoped reasoning')
     })
 
     test('flush failure after final answer does not send generic error or rewind assistant history', async () => {
