@@ -84,3 +84,8 @@ export const getMainContextIdFromThreadContextId = (contextId: string): string =
   if (mainContextId === undefined) return contextId
   return mainContextId
 }
+
+export const getConfigContextIdFromStorageContextId = (contextId: string): string => {
+  if (isScopedThreadContextId(contextId)) return getMainContextIdFromThreadContextId(contextId)
+  return contextId
+}

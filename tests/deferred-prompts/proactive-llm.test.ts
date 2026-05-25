@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 
 import { setConfig } from '../../src/config.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
@@ -353,6 +354,56 @@ describe('dispatchExecution', () => {
       })
 
       expect(resolvedContextIds).toEqual(['-1001:42'])
+    })
+
+    test('resolves full-mode provider from scoped main context while preserving thread storage', async () => {
+      setupUserConfig()
+      const scopedThreadContextId = toScopedThreadContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+        threadId: '42',
+      })
+      const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: '-1001' })
+      const provider = createMockProvider()
+      const resolvedContextIds: string[] = []
+      generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {
+        generateTextCalls.push(args)
+        return Promise.resolve({
+          text: 'Created task',
+          toolCalls: [],
+          toolResults: [{ toolName: 'create_task', output: { id: 'task-1', title: 'Scoped thread task', number: 21 } }],
+          steps: undefined,
+          response: { messages: [] },
+        })
+      }
+
+      await dispatchExecution(
+        {
+          createdByUserId: USER_ID,
+          deliveryTarget: {
+            contextId: '-1001',
+            storageContextId: scopedThreadContextId,
+            contextType: 'group',
+            threadId: '42',
+            audience: 'personal',
+            mentionUserIds: [USER_ID],
+            createdByUserId: USER_ID,
+            createdByUsername: null,
+          },
+        },
+        'scheduled',
+        'check overdue',
+        metadata,
+        (contextId) => {
+          resolvedContextIds.push(contextId)
+          return provider
+        },
+      )
+
+      expect(resolvedContextIds).toEqual([scopedMainContextId])
+      expect(loadFacts(scopedThreadContextId)).toEqual([
+        expect.objectContaining({ identifier: '#21', title: 'Scoped thread task', url: '' }),
+      ])
     })
 
     test('stores extracted facts from all tool-call steps', async () => {

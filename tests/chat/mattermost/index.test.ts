@@ -33,10 +33,14 @@ function isBuiltPostedMessage(value: unknown): value is BuiltPostedMessage {
   return typeof value === 'object' && value !== null && 'msg' in value && isIncomingMessage(value.msg)
 }
 
+function isPostedEventHandler(value: unknown): value is PostedEventHandler {
+  return typeof value === 'function'
+}
+
 function getPostedEventHandler(provider: MattermostChatProvider): PostedEventHandler {
   const handler = Reflect.get(provider as object, 'handlePostedEvent') as unknown
-  if (typeof handler !== 'function') throw new Error('Expected Mattermost posted event handler')
-  return handler as PostedEventHandler
+  if (!isPostedEventHandler(handler)) throw new Error('Expected Mattermost posted event handler')
+  return handler
 }
 
 function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult {

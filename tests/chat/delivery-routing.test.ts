@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { resolveDeliveryPlatformInstanceId } from '../../src/chat/delivery-routing.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { dmTarget, type DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -44,6 +45,33 @@ describe('resolveDeliveryPlatformInstanceId', () => {
     })
 
     expect(resolveDeliveryPlatformInstanceId(target)).toBe('mattermost-default')
+  })
+
+  test('routes scoped thread delivery through main scoped context settings', () => {
+    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-secondary',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const target = {
+      contextId: '-1001',
+      storageContextId: scopedThreadContextId,
+      contextType: 'group',
+      threadId: '42',
+      audience: 'personal',
+      mentionUserIds: ['user-1'],
+      createdByUserId: 'user-1',
+      createdByUsername: null,
+    } as const satisfies DeferredDeliveryTarget
+
+    setContextSettings({
+      contextId: scopedMainContextId,
+      taskInstanceId: 'kaneo-secondary',
+      platformInstanceId: 'telegram-secondary',
+    })
+
+    expect(resolveDeliveryPlatformInstanceId(target)).toBe('telegram-secondary')
   })
 
   test('returns null when the delivery context has no assignment', () => {

@@ -7,6 +7,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { getConfig } from '../config.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
@@ -244,13 +245,14 @@ async function invokeFull(
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
+  const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
   log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
   const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return config
 
-  const provider = buildProviderFn(storageContextId)
+  const provider = buildProviderFn(configContextId)
   if (provider === null) {
-    log.warn({ userId: createdByUserId, storageContextId }, 'Could not build task provider for deferred prompt')
+    log.warn({ userId: createdByUserId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
     return 'Deferred prompt skipped: task provider not configured.'
   }
 

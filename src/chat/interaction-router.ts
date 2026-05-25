@@ -15,9 +15,12 @@ import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import {
   getResponseText,
+  getConfigCallbackStorageContextId,
   getTargetContextId,
   getValidatedDmCallbackTargetContextId,
   getValidatedDmTargetContextId,
+  getWizardCallbackStorageContextId,
+  parseWizardContextId,
 } from './interaction-router-support.js'
 import { handlePluginInteraction } from './plugin-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
@@ -117,7 +120,7 @@ async function defaultHandleConfigInteraction(interaction: IncomingInteraction, 
       await replyTextPreferReplace(reply, getMissingGroupTargetMessage(user.id, targetContextId, interaction.platformInstanceId))
       return true
     }
-    targetContextId = validatedTargetContextId
+    targetContextId = getConfigCallbackStorageContextId(user.id, targetContextId, validatedTargetContextId)
   }
   log.debug(
     { userId: user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },
@@ -177,6 +180,7 @@ async function handleWizardEdit(userId: string, storageContextId: string, reply:
 async function getDmWizardStorageContextId(
   interaction: IncomingInteraction,
   callbackContextId: string | undefined,
+  callbackData: string,
   reply: ReplyFn,
 ): Promise<string | null> {
   let storageContextId = getTargetContextId(callbackContextId, interaction)
@@ -194,19 +198,13 @@ async function getDmWizardStorageContextId(
     )
     return null
   }
-  storageContextId = validatedTargetContextId
+  storageContextId = getWizardCallbackStorageContextId(
+    interaction.user.id,
+    storageContextId,
+    validatedTargetContextId,
+    callbackData,
+  )
   return storageContextId
-}
-
-function parseWizardContextId(callbackData: string): { action: string; targetContextId: string | undefined } {
-  const atIdx = callbackData.indexOf('@')
-  if (atIdx === -1) return { action: callbackData, targetContextId: undefined }
-  try {
-    const encoded = callbackData.slice(atIdx + 1)
-    return { action: callbackData.slice(0, atIdx), targetContextId: Buffer.from(encoded, 'base64url').toString('utf8') }
-  } catch {
-    return { action: callbackData, targetContextId: undefined }
-  }
 }
 
 async function defaultHandleWizardInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
@@ -215,7 +213,7 @@ async function defaultHandleWizardInteraction(interaction: IncomingInteraction, 
 
   const userId = user.id
   const { action, targetContextId: callbackContextId } = parseWizardContextId(callbackData)
-  const storageContextId = await getDmWizardStorageContextId(interaction, callbackContextId, reply)
+  const storageContextId = await getDmWizardStorageContextId(interaction, callbackContextId, action, reply)
   if (storageContextId === null) return true
 
   switch (action) {

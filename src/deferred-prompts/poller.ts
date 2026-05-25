@@ -5,6 +5,7 @@
 
 import pLimit from 'p-limit'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { ChatProvider } from '../chat/types.js'
 import { emitGlobal, emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
@@ -45,6 +46,8 @@ const alertToExecCtx = (alert: AlertPrompt): DeferredExecutionContext => ({
   deliveryTarget: alert.deliveryTarget,
 })
 const alertDeliveryContextKey = (alert: AlertPrompt): string => getStorageContextId(alert.deliveryTarget)
+const configContextIdForDelivery = (deliveryTarget: DeferredExecutionContext['deliveryTarget']): string =>
+  getConfigContextIdFromStorageContextId(getStorageContextId(deliveryTarget))
 
 async function executeScheduledPromptsForGroup(
   execCtx: DeferredExecutionContext,
@@ -195,9 +198,10 @@ async function executeAlertsForUser(
   evalNow: Date,
 ): Promise<void> {
   const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
-  const provider = buildProviderFn(storageContextId)
+  const configContextId = configContextIdForDelivery(alerts[0]!.deliveryTarget)
+  const provider = buildProviderFn(configContextId)
   if (provider === null) {
-    log.warn({ userId, storageContextId }, 'Could not build task provider for alert polling')
+    log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for alert polling')
     return
   }
 

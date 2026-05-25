@@ -22,6 +22,7 @@ import {
   deleteGroupSettingsSession,
   getActiveGroupSettingsTarget,
 } from '../../src/group-settings/state.js'
+import { createWizardSession } from '../../src/wizard/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { setKaneoWorkspace } from '../../src/users.js'
@@ -420,6 +421,28 @@ describe('routeInteraction', () => {
     expect(buttonReplies[0]).toContain('Changes cancelled')
   })
 
+  test('saves encoded legacy personal cfg callback with unscoped editor session', async () => {
+    createEditorSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      editingKey: 'timezone',
+    })
+    handleEditorMessage(interaction.user.id, interaction.user.id, 'Europe/Berlin')
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `cfg:save:timezone@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      reply,
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(getConfig(interaction.user.id, 'timezone')).toBe('Europe/Berlin')
+    expect(getConfig(toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: interaction.user.id }), 'timezone')).toBeNull()
+  })
+
   test('prefers replaceButtons for cfg callback responses with buttons when available', async () => {
     createEditorSession({
       userId: interaction.user.id,
@@ -544,6 +567,59 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(replies).toEqual(['No active setup session. Type /setup to start.'])
+  })
+
+  test('confirms encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_confirm@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies[0]).toContain('Configuration saved successfully')
+    expect(getConfig(interaction.user.id, 'timezone')).toBe('Europe/Berlin')
+  })
+
+  test('edits encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_edit@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies[0]).toContain('Editing configuration from the beginning')
   })
 
   test('blocks unauthorized users with unauthorized message', async () => {

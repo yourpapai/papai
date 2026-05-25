@@ -106,15 +106,16 @@ describe('pollScheduledOnce', () => {
     expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
   })
 
-  test('scoped group thread delivery routes by scoped context and sends native target ids', async () => {
+  test('scoped group thread scheduled delivery routes by main scoped context and sends native target ids', async () => {
     const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
     const scopedThreadContextId = toScopedThreadContextId({
       platformInstanceId: 'telegram-default',
       nativeContextId: '-1001',
       threadId: '42',
     })
     setConfig(scopedUserId, 'timezone', 'UTC')
-    setContextSettings({ contextId: scopedThreadContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    setContextSettings({ contextId: scopedMainContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     createScheduledPrompt(
       scopedUserId,
@@ -491,6 +492,49 @@ describe('pollAlertsOnce', () => {
 
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
+  })
+
+  test('scoped group thread alert delivery routes by main scoped context and sends native target ids', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    setContextSettings({ contextId: scopedMainContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    createAlertPrompt(
+      scopedUserId,
+      'Notify on done',
+      { field: 'task.status', op: 'eq', value: 'done' },
+      60,
+      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      {
+        contextId: '-1001',
+        storageContextId: scopedThreadContextId,
+        contextType: 'group',
+        threadId: '42',
+        audience: 'personal',
+        mentionUserIds: [USER_ID],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
+    expect(sentMessages[0]!.target.contextId).toBe('-1001')
+    expect(sentMessages[0]!.target.threadId).toBe('42')
   })
 
   test('keeps alert eligible when delivery route is unresolved', async () => {

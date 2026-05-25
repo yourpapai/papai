@@ -63,6 +63,11 @@ function isBotCommandRegistrar(value: unknown): value is BotCommandRegistrar {
   return typeof value === 'object' && value !== null && 'command' in value
 }
 
+function requireBotCommandRegistrar(value: unknown): BotCommandRegistrar {
+  if (!isBotCommandRegistrar(value)) throw new Error('Expected Telegram bot command registrar')
+  return value
+}
+
 function encodeScoped(platformInstanceId: string, contextId: string, threadId: string | undefined): string {
   const scoped = `pi:${Buffer.from(platformInstanceId).toString('base64url')}:ctx:${Buffer.from(contextId).toString('base64url')}`
   if (threadId === undefined) return scoped
@@ -419,8 +424,7 @@ describe('TelegramChatProvider', () => {
     test('registerCommand passes scoped storage context for active platform instance', async () => {
       process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
       const provider = new TelegramChatProvider('test-token', 'telegram-secondary')
-      const bot = Reflect.get(provider as object, 'bot') as unknown
-      if (!isBotCommandRegistrar(bot)) throw new Error('Expected Telegram bot command registrar')
+      const bot = requireBotCommandRegistrar(Reflect.get(provider as object, 'bot'))
       let registeredHandler: ((ctx: unknown) => Promise<void>) | undefined
       bot.command = (_name, handler): void => {
         registeredHandler = handler
