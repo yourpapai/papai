@@ -6,12 +6,18 @@
 import { and, eq, inArray, or } from 'drizzle-orm'
 
 import { evictUser, getCachedWorkspace, setCachedWorkspace } from './cache.js'
+import { toScopedContextId } from './chat/scoped-context.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { recurringTaskOccurrences, recurringTasks, users } from './db/schema.js'
 import { isAdmin } from './instances/admin-store.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ scope: 'users' })
+
+const scopedUserContextId = (platformInstanceId: string, userId: string): string =>
+  toScopedContextId({ platformInstanceId, nativeContextId: userId })
+
+const isPlaceholderUserId = (userId: string): boolean => userId.includes('placeholder')
 
 export interface UserRecord {
   platform_user_id: string
@@ -34,6 +40,18 @@ export function addUser(input: AddUserInput): void {
   const username = 'username' in input && input.username !== undefined ? input.username : null
   log.debug({ platformInstanceId: input.platformInstanceId, hasUsername: username !== null }, 'addUser called')
   const db = getDrizzleDb()
+
+  if (username !== null) {
+    const existing = db
+      .select({ platformUserId: users.platformUserId })
+      .from(users)
+      .where(and(eq(users.platformInstanceId, input.platformInstanceId), eq(users.username, username)))
+      .get()
+    if (existing !== undefined) {
+      log.info({ platformInstanceId: input.platformInstanceId, hasUsername: true }, 'User already added')
+      return
+    }
+  }
 
   db.insert(users)
     .values({
@@ -68,7 +86,7 @@ export function removeUser(identifier: string, platformInstanceId: string): bool
 
   const removed = deleted.length > 0
   if (removed) {
-    const deletedIds = deleted.map((row) => row.platformUserId)
+    const deletedIds = deleted.map((row) => scopedUserContextId(platformInstanceId, row.platformUserId))
     db.delete(recurringTaskOccurrences)
       .where(
         inArray(
@@ -108,17 +126,18 @@ export function resolveUserByUsername(userId: string, username: string, platform
   const db = getDrizzleDb()
 
   const row = db
-    .select({ platformUserId: users.platformUserId })
+    .select({ platformUserId: users.platformUserId, platformInstanceId: users.platformInstanceId })
     .from(users)
     .where(and(eq(users.username, username), eq(users.platformInstanceId, platformInstanceId)))
     .get()
 
   if (row === undefined) return false
   if (row.platformUserId === userId) return true
+  if (!isPlaceholderUserId(row.platformUserId)) return false
 
   db.update(users)
     .set({ platformUserId: userId })
-    .where(and(eq(users.username, username), eq(users.platformInstanceId, platformInstanceId)))
+    .where(and(eq(users.platformInstanceId, row.platformInstanceId), eq(users.platformUserId, row.platformUserId)))
     .run()
 
   log.info('User platform_user_id resolved from username')

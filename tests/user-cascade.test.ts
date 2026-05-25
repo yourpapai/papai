@@ -7,17 +7,27 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
+import { toScopedContextId } from '../src/chat/scoped-context.js'
 import * as schema from '../src/db/schema.js'
 import { addUser as addScopedUser, removeUser as removeScopedUser } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args[0]
   addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
 }
 
 const removeUser = (identifier: string): boolean => removeScopedUser(identifier, TEST_PLATFORM_ID)
+
+const scopedUserId = (userId: string): string =>
+  toScopedContextId({ platformInstanceId: TEST_PLATFORM_ID, nativeContextId: userId })
+
+function requireDefined<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error('expected value to be defined')
+  return value
+}
 
 const countRows = (
   db: Awaited<ReturnType<typeof setupTestDb>>,
@@ -28,7 +38,8 @@ const countRows = (
   const row = db.$client
     .query<{ count: number }, string[]>(`SELECT count(*) AS count FROM ${table} WHERE ${whereSql}`)
     .get(...params)
-  return row?.count ?? 0
+  if (row === undefined || row === null) return 0
+  return row.count
 }
 
 describe('user removal cascade integration', () => {
@@ -41,12 +52,13 @@ describe('user removal cascade integration', () => {
 
   test('removes recurring templates and occurrences when an authorized user is deleted', () => {
     addUser('cascade-user', 'admin')
+    const ownerId = scopedUserId('cascade-user')
 
     testDb
       .insert(schema.recurringTasks)
       .values({
         id: 'rt-cascade',
-        userId: 'cascade-user',
+        userId: ownerId,
         projectId: 'project-1',
         title: 'Recurring',
         triggerType: 'cron',
@@ -59,7 +71,7 @@ describe('user removal cascade integration', () => {
 
     expect(removeUser('cascade-user')).toBe(true)
 
-    expect(countRows(testDb, 'recurring_tasks', 'user_id = ?', ['cascade-user'])).toBe(0)
+    expect(countRows(testDb, 'recurring_tasks', 'user_id = ?', [ownerId])).toBe(0)
     expect(countRows(testDb, 'recurring_task_occurrences', 'template_id = ?', ['rt-cascade'])).toBe(0)
   })
 
@@ -69,12 +81,24 @@ describe('user removal cascade integration', () => {
 
     testDb
       .insert(schema.recurringTasks)
-      .values({ id: 'rt-a', userId: 'user-a', projectId: 'project-a', title: 'Recurring A', triggerType: 'cron' })
+      .values({
+        id: 'rt-a',
+        userId: scopedUserId('user-a'),
+        projectId: 'project-a',
+        title: 'Recurring A',
+        triggerType: 'cron',
+      })
       .run()
     testDb.insert(schema.recurringTaskOccurrences).values({ id: 'occ-a', templateId: 'rt-a', taskId: 'task-a' }).run()
     testDb
       .insert(schema.recurringTasks)
-      .values({ id: 'rt-b', userId: 'user-b', projectId: 'project-b', title: 'Recurring B', triggerType: 'cron' })
+      .values({
+        id: 'rt-b',
+        userId: scopedUserId('user-b'),
+        projectId: 'project-b',
+        title: 'Recurring B',
+        triggerType: 'cron',
+      })
       .run()
     testDb.insert(schema.recurringTaskOccurrences).values({ id: 'occ-b', templateId: 'rt-b', taskId: 'task-b' }).run()
 
@@ -89,8 +113,8 @@ describe('user removal cascade integration', () => {
       .get()
 
     expect(remainingUser).toBeDefined()
-    expect(remainingTask?.userId).toBe('user-b')
-    expect(remainingOccurrence?.templateId).toBe('rt-b')
+    expect(requireDefined(remainingTask).userId).toBe(scopedUserId('user-b'))
+    expect(requireDefined(remainingOccurrence).templateId).toBe('rt-b')
     expect(testDb.select().from(schema.users).where(eq(schema.users.platformUserId, 'user-a')).get()).toBeUndefined()
     expect(
       testDb.select().from(schema.recurringTasks).where(eq(schema.recurringTasks.id, 'rt-a')).get(),

@@ -137,6 +137,27 @@ describe('Admin Commands', () => {
       expect(users.some((u) => u.username === 'alice')).toBe(true)
     })
 
+    test('repeated add by @username is idempotent on the command source platform instance', async () => {
+      addAdmin(ADMIN_ID, 'mattermost-default')
+      const handler = commandHandlers.get('user')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+      const message = { ...createDmMessage(ADMIN_ID, 'add @alice'), platformInstanceId: 'mattermost-default' }
+      const auth = {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: ADMIN_ID,
+      }
+
+      await handler!(message, reply, auth)
+      await handler!(message, reply, auth)
+
+      expect(getReplies()).toEqual(['User @alice authorized.', 'User @alice authorized.'])
+      expect(listUsers('mattermost-default').filter((user) => user.username === 'alice')).toHaveLength(1)
+      expect(listUsers(TEST_PLATFORM_ID).filter((user) => user.username === 'alice')).toHaveLength(0)
+    })
+
     test('rejects non-admin caller', async () => {
       const handler = commandHandlers.get('user')
       expect(handler).toBeDefined()

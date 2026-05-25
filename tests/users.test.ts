@@ -8,6 +8,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { userCachesForTesting } from '../src/cache.js'
+import { toScopedContextId } from '../src/chat/scoped-context.js'
 import * as schema from '../src/db/schema.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.js'
 import {
@@ -114,6 +115,24 @@ describe('addUser', () => {
     expect(isAuthorized('tg-real-alice', 'telegram-default')).toBe(true)
     expect(isAuthorized('ds-real-alice', 'discord-default')).toBe(true)
   })
+
+  test('reuses username row on repeated add for same platform', () => {
+    addUser({ userId: 'placeholder-one', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'alice' })
+    addUser({ userId: 'placeholder-two', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'alice' })
+
+    expect(listUsers(TEST_PLATFORM_ID).filter((user) => user.username === 'alice')).toHaveLength(1)
+  })
+
+  test('keeps same username rows independent across platform instances', () => {
+    addUser({ userId: 'tg-placeholder', platformInstanceId: 'telegram-default', addedBy: 'admin', username: 'alice' })
+    addUser({ userId: 'ds-placeholder', platformInstanceId: 'discord-default', addedBy: 'admin', username: 'alice' })
+
+    expect(
+      listUsers()
+        .filter((user) => user.username === 'alice')
+        .map((user) => `${user.platform_instance_id}:${user.platform_user_id}`),
+    ).toEqual(['telegram-default:tg-placeholder', 'discord-default:ds-placeholder'])
+  })
 })
 
 describe('removeUser', () => {
@@ -166,6 +185,27 @@ describe('removeUser', () => {
 
     expect(removed).toBe(true)
     expect(userCachesForTesting.has('cache-test')).toBe(false)
+  })
+
+  test('removes recurring tasks only for scoped platform owner', () => {
+    const telegramOwner = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'same-id' })
+    const discordOwner = toScopedContextId({ platformInstanceId: 'discord-default', nativeContextId: 'same-id' })
+    addUser({ userId: 'same-id', platformInstanceId: 'telegram-default', addedBy: 'admin' })
+    addUser({ userId: 'same-id', platformInstanceId: 'discord-default', addedBy: 'admin' })
+    testDb
+      .insert(schema.recurringTasks)
+      .values({ id: 'tg-recurring', userId: telegramOwner, projectId: 'p1', title: 'tg task', triggerType: 'cron' })
+      .run()
+    testDb
+      .insert(schema.recurringTasks)
+      .values({ id: 'ds-recurring', userId: discordOwner, projectId: 'p1', title: 'ds task', triggerType: 'cron' })
+      .run()
+
+    expect(removeUser('same-id', 'telegram-default')).toBe(true)
+
+    expect(testDb.select({ id: schema.recurringTasks.id }).from(schema.recurringTasks).all()).toEqual([
+      { id: 'ds-recurring' },
+    ])
   })
 })
 
@@ -221,6 +261,15 @@ describe('resolveUserByUsername', () => {
 
   test('returns false for unknown username', () => {
     expect(resolveUserByUsername('555', 'unknown', TEST_PLATFORM_ID)).toBe(false)
+  })
+
+  test('updates one placeholder only', () => {
+    addUser({ userId: 'placeholder-one', platformInstanceId: TEST_PLATFORM_ID, addedBy: 'admin', username: 'alice' })
+
+    expect(resolveUserByUsername('real-alice', 'alice', TEST_PLATFORM_ID)).toBe(true)
+    const aliceUsers = listUsers(TEST_PLATFORM_ID).filter((user) => user.username === 'alice')
+    expect(aliceUsers).toHaveLength(1)
+    expect(requireDefined(aliceUsers[0]).platform_user_id).toBe('real-alice')
   })
 })
 
