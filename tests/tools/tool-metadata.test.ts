@@ -53,4 +53,22 @@ describe('tool metadata', () => {
       expect(TOOL_METADATA[name]).toBeDefined()
     }
   })
+
+  test('includes delete_file with destructive attachment classification', () => {
+    expect(getToolMetadata('delete_file')).toEqual({
+      domain: 'attachment',
+      operation: 'delete',
+      risk: 'destructive',
+    })
+  })
+
+  test('includes list_files, search_staged_files, resolve_staged_file as read attachment', () => {
+    for (const name of ['list_files', 'search_staged_files', 'resolve_staged_file']) {
+      expect(getToolMetadata(name)).toEqual({
+        domain: 'attachment',
+        operation: 'read',
+        risk: 'read',
+      })
+    }
+  })
 })

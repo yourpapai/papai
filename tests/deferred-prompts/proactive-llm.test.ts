@@ -19,6 +19,7 @@ import { appendHistory } from '../../src/history.js'
 import { loadHistory } from '../../src/history.js'
 import { loadFacts } from '../../src/memory.js'
 import { setSystemConfig } from '../../src/system-config.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import type { MemoryFact } from '../../src/types/memory.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from '../utils/test-helpers.js'
@@ -417,6 +418,52 @@ describe('dispatchExecution', () => {
       expect(generateTextCalls).toHaveLength(1)
       expect(generateTextCalls[0]!.tools).toHaveProperty('create_task')
       expect(generateTextCalls[0]!.tools).not.toHaveProperty('papai_tool')
+    })
+  })
+
+  describe('system prompt context scoping', () => {
+    const fullMetadata: ExecutionMetadata = {
+      mode: 'full',
+      delivery_brief: 'Check overdue tasks',
+      context_snapshot: null,
+    }
+
+    test('full mode builds system prompt from delivery storageContextId, not creator userId', async () => {
+      setupUserConfig()
+      const provider = createMockProvider()
+      const deliveryStorageContextId = '-1001:thread-7'
+      // Disable save_memo only in the delivery context (storageContextId).
+      // The creator's personal context (USER_ID) has empty prefs.
+      // When the system prompt uses the delivery context, buildUnavailableLine sees save_memo
+      // as a disabled override and emits the "Unavailable tools" safety-net line.
+      // When the bug is present (uses creator context), getToolPrefs(USER_ID) is empty
+      // so buildUnavailableLine returns null and the line is absent.
+      setToolPrefs(deliveryStorageContextId, { disabledDomains: [], toolOverrides: { save_memo: false } })
+
+      await dispatchExecution(
+        {
+          createdByUserId: USER_ID,
+          deliveryTarget: {
+            contextId: '-1001',
+            contextType: 'group',
+            threadId: 'thread-7',
+            audience: 'personal',
+            mentionUserIds: [USER_ID],
+            createdByUserId: USER_ID,
+            createdByUsername: null,
+          },
+        },
+        'scheduled',
+        'check overdue',
+        fullMetadata,
+        () => provider,
+      )
+
+      expect(generateTextCalls).toHaveLength(1)
+      const system = generateTextCalls[0]!.system
+      // After the fix: prompt uses delivery storageContextId prefs -> "Unavailable tools" line present.
+      // With the bug: prompt uses creator userId prefs (empty) -> no unavailable line.
+      expect(system).toContain('Unavailable tools')
     })
   })
 })

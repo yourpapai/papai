@@ -262,7 +262,7 @@ async function invokeFull(
     deliveryTarget.contextType,
     prompt,
   )
-  const systemPrompt = buildSystemPrompt(provider, createdByUserId, enabledToolNames)
+  const systemPrompt = buildSystemPrompt(provider, storageContextId, enabledToolNames)
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
 
   log.debug(
