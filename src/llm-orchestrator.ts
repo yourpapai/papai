@@ -11,7 +11,7 @@ import { createAiProgressReporter, type AiProgressReporter } from './ai-progress
 import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
-import { appendHistory, saveHistory } from './history.js'
+import { appendHistory } from './history.js'
 import { getIdentityMapping } from './identity/mapping.js'
 import { attemptAutoLink } from './identity/resolver.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
@@ -23,7 +23,7 @@ import {
   resolveTurnId,
   type ProcessMessageRest,
 } from './llm-orchestrator-process-args.js'
-import { emitLlmError, handleOrchestratorMessageError } from './llm-orchestrator-support.js'
+import { handleLlmTurnError, logProcessMessage } from './llm-orchestrator-support.js'
 import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
@@ -222,29 +222,21 @@ const resolveModelName = (): string => {
   return modelName
 }
 
-const logProcessMessage = (
-  contextId: string,
-  configContextId: string | undefined,
-  chatUserId: string,
-  userText: string,
-  attachmentIds: readonly string[],
-  turnId: string,
-): void => {
-  log.debug(
-    { contextId, configContextId, chatUserId, userText, newAttachmentIds: attachmentIds, turnId },
-    'processMessage called',
-  )
-  log.info({ contextId, chatUserId, messageLength: userText.length, turnId }, 'Message received from user')
-}
-
 const buildHistory = async (
   contextId: string,
+  chatUserId: string,
   userText: string,
   attachmentIds: readonly string[],
 ): Promise<{ baseHistory: readonly ModelMessage[]; modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
   const baseHistory = getCachedHistory(contextId)
   const modelName = resolveModelName()
-  const { modelMessage, historyMessage } = await buildUserTurnMessages(contextId, modelName, userText, attachmentIds)
+  const { modelMessage, historyMessage } = await buildUserTurnMessages(
+    contextId,
+    chatUserId,
+    modelName,
+    userText,
+    attachmentIds,
+  )
   return { baseHistory, modelMessage, historyMessage }
 }
 
@@ -266,8 +258,8 @@ export const processMessage = async (
     await replyBotMisconfigured(reply, contextId)
     return
   }
-  const { baseHistory, modelMessage, historyMessage } = await buildHistory(contextId, userText, newAttachmentIds)
-  appendHistory(contextId, [historyMessage])
+  const turn = await buildHistory(contextId, chatUserId, userText, newAttachmentIds)
+  appendHistory(contextId, [turn.historyMessage])
   const startedAt = Date.now()
   try {
     const result = await callLlm({
@@ -275,26 +267,25 @@ export const processMessage = async (
       contextId,
       chatUserId,
       username,
-      history: [...baseHistory, modelMessage],
+      history: [...turn.baseHistory, turn.modelMessage],
       userText,
       contextType,
       deps,
       configContextId,
       turnId: resolvedTurnId,
     })
-    appendAssistantHistory(contextId, [...baseHistory, historyMessage], result.response.messages)
+    appendAssistantHistory(contextId, [...turn.baseHistory, turn.historyMessage], result.response.messages)
   } catch (error) {
-    emitLlmError(
+    await handleLlmTurnError({
+      reply,
       contextId,
       chatUserId,
       contextType,
-      resolveModelName(),
+      mainModel: resolveModelName(),
       startedAt,
-      baseHistory.length + 1,
+      baseHistory: turn.baseHistory,
       error,
-      resolvedTurnId,
-    )
-    saveHistory(contextId, baseHistory)
-    await handleOrchestratorMessageError(reply, contextId, error)
+      turnId: resolvedTurnId,
+    })
   }
 }

@@ -167,7 +167,11 @@ describe('processMessage', () => {
 
   const seedConfig = (): void => seedConfigForContext(CTX_ID)
 
-  const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
+  const createReplyWithTypingSpy = (): {
+    reply: ReplyFn
+    textCalls: string[]
+    typingCalls: number[]
+  } => {
     const { reply: baseReply, textCalls } = createMockReply()
     const typingCalls: number[] = []
     return {
@@ -846,7 +850,10 @@ describe('processMessage', () => {
       const history = getCachedHistory(CTX_ID)
       expect(history).toHaveLength(2)
       expect(history[0]!.role).toBe('user')
-      expect(history[0]!.content).toBe('hello')
+      // The persisted user turn is prefixed with a <current_time> tag (intentional per spec).
+      const userContent = history[0]!.content
+      assert(typeof userContent === 'string', 'expected string content')
+      expect(userContent).toMatch(/^<current_time>.*<\/current_time>\nhello$/u)
       expect(history[1]!.role).toBe('assistant')
       expect(history[1]!.content).toBe('Hi!')
     })
@@ -869,7 +876,12 @@ describe('processMessage', () => {
               text: 'Creating task...',
               finishReason: 'tool-calls',
               toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test task' } }],
-              toolResults: [{ toolCallId: 'call-1', output: { id: 'task-123', title: 'Test task', number: 42 } }],
+              toolResults: [
+                {
+                  toolCallId: 'call-1',
+                  output: { id: 'task-123', title: 'Test task', number: 42 },
+                },
+              ],
             },
           ],
           response: { messages: [{ role: 'assistant' as const, content: 'Task created!' }] },
@@ -1172,7 +1184,14 @@ describe('processMessage', () => {
       const refs = await persistIncomingAttachments({
         contextId: attachmentCtx,
         sourceProvider: 'telegram',
-        files: [{ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg', content: Buffer.from('img') }],
+        files: [
+          {
+            fileId: 'platform-1',
+            filename: 'photo.jpg',
+            mimeType: 'image/jpeg',
+            content: Buffer.from('img'),
+          },
+        ],
       })
 
       let capturedMessages: unknown[] = []
@@ -1217,7 +1236,14 @@ describe('processMessage', () => {
       const refs = await persistIncomingAttachments({
         contextId: ctx,
         sourceProvider: 'telegram',
-        files: [{ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg', content: Buffer.from('img') }],
+        files: [
+          {
+            fileId: 'platform-1',
+            filename: 'photo.jpg',
+            mimeType: 'image/jpeg',
+            content: Buffer.from('img'),
+          },
+        ],
       })
 
       let capturedMessages: unknown[] = []
