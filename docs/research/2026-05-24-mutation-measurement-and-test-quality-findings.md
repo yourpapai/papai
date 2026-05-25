@@ -758,9 +758,148 @@ NoCoverage counts in this report cannot be read as pure test-gap counts: they ar
 
 ### B5. Interaction with mutation measurement
 
+Track B's findings connect directly to the measurement defects characterised in Track A. There
+are two distinct mechanisms that degrade mutation measurement accuracy, and the suite's preload
+design, mock strategy, and DI adherence each play a different role in them.
+
+#### Two preload mechanisms — the suite's own vs the runner's
+
+The suite declares two preload files in `bunfig.toml`: `tests/setup.ts` and
+`tests/mock-reset.ts` (B1). These are the _project_ preloads. The
+`@hughescr/stryker-bun-runner` injects an additional _runner_ preload via a separate
+`--preload` flag at Stryker invocation time; this is the coverage-preload template described in
+A2 §3.
+
+It is important to keep these two mechanisms separate:
+
+- The **suite's preloads** (`setup.ts`, `mock-reset.ts`) run before any test file is loaded.
+  `setup.ts` performs only module-level side-effects (silencing the console and LOG_LEVEL).
+  `mock-reset.ts` imports 29 source modules at module-load time and installs a global
+  `beforeEach` / `afterEach` pair (B1). Neither file is the root cause of the static collapse.
+
+- The **runner's coverage-preload** is the root cause. Before any `beforeEach` hook from any
+  source can fire, the runner's preload template executes a deterministic eager-import loop
+  that imports every mutated source module while `strykerGlobal.currentTestId` is `undefined`
+  (A2 §3). Because the `cover()` helper writes to `cov.static` when `currentTestId` is
+  undefined, all module-level mutant hits from this loop land in the `static` bucket. The
+  project preloads execute in the same pre-test window and face the same `undefined`
+  `currentTestId`, but even if they were removed they would not eliminate the static collapse —
+  the runner's own eager-import loop runs regardless of which project preloads are present
+  (A5).
+
+A5 confirmed this indirectly: isolating `mock-reset.ts` from the preload would have required
+editing `bunfig.toml` (out of scope), and A2's mechanistic analysis makes clear the runner's
+preload drives the collapse independently of project-preload contents. The suite's own preloads
+are therefore **largely neutral** to the static-bucket defect.
+
+#### Two independent measurement-degrading mechanisms
+
+Track B reveals that even if the eager-import static-bucket defect (A2) were fully resolved,
+a second independent mechanism would continue to suppress perTest coverage for in-scope
+modules: `mock.module()` substitution.
+
+**Mechanism 1 — Eager-import static bucketing (A2):** All module-level hits recorded during
+the runner's preload phase land in `cov.static`. With `ignoreStatic: true`, 77.2% of all
+instrumented mutants are dropped before scoring (A1). A3 reproduces this fully: a file with
+21% line coverage per Bun's own coverage tool shows 0 killed / 0 survived / 69 Ignored under
+the baseline config.
+
+**Mechanism 2 — `mock.module()` substitution of in-scope modules (B2):** When
+`mock.module(specifier, factory)` is called, Bun replaces that module's exports
+process-wide with the factory's return value. Stryker's instrumented version of the module is
+bypassed: its `cover()` calls never fire, and its mutants receive zero perTest hits. The global
+`beforeEach` in `mock-reset.ts` re-mocks all 29 modules in its `originals` array on every one
+of ~4,817 tests. Of those 29, four are in the mutate scope: `src/providers/factory.ts`,
+`src/providers/kaneo/provision.ts`, `src/recurring.ts`, and `src/users.ts` (B2). For
+`src/providers/factory.ts` specifically, 13 additional explicit call sites across at least four
+test files further ensure the instrumented module is replaced in virtually every test. The
+result is 49 NoCoverage mutants and 0 killed for `factory.ts` (B4).
+
+These two mechanisms are additive and act on different populations of mutants:
+
+| Mechanism                                                            | Primary signal in data                                                                      | Root section |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------ |
+| Runner eager-import → static bucket → `ignoreStatic:true` drop       | 8,032 Ignored (77.2% of total)                                                              | A1, A2, A3   |
+| `mock.module()` substitution of in-scope modules → zero perTest hits | NoCoverage for `factory.ts` (49), and partial NoCoverage for `provision.ts`, `recurring.ts` | B2, B4       |
+
+#### NoCoverage is not a monolithic gap metric
+
+B4 established that the NoCoverage list is contaminated by both mechanisms. `factory.ts`'s 49
+NoCoverage mutants are produced by mechanism 2 (over-mocking): the module is re-substituted by
+the global `beforeEach` on every test, so no perTest hit can ever accumulate for its mutants.
+`search-memos.ts`, `team.ts`, and `task-relations.ts` produce NoCoverage via mechanism 1
+(static collapse): tests for these files exist and are exercised, as their nonzero kill counts
+confirm, but the subset of mutant sites that are only hit at module-load time (during the
+eager-import preload) land in the static bucket and are discarded. Only `update-label.ts` and
+`update-project.ts` reflect a genuine gap: no main-suite test exists for either file, so no
+mechanism could produce a kill even under ideal measurement conditions.
+
+#### DI adherence and measurement accuracy
+
+B3 established that the suite is DI-first at a 120:26 file ratio but that the highest-impact
+divergence is `src/providers/factory.ts`, mocked via `mock.module()` in test files that already
+have a DI injection slot available (`ContextCommandDeps.buildProvider`,
+`LlmOrchestratorDeps.buildProviderForUser`).
+
+The DI vs `mock.module()` distinction maps directly to measurement accuracy. When a test uses
+**dependency injection**, the real instrumented module is passed in as a dependency object: the
+module itself remains loaded in its instrumented form, and any code path exercised by the test
+produces a legitimate perTest hit. When a test uses **`mock.module()`**, the instrumented
+module's binding is replaced entirely; no `cover()` call fires, and the mutants inside that
+module are invisible to Stryker for the duration of the test.
+
+This means every `mock.module()` call on an in-scope module is simultaneously a test-isolation
+choice and a measurement-suppression action. Switching redundant `mock.module()` calls (those
+where a `Deps` injection slot is already available, as catalogued in B3 Divergences 1 and 2)
+to DI-based overrides would allow Stryker's instrumented `factory.ts` to remain loaded during
+those tests, directly converting NoCoverage mutants into Killed or Survived classifications and
+making the mutation data actionable.
+
+#### Closing statement
+
+The current preload, mock, and DI organisation harms accurate mutation measurement primarily
+through two mechanisms: **(1)** the runner's coverage-preload eager-import, which records all
+module-level hits in the `static` bucket before any test runs, and **(2)** `mock.module()`
+substitution of in-scope modules (principally `src/providers/factory.ts`), which deprive
+mutants of perTest hits even when the corresponding tests exercise the same logical paths via
+DI-supplied providers. The suite's own preloads (`setup.ts`, `mock-reset.ts`) are largely
+neutral to defect (1): the static collapse originates in the runner's own preload mechanism and
+would persist even without `mock-reset.ts` in `bunfig.toml`. The `mock.module()` blast radius
+(B2) is the independent secondary suppressor, and DI migration for the divergences identified
+in B3 is the targeted remedy for defect (2).
+
 ## 4. Track C — Synthesis & Deferred Options
 
 ### C1. Root-cause statement
+
+The 23.54% headline mutation score and the 16.1% instrumented-mutant participation rate (A1)
+are dominated by a **measurement defect**, not by an absence of tests. The defect has two
+components, both now proven. The primary component is the `@hughescr/stryker-bun-runner`'s
+eager-import coverage-preload (A2 §3), which imports every mutated source module while
+`strykerGlobal.currentTestId` is `undefined`; the `cover()` helper therefore writes all
+module-level hits to `cov.static`, and `ignoreStatic: true` discards the entire static bucket,
+producing the 77.2% Ignored share seen in A1. A3 reproduces this in full isolation (a file
+with proven coverage scores 0% under the baseline config), and A6 provides decisive counter-
+evidence: switching `ignoreStatic` to `false` on a representative file yields 66.7% — the
+existing tests actively kill mutants once the static filter is lifted. The secondary component
+is `mock.module()` substitution of in-scope modules (B2, B4): the global `beforeEach` in
+`mock-reset.ts` re-mocks four in-scope modules on every test, and thirteen additional call
+sites ensure `src/providers/factory.ts` is replaced in virtually every test, depriving its 49
+NoCoverage mutants of any perTest hit independent of the static-collapse mechanism. Alongside
+the measurement defect, **genuine test-quality gaps** exist but are secondary: the
+survived-mutant list identifies `providers/kaneo/label-resource.ts` (16 survived, 1 killed)
+and `tools/update-status.ts` (18 survived, 6 killed) as the highest-priority weak-assertion
+files, and `providers/kaneo/update-label.ts` and `providers/kaneo/update-project.ts` have no
+main-suite tests at all (B4). These are real, actionable gaps — they are simply not the
+explanation for the low headline score.
+
+| Hypothesis                                                                                                 | Verdict                                | Evidence                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **H1** — Hook-ordering race: project `beforeEach` (mock-reset.ts) fires before runner sets `currentTestId` | **Inconclusive / assessed indirectly** | The primary static collapse originates at eager-import preload time, before any `beforeEach` — including the project's — has fired (A2 §3). Hook ordering may be a secondary contributor via the `stabilizeCoverage` promotion rule (A2 §4), but it cannot be isolated without editing `bunfig.toml` (A5). It is not the primary mechanism. |
+| **H2** — `mock.module()` swaps instrumented in-scope modules → no perTest coverage                         | **Proven contributing**                | `src/providers/factory.ts` is re-mocked by the global reset on every test (~4,817 × 29 calls) and by 13 explicit call sites; it records 49 NoCoverage and 0 killed (B2, B4).                                                                                                                                                                |
+| **H3** — Stryker `concurrency: 8` causes cross-worker coverage interference                                | **Disproven**                          | The runner forces `--concurrency=1` inside every Bun worker regardless of the Stryker-level `concurrency` setting; A4 confirmed bit-for-bit identical counts at `concurrency: 1` vs `concurrency: 8`.                                                                                                                                       |
+| **H4** — Preload ordering: `setup.ts` / `mock-reset.ts` loads before runner coverage preload               | **Disproven as primary cause**         | The runner's own eager-import loop runs regardless of project preload order and is the proximate cause of static bucket writes (A2 §3, A5). Removing `mock-reset.ts` from `bunfig.toml` preload would not eliminate the collapse.                                                                                                           |
+| **Dominant cause** — Eager-import static bucketing + `ignoreStatic: true`                                  | **Proven**                             | A2 §3 identifies the mechanism; A3 reproduces the 0% outcome on a file with confirmed Bun coverage; A6 confirms 66.7% true score when `ignoreStatic: false` is applied to a comparable file.                                                                                                                                                |
 
 ### C2. Quality assessment
 
