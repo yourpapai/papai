@@ -103,6 +103,7 @@ describe('routeInteraction', () => {
         handleConfigInteraction: () => Promise.resolve(false),
         handleWizardInteraction: () => Promise.resolve(false),
         handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -120,6 +121,7 @@ describe('routeInteraction', () => {
       },
       handleWizardInteraction: () => Promise.resolve(false),
       handlePluginInteraction: () => Promise.resolve(false),
+      handleToolToggleInteraction: () => Promise.resolve(false),
     })
 
     expect(handled).toBe(true)
@@ -140,6 +142,7 @@ describe('routeInteraction', () => {
           return Promise.resolve(true)
         },
         handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -189,6 +192,7 @@ describe('routeInteraction', () => {
         handleConfigInteraction: () => Promise.resolve(false),
         handleWizardInteraction: () => Promise.resolve(false),
         handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
       },
     )
 

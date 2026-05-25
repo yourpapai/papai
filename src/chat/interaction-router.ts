@@ -17,6 +17,7 @@ import { getValidatedDmCallbackTargetContextId, validateImplicitDmConfigTarget }
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import { getResponseText, getTargetContextId } from './interaction-router-support.js'
 import { handlePluginInteraction } from './plugin-interaction-handler.js'
+import { handleToolToggleInteraction } from './tool-toggle-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
@@ -61,6 +62,7 @@ export type InteractionRouteDeps = {
   handleConfigInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handleWizardInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handlePluginInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
+  handleToolToggleInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
 }
 function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
   const result = handleGroupSettingsSelectorCallback(interaction.user.id, interaction.callbackData)
@@ -228,6 +230,7 @@ const defaultDeps: InteractionRouteDeps = {
   handleConfigInteraction: defaultHandleConfigInteraction,
   handleWizardInteraction: defaultHandleWizardInteraction,
   handlePluginInteraction,
+  handleToolToggleInteraction,
 }
 
 export function routeInteraction(
@@ -263,6 +266,10 @@ export function routeInteraction(
 
   if (callbackData.startsWith('plg:')) {
     return resolvedDeps.handlePluginInteraction(interaction, reply)
+  }
+
+  if (callbackData.startsWith('tgl:')) {
+    return resolvedDeps.handleToolToggleInteraction(interaction, reply)
   }
 
   log.debug({ callbackData }, 'No route matched for interaction callback')
