@@ -71,6 +71,25 @@ function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandD
   return deps.getKaneoWorkspace(targetContextId) === null
 }
 
+function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
+  const baseUrl = config['baseUrl']
+  if (baseUrl !== undefined) return baseUrl
+  return config['url']
+}
+
+function getKaneoProvisionConfig(
+  targetContextId: string,
+  deps: SetupCommandDeps,
+): { publicUrl: string; internalUrl: string | undefined } | null {
+  const settings = deps.getContextSettings(targetContextId)
+  if (settings === null) return null
+  const taskInstance = deps.getTaskInstance(settings.taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return null
+  const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
+  if (publicUrl === undefined || publicUrl.trim() === '') return null
+  return { publicUrl, internalUrl: taskInstance.config['internalUrl'] }
+}
+
 async function replyForProvisionOutcome(reply: ReplyFn, outcome: ProvisionOutcome): Promise<boolean> {
   if (outcome.status === 'provisioned') {
     const shouldStop = isKaneoAutoProvisionEnabled()
@@ -102,7 +121,9 @@ async function maybeProvisionKaneoGroup(
   deps: SetupCommandDeps,
 ): Promise<boolean> {
   if (!isGroupTarget || taskProvider !== 'kaneo' || !isFirstTimeKaneoGroupSetup(targetContextId, deps)) return false
-  return replyForProvisionOutcome(reply, await deps.provisionAndConfigure(targetContextId, null))
+  const config = getKaneoProvisionConfig(targetContextId, deps)
+  if (config === null) return false
+  return replyForProvisionOutcome(reply, await deps.provisionAndConfigure(targetContextId, null, config))
 }
 
 export async function startWizardForAssignedTask(
@@ -171,7 +192,11 @@ export async function startSetupForTarget(
   const scopedPersonalTarget = toScopedContextId({ platformInstanceId, nativeContextId: userId })
   const isGroupTarget = targetContextId !== userId && targetContextId !== scopedPersonalTarget
 
-  if (isGroupTarget && !deps.isAuthorizedGroup(targetContextId) && !deps.isAuthorizedGroup(getNativeContextId(targetContextId))) {
+  if (
+    isGroupTarget &&
+    !deps.isAuthorizedGroup(targetContextId) &&
+    !deps.isAuthorizedGroup(getNativeContextId(targetContextId))
+  ) {
     await reply.text(
       `This group is not authorized yet. Ask the bot admin to run \`/group add ${targetContextId}\` in DM first.`,
     )

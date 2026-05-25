@@ -33,6 +33,12 @@ type ProvisionResult = {
 
 const REGISTRATION_DISABLED_MARKERS = ['signup_disabled', 'registration disabled', 'sign up is disabled'] as const
 
+function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
+  const baseUrl = config['baseUrl']
+  if (baseUrl !== undefined) return baseUrl
+  return config['url']
+}
+
 function generatePassword(): string {
   const uuid = crypto.randomUUID().replaceAll('-', '')
   return `${uuid.slice(0, 20)}Aa1!`
@@ -53,7 +59,13 @@ function clearProvisionedContextToolCaches(contextId: string): void {
   }
 }
 
-async function doSignUp(baseUrl: string, email: string, password: string, name: string): Promise<string> {
+async function doSignUp(
+  baseUrl: string,
+  publicUrl: string,
+  email: string,
+  password: string,
+  name: string,
+): Promise<string> {
   log.debug({ email }, 'Kaneo sign-up')
   const res = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
     method: 'POST',
@@ -84,12 +96,7 @@ async function doSignUp(baseUrl: string, email: string, password: string, name: 
   // the cookie from the token returned in the JSON body.
   // Use the public/auth-facing URL to decide whether better-auth would emit a
   // secure-prefixed cookie. Internal API traffic may be HTTP behind a proxy.
-  let publicAuthUrl = baseUrl
-  const configuredClientUrl = process.env['KANEO_CLIENT_URL']
-  if (configuredClientUrl !== undefined) {
-    publicAuthUrl = configuredClientUrl
-  }
-  const cookieName = publicAuthUrl.startsWith('https://')
+  const cookieName = publicUrl.startsWith('https://')
     ? '__Secure-better-auth.session_token'
     : 'better-auth.session_token'
   log.debug({ email, cookieName }, 'No session cookie in sign-up response; constructing from JSON token')
@@ -156,7 +163,7 @@ export async function provisionKaneoUser(
 
   log.info({ platformUserId, email }, 'Provisioning Kaneo user account')
   const trustedOrigin = publicUrl === '' ? baseUrl : publicUrl
-  const sessionCookie = await doSignUp(baseUrl, email, password, name)
+  const sessionCookie = await doSignUp(baseUrl, publicUrl, email, password, name)
   const workspaceId = await doCreateWorkspace(baseUrl, trustedOrigin, sessionCookie, name, slug)
 
   let kaneoKey = sessionCookie
@@ -177,15 +184,21 @@ export type ProvisionOutcome =
   | { status: 'registration_disabled' }
   | { status: 'failed'; error: string }
 
-export async function provisionAndConfigure(userId: string, username: string | null): Promise<ProvisionOutcome> {
-  const kaneoUrl = process.env['KANEO_CLIENT_URL']
-  if (kaneoUrl === undefined) return { status: 'failed', error: 'KANEO_CLIENT_URL not set' }
+export type ProvisionConfig = Readonly<{
+  publicUrl: string
+  internalUrl: string | undefined
+}>
 
+export async function provisionAndConfigure(
+  userId: string,
+  username: string | null,
+  config: ProvisionConfig,
+): Promise<ProvisionOutcome> {
   try {
+    const kaneoUrl = config.publicUrl
     let kaneoInternalUrl = kaneoUrl
-    const configuredInternalUrl = process.env['KANEO_INTERNAL_URL']
-    if (configuredInternalUrl !== undefined) {
-      kaneoInternalUrl = configuredInternalUrl
+    if (config.internalUrl !== undefined) {
+      kaneoInternalUrl = config.internalUrl
     }
     const result = await provisionKaneoUser(kaneoInternalUrl, kaneoUrl, userId, username)
     setConfig(userId, 'kaneo_apikey', result.kaneoKey)
@@ -224,8 +237,18 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
     return
   }
 
+  const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
+  if (publicUrl === undefined || publicUrl.trim() === '') {
+    provLog.warn(
+      { contextId, taskInstanceId: taskInstance.id },
+      'Kaneo auto-provisioning skipped: task instance URL missing',
+    )
+    return
+  }
+  const internalUrl = taskInstance.config['internalUrl']
+
   provLog.info({ contextId, username }, 'Auto-provisioning Kaneo account')
-  const outcome = await provisionAndConfigure(contextId, username)
+  const outcome = await provisionAndConfigure(contextId, username, { publicUrl, internalUrl })
 
   if (outcome.status === 'provisioned') {
     await reply.text(

@@ -15,6 +15,7 @@ import { provisionAndConfigure } from '../../src/providers/kaneo/provision.js'
 import { startKaneoServer, stopKaneoServer } from './docker-lifecycle.js'
 
 const log = logger.child({ scope: 'e2e:global-setup' })
+const DEFAULT_MAX_SERVER_ATTEMPTS = 60
 
 export type E2EConfig = {
   baseUrl: string
@@ -31,7 +32,7 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-async function waitForServer(baseUrl: string, maxAttempts = 60): Promise<void> {
+async function waitForServer(baseUrl: string, maxAttempts: number): Promise<void> {
   const healthUrl = `${baseUrl}/api/health`
   log.info({ healthUrl }, 'Waiting for Kaneo server to be healthy')
 
@@ -55,15 +56,29 @@ async function waitForServer(baseUrl: string, maxAttempts = 60): Promise<void> {
   throw new Error(`Kaneo server failed to become healthy after ${maxAttempts} attempts`)
 }
 
+function resolveBaseUrl(): string {
+  const e2eUrl = process.env['E2E_KANEO_URL']
+  if (e2eUrl !== undefined) return e2eUrl
+  const internalUrl = process.env['KANEO_INTERNAL_URL']
+  if (internalUrl !== undefined) return internalUrl
+  return 'http://localhost:11337'
+}
+
+function resolvePublicUrl(baseUrl: string): string {
+  const publicUrl = process.env['KANEO_CLIENT_URL']
+  if (publicUrl !== undefined) return publicUrl
+  return baseUrl
+}
+
 async function performSetup(): Promise<E2EConfig> {
-  const baseUrl = process.env['E2E_KANEO_URL'] ?? process.env['KANEO_INTERNAL_URL'] ?? 'http://localhost:11337'
-  const publicUrl = process.env['KANEO_CLIENT_URL'] ?? baseUrl
+  const baseUrl = resolveBaseUrl()
+  const publicUrl = resolvePublicUrl(baseUrl)
 
   log.info({ baseUrl, publicUrl }, 'Starting global E2E setup')
 
   try {
     await startKaneoServer()
-    await waitForServer(baseUrl)
+    await waitForServer(baseUrl, DEFAULT_MAX_SERVER_ATTEMPTS)
   } catch (error) {
     log.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to start Kaneo server')
     throw error
@@ -76,7 +91,10 @@ async function performSetup(): Promise<E2EConfig> {
     const uniqueTelegramId = 999999999 + (uniqueSuffix % 1000000)
     process.env['KANEO_INTERNAL_URL'] = baseUrl
     process.env['KANEO_CLIENT_URL'] = publicUrl
-    const result = await provisionAndConfigure(String(uniqueTelegramId), uniqueUsername)
+    const result = await provisionAndConfigure(String(uniqueTelegramId), uniqueUsername, {
+      publicUrl,
+      internalUrl: baseUrl,
+    })
     if (result.status !== 'provisioned') {
       throw new Error(
         `Kaneo provisioning failed: ${result.status === 'failed' ? result.error : 'registration disabled'}`,
@@ -107,9 +125,12 @@ export function getE2EConfig(): Promise<E2EConfig> {
     return Promise.resolve(e2eConfig)
   }
 
-  setupPromise ??= performSetup()
+  const currentSetupPromise = setupPromise
+  if (currentSetupPromise !== undefined) return currentSetupPromise
 
-  return setupPromise
+  const nextSetupPromise = performSetup()
+  setupPromise = nextSetupPromise
+  return nextSetupPromise
 }
 
 /**

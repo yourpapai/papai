@@ -11,6 +11,7 @@ import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import {
   provisionAndConfigure as defaultProvisionAndConfigure,
+  type ProvisionConfig,
   type ProvisionOutcome,
 } from '../providers/kaneo/provision.js'
 import { addUser, listUsers, removeUser } from '../users.js'
@@ -20,7 +21,7 @@ const MAX_CONCURRENT_SENDS = 5
 const log = logger.child({ scope: 'admin' })
 
 export interface AdminCommandsDeps {
-  provisionAndConfigure: (userId: string, username: string | null) => Promise<ProvisionOutcome>
+  provisionAndConfigure: (userId: string, username: string | null, config: ProvisionConfig) => Promise<ProvisionOutcome>
 }
 
 const defaultAdminDeps: AdminCommandsDeps = {
@@ -143,7 +144,13 @@ async function handleUsersCommand(
 }
 
 async function provisionUserKaneo(reply: ReplyFn, userId: string, deps: AdminCommandsDeps): Promise<void> {
-  const outcome = await deps.provisionAndConfigure(userId, null)
+  const publicUrl = process.env['KANEO_CLIENT_URL']
+  if (publicUrl === undefined || publicUrl.trim() === '') return
+
+  const outcome = await deps.provisionAndConfigure(userId, null, {
+    publicUrl,
+    internalUrl: process.env['KANEO_INTERNAL_URL'],
+  })
   if (outcome.status === 'provisioned') {
     await reply.text(
       `Kaneo account created.\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n🌐 ${outcome.kaneoUrl}`,

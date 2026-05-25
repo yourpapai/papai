@@ -55,6 +55,7 @@ describe('Admin Commands', () => {
 
     // Register mocks
     mockLogger()
+    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
 
     await setupTestDb()
 
@@ -230,6 +231,29 @@ describe('Admin Commands', () => {
       const replies = getReplies()
       expect(replies.some((r) => r.includes('auto-provisioning failed'))).toBe(true)
       expect(isAuthorized('67890')).toBe(true)
+    })
+
+    test('skips best-effort provisioning when global Kaneo URL is unset', async () => {
+      delete process.env['KANEO_CLIENT_URL']
+      let provisionCalls = 0
+      provisionImpl = (): Promise<ProvisionOutcome> => {
+        provisionCalls += 1
+        return Promise.resolve({ status: 'failed', error: 'KANEO_CLIENT_URL not set' })
+      }
+
+      const handler = commandHandlers.get('user')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+      await handler!(createDmMessage(ADMIN_ID, 'add 24680'), reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: ADMIN_ID,
+      })
+
+      expect(getReplies()).toEqual(['User 24680 authorized.'])
+      expect(provisionCalls).toBe(0)
+      expect(isAuthorized('24680')).toBe(true)
     })
 
     test('rejects invalid identifier format with specific error', async () => {

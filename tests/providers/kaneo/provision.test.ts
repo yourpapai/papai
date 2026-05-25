@@ -18,6 +18,32 @@ import {
 import { createProvider } from '../../../src/providers/registry.js'
 import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../../utils/test-helpers.js'
 
+function assignKaneoContext(contextId: string): void {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
+}
+
+function assignYouTrackContext(contextId: string): void {
+  insertTaskInstance({
+    id: `${contextId}-yt`,
+    type: 'youtrack',
+    config: { url: 'https://yt.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
+}
+
+function extractSlugOrDefault(init: RequestInit | undefined): string {
+  const slug = extractSlug(init)
+  if (slug !== undefined) return slug
+  return 'test-slug'
+}
+
 function parseBody(body: unknown): unknown {
   if (typeof body === 'string') {
     return JSON.parse(body) as unknown
@@ -60,7 +86,7 @@ function routeProvisionFetch(
     )
   }
   if (url.includes('/organization/create')) {
-    const slug = extractSlug(init) ?? 'test-slug'
+    const slug = extractSlugOrDefault(init)
     capturedSlugs.push(slug)
     return Promise.resolve(new Response(JSON.stringify({ id: 'ws-123', slug }), { status: 200 }))
   }
@@ -293,7 +319,7 @@ describe('provisionKaneoUser - unique email generation', () => {
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     })
 
-    assert(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
+    assert.ok(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
 
     await provider.listProjects()
 
@@ -320,7 +346,7 @@ describe('provisionKaneoUser - unique email generation', () => {
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     })
 
-    assert(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
+    assert.ok(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
 
     await provider.listProjects()
 
@@ -341,7 +367,10 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     setMockFetch(routeSignUpDisabled)
 
-    const result = await provisionAndConfigure('user-disabled', 'testuser')
+    const result = await provisionAndConfigure('user-disabled', 'testuser', {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
 
     expect(result).toEqual({ status: 'registration_disabled' })
   })
@@ -351,7 +380,10 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     setMockFetch(routeSignUpServerError)
 
-    const result = await provisionAndConfigure('user-generic-failure', 'testuser')
+    const result = await provisionAndConfigure('user-generic-failure', 'testuser', {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
 
     expect(result).toEqual({ status: 'failed', error: 'Sign-up failed (500): database unavailable' })
   })
@@ -366,7 +398,10 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     setMockFetch(routeStandardProvision)
 
-    const result = await provisionAndConfigure('group-1', null)
+    const result = await provisionAndConfigure('group-1', null, {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
 
     expect(result.status).toBe('provisioned')
     expect(getCachedTools('group-1')).toBeUndefined()
@@ -388,26 +423,6 @@ describe('maybeProvisionKaneo', () => {
     file: (): Promise<void> => Promise.resolve(),
     typing: (): void => {},
     buttons: (): Promise<void> => Promise.resolve(),
-  }
-
-  const assignKaneoContext = (contextId: string): void => {
-    insertTaskInstance({
-      id: `${contextId}-kaneo`,
-      type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
-      status: 'active',
-    })
-    setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
-  }
-
-  const assignYouTrackContext = (contextId: string): void => {
-    insertTaskInstance({
-      id: `${contextId}-yt`,
-      type: 'youtrack',
-      config: { url: 'https://yt.invalid' },
-      status: 'active',
-    })
-    setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
   }
 
   beforeEach(async () => {
@@ -443,6 +458,33 @@ describe('maybeProvisionKaneo', () => {
     // Should send welcome message with account details
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('Your Kaneo account has been created')
+  })
+
+  test('auto-provisioning uses assigned task instance URL without KANEO_CLIENT_URL', async () => {
+    delete process.env['KANEO_CLIENT_URL']
+    insertTaskInstance({
+      id: 'kaneo-team-a',
+      type: 'kaneo',
+      status: 'active',
+      config: { url: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
+    })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-team-a', platformInstanceId: 'telegram-default' })
+    const requestedUrls: string[] = []
+    const origins: string[] = []
+    setMockFetch((url, init) => {
+      requestedUrls.push(url)
+      const headers = extractCapturedHeaders(url, init)
+      origins.push(String(headers['Origin']))
+      return routeStandardProvision(url)
+    })
+
+    await maybeProvisionKaneo(mockReply, 'ctx-1', 'alice')
+
+    expect(textCalls.join('\n')).not.toContain('KANEO_CLIENT_URL not set')
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('https://kaneo.public.invalid')
+    expect(requestedUrls.every((url) => url.startsWith('https://kaneo.internal.invalid/'))).toBe(true)
+    expect(origins).toEqual(['undefined', 'https://kaneo.public.invalid', 'https://kaneo.public.invalid'])
   })
 
   test('skips auto-provisioning when context has no task assignment', async () => {

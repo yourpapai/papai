@@ -39,6 +39,8 @@ const getConfigWithExistingApiKey = (_contextId: string, key: string): string | 
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
 }
 
+const noContextSettings: SetupCommandDeps['getContextSettings'] = () => null
+
 const SCOPED_GROUP_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
 const SCOPED_ADMIN_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'admin-1' })
 
@@ -390,10 +392,13 @@ describe('/setup command', () => {
     process.env['KANEO_AUTO_PROVISION'] = 'false'
     const { reply, textCalls } = createMockReply()
     let provisionCalls = 0
+    const provisionConfigs: Array<{ publicUrl: string; internalUrl: string | undefined }> = []
+    let getContextSettingsImpl: SetupCommandDeps['getContextSettings'] = noContextSettings
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: () => {
+      provisionAndConfigure: (_userId, _username, config) => {
         provisionCalls++
+        provisionConfigs.push(config)
         return Promise.resolve({
           status: 'provisioned',
           email: 'group-1-a1b2c3d4@pap.ai',
@@ -406,14 +411,33 @@ describe('/setup command', () => {
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
-      getContextSettings: () => null,
-      getTaskInstance: () => null,
-      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+      getContextSettings: (...args) => getContextSettingsImpl(...args),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { baseUrl: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => {
+        getContextSettingsImpl = (): ReturnType<SetupCommandDeps['getContextSettings']> => ({
+          contextId: 'group-1',
+          taskInstanceId: 'kaneo-prod',
+          platformInstanceId: 'telegram-default',
+        })
+        return { status: 'assigned', taskProvider: 'kaneo' }
+      },
     }
 
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(provisionCalls).toBe(1)
+    expect(provisionConfigs).toEqual([
+      {
+        publicUrl: 'https://kaneo.public.invalid',
+        internalUrl: 'https://kaneo.internal.invalid',
+      },
+    ])
     expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
     expect(textCalls).toContain('wizard-started')
   })
