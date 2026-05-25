@@ -91,6 +91,27 @@ function buildPluginLogger(pluginId: string): PluginLogger {
   })
 }
 
+function buildRegisterTaskProviderType(
+  manifest: PluginManifest,
+): (type: string, descriptor: { factory: TaskProviderFactory }) => void {
+  return function registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void {
+    if (!manifest.permissions.includes('provider.task')) {
+      throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
+    }
+    const declared = manifest.contributes.taskProviderTypes
+    if (declared.length !== 1 || declared[0] !== type) {
+      throw new Error(
+        `Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes (declared: [${declared.join(', ')}])`,
+      )
+    }
+    registerContributedTaskProviderType(type, {
+      pluginId: manifest.id,
+      factory: descriptor.factory,
+      capabilities: new Set(manifest.providerCapabilities),
+    })
+  }
+}
+
 function buildRegistration(manifest: PluginManifest, collected: PluginContributions): PluginRegistration {
   const declaredTools = new Set(manifest.contributes.tools)
   const declaredFragments = new Set(manifest.contributes.promptFragments)
@@ -124,20 +145,7 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
       }
       collected.jobs = [...(collected.jobs ?? []), job]
     },
-    registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void {
-      if (!manifest.permissions.includes('provider.task')) {
-        throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
-      }
-      const declared = manifest.contributes.taskProviderTypes
-      if (declared.length !== 1 || declared[0] !== type) {
-        throw new Error(`Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes`)
-      }
-      registerContributedTaskProviderType(type, {
-        pluginId: manifest.id,
-        factory: descriptor.factory,
-        capabilities: new Set(manifest.providerCapabilities),
-      })
-    },
+    registerTaskProviderType: buildRegisterTaskProviderType(manifest),
   })
 }
 

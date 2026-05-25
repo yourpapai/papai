@@ -186,7 +186,9 @@ describe('buildPluginContext', () => {
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      expect(() => ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })).toThrow()
+      expect(() => ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })).toThrow(
+        "cannot register a task provider type without 'provider.task'",
+      )
     })
 
     test('throws when type is not the declared one', () => {
@@ -202,7 +204,9 @@ describe('buildPluginContext', () => {
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      expect(() => ctx.registration.registerTaskProviderType('youtrack', { factory: stubProviderFactory })).toThrow()
+      expect(() => ctx.registration.registerTaskProviderType('youtrack', { factory: stubProviderFactory })).toThrow(
+        'is not declared in plugin manifest contributes.taskProviderTypes',
+      )
     })
   })
 })
