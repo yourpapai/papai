@@ -11,8 +11,10 @@ import { migration043ScopedContextIds } from '../../../src/db/migrations/043_sco
 
 describe('migration043ScopedContextIds', () => {
   let db: Database
+  let originalChatProvider: string | undefined
 
   beforeEach(() => {
+    originalChatProvider = process.env['CHAT_PROVIDER']
     db = new Database(':memory:')
     db.run('PRAGMA foreign_keys=OFF')
     db.run(
@@ -89,7 +91,14 @@ describe('migration043ScopedContextIds', () => {
     )
   })
 
-  afterEach(() => db.close())
+  afterEach(() => {
+    if (originalChatProvider === undefined) {
+      delete process.env['CHAT_PROVIDER']
+    } else {
+      process.env['CHAT_PROVIDER'] = originalChatProvider
+    }
+    db.close()
+  })
 
   test('scopes legacy context rows when one platform instance exists', () => {
     db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
@@ -106,6 +115,30 @@ describe('migration043ScopedContextIds', () => {
     expect(db.query('SELECT user_id FROM user_config').get()).toEqual({ user_id: scopedUser })
     expect(db.query('SELECT group_id FROM authorized_groups').get()).toEqual({ group_id: scopedGroup })
     expect(db.query('SELECT group_id FROM group_members').get()).toEqual({ group_id: scopedGroup })
+  })
+
+  test('uses future bootstrap platform id when upgrading before instance bootstrap', () => {
+    process.env['CHAT_PROVIDER'] = 'telegram'
+    db.run(`INSERT INTO user_config VALUES ('user-1', 'timezone', 'UTC')`)
+    db.run(`INSERT INTO authorized_groups VALUES ('group-1', 'admin', 'now')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query('SELECT user_id FROM user_config').get()).toEqual({
+      user_id: toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' }),
+    })
+    expect(db.query('SELECT group_id FROM authorized_groups').get()).toEqual({
+      group_id: toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' }),
+    })
+  })
+
+  test('preserves zero-instance legacy rows when chat provider is absent', () => {
+    delete process.env['CHAT_PROVIDER']
+    db.run(`INSERT INTO user_config VALUES ('user-1', 'timezone', 'UTC')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query('SELECT user_id FROM user_config').get()).toEqual({ user_id: 'user-1' })
   })
 
   test('scopes legacy native ids that start with pi but are not scoped ids', () => {

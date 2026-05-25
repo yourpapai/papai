@@ -76,10 +76,20 @@ const columnExists = (db: Database, table: string, column: string): boolean =>
     .all()
     .some((row) => row.name === column)
 
-const getSinglePlatformInstanceId = (db: Database): string | null => {
+const parseBootstrapChatProvider = (value: string | undefined): string | null => {
+  if (value === 'telegram' || value === 'mattermost' || value === 'discord') return value
+  return null
+}
+
+const getPlatformInstanceId = (db: Database): string | null => {
   if (!tableExists(db, 'platform_instances')) return null
   const rows = db.query<{ id: string }, []>(`SELECT id FROM platform_instances ORDER BY id`).all()
-  return rows.length === 1 ? rows[0]!.id : null
+  if (rows.length === 1) return rows[0]!.id
+  if (rows.length > 1) return null
+
+  const chatProvider = parseBootstrapChatProvider(process.env['CHAT_PROVIDER'])
+  if (chatProvider === null) return null
+  return `${chatProvider}-default`
 }
 
 const scopeValue = (platformInstanceId: string, value: string | null): string | null => {
@@ -241,7 +251,7 @@ const createUsernameUniqueIndex = (db: Database): void => {
 export const migration043ScopedContextIds: Migration = {
   id: '043_scoped_context_ids',
   up(db) {
-    const platformInstanceId = getSinglePlatformInstanceId(db)
+    const platformInstanceId = getPlatformInstanceId(db)
     if (platformInstanceId === null) {
       log.warn('migration 043: preserving legacy context ids because platform ownership is ambiguous')
     } else {
