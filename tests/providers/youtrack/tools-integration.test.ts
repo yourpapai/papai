@@ -3,11 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
 import { YouTrackProvider } from '../../../src/providers/youtrack/index.js'
 import { makeTools } from '../../../src/tools/index.js'
+import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 
 const createConfig = (): YouTrackConfig => ({
   baseUrl: 'https://test.youtrack.cloud',
@@ -99,6 +100,11 @@ const EXPECTED_TOOLS = [
 ] as const
 
 describe('YouTrack provider tools integration', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   test('makeTools exposes the expected YouTrack tool surface', () => {
     const provider = new YouTrackProvider(createConfig())
     const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })

@@ -12,10 +12,11 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+
 import type { ToolSet } from 'ai'
 
-import { userCachesForTesting } from '../src/cache.js'
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
+import { userCachesForTesting } from '../src/cache.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -47,6 +48,9 @@ describe('llm-orchestrator-tools / getOrCreateTools cache behaviour', () => {
   let provider: TaskProvider
 
   beforeEach(async () => {
+    // mock-reset's global beforeEach restores the real ../src/tools/index.js, so
+    // re-install the spy here (after the restore) for every test in this suite.
+    void mock.module('../src/tools/index.js', () => ({ makeTools: makeToolsSpy }))
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
@@ -73,7 +77,17 @@ describe('llm-orchestrator-tools / getOrCreateTools cache behaviour', () => {
 
   test('makeTools is called again for a different context even when tools is empty', () => {
     prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
-    prepareLlmInvocation('ctx-other', 'ctx-other', CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
+    prepareLlmInvocation(
+      'ctx-other',
+      'ctx-other',
+      CHAT_USER_ID,
+      USERNAME,
+      'dm',
+      provider,
+      [],
+      'hello',
+      NO_STAGED_DOWNLOAD,
+    )
 
     expect(makeToolsSpy).toHaveBeenCalledTimes(2)
   })
@@ -83,6 +97,9 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
   let provider: TaskProvider
 
   beforeEach(async () => {
+    // mock-reset's global beforeEach restores the real ../src/tools/index.js, so
+    // re-install the spy here (after the restore) for every test in this suite.
+    void mock.module('../src/tools/index.js', () => ({ makeTools: makeToolsSpy }))
     mockLogger()
     await setupTestDb()
     userCachesForTesting.clear()
