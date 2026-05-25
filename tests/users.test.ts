@@ -98,13 +98,13 @@ describe('addUser', () => {
 
   test('allows the same username placeholder on different platform instances', () => {
     addUser({
-      userId: 'tg-placeholder-alice',
+      userId: 'placeholder-tg-alice',
       platformInstanceId: 'telegram-default',
       addedBy: 'admin-1',
       username: 'alice',
     })
     addUser({
-      userId: 'ds-placeholder-alice',
+      userId: 'placeholder-ds-alice',
       platformInstanceId: 'discord-default',
       addedBy: 'admin-2',
       username: 'alice',
@@ -124,14 +124,14 @@ describe('addUser', () => {
   })
 
   test('keeps same username rows independent across platform instances', () => {
-    addUser({ userId: 'tg-placeholder', platformInstanceId: 'telegram-default', addedBy: 'admin', username: 'alice' })
-    addUser({ userId: 'ds-placeholder', platformInstanceId: 'discord-default', addedBy: 'admin', username: 'alice' })
+    addUser({ userId: 'placeholder-tg', platformInstanceId: 'telegram-default', addedBy: 'admin', username: 'alice' })
+    addUser({ userId: 'placeholder-ds', platformInstanceId: 'discord-default', addedBy: 'admin', username: 'alice' })
 
     expect(
       listUsers()
         .filter((user) => user.username === 'alice')
         .map((user) => `${user.platform_instance_id}:${user.platform_user_id}`),
-    ).toEqual(['telegram-default:tg-placeholder', 'discord-default:ds-placeholder'])
+    ).toEqual(['telegram-default:placeholder-tg', 'discord-default:placeholder-ds'])
   })
 })
 
@@ -257,6 +257,19 @@ describe('resolveUserByUsername', () => {
   test('returns true when ID already matches', () => {
     addUser({ userId: '555', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999', username: 'alice' })
     expect(resolveUserByUsername('555', 'alice', TEST_PLATFORM_ID)).toBe(true)
+  })
+
+  test('does not update opaque user ID containing placeholder text', () => {
+    addUser({
+      userId: 'real-placeholder-user',
+      platformInstanceId: TEST_PLATFORM_ID,
+      addedBy: '999',
+      username: 'alice',
+    })
+
+    expect(resolveUserByUsername('555', 'alice', TEST_PLATFORM_ID)).toBe(false)
+    expect(isAuthorized('real-placeholder-user', TEST_PLATFORM_ID)).toBe(true)
+    expect(isAuthorized('555', TEST_PLATFORM_ID)).toBe(false)
   })
 
   test('returns false for unknown username', () => {

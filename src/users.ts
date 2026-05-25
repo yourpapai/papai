@@ -17,7 +17,7 @@ const log = logger.child({ scope: 'users' })
 const scopedUserContextId = (platformInstanceId: string, userId: string): string =>
   toScopedContextId({ platformInstanceId, nativeContextId: userId })
 
-const isPlaceholderUserId = (userId: string): boolean => userId.includes('placeholder')
+const isPlaceholderUserId = (userId: string): boolean => userId.startsWith('placeholder-')
 
 export interface UserRecord {
   platform_user_id: string
