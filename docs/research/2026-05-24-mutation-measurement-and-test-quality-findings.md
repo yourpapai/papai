@@ -13,7 +13,7 @@ See LICENSE in the project root for details.
 
 ## 1. Executive Summary
 
-_(filled last — headline numbers and the one-line root cause)_
+`bun test:mutate:full` reports a headline mutation score of **23.54%**, which fails the configured `break: 40` gate, but that score is computed over only **1,674 mutants (16.1% of the 10,410 instrumented)**; the remaining **8,032 (77.2%) are discarded as static** before scoring (A1). The dominant root cause is a measurement defect in `@hughescr/stryker-bun-runner`: its coverage-preload template eager-imports every mutated source file while `strykerGlobal.currentTestId` is `undefined`, routing all module-level hits to the `static` bucket; `ignoreStatic: true` then drops the entire static bucket from the score (A2 §3). A3 reproduced this in full isolation — a file with confirmed Bun coverage scores 0% killed/survived — and A6 provided decisive counter-evidence: switching `ignoreStatic: false` on a representative file yields **66.7%** (16 Killed / 6 Survived / 2 NoCoverage), confirming the existing tests actively kill mutants once the static filter is lifted. Genuine, actionable quality gaps exist but are secondary to the measurement defect: the suite is fundamentally **DI-first (120:26 file ratio)** and healthier than the headline implies; the highest-priority genuine gaps are weak assertions in `providers/kaneo/label-resource.ts` (16 survived, 1 killed) and `tools/update-status.ts` (18 survived, 6 killed), with `factory.ts` over-mocking acting as an independent secondary measurement suppressor (B2, B4). Track C / section C3 records deferred remediation options — measurement configuration, DI migration, full true-score run, and threshold policy — none of which were executed during this investigation.
 
 ## 2. Track A — Measurement Root Cause
 
@@ -1159,3 +1159,300 @@ These options are recorded for a separate, future brainstorming/approval cycle a
 is acted upon.
 
 ## 5. Appendix — Commands & Raw Outputs
+
+### A1 — Baseline status breakdown
+
+The baseline mutation data lives in `reports/mutation.json`, produced by the last full `bun test:mutate:full` run before this investigation.
+
+**Command used to extract status counts:**
+
+```bash
+jq '[.files[].mutants[].status] | group_by(.) | map({status: .[0], count: length}) | sort_by(-.count)' \
+  reports/mutation.json
+```
+
+**Output:**
+
+```json
+[
+  { "status": "Ignored", "count": 8032 },
+  { "status": "CompileError", "count": 704 },
+  { "status": "NoCoverage", "count": 667 },
+  { "status": "Survived", "count": 613 },
+  { "status": "Killed", "count": 392 },
+  { "status": "Timeout", "count": 2 }
+]
+```
+
+Total: 10,410 instrumented mutants. Valid (scored) = 1,674 (16.1%). Score = 394 / 1674 = **23.54%**.
+
+---
+
+### A3 — Scoped reproduction (single well-tested file)
+
+**Config (`/tmp/stryker.A3.json`):**
+
+```json
+{
+  "testRunner": "bun",
+  "appendPlugins": ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "bun": { "timeout": 120000 },
+  "mutate": ["src/providers/kaneo/column-resource.ts"],
+  "coverageAnalysis": "perTest",
+  "ignoreStatic": true,
+  "incremental": false,
+  "concurrency": 8,
+  "timeoutMS": 60000,
+  "thresholds": { "high": 80, "low": 60, "break": 0 },
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": { "fileName": "/tmp/A3.mutation.json" },
+  "ignorePatterns": ["node_modules", ".stryker-tmp"]
+}
+```
+
+**Run command:**
+
+```bash
+bunx stryker run /tmp/stryker.A3.json
+```
+
+**Key log lines (from `/tmp/A3.run.log`):**
+
+```
+INFO  ProjectReader          Found 1 of 16490 file(s) to be mutated.
+INFO  Instrumenter           Instrumented 1 source file(s) with 85 mutant(s)
+INFO  ConcurrencyTokenProvider Creating 4 checker process(es) and 4 test runner process(es).
+INFO  DryRunExecutor         Starting initial test run (bun test runner with "perTest" coverage analysis).
+INFO  DryRunExecutor         Initial test run succeeded. Ran 4817 tests in 1 minute and 34 seconds.
+INFO  MutationTestReportHelper Final mutation score of 0.00 is greater than or equal to break threshold 0
+INFO  MutationTestExecutor   Done in 2 minutes and 18 seconds.
+```
+
+**Mutant status counts:** 69 Ignored / 12 NoCoverage / 4 CompileError / 0 Killed / 0 Survived. Score: **0.00%**.
+
+---
+
+### A4 — Concurrency variable test
+
+**Config (`/tmp/stryker.A4.json`):**
+
+```json
+{
+  "testRunner": "bun",
+  "appendPlugins": ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "bun": { "timeout": 120000 },
+  "mutate": ["src/providers/kaneo/column-resource.ts"],
+  "coverageAnalysis": "perTest",
+  "ignoreStatic": true,
+  "incremental": false,
+  "concurrency": 1,
+  "timeoutMS": 60000,
+  "thresholds": { "high": 80, "low": 60, "break": 0 },
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": { "fileName": "/tmp/A4.mutation.json" },
+  "ignorePatterns": ["node_modules", ".stryker-tmp"]
+}
+```
+
+**Run command:**
+
+```bash
+bunx stryker run /tmp/stryker.A4.json
+```
+
+**Key log lines (from `/tmp/A4.run.log`):**
+
+```
+INFO  ProjectReader          Found 1 of 16490 file(s) to be mutated.
+INFO  Instrumenter           Instrumented 1 source file(s) with 85 mutant(s)
+INFO  ConcurrencyTokenProvider Creating 1 checker process(es) and 1 test runner process(es).
+INFO  DryRunExecutor         Starting initial test run (bun test runner with "perTest" coverage analysis).
+INFO  DryRunExecutor         Initial test run succeeded. Ran 4817 tests in 1 minute and 36 seconds.
+INFO  MutationTestReportHelper Final mutation score of 0.00 is greater than or equal to break threshold 0
+INFO  MutationTestExecutor   Done in 2 minutes and 32 seconds.
+```
+
+**Mutant status counts:** 69 Ignored / 12 NoCoverage / 4 CompileError / 0 Killed / 0 Survived — **bit-for-bit identical to A3**. Concurrency hypothesis ruled out.
+
+---
+
+### A5 — Preload isolation (read-only investigation)
+
+No ephemeral config was run for A5; the experiment was blocked by an unoverridable `bunfig.toml` dependency. The investigation was purely read-only source inspection.
+
+**Files inspected:**
+
+```
+node_modules/@hughescr/stryker-bun-runner/README.md           §"How the sandboxed config works" (line 102)
+node_modules/@hughescr/stryker-bun-runner/dist/index.js       lines 7586–7642  (generateSanitizedBunfig)
+node_modules/@hughescr/stryker-bun-runner/dist/index.js       lines 6261–6285  (runBunTests arg assembly)
+node_modules/@hughescr/stryker-bun-runner/dist/index.js       lines 6278–6279  (--concurrency=1 append)
+node_modules/@hughescr/stryker-bun-runner/dist/templates/coverage-preload.ts  lines ~162–178 (EAGER_MODULES loop)
+node_modules/@hughescr/stryker-bun-runner/dist/templates/coverage-preload.ts  lines ~195–225 (beforeEach/afterEach lifecycle)
+```
+
+**Key findings:** `SAFE_TEST_KEYS` includes `"preload"`, which is forwarded verbatim into the sanitized `bunfig.toml` written to every `bun test` call. There is no runner config flag, env var, or `bun: {}` block option to suppress or replace the preload list. Preload isolation was therefore assessed indirectly via A2's mechanistic analysis.
+
+---
+
+### A6 — True-score probe (`ignoreStatic: false`, scoped)
+
+**Config (`/tmp/stryker.A6.json`):**
+
+```json
+{
+  "testRunner": "bun",
+  "appendPlugins": ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "bun": { "timeout": 120000 },
+  "mutate": ["src/providers/kaneo/search-tasks.ts"],
+  "coverageAnalysis": "perTest",
+  "ignoreStatic": false,
+  "incremental": false,
+  "concurrency": 8,
+  "timeoutMS": 60000,
+  "thresholds": { "high": 80, "low": 60, "break": 0 },
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": { "fileName": "/tmp/A6.mutation.json" },
+  "ignorePatterns": ["node_modules", ".stryker-tmp"]
+}
+```
+
+**Run command:**
+
+```bash
+bunx stryker run /tmp/stryker.A6.json
+```
+
+**Key log lines (from `/tmp/A6.run.log`):**
+
+```
+INFO  ProjectReader          Found 1 of 16491 file(s) to be mutated.
+INFO  Instrumenter           Instrumented 1 source file(s) with 49 mutant(s)
+INFO  ConcurrencyTokenProvider Creating 4 checker process(es) and 4 test runner process(es).
+INFO  DryRunExecutor         Starting initial test run (bun test runner with "perTest" coverage analysis).
+INFO  DryRunExecutor         Initial test run succeeded. Ran 4817 tests in 1 minute and 35 seconds.
+WARN  MutantTestPlanner      Detected 43 static mutants (88% of total) that are estimated to take 100% of the time running the tests!
+INFO  MutationTestReportHelper Final mutation score of 66.67 is greater than or equal to break threshold 0
+INFO  MutationTestExecutor   Done in 7 minutes and 1 second.
+```
+
+**Mutant status counts:** 16 Killed / 6 Survived / 2 NoCoverage / 25 CompileError. Score: **66.67%**. Run window: 11:57:42 – 12:04:43.
+
+---
+
+### B2 — `mock.module()` blast radius
+
+**Commands run (static analysis; no `src/` or `tests/` changes):**
+
+```bash
+# Total call count and file count
+grep -rn  "mock\.module(" tests/ --include="*.ts" | wc -l   # → 97
+grep -rln "mock\.module(" tests/ --include="*.ts" | wc -l   # → 26
+
+# Ranked mocked specifiers
+grep -rhn "mock\.module(" tests/ --include="*.ts" \
+  | sed -E "s/.*mock\.module\(['\"]([^'\"]+)['\"].*/\1/" \
+  | sort | uniq -c | sort -rn
+```
+
+**Results:** 97 total call sites across 26 test files. Top in-scope specifiers: `src/providers/factory.ts` (13 occurrences), `src/providers/kaneo/provision.ts` (1), `src/recurring.ts` (1), `src/users.ts` (1). The global `beforeEach` in `mock-reset.ts` re-mocks all 29 originals on every one of ~4,817 tests, performing approximately 140,000 `mock.module()` calls per full test run.
+
+---
+
+### B3 — DI adherence
+
+**Commands run (static analysis; no `src/` or `tests/` changes):**
+
+```bash
+# mock.module users
+grep -rl "mock\.module(" tests/ --include="*.ts" | wc -l
+# → 26
+
+# DI-helper users (getToolExecutor / makeTools / createMockProvider / provider: / deps:)
+grep -rlE "getToolExecutor\(|makeTools\(|createMockProvider\(|new [A-Z][A-Za-z]+Resource\(|provider:|Deps =|deps:" \
+  tests/ --include="*.ts" | wc -l
+# → 120
+
+# total test files
+find tests -name "*.test.ts" | wc -l
+# → 545 (includes client/ and e2e/)
+
+# files using BOTH mock.module and a DI helper
+comm -12 \
+  <(grep -rl "mock\.module(" tests/ --include="*.ts" | sort) \
+  <(grep -rlE "getToolExecutor\(|makeTools\(|createMockProvider\(|provider:|deps:" \
+      tests/ --include="*.ts" | sort) | wc -l
+# → 11
+
+# Deps interfaces in src/
+grep -rlE "interface .*Deps|type .*Deps" src/ | head
+# → 20 files covering most key orchestration modules
+```
+
+**Key counts:** DI-helper files: **120** / `mock.module()` files: **26** / both: **11** / `mock.module()` only: **15**. Ratio 120:26 (~4.6:1) — DI-first is the dominant pattern.
+
+---
+
+### B4 — Test-quality signals from mutation data
+
+**Commands used to rank survived and NoCoverage mutants from `reports/mutation.json`:**
+
+```bash
+# Top files by survived mutants
+jq -r '
+  [.files | to_entries[] |
+    .key as $file |
+    { file: $file,
+      survived: ([.value.mutants[] | select(.status=="Survived")] | length),
+      killed:   ([.value.mutants[] | select(.status=="Killed")]   | length),
+      noCov:    ([.value.mutants[] | select(.status=="NoCoverage")] | length)
+    }
+  ] | sort_by(-.survived) | .[:12][] |
+  "\(.survived)\t\(.killed)\t\(.noCov)\t\(.file)"
+' reports/mutation.json
+
+# Top files by NoCoverage mutants
+jq -r '
+  [.files | to_entries[] |
+    .key as $file |
+    { file: $file,
+      noCov:    ([.value.mutants[] | select(.status=="NoCoverage")] | length),
+      killed:   ([.value.mutants[] | select(.status=="Killed")]   | length),
+      survived: ([.value.mutants[] | select(.status=="Survived")] | length)
+    }
+  ] | sort_by(-.noCov) | .[:12][] |
+  "\(.noCov)\t\(.killed)\t\(.survived)\t\(.file)"
+' reports/mutation.json
+```
+
+**Top results by survived (survived / killed / noCov / file):**
+
+```
+19  27  16  src/providers/youtrack/operations/agiles.ts
+18   6   0  src/tools/update-status.ts
+16   1   2  src/providers/kaneo/label-resource.ts
+16   6   2  src/providers/youtrack/labels.ts
+14  13   1  src/providers/youtrack/operations/comments.ts
+14   8   8  src/providers/youtrack/operations/work-items.ts
+```
+
+**Top results by NoCoverage (noCov / killed / survived / file):**
+
+```
+49   0   3  src/providers/factory.ts
+36   3   1  src/tools/search-memos.ts
+26   0  12  src/providers/youtrack/operations/team.ts
+24  12  10  src/providers/kaneo/task-relations.ts
+23   0   0  src/providers/kaneo/update-label.ts
+23   0   0  src/providers/kaneo/update-project.ts
+```
+
+---
+
+_All `/tmp/stryker.*.json` configs were ephemeral throwaway files used during this investigation; no committed configuration (`stryker.config.json`, `bunfig.toml`) was modified during this investigation._
