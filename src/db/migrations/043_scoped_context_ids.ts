@@ -14,6 +14,7 @@ const log = logger.child({ scope: 'migration:043' })
 type ContextOwnedColumn = Readonly<{
   table: string
   column: string
+  conflictColumns: readonly string[] | null
 }>
 
 type UsernameDuplicateGroup = Readonly<{
@@ -24,23 +25,40 @@ type UsernameDuplicateGroup = Readonly<{
 type UserDuplicateCandidate = Readonly<{
   rowid: number
   platform_user_id: string
+  is_placeholder: number
 }>
 
+type ContextOwnedRow = Readonly<{
+  rowid: number
+  value: string
+}> &
+  Readonly<Record<string, string | number | null>>
+
 const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
-  { table: 'context_settings', column: 'context_id' },
-  { table: 'user_config', column: 'user_id' },
-  { table: 'conversation_history', column: 'user_id' },
-  { table: 'memory_summary', column: 'user_id' },
-  { table: 'memory_facts', column: 'user_id' },
-  { table: 'authorized_groups', column: 'group_id' },
-  { table: 'group_members', column: 'group_id' },
-  { table: 'recurring_tasks', column: 'user_id' },
-  { table: 'scheduled_prompts', column: 'created_by_user_id' },
-  { table: 'scheduled_prompts', column: 'delivery_context_id' },
-  { table: 'alert_prompts', column: 'created_by_user_id' },
-  { table: 'alert_prompts', column: 'delivery_context_id' },
-  { table: 'task_snapshots', column: 'user_id' },
+  { table: 'context_settings', column: 'context_id', conflictColumns: [] },
+  { table: 'user_config', column: 'user_id', conflictColumns: ['key'] },
+  { table: 'conversation_history', column: 'user_id', conflictColumns: [] },
+  { table: 'memory_summary', column: 'user_id', conflictColumns: [] },
+  { table: 'memory_facts', column: 'user_id', conflictColumns: ['identifier'] },
+  { table: 'authorized_groups', column: 'group_id', conflictColumns: [] },
+  { table: 'group_members', column: 'group_id', conflictColumns: ['user_id'] },
+  { table: 'recurring_tasks', column: 'user_id', conflictColumns: null },
+  { table: 'scheduled_prompts', column: 'created_by_user_id', conflictColumns: null },
+  { table: 'scheduled_prompts', column: 'delivery_context_id', conflictColumns: null },
+  { table: 'alert_prompts', column: 'created_by_user_id', conflictColumns: null },
+  { table: 'alert_prompts', column: 'delivery_context_id', conflictColumns: null },
+  { table: 'task_snapshots', column: 'user_id', conflictColumns: ['task_id', 'field'] },
+  { table: 'user_instructions', column: 'context_id', conflictColumns: null },
+  { table: 'memos', column: 'user_id', conflictColumns: null },
+  { table: 'user_identity_mappings', column: 'context_id', conflictColumns: ['provider_name'] },
+  { table: 'known_group_contexts', column: 'context_id', conflictColumns: ['provider'] },
+  { table: 'group_admin_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
+  { table: 'group_user_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
+  { table: 'attachments', column: 'context_id', conflictColumns: null },
+  { table: 'staged_files', column: 'context_id', conflictColumns: null },
 ]
+
+const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u
 
 const tableExists = (db: Database, table: string): boolean =>
   db
@@ -61,25 +79,63 @@ const getSinglePlatformInstanceId = (db: Database): string | null => {
 
 const scopeValue = (platformInstanceId: string, value: string | null): string | null => {
   if (value === null) return null
-  if (value.startsWith('pi:')) return value
+  if (SCOPED_CONTEXT_ID_PATTERN.test(value)) return value
   return toScopedContextId({ platformInstanceId, nativeContextId: value })
+}
+
+const getRowValue = (row: ContextOwnedRow, column: string): string | number | null => {
+  const value = row[column]
+  if (value === undefined) return null
+  return value
+}
+
+const existingScopedConflict = (
+  db: Database,
+  input: ContextOwnedColumn,
+  row: ContextOwnedRow,
+  scopedValue: string,
+): boolean => {
+  if (input.conflictColumns === null) return false
+  const conflictPredicates = input.conflictColumns.map((column) => `${column} IS ?`).join(' AND ')
+  const sql = [`SELECT 1 FROM ${input.table} WHERE ${input.column} = ? AND rowid <> ?`, conflictPredicates]
+    .filter((part) => part !== '')
+    .join(' AND ')
+  const params = [scopedValue, row.rowid, ...input.conflictColumns.map((column) => getRowValue(row, column))]
+
+  return db.query(sql).get(...params) !== null
+}
+
+const getConflictColumns = (input: ContextOwnedColumn): readonly string[] => {
+  if (input.conflictColumns === null) return []
+  return input.conflictColumns
+}
+
+const getContextOwnedRows = (db: Database, input: ContextOwnedColumn): readonly ContextOwnedRow[] => {
+  const conflictColumns = getConflictColumns(input)
+  const selectedConflictColumns = conflictColumns.map((column) => `, ${column}`)
+
+  return db
+    .query<ContextOwnedRow, []>(
+      `SELECT rowid, ${input.column} AS value${selectedConflictColumns.join('')} FROM ${input.table} WHERE ${input.column} IS NOT NULL`,
+    )
+    .all()
+    .filter((row) => !SCOPED_CONTEXT_ID_PATTERN.test(row.value))
 }
 
 const scopeContextOwnedColumn = (db: Database, platformInstanceId: string, input: ContextOwnedColumn): void => {
   if (!tableExists(db, input.table)) return
   if (!columnExists(db, input.table, input.column)) return
 
-  const rows = db
-    .query<{ value: string }, []>(
-      `SELECT DISTINCT ${input.column} AS value FROM ${input.table} WHERE ${input.column} IS NOT NULL AND ${input.column} NOT LIKE 'pi:%'`,
-    )
-    .all()
+  const rows = getContextOwnedRows(db, input)
 
   for (const row of rows) {
-    db.run(`UPDATE ${input.table} SET ${input.column} = ? WHERE ${input.column} = ?`, [
-      scopeValue(platformInstanceId, row.value),
-      row.value,
-    ])
+    const scopedValue = scopeValue(platformInstanceId, row.value)
+    if (scopedValue === null) continue
+    if (existingScopedConflict(db, input, row, scopedValue)) {
+      db.run(`DELETE FROM ${input.table} WHERE rowid = ?`, [row.rowid])
+    } else {
+      db.run(`UPDATE ${input.table} SET ${input.column} = ? WHERE rowid = ?`, [scopedValue, row.rowid])
+    }
   }
 }
 
@@ -119,6 +175,7 @@ const getDuplicateCandidates = (db: Database, group: UsernameDuplicateGroup): re
     .query<UserDuplicateCandidate, [string, string]>(
       `
         SELECT rowid, platform_user_id
+          , CASE WHEN platform_user_id LIKE 'placeholder-%' THEN 1 ELSE 0 END AS is_placeholder
         FROM users
         WHERE platform_instance_id = ? AND username = ?
         ORDER BY
@@ -129,17 +186,42 @@ const getDuplicateCandidates = (db: Database, group: UsernameDuplicateGroup): re
     )
     .all(group.platform_instance_id, group.username)
 
-const deleteDuplicateCandidates = (db: Database, candidates: readonly UserDuplicateCandidate[]): void => {
-  const rowsToDelete = candidates.slice(1)
-  for (const row of rowsToDelete) {
+const deleteUsersByRowid = (db: Database, candidates: readonly UserDuplicateCandidate[]): void => {
+  for (const row of candidates) {
     db.run(`DELETE FROM users WHERE rowid = ?`, [row.rowid])
   }
+}
+
+const clearUsernamesByRowid = (db: Database, candidates: readonly UserDuplicateCandidate[]): void => {
+  for (const row of candidates) {
+    db.run(`UPDATE users SET username = NULL WHERE rowid = ?`, [row.rowid])
+  }
+}
+
+const deduplicateUsernameCandidates = (db: Database, candidates: readonly UserDuplicateCandidate[]): void => {
+  const realUsers = candidates.filter((row) => row.is_placeholder === 0)
+  if (realUsers.length === 0) {
+    deleteUsersByRowid(db, candidates.slice(1))
+    return
+  }
+  if (realUsers.length === 1) {
+    deleteUsersByRowid(
+      db,
+      candidates.filter((row) => row.is_placeholder === 1),
+    )
+    return
+  }
+
+  const keeper = realUsers[0]
+  if (keeper === undefined) return
+  const rowsToClear = candidates.filter((row) => row.rowid !== keeper.rowid)
+  clearUsernamesByRowid(db, rowsToClear)
 }
 
 const deduplicateUsernames = (db: Database): void => {
   const duplicateGroups = getUsernameDuplicateGroups(db)
   for (const group of duplicateGroups) {
-    deleteDuplicateCandidates(db, getDuplicateCandidates(db, group))
+    deduplicateUsernameCandidates(db, getDuplicateCandidates(db, group))
   }
 }
 

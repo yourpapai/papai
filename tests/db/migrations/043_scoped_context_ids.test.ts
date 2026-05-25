@@ -6,6 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import { migration043ScopedContextIds } from '../../../src/db/migrations/043_scoped_context_ids.js'
 
 describe('migration043ScopedContextIds', () => {
@@ -45,6 +46,27 @@ describe('migration043ScopedContextIds', () => {
       `CREATE TABLE task_snapshots (user_id TEXT NOT NULL, task_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, task_id, field))`,
     )
     db.run(
+      `CREATE TABLE user_instructions (id TEXT PRIMARY KEY, context_id TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    )
+    db.run(
+      `CREATE TABLE memos (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, content TEXT NOT NULL, summary TEXT, tags TEXT NOT NULL DEFAULT '[]', embedding BLOB, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    )
+    db.run(
+      `CREATE TABLE user_identity_mappings (context_id TEXT NOT NULL, provider_name TEXT NOT NULL, provider_user_id TEXT, provider_user_login TEXT, display_name TEXT, matched_at TEXT NOT NULL, match_method TEXT, confidence INTEGER, PRIMARY KEY (context_id, provider_name))`,
+    )
+    db.run(
+      `CREATE TABLE known_group_contexts (provider TEXT NOT NULL, context_id TEXT NOT NULL, display_name TEXT NOT NULL, parent_name TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, PRIMARY KEY (provider, context_id))`,
+    )
+    db.run(
+      `CREATE TABLE group_admin_observations (provider TEXT NOT NULL, context_id TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT, is_admin INTEGER NOT NULL, last_seen_at TEXT NOT NULL, PRIMARY KEY (provider, context_id, user_id))`,
+    )
+    db.run(
+      `CREATE TABLE group_user_observations (provider TEXT NOT NULL, context_id TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT, display_label TEXT NOT NULL, last_seen_at TEXT NOT NULL, PRIMARY KEY (provider, context_id, user_id))`,
+    )
+    db.run(
+      `CREATE TABLE attachments (attachment_id TEXT PRIMARY KEY, context_id TEXT NOT NULL, source_provider TEXT NOT NULL, source_message_id TEXT, source_file_id TEXT, filename TEXT NOT NULL, mime_type TEXT, size INTEGER, checksum TEXT NOT NULL, blob_key TEXT NOT NULL, status TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, cleared_at TEXT, last_used_at TEXT)`,
+    )
+    db.run(
       `CREATE TABLE staged_files (staged_id TEXT PRIMARY KEY, context_id TEXT NOT NULL, message_id TEXT, sender_id TEXT NOT NULL, sender_username TEXT, filename TEXT NOT NULL, mime_type TEXT, size INTEGER, platform_file_id TEXT NOT NULL, source_provider TEXT NOT NULL, status TEXT NOT NULL, attachment_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`,
     )
     db.run(
@@ -69,6 +91,92 @@ describe('migration043ScopedContextIds', () => {
     expect(db.query('SELECT user_id FROM user_config').get()).toEqual({ user_id: scopedUser })
     expect(db.query('SELECT group_id FROM authorized_groups').get()).toEqual({ group_id: scopedGroup })
     expect(db.query('SELECT group_id FROM group_members').get()).toEqual({ group_id: scopedGroup })
+  })
+
+  test('scopes legacy native ids that start with pi but are not scoped ids', () => {
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO user_config VALUES ('pi:native-user', 'timezone', 'UTC')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query('SELECT user_id FROM user_config').get()).toEqual({
+      user_id: toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'pi:native-user' }),
+    })
+  })
+
+  test('handles raw and scoped duplicates in unique context-owned tables idempotently', () => {
+    const scopedUser = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' })
+    const scopedGroup = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO context_settings VALUES ('user-1', 'task-raw', 'telegram-default')`)
+    db.run(`INSERT INTO context_settings VALUES (?, 'task-scoped', 'telegram-default')`, [scopedUser])
+    db.run(`INSERT INTO user_config VALUES ('user-1', 'timezone', 'UTC')`)
+    db.run(`INSERT INTO user_config VALUES (?, 'timezone', 'Europe/Berlin')`, [scopedUser])
+    db.run(`INSERT INTO memory_facts VALUES ('user-1', 'fact-1', 'raw', '', 'now')`)
+    db.run(`INSERT INTO memory_facts VALUES (?, 'fact-1', 'scoped', '', 'now')`, [scopedUser])
+    db.run(`INSERT INTO group_members VALUES ('group-1', 'user-1', 'admin', 'now')`)
+    db.run(`INSERT INTO group_members VALUES (?, 'user-1', 'admin', 'now')`, [scopedGroup])
+    db.run(`INSERT INTO task_snapshots VALUES ('user-1', 'task-1', 'title', 'raw')`)
+    db.run(`INSERT INTO task_snapshots VALUES (?, 'task-1', 'title', 'scoped')`, [scopedUser])
+
+    migration043ScopedContextIds.up(db)
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT task_instance_id FROM context_settings WHERE context_id = ?`).get(scopedUser)).toEqual({
+      task_instance_id: 'task-scoped',
+    })
+    expect(db.query(`SELECT COUNT(*) AS count FROM user_config WHERE user_id = 'user-1'`).get()).toEqual({ count: 0 })
+    expect(
+      db.query(`SELECT title FROM memory_facts WHERE user_id = ? AND identifier = 'fact-1'`).get(scopedUser),
+    ).toEqual({
+      title: 'scoped',
+    })
+    expect(db.query(`SELECT COUNT(*) AS count FROM group_members WHERE group_id = 'group-1'`).get()).toEqual({
+      count: 0,
+    })
+    expect(
+      db.query(`SELECT value FROM task_snapshots WHERE user_id = ? AND task_id = 'task-1'`).get(scopedUser),
+    ).toEqual({
+      value: 'scoped',
+    })
+  })
+
+  test('scopes additional context-owned tables without touching plugin tables', () => {
+    const scopedUser = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' })
+    const scopedGroup = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO user_instructions VALUES ('ins-1', 'user-1', 'be brief', 'now')`)
+    db.run(`INSERT INTO memos VALUES ('memo-1', 'user-1', 'memo', NULL, '[]', NULL, 'active', 'now', 'now')`)
+    db.run(`INSERT INTO user_identity_mappings VALUES ('user-1', 'kaneo', 'ku1', NULL, NULL, 'now', NULL, NULL)`)
+    db.run(`INSERT INTO known_group_contexts VALUES ('telegram', 'group-1', 'Group 1', NULL, 'now', 'now')`)
+    db.run(`INSERT INTO group_admin_observations VALUES ('telegram', 'group-1', 'user-1', 'alice', 1, 'now')`)
+    db.run(`INSERT INTO group_user_observations VALUES ('telegram', 'group-1', 'user-1', 'alice', 'Alice', 'now')`)
+    db.run(`INSERT INTO group_user_observations VALUES ('mattermost', 'group-1', 'user-2', 'bob', 'Bob', 'now')`)
+    db.run(
+      `INSERT INTO attachments VALUES ('att-1', 'user-1', 'telegram', 'msg-1', 'file-1', 'a.txt', NULL, NULL, 'sum', 'blob', 'active', 1, 'now', NULL, NULL)`,
+    )
+    db.run(
+      `INSERT INTO staged_files VALUES ('stg-1', 'user-1', 'msg-1', 'user-1', 'alice', 'a.txt', NULL, NULL, 'file-1', 'telegram', 'staged', NULL, 'now', 'later')`,
+    )
+    db.run(
+      `CREATE TABLE plugin_context_state (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, enabled INTEGER NOT NULL)`,
+    )
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', 'user-1', 1)`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT context_id FROM user_instructions`).get()).toEqual({ context_id: scopedUser })
+    expect(db.query(`SELECT user_id FROM memos`).get()).toEqual({ user_id: scopedUser })
+    expect(db.query(`SELECT context_id FROM user_identity_mappings`).get()).toEqual({ context_id: scopedUser })
+    expect(db.query(`SELECT context_id FROM known_group_contexts`).get()).toEqual({ context_id: scopedGroup })
+    expect(db.query(`SELECT context_id FROM group_admin_observations`).get()).toEqual({ context_id: scopedGroup })
+    expect(db.query(`SELECT provider, context_id FROM group_user_observations ORDER BY provider`).all()).toEqual([
+      { provider: 'mattermost', context_id: scopedGroup },
+      { provider: 'telegram', context_id: scopedGroup },
+    ])
+    expect(db.query(`SELECT context_id FROM attachments`).get()).toEqual({ context_id: scopedUser })
+    expect(db.query(`SELECT context_id FROM staged_files`).get()).toEqual({ context_id: scopedUser })
+    expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: 'user-1' })
   })
 
   test('preserves ambiguous legacy rows when multiple platform instances exist', () => {
@@ -109,6 +217,29 @@ describe('migration043ScopedContextIds', () => {
     expect(() =>
       db.run(`INSERT INTO users VALUES ('another-user', 'telegram-default', 'alice', '2026-03-01', 'admin')`),
     ).toThrow()
+  })
+
+  test('preserves duplicate real username rows by clearing username on deterministic non-keepers', () => {
+    db.run(`INSERT INTO users VALUES ('real-a', 'telegram-default', 'alice', '2026-01-01', 'admin')`)
+    db.run(`INSERT INTO users VALUES ('real-b', 'telegram-default', 'alice', '2026-02-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT platform_user_id, username FROM users ORDER BY platform_user_id`).all()).toEqual([
+      { platform_user_id: 'real-a', username: 'alice' },
+      { platform_user_id: 'real-b', username: null },
+    ])
+  })
+
+  test('deletes newer placeholder-only duplicate username rows', () => {
+    db.run(`INSERT INTO users VALUES ('placeholder-b', 'telegram-default', 'alice', '2026-02-01', 'admin')`)
+    db.run(`INSERT INTO users VALUES ('placeholder-a', 'telegram-default', 'alice', '2026-01-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT platform_user_id, username FROM users`).all()).toEqual([
+      { platform_user_id: 'placeholder-a', username: 'alice' },
+    ])
   })
 
   test('does not mutate plugin tables', () => {
