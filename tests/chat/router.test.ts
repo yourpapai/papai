@@ -280,6 +280,21 @@ describe('ChatRouter', () => {
     ])
   })
 
+  test('reports instance active state only after start and before stop', async () => {
+    router.addInstance('telegram-main', 'telegram', {})
+
+    expect(router.isInstanceActive('telegram-main')).toBe(false)
+    expect(router.isInstanceActive('missing')).toBe(false)
+
+    await router.startInstance('telegram-main')
+
+    expect(router.isInstanceActive('telegram-main')).toBe(true)
+
+    await router.stopInstance('telegram-main')
+
+    expect(router.isInstanceActive('telegram-main')).toBe(false)
+  })
+
   test('rejects duplicate instance IDs without replacing the existing provider', async () => {
     router.addInstance('same-id', 'telegram', {})
     const firstProvider = getProvider('same-id')

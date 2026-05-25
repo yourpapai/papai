@@ -20,7 +20,6 @@ export type ContextType = 'dm' | 'group'
 import type { DeferredDeliveryTarget } from './deferred-target.js'
 export type { DeferredAudience, DeferredDeliveryTarget } from './deferred-target.js'
 export { dmTarget } from './deferred-target.js'
-
 /** Context passed to resolveUserId so adapters can scope searches. */
 export type ResolveUserContext = {
   /** Storage key of the conversation where the lookup originated (userId in DMs, channel/group ID in groups). */
@@ -295,6 +294,7 @@ export type ChatProvider = {
   resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
   resolveGroupLabel: (groupId: string) => Promise<string | null>
   renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
+  isInstanceActive: (platformInstanceId: string) => boolean
   /** Register the bot's command list with the platform (for command menus). */
   setCommands: (adminUserId: string) => Promise<void>
 }>

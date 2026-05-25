@@ -7,13 +7,18 @@ import { resolveDeliveryPlatformInstanceId } from '../chat/delivery-routing.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../chat/types.js'
 
 type RouterInstanceLookup = { getInstance: (id: string) => unknown }
+type RouterInstanceActiveLookup = { isInstanceActive: (id: string) => boolean }
 
 const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
   typeof Reflect.get(chat, 'getInstance') === 'function'
 
+const hasRouterInstanceActiveLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceActiveLookup =>
+  typeof Reflect.get(chat, 'isInstanceActive') === 'function'
+
 export function resolveProactivePlatformInstanceId(chat: ChatProvider, target: DeferredDeliveryTarget): string | null {
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return null
+  if (hasRouterInstanceActiveLookup(chat) && !chat.isInstanceActive(platformInstanceId)) return null
   if (hasRouterInstanceLookup(chat)) {
     const instance = chat.getInstance(platformInstanceId)
     if (instance === undefined || instance === null) return null

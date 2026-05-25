@@ -71,7 +71,6 @@ export class ChatRouter implements ChatProvider {
     if (this.instances.has(id)) {
       throw new Error(`Chat instance already exists: ${id}`)
     }
-
     const provider = this.factory(id, type, config)
     const instance: ManagedChatInstance = { id, type, provider, status: 'pending' }
     this.instances.set(id, instance)
@@ -82,7 +81,6 @@ export class ChatRouter implements ChatProvider {
   async removeInstance(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) return
-
     try {
       await instance.provider.stop()
     } catch (error) {
@@ -95,11 +93,13 @@ export class ChatRouter implements ChatProvider {
   getInstance(id: string): ManagedChatInstance | null {
     return managedInstanceOrNull(this.instances.get(id))
   }
-
+  isInstanceActive(platformInstanceId: string): boolean {
+    const instance = this.instances.get(platformInstanceId)
+    return instance !== undefined && instance.status === 'active'
+  }
   listInstances(): readonly ManagedChatInstanceSnapshot[] {
     return managedInstanceSnapshots(this.instances.values())
   }
-
   async startInstance(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) {

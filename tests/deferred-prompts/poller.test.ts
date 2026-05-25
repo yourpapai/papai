@@ -50,6 +50,7 @@ type GenerateTextResult = {
 }
 
 type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
+type ActiveAwareChatProvider = ChatProvider & { isInstanceActive: (id: string) => boolean }
 
 // --- Tests ---
 
@@ -115,7 +116,11 @@ describe('pollScheduledOnce', () => {
       threadId: '42',
     })
     setConfig(scopedUserId, 'timezone', 'UTC')
-    setContextSettings({ contextId: scopedMainContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: scopedMainContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
     const pastTime = new Date(Date.now() - 60_000).toISOString()
     createScheduledPrompt(
       scopedUserId,
@@ -167,6 +172,26 @@ describe('pollScheduledOnce', () => {
   test('keeps due prompt active when router instance is stale', async () => {
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'stale-platform' })
     chat = { ...chat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    let callCount = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      callCount++
+      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    }
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(callCount).toBe(0)
+    expect(sentMessages).toHaveLength(0)
+    const updated = getScheduledPrompt(created.id, USER_ID)
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('active')
+    expect(updated!.lastExecutedAt).toBeNull()
+  })
+
+  test('keeps due prompt active when routed platform instance is stopped', async () => {
+    chat = { ...chat, isInstanceActive: (_id: string): boolean => false } as ActiveAwareChatProvider
     let callCount = 0
     generateTextImpl = (): Promise<GenerateTextResult> => {
       callCount++
@@ -503,7 +528,11 @@ describe('pollAlertsOnce', () => {
       threadId: '42',
     })
     setConfig(scopedUserId, 'timezone', 'UTC')
-    setContextSettings({ contextId: scopedMainContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: scopedMainContextId,
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
     createAlertPrompt(
       scopedUserId,
       'Notify on done',
