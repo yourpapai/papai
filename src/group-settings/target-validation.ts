@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { toScopedContextId } from '../chat/scoped-context.js'
+import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { validateGroupTargetAccess } from './access.js'
 import { listAdminGroupContextsForUser } from './registry.js'
 
@@ -16,7 +16,7 @@ function getDisplayGroupId(userId: string, groupId: string, platformInstanceId: 
     },
   )
   if (group === undefined) return groupId
-  return group.contextId
+  return getNativeContextId(group.contextId)
 }
 
 export function getMissingGroupTargetMessage(

@@ -29,6 +29,11 @@ const makeDisplayLabel = (label: string | null, fallback: string): string => {
   return label
 }
 
+const cacheScope = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId === undefined) return 'native'
+  return platformInstanceId
+}
+
 const resolveUserContextForLabelLookup = (resolverContext: LabelResolverContext): ResolveUserContext => {
   if (resolverContext.platformInstanceId === undefined) {
     return { contextId: resolverContext.contextId, contextType: resolverContext.contextType }
@@ -46,7 +51,7 @@ const resolveUserLabelCached = (
   cache: Map<string, Promise<string | null>>,
   scheduleLookup: ScheduleLookup,
 ): Promise<string | null> => {
-  const cacheKey = `${resolverContext.contextType}:${resolverContext.contextId}:${userId}`
+  const cacheKey = `${cacheScope(resolverContext.platformInstanceId)}:${resolverContext.contextType}:${resolverContext.contextId}:${userId}`
   const existing = cache.get(cacheKey)
   if (existing !== undefined) return existing
   const pending = scheduleLookup(() =>
@@ -73,18 +78,20 @@ const resolveUserLabelCached = (
 const resolveGroupLabelCached = (
   chat: ChatProvider,
   groupId: string,
+  platformInstanceId: string | undefined,
   cache: Map<string, Promise<string | null>>,
   scheduleLookup: ScheduleLookup,
 ): Promise<string | null> => {
-  const existing = cache.get(groupId)
+  const cacheKey = `${cacheScope(platformInstanceId)}:${groupId}`
+  const existing = cache.get(cacheKey)
   if (existing !== undefined) return existing
   const pending = scheduleLookup(() =>
-    resolveChatGroupDisplayLabel(chat, groupId).catch((error: unknown): string | null => {
+    resolveChatGroupDisplayLabel(chat, groupId, platformInstanceId).catch((error: unknown): string | null => {
       log.warn({ groupId, error: error instanceof Error ? error.message : String(error) }, 'Group label lookup failed in group command')
       return null
     }),
   )
-  cache.set(groupId, pending)
+  cache.set(cacheKey, pending)
   return pending
 }
 
@@ -105,7 +112,7 @@ export const listAuthorizedGroupDisplayLines = (chat: ChatProvider): Promise<rea
       const groupPlatformInstanceId = getOptionalGroupPlatformInstanceId(group.group_id)
       const labelProvider = groupPlatformInstanceId === undefined ? chat : resolveSourceChatProvider(chat, groupPlatformInstanceId)
       const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
-        resolveGroupLabelCached(labelProvider, nativeGroupId, groupLabelCache, limit),
+        resolveGroupLabelCached(labelProvider, nativeGroupId, groupPlatformInstanceId, groupLabelCache, limit),
         resolveUserLabelCached(
           { chat, contextId: nativeGroupId, contextType: 'group', platformInstanceId: groupPlatformInstanceId },
           group.added_by,

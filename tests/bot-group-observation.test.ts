@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { recordGroupObservation } from '../src/bot-group-observation.js'
+import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import { findGroupUserObservation, findKnownGroupContext } from '../src/group-settings/registry.js'
 import { createDmMessage, createGroupMessage, createMockChat, mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -43,12 +44,14 @@ describe('bot-group-observation', () => {
 
     recordGroupObservation(chat, msg)
 
-    const knownContext = findKnownGroupContext('mattermost', 'group-1')
-    const userObservation = findGroupUserObservation('mattermost', 'group-1', 'u1')
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'mattermost-source', nativeContextId: 'group-1' })
+    const knownContext = findKnownGroupContext('mattermost', scopedContextId)
+    const userObservation = findGroupUserObservation('mattermost', scopedContextId, 'u1')
     expect(knownContext).not.toBeNull()
     assert.ok(knownContext !== null, 'expected mattermost known group context')
     expect(knownContext.displayName).toBe('Engineering')
     expect(findKnownGroupContext('router', 'group-1')).toBeNull()
+    expect(findKnownGroupContext('mattermost', 'group-1')).toBeNull()
     expect(userObservation).not.toBeNull()
     assert.ok(userObservation !== null, 'expected mattermost user observation')
     expect(userObservation.displayLabel).toBe('User One')

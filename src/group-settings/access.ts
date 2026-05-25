@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { isAuthorizedGroup } from '../authorized-groups.js'
-import { isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
+import { getNativeContextId, isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
 import { listAdminGroupContextsForUser } from './registry.js'
 import type { KnownGroupContext } from './types.js'
@@ -19,11 +19,12 @@ export type GroupMatchResult =
 export type GroupTargetAccessResult = { kind: 'ok' } | { kind: 'not_admin' } | { kind: 'not_authorized' }
 
 const getMatchCandidates = (group: KnownGroupContext): readonly string[] => {
+  const nativeContextId = getNativeContextId(group.contextId)
   if (group.parentName === null) {
-    return [group.displayName, '', group.displayName]
+    return [group.displayName, '', group.displayName, nativeContextId]
   }
 
-  return [group.displayName, group.parentName, `${group.parentName} / ${group.displayName}`]
+  return [group.displayName, group.parentName, `${group.parentName} / ${group.displayName}`, nativeContextId]
 }
 
 const getAuthorizedGroupId = (group: KnownGroupContext, platformInstanceId: string | undefined): string => {
@@ -83,7 +84,10 @@ export function matchManageableGroup(
   }
 
   const groups = platformInstanceId === undefined ? listManageableGroups(userId) : listManageableGroups(userId, platformInstanceId)
-  const exactId = groups.find((group) => group.contextId.toLowerCase() === normalized)
+  const exactId = groups.find((group) => {
+    if (group.contextId.toLowerCase() === normalized) return true
+    return getNativeContextId(group.contextId).toLowerCase() === normalized
+  })
   if (exactId !== undefined) {
     return { kind: 'match', group: exactId }
   }

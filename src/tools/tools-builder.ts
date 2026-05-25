@@ -15,13 +15,12 @@ import { makeAddCommentTool } from './add-comment.js'
 import { makeAddProjectMemberTool } from './add-project-member.js'
 import { makeAddTaskLabelTool } from './add-task-label.js'
 import { makeAddTaskRelationTool } from './add-task-relation.js'
-import { makeAddVoteTool } from './add-vote.js'
-import { makeAddWatcherTool } from './add-watcher.js'
 import { makeApplyYouTrackCommandTool } from './apply-youtrack-command.js'
 import { makeArchiveMemosTool } from './archive-memos.js'
 import { makeAssignTaskToSprintTool } from './assign-task-to-sprint.js'
 import { makeListAttachmentsTool, makeRemoveAttachmentTool, makeUploadAttachmentTool } from './attachment-tools.js'
 import { makeClearMyIdentityTool } from './clear-my-identity.js'
+import { maybeAddCollaborationTaskTools } from './collaboration-tools-builder.js'
 import { makeCoreTools } from './core-tools.js'
 import { makeCountTasksTool } from './count-tasks.js'
 import { makeCreateProjectTool } from './create-project.js'
@@ -33,9 +32,7 @@ import { makeDeleteProjectTool } from './delete-project.js'
 import { makeDeleteRecurringTaskTool } from './delete-recurring-task.js'
 import { makeDeleteStatusTool } from './delete-status.js'
 import { makeDeleteTaskTool } from './delete-task.js'
-import { makeFindUserTool } from './find-user.js'
 import { makeGetCommentsTool } from './get-comments.js'
-import { makeGetCurrentUserTool } from './get-current-user.js'
 import { makeGetProjectTool } from './get-project.js'
 import { makeGetTaskHistoryTool } from './get-task-history.js'
 import { makeDeleteInstructionTool, makeListInstructionsTool, makeSaveInstructionTool } from './instructions.js'
@@ -48,7 +45,6 @@ import { makeListRecurringTasksTool } from './list-recurring-tasks.js'
 import { makeListSavedQueriesTool } from './list-saved-queries.js'
 import { makeListSprintsTool } from './list-sprints.js'
 import { makeListStatusesTool } from './list-statuses.js'
-import { makeListWatchersTool } from './list-watchers.js'
 import { makeListWorkTool } from './list-work.js'
 import { makeLogWorkTool } from './log-work.js'
 import { makeLookupGroupHistoryTool } from './lookup-group-history.js'
@@ -60,8 +56,6 @@ import { makeRemoveCommentTool } from './remove-comment.js'
 import { makeRemoveProjectMemberTool } from './remove-project-member.js'
 import { makeRemoveTaskLabelTool } from './remove-task-label.js'
 import { makeRemoveTaskRelationTool } from './remove-task-relation.js'
-import { makeRemoveVoteTool } from './remove-vote.js'
-import { makeRemoveWatcherTool } from './remove-watcher.js'
 import { makeRemoveWorkTool } from './remove-work.js'
 import { makeReorderStatusesTool } from './reorder-statuses.js'
 import { makeResumeRecurringTaskTool } from './resume-recurring-task.js'
@@ -69,7 +63,6 @@ import { makeRunSavedQueryTool } from './run-saved-query.js'
 import { makeSaveMemoTool } from './save-memo.js'
 import { makeSearchMemosTool } from './search-memos.js'
 import { makeSetMyIdentityTool } from './set-my-identity.js'
-import { makeSetVisibilityTool } from './set-visibility.js'
 import { makeSkipRecurringTaskTool } from './skip-recurring-task.js'
 import { makeResolveStagedFileTool, makeSearchStagedFilesTool } from './staged-tools.js'
 import type { ToolMode } from './types.js'
@@ -184,22 +177,9 @@ function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider, mod
     tools['apply_youtrack_command'] = makeApplyYouTrackCommandTool(provider)
 }
 
-function maybeAddCollaborationTaskTools(tools: ToolSet, provider: TaskProvider, chatUserId: string | undefined): void {
-  if (provider.listUsers !== undefined) tools['find_user'] = makeFindUserTool(provider)
-  if (provider.identityResolver !== undefined && provider.getCurrentUser !== undefined)
-    tools['get_current_user'] = makeGetCurrentUserTool(provider)
-  if (provider.capabilities.has('tasks.watchers')) {
-    tools['list_watchers'] = makeListWatchersTool(provider)
-    tools['add_watcher'] = makeAddWatcherTool(provider, chatUserId)
-    tools['remove_watcher'] = makeRemoveWatcherTool(provider, chatUserId)
-  }
-  if (provider.capabilities.has('tasks.votes')) {
-    tools['add_vote'] = makeAddVoteTool(provider)
-    tools['remove_vote'] = makeRemoveVoteTool(provider)
-  }
-  if (provider.capabilities.has('tasks.visibility')) {
-    tools['set_visibility'] = makeSetVisibilityTool(provider)
-  }
+function getStorageOwnerId(chatUserId: string | undefined, contextId: string | undefined): string | undefined {
+  if (contextId !== undefined) return contextId
+  return chatUserId
 }
 
 function addInstructionTools(tools: ToolSet, contextId: string | undefined): void {
@@ -259,10 +239,20 @@ export function buildTools(
   chatUserId: string | undefined,
   contextId: string | undefined,
   mode: ToolMode,
-  contextType?: ContextType,
-  username?: string | null,
-  stagedDownloadFn?: StagedFileDownloadFn,
+  ...args:
+    | readonly []
+    | readonly [contextType: ContextType | undefined]
+    | readonly [contextType: ContextType | undefined, username: string | null | undefined]
+    | readonly [
+        contextType: ContextType | undefined,
+        username: string | null | undefined,
+        stagedDownloadFn: StagedFileDownloadFn | undefined,
+      ]
 ): ToolSet {
+  const contextType = args[0]
+  const username = args[1]
+  const stagedDownloadFn = args[2]
+  const storageOwnerId = getStorageOwnerId(chatUserId, contextId)
   const tools = makeCoreTools(provider, chatUserId, contextId)
   maybeAddProjectTools(tools, provider)
   maybeAddCommentTools(tools, provider)
@@ -282,14 +272,14 @@ export function buildTools(
   maybeAddPhaseFiveQueryTools(tools, provider, mode)
   if (provider.capabilities.has('tasks.count') && provider.countTasks !== undefined)
     tools['count_tasks'] = makeCountTasksTool(provider)
-  addRecurringTools(tools, chatUserId)
-  addMemoTools(tools, provider, chatUserId)
+  addRecurringTools(tools, storageOwnerId)
+  addMemoTools(tools, provider, storageOwnerId)
   addInstructionTools(tools, contextId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
-  addWebFetchTool(tools, contextId, contextId ?? chatUserId, contextType)
+  addWebFetchTool(tools, contextId, storageOwnerId, contextType)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
-  if (mode === 'normal' && chatUserId !== undefined) {
-    addDeferredPromptTools(tools, chatUserId, contextId, contextType, username)
+  if (mode === 'normal' && storageOwnerId !== undefined) {
+    addDeferredPromptTools(tools, storageOwnerId, contextId, contextType, username)
   }
   return tools
 }

@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatButton } from '../chat/types.js'
-import { isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
+import { getNativeContextId, isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
 import { listManageableGroups, matchManageableGroup } from './access.js'
 import {
@@ -20,6 +20,8 @@ const GROUP_BUTTON_LIMIT = 10
 
 const formatGroupLabel = (group: KnownGroupContext): string =>
   group.parentName === null ? group.displayName : `${group.parentName} / ${group.displayName}`
+
+const displayContextId = (contextId: string): string => getNativeContextId(contextId)
 
 type GroupSelectorCallbackParams =
   | Readonly<{ action: 'cancel' }>
@@ -88,7 +90,7 @@ const buildGroupResponse = (
   const lines = [
     'Choose a group to configure.',
     '',
-    ...groups.map((group) => `${formatGroupLabel(group)} - ${group.contextId}`),
+    ...groups.map((group) => `${formatGroupLabel(group)} - ${displayContextId(group.contextId)}`),
     '',
     'Reply with the group name or context ID if you do not want to tap a button.',
   ]
@@ -156,7 +158,7 @@ const handleChooseGroupMessage = (
       response: [
         'That matches more than one group. Reply with the exact group name or context ID:',
         '',
-        ...match.matches.map((group) => `${formatGroupLabel(group)} - ${group.contextId}`),
+        ...match.matches.map((group) => `${formatGroupLabel(group)} - ${displayContextId(group.contextId)}`),
       ].join('\n'),
     }
   }

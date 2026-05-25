@@ -8,14 +8,36 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { persistIncomingAttachments } from '../../src/attachments/index.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { IncomingFile } from '../../src/chat/types.js'
+import { createAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
+import { getIdentityMapping } from '../../src/identity/mapping.js'
+import { listMemos } from '../../src/memos.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
 import { PLUGIN_API_VERSION, type DiscoveredPlugin } from '../../src/plugins/types.js'
 import type { TaskProvider } from '../../src/providers/types.js'
+import { listRecurringTasks } from '../../src/recurring.js'
 import { makeTools } from '../../src/tools/index.js'
 import { buildTools } from '../../src/tools/tools-builder.js'
 import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
+
+type DeferredListResult = Readonly<{ prompts: readonly Readonly<{ prompt: string }>[] }>
+
+function isPromptSummary(value: unknown): value is Readonly<{ prompt: string }> {
+  if (typeof value !== 'object' || value === null || !('prompt' in value)) return false
+  return typeof value.prompt === 'string'
+}
+
+function isDeferredListResult(value: unknown): value is DeferredListResult {
+  if (typeof value !== 'object' || value === null || !('prompts' in value)) return false
+  const prompts = value.prompts
+  if (!Array.isArray(prompts)) return false
+  return prompts.every((prompt: unknown) => isPromptSummary(prompt))
+}
+
+function assertDeferredListResult(value: unknown): asserts value is DeferredListResult {
+  if (!isDeferredListResult(value)) throw new Error('Expected deferred prompt list result')
+}
 
 describe('buildTools', () => {
   beforeEach(async () => {
@@ -65,6 +87,40 @@ describe('buildTools', () => {
     const tools = buildTools(provider, 'user-123', 'user-123', 'normal')
 
     expect(tools).not.toHaveProperty('get_current_user')
+  })
+
+  it('uses scoped context as owner for storage tools but keeps identity tools on raw chat user id', async () => {
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'raw-user' })
+    const rawChatUserId = 'raw-user'
+    const provider = createMockProvider({
+      identityResolver: {
+        searchUsers: () => Promise.resolve([{ id: 'provider-user-1', login: 'alice', name: 'Alice A' }]),
+      },
+    })
+    const tools = buildTools(provider, rawChatUserId, scopedContextId, 'normal', 'group')
+
+    await getToolExecutor(tools['save_memo'])({ content: 'scoped memo' })
+    await getToolExecutor(tools['create_recurring_task'])({
+      title: 'Scoped recurring',
+      projectId: 'project-1',
+      triggerType: 'on_complete',
+    })
+    createAlertPrompt(scopedContextId, 'scoped alert', { field: 'task.status', op: 'eq', value: 'done' })
+    await getToolExecutor(tools['set_my_identity'])({ claim: "I'm alice" })
+
+    expect(listMemos(scopedContextId).map((memo) => memo.content)).toContain('scoped memo')
+    expect(listMemos(rawChatUserId).map((memo) => memo.content)).not.toContain('scoped memo')
+    expect(listRecurringTasks(scopedContextId).map((task) => task.title)).toContain('Scoped recurring')
+    expect(listRecurringTasks(rawChatUserId).map((task) => task.title)).not.toContain('Scoped recurring')
+    const deferredList = await getToolExecutor(tools['list_deferred_prompts'])({})
+    expect(isDeferredListResult(deferredList)).toBe(true)
+    assertDeferredListResult(deferredList)
+    expect(deferredList.prompts.map((prompt) => prompt.prompt)).toContain('scoped alert')
+    expect(listAlertPrompts(rawChatUserId).map((prompt) => prompt.prompt)).not.toContain('scoped alert')
+    const rawIdentity = getIdentityMapping(rawChatUserId, provider.name)
+    expect(rawIdentity).not.toBeNull()
+    expect(rawIdentity!.providerUserLogin).toBe('alice')
+    expect(getIdentityMapping(scopedContextId, provider.name)).toBeNull()
   })
 
   it('should conditionally add project tools', () => {

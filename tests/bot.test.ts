@@ -970,7 +970,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     const knownGroup = db
       .select()
       .from(knownGroupContexts)
-      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, 'group-ops')))
+      .where(and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, scopedGroup('group-ops'))))
       .get()
     const adminObservation = db
       .select()
@@ -978,7 +978,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       .where(
         and(
           eq(groupAdminObservations.provider, 'mock'),
-          eq(groupAdminObservations.contextId, 'group-ops'),
+          eq(groupAdminObservations.contextId, scopedGroup('group-ops')),
           eq(groupAdminObservations.userId, 'group-admin'),
         ),
       )
@@ -1019,7 +1019,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       .where(
         and(
           eq(groupUserObservations.provider, 'mock'),
-          eq(groupUserObservations.contextId, 'group-ops'),
+          eq(groupUserObservations.contextId, scopedGroup('group-ops')),
           eq(groupUserObservations.userId, 'group-admin'),
         ),
       )
@@ -1081,7 +1081,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(textCalls[0]).toBe(
       'Group settings are configured in direct messages with the bot. Open a DM with me and run /setup.',
     )
-    expect(listManageableGroups('group-admin', TEST_PLATFORM_ID).map((group) => group.contextId)).toEqual(['group-ops'])
+    expect(listManageableGroups('group-admin', TEST_PLATFORM_ID).map((group) => group.contextId)).toEqual([
+      scopedGroup('group-ops'),
+    ])
   })
 
   test('does not record group observation for DM command handler', async () => {
@@ -1204,7 +1206,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     const db = getDrizzleDb()
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-ops')).run()
+    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, scopedGroup('group-ops'))).run()
 
     const { reply, textCalls } = createMockReply()
     await messageHandler!(createDmMessage('dm-admin', 'timezone'), reply)

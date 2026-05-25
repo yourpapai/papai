@@ -72,6 +72,27 @@ function resolveUserLabelForMembersAndAdder(userId: string): Promise<string | nu
   return Promise.resolve(null)
 }
 
+function resolvePlatformAdminLabel(_userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
+  if (context !== undefined && context.platformInstanceId === 'telegram-default') return Promise.resolve('Telegram Admin')
+  if (context !== undefined && context.platformInstanceId === 'discord-default') return Promise.resolve('Discord Admin')
+  return Promise.resolve(null)
+}
+
+const createPlatformInstanceLookup = (
+  telegramProvider: ChatProvider,
+  discordProvider: ChatProvider,
+): ((id: string) => { readonly provider: ChatProvider } | null) => {
+  const instances = new Map<string, { readonly provider: ChatProvider }>([
+    ['telegram-default', { provider: telegramProvider }],
+    ['discord-default', { provider: discordProvider }],
+  ])
+  return (id: string): { readonly provider: ChatProvider } | null => {
+    const instance = instances.get(id)
+    if (instance === undefined) return null
+    return instance
+  }
+}
+
 const createBlockingLabelLookup = (): {
   readonly lookup: () => Promise<string | null>
   readonly getMaxInFlight: () => number
@@ -894,6 +915,40 @@ describe('group commands', () => {
 
       expect(seenSourceGroupIds).toEqual(['group-123'])
       expect(textCalls[0]).toContain('Source Group Label')
+    })
+
+    test('caches /groups labels separately per platform instance', async () => {
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const telegramProvider = createMockChat({
+        resolveGroupLabel: (): Promise<string | null> => Promise.resolve('Telegram Shared Group'),
+      })
+      const discordProvider = createMockChat({
+        resolveGroupLabel: (): Promise<string | null> => Promise.resolve('Discord Shared Group'),
+      })
+      const aggregateProvider = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveUserLabel: resolvePlatformAdminLabel,
+      })
+      const routerProvider: ChatProvider & {
+        readonly getInstance: (id: string) => { readonly provider: ChatProvider } | null
+      } = {
+        ...aggregateProvider,
+        getInstance: createPlatformInstanceLookup(telegramProvider, discordProvider),
+      }
+      registerGroupCommand(routerProvider)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      addAuthorizedGroup(toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' }), 'admin1')
+      addAuthorizedGroup(toScopedContextId({ platformInstanceId: 'discord-default', nativeContextId: 'shared-group' }), 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toContain('Telegram Shared Group (added by Telegram Admin)')
+      expect(textCalls[0]).toContain('Discord Shared Group (added by Discord Admin)')
     })
 
     test('does not pass DM platform instance into /groups added-by label lookups', async () => {
