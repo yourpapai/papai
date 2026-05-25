@@ -257,20 +257,42 @@ describe('migration043ScopedContextIds', () => {
   beforeEach(() => {
     db = new Database(':memory:')
     db.run('PRAGMA foreign_keys=OFF')
-    db.run('CREATE TABLE platform_instances (id TEXT PRIMARY KEY, type TEXT NOT NULL, config TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL)')
-    db.run('CREATE TABLE context_settings (context_id TEXT PRIMARY KEY, task_instance_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL)')
-    db.run('CREATE TABLE user_config (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key))')
+    db.run(
+      'CREATE TABLE platform_instances (id TEXT PRIMARY KEY, type TEXT NOT NULL, config TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL)',
+    )
+    db.run(
+      'CREATE TABLE context_settings (context_id TEXT PRIMARY KEY, task_instance_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL)',
+    )
+    db.run(
+      'CREATE TABLE user_config (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key))',
+    )
     db.run('CREATE TABLE conversation_history (user_id TEXT PRIMARY KEY, messages TEXT NOT NULL)')
     db.run('CREATE TABLE memory_summary (user_id TEXT PRIMARY KEY, summary TEXT NOT NULL, updated_at TEXT NOT NULL)')
-    db.run('CREATE TABLE memory_facts (user_id TEXT NOT NULL, identifier TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL DEFAULT \'\', last_seen TEXT NOT NULL, PRIMARY KEY (user_id, identifier))')
+    db.run(
+      "CREATE TABLE memory_facts (user_id TEXT NOT NULL, identifier TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', last_seen TEXT NOT NULL, PRIMARY KEY (user_id, identifier))",
+    )
     db.run('CREATE TABLE authorized_groups (group_id TEXT PRIMARY KEY, added_by TEXT NOT NULL, added_at TEXT NOT NULL)')
-    db.run('CREATE TABLE group_members (group_id TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT NOT NULL, added_at TEXT NOT NULL, PRIMARY KEY (group_id, user_id))')
-    db.run('CREATE TABLE recurring_tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_id TEXT NOT NULL, title TEXT NOT NULL)')
-    db.run('CREATE TABLE scheduled_prompts (id TEXT PRIMARY KEY, created_by_user_id TEXT NOT NULL, delivery_context_id TEXT, prompt TEXT NOT NULL)')
-    db.run('CREATE TABLE alert_prompts (id TEXT PRIMARY KEY, created_by_user_id TEXT NOT NULL, delivery_context_id TEXT, prompt TEXT NOT NULL)')
-    db.run('CREATE TABLE task_snapshots (user_id TEXT NOT NULL, task_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, task_id, field))')
-    db.run('CREATE TABLE staged_files (staged_id TEXT PRIMARY KEY, context_id TEXT NOT NULL, message_id TEXT, sender_id TEXT NOT NULL, sender_username TEXT, filename TEXT NOT NULL, mime_type TEXT, size INTEGER, platform_file_id TEXT NOT NULL, source_provider TEXT NOT NULL, status TEXT NOT NULL, attachment_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)')
-    db.run('CREATE TABLE users (platform_user_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL, username TEXT, added_at TEXT NOT NULL, added_by TEXT NOT NULL, PRIMARY KEY (platform_instance_id, platform_user_id))')
+    db.run(
+      'CREATE TABLE group_members (group_id TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT NOT NULL, added_at TEXT NOT NULL, PRIMARY KEY (group_id, user_id))',
+    )
+    db.run(
+      'CREATE TABLE recurring_tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_id TEXT NOT NULL, title TEXT NOT NULL)',
+    )
+    db.run(
+      'CREATE TABLE scheduled_prompts (id TEXT PRIMARY KEY, created_by_user_id TEXT NOT NULL, delivery_context_id TEXT, prompt TEXT NOT NULL)',
+    )
+    db.run(
+      'CREATE TABLE alert_prompts (id TEXT PRIMARY KEY, created_by_user_id TEXT NOT NULL, delivery_context_id TEXT, prompt TEXT NOT NULL)',
+    )
+    db.run(
+      'CREATE TABLE task_snapshots (user_id TEXT NOT NULL, task_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, task_id, field))',
+    )
+    db.run(
+      'CREATE TABLE staged_files (staged_id TEXT PRIMARY KEY, context_id TEXT NOT NULL, message_id TEXT, sender_id TEXT NOT NULL, sender_username TEXT, filename TEXT NOT NULL, mime_type TEXT, size INTEGER, platform_file_id TEXT NOT NULL, source_provider TEXT NOT NULL, status TEXT NOT NULL, attachment_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)',
+    )
+    db.run(
+      'CREATE TABLE users (platform_user_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL, username TEXT, added_at TEXT NOT NULL, added_by TEXT NOT NULL, PRIMARY KEY (platform_instance_id, platform_user_id))',
+    )
   })
 
   afterEach(() => db.close())
@@ -305,7 +327,10 @@ describe('migration043ScopedContextIds', () => {
   test('adds staged source platform column with empty fallback', () => {
     migration043ScopedContextIds.up(db)
 
-    const columns = db.query<{ name: string }, []>('PRAGMA table_info(staged_files)').all().map((row) => row.name)
+    const columns = db
+      .query<{ name: string }, []>('PRAGMA table_info(staged_files)')
+      .all()
+      .map((row) => row.name)
     expect(columns).toContain('source_platform_instance_id')
   })
 
@@ -315,7 +340,13 @@ describe('migration043ScopedContextIds', () => {
 
     migration043ScopedContextIds.up(db)
 
-    expect(db.query('SELECT COUNT(*) AS count FROM users WHERE platform_instance_id = \'telegram-default\' AND username = \'alice\'').get()).toEqual({ count: 1 })
+    expect(
+      db
+        .query(
+          "SELECT COUNT(*) AS count FROM users WHERE platform_instance_id = 'telegram-default' AND username = 'alice'",
+        )
+        .get(),
+    ).toEqual({ count: 1 })
   })
 })
 ```
@@ -340,10 +371,15 @@ import type { Migration } from '../migrate.js'
 const log = logger.child({ scope: 'migration:043' })
 
 const tableExists = (db: Database, table: string): boolean =>
-  db.query<{ name: string }, [string]>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !== null
+  db
+    .query<{ name: string }, [string]>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(table) !== null
 
 const columnExists = (db: Database, table: string, column: string): boolean =>
-  db.query<{ name: string }, []>(`PRAGMA table_info(${table})`).all().some((row) => row.name === column)
+  db
+    .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+    .all()
+    .some((row) => row.name === column)
 
 const getSinglePlatformInstanceId = (db: Database): string | null => {
   if (!tableExists(db, 'platform_instances')) return null
@@ -380,7 +416,9 @@ export const migration043ScopedContextIds: Migration = {
     }
     addStagedSourcePlatformColumn(db)
     deduplicateUsernames(db)
-    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_platform_username_unique ON users(platform_instance_id, username) WHERE username IS NOT NULL`)
+    db.run(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_platform_username_unique ON users(platform_instance_id, username) WHERE username IS NOT NULL`,
+    )
   },
 }
 ```
@@ -444,8 +482,18 @@ test('group members are isolated by platform-scoped context id', async () => {
   telegramGroup.platformInstanceId = 'telegram-default'
   const discordGroup = createGroupMessage('admin', '/group users', true, 'shared-group')
   discordGroup.platformInstanceId = 'discord-default'
-  const telegramAuth = createAuth({ allowed: true, isGroupAdmin: true, storageContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw', configContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw' })
-  const discordAuth = createAuth({ allowed: true, isGroupAdmin: true, storageContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw', configContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw' })
+  const telegramAuth = createAuth({
+    allowed: true,
+    isGroupAdmin: true,
+    storageContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw',
+    configContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw',
+  })
+  const discordAuth = createAuth({
+    allowed: true,
+    isGroupAdmin: true,
+    storageContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw',
+    configContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw',
+  })
   const telegramReply = createMockReply()
   const discordReply = createMockReply()
   const chat = createMockChat()
@@ -587,7 +635,11 @@ Update `src/attachments/staged-download.ts` so `createStagedDownloader()` accept
 
 ```typescript
 type ChatInstanceFileLookup = {
-  downloadFileFromInstance: (platformInstanceId: string, sourceProvider: AttachmentSourceProvider, fileId: string) => Promise<Buffer | null>
+  downloadFileFromInstance: (
+    platformInstanceId: string,
+    sourceProvider: AttachmentSourceProvider,
+    fileId: string,
+  ) => Promise<Buffer | null>
 }
 ```
 
@@ -645,22 +697,28 @@ test('removes recurring tasks only for scoped platform owner', () => {
   const db = testDb
   addUser({ userId: 'same-id', platformInstanceId: 'telegram-default', addedBy: 'admin' })
   addUser({ userId: 'same-id', platformInstanceId: 'discord-default', addedBy: 'admin' })
-  db.insert(schema.recurringTasks).values({
-    id: 'tg-recurring',
-    userId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2FtZS1pZA',
-    projectId: 'p1',
-    title: 'tg task',
-  }).run()
-  db.insert(schema.recurringTasks).values({
-    id: 'ds-recurring',
-    userId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2FtZS1pZA',
-    projectId: 'p1',
-    title: 'ds task',
-  }).run()
+  db.insert(schema.recurringTasks)
+    .values({
+      id: 'tg-recurring',
+      userId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2FtZS1pZA',
+      projectId: 'p1',
+      title: 'tg task',
+    })
+    .run()
+  db.insert(schema.recurringTasks)
+    .values({
+      id: 'ds-recurring',
+      userId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2FtZS1pZA',
+      projectId: 'p1',
+      title: 'ds task',
+    })
+    .run()
 
   expect(removeUser('same-id', 'telegram-default')).toBe(true)
 
-  expect(db.select({ id: schema.recurringTasks.id }).from(schema.recurringTasks).all()).toEqual([{ id: 'ds-recurring' }])
+  expect(db.select({ id: schema.recurringTasks.id }).from(schema.recurringTasks).all()).toEqual([
+    { id: 'ds-recurring' },
+  ])
 })
 ```
 
@@ -790,7 +848,10 @@ In `maybeProvisionKaneo()`, derive:
 const publicUrl = taskInstance.config['baseUrl'] ?? taskInstance.config['url']
 const internalUrl = taskInstance.config['internalUrl']
 if (publicUrl === undefined || publicUrl.trim() === '') {
-  provLog.warn({ contextId, taskInstanceId: taskInstance.id }, 'Kaneo auto-provisioning skipped: task instance URL missing')
+  provLog.warn(
+    { contextId, taskInstanceId: taskInstance.id },
+    'Kaneo auto-provisioning skipped: task instance URL missing',
+  )
   return
 }
 const outcome = await provisionAndConfigure(contextId, username, { publicUrl, internalUrl })

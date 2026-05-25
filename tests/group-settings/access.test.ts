@@ -72,8 +72,18 @@ describe('group settings access', () => {
   test('scopes manageable groups by platform instance when native user ids collide', () => {
     const telegramGroupId = toScopedContextId({ platformInstanceId: 'telegram-main', nativeContextId: 'group-1' })
     const discordGroupId = toScopedContextId({ platformInstanceId: 'discord-main', nativeContextId: 'group-2' })
-    upsertKnownGroupContext({ contextId: telegramGroupId, provider: 'telegram', displayName: 'Telegram Ops', parentName: null })
-    upsertKnownGroupContext({ contextId: discordGroupId, provider: 'discord', displayName: 'Discord Ops', parentName: null })
+    upsertKnownGroupContext({
+      contextId: telegramGroupId,
+      provider: 'telegram',
+      displayName: 'Telegram Ops',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: discordGroupId,
+      provider: 'discord',
+      displayName: 'Discord Ops',
+      parentName: null,
+    })
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: telegramGroupId,
@@ -104,7 +114,12 @@ describe('group settings access', () => {
   })
 
   test('does not authorize unscoped legacy groups during scoped platform lookup', () => {
-    upsertKnownGroupContext({ contextId: 'legacy-group', provider: 'telegram', displayName: 'Legacy', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'legacy-group',
+      provider: 'telegram',
+      displayName: 'Legacy',
+      parentName: null,
+    })
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: 'legacy-group',

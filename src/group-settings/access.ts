@@ -58,12 +58,10 @@ export function validateGroupTargetAccess(
 ): GroupTargetAccessResult {
   const platformInstanceId = args[0]
   const adminGroups = listAdminGroupContextsForUser(userId, ...args)
-  const group = adminGroups.find(
-    (candidate) => {
-      if (candidate.contextId === groupId) return true
-      return getAuthorizedGroupId(candidate, platformInstanceId) === groupId
-    },
-  )
+  const group = adminGroups.find((candidate) => {
+    if (candidate.contextId === groupId) return true
+    return getAuthorizedGroupId(candidate, platformInstanceId) === groupId
+  })
   if (group === undefined) {
     return { kind: 'not_admin' }
   }
@@ -89,7 +87,8 @@ export function matchManageableGroup(
     return { kind: 'not_found' }
   }
 
-  const groups = platformInstanceId === undefined ? listManageableGroups(userId) : listManageableGroups(userId, platformInstanceId)
+  const groups =
+    platformInstanceId === undefined ? listManageableGroups(userId) : listManageableGroups(userId, platformInstanceId)
   const exactId = groups.find((group) => {
     if (group.contextId.toLowerCase() === normalized) return true
     return getNativeContextId(group.contextId).toLowerCase() === normalized

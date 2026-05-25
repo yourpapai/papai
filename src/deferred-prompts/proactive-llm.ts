@@ -252,7 +252,10 @@ async function invokeFull(
 
   const provider = buildProviderFn(configContextId)
   if (provider === null) {
-    log.warn({ userId: createdByUserId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
+    log.warn(
+      { userId: createdByUserId, storageContextId, configContextId },
+      'Could not build task provider for deferred prompt',
+    )
     return 'Deferred prompt skipped: task provider not configured.'
   }
 

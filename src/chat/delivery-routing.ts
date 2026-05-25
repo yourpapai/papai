@@ -11,7 +11,10 @@ import type { DeferredDeliveryTarget } from './types.js'
 
 const log = logger.child({ scope: 'chat:delivery-routing' })
 
-const getDeliveryContextSettings = (configContextId: string, storageContextId: string): ReturnType<typeof getContextSettings> => {
+const getDeliveryContextSettings = (
+  configContextId: string,
+  storageContextId: string,
+): ReturnType<typeof getContextSettings> => {
   const configSettings = getContextSettings(configContextId)
   if (configSettings !== null) return configSettings
   return getContextSettings(storageContextId)

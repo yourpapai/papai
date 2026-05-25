@@ -9,12 +9,10 @@ import { listAdminGroupContextsForUser } from './registry.js'
 
 function getDisplayGroupId(userId: string, groupId: string, platformInstanceId: string | undefined): string {
   if (platformInstanceId === undefined) return groupId
-  const group = listAdminGroupContextsForUser(userId).find(
-    (candidate) => {
-      if (candidate.contextId === groupId) return true
-      return toScopedContextId({ platformInstanceId, nativeContextId: candidate.contextId }) === groupId
-    },
-  )
+  const group = listAdminGroupContextsForUser(userId).find((candidate) => {
+    if (candidate.contextId === groupId) return true
+    return toScopedContextId({ platformInstanceId, nativeContextId: candidate.contextId }) === groupId
+  })
   if (group === undefined) return groupId
   return getNativeContextId(group.contextId)
 }

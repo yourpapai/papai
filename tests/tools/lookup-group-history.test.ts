@@ -8,7 +8,11 @@ import assert from 'node:assert/strict'
 
 import type { LanguageModel, ModelMessage } from 'ai'
 
-import { getMainContextIdFromThreadContextId, toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import {
+  getMainContextIdFromThreadContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../../src/chat/scoped-context.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type GenerateTextResult = {
@@ -77,7 +81,10 @@ describe('makeLookupGroupHistoryTool', () => {
   })
 
   it('derives scoped main group context from scoped thread context', () => {
-    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
+    const scopedMainContextId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+    })
     const scopedThreadContextId = toScopedThreadContextId({
       platformInstanceId: 'telegram-default',
       nativeContextId: 'group-1',

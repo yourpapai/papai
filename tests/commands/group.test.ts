@@ -5,10 +5,10 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import type { AuthorizationResult, ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
-import { registerGroupCommand } from '../../src/commands/group.js'
 import { checkAuthorizationExtended } from '../../src/auth.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
+import type { AuthorizationResult, ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
+import { registerGroupCommand } from '../../src/commands/group.js'
 import { upsertGroupUserObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
   createAuth,
@@ -34,7 +34,10 @@ const flushMicrotasks = async (): Promise<void> => {
   await Promise.resolve()
 }
 
-const createGroupStorageAuth = (contextId: string, ...args: [] | [Parameters<typeof createAuth>[1]]): AuthorizationResult => {
+const createGroupStorageAuth = (
+  contextId: string,
+  ...args: [] | [Parameters<typeof createAuth>[1]]
+): AuthorizationResult => {
   const options = args[0]
   if (options === undefined) {
     return {
@@ -73,7 +76,8 @@ function resolveUserLabelForMembersAndAdder(userId: string): Promise<string | nu
 }
 
 function resolvePlatformAdminLabel(_userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
-  if (context !== undefined && context.platformInstanceId === 'telegram-default') return Promise.resolve('Telegram Admin')
+  if (context !== undefined && context.platformInstanceId === 'telegram-default')
+    return Promise.resolve('Telegram Admin')
   if (context !== undefined && context.platformInstanceId === 'discord-default') return Promise.resolve('Discord Admin')
   return Promise.resolve(null)
 }
@@ -197,7 +201,11 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('admin1', 'adduser', true), reply, createGroupStorageAuth('group1', { isGroupAdmin: true }))
+      await handler!(
+        createGroupMessage('admin1', 'adduser', true),
+        reply,
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
+      )
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Usage: /group adduser <user-id|@username>')
@@ -348,7 +356,11 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('admin1', 'deluser', true), reply, createGroupStorageAuth('group1', { isGroupAdmin: true }))
+      await handler!(
+        createGroupMessage('admin1', 'deluser', true),
+        reply,
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
+      )
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Usage: /group deluser <user-id|@username>')
@@ -513,12 +525,17 @@ describe('group commands', () => {
       expect(textCalls[0]).toBe('Group group-123 authorized.')
 
       const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      expect(isAuthorizedGroup(toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' }))).toBe(true)
+      expect(
+        isAuthorizedGroup(toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' })),
+      ).toBe(true)
     })
 
     test('adds native group id as platform-scoped authorized group in DM', async () => {
       const handler = commandHandlers.get('group')
-      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
       expect(handler).toBeDefined()
 
       const message = createDmMessage('admin1', 'add shared-group')
@@ -529,13 +546,24 @@ describe('group commands', () => {
       expect(textCalls[0]).toBe('Group shared-group authorized.')
       const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
       expect(isAuthorizedGroup(scopedGroupId)).toBe(true)
-      const auth = checkAuthorizationExtended('platform-admin', null, 'shared-group', 'group', undefined, true, 'telegram-default')
+      const auth = checkAuthorizationExtended(
+        'platform-admin',
+        null,
+        'shared-group',
+        'group',
+        undefined,
+        true,
+        'telegram-default',
+      )
       expect(auth.allowed).toBe(true)
     })
 
     test('adds already-scoped group id without double scoping in DM', async () => {
       const handler = commandHandlers.get('group')
-      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
       expect(handler).toBeDefined()
 
       const message = createDmMessage('admin1', `add ${scopedGroupId}`)
@@ -547,7 +575,9 @@ describe('group commands', () => {
       const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
       expect(isAuthorizedGroup(scopedGroupId)).toBe(true)
       expect(
-        isAuthorizedGroup(toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: scopedGroupId })),
+        isAuthorizedGroup(
+          toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: scopedGroupId }),
+        ),
       ).toBe(false)
     })
 
@@ -568,7 +598,10 @@ describe('group commands', () => {
 
     test('removes native group id as platform-scoped authorized group in DM', async () => {
       const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
       addAuthorizedGroup(scopedGroupId, 'admin1')
       const handler = commandHandlers.get('group')
       expect(handler).toBeDefined()
@@ -584,7 +617,10 @@ describe('group commands', () => {
 
     test('removes already-scoped group id without double scoping in DM', async () => {
       const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
       addAuthorizedGroup(scopedGroupId, 'admin1')
       const handler = commandHandlers.get('group')
       expect(handler).toBeDefined()
@@ -938,8 +974,14 @@ describe('group commands', () => {
       registerGroupCommand(routerProvider)
 
       const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      addAuthorizedGroup(toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' }), 'admin1')
-      addAuthorizedGroup(toScopedContextId({ platformInstanceId: 'discord-default', nativeContextId: 'shared-group' }), 'admin1')
+      addAuthorizedGroup(
+        toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' }),
+        'admin1',
+      )
+      addAuthorizedGroup(
+        toScopedContextId({ platformInstanceId: 'discord-default', nativeContextId: 'shared-group' }),
+        'admin1',
+      )
 
       const handler = labeledHandlers.get('groups')
       expect(handler).toBeDefined()
@@ -1072,7 +1114,11 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply } = createMockReply()
-      const handlerPromise = handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
+      const handlerPromise = handler!(
+        createGroupMessage('user1', 'users', false),
+        reply,
+        createGroupStorageAuth('group1'),
+      )
 
       await flushMicrotasks()
 

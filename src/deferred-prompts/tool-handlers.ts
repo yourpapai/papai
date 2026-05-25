@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { emitUser } from '../debug/event-bus.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
+import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
@@ -182,10 +182,7 @@ export function executeCreate(
   return result
 }
 
-export function executeList(
-  userId: string,
-  input: ListInput,
-): ListResult {
+export function executeList(userId: string, input: ListInput): ListResult {
   log.debug({ userId, type: input.type, status: input.status }, 'list_deferred_prompts called')
   const prompts: ListResult['prompts'] = []
   if (input.type !== 'alert') prompts.push(...listScheduledPrompts(userId, input.status))
@@ -226,14 +223,12 @@ function updateScheduledFields(id: string, userId: string, input: UpdateInput): 
 function updateAlertFields(id: string, userId: string, input: UpdateInput): UpdateResult {
   if (input.schedule !== undefined)
     return { error: 'Cannot apply a schedule to an alert prompt. Use condition fields instead.' }
-  const updates: Partial<
-    {
-      prompt: string
-      condition: AlertCondition
-      cooldownMinutes: number
-      executionMetadata: ExecutionMetadata
-    }
-  > = {}
+  const updates: Partial<{
+    prompt: string
+    condition: AlertCondition
+    cooldownMinutes: number
+    executionMetadata: ExecutionMetadata
+  }> = {}
   if (input.prompt !== undefined) updates.prompt = input.prompt
   if (input.condition !== undefined) {
     const parseResult = alertConditionSchema.safeParse(input.condition)

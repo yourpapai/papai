@@ -8,9 +8,9 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../../src/authorized-groups.js'
-import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { buildDiscordInteraction } from '../../src/chat/discord/interaction-helpers.js'
 import { routeInteraction } from '../../src/chat/interaction-router.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { buildTelegramInteraction } from '../../src/chat/telegram/interaction-helpers.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
 import { handleEditorMessage } from '../../src/config-editor/handlers.js'
@@ -22,10 +22,10 @@ import {
   deleteGroupSettingsSession,
   getActiveGroupSettingsTarget,
 } from '../../src/group-settings/state.js'
-import { createWizardSession } from '../../src/wizard/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { setKaneoWorkspace } from '../../src/users.js'
+import { createWizardSession } from '../../src/wizard/state.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -63,7 +63,10 @@ const captureReplyText = (replies: string[]): ReplyFn['text'] => {
 }
 
 function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'): void {
-  const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
+  const scopedGroupId = toScopedContextId({
+    platformInstanceId: interaction.platformInstanceId,
+    nativeContextId: 'group-9',
+  })
   upsertKnownGroupContext({
     contextId: scopedGroupId,
     provider: 'telegram',
@@ -166,15 +169,20 @@ describe('routeInteraction', () => {
     })
     const seenStorageIds: string[] = []
 
-    const handled = await routeInteraction(telegramInteraction!, reply, { ...createMockAuth(true), storageContextId: scopedThreadId }, {
-      handleGroupSettingsInteraction: () => Promise.resolve(false),
-      handleConfigInteraction: (routedInteraction) => {
-        seenStorageIds.push(routedInteraction.storageContextId)
-        return Promise.resolve(true)
+    const handled = await routeInteraction(
+      telegramInteraction!,
+      reply,
+      { ...createMockAuth(true), storageContextId: scopedThreadId },
+      {
+        handleGroupSettingsInteraction: () => Promise.resolve(false),
+        handleConfigInteraction: (routedInteraction) => {
+          seenStorageIds.push(routedInteraction.storageContextId)
+          return Promise.resolve(true)
+        },
+        handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: () => Promise.resolve(false),
       },
-      handleWizardInteraction: () => Promise.resolve(false),
-      handlePluginInteraction: () => Promise.resolve(false),
-    })
+    )
 
     expect(handled).toBe(true)
     expect(telegramInteraction!.storageContextId).toBe('100:5')
@@ -197,15 +205,20 @@ describe('routeInteraction', () => {
     const scopedContextId = toScopedContextId({ platformInstanceId: 'discord-secondary', nativeContextId: 'channel-1' })
     const seenStorageIds: string[] = []
 
-    const handled = await routeInteraction(discordInteraction!, reply, { ...createMockAuth(true), storageContextId: scopedContextId }, {
-      handleGroupSettingsInteraction: () => Promise.resolve(false),
-      handleConfigInteraction: () => Promise.resolve(false),
-      handleWizardInteraction: () => Promise.resolve(false),
-      handlePluginInteraction: (routedInteraction) => {
-        seenStorageIds.push(routedInteraction.storageContextId)
-        return Promise.resolve(true)
+    const handled = await routeInteraction(
+      discordInteraction!,
+      reply,
+      { ...createMockAuth(true), storageContextId: scopedContextId },
+      {
+        handleGroupSettingsInteraction: () => Promise.resolve(false),
+        handleConfigInteraction: () => Promise.resolve(false),
+        handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: (routedInteraction) => {
+          seenStorageIds.push(routedInteraction.storageContextId)
+          return Promise.resolve(true)
+        },
       },
-    })
+    )
 
     expect(handled).toBe(true)
     expect(discordInteraction!.storageContextId).toBe('channel-1')
@@ -300,7 +313,10 @@ describe('routeInteraction', () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
     createEditorSession({
       userId: interaction.user.id,
-      storageContextId: toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+      storageContextId: toScopedContextId({
+        platformInstanceId: interaction.platformInstanceId,
+        nativeContextId: 'group-9',
+      }),
       editingKey: 'timezone',
     })
 
@@ -471,7 +487,12 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(getConfig(interaction.user.id, 'timezone')).toBe('Europe/Berlin')
-    expect(getConfig(toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: interaction.user.id }), 'timezone')).toBeNull()
+    expect(
+      getConfig(
+        toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: interaction.user.id }),
+        'timezone',
+      ),
+    ).toBeNull()
   })
 
   test('prefers replaceButtons for cfg callback responses with buttons when available', async () => {
@@ -501,7 +522,10 @@ describe('routeInteraction', () => {
 
   test('saves edited config into the selected group context instead of the DM user context', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
-    const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
     createEditorSession({
       userId: interaction.user.id,
       storageContextId: scopedGroupId,
@@ -517,7 +541,10 @@ describe('routeInteraction', () => {
   })
 
   test('starts setup for the selected group target', async () => {
-    const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
     upsertKnownGroupContext({
       contextId: scopedGroupId,
       provider: 'telegram',

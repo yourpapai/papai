@@ -11,8 +11,8 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { ModelMessage } from 'ai'
 
-import { setConfig } from '../../src/config.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { setConfig } from '../../src/config.js'
 import { dispatchExecution } from '../../src/deferred-prompts/proactive-llm.js'
 import type { DeferredExecutionContext } from '../../src/deferred-prompts/proactive-llm.js'
 import type { ExecutionMetadata } from '../../src/deferred-prompts/types.js'
@@ -363,7 +363,10 @@ describe('dispatchExecution', () => {
         nativeContextId: '-1001',
         threadId: '42',
       })
-      const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: '-1001' })
+      const scopedMainContextId = toScopedContextId({
+        platformInstanceId: 'telegram-secondary',
+        nativeContextId: '-1001',
+      })
       const provider = createMockProvider()
       const resolvedContextIds: string[] = []
       generateTextImpl = (args: GenerateTextCall): Promise<GenerateTextResult> => {

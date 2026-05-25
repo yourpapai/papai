@@ -845,7 +845,11 @@ describe('Bot Authorization Gate (setupBot)', () => {
         config: { url: 'https://kaneo.invalid' },
         status: 'active',
       })
-      setContextSettings({ contextId: scopedDm('dm-needs-setup'), taskInstanceId, platformInstanceId: 'telegram-default' })
+      setContextSettings({
+        contextId: scopedDm('dm-needs-setup'),
+        taskInstanceId,
+        platformInstanceId: 'telegram-default',
+      })
       cancelWizard('dm-needs-setup', scopedDm('dm-needs-setup'))
 
       const messageHandler = getMessageHandler()
@@ -1206,7 +1210,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     const db = getDrizzleDb()
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, scopedGroup('group-ops'))).run()
+    db.delete(groupAdminObservations)
+      .where(eq(groupAdminObservations.contextId, scopedGroup('group-ops')))
+      .run()
 
     const { reply, textCalls } = createMockReply()
     await messageHandler!(createDmMessage('dm-admin', 'timezone'), reply)

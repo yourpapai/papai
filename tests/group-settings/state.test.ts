@@ -51,11 +51,7 @@ describe('group settings state', () => {
       platformInstanceId: 'discord-default',
     })
 
-    updateGroupSettingsSession(
-      'user-1',
-      { stage: 'active', targetContextId: 'telegram-group' },
-      'telegram-default',
-    )
+    updateGroupSettingsSession('user-1', { stage: 'active', targetContextId: 'telegram-group' }, 'telegram-default')
     updateGroupSettingsSession('user-1', { stage: 'active', targetContextId: 'discord-group' }, 'discord-default')
 
     expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBe('telegram-group')

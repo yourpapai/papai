@@ -172,7 +172,10 @@ async function handleAuthorizedGroupCommand(
   if (subcommand === 'remove') {
     const removed = removeAuthorizedGroup(storageGroupId)
     await reply.text(removed ? `Group ${groupId} removed.` : `Group ${groupId} was not authorized.`)
-    log.info({ groupId: storageGroupId, nativeGroupId: groupId, userId: msg.user.id, removed }, 'Authorized group removal attempted')
+    log.info(
+      { groupId: storageGroupId, nativeGroupId: groupId, userId: msg.user.id, removed },
+      'Authorized group removal attempted',
+    )
     return
   }
 

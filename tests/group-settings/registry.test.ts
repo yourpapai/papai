@@ -8,8 +8,8 @@ import assert from 'node:assert/strict'
 
 import { and, eq } from 'drizzle-orm'
 
-import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../../src/db/schema.js'
 import {
   findGroupUserObservation,
@@ -218,8 +218,18 @@ describe('group-settings registry', () => {
   test('filters admin groups by scoped platform instance when native user ids collide', () => {
     const telegramGroupId = toScopedContextId({ platformInstanceId: 'telegram-main', nativeContextId: 'g-1' })
     const discordGroupId = toScopedContextId({ platformInstanceId: 'discord-main', nativeContextId: 'g-2' })
-    upsertKnownGroupContext({ contextId: telegramGroupId, provider: 'telegram', displayName: 'Telegram Alpha', parentName: null })
-    upsertKnownGroupContext({ contextId: discordGroupId, provider: 'discord', displayName: 'Discord Beta', parentName: null })
+    upsertKnownGroupContext({
+      contextId: telegramGroupId,
+      provider: 'telegram',
+      displayName: 'Telegram Alpha',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: discordGroupId,
+      provider: 'discord',
+      displayName: 'Discord Beta',
+      parentName: null,
+    })
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: telegramGroupId,
@@ -248,7 +258,12 @@ describe('group-settings registry', () => {
   })
 
   test('does not expose unscoped legacy admin groups during scoped platform lookup', () => {
-    upsertKnownGroupContext({ contextId: 'legacy-group', provider: 'telegram', displayName: 'Legacy', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'legacy-group',
+      provider: 'telegram',
+      displayName: 'Legacy',
+      parentName: null,
+    })
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: 'legacy-group',

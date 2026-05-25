@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatButton } from '../chat/types.js'
 import { getNativeContextId, isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
+import type { ChatButton } from '../chat/types.js'
 import { logger } from '../logger.js'
 import { listManageableGroups, matchManageableGroup } from './access.js'
 import {
@@ -151,7 +151,13 @@ const handleChooseGroupMessage = (
 ): GroupSettingsSelectorResult => {
   const match = matchManageableGroup(userId, text, platformInstanceId)
   if (match.kind === 'match') {
-    return continueWithTarget(userId, command, toTargetContextId(platformInstanceId, match.group.contextId), 'text', platformInstanceId)
+    return continueWithTarget(
+      userId,
+      command,
+      toTargetContextId(platformInstanceId, match.group.contextId),
+      'text',
+      platformInstanceId,
+    )
   }
   if (match.kind === 'ambiguous') {
     return {

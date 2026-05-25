@@ -33,7 +33,9 @@ function parseMentionUserIds(raw: string): string[] {
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((value): value is string => typeof value === 'string').map((value) => nativeIdFromScoped(value))
+    return parsed
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => nativeIdFromScoped(value))
   } catch {
     return []
   }

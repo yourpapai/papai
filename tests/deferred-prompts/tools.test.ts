@@ -65,7 +65,9 @@ function extractPrompts(result: unknown): unknown[] {
 
 function extractPromptIds(result: unknown): string[] {
   return extractPrompts(result)
-    .filter((prompt): prompt is Readonly<{ id: unknown }> => typeof prompt === 'object' && prompt !== null && 'id' in prompt)
+    .filter(
+      (prompt): prompt is Readonly<{ id: unknown }> => typeof prompt === 'object' && prompt !== null && 'id' in prompt,
+    )
     .map((prompt) => prompt.id)
     .filter((id): id is string => typeof id === 'string')
 }
@@ -548,7 +550,11 @@ describe('delivery classification persistence', () => {
     )
 
     const id = extractId(result)
-    const row = getDrizzleDb().select().from(scheduledPrompts).all().find((prompt) => prompt.id === id)
+    const row = getDrizzleDb()
+      .select()
+      .from(scheduledPrompts)
+      .all()
+      .find((prompt) => prompt.id === id)
     const created = getScheduledPrompt(id, scopedUserId)
     expect(row).toBeDefined()
     expect(row!.createdByUserId).toBe(scopedUserId)
@@ -582,7 +588,11 @@ describe('delivery classification persistence', () => {
     )
 
     const id = extractId(result)
-    const row = getDrizzleDb().select().from(alertPrompts).all().find((alert) => alert.id === id)
+    const row = getDrizzleDb()
+      .select()
+      .from(alertPrompts)
+      .all()
+      .find((alert) => alert.id === id)
     const created = getAlertPrompt(id, scopedUserId)
     expect(row).toBeDefined()
     expect(row!.createdByUserId).toBe(scopedUserId)
@@ -628,7 +638,13 @@ describe('delivery classification persistence', () => {
       threadId: '42',
     })
     setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
-    const create = makeCreateDeferredPromptTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
+    const create = makeCreateDeferredPromptTool(
+      scopedThreadContextId,
+      scopedThreadContextId,
+      'group',
+      undefined,
+      USER_ID,
+    )
     const update = makeUpdateDeferredPromptTool(scopedThreadContextId)
     assert.ok(create.execute)
     assert.ok(update.execute)
@@ -637,7 +653,10 @@ describe('delivery classification persistence', () => {
       toolCtx,
     )
 
-    await update.execute({ id: extractId(created), schedule: { fire_at: { date: '2027-01-16', time: '09:00' } } }, toolCtx)
+    await update.execute(
+      { id: extractId(created), schedule: { fire_at: { date: '2027-01-16', time: '09:00' } } },
+      toolCtx,
+    )
 
     const updated = getScheduledPrompt(extractId(created), scopedThreadContextId)
     expect(updated).not.toBeNull()
@@ -666,7 +685,10 @@ describe('delivery classification persistence', () => {
 
     expect(extractPromptIds(await list.execute({}, toolCtx))).toContain(id)
     expect(await get.execute({ id }, toolCtx)).toHaveProperty('id', id)
-    expect(await update.execute({ id, prompt: 'Updated scoped lifecycle' }, toolCtx)).toHaveProperty('status', 'updated')
+    expect(await update.execute({ id, prompt: 'Updated scoped lifecycle' }, toolCtx)).toHaveProperty(
+      'status',
+      'updated',
+    )
     expect(await cancel.execute({ id }, toolCtx)).toHaveProperty('status', 'cancelled')
     expect(getScheduledPrompt(id, scopedUserId)!.status).toBe('cancelled')
   })

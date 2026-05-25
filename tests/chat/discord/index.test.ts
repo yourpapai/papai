@@ -29,8 +29,23 @@ const addAuthorizedDiscordGroup = (nativeContextId: string, addedBy: string): vo
   addAuthorizedGroup(scopedContextId(nativeContextId), addedBy)
 }
 
-const addUser = (userId: string, addedBy: string, username?: string): void => {
-  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args[0]
+  if (username === undefined) {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy })
+  } else {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+  }
+}
+
+const assignKaneoContext = (contextId: string): void => {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'discord-default' })
 }
 
 type ReadyListener = (arg: { user: { id: string; username: string } }) => void
@@ -84,16 +99,6 @@ describe('DiscordChatProvider', () => {
       process.env['DISCORD_BOT_TOKEN'] = originalToken
     }
   })
-
-  const assignKaneoContext = (contextId: string): void => {
-    insertTaskInstance({
-      id: `${contextId}-kaneo`,
-      type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
-      status: 'active',
-    })
-    setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'discord-default' })
-  }
 
   test('constructor throws when DISCORD_BOT_TOKEN is missing', async () => {
     delete process.env['DISCORD_BOT_TOKEN']
@@ -360,7 +365,7 @@ describe('DiscordChatProvider', () => {
         cache: new Map<string, unknown>(),
         fetch: (_id: string): Promise<unknown> =>
           Promise.resolve({
-            send: (_arg: { content: string }): Promise<unknown> => Promise.resolve(undefined),
+            send: (_arg: { content: string }): Promise<unknown> => Promise.resolve(),
             isSendable: (): boolean => false,
           }),
       },
@@ -475,7 +480,7 @@ describe('DiscordChatProvider', () => {
 
       const result = provider.renderContext(snapshot)
 
-      assert(result.method === 'embed')
+      assert.ok(result.method === 'embed')
       expect(result.embed.title).toBe('Context · gpt-4o')
       expect(result.embed.description).toContain('🟦')
       expect(result.embed.footer).toContain('1,500')
@@ -776,8 +781,8 @@ describe('DiscordChatProvider', () => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
 
-        assert(reply.replaceText !== undefined)
-        assert(reply.replaceButtons !== undefined)
+        assert.ok(reply.replaceText !== undefined)
+        assert.ok(reply.replaceButtons !== undefined)
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -817,7 +822,7 @@ describe('DiscordChatProvider', () => {
       expect(edits[1]!.content).toBe('Choose next')
       expect(Array.isArray(edits[1]!.components)).toBe(true)
       const secondEditComponents = edits[1]!.components
-      assert(secondEditComponents !== undefined)
+      assert.ok(secondEditComponents !== undefined)
       expect(secondEditComponents.length).toBe(1)
     })
 
@@ -832,8 +837,8 @@ describe('DiscordChatProvider', () => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
 
-        assert(reply.replaceText !== undefined)
-        assert(reply.replaceButtons !== undefined)
+        assert.ok(reply.replaceText !== undefined)
+        assert.ok(reply.replaceButtons !== undefined)
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -873,7 +878,7 @@ describe('DiscordChatProvider', () => {
       expect(sends[1]!.content).toBe('Choose next')
       expect(Array.isArray(sends[1]!.components)).toBe(true)
       const secondSendComponents = sends[1]!.components
-      assert(secondSendComponents !== undefined)
+      assert.ok(secondSendComponents !== undefined)
       expect(secondSendComponents.length).toBe(1)
     })
 
@@ -1068,7 +1073,7 @@ describe('DiscordChatProvider', () => {
       await setupTestDb()
 
       upsertKnownGroupContext({
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         provider: 'discord',
         displayName: 'Operations',
         parentName: 'Platform',
@@ -1076,7 +1081,7 @@ describe('DiscordChatProvider', () => {
       addAuthorizedDiscordGroup('group-1', 'admin-id')
       upsertGroupAdminObservation({
         provider: 'discord',
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         userId: 'user-1',
         username: 'alice',
         isAdmin: true,
@@ -1103,8 +1108,8 @@ describe('DiscordChatProvider', () => {
 
       await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
 
-      assert(sends[0] !== undefined)
-      assert(sends[0].content !== undefined)
+      assert.ok(sends[0] !== undefined)
+      assert.ok(sends[0].content !== undefined)
       expect(sends[0].content).toContain('Choose a group to configure.')
     })
 
@@ -1114,14 +1119,14 @@ describe('DiscordChatProvider', () => {
       await setupTestDb()
 
       upsertKnownGroupContext({
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         provider: 'discord',
         displayName: 'Operations',
         parentName: 'Platform',
       })
       upsertGroupAdminObservation({
         provider: 'discord',
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         userId: 'user-1',
         username: 'alice',
         isAdmin: true,
@@ -1168,8 +1173,8 @@ describe('DiscordChatProvider', () => {
 
       await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
 
-      assert(sends[0] !== undefined)
-      assert(sends[0].content !== undefined)
+      assert.ok(sends[0] !== undefined)
+      assert.ok(sends[0].content !== undefined)
       expect(sends[0].content).toContain('Welcome to papai configuration wizard!')
     })
 
@@ -1273,7 +1278,7 @@ describe('DiscordChatProvider', () => {
         },
       })
 
-      const label = await provider.resolveGroupLabel?.('chan-7')
+      const label = await provider.resolveGroupLabel('chan-7')
       expect(label).toBe('engineering-chat')
     })
 
@@ -1315,7 +1320,7 @@ describe('DiscordChatProvider', () => {
         },
       })
 
-      const label = await provider.resolveUserLabel?.('user-9', { contextId: 'chan-7', contextType: 'group' })
+      const label = await provider.resolveUserLabel('user-9', { contextId: 'chan-7', contextType: 'group' })
       expect(label).toBe('John Johnson (@itsmike)')
     })
 
@@ -1345,7 +1350,7 @@ describe('DiscordChatProvider', () => {
         },
       })
 
-      const label = await provider.resolveUserLabel?.('user-12', { contextId: 'dm-user', contextType: 'dm' })
+      const label = await provider.resolveUserLabel('user-12', { contextId: 'dm-user', contextType: 'dm' })
       expect(label).toBe('Jane Admin (@janeadmin)')
     })
 

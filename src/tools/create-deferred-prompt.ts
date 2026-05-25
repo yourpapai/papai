@@ -29,7 +29,10 @@ export function makeCreateDeferredPromptTool(
   userId: string,
   storageContextId: string,
   contextType: ContextType,
-  ...args: readonly [] | readonly [username: string | null | undefined] | readonly [username: string | null | undefined, actorUserId: string]
+  ...args:
+    | readonly []
+    | readonly [username: string | null | undefined]
+    | readonly [username: string | null | undefined, actorUserId: string]
 ): ToolSet[string] {
   const username = args[0]
   const actorUserId = resolveActorUserId(userId, args[1])

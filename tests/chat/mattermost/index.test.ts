@@ -8,10 +8,10 @@ import assert from 'node:assert/strict'
 
 import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.js'
 import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
-import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
-import type { AuthorizationResult } from '../../../src/chat/types.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
+import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
+import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 

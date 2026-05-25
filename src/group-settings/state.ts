@@ -19,7 +19,9 @@ type CreateGroupSettingsSessionParams = Readonly<
   } & Partial<Record<'platformInstanceId' | 'targetContextId', string>>
 >
 
-type GroupSettingsSessionUpdate = Readonly<Partial<Record<'stage', GroupSettingsSessionStage> & Record<'targetContextId', string>>>
+type GroupSettingsSessionUpdate = Readonly<
+  Partial<Record<'stage', GroupSettingsSessionStage> & Record<'targetContextId', string>>
+>
 
 const isExpired = (session: GroupSettingsSession): boolean =>
   Date.now() - session.startedAt.getTime() > GROUP_SETTINGS_SESSION_TTL_MS
@@ -78,7 +80,10 @@ const getGroupSettingsSessionForScope = (
   return entry.session
 }
 
-export function getGroupSettingsSession(userId: string, ...scope: [] | [platformInstanceId: string]): GroupSettingsSession | null {
+export function getGroupSettingsSession(
+  userId: string,
+  ...scope: [] | [platformInstanceId: string]
+): GroupSettingsSession | null {
   return getGroupSettingsSessionForScope(userId, scope.length === 0 ? undefined : scope[0])
 }
 
@@ -134,7 +139,10 @@ export function deleteGroupSettingsSession(userId: string, ...scope: [] | [platf
   return deleted
 }
 
-export function getActiveGroupSettingsTarget(userId: string, ...scope: [] | [platformInstanceId: string]): string | null {
+export function getActiveGroupSettingsTarget(
+  userId: string,
+  ...scope: [] | [platformInstanceId: string]
+): string | null {
   const platformInstanceId = scope.length === 0 ? undefined : scope[0]
   log.debug({ userId, platformInstanceId }, 'getActiveGroupSettingsTarget called')
 

@@ -87,7 +87,10 @@ const resolveGroupLabelCached = (
   if (existing !== undefined) return existing
   const pending = scheduleLookup(() =>
     resolveChatGroupDisplayLabel(chat, groupId, platformInstanceId).catch((error: unknown): string | null => {
-      log.warn({ groupId, error: error instanceof Error ? error.message : String(error) }, 'Group label lookup failed in group command')
+      log.warn(
+        { groupId, error: error instanceof Error ? error.message : String(error) },
+        'Group label lookup failed in group command',
+      )
       return null
     }),
   )
@@ -110,7 +113,8 @@ export const listAuthorizedGroupDisplayLines = (chat: ChatProvider): Promise<rea
     listAuthorizedGroups().map(async (group) => {
       const nativeGroupId = getNativeContextId(group.group_id)
       const groupPlatformInstanceId = getOptionalGroupPlatformInstanceId(group.group_id)
-      const labelProvider = groupPlatformInstanceId === undefined ? chat : resolveSourceChatProvider(chat, groupPlatformInstanceId)
+      const labelProvider =
+        groupPlatformInstanceId === undefined ? chat : resolveSourceChatProvider(chat, groupPlatformInstanceId)
       const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
         resolveGroupLabelCached(labelProvider, nativeGroupId, groupPlatformInstanceId, groupLabelCache, limit),
         resolveUserLabelCached(

@@ -6,11 +6,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import {
   resolveTelegramGroupDisplayLabel,
   resolveTelegramUserDisplayLabel,
 } from '../../../src/chat/telegram/group-display-resolution.js'
-import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { ChatProvider } from '../../../src/chat/types.js'
 import {
   findGroupUserObservation,

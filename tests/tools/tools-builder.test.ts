@@ -327,7 +327,10 @@ describe('buildTools', () => {
 
   it('should not add lookup_group_history when contextId is scoped but not threaded', () => {
     const provider = createMockProvider()
-    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
+    const scopedMainContextId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+    })
     const tools = buildTools(provider, 'user-123', scopedMainContextId, 'normal')
 
     expect(tools).not.toHaveProperty('lookup_group_history')

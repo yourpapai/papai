@@ -10,7 +10,10 @@ import { rowToDeliveryTarget } from '../../src/deferred-prompts/delivery-target.
 
 describe('rowToDeliveryTarget', () => {
   test('reconstructs scoped thread storage while preserving native delivery ids', () => {
-    const scopedMainContextId = toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: '-1001' })
+    const scopedMainContextId = toScopedContextId({
+      platformInstanceId: 'telegram-secondary',
+      nativeContextId: '-1001',
+    })
     const target = rowToDeliveryTarget({
       createdByUserId: toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: 'user-1' }),
       createdByUsername: 'alice',
@@ -18,7 +21,9 @@ describe('rowToDeliveryTarget', () => {
       deliveryContextType: 'group',
       deliveryThreadId: '42',
       audience: 'personal',
-      mentionUserIds: JSON.stringify([toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: 'user-1' })]),
+      mentionUserIds: JSON.stringify([
+        toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: 'user-1' }),
+      ]),
     })
 
     expect(target.contextId).toBe('-1001')

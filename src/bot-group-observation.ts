@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { resolveSourceProviderName } from './chat/source-instance.js'
 import { toScopedContextId } from './chat/scoped-context.js'
+import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingMessage } from './chat/types.js'
 import {
   upsertGroupAdminObservation,
@@ -16,7 +16,10 @@ export function recordGroupObservation(chat: ChatProvider, msg: IncomingMessage)
   if (msg.contextType !== 'group') return
   if (msg.commandMatch === undefined && !msg.isMentioned) return
   const provider = resolveSourceProviderName(chat, msg.platformInstanceId)
-  const storageContextId = toScopedContextId({ platformInstanceId: msg.platformInstanceId, nativeContextId: msg.contextId })
+  const storageContextId = toScopedContextId({
+    platformInstanceId: msg.platformInstanceId,
+    nativeContextId: msg.contextId,
+  })
   let displayName = msg.contextId
   if (msg.contextName !== undefined) displayName = msg.contextName
   let parentName: string | null = null

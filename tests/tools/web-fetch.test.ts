@@ -103,7 +103,10 @@ describe('makeWebFetchTool', () => {
     )
     const tools = buildTools(createMockProvider(), 'user-456', storageContextId, 'normal', 'group')
 
-    await getToolExecutor(tools['web_fetch']!)({ url: 'https://example.com/article' }, { toolCallId: '1', messages: [] })
+    await getToolExecutor(tools['web_fetch']!)(
+      { url: 'https://example.com/article' },
+      { toolCallId: '1', messages: [] },
+    )
 
     const actors = getTestDb().select({ actorId: webRateLimit.actorId }).from(webRateLimit).all()
     expect(actors).toEqual([{ actorId: storageContextId }])

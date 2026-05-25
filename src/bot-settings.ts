@@ -23,7 +23,12 @@ function maybeDispatchGroupSelector(
   isCommand: boolean,
 ): Promise<boolean> {
   if (isCommand || !auth.allowed || msg.contextType !== 'dm') return Promise.resolve(false)
-  const selection = handleGroupSettingsSelectorMessage(msg.user.id, msg.text, interactiveButtons, msg.platformInstanceId)
+  const selection = handleGroupSettingsSelectorMessage(
+    msg.user.id,
+    msg.text,
+    interactiveButtons,
+    msg.platformInstanceId,
+  )
   return dispatchGroupSelectorResult(selection, reply, msg.user.id, msg.platformInstanceId, interactiveButtons)
 }
 

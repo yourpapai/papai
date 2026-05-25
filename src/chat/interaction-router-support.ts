@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { listManageableGroups } from '../group-settings/access.js'
 import { getEditorSession } from '../config-editor/state.js'
+import { listManageableGroups } from '../group-settings/access.js'
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
 import { getWizardSession } from '../wizard/state.js'
 import { getNativeContextId, isScopedContextId, toScopedContextId } from './scoped-context.js'
@@ -13,7 +13,11 @@ import type { IncomingInteraction } from './types.js'
 const toScopedGroupTarget = (platformInstanceId: string, nativeContextId: string): string =>
   isScopedContextId(nativeContextId) ? nativeContextId : toScopedContextId({ platformInstanceId, nativeContextId })
 
-const isSameContextTarget = (platformInstanceId: string, candidateContextId: string, targetContextId: string): boolean => {
+const isSameContextTarget = (
+  platformInstanceId: string,
+  candidateContextId: string,
+  targetContextId: string,
+): boolean => {
   if (candidateContextId === targetContextId) return true
   if (getNativeContextId(candidateContextId) === targetContextId) return true
   return toScopedGroupTarget(platformInstanceId, candidateContextId) === targetContextId
@@ -106,7 +110,8 @@ export function getWizardCallbackStorageContextId(
 ): string {
   if (callbackTargetContextId !== userId) return validatedTargetContextId
   if (getNativeContextId(callbackTargetContextId) !== userId) return validatedTargetContextId
-  if (callbackData === 'wizard_edit' && getWizardSession(userId, callbackTargetContextId) !== null) return callbackTargetContextId
+  if (callbackData === 'wizard_edit' && getWizardSession(userId, callbackTargetContextId) !== null)
+    return callbackTargetContextId
   if (callbackData === 'wizard_confirm' && getWizardSession(userId, callbackTargetContextId) !== null)
     return callbackTargetContextId
   if (callbackData === 'wizard_cancel' && getWizardSession(userId, callbackTargetContextId) !== null)
