@@ -5,6 +5,7 @@
 
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
+import { toScopedContextId } from '../chat/scoped-context.js'
 import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { getConfig } from '../config.js'
@@ -167,7 +168,8 @@ export async function startSetupForTarget(
   ...rest: [] | [SetupCommandDeps]
 ): Promise<void> {
   const deps = rest.length === 0 ? defaultDeps : rest[0]
-  const isGroupTarget = targetContextId !== userId
+  const scopedPersonalTarget = toScopedContextId({ platformInstanceId, nativeContextId: userId })
+  const isGroupTarget = targetContextId !== userId && targetContextId !== scopedPersonalTarget
 
   if (isGroupTarget && !deps.isAuthorizedGroup(targetContextId)) {
     await reply.text(
@@ -185,7 +187,7 @@ async function replyWithSetupSelection(
   platformInstanceId: string,
   interactiveButtons: boolean,
 ): Promise<void> {
-  const selection = startGroupSettingsSelection(userId, 'setup', interactiveButtons)
+  const selection = startGroupSettingsSelection(userId, 'setup', interactiveButtons, platformInstanceId)
   if ('continueWith' in selection) {
     await startSetupForTarget(userId, reply, selection.continueWith.targetContextId, platformInstanceId)
     return

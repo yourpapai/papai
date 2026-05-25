@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import type { ChatCapability, ChatProvider, CommandHandler, ReplyFn } from '../../src/chat/types.js'
 import { registerSetupCommand } from '../../src/commands/setup.js'
 import type { SetupCommandDeps } from '../../src/commands/setup.js'
@@ -37,6 +38,9 @@ const getConfigWithExistingApiKey = (_contextId: string, key: string): string | 
   const values: Record<string, string> = { kaneo_apikey: 'existing-key' }
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
 }
+
+const SCOPED_GROUP_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-1' })
+const SCOPED_ADMIN_1 = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'admin-1' })
 
 function createRouterLikeSetupChat(
   sourceProvider: ChatProvider,
@@ -293,6 +297,72 @@ describe('/setup command', () => {
     await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
 
     expect(textCalls[0]).toContain('/group add group-1')
+  })
+
+  test('accepts scoped group target during authorized group validation', async () => {
+    const { reply, textCalls } = createMockReply()
+    const authorizedLookups: string[] = []
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: (groupId) => {
+        authorizedLookups.push(groupId)
+        return groupId === SCOPED_GROUP_1
+      },
+      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfig: () => 'existing-key',
+      getKaneoWorkspace: () => 'existing-workspace',
+      getContextSettings: () => ({
+        contextId: SCOPED_GROUP_1,
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+    }
+
+    await startSetupForTarget('admin-1', reply, SCOPED_GROUP_1, 'telegram-default', deps)
+
+    expect(authorizedLookups).toEqual([SCOPED_GROUP_1])
+    expect(textCalls).toEqual(['wizard-started'])
+  })
+
+  test('does not treat scoped personal target as a group', async () => {
+    const { reply, textCalls } = createMockReply()
+    const authorizedLookups: string[] = []
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: (groupId) => {
+        authorizedLookups.push(groupId)
+        return false
+      },
+      provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfig: () => 'existing-key',
+      getKaneoWorkspace: () => 'existing-workspace',
+      getContextSettings: () => ({
+        contextId: SCOPED_ADMIN_1,
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+    }
+
+    await startSetupForTarget('admin-1', reply, SCOPED_ADMIN_1, 'telegram-default', deps)
+
+    expect(authorizedLookups).toEqual([])
+    expect(textCalls).toEqual(['wizard-started'])
   })
 
   test('starts task instance selection when target has no assignment', async () => {

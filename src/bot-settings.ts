@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { handleConfigEditorMessage } from './chat/config-editor-integration.js'
+import { toScopedContextId } from './chat/scoped-context.js'
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from './chat/types.js'
 import { startWizardForAssignedTask } from './commands/setup.js'
 import { listManageableGroups } from './group-settings/access.js'
@@ -22,7 +23,7 @@ function maybeDispatchGroupSelector(
   isCommand: boolean,
 ): Promise<boolean> {
   if (isCommand || !auth.allowed || msg.contextType !== 'dm') return Promise.resolve(false)
-  const selection = handleGroupSettingsSelectorMessage(msg.user.id, msg.text, interactiveButtons)
+  const selection = handleGroupSettingsSelectorMessage(msg.user.id, msg.text, interactiveButtons, msg.platformInstanceId)
   return dispatchGroupSelectorResult(selection, reply, msg.user.id, msg.platformInstanceId, interactiveButtons)
 }
 
@@ -39,9 +40,17 @@ async function validateActiveGroupSettingsTarget(
   if (msg.contextType !== 'dm' || !auth.allowed) return null
   const activeTarget = getActiveGroupSettingsTarget(msg.user.id)
   if (activeTarget === null) return null
-  if (listManageableGroups(msg.user.id).some((group) => group.contextId === activeTarget)) return activeTarget
+  if (
+    listManageableGroups(msg.user.id, msg.platformInstanceId).some(
+      (group) =>
+        toScopedContextId({ platformInstanceId: msg.platformInstanceId, nativeContextId: group.contextId }) ===
+        activeTarget,
+    )
+  ) {
+    return activeTarget
+  }
   deleteGroupSettingsSession(msg.user.id)
-  await reply.text(getMissingGroupTargetMessage(msg.user.id, activeTarget))
+  await reply.text(getMissingGroupTargetMessage(msg.user.id, activeTarget, msg.platformInstanceId))
   return '__deleted__'
 }
 
@@ -54,6 +63,13 @@ function getSettingsTargetContextId(
   if (msg.contextType !== 'dm') return configTargetContextId
   if (activeGroupSettingsTarget !== null) return activeGroupSettingsTarget
   return configTargetContextId
+}
+
+function isPersonalSettingsTarget(msg: IncomingMessage, settingsTargetContextId: string): boolean {
+  return (
+    settingsTargetContextId ===
+    toScopedContextId({ platformInstanceId: msg.platformInstanceId, nativeContextId: msg.user.id })
+  )
 }
 
 async function maybeHandleTaskInstanceSelection(
@@ -70,7 +86,7 @@ async function maybeHandleTaskInstanceSelection(
       reply,
       settingsTargetContextId,
       selection.taskProvider,
-      settingsTargetContextId !== msg.user.id,
+      !isPersonalSettingsTarget(msg, settingsTargetContextId),
     )
     return true
   }

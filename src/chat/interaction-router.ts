@@ -4,17 +4,21 @@
 // See LICENSE in the project root for details.
 
 import { handleEditorCallback, parseCallbackData, serializeCallbackData } from '../config-editor/index.js'
-import { listManageableGroups } from '../group-settings/access.js'
 import { dispatchGroupSelectorResult } from '../group-settings/dispatch.js'
 import { handleGroupSettingsSelectorCallback } from '../group-settings/selector.js'
-import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
+import { getActiveGroupSettingsTarget } from '../group-settings/state.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
 import { cancelWizard, getNextPrompt } from '../wizard/engine.js'
 import { validateAndSaveWizardConfig } from '../wizard/save.js'
 import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
-import { getResponseText, getTargetContextId } from './interaction-router-support.js'
+import {
+  getResponseText,
+  getTargetContextId,
+  getValidatedDmCallbackTargetContextId,
+  getValidatedDmTargetContextId,
+} from './interaction-router-support.js'
 import { handlePluginInteraction } from './plugin-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
@@ -54,40 +58,19 @@ export type InteractionRouteDeps = {
   handlePluginInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
 }
 function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
-  const result = handleGroupSettingsSelectorCallback(interaction.user.id, interaction.callbackData)
+  const result = handleGroupSettingsSelectorCallback(
+    interaction.user.id,
+    interaction.callbackData,
+    interaction.platformInstanceId,
+  )
   return dispatchGroupSelectorResult(result, reply, interaction.user.id, interaction.platformInstanceId)
 }
 
-function getValidatedDmTargetContextId(userId: string): string | null {
-  const activeGroupTarget = getActiveGroupSettingsTarget(userId)
-  if (activeGroupTarget === null) return null
-
-  const hasAccess = listManageableGroups(userId).some((group) => group.contextId === activeGroupTarget)
-  if (hasAccess) {
-    return activeGroupTarget
-  }
-
-  deleteGroupSettingsSession(userId)
-  return null
-}
-
-function getValidatedDmCallbackTargetContextId(userId: string, targetContextId: string): string | null {
-  if (targetContextId === userId) return targetContextId
-
-  const hasAccess = listManageableGroups(userId).some((group) => group.contextId === targetContextId)
-  if (hasAccess) {
-    return targetContextId
-  }
-
-  deleteGroupSettingsSession(userId)
-  return null
-}
-
-async function validateImplicitDmConfigTarget(userId: string, reply: ReplyFn): Promise<boolean> {
+async function validateImplicitDmConfigTarget(userId: string, platformInstanceId: string, reply: ReplyFn): Promise<boolean> {
   if (getActiveGroupSettingsTarget(userId) === null) return true
 
   const previousActiveTarget = getActiveGroupSettingsTarget(userId)
-  const validatedTargetContextId = getValidatedDmTargetContextId(userId)
+  const validatedTargetContextId = getValidatedDmTargetContextId(userId, platformInstanceId)
   if (validatedTargetContextId !== null) return true
 
   const message =
@@ -118,14 +101,18 @@ async function defaultHandleConfigInteraction(interaction: IncomingInteraction, 
   if (
     interaction.contextType === 'dm' &&
     parsed.targetContextId === undefined &&
-    !(await validateImplicitDmConfigTarget(user.id, reply))
+    !(await validateImplicitDmConfigTarget(user.id, interaction.platformInstanceId, reply))
   ) {
     return true
   }
   if (interaction.contextType === 'dm' && parsed.targetContextId !== undefined) {
-    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(user.id, targetContextId)
+    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
+      user.id,
+      targetContextId,
+      interaction.platformInstanceId,
+    )
     if (validatedTargetContextId === null) {
-      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(user.id, targetContextId))
+      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(user.id, targetContextId, interaction.platformInstanceId))
       return true
     }
   }
@@ -204,9 +191,13 @@ async function defaultHandleWizardInteraction(interaction: IncomingInteraction, 
   const storageContextId = getTargetContextId(callbackContextId, interaction)
 
   if (interaction.contextType === 'dm' && callbackContextId !== undefined) {
-    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(userId, storageContextId)
+    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
+      userId,
+      storageContextId,
+      interaction.platformInstanceId,
+    )
     if (validatedTargetContextId === null) {
-      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(userId, storageContextId))
+      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(userId, storageContextId, interaction.platformInstanceId))
       return true
     }
   }

@@ -90,7 +90,7 @@ describe('auth', () => {
       test('configContextId equals storageContextId in main chat', () => {
         addUser('admin1', 'admin1')
         addAdmin('admin1', TEST_PLATFORM_ID)
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
 
         const groupAuth = checkAuthorizationExtended('admin1', null, 'group1', 'group', undefined, false)
 
@@ -103,7 +103,7 @@ describe('auth', () => {
       test('thread-scoped storageContextId with group-scoped configContextId', () => {
         addUser('admin1', 'admin1')
         addAdmin('admin1', TEST_PLATFORM_ID)
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
 
         const threadAuth = checkAuthorizationExtended('admin1', null, 'group1', 'group', 'thread123', false)
 
@@ -115,7 +115,7 @@ describe('auth', () => {
 
       test('isGroupAdmin reflects platform admin status', () => {
         addUser('admin1', 'admin1')
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
 
         const nonAdminAuth = checkAuthorizationExtended('admin1', null, 'group1', 'group', undefined, false)
         expect(nonAdminAuth.isGroupAdmin).toBe(false)
@@ -139,10 +139,21 @@ describe('auth', () => {
     })
 
     describe('group member (non-admin)', () => {
+      test('authorizes scoped group member from raw message context and platform instance', () => {
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
+        addGroupMember(SCOPED_GROUP1, 'user1', 'admin1')
+
+        const memberAuth = checkAuthorizationExtended('user1', null, 'group1', 'group', undefined, false)
+
+        expect(memberAuth.allowed).toBe(true)
+        expect(memberAuth.storageContextId).toBe(SCOPED_GROUP1)
+        expect(memberAuth.configContextId).toBe(SCOPED_GROUP1)
+      })
+
       test('has correct auth flags', () => {
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
         // Add to group WITHOUT adding as authorized user (group member only)
-        addGroupMember('group1', 'user1', 'user1')
+        addGroupMember(SCOPED_GROUP1, 'user1', 'user1')
 
         const memberAuth = checkAuthorizationExtended('user1', null, 'group1', 'group', undefined, false)
 
@@ -153,9 +164,9 @@ describe('auth', () => {
       })
 
       test('in thread has isolated storage but shared config', () => {
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
         // Add to group WITHOUT adding as authorized user (group member only)
-        addGroupMember('group1', 'user1', 'user1')
+        addGroupMember(SCOPED_GROUP1, 'user1', 'user1')
 
         const threadAuth = checkAuthorizationExtended('user1', null, 'group1', 'group', 'thread456', false)
 
@@ -168,7 +179,7 @@ describe('auth', () => {
       test('authorized non-admin user stays non-admin in both DM and allowlisted group contexts', () => {
         process.env['ADMIN_USER_ID'] = 'real-admin'
         addUser('user1', 'real-admin')
-        addAuthorizedGroup('group1', 'real-admin')
+        addAuthorizedGroup(SCOPED_GROUP1, 'real-admin')
 
         const dmAuth = checkAuthorizationExtended('user1', null, 'user1', 'dm', undefined, false)
         const groupAuth = checkAuthorizationExtended('user1', null, 'group1', 'group', undefined, false)
@@ -193,7 +204,7 @@ describe('auth', () => {
       })
 
       test('returns group_member_not_allowed when group is allowlisted but user is not permitted', () => {
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
 
         const unauthorizedAuth = checkAuthorizationExtended('stranger1', null, 'group1', 'group', undefined, false)
 
@@ -202,7 +213,7 @@ describe('auth', () => {
       })
 
       test('allows platform admin in allowlisted group without group_members entry', () => {
-        addAuthorizedGroup('group1', 'admin1')
+        addAuthorizedGroup(SCOPED_GROUP1, 'admin1')
 
         const unauthorizedAuth = checkAuthorizationExtended('platform-admin', null, 'group1', 'group', undefined, true)
 

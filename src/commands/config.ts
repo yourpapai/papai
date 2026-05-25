@@ -160,8 +160,13 @@ export async function renderConfigForTarget(
   })
 }
 
-async function replyWithConfigSelection(reply: ReplyFn, userId: string, interactiveButtons: boolean): Promise<void> {
-  const selection = startGroupSettingsSelection(userId, 'config', interactiveButtons)
+async function replyWithConfigSelection(
+  reply: ReplyFn,
+  userId: string,
+  platformInstanceId: string,
+  interactiveButtons: boolean,
+): Promise<void> {
+  const selection = startGroupSettingsSelection(userId, 'config', interactiveButtons, platformInstanceId)
   if ('continueWith' in selection) {
     await renderConfigForTarget(reply, selection.continueWith.targetContextId, interactiveButtons)
     return
@@ -192,7 +197,7 @@ export function registerConfigCommand(chat: ChatProvider, ..._rest: [] | [_check
     if (!supportsMessageDeletion(sourceChat)) {
       await reply.text(NO_DELETE_WARNING)
     }
-    await replyWithConfigSelection(reply, msg.user.id, interactiveButtons)
+    await replyWithConfigSelection(reply, msg.user.id, msg.platformInstanceId, interactiveButtons)
   }
 
   chat.registerCommand('config', handler)

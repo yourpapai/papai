@@ -1073,7 +1073,7 @@ describe('DiscordChatProvider', () => {
         username: 'alice',
         isAdmin: true,
       })
-      startGroupSettingsSelection('user-1', 'config', true)
+      startGroupSettingsSelection('user-1', 'config', true, 'discord-default')
 
       const sends: Array<Partial<{ content: string }>> = []
       const interaction: ButtonInteractionLike = {
@@ -1122,7 +1122,7 @@ describe('DiscordChatProvider', () => {
       assignKaneoContext('group-1')
       setConfig('group-1', 'kaneo_apikey', 'existing-key')
       setKaneoWorkspace('group-1', 'existing-workspace')
-      startGroupSettingsSelection('user-1', 'setup', true)
+      startGroupSettingsSelection('user-1', 'setup', true, 'discord-default')
 
       const groupSelectorInteraction: ButtonInteractionLike = {
         user: { id: 'user-1', username: 'alice' },

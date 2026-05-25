@@ -18,6 +18,6 @@ export function handleDiscordGroupSettingsSelection(
     return Promise.resolve(false)
   }
 
-  const result = handleGroupSettingsSelectorCallback(userId, interaction.customId)
+  const result = handleGroupSettingsSelectorCallback(userId, interaction.customId, platformInstanceId)
   return dispatchGroupSelectorResult(result, reply, userId, platformInstanceId)
 }

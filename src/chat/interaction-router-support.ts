@@ -3,8 +3,42 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getActiveGroupSettingsTarget } from '../group-settings/state.js'
+import { listManageableGroups } from '../group-settings/access.js'
+import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
+import { toScopedContextId } from './scoped-context.js'
 import type { IncomingInteraction } from './types.js'
+
+const toScopedGroupTarget = (platformInstanceId: string, nativeContextId: string): string =>
+  toScopedContextId({ platformInstanceId, nativeContextId })
+
+export function getValidatedDmTargetContextId(userId: string, platformInstanceId: string): string | null {
+  const activeGroupTarget = getActiveGroupSettingsTarget(userId)
+  if (activeGroupTarget === null) return null
+
+  const hasAccess = listManageableGroups(userId, platformInstanceId).some(
+    (group) => toScopedGroupTarget(platformInstanceId, group.contextId) === activeGroupTarget,
+  )
+  if (hasAccess) return activeGroupTarget
+
+  deleteGroupSettingsSession(userId)
+  return null
+}
+
+export function getValidatedDmCallbackTargetContextId(
+  userId: string,
+  targetContextId: string,
+  platformInstanceId: string,
+): string | null {
+  if (targetContextId === toScopedContextId({ platformInstanceId, nativeContextId: userId })) return targetContextId
+
+  const hasAccess = listManageableGroups(userId, platformInstanceId).some(
+    (group) => toScopedGroupTarget(platformInstanceId, group.contextId) === targetContextId,
+  )
+  if (hasAccess) return targetContextId
+
+  deleteGroupSettingsSession(userId)
+  return null
+}
 
 export function getTargetContextId(
   parsedTargetContextId: string | undefined,

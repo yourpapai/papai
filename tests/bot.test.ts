@@ -61,12 +61,42 @@ import {
 } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'test-instance'
-const scopedDm = (contextId: string, platformInstanceId: string = TEST_PLATFORM_ID): string =>
-  getThreadScopedStorageContextId(contextId, 'dm', undefined, platformInstanceId)
-const scopedGroup = (contextId: string, platformInstanceId: string = TEST_PLATFORM_ID): string =>
-  getThreadScopedStorageContextId(contextId, 'group', undefined, platformInstanceId)
-const scopedGroupThread = (contextId: string, threadId: string, platformInstanceId: string = TEST_PLATFORM_ID): string =>
-  getThreadScopedStorageContextId(contextId, 'group', threadId, platformInstanceId)
+const getTestPlatformArg = (args: [] | [platformInstanceId: string]): string => {
+  if (args.length === 0) return TEST_PLATFORM_ID
+  return args[0]
+}
+
+const scopedDm = (contextId: string, ...args: [] | [platformInstanceId: string]): string => {
+  const platformInstanceId = getTestPlatformArg(args)
+  return getThreadScopedStorageContextId(contextId, 'dm', undefined, platformInstanceId)
+}
+const scopedGroup = (contextId: string, ...args: [] | [platformInstanceId: string]): string => {
+  const platformInstanceId = getTestPlatformArg(args)
+  return getThreadScopedStorageContextId(contextId, 'group', undefined, platformInstanceId)
+}
+const scopedGroupThread = (contextId: string, threadId: string, ...args: [] | [platformInstanceId: string]): string => {
+  const platformInstanceId = getTestPlatformArg(args)
+  return getThreadScopedStorageContextId(contextId, 'group', threadId, platformInstanceId)
+}
+
+const addAuthorizedGroupForPlatform = (
+  nativeContextId: string,
+  addedBy: string,
+  ...args: [] | [platformInstanceId: string]
+): void => {
+  const platformInstanceId = getTestPlatformArg(args)
+  addAuthorizedGroup(scopedGroup(nativeContextId, platformInstanceId), addedBy)
+}
+
+const addGroupMemberForPlatform = (
+  nativeContextId: string,
+  userId: string,
+  addedBy: string,
+  ...args: [] | [platformInstanceId: string]
+): void => {
+  const platformInstanceId = getTestPlatformArg(args)
+  addGroupMember(scopedGroup(nativeContextId, platformInstanceId), userId, addedBy)
+}
 
 const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
   const username = args[0]
@@ -174,7 +204,7 @@ describe('Authorization Logic', () => {
     test('Bot admin in group → allowed with isBotAdmin, storageContextId=scoped groupId', () => {
       addUser('admin-1', 'system', 'admin')
       addAdmin('admin-1', TEST_PLATFORM_ID)
-      addAuthorizedGroup('group-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
 
       const result = checkAuthorizationExtended('admin-1', 'admin', 'group-1', 'group', undefined, false)
       expect(result).toEqual({
@@ -189,7 +219,7 @@ describe('Authorization Logic', () => {
     test('Bot admin who is also platform admin → isGroupAdmin=true', () => {
       addUser('admin-1', 'system', 'admin')
       addAdmin('admin-1', TEST_PLATFORM_ID)
-      addAuthorizedGroup('group-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
 
       const result = checkAuthorizationExtended('admin-1', 'admin', 'group-1', 'group', undefined, true)
       expect(result).toEqual({
@@ -204,8 +234,8 @@ describe('Authorization Logic', () => {
 
   describe('Group Member Authorization', () => {
     test('Group member → allowed, not bot admin, storageContextId=scoped groupId', () => {
-      addAuthorizedGroup('group-1', 'system')
-      addGroupMember('group-1', 'member-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
+      addGroupMemberForPlatform('group-1', 'member-1', 'system')
 
       const result = checkAuthorizationExtended('member-1', null, 'group-1', 'group', undefined, false)
       expect(result).toEqual({
@@ -218,8 +248,8 @@ describe('Authorization Logic', () => {
     })
 
     test('Group member who is platform admin → isGroupAdmin=true', () => {
-      addAuthorizedGroup('group-1', 'system')
-      addGroupMember('group-1', 'member-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
+      addGroupMemberForPlatform('group-1', 'member-1', 'system')
 
       const result = checkAuthorizationExtended('member-1', null, 'group-1', 'group', undefined, true)
       expect(result).toEqual({
@@ -244,7 +274,7 @@ describe('Authorization Logic', () => {
     })
 
     test('Non-member in allowlisted group → not allowed with group_member_not_allowed reason', () => {
-      addAuthorizedGroup('group-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
 
       const result = checkAuthorizationExtended('stranger-1', null, 'group-1', 'group', undefined, false)
       expect(result).toEqual({
@@ -258,7 +288,7 @@ describe('Authorization Logic', () => {
     })
 
     test('Platform admin in allowlisted group is allowed without group membership', () => {
-      addAuthorizedGroup('group-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
 
       const result = checkAuthorizationExtended('platform-admin', null, 'group-1', 'group', undefined, true)
       expect(result).toEqual({
@@ -302,8 +332,8 @@ describe('Authorization Logic', () => {
     test('User who is BOTH bot admin AND group member → returns bot admin result (isBotAdmin=true)', () => {
       addUser('admin-1', 'system', 'admin')
       addAdmin('admin-1', TEST_PLATFORM_ID)
-      addAuthorizedGroup('group-1', 'system')
-      addGroupMember('group-1', 'admin-1', 'system')
+      addAuthorizedGroupForPlatform('group-1', 'system')
+      addGroupMemberForPlatform('group-1', 'admin-1', 'system')
 
       const result = checkAuthorizationExtended('admin-1', 'admin', 'group-1', 'group', undefined, false)
       expect(result).toEqual({
@@ -387,7 +417,9 @@ describe('Demo Mode Auto-Provision', () => {
 
 // Setup user config to bypass wizard auto-start. Phase 1 removes per-user
 // LLM keys, so only the task-provider key and timezone need to be present.
-function setupContextTaskAssignment(contextId: string, platformInstanceId: string = 'telegram-default'): void {
+function setupContextTaskAssignment(contextId: string, ...args: [] | [platformInstanceId: string]): void {
+  let platformInstanceId = 'telegram-default'
+  if (args.length === 1) platformInstanceId = args[0]
   for (const assignedContextId of new Set([contextId, scopedDm(contextId), scopedGroup(contextId)])) {
     const taskInstanceId = `${assignedContextId}-kaneo-test`
     if (getTaskInstance(taskInstanceId) === null) {
@@ -572,8 +604,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     test('forwards group contextType to processMessage', async () => {
-      addAuthorizedGroup('group-queue', ADMIN_ID)
-      addGroupMember('group-queue', 'group-user', ADMIN_ID)
+      addAuthorizedGroupForPlatform('group-queue', ADMIN_ID)
+      addGroupMemberForPlatform('group-queue', 'group-user', ADMIN_ID)
       setupUserConfig('group-queue')
 
       const messageHandler = getMessageHandler()
@@ -589,8 +621,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     test('forwards group-scoped configContextId for threaded group messages', async () => {
-      addAuthorizedGroup('group-thread', ADMIN_ID)
-      addGroupMember('group-thread', 'thread-user', ADMIN_ID)
+      addAuthorizedGroupForPlatform('group-thread', ADMIN_ID)
+      addGroupMemberForPlatform('group-thread', 'thread-user', ADMIN_ID)
       setupUserConfig('group-thread')
       setupUserConfig('group-thread:thread-123')
 
@@ -786,8 +818,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
     })
 
     test('does not auto-start wizard for unconfigured threaded group messages', async () => {
-      addAuthorizedGroup('group-thread-configured', ADMIN_ID)
-      addGroupMember('group-thread-configured', 'thread-user', ADMIN_ID)
+      addAuthorizedGroupForPlatform('group-thread-configured', ADMIN_ID)
+      addGroupMemberForPlatform('group-thread-configured', 'thread-user', ADMIN_ID)
 
       const messageHandler = getMessageHandler()
       expect(messageHandler).not.toBeNull()
@@ -869,7 +901,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     test('uses source instance button capabilities for DM group settings follow-ups', async () => {
       addUserOnPlatform('dm-source-no-buttons', 'mattermost-source', ADMIN_ID)
-      addAuthorizedGroup('group-source-no-buttons', ADMIN_ID)
+      addAuthorizedGroupForPlatform('group-source-no-buttons', ADMIN_ID, 'mattermost-source')
       setupUserConfig('dm-source-no-buttons')
 
       const sourceChat = createMockChat({ capabilities: new Set(['messages.files']) })
@@ -920,7 +952,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('records known group and admin observations before normal message handling', async () => {
     addUser('group-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('group-admin')
 
     const messageHandler = getMessageHandler()
@@ -963,7 +995,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('records group user display observations before normal message handling', async () => {
     addUser('group-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('group-admin')
 
     const messageHandler = getMessageHandler()
@@ -1020,7 +1052,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('records group admin observations for group setup commands before redirecting to DM', async () => {
     addUser('group-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('group-admin')
 
     const commandHandlers = new Map<
@@ -1049,7 +1081,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(textCalls[0]).toBe(
       'Group settings are configured in direct messages with the bot. Open a DM with me and run /setup.',
     )
-    expect(listManageableGroups('group-admin').map((group) => group.contextId)).toEqual(['group-ops'])
+    expect(listManageableGroups('group-admin', TEST_PLATFORM_ID).map((group) => group.contextId)).toEqual(['group-ops'])
   })
 
   test('does not record group observation for DM command handler', async () => {
@@ -1151,7 +1183,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('clears stale DM-selected group target when admin access is lost before text flow continues', async () => {
     addUser('dm-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('dm-admin')
     setupContextTaskAssignment('group-ops')
 
@@ -1168,7 +1200,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       userId: 'dm-admin',
       command: 'config',
       stage: 'active',
-      targetContextId: 'group-ops',
+      targetContextId: scopedGroup('group-ops'),
     })
 
     const db = getDrizzleDb()
@@ -1185,7 +1217,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('clears stale DM-selected group target when the group is removed from the allowlist', async () => {
     addUser('dm-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('dm-admin')
     setupContextTaskAssignment('group-ops')
 
@@ -1201,10 +1233,10 @@ describe('Bot Authorization Gate (setupBot)', () => {
       userId: 'dm-admin',
       command: 'config',
       stage: 'active',
-      targetContextId: 'group-ops',
+      targetContextId: scopedGroup('group-ops'),
     })
 
-    expect(removeAuthorizedGroup('group-ops')).toBe(true)
+    expect(removeAuthorizedGroup(scopedGroup('group-ops'))).toBe(true)
 
     const { reply, textCalls } = createMockReply()
     await messageHandler!(createDmMessage('dm-admin', 'timezone'), reply)
@@ -1217,7 +1249,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('auto-starts wizard for active DM-selected group target when personal config is complete and group config is missing', async () => {
     addUser('dm-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('dm-admin')
     setupContextTaskAssignment('group-ops')
 
@@ -1233,7 +1265,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       userId: 'dm-admin',
       command: 'setup',
       stage: 'active',
-      targetContextId: 'group-ops',
+      targetContextId: scopedGroup('group-ops'),
     })
 
     const { reply, textCalls } = createMockReply()
@@ -1270,7 +1302,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 
   test('denies group command execution when group is allowlisted but user is not permitted', async () => {
-    addAuthorizedGroup('group-denied-members', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-denied-members', ADMIN_ID)
 
     const commandHandlers = new Map<
       string,
@@ -1329,7 +1361,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('emits message:replied for command reply path', async () => {
     addUser('group-admin', ADMIN_ID)
-    addAuthorizedGroup('group-ops', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-ops', ADMIN_ID)
     setupUserConfig('group-admin')
 
     const repliedEvents: DebugEvent[] = []
@@ -1443,7 +1475,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 
   test('replies with member-level hint for unauthorized user in allowlisted mentioned group', async () => {
-    addAuthorizedGroup('group-auth', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-auth', ADMIN_ID)
     cancelWizard('unknown-group-user', 'group-auth')
 
     const messageHandler = getMessageHandler()
@@ -1487,8 +1519,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 
   test('does not record group observations for ignored non-mentioned natural language', async () => {
-    addAuthorizedGroup('group-noise', ADMIN_ID)
-    addGroupMember('group-noise', 'group-member', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-noise', ADMIN_ID)
+    addGroupMemberForPlatform('group-noise', 'group-member', ADMIN_ID)
     setupUserConfig('group-noise')
 
     const messageHandler = getMessageHandler()
@@ -1652,7 +1684,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 
   test('interaction handler replies with member hint for allowlisted groups', async () => {
-    addAuthorizedGroup('group-allowed', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-allowed', ADMIN_ID)
 
     const { provider: mockChat, getInteractionHandler } = createMockChatForBot()
     setupBot(

@@ -97,6 +97,9 @@ const getUnauthorizedDmAuth = (userId: string, platformInstanceId: string): Auth
   reason: 'dm_not_allowed',
 })
 
+const getGroupConfigContextId = (contextId: string, platformInstanceId: string): string =>
+  getThreadScopedStorageContextId(contextId, 'group', undefined, platformInstanceId)
+
 const maybeAuthorizeDemoModeUser = (
   userId: string,
   username: string | null,
@@ -147,7 +150,7 @@ const getUnauthenticatedGroupAuth = (
     return getGroupMemberAuth(contextId, contextType, threadId, true, platformInstanceId)
   }
 
-  if (isGroupMember(contextId, userId)) {
+  if (isGroupMember(getGroupConfigContextId(contextId, platformInstanceId), userId)) {
     return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
   return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_member_not_allowed')
@@ -164,7 +167,7 @@ export const checkAuthorizationExtended = (
 ): AuthorizationResult => {
   log.debug({ userId, contextId, contextType, threadId }, 'Checking authorization')
 
-  if (contextType === 'group' && !isAuthorizedGroup(contextId)) {
+  if (contextType === 'group' && !isAuthorizedGroup(getGroupConfigContextId(contextId, platformInstanceId))) {
     return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_not_allowed')
   }
 
