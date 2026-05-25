@@ -168,7 +168,11 @@ export async function renderConfigForTarget(
       ...buildConfigButtons(config, targetContextId),
       ...aiOutputSection.buttons,
       ...buildPluginButtons(targetContextId),
-      { text: '🧰 Tools', callbackData: `tgl:menu:${encodePluginContextId(targetContextId)}`, style: 'secondary' },
+      {
+        text: '🧰 Tools',
+        callbackData: `tgl:menu:${encodePluginContextId(targetContextId)}`,
+        style: 'secondary',
+      },
     ],
   })
 }

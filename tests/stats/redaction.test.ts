@@ -179,7 +179,11 @@ function seedForbiddenRows(): void {
     .run()
 
   db.insert(memorySummary)
-    .values({ userId: SUBJECT_ID, summary: 'FORBIDDEN_SUMMARY_TEXT_XYZ', updatedAt: '2026-01-01T00:00:00Z' })
+    .values({
+      userId: SUBJECT_ID,
+      summary: 'FORBIDDEN_SUMMARY_TEXT_XYZ',
+      updatedAt: '2026-01-01T00:00:00Z',
+    })
     .run()
 
   db.insert(stagedFiles)
@@ -197,7 +201,12 @@ function seedForbiddenRows(): void {
     .run()
 
   db.insert(systemConfig)
-    .values({ key: 'stats_anonymity_salt', value: 'FORBIDDEN_SALT_XYZ', updatedAt: 0, updatedBy: 'test' })
+    .values({
+      key: 'stats_anonymity_salt',
+      value: 'FORBIDDEN_SALT_XYZ',
+      updatedAt: 0,
+      updatedBy: 'test',
+    })
     .run()
 }
 

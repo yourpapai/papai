@@ -69,7 +69,12 @@ export function addClient(controller: ReadableStreamDefaultController): void {
     recentToolFailures,
   }
 
-  sendTo(controller, { type: 'state:init', timestamp: Date.now(), data: initData, scope: { kind: 'global' } })
+  sendTo(controller, {
+    type: 'state:init',
+    timestamp: Date.now(),
+    data: initData,
+    scope: { kind: 'global' },
+  })
 
   if (clients.size === 1) {
     subscribe(onEvent)
@@ -90,7 +95,12 @@ function scheduleStatsBroadcast(): void {
   if (statsDebounceTimer !== null) return
   statsDebounceTimer = setTimeout(() => {
     statsDebounceTimer = null
-    broadcast({ type: 'state:stats', timestamp: Date.now(), data: { ...stats }, scope: { kind: 'global' } })
+    broadcast({
+      type: 'state:stats',
+      timestamp: Date.now(),
+      data: { ...stats },
+      scope: { kind: 'global' },
+    })
   }, 500)
 }
 

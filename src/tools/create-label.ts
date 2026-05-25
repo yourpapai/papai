@@ -38,7 +38,11 @@ export function makeCreateLabelTool(provider: TaskProvider): ToolSet[string] {
         return await provider.createLabel!({ name, color })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), name, tool: 'create_label' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            name,
+            tool: 'create_label',
+          },
           'Tool execution failed',
         )
         throw error

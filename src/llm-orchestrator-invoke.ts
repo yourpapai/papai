@@ -48,7 +48,12 @@ const resolveRecoveredFlag = (value: boolean | undefined): boolean => {
 
 const contextEnvelope = (
   ctx: ToolCallContext,
-): { chatUserId: string; contextType: 'dm' | 'group'; model: string; modelRole: 'main' | 'small' } => ({
+): {
+  chatUserId: string
+  contextType: 'dm' | 'group'
+  model: string
+  modelRole: 'main' | 'small'
+} => ({
   chatUserId: ctx.chatUserId,
   contextType: ctx.contextType,
   model: ctx.model,

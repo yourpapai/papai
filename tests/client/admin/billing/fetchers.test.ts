@@ -125,7 +125,10 @@ describe('admin billing fetchers', () => {
 
     const result = await fetchStatsSubject('group-9:thread-1')
 
-    expect(captured[0]).toEqual({ url: `/stats/subject/${encodeURIComponent('group-9:thread-1')}`, init: {} })
+    expect(captured[0]).toEqual({
+      url: `/stats/subject/${encodeURIComponent('group-9:thread-1')}`,
+      init: {},
+    })
     expect(result.storageContextId).toBe('group-9:thread-1')
   })
 

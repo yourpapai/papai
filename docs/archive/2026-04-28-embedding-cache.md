@@ -540,7 +540,14 @@ async function runTune(params: TuneParams): Promise<TuneResult> {
   const finalCount = finalKeywords.length
   const mergePairs = extractMergePairs(mergeMap)
 
-  return { initialCount, finalCount, merges: mergeMap.size, initialKeywords, finalKeywords, mergePairs }
+  return {
+    initialCount,
+    finalCount,
+    merges: mergeMap.size,
+    initialKeywords,
+    finalKeywords,
+    mergePairs,
+  }
 }
 ```
 

@@ -323,8 +323,9 @@ describe('DiscordChatProvider', () => {
       users: {
         fetch: (
           _id: string,
-        ): Promise<{ createDM: () => Promise<{ send: (arg: { content: string }) => Promise<unknown> }> }> =>
-          Promise.reject(new Error('not used')),
+        ): Promise<{
+          createDM: () => Promise<{ send: (arg: { content: string }) => Promise<unknown> }>
+        }> => Promise.reject(new Error('not used')),
       },
       channels: {
         cache: new Map<string, unknown>(),
@@ -358,8 +359,9 @@ describe('DiscordChatProvider', () => {
       users: {
         fetch: (
           _id: string,
-        ): Promise<{ createDM: () => Promise<{ send: (arg: { content: string }) => Promise<unknown> }> }> =>
-          Promise.reject(new Error('not used')),
+        ): Promise<{
+          createDM: () => Promise<{ send: (arg: { content: string }) => Promise<unknown> }>
+        }> => Promise.reject(new Error('not used')),
       },
       channels: {
         cache: new Map<string, unknown>(),
@@ -391,7 +393,10 @@ describe('DiscordChatProvider', () => {
   test('resolveUserId returns snowflake as-is when the input is numeric', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     const provider = new DiscordChatProvider(undefined)
-    const result = await provider.resolveUserId('1234567890', { contextId: 'c1', contextType: 'group' })
+    const result = await provider.resolveUserId('1234567890', {
+      contextId: 'c1',
+      contextType: 'group',
+    })
     expect(result).toBe('1234567890')
   })
 
@@ -426,7 +431,10 @@ describe('DiscordChatProvider', () => {
     }
     provider.testSetClient(fakeClient)
 
-    const result = await provider.resolveUserId('@alice', { contextId: 'chan-7', contextType: 'group' })
+    const result = await provider.resolveUserId('@alice', {
+      contextId: 'chan-7',
+      contextType: 'group',
+    })
     expect(result).toBe('u-9')
   })
 
@@ -458,7 +466,10 @@ describe('DiscordChatProvider', () => {
     }
     provider.testSetClient(fakeClient)
 
-    const result = await provider.resolveUserId('@alice', { contextId: 'chan-8', contextType: 'group' })
+    const result = await provider.resolveUserId('@alice', {
+      contextId: 'chan-8',
+      contextType: 'group',
+    })
     expect(result).toBe('u-10')
   })
 
@@ -799,7 +810,10 @@ describe('DiscordChatProvider', () => {
           type: 1,
           send: (arg: SendCapture): Promise<{ id: string; edit: () => Promise<void> }> => {
             sends.push(arg)
-            return Promise.resolve({ id: 'msg-sent', edit: (): Promise<void> => Promise.resolve() })
+            return Promise.resolve({
+              id: 'msg-sent',
+              edit: (): Promise<void> => Promise.resolve(),
+            })
           },
           sendTyping: (): Promise<void> => Promise.resolve(),
         },
@@ -855,7 +869,10 @@ describe('DiscordChatProvider', () => {
           type: 1,
           send: (arg: SendCapture): Promise<{ id: string; edit: () => Promise<void> }> => {
             sends.push(arg)
-            return Promise.resolve({ id: 'msg-sent', edit: (): Promise<void> => Promise.resolve() })
+            return Promise.resolve({
+              id: 'msg-sent',
+              edit: (): Promise<void> => Promise.resolve(),
+            })
           },
           sendTyping: (): Promise<void> => Promise.resolve(),
         },

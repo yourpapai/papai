@@ -122,7 +122,12 @@ describe('apply_youtrack_command', () => {
   test('forwards the command payload to the provider after explicit confirmation for side effects', async () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'for me', taskIds: ['TEST-1'], silent: true }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
-    const result = await getToolExecutor(tool)({ query: 'for me', taskIds: ['TEST-1'], silent: true, confidence: 1 })
+    const result = await getToolExecutor(tool)({
+      query: 'for me',
+      taskIds: ['TEST-1'],
+      silent: true,
+      confidence: 1,
+    })
     expect(result).toEqual({ query: 'for me', taskIds: ['TEST-1'], silent: true })
     expect(applyCommand).toHaveBeenCalledWith({
       query: 'for me',
@@ -136,7 +141,12 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'for me', taskIds: ['TEST-1'], silent: true }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'for me', taskIds: ['TEST-1'], silent: true, confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'for me',
+      taskIds: ['TEST-1'],
+      silent: true,
+      confidence: 0.6,
+    })
 
     expectConfirmationMessage(result, 'without notifications')
     expect(applyCommand).not.toHaveBeenCalled()
@@ -146,7 +156,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'State In Progress', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'State In Progress', taskIds: ['TEST-1'], confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'State In Progress',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(applyCommand).not.toHaveBeenCalled()
@@ -156,7 +170,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'State In Progress', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'State In Progress', taskIds: ['TEST-1'], confidence: 1 })
+    const result = await getToolExecutor(tool)({
+      query: 'State In Progress',
+      taskIds: ['TEST-1'],
+      confidence: 1,
+    })
 
     expect(result).toEqual({ query: 'State In Progress', taskIds: ['TEST-1'] })
     expect(applyCommand).toHaveBeenCalledWith({
@@ -171,7 +189,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'delete', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'delete', taskIds: ['TEST-1'], confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'delete',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(applyCommand).not.toHaveBeenCalled()
@@ -181,7 +203,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'delete', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'delete', taskIds: ['TEST-1'], confidence: 1 })
+    const result = await getToolExecutor(tool)({
+      query: 'delete',
+      taskIds: ['TEST-1'],
+      confidence: 1,
+    })
 
     expect(result).toEqual({ query: 'delete', taskIds: ['TEST-1'] })
     expect(applyCommand).toHaveBeenCalledWith({
@@ -196,7 +222,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'for me delete', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'for me delete', taskIds: ['TEST-1'], confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'for me delete',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(applyCommand).not.toHaveBeenCalled()
@@ -206,7 +236,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'remove tag blocker', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'remove tag blocker', taskIds: ['TEST-1'], confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'remove tag blocker',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
 
     expect(result).toMatchObject({ status: 'confirmation_required' })
     expect(applyCommand).not.toHaveBeenCalled()
@@ -259,7 +293,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'for me', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'for me', taskIds: ['TEST-1'], confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'for me',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
 
     expect(result).toEqual({ query: 'for me', taskIds: ['TEST-1'] })
     expect(applyCommand).toHaveBeenCalledWith({
@@ -416,7 +454,11 @@ describe('apply_youtrack_command', () => {
     const applyCommand = mock(() => Promise.resolve({ query: 'for jane.doe', taskIds: ['TEST-1'] }))
     const tool = makeApplyYouTrackCommandTool(createMockProvider({ name: 'youtrack' as const, applyCommand }))
 
-    const result = await getToolExecutor(tool)({ query: 'for jane.doe', taskIds: ['TEST-1'], confidence: 0.6 })
+    const result = await getToolExecutor(tool)({
+      query: 'for jane.doe',
+      taskIds: ['TEST-1'],
+      confidence: 0.6,
+    })
 
     expect(result).toEqual({ query: 'for jane.doe', taskIds: ['TEST-1'] })
     expect(applyCommand).toHaveBeenCalledWith({

@@ -43,7 +43,10 @@ export async function loadStoredFeatureData(
 }
 
 export function groupCollectedEvaluations(
-  collected: readonly { readonly behavior: ParsedBehavior; readonly evaluation: EvaluatedFeatureRecord }[],
+  collected: readonly {
+    readonly behavior: ParsedBehavior
+    readonly evaluation: EvaluatedFeatureRecord
+  }[],
 ): ReadonlyMap<string, readonly EvaluatedFeatureRecord[]> {
   return collected.reduce((grouped, item) => {
     const existing = grouped.get(item.behavior.featureKey)

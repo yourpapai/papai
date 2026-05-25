@@ -347,7 +347,11 @@ describe('staged file cache', () => {
 
       // First resolve succeeds
       const first = await resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.resolve(Buffer.from('bytes')))
-      expect(first).toMatchObject({ status: 'available', filename: 'report.pdf', contextId: 'ctx-1' })
+      expect(first).toMatchObject({
+        status: 'available',
+        filename: 'report.pdf',
+        contextId: 'ctx-1',
+      })
       expect((first as Record<string, unknown>)['attachmentId']).toMatch(/^att_[0-9a-f-]+$/u)
 
       // Second resolve returns already_resolved

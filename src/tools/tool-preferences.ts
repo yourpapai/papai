@@ -50,7 +50,10 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
 }
 
 export function serializeToolPrefs(prefs: ToolPrefs): string {
-  return JSON.stringify({ disabledDomains: prefs.disabledDomains, toolOverrides: prefs.toolOverrides })
+  return JSON.stringify({
+    disabledDomains: prefs.disabledDomains,
+    toolOverrides: prefs.toolOverrides,
+  })
 }
 
 export function getToolPrefs(contextId: string): ToolPrefs {

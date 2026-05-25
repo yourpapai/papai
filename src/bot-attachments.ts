@@ -120,5 +120,8 @@ export async function resolveMessageAttachments(
       return result
     }
   }
-  return { newAttachmentIds: [], activeAttachments: isS3Configured() ? listActiveAttachments(storageContextId) : [] }
+  return {
+    newAttachmentIds: [],
+    activeAttachments: isS3Configured() ? listActiveAttachments(storageContextId) : [],
+  }
 }

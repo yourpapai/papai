@@ -135,7 +135,9 @@ describe('migration 040 platform instances', () => {
 
   it('creates platform_instances table with required columns', () => {
     migration040PlatformInstances.up(db)
-    const cols = db.query("PRAGMA table_info('platform_instances')").all() as Array<{ name: string }>
+    const cols = db.query("PRAGMA table_info('platform_instances')").all() as Array<{
+      name: string
+    }>
     const names = cols.map((c) => c.name).sort()
     expect(names).toEqual(['config', 'created_at', 'id', 'status', 'type'])
   })
@@ -148,14 +150,20 @@ describe('migration 040 platform instances', () => {
 
   it('creates context_settings table with required columns and PK on context_id', () => {
     migration040PlatformInstances.up(db)
-    const cols = db.query("PRAGMA table_info('context_settings')").all() as Array<{ name: string; pk: number }>
+    const cols = db.query("PRAGMA table_info('context_settings')").all() as Array<{
+      name: string
+      pk: number
+    }>
     expect(cols.map((c) => c.name).sort()).toEqual(['context_id', 'platform_instance_id', 'task_instance_id'])
     expect(cols.find((c) => c.name === 'context_id')?.pk).toBe(1)
   })
 
   it('creates admins table with composite PK', () => {
     migration040PlatformInstances.up(db)
-    const cols = db.query("PRAGMA table_info('admins')").all() as Array<{ name: string; pk: number }>
+    const cols = db.query("PRAGMA table_info('admins')").all() as Array<{
+      name: string
+      pk: number
+    }>
     const pkCols = cols
       .filter((c) => c.pk > 0)
       .map((c) => c.name)
@@ -680,19 +688,34 @@ describe('platform store', () => {
 
   it('lists only active instances', () => {
     insertPlatformInstance({ id: 'a', type: 'telegram', config: { token: 'x' }, status: 'active' })
-    insertPlatformInstance({ id: 'b', type: 'telegram', config: { token: 'y' }, status: 'stopped' })
+    insertPlatformInstance({
+      id: 'b',
+      type: 'telegram',
+      config: { token: 'y' },
+      status: 'stopped',
+    })
     const active = listActivePlatformInstances()
     expect(active.map((r) => r.id)).toEqual(['a'])
   })
 
   it('updates status', () => {
-    insertPlatformInstance({ id: 'a', type: 'telegram', config: { token: 'x' }, status: 'pending' })
+    insertPlatformInstance({
+      id: 'a',
+      type: 'telegram',
+      config: { token: 'x' },
+      status: 'pending',
+    })
     updatePlatformInstanceStatus('a', 'active')
     expect(getPlatformInstance('a')?.status).toBe('active')
   })
 
   it('deletes', () => {
-    insertPlatformInstance({ id: 'a', type: 'telegram', config: { token: 'x' }, status: 'pending' })
+    insertPlatformInstance({
+      id: 'a',
+      type: 'telegram',
+      config: { token: 'x' },
+      status: 'pending',
+    })
     deletePlatformInstance('a')
     expect(getPlatformInstance('a')).toBeUndefined()
   })
@@ -720,13 +743,28 @@ describe('task store', () => {
   })
 
   it('inserts and reads', () => {
-    insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
+    insertTaskInstance({
+      id: 'k1',
+      type: 'kaneo',
+      config: { baseUrl: 'https://k' },
+      status: 'active',
+    })
     expect(getTaskInstance('k1')?.config.baseUrl).toBe('https://k')
   })
 
   it('lists', () => {
-    insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
-    insertTaskInstance({ id: 'y1', type: 'youtrack', config: { baseUrl: 'https://y' }, status: 'active' })
+    insertTaskInstance({
+      id: 'k1',
+      type: 'kaneo',
+      config: { baseUrl: 'https://k' },
+      status: 'active',
+    })
+    insertTaskInstance({
+      id: 'y1',
+      type: 'youtrack',
+      config: { baseUrl: 'https://y' },
+      status: 'active',
+    })
     expect(
       listTaskInstances()
         .map((r) => r.id)
@@ -735,13 +773,23 @@ describe('task store', () => {
   })
 
   it('updates status', () => {
-    insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'pending' })
+    insertTaskInstance({
+      id: 'k1',
+      type: 'kaneo',
+      config: { baseUrl: 'https://k' },
+      status: 'pending',
+    })
     updateTaskInstanceStatus('k1', 'active')
     expect(getTaskInstance('k1')?.status).toBe('active')
   })
 
   it('deletes', () => {
-    insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
+    insertTaskInstance({
+      id: 'k1',
+      type: 'kaneo',
+      config: { baseUrl: 'https://k' },
+      status: 'active',
+    })
     deleteTaskInstance('k1')
     expect(getTaskInstance('k1')).toBeUndefined()
   })
@@ -1257,9 +1305,16 @@ const log = logger.child({ scope: 'instances:bootstrap' })
 
 export type BootstrapResult =
   | { bootstrapped: true; platformInstanceId: string; taskInstanceId: string }
-  | { bootstrapped: false; reason: 'already-bootstrapped' | 'no-env' | 'partial-env'; missing?: readonly string[] }
+  | {
+      bootstrapped: false
+      reason: 'already-bootstrapped' | 'no-env' | 'partial-env'
+      missing?: readonly string[]
+    }
 
-function readPlatformConfig(type: string): { config: Record<string, string>; missing: readonly string[] } {
+function readPlatformConfig(type: string): {
+  config: Record<string, string>
+  missing: readonly string[]
+} {
   const required: Record<string, readonly string[]> = {
     telegram: ['TELEGRAM_BOT_TOKEN'],
     mattermost: ['MATTERMOST_URL', 'MATTERMOST_BOT_TOKEN'],
@@ -1279,7 +1334,10 @@ function readPlatformConfig(type: string): { config: Record<string, string>; mis
   return { config, missing }
 }
 
-function readTaskConfig(type: string): { config: Record<string, string>; missing: readonly string[] } {
+function readTaskConfig(type: string): {
+  config: Record<string, string>
+  missing: readonly string[]
+} {
   const required: Record<string, readonly string[]> = {
     kaneo: ['KANEO_CLIENT_URL'],
     youtrack: ['YOUTRACK_URL'],
@@ -1764,13 +1822,23 @@ describe('getConfigKeysForContext', () => {
   })
 
   it('returns kaneo keys when context is assigned to a kaneo instance', () => {
-    insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
+    insertTaskInstance({
+      id: 'k1',
+      type: 'kaneo',
+      config: { baseUrl: 'https://k' },
+      status: 'active',
+    })
     assignContext({ contextId: 'u-1', taskInstanceId: 'k1', platformInstanceId: 'tg-prod' })
     expect(getConfigKeysForContext('u-1').sort()).toEqual(['kaneo_apikey', 'timezone'])
   })
 
   it('returns youtrack keys when context is assigned to a youtrack instance', () => {
-    insertTaskInstance({ id: 'y1', type: 'youtrack', config: { baseUrl: 'https://y' }, status: 'active' })
+    insertTaskInstance({
+      id: 'y1',
+      type: 'youtrack',
+      config: { baseUrl: 'https://y' },
+      status: 'active',
+    })
     assignContext({ contextId: 'u-2', taskInstanceId: 'y1', platformInstanceId: 'tg-prod' })
     expect(getConfigKeysForContext('u-2').sort()).toEqual(['timezone', 'youtrack_token'])
   })
@@ -2269,8 +2337,18 @@ git commit -m "feat(chat): start the bot through ChatRouter and bootstrap"
 ```ts
 // tests/commands/setup.test.ts (extend the existing file)
 it('first prompts the user to pick a task instance when context has no assignment', async () => {
-  insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
-  insertTaskInstance({ id: 'y1', type: 'youtrack', config: { baseUrl: 'https://y' }, status: 'active' })
+  insertTaskInstance({
+    id: 'k1',
+    type: 'kaneo',
+    config: { baseUrl: 'https://k' },
+    status: 'active',
+  })
+  insertTaskInstance({
+    id: 'y1',
+    type: 'youtrack',
+    config: { baseUrl: 'https://y' },
+    status: 'active',
+  })
 
   const reply = mock(async () => {})
   await runSetupWizard(makeDmMessage({ contextId: 'u-1' }), reply)
@@ -2281,7 +2359,12 @@ it('first prompts the user to pick a task instance when context has no assignmen
 })
 
 it('after pick, persists the assignment and proceeds to credential prompts', async () => {
-  insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
+  insertTaskInstance({
+    id: 'k1',
+    type: 'kaneo',
+    config: { baseUrl: 'https://k' },
+    status: 'active',
+  })
   // simulate the pick callback or text input "k1"
   await handleSetupPick(
     makeDmMessage({ contextId: 'u-1', text: 'k1' }),
@@ -2331,7 +2414,12 @@ git commit -m "feat(setup): add task-instance selection step to /setup wizard"
 ```ts
 // in tests/commands/set.test.ts
 it('rejects kaneo_apikey on a youtrack-assigned context', async () => {
-  insertTaskInstance({ id: 'y1', type: 'youtrack', config: { baseUrl: 'https://y' }, status: 'active' })
+  insertTaskInstance({
+    id: 'y1',
+    type: 'youtrack',
+    config: { baseUrl: 'https://y' },
+    status: 'active',
+  })
   assignContext({ contextId: 'u-1', taskInstanceId: 'y1', platformInstanceId: 'tg-prod' })
 
   const reply = mock(async () => {})
@@ -2596,7 +2684,11 @@ describe('instance routes', () => {
     const res = await handleInstanceRequest(
       new Request('http://x/api/platform-instances', {
         method: 'POST',
-        body: JSON.stringify({ id: 'tg-prod', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'longtokenABCD' } }),
+        body: JSON.stringify({
+          id: 'tg-prod',
+          type: 'telegram',
+          config: { TELEGRAM_BOT_TOKEN: 'longtokenABCD' },
+        }),
       }),
     )
     expect(res.status).toBe(201)
@@ -2608,7 +2700,11 @@ describe('instance routes', () => {
     await handleInstanceRequest(
       new Request('http://x/api/platform-instances', {
         method: 'POST',
-        body: JSON.stringify({ id: 'tg-prod', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'x' } }),
+        body: JSON.stringify({
+          id: 'tg-prod',
+          type: 'telegram',
+          config: { TELEGRAM_BOT_TOKEN: 'x' },
+        }),
       }),
     )
     const res = await handleInstanceRequest(
@@ -2619,7 +2715,10 @@ describe('instance routes', () => {
 
   it('POST /api/admins inserts a super-admin when platformInstanceId omitted', async () => {
     const res = await handleInstanceRequest(
-      new Request('http://x/api/admins', { method: 'POST', body: JSON.stringify({ userId: 'u-1' }) }),
+      new Request('http://x/api/admins', {
+        method: 'POST',
+        body: JSON.stringify({ userId: 'u-1' }),
+      }),
     )
     expect(res.status).toBe(201)
     const body = (await res.json()) as { admin: { platformInstanceId: string } }
@@ -2724,7 +2823,10 @@ async function handleTask(req: Request, suffix: string): Promise<Response | null
 
 async function handleAdmins(req: Request, suffix: string): Promise<Response | null> {
   if (req.method === 'GET' && suffix === '') {
-    const supers = listSuperAdmins().map((userId) => ({ userId, platformInstanceId: SUPER_ADMIN_SCOPE }))
+    const supers = listSuperAdmins().map((userId) => ({
+      userId,
+      platformInstanceId: SUPER_ADMIN_SCOPE,
+    }))
     const platforms = listPlatformInstances().flatMap((p) =>
       listPlatformAdmins(p.id).map((userId) => ({ userId, platformInstanceId: p.id })),
     )
@@ -2966,7 +3068,12 @@ git commit -m "feat(plugins): evaluate compatibility across active-instance unio
 
 ```ts
 it('returns capability_missing for a context whose task instance lacks the required capability', () => {
-  insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
+  insertTaskInstance({
+    id: 'k1',
+    type: 'kaneo',
+    config: { baseUrl: 'https://k' },
+    status: 'active',
+  })
   assignContext({ contextId: 'u-1', taskInstanceId: 'k1', platformInstanceId: 'tg-prod' })
   pluginRegistry.markActive(plugin.id)
   setPluginEnabledForContext(plugin.id, 'u-1', true)
@@ -2990,7 +3097,11 @@ bun test tests/plugins/registry.test.ts --bail
 ```ts
 export type PluginContextEligibility =
   | { eligible: true }
-  | { eligible: false; reason: 'inactive' | 'disabled' | 'config_missing'; missingKeys?: readonly string[] }
+  | {
+      eligible: false
+      reason: 'inactive' | 'disabled' | 'config_missing'
+      missingKeys?: readonly string[]
+    }
   | { eligible: false; reason: 'capability_missing'; missingCapabilities: readonly string[] }
 ```
 
@@ -3005,7 +3116,11 @@ if (assignment !== undefined) {
   const missingTask = entry.discoveredPlugin.manifest.requiredTaskCapabilities.filter((c) => !taskCaps.has(c))
   const missingChat = entry.discoveredPlugin.manifest.requiredChatCapabilities.filter((c) => !chatCaps.has(c))
   if (missingTask.length + missingChat.length > 0) {
-    return { eligible: false, reason: 'capability_missing', missingCapabilities: [...missingTask, ...missingChat] }
+    return {
+      eligible: false,
+      reason: 'capability_missing',
+      missingCapabilities: [...missingTask, ...missingChat],
+    }
   }
 }
 ```
@@ -3041,7 +3156,12 @@ it('runPluginScheduledJob skips contexts where the resolver returns null', async
   // enable plugin for two contexts, only one has setup
   setPluginContextEnabled('hello-world', 'u-with-setup', true)
   setPluginContextEnabled('hello-world', 'u-without-setup', true)
-  insertTaskInstance({ id: 'k1', type: 'kaneo', config: { baseUrl: 'https://k' }, status: 'active' })
+  insertTaskInstance({
+    id: 'k1',
+    type: 'kaneo',
+    config: { baseUrl: 'https://k' },
+    status: 'active',
+  })
   assignContext({ contextId: 'u-with-setup', taskInstanceId: 'k1', platformInstanceId: 'tg-prod' })
   setConfig('u-with-setup', 'kaneo_apikey', 'key')
 
@@ -3188,7 +3308,12 @@ I ran the self-review checklist after writing the plan.
 it('POST /api/platform-instances/apply re-syncs the ChatRouter from DB', async () => {
   const router = makeFakeChatRouter()
   setApplyTarget(router)
-  insertPlatformInstance({ id: 'tg-prod', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'x' }, status: 'active' })
+  insertPlatformInstance({
+    id: 'tg-prod',
+    type: 'telegram',
+    config: { TELEGRAM_BOT_TOKEN: 'x' },
+    status: 'active',
+  })
   const res = await handleInstanceRequest(new Request('http://x/api/platform-instances/apply', { method: 'POST' }))
   expect(res.status).toBe(200)
   expect(router.listInstances().map((i) => i.id)).toEqual(['tg-prod'])

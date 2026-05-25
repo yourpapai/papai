@@ -24,7 +24,12 @@ export function makeRemoveCommentTool(provider: TaskProvider): ToolSet[string] {
         return await provider.removeComment!({ taskId, commentId })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, commentId, tool: 'remove_comment' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            commentId,
+            tool: 'remove_comment',
+          },
           'Tool execution failed',
         )
         throw error

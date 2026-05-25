@@ -29,7 +29,11 @@ export function makeAddTaskRelationTool(provider: TaskProvider): ToolSet[string]
         return await provider.addRelation!(taskId, relatedTaskId, type)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'add_task_relation' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'add_task_relation',
+          },
           'Tool execution failed',
         )
         throw error

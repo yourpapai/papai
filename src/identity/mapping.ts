@@ -72,7 +72,11 @@ export function getIdentityMapping(
  */
 export function setIdentityMapping(params: SetIdentityMappingParams, deps: IdentityMappingDeps = defaultDeps): void {
   log.debug(
-    { contextId: params.contextId, providerName: params.providerName, login: params.providerUserLogin },
+    {
+      contextId: params.contextId,
+      providerName: params.providerName,
+      login: params.providerUserLogin,
+    },
     'setIdentityMapping called',
   )
 

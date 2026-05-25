@@ -98,7 +98,11 @@ export const buildCustomFields = (
 ): StandardCustomFieldPayload[] => {
   const fields: StandardCustomFieldPayload[] = []
   if (params.priority !== undefined) {
-    fields.push({ name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: params.priority } })
+    fields.push({
+      name: 'Priority',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: params.priority },
+    })
   }
   if (params.status !== undefined) {
     fields.push({ name: 'State', $type: 'StateIssueCustomField', value: { name: params.status } })
@@ -111,7 +115,11 @@ export const buildCustomFields = (
     })
   }
   if (params.assignee !== undefined) {
-    fields.push({ name: 'Assignee', $type: 'SingleUserIssueCustomField', value: { login: params.assignee } })
+    fields.push({
+      name: 'Assignee',
+      $type: 'SingleUserIssueCustomField',
+      value: { login: params.assignee },
+    })
   }
   return fields
 }

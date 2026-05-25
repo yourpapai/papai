@@ -42,7 +42,10 @@ describe('ReactionSchema', () => {
   })
 
   test('accepts author without fullName (optional)', () => {
-    const result = ReactionSchema.parse({ ...validReaction, author: { id: 'user-1', login: 'alice' } })
+    const result = ReactionSchema.parse({
+      ...validReaction,
+      author: { id: 'user-1', login: 'alice' },
+    })
     expect(result.author.login).toBe('alice')
     expect(result.author.fullName).toBeUndefined()
   })

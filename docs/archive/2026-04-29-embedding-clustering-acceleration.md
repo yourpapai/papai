@@ -128,7 +128,10 @@ function selectNearestCandidate(
       return [{ candidate, distance }]
     })
     const fallbackNearest = candidates.toSorted(compareNearest)[0]
-    return { nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate, distanceReads }
+    return {
+      nearest: fallbackNearest === undefined ? undefined : fallbackNearest.candidate,
+      distanceReads,
+    }
   }
 
   return { nearest, distanceReads }

@@ -186,9 +186,24 @@ describe('group-settings registry', () => {
   })
 
   test('lists admin groups for a user with a single join query', () => {
-    upsertKnownGroupContext({ contextId: 'g-1', provider: 'telegram', displayName: 'Alpha', parentName: null })
-    upsertKnownGroupContext({ contextId: 'g-2', provider: 'telegram', displayName: 'Beta', parentName: null })
-    upsertKnownGroupContext({ contextId: 'g-3', provider: 'telegram', displayName: 'Gamma', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'g-1',
+      provider: 'telegram',
+      displayName: 'Alpha',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: 'g-2',
+      provider: 'telegram',
+      displayName: 'Beta',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: 'g-3',
+      provider: 'telegram',
+      displayName: 'Gamma',
+      parentName: null,
+    })
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: 'g-1',
@@ -277,7 +292,12 @@ describe('group-settings registry', () => {
   })
 
   test('returns empty array when user has no admin groups', () => {
-    upsertKnownGroupContext({ contextId: 'g-1', provider: 'telegram', displayName: 'Alpha', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'g-1',
+      provider: 'telegram',
+      displayName: 'Alpha',
+      parentName: null,
+    })
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: 'g-1',
@@ -291,17 +311,32 @@ describe('group-settings registry', () => {
   })
 
   test('skips known group context upsert when lastSeenAt is within throttle window', () => {
-    upsertKnownGroupContext({ contextId: 'g-t', provider: 'telegram', displayName: 'Ops', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'g-t',
+      provider: 'telegram',
+      displayName: 'Ops',
+      parentName: null,
+    })
     const first = getGroupContext('telegram', 'g-t')!
 
-    upsertKnownGroupContext({ contextId: 'g-t', provider: 'telegram', displayName: 'Ops', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'g-t',
+      provider: 'telegram',
+      displayName: 'Ops',
+      parentName: null,
+    })
     const second = getGroupContext('telegram', 'g-t')!
 
     expect(second.lastSeenAt).toBe(first.lastSeenAt)
   })
 
   test('updates known group context when lastSeenAt is outside throttle window', () => {
-    upsertKnownGroupContext({ contextId: 'g-e', provider: 'telegram', displayName: 'Ops', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'g-e',
+      provider: 'telegram',
+      displayName: 'Ops',
+      parentName: null,
+    })
 
     const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString()
     getDrizzleDb()
@@ -310,7 +345,12 @@ describe('group-settings registry', () => {
       .where(and(eq(knownGroupContexts.provider, 'telegram'), eq(knownGroupContexts.contextId, 'g-e')))
       .run()
 
-    upsertKnownGroupContext({ contextId: 'g-e', provider: 'telegram', displayName: 'Ops', parentName: null })
+    upsertKnownGroupContext({
+      contextId: 'g-e',
+      provider: 'telegram',
+      displayName: 'Ops',
+      parentName: null,
+    })
     const after = getGroupContext('telegram', 'g-e')!
 
     expect(after.lastSeenAt > staleTime).toBe(true)

@@ -25,7 +25,11 @@ export function makeAddVoteTool(provider: TaskProvider): ToolSet[string] {
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'add_vote' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'add_vote',
+          },
           'Tool execution failed',
         )
         throw error

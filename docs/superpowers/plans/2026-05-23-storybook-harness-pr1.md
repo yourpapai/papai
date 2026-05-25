@@ -543,7 +543,11 @@ export const billingHandlers: HandlerFamily = {
       }),
     ),
     http.get('/admin/billing/subject/:id', ({ params }) =>
-      HttpResponse.json(makeBillingDetail({ subject: makeBillingSubject({ storageContextId: String(params['id']) }) })),
+      HttpResponse.json(
+        makeBillingDetail({
+          subject: makeBillingSubject({ storageContextId: String(params['id']) }),
+        }),
+      ),
     ),
   ],
   empty: [

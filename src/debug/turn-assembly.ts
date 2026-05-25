@@ -165,7 +165,12 @@ function handleToolFailureClassified(event: DebugEvent): void {
 }
 
 function handleNotification(event: DebugEvent): void {
-  pushNotification({ timestamp: event.timestamp, type: event.type, scope: event.scope, data: event.data })
+  pushNotification({
+    timestamp: event.timestamp,
+    type: event.type,
+    scope: event.scope,
+    data: event.data,
+  })
 }
 
 export function handleTurnAssembly(event: DebugEvent, broadcast: (event: DebugEvent) => void): void {

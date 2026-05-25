@@ -8,6 +8,7 @@ import { sql } from 'drizzle-orm'
 
 import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb, syncWorkspaceToDb } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
+import { userCacheStore } from './cache-store.js'
 import type { CachedFact, UserCache } from './cache-types.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memoryFacts, memorySummary, userConfig } from './db/schema.js'
@@ -15,39 +16,18 @@ import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
 export { addCachedInstruction, deleteCachedInstruction, getCachedInstructions } from './cache-instructions.js'
+export { cleanupExpiredCaches, evictUser } from './cache-eviction.js'
 
 const log = logger.child({ scope: 'cache' })
 const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
 
 // --- User Session Cache ---
 
-const userCaches = new Map<string, UserCache>()
-
 // Exported for testing purposes only.
-export const userCachesForTesting = userCaches
-
-const SESSION_TTL_MS = 30 * 60 * 1000
-
-export function cleanupExpiredCaches(): void {
-  const now = Date.now()
-  const expired: string[] = []
-  for (const [userId, cache] of userCaches) {
-    if (now - cache.lastAccessed > SESSION_TTL_MS) {
-      expired.push(userId)
-    }
-  }
-  for (const userId of expired) {
-    userCaches.delete(userId)
-    emitUser('cache:expire', userId, {})
-    log.debug({ userId }, 'Expired user cache removed')
-  }
-  if (expired.length > 0) {
-    log.info({ expiredCount: expired.length }, 'Cleaned up expired user caches')
-  }
-}
+export const userCachesForTesting = userCacheStore
 
 export function getOrCreateCache(userId: string): UserCache {
-  let cache = userCaches.get(userId)
+  let cache = userCacheStore.get(userId)
   if (cache === undefined) {
     cache = {
       history: [],
@@ -59,7 +39,7 @@ export function getOrCreateCache(userId: string): UserCache {
       tools: null,
       lastAccessed: Date.now(),
     }
-    userCaches.set(userId, cache)
+    userCacheStore.set(userId, cache)
   }
   cache.lastAccessed = Date.now()
   return cache
@@ -233,7 +213,7 @@ export function clearCachedTools(userId: string): void {
  */
 export function clearCachedToolsByPrefix(contextId: string): void {
   const prefix = `${contextId}:`
-  for (const [key, cache] of userCaches) {
+  for (const [key, cache] of userCacheStore) {
     if (key === contextId || key.startsWith(prefix)) {
       cache.tools = null
     }
@@ -241,14 +221,8 @@ export function clearCachedToolsByPrefix(contextId: string): void {
   log.debug({ contextId }, 'Cleared cached tools by prefix')
 }
 
-export function evictUser(userId: string): void {
-  userCaches.delete(userId)
-  emitUser('cache:expire', userId, {})
-  log.debug({ userId }, 'User cache evicted')
-}
-
 export function clearCachedFacts(userId: string): void {
-  const cache = userCaches.get(userId)
+  const cache = userCacheStore.get(userId)
   if (cache === undefined) {
     log.debug({ userId }, 'No facts cache to clear (cache not initialized)')
     return
@@ -259,7 +233,7 @@ export function clearCachedFacts(userId: string): void {
 }
 
 export function clearCachedHistoryFlag(userId: string): void {
-  const cache = userCaches.get(userId)
+  const cache = userCacheStore.get(userId)
   if (cache === undefined) {
     log.debug({ userId }, 'No history cache to clear flag (cache not initialized)')
     return

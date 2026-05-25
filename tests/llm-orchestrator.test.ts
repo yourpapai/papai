@@ -85,8 +85,6 @@ type ToolCallFinishHandler = (event: ToolCallFinishEvent) => void
 
 type GenerateTextResult = {
   text: string
-  reasoningText?: string
-  reasoning?: unknown
   toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
   toolResults: Array<{ toolName: string; toolCallId: string; output: unknown }>
   steps: unknown[]
@@ -96,6 +94,14 @@ type GenerateTextResult = {
   warnings: unknown[] | undefined
   request: unknown
   providerMetadata: unknown
+} & Partial<Readonly<{ reasoningText: string; reasoning: unknown }>>
+
+const callToolFinish = (
+  handler: GenerateTextArgs['experimental_onToolCallFinish'],
+  event: ToolCallFinishEvent,
+): void => {
+  assert.ok(handler !== undefined, 'expected tool-call finish handler')
+  handler(event)
 }
 
 const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
@@ -136,6 +142,64 @@ import { setKaneoWorkspace } from '../src/users.js'
 
 const CTX_ID = 'ctx-1'
 
+/** Seed the central LLM config used by every orchestrator call. */
+const seedSystemLlmConfig = (): void => {
+  setSystemConfig('llm_apikey', 'test-key', 'env')
+  setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
+  setSystemConfig('main_model', 'test-model', 'env')
+}
+
+const assignKaneoContext = (contextId: string): void => {
+  const taskInstanceId = `${contextId}-kaneo`
+  if (getTaskInstance(taskInstanceId) === null) {
+    insertTaskInstance({
+      id: taskInstanceId,
+      type: 'kaneo',
+      config: { url: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+  }
+  setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+}
+
+const assignYouTrackContext = (contextId: string): void => {
+  const taskInstanceId = `${contextId}-yt`
+  if (getTaskInstance(taskInstanceId) === null) {
+    insertTaskInstance({
+      id: taskInstanceId,
+      type: 'youtrack',
+      config: { url: 'https://yt.invalid' },
+      status: 'active',
+    })
+  }
+  setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+}
+
+/** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
+const seedConfigForContext = (ctxId: string): void => {
+  assignKaneoContext(ctxId)
+  setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
+  setCachedConfig(ctxId, 'timezone', 'UTC')
+  setKaneoWorkspace(ctxId, 'workspace-1')
+}
+
+const seedConfig = (): void => seedConfigForContext(CTX_ID)
+
+const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
+  const { reply: baseReply, textCalls } = createMockReply()
+  const typingCalls: number[] = []
+  return {
+    reply: {
+      ...baseReply,
+      typing: (): void => {
+        typingCalls.push(Date.now())
+      },
+    },
+    textCalls,
+    typingCalls,
+  }
+}
+
 const originalDemoMode = process.env['DEMO_MODE']
 const originalAdminUserId = process.env['ADMIN_USER_ID']
 
@@ -153,64 +217,6 @@ describe('processMessage', () => {
   // AI SDK — the key control point for success/failure simulation
   // generateText returns a result object with direct values
   let generateTextImpl: (args: GenerateTextArgs) => Promise<GenerateTextResult>
-
-  /** Seed the central LLM config used by every orchestrator call. */
-  const seedSystemLlmConfig = (): void => {
-    setSystemConfig('llm_apikey', 'test-key', 'env')
-    setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
-    setSystemConfig('main_model', 'test-model', 'env')
-  }
-
-  /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
-  const seedConfigForContext = (ctxId: string): void => {
-    assignKaneoContext(ctxId)
-    setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
-    setCachedConfig(ctxId, 'timezone', 'UTC')
-    setKaneoWorkspace(ctxId, 'workspace-1')
-  }
-
-  const seedConfig = (): void => seedConfigForContext(CTX_ID)
-
-  const assignKaneoContext = (contextId: string): void => {
-    const taskInstanceId = `${contextId}-kaneo`
-    if (getTaskInstance(taskInstanceId) === null) {
-      insertTaskInstance({
-        id: taskInstanceId,
-        type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
-        status: 'active',
-      })
-    }
-    setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
-  }
-
-  const assignYouTrackContext = (contextId: string): void => {
-    const taskInstanceId = `${contextId}-yt`
-    if (getTaskInstance(taskInstanceId) === null) {
-      insertTaskInstance({
-        id: taskInstanceId,
-        type: 'youtrack',
-        config: { url: 'https://yt.invalid' },
-        status: 'active',
-      })
-    }
-    setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
-  }
-
-  const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
-    const { reply: baseReply, textCalls } = createMockReply()
-    const typingCalls: number[] = []
-    return {
-      reply: {
-        ...baseReply,
-        typing: (): void => {
-          typingCalls.push(Date.now())
-        },
-      },
-      textCalls,
-      typingCalls,
-    }
-  }
 
   // Partial DI for modules that are easy to mock
   // Complex modules (ai SDK) still use mock.module
@@ -632,7 +638,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -665,7 +671,7 @@ describe('processMessage', () => {
       setCachedConfig('tool-details-ctx', AI_TOOL_VISIBILITY_KEY, 'on')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -698,7 +704,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-string-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'search_tasks', toolCallId: 'call-2', input: { q: 'test' } },
           durationMs: 50,
           success: false,
@@ -730,7 +736,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-structured-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-3', input: { title: 'Test' } },
           durationMs: 75,
           success: true,
@@ -945,7 +951,10 @@ describe('processMessage', () => {
       const history = getCachedHistory(CTX_ID)
       expect(history).toHaveLength(2)
       expect(history[0]!.role).toBe('user')
-      expect(history[0]!.content).toBe('hello')
+      // The persisted user turn is prefixed with a <current_time> tag (intentional per spec).
+      const userContent = history[0]!.content
+      assert.ok(typeof userContent === 'string', 'expected string content')
+      expect(userContent).toMatch(/^<current_time>.*<\/current_time>\nhello$/u)
       expect(history[1]!.role).toBe('assistant')
       expect(history[1]!.content).toBe('Hi!')
     })
@@ -968,7 +977,12 @@ describe('processMessage', () => {
               text: 'Creating task...',
               finishReason: 'tool-calls',
               toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test task' } }],
-              toolResults: [{ toolCallId: 'call-1', output: { id: 'task-123', title: 'Test task', number: 42 } }],
+              toolResults: [
+                {
+                  toolCallId: 'call-1',
+                  output: { id: 'task-123', title: 'Test task', number: 42 },
+                },
+              ],
             },
           ],
           response: { messages: [{ role: 'assistant' as const, content: 'Task created!' }] },
@@ -1265,7 +1279,14 @@ describe('processMessage', () => {
       const refs = await persistIncomingAttachments({
         contextId: attachmentCtx,
         sourceProvider: 'telegram',
-        files: [{ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg', content: Buffer.from('img') }],
+        files: [
+          {
+            fileId: 'platform-1',
+            filename: 'photo.jpg',
+            mimeType: 'image/jpeg',
+            content: Buffer.from('img'),
+          },
+        ],
       })
 
       let capturedMessages: unknown[] = []
@@ -1288,10 +1309,10 @@ describe('processMessage', () => {
       )
 
       const lastMsg = capturedMessages.at(-1)
-      assert(isRecord(lastMsg), 'Expected last message to be an object')
+      assert.ok(isRecord(lastMsg), 'Expected last message to be an object')
       const content = lastMsg['content']
-      assert(Array.isArray(content), 'Expected content to be an array of parts')
-      const partTypes = content.map(extractPartType)
+      assert.ok(Array.isArray(content), 'Expected content to be an array of parts')
+      const partTypes = content.map((part) => extractPartType(part))
       expect(partTypes).toContain('image')
       expect(partTypes).toContain('text')
 
@@ -1310,7 +1331,14 @@ describe('processMessage', () => {
       const refs = await persistIncomingAttachments({
         contextId: ctx,
         sourceProvider: 'telegram',
-        files: [{ fileId: 'platform-1', filename: 'photo.jpg', mimeType: 'image/jpeg', content: Buffer.from('img') }],
+        files: [
+          {
+            fileId: 'platform-1',
+            filename: 'photo.jpg',
+            mimeType: 'image/jpeg',
+            content: Buffer.from('img'),
+          },
+        ],
       })
 
       let capturedMessages: unknown[] = []
@@ -1333,9 +1361,9 @@ describe('processMessage', () => {
       )
 
       const lastMsg = capturedMessages.at(-1)
-      assert(isRecord(lastMsg), 'Expected last message to be an object')
+      assert.ok(isRecord(lastMsg), 'Expected last message to be an object')
       const content = lastMsg['content']
-      assert(typeof content === 'string', 'Expected content to be a string for non-multimodal model')
+      assert.ok(typeof content === 'string', 'Expected content to be a string for non-multimodal model')
       expect(content).toContain('[User attached')
     })
 

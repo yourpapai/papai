@@ -95,15 +95,19 @@ function incrementCount(map: Map<string, number>, key: string): void {
   map.set(key, (map.get(key) ?? 0) + 1)
 }
 
-function collectFeatureArtifactPaths(
-  consolidatedManifest: ConsolidatedManifest,
-): ReadonlyMap<
+function collectFeatureArtifactPaths(consolidatedManifest: ConsolidatedManifest): ReadonlyMap<
   string,
-  { readonly consolidatedArtifactPath: string | null; readonly evaluatedArtifactPath: string | null }
+  {
+    readonly consolidatedArtifactPath: string | null
+    readonly evaluatedArtifactPath: string | null
+  }
 > {
   const artifactPaths = new Map<
     string,
-    { readonly consolidatedArtifactPath: string | null; readonly evaluatedArtifactPath: string | null }
+    {
+      readonly consolidatedArtifactPath: string | null
+      readonly evaluatedArtifactPath: string | null
+    }
   >()
 
   for (const entry of Object.values(consolidatedManifest.entries)) {

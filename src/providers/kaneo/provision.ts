@@ -185,7 +185,14 @@ export async function provisionKaneoUser(
 }
 
 export type ProvisionOutcome =
-  | { status: 'provisioned'; email: string; password: string; kaneoUrl: string; apiKey: string; workspaceId: string }
+  | {
+      status: 'provisioned'
+      email: string
+      password: string
+      kaneoUrl: string
+      apiKey: string
+      workspaceId: string
+    }
   | { status: 'registration_disabled' }
   | { status: 'failed'; error: string }
 

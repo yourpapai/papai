@@ -58,7 +58,10 @@ const installFetch = (status: number, payload: unknown): void => {
   setMockFetch((url, init) => {
     captured.push({ url, init })
     return Promise.resolve(
-      new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(payload), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   })
 }
@@ -110,7 +113,12 @@ describe('submitAdminLlm', () => {
 
 describe('fetchAdminSystem', () => {
   test('GETs /admin/system and validates the summary', async () => {
-    installFetch(200, { chatProvider: 'telegram', taskProvider: 'kaneo', debugServer: true, adminUserSet: true })
+    installFetch(200, {
+      chatProvider: 'telegram',
+      taskProvider: 'kaneo',
+      debugServer: true,
+      adminUserSet: true,
+    })
     const result = await fetchAdminSystem()
     expect(firstCaptured().url).toBe('/admin/system')
     expect(result.chatProvider).toBe('telegram')

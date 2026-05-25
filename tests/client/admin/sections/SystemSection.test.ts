@@ -27,7 +27,10 @@ const systemSummary = {
   adminUserSet: true,
 }
 
-const render = (): { readonly component: ReturnType<typeof mount>; readonly target: HTMLElement } => {
+const render = (): {
+  readonly component: ReturnType<typeof mount>
+  readonly target: HTMLElement
+} => {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.querySelector<HTMLElement>('#root')
   if (target === null) throw new Error('root missing')

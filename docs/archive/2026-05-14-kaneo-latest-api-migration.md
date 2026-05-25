@@ -1198,7 +1198,9 @@ Update `tests/providers/kaneo/label-resource.test.ts`, `tests/providers/kaneo/in
 test('rejects deleting unattached workspace labels', async () => {
   setMockFetch(() =>
     Promise.resolve(
-      new Response(JSON.stringify({ id: 'label-1', name: 'bug', color: '#ff0000', taskId: null }), { status: 200 }),
+      new Response(JSON.stringify({ id: 'label-1', name: 'bug', color: '#ff0000', taskId: null }), {
+        status: 200,
+      }),
     ),
   )
 

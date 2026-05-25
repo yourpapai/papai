@@ -37,12 +37,22 @@ export function makeSearchTasksTool(provider: TaskProvider, userId?: string): To
           }
         }
 
-        const tasks = await provider.searchTasks({ query, projectId, assigneeId: resolvedAssigneeId, limit, offset })
+        const tasks = await provider.searchTasks({
+          query,
+          projectId,
+          assigneeId: resolvedAssigneeId,
+          limit,
+          offset,
+        })
         log.info({ query, assigneeId: resolvedAssigneeId, resultCount: tasks.length }, 'Tasks searched via tool')
         return tasks
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), query, tool: 'search_tasks' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            query,
+            tool: 'search_tasks',
+          },
           'Tool execution failed',
         )
         throw error

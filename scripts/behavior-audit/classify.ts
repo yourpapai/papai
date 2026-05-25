@@ -37,7 +37,9 @@ import type { BehaviorAuditProgressReporter } from './progress-reporter.js'
 import type { Progress } from './progress.js'
 import { getFailedClassificationAttempts, markClassificationDone, setClassificationFailedAttempts } from './progress.js'
 
-type ClassificationProcessResult = { readonly manifest: IncrementalManifest } & ClassificationResultForReporting
+type ClassificationProcessResult = {
+  readonly manifest: IncrementalManifest
+} & ClassificationResultForReporting
 
 export interface Phase2aDeps {
   readonly classifyBehaviorWithRetry: typeof classifyBehaviorWithRetry

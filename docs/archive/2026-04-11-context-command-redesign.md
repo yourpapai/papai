@@ -1551,10 +1551,11 @@ function buildCollectorDeps(contextId: string, provider: TaskProvider | null): C
       const cached = getCachedTools(contextId)
       if (cached !== undefined && cached !== null) return cached as Record<string, unknown>
       if (provider === null) return {}
-      return makeTools(provider, { storageContextId: contextId, chatUserId: contextId, mode: 'normal' }) as Record<
-        string,
-        unknown
-      >
+      return makeTools(provider, {
+        storageContextId: contextId,
+        chatUserId: contextId,
+        mode: 'normal',
+      }) as Record<string, unknown>
     },
     getProviderName: () => provider?.name ?? 'none',
     countTokens: (text: string): number => defaultCountTokens(text, encoding),
@@ -2238,7 +2239,10 @@ export type SendableChannel = {
     components?: unknown[]
     embeds?: unknown[]
     reply?: { messageReference: string; failIfNotExists: boolean }
-  }) => Promise<{ id: string; edit: (arg: { content?: string; components?: unknown[] }) => Promise<unknown> }>
+  }) => Promise<{
+    id: string
+    edit: (arg: { content?: string; components?: unknown[] }) => Promise<unknown>
+  }>
   sendTyping: () => Promise<void>
 }
 ```

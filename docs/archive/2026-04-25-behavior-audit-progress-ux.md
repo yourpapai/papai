@@ -824,7 +824,14 @@ async function processTestFile(
     deps.log.log(`[Phase 1] ${fileIndex}/${totalFiles} — ${testFile.filePath} (skipped, no selected tests)`)
     return { manifest, anyPhase1Changed: false }
   }
-  if (deps.shouldSkipCompletedFile({ progress, testFilePath: testFile.filePath, selectedTests, selectedTestKeys })) {
+  if (
+    deps.shouldSkipCompletedFile({
+      progress,
+      testFilePath: testFile.filePath,
+      selectedTests,
+      selectedTestKeys,
+    })
+  ) {
     deps.log.log(`[Phase 1] ${fileIndex}/${totalFiles} — ${testFile.filePath} (skipped, already done)`)
     return { manifest, anyPhase1Changed: false }
   }
@@ -847,7 +854,10 @@ async function processTestFile(
   await deps.saveManifest(extractionResult.manifest)
   deps.markFileDoneWhenSelectedTestsPersisted(progress, testFile.filePath, selectedTests)
   await deps.saveProgress(progress)
-  return { manifest: extractionResult.manifest, anyPhase1Changed: extractionResult.anyPhase1Changed }
+  return {
+    manifest: extractionResult.manifest,
+    anyPhase1Changed: extractionResult.anyPhase1Changed,
+  }
 }
 ```
 
@@ -1532,7 +1542,12 @@ async function attemptConsolidation(
   remaining: number,
   accumulatedUsage: AgentUsage,
 ): Promise<{
-  items: readonly { readonly id: string; readonly item: ConsolidationResult['consolidations'][number] }[] | null
+  items:
+    | readonly {
+        readonly id: string
+        readonly item: ConsolidationResult['consolidations'][number]
+      }[]
+    | null
   usage: AgentUsage
 }> {
   if (remaining <= 0) return { items: null, usage: accumulatedUsage }
@@ -1677,7 +1692,11 @@ Update `logConsolidationResult` — but this doesn't have usage available here. 
 
 ```ts
 type ConsolidationProcessResult =
-  | { readonly kind: 'consolidated'; readonly manifest: ConsolidatedManifest; readonly usage: AgentUsage }
+  | {
+      readonly kind: 'consolidated'
+      readonly manifest: ConsolidatedManifest
+      readonly usage: AgentUsage
+    }
   | { readonly kind: 'failed'; readonly manifest: ConsolidatedManifest; readonly usage: AgentUsage }
   | { readonly kind: 'skipped'; readonly manifest: ConsolidatedManifest }
 ```
@@ -1691,7 +1710,11 @@ Let me simplify: only carry usage on `consolidated`. For `failed`, no usage. For
 
 ```ts
 type ConsolidationProcessResult =
-  | { readonly kind: 'consolidated'; readonly manifest: ConsolidatedManifest; readonly usage: AgentUsage }
+  | {
+      readonly kind: 'consolidated'
+      readonly manifest: ConsolidatedManifest
+      readonly usage: AgentUsage
+    }
   | { readonly kind: 'failed'; readonly manifest: ConsolidatedManifest }
   | { readonly kind: 'skipped'; readonly manifest: ConsolidatedManifest }
 ```

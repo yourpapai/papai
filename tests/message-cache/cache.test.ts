@@ -54,8 +54,18 @@ describe('Message Cache', () => {
   })
 
   test('should isolate messages by contextId', () => {
-    cacheMessage({ messageId: 'iso-1', contextId: 'ctx-iso-A', text: 'From A', timestamp: Date.now() })
-    cacheMessage({ messageId: 'iso-1', contextId: 'ctx-iso-B', text: 'From B', timestamp: Date.now() })
+    cacheMessage({
+      messageId: 'iso-1',
+      contextId: 'ctx-iso-A',
+      text: 'From A',
+      timestamp: Date.now(),
+    })
+    cacheMessage({
+      messageId: 'iso-1',
+      contextId: 'ctx-iso-B',
+      text: 'From B',
+      timestamp: Date.now(),
+    })
 
     const fromA = getCachedMessage('ctx-iso-A', 'iso-1')
     const fromB = getCachedMessage('ctx-iso-B', 'iso-1')
@@ -67,7 +77,12 @@ describe('Message Cache', () => {
   test('should expire messages that exceed TTL', () => {
     const expiredTimestamp = Date.now() - ONE_WEEK_MS - 1000
 
-    cacheMessage({ messageId: 'ttl-expired', contextId: 'ctx-ttl', text: 'Expired', timestamp: expiredTimestamp })
+    cacheMessage({
+      messageId: 'ttl-expired',
+      contextId: 'ctx-ttl',
+      text: 'Expired',
+      timestamp: expiredTimestamp,
+    })
 
     const result = getCachedMessage('ctx-ttl', 'ttl-expired')
     expect(result).toBeUndefined()
@@ -77,7 +92,12 @@ describe('Message Cache', () => {
     // 1 minute before expiry
     const freshTimestamp = Date.now() - ONE_WEEK_MS + ONE_MINUTE_MS
 
-    cacheMessage({ messageId: 'ttl-fresh', contextId: 'ctx-ttl', text: 'Fresh', timestamp: freshTimestamp })
+    cacheMessage({
+      messageId: 'ttl-fresh',
+      contextId: 'ctx-ttl',
+      text: 'Fresh',
+      timestamp: freshTimestamp,
+    })
 
     const result = getCachedMessage('ctx-ttl', 'ttl-fresh')
     expect(result).toBeDefined()

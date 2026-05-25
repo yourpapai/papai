@@ -18,7 +18,9 @@ export type BenchmarkResult = Readonly<
 >
 
 type SummaryGroup = Record<'model' | 'mode', string> &
-  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & { failures: Record<string, number> }
+  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & {
+    failures: Record<string, number>
+  }
 
 type ScenarioGroup = Record<'model' | 'mode' | 'scenario', string> &
   Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & {

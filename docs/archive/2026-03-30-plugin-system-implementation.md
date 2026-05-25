@@ -458,7 +458,11 @@ This short pass was completed before starting Task 2 implementation to reduce re
   ```typescript
   export type PluginContextEligibility =
     | { eligible: true }
-    | { eligible: false; reason: 'inactive' | 'disabled' | 'config_missing'; missingKeys?: readonly string[] }
+    | {
+        eligible: false
+        reason: 'inactive' | 'disabled' | 'config_missing'
+        missingKeys?: readonly string[]
+      }
   ```
 
   Use it from tools, prompt, config rendering, and interaction responses so all surfaces agree.

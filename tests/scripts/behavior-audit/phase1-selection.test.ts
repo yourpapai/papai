@@ -235,7 +235,12 @@ describe('behavior-audit phase 1 incremental selection', () => {
               contextClaimRefs: [],
               uncertaintyNotes: [],
             },
-            usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
         log: {
           log: mock((line: string) => {
@@ -373,7 +378,12 @@ describe('behavior-audit phase 1 incremental selection', () => {
               verifierVersion: 'test',
               evidenceFilesRead: [],
               dependencyPaths: [],
-              codeindex: { enabled: false, mode: 'unavailable', indexStatus: 'unknown', queries: [] },
+              codeindex: {
+                enabled: false,
+                mode: 'unavailable',
+                indexStatus: 'unknown',
+                queries: [],
+              },
             },
             verification: {
               behaviorVerdict: 'not-verified',
@@ -520,7 +530,12 @@ describe('behavior-audit phase 1 incremental selection', () => {
               contextClaimRefs: [],
               uncertaintyNotes: [],
             },
-            usage: { inputTokens: 100, outputTokens: 50, toolCalls: 2, toolNames: ['readFile', 'grep'] },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              toolCalls: 2,
+              toolNames: ['readFile', 'grep'],
+            },
           }),
         saveProgress: (currentProgress) => {
           savedSnapshots.push(structuredClone(currentProgress))

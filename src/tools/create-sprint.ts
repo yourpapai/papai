@@ -32,7 +32,11 @@ export function makeCreateSprintTool(provider: Readonly<TaskProvider>): ToolSet[
         return sprint
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), agileId, tool: 'create_sprint' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            agileId,
+            tool: 'create_sprint',
+          },
           'Tool execution failed',
         )
         throw error

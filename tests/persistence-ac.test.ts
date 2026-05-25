@@ -94,7 +94,12 @@ describe('Story 4: Key facts remembered after read', () => {
     const { extractFactsFromSdkResults } = await import('../src/memory.js')
 
     // Simulate a get_task tool result
-    const toolResults = [{ toolName: 'get_task', output: { id: 'task-123', title: 'Implement dark mode', number: 42 } }]
+    const toolResults = [
+      {
+        toolName: 'get_task',
+        output: { id: 'task-123', title: 'Implement dark mode', number: 42 },
+      },
+    ]
 
     // Extract facts from the tool result
     const facts = extractFactsFromSdkResults([], toolResults)
@@ -138,7 +143,12 @@ describe('Story 4: Key facts remembered after read', () => {
 
   test('project names appear in LLM context via buildMemoryContextMessage', () => {
     const facts = [
-      { identifier: 'proj:proj-123', title: 'Mobile App Project', url: '', last_seen: '2026-03-01T00:00:00Z' },
+      {
+        identifier: 'proj:proj-123',
+        title: 'Mobile App Project',
+        url: '',
+        last_seen: '2026-03-01T00:00:00Z',
+      },
     ]
 
     const contextMessage = buildMemoryContextMessage(null, facts)

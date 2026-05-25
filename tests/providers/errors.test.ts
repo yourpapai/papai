@@ -65,7 +65,10 @@ describe('getProviderMessage', () => {
 
   test('returns message for workflow-validation-failed', () => {
     const error = providerError.workflowValidationFailed('proj-123', 'Missing URL field', [
-      { name: 'URL адеса где будет размещаться приложени', description: 'Must include stream:// protocol' },
+      {
+        name: 'URL адеса где будет размещаться приложени',
+        description: 'Must include stream:// protocol',
+      },
     ])
     expect(getProviderMessage(error)).toContain('proj-123')
     expect(getProviderMessage(error)).toContain('Missing URL field')

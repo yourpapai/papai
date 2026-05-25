@@ -57,9 +57,18 @@ describe('kaneo statuses operations', () => {
     test('creates and returns column', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ id: 'col-1', name: 'Done', icon: 'Check', color: '#00ff00', isFinal: true }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              id: 'col-1',
+              name: 'Done',
+              icon: 'Check',
+              color: '#00ff00',
+              isFinal: true,
+            }),
+            {
+              status: 200,
+            },
+          ),
         ),
       )
       const result = await kaneoCreateStatus(mockConfig, 'proj-1', { name: 'Done', isFinal: true })
@@ -72,9 +81,18 @@ describe('kaneo statuses operations', () => {
     test('updates and returns column', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ id: 'col-1', name: 'Updated', icon: null, color: null, isFinal: false }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              id: 'col-1',
+              name: 'Updated',
+              icon: null,
+              color: null,
+              isFinal: false,
+            }),
+            {
+              status: 200,
+            },
+          ),
         ),
       )
       const result = await kaneoUpdateStatus(mockConfig, 'col-1', { name: 'Updated' })

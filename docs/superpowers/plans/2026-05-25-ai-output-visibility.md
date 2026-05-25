@@ -842,7 +842,11 @@ async function handleAiOutputConfigInteraction(
   await replyButtonsPreferReplace(
     reply,
     result.response,
-    result.buttons.map((button) => ({ text: button.text, callbackData: button.callbackData, style: button.style })),
+    result.buttons.map((button) => ({
+      text: button.text,
+      callbackData: button.callbackData,
+      style: button.style,
+    })),
   )
   return true
 }
@@ -1196,7 +1200,11 @@ test('flushes tool details when tool visibility is on', async () => {
 
   generateTextImpl = (args): Promise<GenerateTextResult> => {
     args.experimental_onToolCallFinish?.({
-      toolCall: { toolName: 'search_tasks', toolCallId: 'call-visible', input: { query: 'visible query' } },
+      toolCall: {
+        toolName: 'search_tasks',
+        toolCallId: 'call-visible',
+        input: { query: 'visible query' },
+      },
       durationMs: 12,
       success: true,
       output: { count: 2 },
@@ -1334,7 +1342,11 @@ Update `sendLlmResponse()` signature and body:
 const sendLlmResponse = async (
   reply: ReplyFn,
   contextId: string,
-  result: { text: string | undefined; toolCalls: unknown[] | undefined; response: { messages: ModelMessage[] } },
+  result: {
+    text: string | undefined
+    toolCalls: unknown[] | undefined
+    response: { messages: ModelMessage[] }
+  },
   progressReporter?: AiProgressReporter,
 ): Promise<void> => {
   const textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'

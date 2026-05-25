@@ -270,7 +270,12 @@ interface Phase2Progress {
   completedDomains: Record<string, 'done'>
   consolidations: Record<string, readonly ConsolidatedBehavior[]>
   failedDomains: Record<string, FailedEntry>
-  stats: { domainsTotal: number; domainsDone: number; domainsFailed: number; behaviorsConsolidated: number }
+  stats: {
+    domainsTotal: number
+    domainsDone: number
+    domainsFailed: number
+    behaviorsConsolidated: number
+  }
 }
 
 interface Phase3Progress {
@@ -511,7 +516,11 @@ export function markDomainDone(
 }
 
 export function markDomainFailed(progress: Progress, domain: string, error: string, attempts: number): void {
-  progress.phase2.failedDomains[domain] = { error, attempts, lastAttempt: new Date().toISOString() }
+  progress.phase2.failedDomains[domain] = {
+    error,
+    attempts,
+    lastAttempt: new Date().toISOString(),
+  }
   progress.phase2.stats.domainsFailed++
 }
 
@@ -773,7 +782,11 @@ function getEnvOrFallback(name: string, fallback: string): string {
 }
 
 const apiKey = getEnvOrFallback('OPENAI_API_KEY', 'no-key')
-const provider = createOpenAICompatible({ name: 'behavior-audit-consolidate', apiKey, baseURL: BASE_URL })
+const provider = createOpenAICompatible({
+  name: 'behavior-audit-consolidate',
+  apiKey,
+  baseURL: BASE_URL,
+})
 const model = provider(MODEL)
 
 const SYSTEM_PROMPT = `You are a senior software analyst reviewing extracted test behaviors from a Telegram/Discord/Mattermost chat bot called "papai". Your job is to consolidate per-test behaviors into feature-level descriptions.
@@ -1901,7 +1914,10 @@ async function processTestFile(
   }
   markFileDone(progress, testFile.filePath)
   await saveProgress(progress)
-  return { manifest: extractionResult.manifest, anyPhase1Changed: extractionResult.anyPhase1Changed }
+  return {
+    manifest: extractionResult.manifest,
+    anyPhase1Changed: extractionResult.anyPhase1Changed,
+  }
 }
 ```
 

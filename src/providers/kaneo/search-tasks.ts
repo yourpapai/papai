@@ -82,7 +82,14 @@ export async function searchTasks({
 
   try {
     const client = new KaneoClient(config)
-    const result = await client.tasks.search({ query, workspaceId, projectId, assigneeId, limit, offset })
+    const result = await client.tasks.search({
+      query,
+      workspaceId,
+      projectId,
+      assigneeId,
+      limit,
+      offset,
+    })
     const filteredTasks = filterAndPaginateTaskSearchResults(
       flattenGroupedTaskSearchResults(result),
       assigneeId,

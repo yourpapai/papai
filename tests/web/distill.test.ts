@@ -42,7 +42,12 @@ const getDistillWebContent = (value: unknown): DistillWebContent => {
 }
 
 const seedSystemLlm = (
-  overrides: Partial<{ apiKey: string; baseUrl: string; mainModel: string; smallModel: string }> = {},
+  overrides: Partial<{
+    apiKey: string
+    baseUrl: string
+    mainModel: string
+    smallModel: string
+  }> = {},
 ): void => {
   resetSystemConfigCacheForTesting()
   setSystemConfig('llm_apikey', overrides.apiKey ?? 'test-key', 'env')
@@ -173,7 +178,10 @@ describe('distillWebContent', () => {
       {
         buildModel: () => ({ id: 'small-model' }),
         generateText: () =>
-          Promise.resolve({ text: 'summary\n\nexcerpt', usage: { inputTokens: 30, outputTokens: 12 } }),
+          Promise.resolve({
+            text: 'summary\n\nexcerpt',
+            usage: { inputTokens: 30, outputTokens: 12 },
+          }),
       },
     )
 

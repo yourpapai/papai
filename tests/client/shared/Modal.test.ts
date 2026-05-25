@@ -21,7 +21,9 @@ interface RenderModalOptions {
 }
 
 function textSnippet(text: string): Snippet {
-  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<div>${text}</div>` }))
+  return createRawSnippet((): { render: () => string } => ({
+    render: (): string => `<div>${text}</div>`,
+  }))
 }
 
 function defaultRenderModalOptions(): RenderModalOptions {

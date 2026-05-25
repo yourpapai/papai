@@ -24,7 +24,10 @@ describe('KV.svelte', () => {
   test('applies custom value color via vColor', () => {
     document.body.innerHTML = '<div id="root"></div>'
     const target = document.body.querySelector<HTMLElement>('#root')!
-    const component = mount(KV, { target, props: { k: 'active', v: '4', vColor: 'var(--accent)' } })
+    const component = mount(KV, {
+      target,
+      props: { k: 'active', v: '4', vColor: 'var(--accent)' },
+    })
     const v = target.querySelector<HTMLElement>('.ui-kv__v')!
     expect(v.style.color).toContain('var(--accent)')
     void unmount(component)

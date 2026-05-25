@@ -786,7 +786,11 @@ test('resetBehaviorAudit phase2 clears audit-behavior phase2 outputs but preserv
     behaviorsConsolidated: 0,
   }
   progress.phase3.status = 'done'
-  progress.phase3.stats = { consolidatedIdsTotal: 0, consolidatedIdsDone: 0, consolidatedIdsFailed: 0 }
+  progress.phase3.stats = {
+    consolidatedIdsTotal: 0,
+    consolidatedIdsDone: 0,
+    consolidatedIdsFailed: 0,
+  }
   await progressModule.saveProgress(progress)
 
   mockAuditBehaviorConfig(root, {
@@ -872,7 +876,11 @@ test('resetBehaviorAudit phase3 clears evaluated and stories outputs only', asyn
     attempts: 1,
     lastAttempt: '2026-04-21T12:15:00.000Z',
   }
-  progress.phase3.stats = { consolidatedIdsTotal: 2, consolidatedIdsDone: 1, consolidatedIdsFailed: 1 }
+  progress.phase3.stats = {
+    consolidatedIdsTotal: 2,
+    consolidatedIdsDone: 1,
+    consolidatedIdsFailed: 1,
+  }
   await progressModule.saveProgress(progress)
 
   const mod: ResetModuleShape = await importWithGuard(
@@ -983,7 +991,11 @@ test('progress reset helpers clear checkpoint state without touching canonical a
     attempts: 1,
     lastAttempt: '2026-04-23T12:03:00.000Z',
   }
-  progress.phase3.stats = { consolidatedIdsTotal: 2, consolidatedIdsDone: 1, consolidatedIdsFailed: 1 }
+  progress.phase3.stats = {
+    consolidatedIdsTotal: 2,
+    consolidatedIdsDone: 1,
+    consolidatedIdsFailed: 1,
+  }
 
   progressModule.resetPhase2AndPhase3(progress)
   await progressModule.saveProgress(progress)

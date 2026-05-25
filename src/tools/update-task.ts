@@ -88,6 +88,57 @@ const inputSchema = z.object({
     .describe('Provider-safe custom field writes. For YouTrack this is limited to simple string/text project fields.'),
 })
 
+interface UpdateTaskDeps {
+  provider: TaskProvider
+  completionHook?: CompletionHookFn
+  userId?: string
+  storageContextId?: string
+}
+
+async function executeUpdateTask(params: z.infer<typeof inputSchema>, deps: UpdateTaskDeps): Promise<unknown> {
+  const { taskId, title, description, status, priority, dueDate, assignee, projectId, customFields } = params
+  const { provider, completionHook, userId, storageContextId } = deps
+  try {
+    const timezone = getTimezone(storageContextId, userId)
+    const resolvedDueDate = provider.normalizeDueDateInput(dueDate, timezone)
+
+    const { assignee: resolvedAssignee, identityRequired } = await resolveAssignee(assignee, userId, provider)
+    if (identityRequired !== undefined) {
+      return identityRequired
+    }
+
+    assertCustomFieldsSupported(provider, customFields)
+
+    const task = await provider.updateTask(taskId, {
+      title,
+      description,
+      status,
+      priority,
+      dueDate: resolvedDueDate,
+      projectId,
+      assignee: resolvedAssignee,
+      customFields,
+    })
+    log.info({ taskId }, 'Task updated via tool')
+
+    if (completionHook !== undefined && task.status !== undefined) {
+      await completionHook(taskId, task.status, provider)
+    }
+
+    return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
+  } catch (error) {
+    log.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        taskId,
+        tool: 'update_task',
+      },
+      'Tool execution failed',
+    )
+    throw error
+  }
+}
+
 export function makeUpdateTaskTool(
   provider: TaskProvider,
   completionHook?: CompletionHookFn,
@@ -97,42 +148,6 @@ export function makeUpdateTaskTool(
   return tool({
     description: "Update an existing task's status, priority, assignee, due date, title, description, or project.",
     inputSchema,
-    execute: async ({ taskId, title, description, status, priority, dueDate, assignee, projectId, customFields }) => {
-      try {
-        const timezone = getTimezone(storageContextId, userId)
-        const resolvedDueDate = provider.normalizeDueDateInput(dueDate, timezone)
-
-        const { assignee: resolvedAssignee, identityRequired } = await resolveAssignee(assignee, userId, provider)
-        if (identityRequired !== undefined) {
-          return identityRequired
-        }
-
-        assertCustomFieldsSupported(provider, customFields)
-
-        const task = await provider.updateTask(taskId, {
-          title,
-          description,
-          status,
-          priority,
-          dueDate: resolvedDueDate,
-          projectId,
-          assignee: resolvedAssignee,
-          customFields,
-        })
-        log.info({ taskId }, 'Task updated via tool')
-
-        if (completionHook !== undefined && task.status !== undefined) {
-          await completionHook(taskId, task.status, provider)
-        }
-
-        return { ...task, dueDate: provider.formatDueDateOutput(task.dueDate, timezone) }
-      } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'update_task' },
-          'Tool execution failed',
-        )
-        throw error
-      }
-    },
+    execute: (params) => executeUpdateTask(params, { provider, completionHook, userId, storageContextId }),
   })
 }

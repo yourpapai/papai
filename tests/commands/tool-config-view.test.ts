@@ -18,7 +18,10 @@ describe('buildDomainListView', () => {
   })
 
   it('marks a partially-disabled domain', () => {
-    const view = buildDomainListView('ctx', AVAILABLE, { disabledDomains: [], toolOverrides: { delete_task: false } })
+    const view = buildDomainListView('ctx', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: { delete_task: false },
+    })
     const taskRow = view.text.split('\n').find((l) => l.toLowerCase().includes('task'))
     expect(taskRow).toContain('🟡')
   })
@@ -26,7 +29,10 @@ describe('buildDomainListView', () => {
 
 describe('buildDomainDrillView', () => {
   it('renders per-tool buttons with risk labels for the domain', () => {
-    const view = buildDomainDrillView('ctx', 'task', AVAILABLE, { disabledDomains: [], toolOverrides: {} })
+    const view = buildDomainDrillView('ctx', 'task', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:delete_task:'))).toBe(true)
     expect(view.text).toContain('⚠️')
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:back:'))).toBe(true)

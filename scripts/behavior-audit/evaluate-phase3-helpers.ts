@@ -99,7 +99,10 @@ export function resolveSelection(
 ): Phase3Selection {
   if (selectedIds.size === 0) {
     if (selectedFeatureKeys.size === 0) return { ids: selectedIds, evaluateAll: true }
-    return { ids: getAvailableIdsForFeatureKeys(selectedFeatureKeys, behaviors), evaluateAll: false }
+    return {
+      ids: getAvailableIdsForFeatureKeys(selectedFeatureKeys, behaviors),
+      evaluateAll: false,
+    }
   }
   const availableIds = new Set(behaviors.map((behavior) => behavior.consolidatedId))
   return [...selectedIds].some((id) => availableIds.has(id))

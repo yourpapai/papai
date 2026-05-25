@@ -94,7 +94,11 @@ describe('Comment Tools', () => {
       const longComment = 'a'.repeat(1000)
       const provider = createMockProvider({
         addComment: mock(() =>
-          Promise.resolve({ id: 'comment-1', body: longComment, createdAt: '2026-01-01T00:00:00Z' }),
+          Promise.resolve({
+            id: 'comment-1',
+            body: longComment,
+            createdAt: '2026-01-01T00:00:00Z',
+          }),
         ),
       })
 

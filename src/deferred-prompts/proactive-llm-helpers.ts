@@ -6,7 +6,14 @@
 import type { ModelMessage } from 'ai'
 
 import type { DeferredDeliveryTarget } from '../chat/types.js'
+import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
+import { appendHistory } from '../history.js'
+import { logger } from '../logger.js'
+import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
+import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
 import type { ExecutionMetadata } from './types.js'
+
+const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
 
 export type ProactiveLlmDispatchBaseArgs<TBuildProvider> = readonly [
   DeferredExecutionContextLike,
@@ -21,7 +28,10 @@ export type ProactiveLlmDispatchArgs<TDeps, TBuildProvider> =
   | readonly [...ProactiveLlmDispatchBaseArgs<TBuildProvider>, undefined, TDeps]
   | readonly [...ProactiveLlmDispatchBaseArgs<TBuildProvider>, string, TDeps]
 
-type DeferredExecutionContextLike = Readonly<{ createdByUserId: string; deliveryTarget: DeferredDeliveryTarget }>
+type DeferredExecutionContextLike = Readonly<{
+  createdByUserId: string
+  deliveryTarget: DeferredDeliveryTarget
+}>
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -73,3 +83,28 @@ export function buildMetadataMessages(m: ExecutionMetadata): ModelMessage[] {
 }
 
 export const wrapPrompt = (prompt: string): string => `===DEFERRED_TASK===\n${prompt}\n===END_DEFERRED_TASK===`
+
+type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls: unknown[] | undefined }
+
+export function persistProactiveResults(
+  creatorId: string,
+  storageContextId: string,
+  result: LlmResult,
+  history: readonly ModelMessage[],
+): void {
+  const newFacts = extractFactsFromSdkResults(extractFactToolCalls(result), extractFactToolResults(result))
+  for (const fact of newFacts) upsertFact(storageContextId, fact)
+  if (newFacts.length > 0)
+    log.info(
+      { userId: creatorId, storageContextId, factsExtracted: newFacts.length },
+      'Facts persisted from proactive results',
+    )
+
+  const msgs = result.response.messages
+  if (msgs.length > 0) {
+    appendHistory(storageContextId, msgs)
+    const updated = [...history, ...msgs]
+    if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated)
+  }
+  log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
+}

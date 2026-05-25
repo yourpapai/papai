@@ -394,8 +394,16 @@ These examples show the actual data in canonical artifacts and derived Markdown 
       "title": "Task manager should create a task with priority",
       "description": "When an authorized user submits a createTask call...",
       "keywords": ["create-task", "priority", "authorization"],
-      "testLocation": { "filePath": "tests/core/task-manager.test.ts", "lineStart": 45, "lineEnd": 62 },
-      "classification": { "category": "task-lifecycle", "subcategory": "creation", "confidence": 0.97 }
+      "testLocation": {
+        "filePath": "tests/core/task-manager.test.ts",
+        "lineStart": 45,
+        "lineEnd": 62
+      },
+      "classification": {
+        "category": "task-lifecycle",
+        "subcategory": "creation",
+        "confidence": 0.97
+      }
     }
   ]
 }

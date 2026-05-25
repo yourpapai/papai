@@ -51,7 +51,11 @@ export type GuildLike = {
       displayName: string | undefined
       nickname: string | null | undefined
       user:
-        | { username: string | undefined; displayName: string | undefined; globalName: string | null | undefined }
+        | {
+            username: string | undefined
+            displayName: string | undefined
+            globalName: string | null | undefined
+          }
         | undefined
     }>
   }>

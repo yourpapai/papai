@@ -28,7 +28,12 @@ const validV4Base = {
     status: 'not-started',
     completedFeatureKeys: {},
     failedFeatureKeys: {},
-    stats: { featureKeysTotal: 0, featureKeysDone: 0, featureKeysFailed: 0, behaviorsConsolidated: 0 },
+    stats: {
+      featureKeysTotal: 0,
+      featureKeysDone: 0,
+      featureKeysFailed: 0,
+      behaviorsConsolidated: 0,
+    },
   },
   phase3: {
     status: 'not-started',

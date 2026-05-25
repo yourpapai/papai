@@ -60,7 +60,11 @@ describe('createScheduledPrompt', () => {
     const fireAt = new Date(Date.now() + 60_000).toISOString()
     const prompt = createScheduledPrompt(USER_ID, 'Morning report', {
       fireAt,
-      cronCompiled: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0', dtstartUtc: fireAt, timezone: 'America/New_York' },
+      cronCompiled: {
+        rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+        dtstartUtc: fireAt,
+        timezone: 'America/New_York',
+      },
     })
 
     expect(prompt.timezone).toBe('America/New_York')

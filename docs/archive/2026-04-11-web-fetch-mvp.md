@@ -203,7 +203,11 @@ export const webFetchError = {
   timeout: (): AppError => ({ type: 'web-fetch', code: 'timeout' }),
   rateLimited: (): AppError => ({ type: 'web-fetch', code: 'rate-limited' }),
   extractFailed: (): AppError => ({ type: 'web-fetch', code: 'extract-failed' }),
-  upstreamError: (status?: number): AppError => ({ type: 'web-fetch', code: 'upstream-error', status }),
+  upstreamError: (status?: number): AppError => ({
+    type: 'web-fetch',
+    code: 'upstream-error',
+    status,
+  }),
 }
 
 const appErrorTypeSchema = z.object({
@@ -920,7 +924,10 @@ describe('extractHtmlContent', () => {
   test('returns title and markdown content from Defuddle output', async () => {
     const deps: ExtractHtmlDeps = {
       parseDocument: () => ({ document: { title: 'ignored' } as unknown as Document }),
-      defuddle: mock(async () => ({ title: 'Sample Article', content: '# Hello\n\nThis is clean markdown.' })),
+      defuddle: mock(async () => ({
+        title: 'Sample Article',
+        content: '# Hello\n\nThis is clean markdown.',
+      })),
     }
 
     const result = await extractHtmlContent('<html></html>', 'https://example.com/post', deps)
@@ -1088,7 +1095,10 @@ describe('web cache', () => {
 
   test('returns a fresh cached entry', () => {
     putCachedWebFetch('https://example.com/article', entry, 1_000 + 900_000)
-    expect(getCachedWebFetch('https://example.com/article', 1_000 + 1)).toEqual({ ...entry, source: 'cache' })
+    expect(getCachedWebFetch('https://example.com/article', 1_000 + 1)).toEqual({
+      ...entry,
+      source: 'cache',
+    })
   })
 
   test('returns null after expiry', () => {
@@ -1115,7 +1125,12 @@ describe('distillWebContent', () => {
 
   test('returns content unchanged when it is already small', async () => {
     await expect(
-      distillWebContent({ storageContextId: 'ctx-1', title: 'Small', content: 'short text', goal: 'summarize' }),
+      distillWebContent({
+        storageContextId: 'ctx-1',
+        title: 'Small',
+        content: 'short text',
+        goal: 'summarize',
+      }),
     ).resolves.toEqual({
       summary: 'short text',
       excerpt: 'short text',
@@ -1238,9 +1253,12 @@ export interface DistillDeps {
 const defaultDeps: DistillDeps = {
   generateText: (...args) => generateText(...args),
   buildModel: (apiKey, baseUrl, modelId) =>
-    createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL: baseUrl, fetch: fetchWithoutTimeout })(
-      modelId,
-    ),
+    createOpenAICompatible({
+      name: 'openai-compatible',
+      apiKey,
+      baseURL: baseUrl,
+      fetch: fetchWithoutTimeout,
+    })(modelId),
 }
 
 export async function distillWebContent(
@@ -1335,7 +1353,11 @@ describe('fetchAndExtract', () => {
       safeFetchContent,
       extractHtmlContent: mock(async () => ({ title: 'unused', content: 'unused' })),
       extractPdfText: mock(async () => 'unused'),
-      distillWebContent: mock(async () => ({ summary: 'unused', excerpt: 'unused', truncated: false })),
+      distillWebContent: mock(async () => ({
+        summary: 'unused',
+        excerpt: 'unused',
+        truncated: false,
+      })),
       now: () => 1_000,
     }
 
@@ -1626,7 +1648,13 @@ export function makeWebFetchTool(
     }),
     execute: async ({ url, goal }, { abortSignal }) => {
       log.debug({ storageContextId, actorUserId, url, hasGoal: goal !== undefined }, 'web_fetch called')
-      const result = await deps.fetchAndExtract({ storageContextId, actorUserId, url, goal, abortSignal })
+      const result = await deps.fetchAndExtract({
+        storageContextId,
+        actorUserId,
+        url,
+        goal,
+        abortSignal,
+      })
       log.info({ storageContextId, actorUserId, url, finalUrl: result.url }, 'Web fetch succeeded')
       return result
     },

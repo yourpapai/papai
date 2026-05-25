@@ -227,7 +227,9 @@ describe('Schema Validation', () => {
       test('rejects invalid response schema on create', async () => {
         setMockFetch(() =>
           Promise.resolve(
-            new Response(JSON.stringify({ invalid: 'data', missing: 'required fields' }), { status: 200 }),
+            new Response(JSON.stringify({ invalid: 'data', missing: 'required fields' }), {
+              status: 200,
+            }),
           ),
         )
 
@@ -500,7 +502,11 @@ describe('Schema Validation', () => {
     describe('ProjectResource.list', () => {
       test('validates array response schema', async () => {
         setMockFetch(() =>
-          Promise.resolve(new Response(JSON.stringify([createMockProject(validProjectResponse)]), { status: 200 })),
+          Promise.resolve(
+            new Response(JSON.stringify([createMockProject(validProjectResponse)]), {
+              status: 200,
+            }),
+          ),
         )
 
         const resource = new ProjectResource(mockConfig)
@@ -517,7 +523,11 @@ describe('Schema Validation', () => {
     describe('ProjectResource.update', () => {
       test('validates response schema on update', async () => {
         setMockFetch(() =>
-          Promise.resolve(new Response(JSON.stringify(createMockProject(validProjectFullResponse)), { status: 200 })),
+          Promise.resolve(
+            new Response(JSON.stringify(createMockProject(validProjectFullResponse)), {
+              status: 200,
+            }),
+          ),
         )
 
         const resource = new ProjectResource(mockConfig)

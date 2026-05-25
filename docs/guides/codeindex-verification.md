@@ -129,8 +129,18 @@ Expected:
 
 ```json
 [
-  { "sourceFilePath": "src/tools/core-tools.ts", "edgeType": "imports", "confidence": "resolved", "lineNumber": 5 },
-  { "sourceFilePath": "src/tools/core-tools.ts", "edgeType": "calls", "confidence": "resolved", "lineNumber": 14 }
+  {
+    "sourceFilePath": "src/tools/core-tools.ts",
+    "edgeType": "imports",
+    "confidence": "resolved",
+    "lineNumber": 5
+  },
+  {
+    "sourceFilePath": "src/tools/core-tools.ts",
+    "edgeType": "calls",
+    "confidence": "resolved",
+    "lineNumber": 14
+  }
 ]
 ```
 

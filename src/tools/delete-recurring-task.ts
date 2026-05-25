@@ -45,7 +45,11 @@ export function makeDeleteRecurringTaskTool(deps: DeleteRecurringTaskDeps = defa
         }
 
         log.info({ recurringTaskId }, 'Recurring task deleted via tool')
-        return { id: recurringTaskId, status: 'deleted', message: 'Recurring task series permanently stopped.' }
+        return {
+          id: recurringTaskId,
+          status: 'deleted',
+          message: 'Recurring task series permanently stopped.',
+        }
       } catch (error) {
         log.error(
           {

@@ -84,7 +84,10 @@ function parseArgsRecursive(args: readonly string[], index: number, params: Benc
   }
   if (flag === '--threshold') {
     const flagValue = requireFlagValue(flag, value)
-    return parseArgsRecursive(args, index + 2, { ...params, threshold: parseFiniteNumber(flag, flagValue) })
+    return parseArgsRecursive(args, index + 2, {
+      ...params,
+      threshold: parseFiniteNumber(flag, flagValue),
+    })
   }
   if (flag === '--linkage') {
     const flagValue = requireFlagValue(flag, value)
@@ -92,11 +95,17 @@ function parseArgsRecursive(args: readonly string[], index: number, params: Benc
   }
   if (flag === '--gap-threshold') {
     const flagValue = requireFlagValue(flag, value)
-    return parseArgsRecursive(args, index + 2, { ...params, gapThreshold: parseFiniteNumber(flag, flagValue) })
+    return parseArgsRecursive(args, index + 2, {
+      ...params,
+      gapThreshold: parseFiniteNumber(flag, flagValue),
+    })
   }
   if (flag === '--sizes') {
     const flagValue = requireFlagValue(flag, value)
-    return parseArgsRecursive(args, index + 2, { ...params, sizes: parsePositiveIntegerList(flag, flagValue) })
+    return parseArgsRecursive(args, index + 2, {
+      ...params,
+      sizes: parsePositiveIntegerList(flag, flagValue),
+    })
   }
   if (flag === '--output' || flag === '--output-path') {
     const flagValue = requireFlagValue(flag, value)

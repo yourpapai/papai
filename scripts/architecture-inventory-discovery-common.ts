@@ -121,7 +121,10 @@ export const benchmarkScriptSeed = seed(
 )
 
 export const candidateFromWorkspace = (workspace: string): PieceCandidate =>
-  makeCandidate(knownWorkspaceSeeds[workspace]!, { kind: 'package-workspace', location: workspace })
+  makeCandidate(knownWorkspaceSeeds[workspace]!, {
+    kind: 'package-workspace',
+    location: workspace,
+  })
 
 const candidateFromPackageScript = (name: string, command: string): PieceCandidate | null => {
   if (name.startsWith('audit:behavior') || command.includes('behavior-audit')) {

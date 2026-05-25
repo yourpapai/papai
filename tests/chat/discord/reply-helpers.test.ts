@@ -56,7 +56,10 @@ describe('createDiscordReplyFn', () => {
         id: 'chan-1',
         send: (arg: SendArg) => {
           sends.push(arg)
-          return Promise.resolve({ id: `bot-msg-${String(sends.length)}`, edit: () => Promise.resolve() })
+          return Promise.resolve({
+            id: `bot-msg-${String(sends.length)}`,
+            edit: () => Promise.resolve(),
+          })
         },
         sendTyping: () => {
           typingCalls.push(Date.now())

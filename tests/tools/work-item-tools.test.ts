@@ -43,8 +43,12 @@ describe('Work Item Tools', () => {
 
     test('returns work items from provider', async () => {
       const workItems = [{ id: 'wi-1', taskId: 'task-1', author: 'alice', date: '2024-01-15', duration: 'PT2H' }]
-      const provider = createMockProvider({ listWorkItems: mock(() => Promise.resolve(workItems)) })
-      const result: unknown = await getToolExecutor(makeListWorkTool(provider))({ taskId: 'task-1' })
+      const provider = createMockProvider({
+        listWorkItems: mock(() => Promise.resolve(workItems)),
+      })
+      const result: unknown = await getToolExecutor(makeListWorkTool(provider))({
+        taskId: 'task-1',
+      })
       expect(result).toEqual(workItems)
     })
 
@@ -59,7 +63,11 @@ describe('Work Item Tools', () => {
       const listWorkItems = mock(() => Promise.resolve([]))
       const provider = createMockProvider({ listWorkItems })
 
-      await getToolExecutor(makeListWorkTool(provider))({ taskId: 'task-99', limit: 10, offset: 30 })
+      await getToolExecutor(makeListWorkTool(provider))({
+        taskId: 'task-99',
+        limit: 10,
+        offset: 30,
+      })
 
       expect(listWorkItems).toHaveBeenCalledWith('task-99', { limit: 10, offset: 30 })
     })
@@ -104,7 +112,13 @@ describe('Work Item Tools', () => {
     })
 
     test('creates work item via provider', async () => {
-      const workItem = { id: 'wi-1', taskId: 'task-1', author: 'alice', date: '2024-01-15', duration: 'PT2H' }
+      const workItem = {
+        id: 'wi-1',
+        taskId: 'task-1',
+        author: 'alice',
+        date: '2024-01-15',
+        duration: 'PT2H',
+      }
       const createWorkItem = mock(() => Promise.resolve(workItem))
       const provider = createMockProvider({ createWorkItem })
       const result: unknown = await getToolExecutor(makeLogWorkTool(provider))({
@@ -149,7 +163,13 @@ describe('Work Item Tools', () => {
     })
 
     test('updates work item via provider', async () => {
-      const workItem = { id: 'wi-1', taskId: 'task-1', author: 'alice', date: '2024-01-16', duration: 'PT3H' }
+      const workItem = {
+        id: 'wi-1',
+        taskId: 'task-1',
+        author: 'alice',
+        date: '2024-01-16',
+        duration: 'PT3H',
+      }
       const updateWorkItem = mock(() => Promise.resolve(workItem))
       const provider = createMockProvider({ updateWorkItem })
       const result: unknown = await getToolExecutor(makeUpdateWorkTool(provider))({
@@ -233,7 +253,11 @@ describe('Work Item Tools', () => {
         deleteWorkItem: mock(() => Promise.reject(new Error('server error'))),
       })
       await expect(
-        getToolExecutor(makeRemoveWorkTool(provider))({ taskId: 't1', workItemId: 'wi-1', confidence: 1.0 }),
+        getToolExecutor(makeRemoveWorkTool(provider))({
+          taskId: 't1',
+          workItemId: 'wi-1',
+          confidence: 1.0,
+        }),
       ).rejects.toThrow('server error')
     })
   })

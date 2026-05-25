@@ -312,7 +312,10 @@ type ConsolidatedStoryRecord = {
   readonly context: string
   readonly sourceTestKeys: readonly string[]
   readonly sourceBehaviorIds: readonly string[]
-  readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+  readonly supportingInternalRefs: readonly {
+    readonly behaviorId: string
+    readonly summary: string
+  }[]
 }
 ```
 

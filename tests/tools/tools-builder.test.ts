@@ -437,7 +437,11 @@ describe('buildTools', () => {
       const execute = getToolExecutor(tools['upload_attachment'])
       const result = await execute({ taskId: 'task-1', attachmentId: refs[0]!.attachmentId })
 
-      expect(result).toEqual({ id: 'att-1', name: 'screenshot.png', url: 'https://example.com/att-1' })
+      expect(result).toEqual({
+        id: 'att-1',
+        name: 'screenshot.png',
+        url: 'https://example.com/att-1',
+      })
       expect(uploadAttachment).toHaveBeenCalledWith('task-1', {
         name: 'screenshot.png',
         content: file.content,
@@ -494,7 +498,11 @@ describe('makeTools direct integration', () => {
   it('exposes direct tools by default', () => {
     const provider = createMockProvider()
 
-    const tools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+      contextType: 'dm',
+    })
 
     expect(tools).toHaveProperty('create_task')
     expect(tools).not.toHaveProperty('papai_tool')
@@ -507,7 +515,11 @@ describe('makeTools direct integration', () => {
       },
     })
 
-    const dmTools = makeTools(provider, { storageContextId: 'user-123', chatUserId: 'user-123', contextType: 'dm' })
+    const dmTools = makeTools(provider, {
+      storageContextId: 'user-123',
+      chatUserId: 'user-123',
+      contextType: 'dm',
+    })
     const groupTools = makeTools(provider, {
       storageContextId: 'group-123',
       chatUserId: 'user-123',

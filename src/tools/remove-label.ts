@@ -32,7 +32,11 @@ export function makeRemoveLabelTool(provider: TaskProvider): ToolSet[string] {
         return await provider.removeLabel!(labelId)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), labelId, tool: 'remove_label' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            labelId,
+            tool: 'remove_label',
+          },
           'Tool execution failed',
         )
         throw error

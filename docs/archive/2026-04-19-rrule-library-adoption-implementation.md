@@ -820,13 +820,21 @@ describe('cronToRrule', () => {
   const tz = 'UTC'
 
   const cases: Array<{ name: string; cron: string; expected: { rrule: string } | null }> = [
-    { name: 'every day at 09:00', cron: '0 9 * * *', expected: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0' } },
+    {
+      name: 'every day at 09:00',
+      cron: '0 9 * * *',
+      expected: { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0' },
+    },
     {
       name: 'MO/WE/FR at 14:30',
       cron: '30 14 * * 1,3,5',
       expected: { rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=14;BYMINUTE=30' },
     },
-    { name: 'day-of-month', cron: '0 8 15 * *', expected: { rrule: 'FREQ=MONTHLY;BYMONTHDAY=15;BYHOUR=8;BYMINUTE=0' } },
+    {
+      name: 'day-of-month',
+      cron: '0 8 15 * *',
+      expected: { rrule: 'FREQ=MONTHLY;BYMONTHDAY=15;BYHOUR=8;BYMINUTE=0' },
+    },
     {
       name: 'every 15 min',
       cron: '*/15 * * * *',
@@ -1641,7 +1649,10 @@ export function makeCreateRecurringTaskTool(
         return executeCreate(userId, input, deps)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'create_recurring_task' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'create_recurring_task',
+          },
           'Tool execution failed',
         )
         throw error

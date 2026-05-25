@@ -55,7 +55,12 @@ describe('instructions cache', () => {
     // Pre-seed DB directly
     const db = getTestDb()
     db.insert(userInstructions)
-      .values({ id: 'db-1', contextId: 'ctx-db', text: 'From DB', createdAt: new Date().toISOString() })
+      .values({
+        id: 'db-1',
+        contextId: 'ctx-db',
+        text: 'From DB',
+        createdAt: new Date().toISOString(),
+      })
       .run()
     userCachesForTesting.clear()
 

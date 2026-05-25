@@ -281,7 +281,11 @@ describe('cache-db', () => {
   describe('syncInstructionToDb', () => {
     test('syncs instruction to DB', async () => {
       const contextId = 'ctx-123'
-      const instruction = { id: 'inst-1', text: 'Do something', createdAt: new Date().toISOString() }
+      const instruction = {
+        id: 'inst-1',
+        text: 'Do something',
+        createdAt: new Date().toISOString(),
+      }
 
       syncInstructionToDb(contextId, instruction)
 
@@ -302,7 +306,11 @@ describe('cache-db', () => {
   describe('deleteInstructionFromDb', () => {
     test('deletes instruction from DB', async () => {
       const contextId = 'ctx-456'
-      const instruction = { id: 'inst-2', text: 'To be deleted', createdAt: new Date().toISOString() }
+      const instruction = {
+        id: 'inst-2',
+        text: 'To be deleted',
+        createdAt: new Date().toISOString(),
+      }
 
       syncInstructionToDb(contextId, instruction)
       await new Promise<void>((resolve) => {

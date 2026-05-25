@@ -145,7 +145,10 @@ describe('buildHelpText', () => {
   test('/help on provider without file support does not append stale /context deferral note for admin', async () => {
     const { buildHelpText } = await import('../../src/commands/help.js')
     const noFileCapabilities = new Set<ChatCapability>(['interactions.callbacks', 'messages.buttons', 'users.resolve'])
-    const noFileHelp = buildHelpText(noFileCapabilities, 'dm', { isBotAdmin: true, isGroupAdmin: false })
+    const noFileHelp = buildHelpText(noFileCapabilities, 'dm', {
+      isBotAdmin: true,
+      isGroupAdmin: false,
+    })
 
     expect(noFileHelp).toContain('/context')
     expect(noFileHelp).not.toContain('deferred')
@@ -154,7 +157,10 @@ describe('buildHelpText', () => {
   test('/help on provider without file support still mentions /context for non-admin', async () => {
     const { buildHelpText } = await import('../../src/commands/help.js')
     const noFileCapabilities = new Set<ChatCapability>(['interactions.callbacks', 'messages.buttons'])
-    const noFileHelp = buildHelpText(noFileCapabilities, 'dm', { isBotAdmin: false, isGroupAdmin: false })
+    const noFileHelp = buildHelpText(noFileCapabilities, 'dm', {
+      isBotAdmin: false,
+      isGroupAdmin: false,
+    })
     expect(noFileHelp).toContain('/context')
     expect(noFileHelp).not.toContain('deferred')
   })
@@ -162,7 +168,10 @@ describe('buildHelpText', () => {
   test('/help on provider with file support does not contain stale deferral note', async () => {
     const { buildHelpText } = await import('../../src/commands/help.js')
     const fileCapabilities = new Set<ChatCapability>(['interactions.callbacks', 'messages.buttons', 'messages.files'])
-    const fileHelp = buildHelpText(fileCapabilities, 'dm', { isBotAdmin: true, isGroupAdmin: false })
+    const fileHelp = buildHelpText(fileCapabilities, 'dm', {
+      isBotAdmin: true,
+      isGroupAdmin: false,
+    })
     expect(fileHelp).not.toContain('deferred')
   })
 })

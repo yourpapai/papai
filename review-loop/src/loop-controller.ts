@@ -151,12 +151,20 @@ function formatSeveritySummary(records: readonly LedgerIssueRecord[]): string {
 function continueOrFinish(round: number, newNoProgressRounds: number, deps: ReviewLoopDeps): Promise<ReviewLoopResult> {
   if (newNoProgressRounds >= deps.config.maxNoProgressRounds) {
     deps.log.log(`[done] no_progress`)
-    return Promise.resolve({ doneReason: 'no_progress', rounds: round, ledger: deps.ledger.snapshot })
+    return Promise.resolve({
+      doneReason: 'no_progress',
+      rounds: round,
+      ledger: deps.ledger.snapshot,
+    })
   }
 
   if (round >= deps.config.maxRounds) {
     deps.log.log(`[done] max_rounds`)
-    return Promise.resolve({ doneReason: 'max_rounds', rounds: round, ledger: deps.ledger.snapshot })
+    return Promise.resolve({
+      doneReason: 'max_rounds',
+      rounds: round,
+      ledger: deps.ledger.snapshot,
+    })
   }
 
   return runRound(round + 1, newNoProgressRounds, deps)

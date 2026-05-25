@@ -19,8 +19,14 @@ export interface Phase1RunnerDeps {
       readonly behavior: string
       readonly context: string
       readonly keywords: readonly string[]
-      readonly behaviorClaimRefs: readonly { readonly evidenceIndex: number; readonly claim: string }[]
-      readonly contextClaimRefs: readonly { readonly evidenceIndex: number; readonly claim: string }[]
+      readonly behaviorClaimRefs: readonly {
+        readonly evidenceIndex: number
+        readonly claim: string
+      }[]
+      readonly contextClaimRefs: readonly {
+        readonly evidenceIndex: number
+        readonly claim: string
+      }[]
       readonly uncertaintyNotes: readonly string[]
     }
     readonly usage: AgentUsage

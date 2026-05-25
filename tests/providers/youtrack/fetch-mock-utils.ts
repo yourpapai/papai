@@ -43,7 +43,10 @@ export function installFetchMock(
 }
 
 export function createJsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 export function mockFetchResponse(fetchMockRef: { current?: FetchMockFn }, data: unknown, status = 200): void {

@@ -65,7 +65,10 @@ describe('isToolEnabled', () => {
   })
 
   it('lets an override=false disable an unclassified (plugin) tool', () => {
-    const prefs: ToolPrefs = { disabledDomains: [], toolOverrides: { plugin_hello_world__greet: false } }
+    const prefs: ToolPrefs = {
+      disabledDomains: [],
+      toolOverrides: { plugin_hello_world__greet: false },
+    }
     expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(false)
   })
 })

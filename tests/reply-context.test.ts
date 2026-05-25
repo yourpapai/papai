@@ -222,7 +222,13 @@ describe('buildReplyContextChain', () => {
   })
 
   test('builds chain summary for multi-message chain', () => {
-    cacheMessage({ messageId: 'A', contextId: 'ctx1', authorUsername: 'alice', text: 'First', timestamp: Date.now() })
+    cacheMessage({
+      messageId: 'A',
+      contextId: 'ctx1',
+      authorUsername: 'alice',
+      text: 'First',
+      timestamp: Date.now(),
+    })
     cacheMessage({
       messageId: 'B',
       contextId: 'ctx1',
@@ -263,7 +269,13 @@ describe('buildReplyContextChain', () => {
   })
 
   test('chain summary excludes the immediate parent', () => {
-    cacheMessage({ messageId: 'A', contextId: 'ctx1', authorUsername: 'alice', text: 'Root', timestamp: Date.now() })
+    cacheMessage({
+      messageId: 'A',
+      contextId: 'ctx1',
+      authorUsername: 'alice',
+      text: 'Root',
+      timestamp: Date.now(),
+    })
     cacheMessage({
       messageId: 'B',
       contextId: 'ctx1',

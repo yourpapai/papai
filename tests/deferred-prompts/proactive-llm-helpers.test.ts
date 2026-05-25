@@ -30,9 +30,14 @@ const dmTarget: DeferredDeliveryTarget = {
 
 describe('proactive-llm-helpers', () => {
   test('uses thread-scoped storage context for group threads', () => {
-    expect(getStorageContextId({ ...dmTarget, contextId: '-1001', contextType: 'group', threadId: '42' })).toBe(
-      '-1001:42',
-    )
+    expect(
+      getStorageContextId({
+        ...dmTarget,
+        contextId: '-1001',
+        contextType: 'group',
+        threadId: '42',
+      }),
+    ).toBe('-1001:42')
   })
 
   test('uses delivery context id when no group thread exists', () => {

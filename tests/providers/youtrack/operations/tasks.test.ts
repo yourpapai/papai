@@ -37,7 +37,12 @@ const installFetchMock = (handler: () => Promise<Response>): void => {
 
 const mockFetchResponse = (data: unknown, status = 200): void => {
   installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })),
+    Promise.resolve(
+      new Response(JSON.stringify(data), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 
@@ -47,7 +52,12 @@ const mockFetchNoContent = (): void => {
 
 const mockFetchError = (status: number, body: unknown = { error: 'Something went wrong' }): void => {
   installFetchMock(() =>
-    Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })),
+    Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
   )
 }
 
@@ -63,7 +73,10 @@ const mockCreateTaskResponse = (
     if (callCount === 1) {
       // Project lookup response
       return Promise.resolve(
-        new Response(JSON.stringify(projectResponse), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify(projectResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     }
     if (callCount === 2) {
@@ -76,7 +89,10 @@ const mockCreateTaskResponse = (
     }
     // Issue creation response
     return Promise.resolve(
-      new Response(JSON.stringify(issueResponse), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(issueResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   })
 }
@@ -128,7 +144,12 @@ const getFetchMethodAt = (index: number): string => {
 // --- Module-level multi-step mock helpers ---
 
 const jsonOk = (data: unknown): Promise<Response> =>
-  Promise.resolve(new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  Promise.resolve(
+    new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  )
 
 const jsonError = (status: number, data: unknown): Promise<Response> =>
   Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }))
@@ -614,7 +635,11 @@ const makeIssueResponse = (overrides: Record<string, unknown> = {}): IssueFixtur
   created: 1700000000000,
   updated: 1700000000000,
   customFields: [
-    { $type: 'SingleEnumIssueCustomField', name: 'Priority', value: { $type: 'EnumBundleElement', name: 'Normal' } },
+    {
+      $type: 'SingleEnumIssueCustomField',
+      name: 'Priority',
+      value: { $type: 'EnumBundleElement', name: 'Normal' },
+    },
     { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
   ],
   tags: [],
@@ -628,7 +653,11 @@ const makeIssueListResponse = (overrides: Record<string, unknown> = {}): IssueFi
   summary: 'Test task',
   project: { id: '0-1', shortName: 'TEST' },
   customFields: [
-    { $type: 'SingleEnumIssueCustomField', name: 'Priority', value: { $type: 'EnumBundleElement', name: 'Normal' } },
+    {
+      $type: 'SingleEnumIssueCustomField',
+      name: 'Priority',
+      value: { $type: 'EnumBundleElement', name: 'Normal' },
+    },
     { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
   ],
   ...overrides,
@@ -860,7 +889,11 @@ describe('createYouTrackTask', () => {
     mockCreateWithShortName(
       { id: '0-1', shortName: 'AUDIT', name: 'Audit Project' },
       [],
-      makeIssueResponse({ id: '2-1', idReadable: 'AUDIT-1', project: { id: '0-1', shortName: 'AUDIT' } }),
+      makeIssueResponse({
+        id: '2-1',
+        idReadable: 'AUDIT-1',
+        project: { id: '0-1', shortName: 'AUDIT' },
+      }),
     )
 
     // Pass shortName "AUDIT" instead of internal ID
@@ -1221,7 +1254,11 @@ describe('getYouTrackTask', () => {
             value: { $type: 'EnumBundleElement', name: 'Normal' },
           },
           { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
-          { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
+          {
+            $type: 'DateIssueCustomField',
+            name: 'Due Date',
+            value: Date.parse('2026-03-25T12:00:00.000Z'),
+          },
         ],
       }),
       [{ name: 'Priority', value: { name: 'Normal' } }],
@@ -1270,7 +1307,11 @@ describe('getYouTrackTask', () => {
           },
           { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
           { $type: 'SimpleIssueCustomField', name: 'Environment', value: 'staging' },
-          { $type: 'TextIssueCustomField', name: 'Steps', value: { $type: 'TextFieldValue', text: 'Click login' } },
+          {
+            $type: 'TextIssueCustomField',
+            name: 'Steps',
+            value: { $type: 'TextFieldValue', text: 'Click login' },
+          },
         ],
       }),
     )
@@ -1602,7 +1643,11 @@ describe('listYouTrackTasks', () => {
         project: { id: '39-883', shortName: 'DEMO' },
         customFields: [
           { $type: 'StateIssueCustomField', name: 'State', value: { name: 'Open' } },
-          { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
+          {
+            $type: 'DateIssueCustomField',
+            name: 'Due Date',
+            value: Date.parse('2026-03-25T12:00:00.000Z'),
+          },
         ],
       },
     ])
@@ -1631,7 +1676,11 @@ describe('listYouTrackTasks', () => {
             name: 'Priority',
             value: { $type: 'EnumBundleElement', name: 'Normal' },
           },
-          { $type: 'DateIssueCustomField', name: 'Due Date', value: Date.parse('2026-03-25T12:00:00.000Z') },
+          {
+            $type: 'DateIssueCustomField',
+            name: 'Due Date',
+            value: Date.parse('2026-03-25T12:00:00.000Z'),
+          },
         ],
       },
       {
@@ -1944,7 +1993,11 @@ describe('searchYouTrackTasks', () => {
   test('prepends both assignee and project filters when both are provided', async () => {
     mockSearchWithProject({ id: '39-883', shortName: 'MY-PROJ', name: 'My Project' }, [])
 
-    await searchYouTrackTasks(config, { query: 'bug', projectId: '39-883', assigneeId: 'john.doe' })
+    await searchYouTrackTasks(config, {
+      query: 'bug',
+      projectId: '39-883',
+      assigneeId: 'john.doe',
+    })
 
     // Get the second call (issues search)
     const parsed = FetchCallSchema.safeParse(fetchMock.mock.calls[1])

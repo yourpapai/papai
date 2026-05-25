@@ -19,7 +19,14 @@ describe('dashboard-ui types', () => {
       workspaceId: 'ws-1',
       hasTools: true,
       instructionsCount: 3,
-      facts: [{ identifier: 'fact-1', title: 'Fact 1', url: 'http://example.com', lastSeen: '2024-01-01' }],
+      facts: [
+        {
+          identifier: 'fact-1',
+          title: 'Fact 1',
+          url: 'http://example.com',
+          lastSeen: '2024-01-01',
+        },
+      ],
       config: { key1: 'value1' },
       instructions: [{ id: 'inst-1', text: 'Be helpful', createdAt: '2024-01-01' }],
       history: [{ role: 'user', content: 'Hello' }],

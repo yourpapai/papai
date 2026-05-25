@@ -41,7 +41,12 @@ export function makeUpdateStatusTool(provider: TaskProvider): ToolSet[string] {
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, statusId, tool: 'update_status' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            statusId,
+            tool: 'update_status',
+          },
           'Tool execution failed',
         )
         throw error

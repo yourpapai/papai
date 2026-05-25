@@ -14,6 +14,7 @@ import type {
 } from '../../../scripts/behavior-audit/consolidate-keywords-advanced-clustering.js'
 import type { LinkageMode } from '../../../scripts/behavior-audit/consolidate-keywords-clustering.js'
 import { parseArgs } from '../../../scripts/behavior-audit/tune-embedding-args.js'
+import { collectUniqueKeywords } from '../../../scripts/behavior-audit/tune-embedding-io.js'
 import { runTuneEmbedding } from '../../../scripts/behavior-audit/tune-embedding.js'
 
 type RecordedSubdivideCall = {
@@ -221,7 +222,7 @@ describe('tune-embedding wiring', () => {
             [0, 1],
           ],
         }),
-      normalizeKeywordSlug: (keyword: string): string => keyword.toLowerCase(),
+      collectUniqueKeywords,
       buildClustersAdvanced: buildProfiledClustersStub,
       buildMergeMap: (): ReadonlyMap<string, string> => new Map<string, string>(),
       buildConsolidatedVocabulary: (vocabulary: readonly MockVocabularyEntry[]): readonly MockVocabularyEntry[] =>
@@ -276,7 +277,7 @@ describe('tune-embedding wiring', () => {
             [0, 0],
           ],
         }),
-      normalizeKeywordSlug: (keyword: string): string => keyword.toLowerCase(),
+      collectUniqueKeywords,
       buildClustersAdvanced: buildSizedClustersStub,
       buildMergeMap: (): ReadonlyMap<string, string> => new Map<string, string>(),
       buildConsolidatedVocabulary: (vocabulary: readonly MockVocabularyEntry[]): readonly MockVocabularyEntry[] =>
@@ -331,7 +332,7 @@ describe('tune-embedding wiring', () => {
             [0, 0],
           ],
         }),
-      normalizeKeywordSlug: (keyword: string): string => keyword.toLowerCase(),
+      collectUniqueKeywords,
       buildClustersAdvanced: buildSizedClustersStub,
       buildMergeMap: (): ReadonlyMap<string, string> => new Map<string, string>(),
       buildConsolidatedVocabulary: (vocabulary: readonly MockVocabularyEntry[]): readonly MockVocabularyEntry[] =>
@@ -372,7 +373,7 @@ describe('tune-embedding wiring', () => {
             [0, 1],
           ],
         }),
-      normalizeKeywordSlug: (keyword: string): string => keyword.toLowerCase(),
+      collectUniqueKeywords,
       buildClustersAdvanced: buildClustersAdvancedStub,
       buildMergeMap: (): ReadonlyMap<string, string> => new Map<string, string>(),
       buildConsolidatedVocabulary: (vocabulary: readonly MockVocabularyEntry[]): readonly MockVocabularyEntry[] =>

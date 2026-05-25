@@ -4,11 +4,34 @@
 // See LICENSE in the project root for details.
 
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
+import { logger } from '../logger.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
 import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc } from '../utils/datetime.js'
 import { getScheduledPrompt } from './scheduled.js'
-import type { ScheduleInput } from './types.js'
+import {
+  DEFAULT_EXECUTION_METADATA,
+  executionMetadataSchema,
+  type ExecutionMetadata,
+  type ScheduleInput,
+} from './types.js'
+
+const log = logger.child({ scope: 'deferred:schedule-update-helpers' })
+
+export function parseExecution(
+  input:
+    | ({
+        mode: 'lightweight' | 'context' | 'full'
+        delivery_brief: string
+      } & Partial<Readonly<{ context_snapshot: string }>>)
+    | undefined,
+): ExecutionMetadata {
+  if (input === undefined) return DEFAULT_EXECUTION_METADATA
+  const parseResult = executionMetadataSchema.safeParse(input)
+  if (parseResult.success) return parseResult.data
+  log.warn({ error: parseResult.error.message }, 'Invalid execution metadata, using default')
+  return DEFAULT_EXECUTION_METADATA
+}
 
 export type ScheduleFieldUpdates = Partial<
   Record<'fireAt', string> & Record<'rrule' | 'dtstartUtc' | 'timezone', string | null>

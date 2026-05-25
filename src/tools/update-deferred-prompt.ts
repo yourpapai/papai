@@ -35,7 +35,10 @@ export function makeUpdateDeferredPromptTool(userId: string): ToolSet[string] {
         return executeUpdate(userId, input)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'update_deferred_prompt' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'update_deferred_prompt',
+          },
           'Tool execution failed',
         )
         throw error

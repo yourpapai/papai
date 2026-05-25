@@ -316,7 +316,12 @@ describe('bot-attachments', () => {
         ...createDmMessage('group-user'),
         files: [makeFile({ filename: 'existing.pdf' })],
       }
-      await ingestDmAttachments({ chat, msg: dmMsg, storageContextId: 'group-1', files: dmMsg.files! })
+      await ingestDmAttachments({
+        chat,
+        msg: dmMsg,
+        storageContextId: 'group-1',
+        files: dmMsg.files!,
+      })
 
       const groupMsg = createGroupMessage('group-user', 'hello')
       const result = await resolveMessageAttachments(chat, groupMsg, 'group-1')

@@ -43,9 +43,11 @@ function buildGrowthPoints(now: number): SubjectGrowthPoint[] {
   accumulateDayCounts(groupRows, groupCounts, cutoff, now)
 
   const dates = new Set<string>([...dmCounts.keys(), ...groupCounts.keys()])
-  return [...dates]
-    .sort()
-    .map((date) => ({ date, dmAdded: dmCounts.get(date) ?? 0, groupAdded: groupCounts.get(date) ?? 0 }))
+  return [...dates].sort().map((date) => ({
+    date,
+    dmAdded: dmCounts.get(date) ?? 0,
+    groupAdded: groupCounts.get(date) ?? 0,
+  }))
 }
 
 export function subjectsGlobal(now: number = Date.now()): GlobalSubjects {

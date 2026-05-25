@@ -25,7 +25,11 @@ export function makeListWatchersTool(provider: TaskProvider): ToolSet[string] {
         return users
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'list_watchers' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'list_watchers',
+          },
           'Tool execution failed',
         )
         throw error

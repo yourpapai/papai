@@ -52,7 +52,11 @@ export async function uploadYouTrackAttachment(
     return mapAttachment(uploaded)
   } catch (error) {
     log.error(
-      { error: error instanceof Error ? error.message : String(error), taskId, fileName: file.name },
+      {
+        error: error instanceof Error ? error.message : String(error),
+        taskId,
+        fileName: file.name,
+      },
       'Failed to upload attachment',
     )
     throw classifyYouTrackError(error, { taskId })

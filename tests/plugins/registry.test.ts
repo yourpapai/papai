@@ -39,7 +39,14 @@ function makePlugin(...overrides: readonly Partial<DiscoveredPlugin>[]): Discove
       description: 'A test',
       apiVersion: PLUGIN_API_VERSION,
       main: 'index.ts',
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
       permissions: [],
       defaultEnabled: false,
       activationTimeoutMs: 5000,
@@ -90,7 +97,10 @@ describe('checkPluginCompatibility', () => {
       manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     const result = checkPluginCompatibility(plugin.manifest, new Set(), new Set())
-    expect(result).toEqual({ compatible: false, reason: 'Required task capability missing: tasks.delete' })
+    expect(result).toEqual({
+      compatible: false,
+      reason: 'Required task capability missing: tasks.delete',
+    })
   })
 
   test('returns compatible when task capability is present', () => {

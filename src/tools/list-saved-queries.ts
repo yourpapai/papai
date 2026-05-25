@@ -23,7 +23,10 @@ export function makeListSavedQueriesTool(provider: Readonly<TaskProvider>): Tool
         return queries
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'list_saved_queries' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'list_saved_queries',
+          },
           'Tool execution failed',
         )
         throw error

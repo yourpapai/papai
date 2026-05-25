@@ -45,7 +45,10 @@ function makeTurn(overrides: Partial<Turn> = {}): Turn {
   }
 }
 
-function render(state: DashboardState): { target: HTMLElement; component: ReturnType<typeof mount> } {
+function render(state: DashboardState): {
+  target: HTMLElement
+  component: ReturnType<typeof mount>
+} {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.getElementById('root')!
   const component = mount(TurnsPanel, {

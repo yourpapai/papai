@@ -40,7 +40,10 @@ describe('plugin store', () => {
 
     test('updates on conflict', () => {
       upsertPluginAdminState('my-plugin', 'discovered')
-      upsertPluginAdminState('my-plugin', 'approved', { approvedBy: 'admin-123', approvedManifestHash: 'abc' })
+      upsertPluginAdminState('my-plugin', 'approved', {
+        approvedBy: 'admin-123',
+        approvedManifestHash: 'abc',
+      })
       const row = getPluginAdminState('my-plugin')
       expect(row?.state).toBe('approved')
       expect(row?.approvedBy).toBe('admin-123')

@@ -73,14 +73,22 @@ Success path with steering:
 ```jsonc
 {
   "ok": true,
-  "data": { "id": "tsk_102", "title": "Ship password reset", "url": "…", "dueDate": { "date": "2026-04-24" } },
+  "data": {
+    "id": "tsk_102",
+    "title": "Ship password reset",
+    "url": "…",
+    "dueDate": { "date": "2026-04-24" },
+  },
   "next_actions": {
     "hint": "Task created with a date-only due. If the user mentioned a time of day, ask them to confirm or update.",
     "suggested_tools": [
       {
         "tool": "update_task",
         "why": "set the time-of-day if the user gave one",
-        "args_template": { "taskId": "tsk_102", "dueDate": { "date": "2026-04-24", "time": "HH:MM" } },
+        "args_template": {
+          "taskId": "tsk_102",
+          "dueDate": { "date": "2026-04-24", "time": "HH:MM" },
+        },
       },
     ],
   },
@@ -109,7 +117,10 @@ Anti-drift effect: prevents the model from replying "I found your project (id pr
 Today's confirmation shape:
 
 ```json
-{ "status": "confirmation_required", "message": "Delete \"Auth bug\"? This action is irreversible — please confirm." }
+{
+  "status": "confirmation_required",
+  "message": "Delete \"Auth bug\"? This action is irreversible — please confirm."
+}
 ```
 
 Proposed (unified with envelope):
@@ -129,7 +140,10 @@ Proposed (unified with envelope):
     "question": "Delete \"Auth bug\"? This is permanent.",
   },
   "next_actions": {
-    "refused": { "reason": "confirmation_required", "message": "Delete \"Auth bug\"? This is permanent." },
+    "refused": {
+      "reason": "confirmation_required",
+      "message": "Delete \"Auth bug\"? This is permanent.",
+    },
   },
 }
 ```

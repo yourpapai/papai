@@ -39,15 +39,31 @@ export type ProviderError =
 
 /** Error constructors for ProviderError. */
 export const providerError = {
-  taskNotFound: (taskId: string): ProviderError => ({ type: 'provider', code: 'task-not-found', taskId }),
-  projectNotFound: (projectId: string): ProviderError => ({ type: 'provider', code: 'project-not-found', projectId }),
+  taskNotFound: (taskId: string): ProviderError => ({
+    type: 'provider',
+    code: 'task-not-found',
+    taskId,
+  }),
+  projectNotFound: (projectId: string): ProviderError => ({
+    type: 'provider',
+    code: 'project-not-found',
+    projectId,
+  }),
   workspaceNotFound: (workspaceId: string): ProviderError => ({
     type: 'provider',
     code: 'workspace-not-found',
     workspaceId,
   }),
-  commentNotFound: (commentId: string): ProviderError => ({ type: 'provider', code: 'comment-not-found', commentId }),
-  labelNotFound: (labelName: string): ProviderError => ({ type: 'provider', code: 'label-not-found', labelName }),
+  commentNotFound: (commentId: string): ProviderError => ({
+    type: 'provider',
+    code: 'comment-not-found',
+    commentId,
+  }),
+  labelNotFound: (labelName: string): ProviderError => ({
+    type: 'provider',
+    code: 'label-not-found',
+    labelName,
+  }),
   relationNotFound: (taskId: string, relatedTaskId: string): ProviderError => ({
     type: 'provider',
     code: 'relation-not-found',
@@ -91,7 +107,11 @@ export const providerError = {
     available,
   }),
   invalidResponse: (): ProviderError => ({ type: 'provider', code: 'invalid-response' }),
-  unknown: (originalError: Error): ProviderError => ({ type: 'provider', code: 'unknown', originalError }),
+  unknown: (originalError: Error): ProviderError => ({
+    type: 'provider',
+    code: 'unknown',
+    originalError,
+  }),
 }
 
 /** User-facing message mapper for ProviderError. */

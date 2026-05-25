@@ -166,7 +166,10 @@ interface ClassifiedBehaviorRecord {
   readonly visibility: 'user-facing' | 'internal' | 'ambiguous'
   readonly featureKey: string | null
   readonly featureLabel: string | null
-  readonly supportingBehaviorRefs: readonly { readonly behaviorId: string; readonly reason: string }[]
+  readonly supportingBehaviorRefs: readonly {
+    readonly behaviorId: string
+    readonly reason: string
+  }[]
   readonly relatedBehaviorHints: readonly {
     readonly testKey: string
     readonly relation: 'same-feature' | 'supporting-detail' | 'possibly-related'
@@ -197,7 +200,10 @@ interface ConsolidatedFeatureRecord {
   readonly context: string
   readonly sourceBehaviorIds: readonly string[]
   readonly sourceTestKeys: readonly string[]
-  readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+  readonly supportingInternalRefs: readonly {
+    readonly behaviorId: string
+    readonly summary: string
+  }[]
   readonly consolidatedAt: string
 }
 ```
@@ -213,9 +219,24 @@ Storage rule:
 ```ts
 interface EvaluatedFeatureRecord {
   readonly consolidatedId: string
-  readonly maria: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly dani: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly viktor: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
+  readonly maria: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly dani: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly viktor: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
   readonly flaws: readonly string[]
   readonly improvements: readonly string[]
   readonly evaluatedAt: string

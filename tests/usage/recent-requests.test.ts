@@ -72,8 +72,18 @@ describe('listRecentRequests', () => {
   })
 
   test('maps finishReason to finishStatus and normalizes nulls', () => {
-    insertEvent({ eventId: 'e1', storageContextId: 'user:1', finishReason: 'stop', occurredAt: 1000 })
-    insertEvent({ eventId: 'e2', storageContextId: 'user:1', finishReason: null, occurredAt: 2000 })
+    insertEvent({
+      eventId: 'e1',
+      storageContextId: 'user:1',
+      finishReason: 'stop',
+      occurredAt: 1000,
+    })
+    insertEvent({
+      eventId: 'e2',
+      storageContextId: 'user:1',
+      finishReason: null,
+      occurredAt: 2000,
+    })
     const rows = listRecentRequests('user:1', 10)
     expect(rows[0]?.finishStatus).toBe('unknown')
     expect(rows[1]?.finishStatus).toBe('stop')

@@ -71,7 +71,11 @@ describe('behavior-audit phase 2a classify agent', () => {
     }
     const generateText: ClassifyAgentDeps['generateText'] = (_input) => {
       events.push('generate')
-      return Promise.resolve({ output, totalUsage: { inputTokens: 100, outputTokens: 50 }, steps: [] })
+      return Promise.resolve({
+        output,
+        totalUsage: { inputTokens: 100, outputTokens: 50 },
+        steps: [],
+      })
     }
     const sleep: ClassifyAgentDeps['sleep'] = (ms) => {
       events.push('sleep')
@@ -111,7 +115,11 @@ describe('behavior-audit phase 2a classify agent', () => {
       relatedBehaviorHints: [],
       classificationNotes: 'Succeeded after one resumed retry.',
     }
-    const successResult = { output, totalUsage: { inputTokens: 100, outputTokens: 50 }, steps: [] as never[] }
+    const successResult = {
+      output,
+      totalUsage: { inputTokens: 100, outputTokens: 50 },
+      steps: [] as never[],
+    }
     const generateText = makeSequencedGenerateText(
       [Promise.reject(new Error('temporary failure')), Promise.resolve(successResult)],
       events,

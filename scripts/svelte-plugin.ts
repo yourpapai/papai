@@ -13,7 +13,11 @@ export interface SveltePluginOptions {
 }
 
 function stripTs(source: string, filename: string): string {
-  const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'browser', tsconfig: { compilerOptions: {} } })
+  const transpiler = new Bun.Transpiler({
+    loader: 'ts',
+    target: 'browser',
+    tsconfig: { compilerOptions: {} },
+  })
   return transpiler.transformSync(source, { name: filename })
 }
 
@@ -42,7 +46,9 @@ export function sveltePlugin(options: SveltePluginOptions = {}): BunPlugin {
     setup(build): void {
       build.onLoad({ filter: SVELTE_FILE }, async (args) => {
         const rawSource = await Bun.file(args.path).text()
-        const processed = await preprocess(rawSource, tsScriptPreprocessor, { filename: args.path })
+        const processed = await preprocess(rawSource, tsScriptPreprocessor, {
+          filename: args.path,
+        })
         const result = compile(processed.code, {
           filename: args.path,
           generate: 'client',

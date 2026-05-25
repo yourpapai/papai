@@ -371,7 +371,10 @@ export const snapshotFromStore = (store: BenchmarkStore): BenchmarkScenarioSnaps
 
 const ok = (): BenchmarkEvaluation => ({ success: true, failureCategory: null })
 
-const fail = (failureCategory: string): BenchmarkEvaluation => ({ success: false, failureCategory })
+const fail = (failureCategory: string): BenchmarkEvaluation => ({
+  success: false,
+  failureCategory,
+})
 
 const hasCalls = (snapshot: BenchmarkScenarioSnapshot, names: readonly string[]): boolean =>
   names.every((name) => snapshot.toolCalls.includes(name))
@@ -846,14 +849,21 @@ export type BenchmarkResult = Readonly<
 >
 
 export type BenchmarkArgs = Readonly<
-  Record<'baseUrl' | 'apiKeyEnv' | 'outputPath', string> & { models: readonly string[]; repetitions: number }
+  Record<'baseUrl' | 'apiKeyEnv' | 'outputPath', string> & {
+    models: readonly string[]
+    repetitions: number
+  }
 >
 
 type SummaryGroup = Record<'model' | 'mode', string> &
-  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & { failures: Record<string, number> }
+  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & {
+    failures: Record<string, number>
+  }
 
 type ScenarioGroup = Record<'model' | 'mode' | 'scenario', string> &
-  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & { failures: Record<string, number> }
+  Record<'runs' | 'successes' | 'toolCalls' | 'steps', number> & {
+    failures: Record<string, number>
+  }
 
 type RawBenchmarkArgs = Omit<BenchmarkArgs, 'models'> & { models: string | readonly string[] }
 
@@ -961,7 +971,15 @@ export function summarizeBenchmarkResults(results: readonly BenchmarkResult[]): 
 
     let summary = summaryGroups[summaryKey]
     if (summary === undefined) {
-      summary = { model: result.model, mode: result.mode, runs: 0, successes: 0, toolCalls: 0, steps: 0, failures: {} }
+      summary = {
+        model: result.model,
+        mode: result.mode,
+        runs: 0,
+        successes: 0,
+        toolCalls: 0,
+        steps: 0,
+        failures: {},
+      }
       summaryGroups[summaryKey] = summary
     }
 
@@ -1058,7 +1076,11 @@ const runScenario = async (
   apiKey: string,
 ): Promise<BenchmarkResult> => {
   const store = createBenchmarkStore()
-  const provider = createOpenAICompatible({ name: 'tool-surface-benchmark', apiKey, baseURL: args.baseUrl })(model)
+  const provider = createOpenAICompatible({
+    name: 'tool-surface-benchmark',
+    apiKey,
+    baseURL: args.baseUrl,
+  })(model)
   const setup = toolsForMode(mode, scenario.prompt, store)
 
   try {
@@ -1105,7 +1127,11 @@ const runBenchmark = async (args: BenchmarkArgs, apiKey: string): Promise<readon
   const runs = args.models.flatMap((model) =>
     repetitions.flatMap(() =>
       scenarios.flatMap((scenario) =>
-        (['direct_full', 'proxy', 'direct_routed'] as const).map((mode) => ({ model, mode, scenario })),
+        (['direct_full', 'proxy', 'direct_routed'] as const).map((mode) => ({
+          model,
+          mode,
+          scenario,
+        })),
       ),
     ),
   )

@@ -25,7 +25,11 @@ export function makeRemoveVoteTool(provider: TaskProvider): ToolSet[string] {
         return result
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'remove_vote' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'remove_vote',
+          },
           'Tool execution failed',
         )
         throw error

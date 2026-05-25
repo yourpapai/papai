@@ -123,7 +123,10 @@ export class MessageQueue {
         )
       } catch (error) {
         log.error(
-          { storageContextId: this.storageContextId, error: error instanceof Error ? error.message : String(error) },
+          {
+            storageContextId: this.storageContextId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Handler error during flush',
         )
         this.emitScoped(

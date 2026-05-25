@@ -47,7 +47,9 @@ const toolSchemas: Readonly<Record<BenchmarkToolName, z.ZodType<ToolInput>>> = {
     priority: z.string().optional().describe('Priority to assign to the created task.'),
   }),
   search_tasks: z.object({ query: z.string().describe('Search query for task titles.') }),
-  list_tasks: z.object({ projectId: z.string().optional().describe('Optional project identifier to filter tasks.') }),
+  list_tasks: z.object({
+    projectId: z.string().optional().describe('Optional project identifier to filter tasks.'),
+  }),
   update_task: z.object({
     taskId: z.string().describe('Task identifier to update.'),
     status: z.string().optional().describe('Status to apply to the task.'),
@@ -59,7 +61,9 @@ const toolSchemas: Readonly<Record<BenchmarkToolName, z.ZodType<ToolInput>>> = {
     taskId: z.string().describe('Task identifier receiving the comment.'),
     comment: z.string().describe('Comment text to append.'),
   }),
-  find_user: z.object({ query: z.string().describe('Name or handle to resolve to a user record.') }),
+  find_user: z.object({
+    query: z.string().describe('Name or handle to resolve to a user record.'),
+  }),
   get_current_time: z.object({}),
   web_fetch: z.object({
     url: z.string().describe('Public URL to fetch.'),
@@ -122,7 +126,10 @@ const updateTask: ToolExecutor = (store, input) => {
 }
 const addComment: ToolExecutor = (store, input) => {
   const task = currentTask(store, readString(input['taskId'], 'taskId'))
-  return putTask(store, { ...task, comments: [...task.comments, readString(input['comment'], 'comment')] })
+  return putTask(store, {
+    ...task,
+    comments: [...task.comments, readString(input['comment'], 'comment')],
+  })
 }
 const findUser: ToolExecutor = (_store, input) =>
   readString(input['query'], 'query').toLowerCase().includes('alex')

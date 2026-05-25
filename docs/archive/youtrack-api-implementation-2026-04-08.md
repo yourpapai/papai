@@ -536,7 +536,11 @@ export const mapIssueToTask = (issue: z.infer<typeof IssueSchema>, baseUrl: stri
     createdAt: toIsoOrUndefined(issue.created),
     projectId: issue.project?.id,
     url: `${baseUrl}/issue/${issue.idReadable ?? issue.id}`,
-    labels: (issue.tags ?? []).map((t: any) => ({ id: t.id, name: t.name, color: t.color?.background })),
+    labels: (issue.tags ?? []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      color: t.color?.background,
+    })),
     relations: relations.length > 0 ? relations : undefined,
     number: issue.numberInProject,
     reporter: issue.reporter
@@ -604,13 +608,21 @@ export const buildCustomFields = (params: {
 }): Array<{ name: string; $type: string; value: Record<string, string> }> => {
   const fields: Array<{ name: string; $type: string; value: Record<string, string> }> = []
   if (params.priority !== undefined) {
-    fields.push({ name: 'Priority', $type: 'SingleEnumIssueCustomField', value: { name: params.priority } })
+    fields.push({
+      name: 'Priority',
+      $type: 'SingleEnumIssueCustomField',
+      value: { name: params.priority },
+    })
   }
   if (params.status !== undefined) {
     fields.push({ name: 'State', $type: 'StateIssueCustomField', value: { name: params.status } })
   }
   if (params.assignee !== undefined) {
-    fields.push({ name: 'Assignee', $type: 'SingleUserIssueCustomField', value: { login: params.assignee } })
+    fields.push({
+      name: 'Assignee',
+      $type: 'SingleUserIssueCustomField',
+      value: { login: params.assignee },
+    })
   }
   return fields
 }

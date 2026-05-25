@@ -67,7 +67,11 @@ describe('activeSubjectCounts', () => {
   })
 
   test('returns zero counts when no activity', () => {
-    expect(activeSubjectCounts(Date.now())).toEqual({ activeIn1d: 0, activeIn7d: 0, activeIn30d: 0 })
+    expect(activeSubjectCounts(Date.now())).toEqual({
+      activeIn1d: 0,
+      activeIn7d: 0,
+      activeIn30d: 0,
+    })
   })
 
   test('counts distinct subjects active in each window across usage + messages', () => {

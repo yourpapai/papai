@@ -112,7 +112,10 @@ export function memosForSubject(storageContextId: string): MemoStats {
 
 export function scheduledForSubject(storageContextId: string): ScheduledPromptStats {
   const rows = getDrizzleDb()
-    .select({ status: scheduledPrompts.status, deliveryContextId: scheduledPrompts.deliveryContextId })
+    .select({
+      status: scheduledPrompts.status,
+      deliveryContextId: scheduledPrompts.deliveryContextId,
+    })
     .from(scheduledPrompts)
     .where(eq(scheduledPrompts.createdByUserId, storageContextId))
     .all()

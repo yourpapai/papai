@@ -73,7 +73,12 @@ describe('recordUsage', () => {
 
   test('event_id is a deterministic SHA-256 hex of (turnId, responseId, modelRole, occurredAt)', () => {
     recordUsage(
-      validEvent({ turnId: 'turn-x', responseId: 'resp-x', modelRole: 'main', occurredAt: 1_700_000_000_000 }),
+      validEvent({
+        turnId: 'turn-x',
+        responseId: 'resp-x',
+        modelRole: 'main',
+        occurredAt: 1_700_000_000_000,
+      }),
     )
 
     const row = getDrizzleDb().select().from(llmUsageEvents).all()[0]

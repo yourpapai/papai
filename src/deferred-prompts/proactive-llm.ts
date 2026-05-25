@@ -12,8 +12,6 @@ import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
-import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
-import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
 import type { TaskProvider } from '../providers/types.js'
 import { getSystemConfig } from '../system-config.js'
 import { buildSystemPrompt } from '../system-prompt.js'
@@ -24,8 +22,8 @@ import {
   buildMinimalSystemPrompt,
   getStorageContextId,
   modelIdForLightweight,
+  persistProactiveResults,
   resultTextOrDone,
-  toolCallCount,
   type ProactiveLlmDispatchArgs,
   wrapPrompt,
 } from './proactive-llm-helpers.js'
@@ -80,31 +78,6 @@ function getLlmConfigFromSystem(): LlmConfig | string {
 const resolveDeps = (deps: ProactiveLlmDeps | undefined): ProactiveLlmDeps => {
   if (deps === undefined) return defaultProactiveLlmDeps
   return deps
-}
-
-type LlmResult = Awaited<ReturnType<typeof generateText>>
-
-function persistProactiveResults(
-  creatorId: string,
-  storageContextId: string,
-  result: LlmResult,
-  history: readonly ModelMessage[],
-): void {
-  const newFacts = extractFactsFromSdkResults(extractFactToolCalls(result), extractFactToolResults(result))
-  for (const fact of newFacts) upsertFact(storageContextId, fact)
-  if (newFacts.length > 0)
-    log.info(
-      { userId: creatorId, storageContextId, factsExtracted: newFacts.length },
-      'Facts persisted from proactive results',
-    )
-
-  const msgs = result.response.messages
-  if (msgs.length > 0) {
-    appendHistory(storageContextId, msgs)
-    const updated = [...history, ...msgs]
-    if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated)
-  }
-  log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
 }
 
 async function invokeLightweight(
@@ -171,7 +144,12 @@ async function invokeWithContext(
   ]
 
   log.debug(
-    { userId: createdByUserId, mainModel: config.mainModel, historyLength: history.length, mode: 'context' },
+    {
+      userId: createdByUserId,
+      mainModel: config.mainModel,
+      historyLength: history.length,
+      mode: 'context',
+    },
     'generateText',
   )
   const result = await deps.generateText({
@@ -203,25 +181,18 @@ function resolveFullProvider(
   return 'Deferred prompt skipped: task provider not configured.'
 }
 
-async function invokeFull(
+async function runFullGeneration(
   execCtx: DeferredExecutionContext,
   type: 'scheduled' | 'alert',
   prompt: string,
   metadata: ExecutionMetadata,
-  buildProviderFn: BuildProviderFn,
   matchedTasksSummary: string | undefined,
+  config: { apiKey: string; baseURL: string; mainModel: string },
+  provider: NonNullable<ReturnType<BuildProviderFn>>,
   deps: ProactiveLlmDeps,
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
-  const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
-  log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
-  const config = getLlmConfigFromSystem()
-  if (typeof config === 'string') return config
-
-  const provider = resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
-  if (typeof provider === 'string') return provider
-
   const model = deps.buildModel(config, config.mainModel)
   const { tools, enabledToolNames } = buildFullToolSet(
     provider,
@@ -232,7 +203,6 @@ async function invokeFull(
   )
   const systemPrompt = buildSystemPrompt(provider, storageContextId, enabledToolNames)
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
-
   log.debug(
     { userId: createdByUserId, mainModel: config.mainModel, historyLength: messages.length, mode: 'full' },
     'generateText',
@@ -247,6 +217,28 @@ async function invokeFull(
   })
   persistProactiveResults(createdByUserId, storageContextId, result, getCachedHistory(storageContextId))
   return resultTextOrDone(result.text)
+}
+
+function invokeFull(
+  execCtx: DeferredExecutionContext,
+  type: 'scheduled' | 'alert',
+  prompt: string,
+  metadata: ExecutionMetadata,
+  buildProviderFn: BuildProviderFn,
+  matchedTasksSummary: string | undefined,
+  deps: ProactiveLlmDeps,
+): Promise<string> {
+  const { createdByUserId, deliveryTarget } = execCtx
+  const storageContextId = getStorageContextId(deliveryTarget)
+  const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
+  log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
+  const config = getLlmConfigFromSystem()
+  if (typeof config === 'string') return Promise.resolve(config)
+
+  const provider = resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
+  if (typeof provider === 'string') return Promise.resolve(provider)
+
+  return runFullGeneration(execCtx, type, prompt, metadata, matchedTasksSummary, config, provider, deps)
 }
 
 export function dispatchExecution(...args: DispatchExecutionArgs): Promise<string> {

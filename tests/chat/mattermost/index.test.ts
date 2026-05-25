@@ -151,7 +151,12 @@ function makeApiFetchChannelAndTeam(): (method: string, path: string, body: unkn
 function makeFileInfoApiFetch(): (method: string, path: string, body: unknown) => Promise<unknown> {
   return (_method: string, path: string, _body: unknown): Promise<unknown> => {
     if (path.includes('/info')) {
-      return Promise.resolve({ id: 'f1', name: 'report.pdf', mime_type: 'application/pdf', size: 1234 })
+      return Promise.resolve({
+        id: 'f1',
+        name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size: 1234,
+      })
     }
     return Promise.resolve({})
   }
@@ -190,7 +195,10 @@ describe('MattermostChatProvider', () => {
       setMockFetch(makeFetchWithUsernameTestuser())
 
       provider = new MattermostChatProvider()
-      const userId = await provider.resolveUserId('testuser', { contextId: 'c1', contextType: 'group' })
+      const userId = await provider.resolveUserId('testuser', {
+        contextId: 'c1',
+        contextType: 'group',
+      })
 
       expect(userId).toBe('user123')
       restoreFetch()
@@ -200,7 +208,10 @@ describe('MattermostChatProvider', () => {
       setMockFetch(makeFetchWithUsernameTestuser())
 
       provider = new MattermostChatProvider()
-      const userId = await provider.resolveUserId('@testuser', { contextId: 'c1', contextType: 'group' })
+      const userId = await provider.resolveUserId('@testuser', {
+        contextId: 'c1',
+        contextType: 'group',
+      })
 
       expect(userId).toBe('user123')
       restoreFetch()
@@ -212,7 +223,10 @@ describe('MattermostChatProvider', () => {
       })
 
       provider = new MattermostChatProvider()
-      const userId = await provider.resolveUserId('nonexistent', { contextId: 'c1', contextType: 'group' })
+      const userId = await provider.resolveUserId('nonexistent', {
+        contextId: 'c1',
+        contextType: 'group',
+      })
 
       expect(userId).toBeNull()
       restoreFetch()

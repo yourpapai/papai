@@ -115,7 +115,10 @@ export const finalizeCreatedRecurringTask = async (
     { recurringTaskId: task.id, createdTaskId: created.id, title: task.title },
     'Recurring task instance created',
   )
-  emitUser('scheduler:task_executed', task.userId, { recurringTaskId: task.id, createdTaskId: created.id })
+  emitUser('scheduler:task_executed', task.userId, {
+    recurringTaskId: task.id,
+    createdTaskId: created.id,
+  })
   emitUser('recurring:fired', task.userId, { recurringTaskId: task.id, createdTaskId: created.id })
   emitUser('notify:scheduler_fired', task.userId, { recurringTaskId: task.id })
 

@@ -29,19 +29,37 @@ export const seededTasks = [
 ] as const satisfies readonly BenchmarkTask[]
 
 export const scenarios: readonly BenchmarkScenario[] = [
-  { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
+  {
+    id: 'create_basic_task',
+    prompt: 'Create a high priority task named Draft tool benchmark summary.',
+  },
   {
     id: 'search_then_update_status',
     prompt: 'Update the benchmark report task to in progress after searching for it.',
   },
-  { id: 'search_then_comment', prompt: 'Find the benchmark report task and add a comment about routed mode.' },
-  { id: 'search_then_assign_user', prompt: 'Find the benchmark report task and assign it to Alex.' },
+  {
+    id: 'search_then_comment',
+    prompt: 'Find the benchmark report task and add a comment about routed mode.',
+  },
+  {
+    id: 'search_then_assign_user',
+    prompt: 'Find the benchmark report task and assign it to Alex.',
+  },
   { id: 'list_or_search_read_only', prompt: 'List the current benchmark tasks.' },
   { id: 'delete_needs_confirmation', prompt: 'Delete the benchmark report task.' },
-  { id: 'time_plus_web_lookup', prompt: 'Check https://example.com/release-notes and tell me the current time.' },
-  { id: 'recurring_task_creation', prompt: 'Create a weekly recurring task to send a benchmark summary.' },
+  {
+    id: 'time_plus_web_lookup',
+    prompt: 'Check https://example.com/release-notes and tell me the current time.',
+  },
+  {
+    id: 'recurring_task_creation',
+    prompt: 'Create a weekly recurring task to send a benchmark summary.',
+  },
   { id: 'deferred_prompt_creation', prompt: 'Remind me tomorrow about benchmark results.' },
-  { id: 'ambiguous_but_solvable_task_update', prompt: 'Update the benchmark item that still needs progress.' },
+  {
+    id: 'ambiguous_but_solvable_task_update',
+    prompt: 'Update the benchmark item that still needs progress.',
+  },
 ] as const satisfies readonly ScenarioEntry[]
 
 export const createBenchmarkStore = (): BenchmarkStore => ({

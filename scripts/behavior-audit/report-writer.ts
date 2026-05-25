@@ -29,9 +29,24 @@ export interface StoryEvaluation {
   readonly testName: string
   readonly behavior: string
   readonly userStory: string
-  readonly maria: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly dani: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
-  readonly viktor: { readonly discover: number; readonly use: number; readonly retain: number; readonly notes: string }
+  readonly maria: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly dani: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
+  readonly viktor: {
+    readonly discover: number
+    readonly use: number
+    readonly retain: number
+    readonly notes: string
+  }
   readonly flaws: readonly string[]
   readonly improvements: readonly string[]
 }
@@ -46,7 +61,10 @@ export interface ConsolidatedBehavior {
   readonly context: string
   readonly sourceTestKeys: readonly string[]
   readonly sourceBehaviorIds: readonly string[]
-  readonly supportingInternalRefs: readonly { readonly behaviorId: string; readonly summary: string }[]
+  readonly supportingInternalRefs: readonly {
+    readonly behaviorId: string
+    readonly summary: string
+  }[]
 }
 
 const ConsolidatedBehaviorSchema = z.object({

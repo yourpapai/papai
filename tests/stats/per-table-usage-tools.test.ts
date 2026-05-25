@@ -17,7 +17,11 @@ describe('llmUsageForSubject', () => {
   })
 
   test('returns zero-shape when subject has no events', () => {
-    expect(llmUsageForSubject('nobody')).toEqual({ rowCount: 0, inputTokensTotal: 0, outputTokensTotal: 0 })
+    expect(llmUsageForSubject('nobody')).toEqual({
+      rowCount: 0,
+      inputTokensTotal: 0,
+      outputTokensTotal: 0,
+    })
   })
 
   test('aggregates row count and token totals across events', () => {
@@ -112,9 +116,30 @@ describe('toolCallsForSubject', () => {
     getDrizzleDb()
       .insert(toolCallEvents)
       .values([
-        { eventId: 't1', storageContextId: 'u1', occurredAt: 1, toolName: 'search_tasks', success: 1, ...base },
-        { eventId: 't2', storageContextId: 'u1', occurredAt: 2, toolName: 'search_tasks', success: 1, ...base },
-        { eventId: 't3', storageContextId: 'u1', occurredAt: 3, toolName: 'search_tasks', success: 1, ...base },
+        {
+          eventId: 't1',
+          storageContextId: 'u1',
+          occurredAt: 1,
+          toolName: 'search_tasks',
+          success: 1,
+          ...base,
+        },
+        {
+          eventId: 't2',
+          storageContextId: 'u1',
+          occurredAt: 2,
+          toolName: 'search_tasks',
+          success: 1,
+          ...base,
+        },
+        {
+          eventId: 't3',
+          storageContextId: 'u1',
+          occurredAt: 3,
+          toolName: 'search_tasks',
+          success: 1,
+          ...base,
+        },
         {
           eventId: 't4',
           storageContextId: 'u1',
@@ -142,7 +167,14 @@ describe('toolCallsForSubject', () => {
           errorType: 'provider',
           ...base,
         },
-        { eventId: 't7', storageContextId: 'other', occurredAt: 7, toolName: 'leak', success: 1, ...base },
+        {
+          eventId: 't7',
+          storageContextId: 'other',
+          occurredAt: 7,
+          toolName: 'leak',
+          success: 1,
+          ...base,
+        },
       ])
       .run()
 

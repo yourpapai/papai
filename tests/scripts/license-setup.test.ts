@@ -128,7 +128,9 @@ describe('license setup', () => {
         ].join('\n'),
       )
 
-      const result = runCommand(repoDir, ['bun', 'scripts/add-license-headers.ts'], { LICENSE_HEADER_YEAR: '2027' })
+      const result = runCommand(repoDir, ['bun', 'scripts/add-license-headers.ts'], {
+        LICENSE_HEADER_YEAR: '2027',
+      })
 
       expect(result.exitCode).toBe(0)
       expect(readFileSync(path.join(repoDir, freshFile), 'utf8')).toContain('// Copyright (c) 2027 Dmitriy Lazarev')

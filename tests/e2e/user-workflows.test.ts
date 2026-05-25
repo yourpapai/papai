@@ -69,7 +69,12 @@ describe('E2E: User Workflows', () => {
     })
     testClient.trackTask(task.id)
 
-    await updateTask({ config: kaneoConfig, taskId: task.id, title: 'Updated task title', status: 'in-progress' })
+    await updateTask({
+      config: kaneoConfig,
+      taskId: task.id,
+      title: 'Updated task title',
+      status: 'in-progress',
+    })
 
     const finalTask = await getTask({ config: kaneoConfig, taskId: task.id })
     expect(finalTask.title).toBe('Updated task title')
@@ -77,9 +82,22 @@ describe('E2E: User Workflows', () => {
   })
 
   test('project setup workflow', async () => {
-    const toDoColumn = await createColumn({ config: kaneoConfig, projectId, name: `To Do ${Date.now()}` })
-    const inProgressColumn = await createColumn({ config: kaneoConfig, projectId, name: `In Progress ${Date.now()}` })
-    const doneColumn = await createColumn({ config: kaneoConfig, projectId, name: `Done ${Date.now()}`, isFinal: true })
+    const toDoColumn = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `To Do ${Date.now()}`,
+    })
+    const inProgressColumn = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `In Progress ${Date.now()}`,
+    })
+    const doneColumn = await createColumn({
+      config: kaneoConfig,
+      projectId,
+      name: `Done ${Date.now()}`,
+      isFinal: true,
+    })
 
     // Verify the specific columns were created and are present in the list
     const columns = await listColumns({ config: kaneoConfig, projectId })
@@ -103,7 +121,12 @@ describe('E2E: User Workflows', () => {
     testClient.trackTask(parentTask.id)
     testClient.trackTask(childTask.id)
 
-    await addTaskRelation({ config: kaneoConfig, taskId: childTask.id, relatedTaskId: parentTask.id, type: 'parent' })
+    await addTaskRelation({
+      config: kaneoConfig,
+      taskId: childTask.id,
+      relatedTaskId: parentTask.id,
+      type: 'parent',
+    })
 
     const childWithRel = await getTask({ config: kaneoConfig, taskId: childTask.id })
     expect(childWithRel.relations).toContainEqual({ type: 'parent', taskId: parentTask.id })
@@ -146,7 +169,11 @@ describe('E2E: User Workflows', () => {
     })
     testClient.trackTask(task.id)
 
-    await updateTask({ config: kaneoConfig, taskId: task.id, description: 'Updated with technical notes' })
+    await updateTask({
+      config: kaneoConfig,
+      taskId: task.id,
+      description: 'Updated with technical notes',
+    })
     await updateTask({ config: kaneoConfig, taskId: task.id, status: 'in-review' })
 
     const finalTask = await getTask({ config: kaneoConfig, taskId: task.id })

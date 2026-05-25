@@ -128,18 +128,27 @@ test('continues bounded pagination from the requested offset when only offset is
 
     if (skip === '40') {
       return Promise.resolve(
-        new Response(JSON.stringify(firstPage), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify(firstPage), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     }
 
     if (skip === '140') {
       return Promise.resolve(
-        new Response(JSON.stringify(secondPage), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify(secondPage), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     }
 
     return Promise.resolve(
-      new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   })
 
@@ -729,11 +738,17 @@ test('requests project pages with $top and $skip pagination params', async () =>
       expect(parsedUrl.searchParams.get('$top')).toBe('100')
       expect(parsedUrl.searchParams.get('$skip')).toBe('0')
       return Promise.resolve(
-        new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     }
     return Promise.resolve(
-      new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   })
 

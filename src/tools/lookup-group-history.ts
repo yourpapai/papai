@@ -55,7 +55,11 @@ const defaultDeps: LookupGroupHistoryDeps = {
       return null
     }
 
-    return createOpenAICompatible({ name: 'openai-compatible', apiKey: llmApiKey, baseURL: llmBaseUrl })(smallModel)
+    return createOpenAICompatible({
+      name: 'openai-compatible',
+      apiKey: llmApiKey,
+      baseURL: llmBaseUrl,
+    })(smallModel)
   },
 }
 

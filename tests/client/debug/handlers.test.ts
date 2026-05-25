@@ -209,7 +209,11 @@ describe('handleLogEntry', () => {
 describe('handleTurnStart and handleTurnEnd', () => {
   test('start creates a running turn', () => {
     const s = freshState()
-    handleTurnStart(s, { turnId: 't1', scope: { kind: 'user', userId: 'u1' }, incomingMessageCount: 1 })
+    handleTurnStart(s, {
+      turnId: 't1',
+      scope: { kind: 'user', userId: 'u1' },
+      incomingMessageCount: 1,
+    })
     expect(s.turns[0]?.turnId).toBe('t1')
     expect(s.turns[0]?.status).toBe('running')
   })
@@ -232,14 +236,21 @@ describe('handleTurnStart and handleTurnEnd', () => {
 describe('handleNotificationEvent and handleToolFailureClassified', () => {
   test('notification is pushed with scope and type', () => {
     const s = freshState()
-    handleNotificationEvent(s, 'reply:sent', { scope: { kind: 'group', groupId: 'g1' }, text: 'hi' })
+    handleNotificationEvent(s, 'reply:sent', {
+      scope: { kind: 'group', groupId: 'g1' },
+      text: 'hi',
+    })
     expect(s.notifications).toHaveLength(1)
     expect(s.notifications[0]?.type).toBe('reply:sent')
   })
 
   test('tool failure is pushed with data', () => {
     const s = freshState()
-    handleToolFailureClassified(s, { scope: { kind: 'user', userId: 'u1' }, toolName: 'foo', error: 'oops' })
+    handleToolFailureClassified(s, {
+      scope: { kind: 'user', userId: 'u1' },
+      toolName: 'foo',
+      error: 'oops',
+    })
     expect(s.toolFailures).toHaveLength(1)
     expect(s.toolFailures[0]?.data['toolName']).toBe('foo')
   })

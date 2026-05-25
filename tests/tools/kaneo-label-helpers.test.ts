@@ -16,7 +16,10 @@ describe('kaneo-label-helpers', () => {
 
   test('listVisibleWorkspaceLabels prefers getLabelByName when available', async () => {
     const getLabelByName = mock(() => Promise.resolve([{ id: 'label-1', name: 'Feature', color: '#ff0000' }]))
-    const provider = createMockProvider({ getLabelByName, listLabels: mock(() => Promise.resolve([])) })
+    const provider = createMockProvider({
+      getLabelByName,
+      listLabels: mock(() => Promise.resolve([])),
+    })
 
     const result = await listVisibleWorkspaceLabels(provider, 'Feature')
 

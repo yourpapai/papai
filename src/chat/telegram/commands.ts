@@ -25,6 +25,8 @@ const adminCommands = [
 
 export async function registerTelegramCommands(bot: Bot, adminUserId: string): Promise<void> {
   await bot.api.setMyCommands(userCommands, { scope: { type: 'all_private_chats' } })
-  await bot.api.setMyCommands(adminCommands, { scope: { type: 'chat', chat_id: parseInt(adminUserId, 10) } })
+  await bot.api.setMyCommands(adminCommands, {
+    scope: { type: 'chat', chat_id: parseInt(adminUserId, 10) },
+  })
   log.info({ adminUserId }, 'Telegram command menu registered')
 }

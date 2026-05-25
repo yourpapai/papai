@@ -24,7 +24,10 @@ export function makeListDeferredPromptsTool(userId: string): ToolSet[string] {
         return executeList(userId, input)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'list_deferred_prompts' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'list_deferred_prompts',
+          },
           'Tool execution failed',
         )
         throw error

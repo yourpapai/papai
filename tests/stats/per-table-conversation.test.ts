@@ -23,7 +23,10 @@ describe('conversationForSubject', () => {
   test('counts JSON array length and detects summary presence', () => {
     getDrizzleDb()
       .insert(conversationHistory)
-      .values({ userId: 'u1', messages: JSON.stringify([{ role: 'user' }, { role: 'assistant' }, { role: 'user' }]) })
+      .values({
+        userId: 'u1',
+        messages: JSON.stringify([{ role: 'user' }, { role: 'assistant' }, { role: 'user' }]),
+      })
       .run()
     getDrizzleDb().insert(memorySummary).values({ userId: 'u1', summary: 's', updatedAt: '2026-01-01T00:00:00Z' }).run()
 

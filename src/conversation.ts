@@ -30,7 +30,10 @@ const TRIM_MIN = 50
 const TRIM_MAX = 100
 const SMART_TRIM_INTERVAL = 10
 
-type MessagesWithMemory = { messages: ModelMessage[]; memoryMsg: { role: 'system'; content: string } | null }
+type MessagesWithMemory = {
+  messages: ModelMessage[]
+  memoryMsg: { role: 'system'; content: string } | null
+}
 
 export const buildMessagesWithMemory = (userId: string, history: readonly ModelMessage[]): MessagesWithMemory => {
   const summary = loadSummary(userId)
@@ -83,7 +86,10 @@ export const runTrimInBackground = async (
         { userId, error: error instanceof Error ? error.message : String(error) },
         'Smart trim failed in background',
       )
-      emitUser('trim:end', userId, { error: error instanceof Error ? error.message : String(error), success: false })
+      emitUser('trim:end', userId, {
+        error: error instanceof Error ? error.message : String(error),
+        success: false,
+      })
     }
   } else {
     log.warn({ userId }, 'LLM config not available for background trim')

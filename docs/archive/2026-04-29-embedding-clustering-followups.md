@@ -195,7 +195,13 @@ export function emptyPhase1b(): Phase1bProgress {
     gapThreshold: 0,
     embeddingModel: '',
     embeddingCachePath: null,
-    stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+    stats: {
+      slugsBefore: 0,
+      slugsAfter: 0,
+      mergesApplied: 0,
+      behaviorsUpdated: 0,
+      keywordsRemapped: 0,
+    },
   }
 }
 ```
@@ -222,7 +228,13 @@ async function markDoneAndSave(
     gapThreshold: CONSOLIDATION_GAP_THRESHOLD,
     embeddingModel: deps.embeddingModel,
     embeddingCachePath: deps.embeddingCachePath,
-    stats: { slugsBefore, slugsAfter: slugsBefore, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+    stats: {
+      slugsBefore,
+      slugsAfter: slugsBefore,
+      mergesApplied: 0,
+      behaviorsUpdated: 0,
+      keywordsRemapped: 0,
+    },
   }
   await deps.saveProgress(progress)
 }
@@ -318,7 +330,13 @@ test('validateOrMigrateProgress backfills embedding identity for legacy v5 phase
       linkage: 'average',
       maxClusterSize: 20,
       gapThreshold: 0.05,
-      stats: { slugsBefore: 10, slugsAfter: 8, mergesApplied: 2, behaviorsUpdated: 1, keywordsRemapped: 3 },
+      stats: {
+        slugsBefore: 10,
+        slugsAfter: 8,
+        mergesApplied: 2,
+        behaviorsUpdated: 1,
+        keywordsRemapped: 3,
+      },
     },
     phase2a: emptyPhase2a(),
     phase2b: emptyPhase2b(),

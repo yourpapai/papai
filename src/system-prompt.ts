@@ -108,7 +108,10 @@ const FRAGMENTS: readonly PromptFragment[] = [
   { text: PROACTIVE, requiredTools: [] },
   { text: WEB_FETCH, requiredTools: ['web_fetch'] },
   { text: WORKFLOW, requiredTools: [] },
-  { text: DESTRUCTIVE, requiredTools: ['delete_task', 'delete_project', 'delete_status', 'remove_label'] },
+  {
+    text: DESTRUCTIVE,
+    requiredTools: ['delete_task', 'delete_project', 'delete_status', 'remove_label'],
+  },
   { text: RELATIONS, requiredTools: ['add_task_relation', 'update_task_relation'] },
   { text: MEMOS, requiredTools: ['save_memo', 'search_memos', 'list_memos'] },
 ]

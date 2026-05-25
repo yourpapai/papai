@@ -32,12 +32,16 @@ describe('chat registry', () => {
   })
 
   test('createChatProvider("discord") returns a DiscordChatProvider instance', () => {
-    const provider = createChatProvider('discord', { env: { DISCORD_BOT_TOKEN: 'fake-discord-token' } })
+    const provider = createChatProvider('discord', {
+      env: { DISCORD_BOT_TOKEN: 'fake-discord-token' },
+    })
     expect(provider.name).toBe('discord')
   })
 
   test('createChatProvider("telegram") returns a TelegramChatProvider instance', () => {
-    const provider = createChatProvider('telegram', { env: { TELEGRAM_BOT_TOKEN: 'fake-telegram-token' } })
+    const provider = createChatProvider('telegram', {
+      env: { TELEGRAM_BOT_TOKEN: 'fake-telegram-token' },
+    })
     expect(provider.name).toBe('telegram')
   })
 

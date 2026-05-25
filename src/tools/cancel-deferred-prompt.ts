@@ -21,7 +21,10 @@ export function makeCancelDeferredPromptTool(userId: string): ToolSet[string] {
         return executeCancel(userId, input)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'cancel_deferred_prompt' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'cancel_deferred_prompt',
+          },
           'Tool execution failed',
         )
         throw error

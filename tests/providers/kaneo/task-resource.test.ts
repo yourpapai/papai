@@ -476,7 +476,11 @@ describe('TaskResource', () => {
     })
 
     test('PUTs full merged body to /task/:id (multiple fields)', async () => {
-      const requests = mockGetThenPut({ title: 'New Title', priority: 'high', description: 'New desc' })
+      const requests = mockGetThenPut({
+        title: 'New Title',
+        priority: 'high',
+        description: 'New desc',
+      })
 
       const resource = new TaskResource(mockConfig, statusDeps)
       await resource.update('task-1', {
@@ -831,9 +835,18 @@ describe('TaskResource', () => {
       setMockFetch((url: string) => {
         requestUrl = url
         return Promise.resolve(
-          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              tasks: [],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            {
+              status: 200,
+            },
+          ),
         )
       })
 
@@ -850,9 +863,18 @@ describe('TaskResource', () => {
     test('returns empty array when no matches', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              tasks: [],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            {
+              status: 200,
+            },
+          ),
         ),
       )
 
@@ -999,9 +1021,18 @@ describe('TaskResource', () => {
     test('search returns empty results for empty query string', async () => {
       setMockFetch(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ tasks: [], projects: [], workspaces: [], comments: [], activities: [] }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              tasks: [],
+              projects: [],
+              workspaces: [],
+              comments: [],
+              activities: [],
+            }),
+            {
+              status: 200,
+            },
+          ),
         ),
       )
 

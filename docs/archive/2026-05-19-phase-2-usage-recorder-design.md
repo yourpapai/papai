@@ -359,7 +359,10 @@ After the `embed()` call, build a `UsageEvent` and call `recordUsage`:
 
 ```ts
 const start = Date.now()
-const { embedding, usage } = await deps.embed({ model: provider.embeddingModel(model), value: text })
+const { embedding, usage } = await deps.embed({
+  model: provider.embeddingModel(model),
+  value: text,
+})
 recordUsage({
   occurredAt: start,
   turnId: null,

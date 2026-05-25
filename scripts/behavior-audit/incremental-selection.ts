@@ -35,7 +35,11 @@ function computePhase1And2aKeys(
   const phase2aVersionKeys = phase2VersionChanged
     ? entries.filter(([, e]) => e.extractedArtifactPath !== null).map(([k]) => k)
     : []
-  return { phase1Keys, phase2aKeys: toSortedUnique([...phase1Keys, ...phase2aVersionKeys]), phase2VersionChanged }
+  return {
+    phase1Keys,
+    phase2aKeys: toSortedUnique([...phase1Keys, ...phase2aVersionKeys]),
+    phase2VersionChanged,
+  }
 }
 
 function computePhase2bKeys(phase2aKeys: readonly string[], manifest: IncrementalManifest): readonly string[] {

@@ -3,48 +3,34 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ToolSet } from 'ai'
-
 import { seededTasks } from './tool-surface-benchmark-scenarios-data.js'
 
 export { createBenchmarkStore, scenarios, snapshotFromStore } from './tool-surface-benchmark-scenarios-data.js'
+export type {
+  BenchmarkDeferredEntry,
+  BenchmarkEvaluation,
+  BenchmarkMode,
+  BenchmarkRecurringEntry,
+  BenchmarkScenario,
+  BenchmarkScenarioSnapshot,
+  BenchmarkStore,
+  BenchmarkTask,
+  BenchmarkToolSetup,
+} from './tool-surface-benchmark-types.js'
 
-export type BenchmarkMode = 'direct_full' | 'direct_routed'
-export type BenchmarkTask = Readonly<{
-  id: string
-  title: string
-  priority: string
-  status: string
-  assigneeId: string | null
-  comments: readonly string[]
-  deleted: boolean
-}>
-export type BenchmarkRecurringEntry = Readonly<{ id: string; title: string; cadence: string }>
-export type BenchmarkDeferredEntry = Readonly<{ id: string; prompt: string; when: string }>
-export type BenchmarkScenarioSnapshot = Readonly<{
-  tasks: readonly BenchmarkTask[]
-  recurringEntries: readonly BenchmarkRecurringEntry[]
-  deferredEntries: readonly BenchmarkDeferredEntry[]
-  toolCalls: readonly string[]
-}>
-export type BenchmarkEvaluation = Readonly<{ success: boolean; failureCategory: string | null }>
-export type BenchmarkScenario = Readonly<{ id: string; prompt: string }>
-export type BenchmarkToolSetup = Readonly<{ tools: ToolSet; fullToolCount: number; exposedToolCount: number }>
-export type BenchmarkStore = {
-  tasks: Map<string, BenchmarkTask>
-  recurringEntries: Map<string, BenchmarkRecurringEntry>
-  deferredEntries: Map<string, BenchmarkDeferredEntry>
-  toolCalls: string[]
-  nextTaskId: number
-  nextRecurringId: number
-  nextDeferredId: number
-}
+import type { BenchmarkEvaluation, BenchmarkScenarioSnapshot, BenchmarkTask } from './tool-surface-benchmark-types.js'
 
 type ScenarioEvaluator = (snapshot: BenchmarkScenarioSnapshot) => BenchmarkEvaluation
 
 const ok = (): BenchmarkEvaluation => ({ success: true, failureCategory: null })
-const validationFailed = (): BenchmarkEvaluation => ({ success: false, failureCategory: 'validation_failed' })
-const confirmationFailed = (): BenchmarkEvaluation => ({ success: false, failureCategory: 'confirmation_error' })
+const validationFailed = (): BenchmarkEvaluation => ({
+  success: false,
+  failureCategory: 'validation_failed',
+})
+const confirmationFailed = (): BenchmarkEvaluation => ({
+  success: false,
+  failureCategory: 'confirmation_error',
+})
 const hasCall = (snapshot: BenchmarkScenarioSnapshot, toolName: string): boolean =>
   snapshot.toolCalls.includes(toolName)
 const hasCalls = (snapshot: BenchmarkScenarioSnapshot, names: readonly string[]): boolean =>
@@ -107,7 +93,10 @@ const hasExactlyOneNewTask = (snapshot: BenchmarkScenarioSnapshot, expectedTask:
 
   return (
     snapshot.tasks.length === seededTasks.length + 1 &&
-    hasUnchangedSeededTasks({ ...snapshot, tasks: snapshot.tasks.filter((task) => task.id !== expectedTask.id) }) &&
+    hasUnchangedSeededTasks({
+      ...snapshot,
+      tasks: snapshot.tasks.filter((task) => task.id !== expectedTask.id),
+    }) &&
     matchingTasks.length === 1 &&
     matchingTask !== undefined &&
     !seededTasks.some((task) => task.id === matchingTask.id)

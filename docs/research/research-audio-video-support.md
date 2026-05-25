@@ -202,11 +202,17 @@ The `@ai-sdk/openai-compatible` provider supports `image/*` parts — it convert
 const message: ModelMessage = {
   role: 'user',
   content: [
-    { type: 'text', text: '[Video transcription]: Create a task for the bug shown in this recording' },
+    {
+      type: 'text',
+      text: '[Video transcription]: Create a task for the bug shown in this recording',
+    },
     { type: 'file', data: frame1Bytes, mediaType: 'image/jpeg' },
     { type: 'file', data: frame2Bytes, mediaType: 'image/jpeg' },
     { type: 'file', data: frame3Bytes, mediaType: 'image/jpeg' },
-    { type: 'text', text: 'The user sent a video message with the above frames and transcription.' },
+    {
+      type: 'text',
+      text: 'The user sent a video message with the above frames and transcription.',
+    },
   ],
 }
 ```
@@ -254,7 +260,12 @@ Send the entire video file to an LLM that natively understands video.
   "contents": [
     {
       "parts": [
-        { "fileData": { "mimeType": "video/mp4", "fileUri": "https://generativelanguage.googleapis.com/..." } },
+        {
+          "fileData": {
+            "mimeType": "video/mp4",
+            "fileUri": "https://generativelanguage.googleapis.com/..."
+          }
+        },
         { "text": "Describe what happens in this video" }
       ]
     }

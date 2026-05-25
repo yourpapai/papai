@@ -68,19 +68,31 @@ function parseFlag(args: readonly string[], index: number, params: TuneParams): 
   const flag = args[index]
   const value = args[index + 1]
   if (flag === '--threshold' && value !== undefined) {
-    return { nextIndex: index + 1, params: { ...params, threshold: parseFiniteNumber(flag, value) } }
+    return {
+      nextIndex: index + 1,
+      params: { ...params, threshold: parseFiniteNumber(flag, value) },
+    }
   }
   if (flag === '--min-cluster-size' && value !== undefined) {
-    return { nextIndex: index + 1, params: { ...params, minClusterSize: parseFiniteNumber(flag, value) } }
+    return {
+      nextIndex: index + 1,
+      params: { ...params, minClusterSize: parseFiniteNumber(flag, value) },
+    }
   }
   if (flag === '--max-cluster-size' && value !== undefined) {
-    return { nextIndex: index + 1, params: { ...params, maxClusterSize: parseFiniteNumber(flag, value) } }
+    return {
+      nextIndex: index + 1,
+      params: { ...params, maxClusterSize: parseFiniteNumber(flag, value) },
+    }
   }
   if (flag === '--linkage' && value !== undefined) {
     return { nextIndex: index + 1, params: { ...params, linkage: parseLinkage(value) } }
   }
   if (flag === '--gap-threshold' && value !== undefined) {
-    return { nextIndex: index + 1, params: { ...params, gapThreshold: parseFiniteNumber(flag, value) } }
+    return {
+      nextIndex: index + 1,
+      params: { ...params, gapThreshold: parseFiniteNumber(flag, value) },
+    }
   }
   if (flag === '--re-embed') {
     return { nextIndex: index, params: { ...params, reembed: true } }

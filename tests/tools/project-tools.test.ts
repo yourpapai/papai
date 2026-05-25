@@ -250,7 +250,10 @@ describe('Project Tools', () => {
       assert(tool.execute)
       await tool.execute({ name: 'New Project', description: 'Project description' }, { toolCallId: '1', messages: [] })
 
-      expect(createProject).toHaveBeenCalledWith({ name: 'New Project', description: 'Project description' })
+      expect(createProject).toHaveBeenCalledWith({
+        name: 'New Project',
+        description: 'Project description',
+      })
     })
 
     test('passes undefined description when not provided', async () => {
@@ -337,7 +340,10 @@ describe('Project Tools', () => {
       assert(tool.execute)
       await tool.execute({ projectId: 'proj-1', description: 'New description' }, { toolCallId: '1', messages: [] })
 
-      expect(updateProject).toHaveBeenCalledWith('proj-1', { name: undefined, description: 'New description' })
+      expect(updateProject).toHaveBeenCalledWith('proj-1', {
+        name: undefined,
+        description: 'New description',
+      })
     })
 
     test('updates both name and description', async () => {
@@ -358,7 +364,10 @@ describe('Project Tools', () => {
         { toolCallId: '1', messages: [] },
       )
 
-      expect(updateProject).toHaveBeenCalledWith('proj-1', { name: 'New Name', description: 'New description' })
+      expect(updateProject).toHaveBeenCalledWith('proj-1', {
+        name: 'New Name',
+        description: 'New description',
+      })
     })
 
     test('propagates project not found error', async () => {

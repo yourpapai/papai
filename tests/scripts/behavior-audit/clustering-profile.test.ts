@@ -15,14 +15,24 @@ import {
 
 describe('clustering profile helpers', () => {
   test('createClusteringProfile initializes max counters from input size', () => {
-    const profile = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.9, size: 3 })
+    const profile = createClusteringProfile({
+      enabled: true,
+      linkage: 'average',
+      threshold: 0.9,
+      size: 3,
+    })
 
     expect(profile.counters.maxActiveClusters).toBe(3)
     expect(profile.counters.maxClusterSize).toBe(1)
   })
 
   test('recordClusteringTiming updates one phase immutably', () => {
-    const initial = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.9, size: 3 })
+    const initial = createClusteringProfile({
+      enabled: true,
+      linkage: 'average',
+      threshold: 0.9,
+      size: 3,
+    })
     const updated = recordClusteringTiming(initial, 'nearestNeighborMs', 12.5)
 
     expect(initial.timings.nearestNeighborMs).toBe(0)
@@ -31,7 +41,12 @@ describe('clustering profile helpers', () => {
   })
 
   test('recordClusteringTiming accumulates repeated phase measurements immutably', () => {
-    const initial = createClusteringProfile({ enabled: true, linkage: 'average', threshold: 0.9, size: 3 })
+    const initial = createClusteringProfile({
+      enabled: true,
+      linkage: 'average',
+      threshold: 0.9,
+      size: 3,
+    })
     const firstUpdate = recordClusteringTiming(initial, 'nearestNeighborMs', 12.5)
     const secondUpdate = recordClusteringTiming(firstUpdate, 'nearestNeighborMs', 2.5)
 
@@ -41,7 +56,12 @@ describe('clustering profile helpers', () => {
   })
 
   test('incrementClusteringCounter updates one counter immutably', () => {
-    const initial = createClusteringProfile({ enabled: true, linkage: 'complete', threshold: 0.91, size: 4 })
+    const initial = createClusteringProfile({
+      enabled: true,
+      linkage: 'complete',
+      threshold: 0.91,
+      size: 4,
+    })
     const updated = incrementClusteringCounter(initial, 'nearestNeighborCalls', 7)
 
     expect(initial.counters.nearestNeighborCalls).toBe(0)
@@ -50,7 +70,12 @@ describe('clustering profile helpers', () => {
   })
 
   test('profiling updates are no-ops when disabled', () => {
-    const profile = createClusteringProfile({ enabled: false, linkage: 'average', threshold: 0.9, size: 3 })
+    const profile = createClusteringProfile({
+      enabled: false,
+      linkage: 'average',
+      threshold: 0.9,
+      size: 3,
+    })
 
     expect(recordClusteringTiming(profile, 'nearestNeighborMs', 12.5)).toBe(profile)
     expect(incrementClusteringCounter(profile, 'nearestNeighborCalls', 7)).toBe(profile)

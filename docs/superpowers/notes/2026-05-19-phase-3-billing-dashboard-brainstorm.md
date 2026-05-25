@@ -242,11 +242,31 @@ secrets. The response shape:
 
 ```ts
 type AdminLlmSnapshot = {
-  llm_apikey: { value: string | null /* masked */; updatedAt: number | null; updatedBy: string | null }
-  llm_baseurl: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
-  main_model: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
-  small_model: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
-  embedding_model: { value: string | null /* cleartext */; updatedAt: number | null; updatedBy: string | null }
+  llm_apikey: {
+    value: string | null /* masked */
+    updatedAt: number | null
+    updatedBy: string | null
+  }
+  llm_baseurl: {
+    value: string | null /* cleartext */
+    updatedAt: number | null
+    updatedBy: string | null
+  }
+  main_model: {
+    value: string | null /* cleartext */
+    updatedAt: number | null
+    updatedBy: string | null
+  }
+  small_model: {
+    value: string | null /* cleartext */
+    updatedAt: number | null
+    updatedBy: string | null
+  }
+  embedding_model: {
+    value: string | null /* cleartext */
+    updatedAt: number | null
+    updatedBy: string | null
+  }
 }
 ```
 

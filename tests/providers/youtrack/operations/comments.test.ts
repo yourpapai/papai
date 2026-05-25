@@ -44,7 +44,10 @@ function mockFetchResponse(...args: [data: unknown] | [data: unknown, status: nu
   }
   installFetchMock(() =>
     Promise.resolve(
-      new Response(JSON.stringify(data), { status: resolvedStatus, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(data), {
+        status: resolvedStatus,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     ),
   )
 }
@@ -63,7 +66,10 @@ function mockFetchError(...args: [status: number] | [status: number, body: unkno
   }
   installFetchMock(() =>
     Promise.resolve(
-      new Response(JSON.stringify(resolvedBody), { status, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(resolvedBody), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     ),
   )
 }
@@ -135,7 +141,10 @@ function makePaginatedFetchHandler(
     const skip = requestUrl.searchParams.get('$skip') ?? ''
     const page = pages[skip] ?? []
     return Promise.resolve(
-      new Response(JSON.stringify(page), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      new Response(JSON.stringify(page), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     )
   }
 }

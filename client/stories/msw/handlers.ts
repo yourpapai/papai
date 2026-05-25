@@ -83,7 +83,11 @@ export const billingHandlers: HandlerFamily = {
       HttpResponse.json(
         billingSubjectsBody([
           makeBillingSubject(),
-          makeBillingSubject({ storageContextId: 'tg:2', contextType: 'group', displayName: 'team-alpha' }),
+          makeBillingSubject({
+            storageContextId: 'tg:2',
+            contextType: 'group',
+            displayName: 'team-alpha',
+          }),
         ]),
       ),
     ),

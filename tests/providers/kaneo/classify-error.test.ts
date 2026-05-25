@@ -35,7 +35,9 @@ describe('classifyKaneoError', () => {
   })
 
   test('returns taskNotFound for 404 with /task/ path', () => {
-    const error = new KaneoApiError('GET /api/task/abc123 returned 404', 404, { error: 'Not found' })
+    const error = new KaneoApiError('GET /api/task/abc123 returned 404', 404, {
+      error: 'Not found',
+    })
     const result = classifyKaneoError(error)
     expect(result.appError.code).toBe('task-not-found')
   })
@@ -53,13 +55,17 @@ describe('classifyKaneoError', () => {
   })
 
   test('returns commentNotFound for 404 with activity path', () => {
-    const error = new KaneoApiError('GET /api/activity/abc returned 404', 404, { error: 'Not found' })
+    const error = new KaneoApiError('GET /api/activity/abc returned 404', 404, {
+      error: 'Not found',
+    })
     const result = classifyKaneoError(error)
     expect(result.appError.code).toBe('comment-not-found')
   })
 
   test('returns relationNotFound for 404 with task-relation path', () => {
-    const error = new KaneoApiError('GET /api/task-relation/task-1 returned 404', 404, { error: 'Not found' })
+    const error = new KaneoApiError('GET /api/task-relation/task-1 returned 404', 404, {
+      error: 'Not found',
+    })
     const result = classifyKaneoError(error, { taskId: 'task-1' })
     expect(result.appError.code).toBe('relation-not-found')
   })
@@ -229,7 +235,9 @@ describe('classifyKaneoError', () => {
 
   describe('malformed response handling', () => {
     test('returns invalid-response for KaneoValidationError', () => {
-      const error = new KaneoValidationError('Invalid response data', { issues: [{ path: ['id'] }] })
+      const error = new KaneoValidationError('Invalid response data', {
+        issues: [{ path: ['id'] }],
+      })
       const result = classifyKaneoError(error)
       expect(result.appError.code).toBe('invalid-response')
     })

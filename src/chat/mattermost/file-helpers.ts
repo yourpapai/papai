@@ -111,7 +111,12 @@ export async function fetchMattermostFileCandidates(
         const infoData = await apiFetch('GET', `/api/v4/files/${fileId}/info`, undefined)
         const parsed = MattermostFileInfoSchema.safeParse(infoData)
         if (!parsed.success) return null
-        return { fileId, filename: parsed.data.name, mimeType: parsed.data.mime_type, size: parsed.data.size }
+        return {
+          fileId,
+          filename: parsed.data.name,
+          mimeType: parsed.data.mime_type,
+          size: parsed.data.size,
+        }
       } catch {
         return null
       }

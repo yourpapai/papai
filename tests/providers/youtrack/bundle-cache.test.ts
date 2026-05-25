@@ -132,7 +132,9 @@ describe('bundle-cache', () => {
     })
 
     test('fetches and caches bundle info', async () => {
-      const config = createUniqueYouTrackConfig({ baseUrl: 'https://example.com/fetches-and-caches' })
+      const config = createUniqueYouTrackConfig({
+        baseUrl: 'https://example.com/fetches-and-caches',
+      })
       const projectId = createUniqueProjectId()
       const counters = { count: 0 }
       setMockFetch(makeSequencedFetch(counters, 'bundle-123', 'bundle-123', ['proj-1', 'proj-2']))

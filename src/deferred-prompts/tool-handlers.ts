@@ -13,7 +13,7 @@ import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
 import { buildDeliveryInput, type CreateDeliveryContext, type DeliveryPolicy } from './delivery-input.js'
-import { buildScheduleUpdates, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
+import { buildScheduleUpdates, parseExecution, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
 import {
   cancelScheduledPrompt,
   createScheduledPrompt,
@@ -23,7 +23,6 @@ import {
 } from './scheduled.js'
 import {
   alertConditionSchema,
-  DEFAULT_EXECUTION_METADATA,
   executionMetadataSchema,
   type AlertCondition,
   type CancelResult,
@@ -35,6 +34,8 @@ import {
   type ScheduleInput,
   type UpdateResult,
 } from './types.js'
+
+export type { CreateDeliveryContext } from './delivery-input.js'
 
 const log = logger.child({ scope: 'deferred:tools' })
 
@@ -147,14 +148,6 @@ function createAlert(
   return { status: 'created', type: 'alert', id: result.id, cooldownMinutes: result.cooldownMinutes }
 }
 
-function parseExecution(input: ExecutionInput | undefined): ExecutionMetadata {
-  if (input === undefined) return DEFAULT_EXECUTION_METADATA
-  const parseResult = executionMetadataSchema.safeParse(input)
-  if (parseResult.success) return parseResult.data
-  log.warn({ error: parseResult.error.message }, 'Invalid execution metadata, using default')
-  return DEFAULT_EXECUTION_METADATA
-}
-
 export function executeCreate(
   userId: string,
   input: CreateInput,
@@ -165,7 +158,9 @@ export function executeCreate(
   log.debug({ userId, hasSchedule, hasCondition }, 'create_deferred_prompt called')
   if (hasSchedule && hasCondition) return { error: 'Provide either a schedule or a condition, not both.' }
   if (!hasSchedule && !hasCondition) {
-    return { error: 'Provide either a schedule (for time-based) or a condition (for event-based).' }
+    return {
+      error: 'Provide either a schedule (for time-based) or a condition (for event-based).',
+    }
   }
 
   const executionMetadata = parseExecution(input.execution)

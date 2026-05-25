@@ -146,7 +146,11 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
     testClient.trackTask(task.id)
 
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'This is a test comment' })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: 'This is a test comment',
+    })
 
     expect(comment.id).toBeTruthy()
     expect(comment.comment).toBe('This is a test comment')
@@ -173,7 +177,11 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
     testClient.trackTask(task.id)
 
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Original text' })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: 'Original text',
+    })
 
     expect(comment.id).toBeTruthy()
 
@@ -198,7 +206,11 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
     testClient.trackTask(task.id)
 
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Original text' })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: 'Original text',
+    })
 
     const { updateComment } = await import('../../src/providers/kaneo/update-comment.js')
     const updated = await updateComment({
@@ -234,7 +246,11 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
     testClient.trackTask(task.id)
 
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'To be deleted' })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: 'To be deleted',
+    })
 
     expect(comment.id).toBeTruthy()
 
@@ -257,7 +273,11 @@ describe('E2E: Task Comments', () => {
     const task = await createTask({ config: kaneoConfig, projectId, title: `Task ${suffix}` })
     testClient.trackTask(task.id)
 
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: 'Original text' })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: 'Original text',
+    })
 
     const updated = await kaneoApiJsonParsed(`/comment/${comment.id}`, RawCommentSchema, {
       method: 'PUT',
@@ -300,7 +320,11 @@ describe('E2E: Task Comments', () => {
     testClient.trackTask(task.id)
 
     const longComment = 'A'.repeat(1000)
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: longComment })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: longComment,
+    })
 
     expect(comment.comment).toBe(longComment)
   })
@@ -311,7 +335,11 @@ describe('E2E: Task Comments', () => {
     testClient.trackTask(task.id)
 
     const specialComment = 'Comment with émojis 🎉 and <html> & "quotes"'
-    const comment = await addComment({ config: kaneoConfig, taskId: task.id, comment: specialComment })
+    const comment = await addComment({
+      config: kaneoConfig,
+      taskId: task.id,
+      comment: specialComment,
+    })
 
     expect(comment.comment).toBe(specialComment)
   })

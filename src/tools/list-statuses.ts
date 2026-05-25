@@ -23,7 +23,11 @@ export function makeListStatusesTool(provider: TaskProvider): ToolSet[string] {
         return await provider.listStatuses!(projectId)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, tool: 'list_statuses' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            tool: 'list_statuses',
+          },
           'Tool execution failed',
         )
         throw error

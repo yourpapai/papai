@@ -60,7 +60,10 @@ export function saveInstruction(contextId: string, text: string): SaveResult {
   }
   if (normalized.length > MAX_INSTRUCTION_LENGTH) {
     log.warn({ contextId, length: normalized.length }, 'Instruction too long')
-    return { status: 'invalid', message: `Instruction text exceeds the ${MAX_INSTRUCTION_LENGTH}-character limit.` }
+    return {
+      status: 'invalid',
+      message: `Instruction text exceeds the ${MAX_INSTRUCTION_LENGTH}-character limit.`,
+    }
   }
 
   const existing = getCachedInstructions(contextId)

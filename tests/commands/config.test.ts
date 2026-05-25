@@ -63,7 +63,14 @@ function makePlugin(pluginId: string, ...rest: [] | [Partial<DiscoveredPlugin['m
       description: 'Plugin config render test',
       apiVersion: PLUGIN_API_VERSION,
       main: 'index.ts',
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
       permissions: [],
       defaultEnabled: true,
       activationTimeoutMs: 5000,
@@ -289,7 +296,9 @@ describe('/config Command', () => {
         'users.resolve',
         // messages.buttons and interactions.callbacks intentionally omitted
       ])
-      const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers({ capabilities })
+      const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers({
+        capabilities,
+      })
       registerConfigCommand(mockChat, (_userId: string) => true)
       const handler = commandHandlers.get('config')
       configHandler = null

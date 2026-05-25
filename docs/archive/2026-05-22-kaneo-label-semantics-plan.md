@@ -401,7 +401,11 @@ export function makeCreateLabelTool(provider: TaskProvider): ToolSet[string] {
         return await provider.createLabel!({ name, color })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), name, tool: 'create_label' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            name,
+            tool: 'create_label',
+          },
           'Tool execution failed',
         )
         throw error
@@ -678,8 +682,18 @@ import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './k
 
 const log = logger.child({ scope: 'tool:remove-task-label' })
 
-type AlreadyAbsentByNameResult = { status: 'already_absent'; taskId: string; labelName: string; message: string }
-type AlreadyAbsentByIdResult = { status: 'already_absent'; taskId: string; labelId: string; message: string }
+type AlreadyAbsentByNameResult = {
+  status: 'already_absent'
+  taskId: string
+  labelName: string
+  message: string
+}
+type AlreadyAbsentByIdResult = {
+  status: 'already_absent'
+  taskId: string
+  labelId: string
+  message: string
+}
 type AlreadyAbsentResult = AlreadyAbsentByNameResult | AlreadyAbsentByIdResult
 
 const resolveKaneoTaskLabelIdById = async (

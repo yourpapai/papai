@@ -43,7 +43,11 @@ export const toolsForMode = (mode: BenchmarkMode, prompt: string, store: Benchma
 
   if (mode === 'direct_routed') {
     const routed = routeToolsForMessage(prompt, directTools)
-    return { tools: routed.tools, fullToolCount: routed.fullToolCount, exposedToolCount: routed.exposedToolCount }
+    return {
+      tools: routed.tools,
+      fullToolCount: routed.fullToolCount,
+      exposedToolCount: routed.exposedToolCount,
+    }
   }
 
   return { tools: directTools, fullToolCount, exposedToolCount: fullToolCount }

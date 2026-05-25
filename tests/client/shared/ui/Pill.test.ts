@@ -11,7 +11,9 @@ import type { Snippet } from 'svelte'
 import Pill from '../../../../client/shared/ui/Pill.svelte'
 
 function textSnippet(text: string): Snippet {
-  return createRawSnippet((): { render: () => string } => ({ render: (): string => `<span>${text}</span>` }))
+  return createRawSnippet((): { render: () => string } => ({
+    render: (): string => `<span>${text}</span>`,
+  }))
 }
 
 type Tone = 'accent' | 'warn' | 'danger' | 'info' | 'neutral' | 'mute'

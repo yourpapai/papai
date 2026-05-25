@@ -108,7 +108,12 @@ function handleSkipCommand(
   if (nextSession === null) return { success: false, prompt: 'Error: Session lost' }
 
   if (nextSession.currentStep >= nextSession.totalSteps) {
-    return { success: true, prompt: showSummary(userId, storageContextId), complete: true, skipped: true }
+    return {
+      success: true,
+      prompt: showSummary(userId, storageContextId),
+      complete: true,
+      skipped: true,
+    }
   }
 
   return { success: true, prompt: getNextPrompt(userId, storageContextId), skipped: true }

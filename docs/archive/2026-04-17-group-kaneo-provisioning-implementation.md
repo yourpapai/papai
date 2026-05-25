@@ -207,7 +207,11 @@ export function isAuthorizedGroup(groupId: string): boolean {
   return row !== undefined
 }
 
-export function listAuthorizedGroups(): Array<{ group_id: string; added_by: string; added_at: string }> {
+export function listAuthorizedGroups(): Array<{
+  group_id: string
+  added_by: string
+  added_at: string
+}> {
   log.debug('listAuthorizedGroups called')
   return getDrizzleDb()
     .select({

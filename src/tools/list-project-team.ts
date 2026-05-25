@@ -25,7 +25,11 @@ export function makeListProjectTeamTool(provider: TaskProvider): ToolSet[string]
         return users
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), projectId, tool: 'list_project_team' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            projectId,
+            tool: 'list_project_team',
+          },
           'Tool execution failed',
         )
         throw error

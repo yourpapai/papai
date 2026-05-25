@@ -466,7 +466,11 @@ export function makeSetMyIdentityTool(provider: TaskProvider, chatUserId: string
         return storeIdentity(chatUserId, provider.name, matched)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), chatUserId, claimedLogin: login },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            chatUserId,
+            claimedLogin: login,
+          },
           'Failed to set identity',
         )
         return {
@@ -773,7 +777,11 @@ async function invokeFull(
   const model = deps.buildModel(config, config.mainModel)
   // In deferred prompts, userId is already the actual user (not a group)
   // So we pass it as both storageContextId and chatUserId
-  const tools = makeTools(provider, { storageContextId: userId, chatUserId: userId, mode: 'proactive' })
+  const tools = makeTools(provider, {
+    storageContextId: userId,
+    chatUserId: userId,
+    mode: 'proactive',
+  })
   const timezone = getConfig(userId, 'timezone') ?? 'UTC'
   const systemPrompt = buildSystemPrompt(provider, userId)
   const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)

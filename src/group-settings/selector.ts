@@ -220,7 +220,10 @@ export function handleGroupSettingsSelectorCallback(
 
   const match = matchManageableGroup(userId, callbackData.slice('gsel:group:'.length), platformInstanceId)
   if (match.kind !== 'match') {
-    return { handled: true, response: 'That group is no longer available. Run /config or /setup again.' }
+    return {
+      handled: true,
+      response: 'That group is no longer available. Run /config or /setup again.',
+    }
   }
 
   return continueWithTarget(

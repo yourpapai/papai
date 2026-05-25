@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { isWithinThrottleWindow, toGroupUserObservation, toKnownGroupContext } from './registry-helpers.js'
 import type {
   GroupUserObservation,
   UpsertGroupAdminObservationInput,
@@ -25,36 +26,6 @@ export type {
 export { listAdminGroupContextsForUser } from './admin-group-list.js'
 
 const log = logger.child({ scope: 'group-settings:registry' })
-
-const THROTTLE_MS = 5 * 60 * 1000
-
-function isWithinThrottleWindow(lastSeenAtIso: string): boolean {
-  return Date.now() - new Date(lastSeenAtIso).getTime() < THROTTLE_MS
-}
-
-type KnownGroupContextRow = typeof knownGroupContexts.$inferSelect
-
-const toKnownGroupContext = (row: KnownGroupContextRow): KnownGroupContext => ({
-  contextId: row.contextId,
-  provider: row.provider,
-  displayName: row.displayName,
-  parentName: row.parentName,
-  firstSeenAt: row.firstSeenAt,
-  lastSeenAt: row.lastSeenAt,
-})
-
-const toGroupUserObservation = (
-  row: Pick<
-    typeof groupUserObservations.$inferSelect,
-    'provider' | 'contextId' | 'userId' | 'username' | 'displayLabel'
-  >,
-): GroupUserObservation => ({
-  provider: row.provider,
-  contextId: row.contextId,
-  userId: row.userId,
-  username: row.username,
-  displayLabel: row.displayLabel,
-})
 
 const findExistingGroupUserObservation = (
   input: UpsertGroupUserObservationInput,
@@ -84,7 +55,10 @@ const findExistingGroupAdminObservation = (
   input: UpsertGroupAdminObservationInput,
 ): Pick<typeof groupAdminObservations.$inferSelect, 'lastSeenAt' | 'isAdmin'> | undefined =>
   getDrizzleDb()
-    .select({ lastSeenAt: groupAdminObservations.lastSeenAt, isAdmin: groupAdminObservations.isAdmin })
+    .select({
+      lastSeenAt: groupAdminObservations.lastSeenAt,
+      isAdmin: groupAdminObservations.isAdmin,
+    })
     .from(groupAdminObservations)
     .where(
       and(
@@ -207,7 +181,12 @@ export function upsertGroupAdminObservation(input: UpsertGroupAdminObservationIn
   const now = new Date().toISOString()
   upsertGroupAdminObservationRow(input, now)
   log.info(
-    { provider: input.provider, contextId: input.contextId, userId: input.userId, isAdmin: input.isAdmin },
+    {
+      provider: input.provider,
+      contextId: input.contextId,
+      userId: input.userId,
+      isAdmin: input.isAdmin,
+    },
     'Group admin observation upserted',
   )
 }

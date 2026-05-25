@@ -103,7 +103,10 @@ export async function createYouTrackTask(config: YouTrackConfig, params: CreateT
       : task
   } catch (error) {
     log.error(
-      { error: error instanceof Error ? error.message : String(error), projectId: params.projectId },
+      {
+        error: error instanceof Error ? error.message : String(error),
+        projectId: params.projectId,
+      },
       'Failed to create task',
     )
     throw classifyYouTrackError(error, { projectId: params.projectId })
@@ -192,28 +195,47 @@ export async function listYouTrackTasks(
   }
 }
 
+async function buildYouTrackSearchQuery(
+  config: YouTrackConfig,
+  params: { query: string; projectId?: string; assigneeId?: string },
+): Promise<string> {
+  let query = params.query
+  if (params.projectId !== undefined) {
+    // Fetch project to get shortName - YouTrack search queries require shortName, not internal ID
+    const projectRaw = await youtrackFetch(config, 'GET', `/api/admin/projects/${params.projectId}`, {
+      query: { fields: 'shortName' },
+    })
+    const project = z.object({ shortName: z.string() }).parse(projectRaw)
+    query = `project: {${project.shortName}} ${query}`
+  }
+  // Add assignee filter to YouTrack query syntax
+  if (params.assigneeId !== undefined) {
+    query = `assignee: {${params.assigneeId}} ${query}`
+  }
+  return query
+}
+
 export async function searchYouTrackTasks(
   config: YouTrackConfig,
-  params: { query: string; projectId?: string; assigneeId?: string; limit?: number; offset?: number },
+  params: {
+    query: string
+    projectId?: string
+    assigneeId?: string
+    limit?: number
+    offset?: number
+  },
 ): Promise<TaskSearchResult[]> {
   log.debug(
-    { query: params.query, projectId: params.projectId, assigneeId: params.assigneeId, offset: params.offset },
+    {
+      query: params.query,
+      projectId: params.projectId,
+      assigneeId: params.assigneeId,
+      offset: params.offset,
+    },
     'searchTasks',
   )
   try {
-    let query = params.query
-    if (params.projectId !== undefined) {
-      // Fetch project to get shortName - YouTrack search queries require shortName, not internal ID
-      const projectRaw = await youtrackFetch(config, 'GET', `/api/admin/projects/${params.projectId}`, {
-        query: { fields: 'shortName' },
-      })
-      const project = z.object({ shortName: z.string() }).parse(projectRaw)
-      query = `project: {${project.shortName}} ${query}`
-    }
-    // Add assignee filter to YouTrack query syntax
-    if (params.assigneeId !== undefined) {
-      query = `assignee: {${params.assigneeId}} ${query}`
-    }
+    const query = await buildYouTrackSearchQuery(config, params)
     const raw = await youtrackFetch(config, 'GET', '/api/issues', {
       query: {
         fields: ISSUE_LIST_FIELDS,

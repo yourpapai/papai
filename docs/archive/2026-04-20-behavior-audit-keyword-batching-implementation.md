@@ -260,7 +260,11 @@ function getEnvOrFallback(name: string, fallback: string): string {
 }
 
 const apiKey = getEnvOrFallback('OPENAI_API_KEY', 'no-key')
-const provider = createOpenAICompatible({ name: 'behavior-audit-extract', apiKey, baseURL: BASE_URL })
+const provider = createOpenAICompatible({
+  name: 'behavior-audit-extract',
+  apiKey,
+  baseURL: BASE_URL,
+})
 const model = provider(MODEL)
 
 const SYSTEM_PROMPT = `You are a senior software analyst examining a unit test from a Telegram/Discord/Mattermost chat bot called "papai" that manages tasks via LLM tool-calling.
@@ -341,7 +345,11 @@ function getEnvOrFallback(name: string, fallback: string): string {
 }
 
 const apiKey = getEnvOrFallback('OPENAI_API_KEY', 'no-key')
-const provider = createOpenAICompatible({ name: 'behavior-audit-keyword-resolver', apiKey, baseURL: BASE_URL })
+const provider = createOpenAICompatible({
+  name: 'behavior-audit-keyword-resolver',
+  apiKey,
+  baseURL: BASE_URL,
+})
 const model = provider(MODEL)
 
 function sleep(ms: number): Promise<void> {
@@ -770,7 +778,9 @@ test('runPhase1 persists vocabulary updates before marking a test done', async (
     manifest: incremental.createEmptyManifest(),
   })
 
-  const savedVocabulary = JSON.parse(await Bun.file(vocabularyPath).text()) as readonly { readonly slug: string }[]
+  const savedVocabulary = JSON.parse(await Bun.file(vocabularyPath).text()) as readonly {
+    readonly slug: string
+  }[]
   expect(savedVocabulary[0]?.slug).toBe('group-targeting')
   expect(
     progress.phase1.completedTests['tests/tools/sample.test.ts']?.['tests/tools/sample.test.ts::suite > case'],
@@ -1134,7 +1144,12 @@ export interface Phase2Progress {
   completedBatches: Record<string, 'done'>
   consolidations: Record<string, readonly ConsolidatedBehavior[]>
   failedBatches: Record<string, FailedEntry>
-  stats: { batchesTotal: number; batchesDone: number; batchesFailed: number; behaviorsConsolidated: number }
+  stats: {
+    batchesTotal: number
+    batchesDone: number
+    batchesFailed: number
+    behaviorsConsolidated: number
+  }
 }
 ```
 
@@ -1195,7 +1210,11 @@ function groupByPrimaryKeyword(
     ])
   }
 
-  return [...grouped.entries()].map(([batchKey, inputs]) => ({ batchKey, primaryKeyword: batchKey, inputs }))
+  return [...grouped.entries()].map(([batchKey, inputs]) => ({
+    batchKey,
+    primaryKeyword: batchKey,
+    inputs,
+  }))
 }
 ```
 

@@ -30,7 +30,10 @@ function render(
 ): { target: HTMLElement; component: ReturnType<typeof mount> } {
   document.body.innerHTML = '<div id="root"></div>'
   const target = document.getElementById('root')!
-  const component = mount(SessionCard, { target, props: { userId, session, wizard, onSelect: () => {} } })
+  const component = mount(SessionCard, {
+    target,
+    props: { userId, session, wizard, onSelect: () => {} },
+  })
   return { target, component }
 }
 

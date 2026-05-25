@@ -1164,7 +1164,10 @@ describe('buildDiscordReplyContext', () => {
   test('returns undefined when message has no reference', async () => {
     const msg: MessageLike = {
       reference: null,
-      channel: { id: 'chan', messages: { fetch: () => Promise.reject(new Error('should not be called')) } },
+      channel: {
+        id: 'chan',
+        messages: { fetch: () => Promise.reject(new Error('should not be called')) },
+      },
     }
     const result = await buildDiscordReplyContext(msg as never, 'chan-1')
     expect(result).toBeUndefined()
@@ -1180,7 +1183,9 @@ describe('buildDiscordReplyContext', () => {
       reference: { messageId: 'parent-1' },
       channel: {
         id: 'chan-1',
-        messages: { fetch: (id) => (id === 'parent-1' ? Promise.resolve(fetched) : Promise.reject(new Error('404'))) },
+        messages: {
+          fetch: (id) => (id === 'parent-1' ? Promise.resolve(fetched) : Promise.reject(new Error('404'))),
+        },
       },
     }
     const result = await buildDiscordReplyContext(msg as never, 'chan-1')
@@ -1896,7 +1901,10 @@ describe('createDiscordReplyFn', () => {
         id: 'chan-1',
         send: (arg: SendArg) => {
           sends.push(arg)
-          return Promise.resolve({ id: `bot-msg-${String(sends.length)}`, edit: () => Promise.resolve() })
+          return Promise.resolve({
+            id: `bot-msg-${String(sends.length)}`,
+            edit: () => Promise.resolve(),
+          })
         },
         sendTyping: () => {
           typingCalls.push(Date.now())
@@ -2001,7 +2009,10 @@ type SendableChannel = {
     content?: string
     components?: unknown[]
     reply?: { messageReference: string; failIfNotExists: boolean }
-  }) => Promise<{ id: string; edit: (arg: { content?: string; components?: unknown[] }) => Promise<unknown> }>
+  }) => Promise<{
+    id: string
+    edit: (arg: { content?: string; components?: unknown[] }) => Promise<unknown>
+  }>
   sendTyping: () => Promise<void>
 }
 
@@ -2232,7 +2243,10 @@ type DiscordMessageLike = Parameters<typeof mapDiscordMessage>[0] & {
       content?: string
       components?: unknown[]
       reply?: { messageReference: string; failIfNotExists: boolean }
-    }) => Promise<{ id: string; edit: (arg: { content?: string; components?: unknown[] }) => Promise<unknown> }>
+    }) => Promise<{
+      id: string
+      edit: (arg: { content?: string; components?: unknown[] }) => Promise<unknown>
+    }>
     sendTyping: () => Promise<void>
   }
 }
@@ -2731,7 +2745,10 @@ test('resolveUserId returns snowflake as-is when the input is numeric', async ()
   process.env['DISCORD_BOT_TOKEN'] = 'fake-token-123'
   const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
   const provider = new DiscordChatProvider()
-  const result = await provider.resolveUserId('1234567890', { contextId: 'c1', contextType: 'group' })
+  const result = await provider.resolveUserId('1234567890', {
+    contextId: 'c1',
+    contextType: 'group',
+  })
   expect(result).toBe('1234567890')
 })
 
@@ -2766,7 +2783,10 @@ test('resolveUserId searches members in the channel guild for group context', as
   }
   ;(provider as unknown as { __testSetClient: (c: unknown) => void }).__testSetClient(fakeClient)
 
-  const result = await provider.resolveUserId('@alice', { contextId: 'chan-7', contextType: 'group' })
+  const result = await provider.resolveUserId('@alice', {
+    contextId: 'chan-7',
+    contextType: 'group',
+  })
   expect(result).toBe('u-9')
 })
 ```

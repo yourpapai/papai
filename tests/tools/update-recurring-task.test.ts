@@ -188,7 +188,12 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
   })
 
   test('promotes triggerType to cron when schedule is provided for an on_complete task', async () => {
-    getRecurringTaskResult = makeRecord({ triggerType: 'on_complete', rrule: null, dtstartUtc: null, nextRun: null })
+    getRecurringTaskResult = makeRecord({
+      triggerType: 'on_complete',
+      rrule: null,
+      dtstartUtc: null,
+      nextRun: null,
+    })
     deps.updateRecurringTask = (id, updates): RecurringTaskRecord | null => {
       updateRecurringTaskCalls.push({ id, updates })
       return makeRecord({ triggerType: 'cron' })
@@ -209,7 +214,12 @@ describe('makeUpdateRecurringTaskTool — timezone resolution', () => {
   })
 
   test('anchors DTSTART at midnight when promoting on_complete to cron without startDate', async () => {
-    getRecurringTaskResult = makeRecord({ triggerType: 'on_complete', rrule: null, dtstartUtc: null, nextRun: null })
+    getRecurringTaskResult = makeRecord({
+      triggerType: 'on_complete',
+      rrule: null,
+      dtstartUtc: null,
+      nextRun: null,
+    })
     deps.updateRecurringTask = (id, updates): RecurringTaskRecord | null => {
       updateRecurringTaskCalls.push({ id, updates })
       return makeRecord({ triggerType: 'cron' })

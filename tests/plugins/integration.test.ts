@@ -43,7 +43,13 @@ function createTempPlugin({ pluginId, source, manifestPatch }: TempPluginOptions
     description: 'Plugin integration fixture',
     apiVersion: 1,
     main: 'index.js',
-    contributes: { tools: ['echo_context'], promptFragments: ['guidance'], commands: [], jobs: [], configKeys: [] },
+    contributes: {
+      tools: ['echo_context'],
+      promptFragments: ['guidance'],
+      commands: [],
+      jobs: [],
+      configKeys: [],
+    },
     permissions: ['tasks.read'],
     defaultEnabled: false,
     activationTimeoutMs: 5000,
@@ -229,7 +235,11 @@ describe('plugin lifecycle integration', () => {
 
     expect(pluginRegistry.getEntry(plugin.manifest.id)!.state).toBe('error')
     expect(
-      makeTools(createMockProvider(), { storageContextId: 'ctx-enabled', chatUserId: 'user-1', contextType: 'dm' }),
+      makeTools(createMockProvider(), {
+        storageContextId: 'ctx-enabled',
+        chatUserId: 'user-1',
+        contextType: 'dm',
+      }),
     ).not.toHaveProperty('plugin_failing_plugin__echo_context')
   })
 
@@ -246,7 +256,11 @@ describe('plugin lifecycle integration', () => {
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
     setPluginEnabledForContext(plugin.manifest.id, 'ctx-opt-out', false)
 
-    const tools = makeTools(provider, { storageContextId: 'ctx-opt-out', chatUserId: 'user-1', contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: 'ctx-opt-out',
+      chatUserId: 'user-1',
+      contextType: 'dm',
+    })
     expect(tools).not.toHaveProperty('plugin_opt_out_plugin__echo_context')
     expect(buildSystemPrompt(provider, 'ctx-opt-out')).not.toContain('INTEGRATION_PLUGIN_GUIDANCE')
   })

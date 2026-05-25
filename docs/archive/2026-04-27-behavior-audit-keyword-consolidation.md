@@ -148,7 +148,12 @@ const validV4Base = {
     status: 'not-started',
     completedFeatureKeys: {},
     failedFeatureKeys: {},
-    stats: { featureKeysTotal: 0, featureKeysDone: 0, featureKeysFailed: 0, behaviorsConsolidated: 0 },
+    stats: {
+      featureKeysTotal: 0,
+      featureKeysDone: 0,
+      featureKeysFailed: 0,
+      behaviorsConsolidated: 0,
+    },
   },
   phase3: {
     status: 'not-started',
@@ -263,7 +268,13 @@ export function emptyPhase1b(): Phase1bProgress {
     status: 'not-started',
     lastRunAt: null,
     threshold: 0,
-    stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+    stats: {
+      slugsBefore: 0,
+      slugsAfter: 0,
+      mergesApplied: 0,
+      behaviorsUpdated: 0,
+      keywordsRemapped: 0,
+    },
   }
 }
 ```
@@ -443,7 +454,13 @@ export function createEmptyProgressFixture(filesTotal: number): Progress {
       status: 'not-started',
       lastRunAt: null,
       threshold: 0,
-      stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+      stats: {
+        slugsBefore: 0,
+        slugsAfter: 0,
+        mergesApplied: 0,
+        behaviorsUpdated: 0,
+        keywordsRemapped: 0,
+      },
     },
     phase2a: {
       status: 'not-started',
@@ -952,8 +969,18 @@ test('buildConsolidatedVocabulary leaves unmerged entries unchanged', () => {
 
 test('buildConsolidatedVocabulary returns entries sorted by slug', () => {
   const vocab = [
-    { slug: 'zebra', description: '', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-    { slug: 'alpha', description: '', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+    {
+      slug: 'zebra',
+      description: '',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      slug: 'alpha',
+      description: '',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
   ]
   const result = buildConsolidatedVocabulary(vocab, new Map(), '2026-04-27T00:00:00.000Z')
   expect(result[0]!.slug).toBe('alpha')
@@ -1968,7 +1995,13 @@ export async function runPhase1b(progress: Progress, deps: Phase1bDeps = default
       status: 'done',
       lastRunAt: now,
       threshold: 0,
-      stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+      stats: {
+        slugsBefore: 0,
+        slugsAfter: 0,
+        mergesApplied: 0,
+        behaviorsUpdated: 0,
+        keywordsRemapped: 0,
+      },
     }
     await deps.saveProgress(progress)
     return
@@ -1981,7 +2014,13 @@ export async function runPhase1b(progress: Progress, deps: Phase1bDeps = default
       status: 'done',
       lastRunAt: now,
       threshold: CONSOLIDATION_THRESHOLD,
-      stats: { slugsBefore: 0, slugsAfter: 0, mergesApplied: 0, behaviorsUpdated: 0, keywordsRemapped: 0 },
+      stats: {
+        slugsBefore: 0,
+        slugsAfter: 0,
+        mergesApplied: 0,
+        behaviorsUpdated: 0,
+        keywordsRemapped: 0,
+      },
     }
     await deps.saveProgress(progress)
     return

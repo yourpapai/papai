@@ -25,7 +25,11 @@ export function makeGetCommentsTool(provider: TaskProvider): ToolSet[string] {
         return await provider.getComments!(taskId, { limit, offset })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), taskId, tool: 'get_comments' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            taskId,
+            tool: 'get_comments',
+          },
           'Tool execution failed',
         )
         throw error

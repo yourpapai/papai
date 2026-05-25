@@ -85,7 +85,13 @@ describe('YouTrackIdentityResolver interface', () => {
       Promise.resolve(
         new Response(
           JSON.stringify([
-            { id: 'user-1', login: 'alice', name: 'Alice Smith', fullName: 'Alice Smith', email: 'alice@test.com' },
+            {
+              id: 'user-1',
+              login: 'alice',
+              name: 'Alice Smith',
+              fullName: 'Alice Smith',
+              email: 'alice@test.com',
+            },
           ]),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
@@ -146,7 +152,13 @@ describe('YouTrackIdentityResolver interface', () => {
       return Promise.resolve(
         new Response(
           JSON.stringify([
-            { id: 'user-1', login: 'alice', name: 'Alice Smith', fullName: 'Alice Smith', email: 'alice@test.com' },
+            {
+              id: 'user-1',
+              login: 'alice',
+              name: 'Alice Smith',
+              fullName: 'Alice Smith',
+              email: 'alice@test.com',
+            },
           ]),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),

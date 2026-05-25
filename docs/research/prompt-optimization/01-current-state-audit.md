@@ -247,7 +247,10 @@ confidence: number ∈ [0,1]
 When confidence < 0.85 the tool returns, without executing:
 
 ```json
-{ "status": "confirmation_required", "message": "<action>? This action is irreversible — please confirm." }
+{
+  "status": "confirmation_required",
+  "message": "<action>? This action is irreversible — please confirm."
+}
 ```
 
 Tools using this pattern: `delete_task`, `delete_recurring_task`, `delete_status`, `delete_project`, `delete_column`, `remove_label`.

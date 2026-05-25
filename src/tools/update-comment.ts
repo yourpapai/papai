@@ -25,7 +25,11 @@ export function makeUpdateCommentTool(provider: TaskProvider): ToolSet[string] {
         return await provider.updateComment!({ taskId, commentId: activityId, body: comment })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), activityId, tool: 'update_comment' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            activityId,
+            tool: 'update_comment',
+          },
           'Tool execution failed',
         )
         throw error

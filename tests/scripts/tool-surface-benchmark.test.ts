@@ -33,7 +33,10 @@ const successfulGenerateText =
   async (input: Parameters<GenerateScenarioText>[0]): Promise<GenerateTextResult> => {
     const attemptNumber = getAttemptNumber()
     failUntilThirdAttempt(attemptNumber)
-    await executeCreateTask(input.tools, { title: 'Draft tool benchmark summary', priority: 'high' })
+    await executeCreateTask(input.tools, {
+      title: 'Draft tool benchmark summary',
+      priority: 'high',
+    })
 
     return {
       steps: [{ toolCalls: [{ toolName: 'create_task' }] }, {}],
@@ -94,7 +97,10 @@ describe('tool-surface benchmark runner', () => {
     const result = await runScenario(
       'model-a',
       'direct_full',
-      { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
+      {
+        id: 'create_basic_task',
+        prompt: 'Create a high priority task named Draft tool benchmark summary.',
+      },
       parseBenchmarkArgs([]),
       'test-key',
       { generateScenarioText: generateScenarioTextImpl },
@@ -114,7 +120,10 @@ describe('tool-surface benchmark runner', () => {
     const result = await runScenario(
       'model-a',
       'direct_full',
-      { id: 'create_basic_task', prompt: 'Create a high priority task named Draft tool benchmark summary.' },
+      {
+        id: 'create_basic_task',
+        prompt: 'Create a high priority task named Draft tool benchmark summary.',
+      },
       parseBenchmarkArgs([]),
       'test-key',
       { generateScenarioText: generateScenarioTextImpl },

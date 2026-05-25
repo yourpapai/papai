@@ -37,7 +37,10 @@ export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promis
     await interaction.deferUpdate()
   } catch (error) {
     log.warn(
-      { error: error instanceof Error ? error.message : String(error), customId: interaction.customId },
+      {
+        error: error instanceof Error ? error.message : String(error),
+        customId: interaction.customId,
+      },
       'Failed to deferUpdate Discord button interaction',
     )
   }

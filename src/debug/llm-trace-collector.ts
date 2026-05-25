@@ -47,7 +47,10 @@ type PendingLlmTrace = {
 }
 
 type TraceEvent = { type: string; timestamp: number; data: Record<string, unknown> }
-type TraceCallbacks = { pushTrace: (trace: LlmTrace) => void; broadcastTrace: (trace: LlmTrace, ts: number) => void }
+type TraceCallbacks = {
+  pushTrace: (trace: LlmTrace) => void
+  broadcastTrace: (trace: LlmTrace, ts: number) => void
+}
 
 const LLM_TRACE_CAPACITY = 65535
 

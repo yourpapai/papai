@@ -118,7 +118,9 @@ Oxlint now supports JS plugins with an ESLint-compatible API. A **project-specif
 import { definePlugin, defineRule } from '@oxlint/plugins'
 
 const noInlineFetchMock = defineRule({
-  meta: { messages: { found: "Don't mock fetch inline. Use restoreFetch() from tests/test-helpers.ts" } },
+  meta: {
+    messages: { found: "Don't mock fetch inline. Use restoreFetch() from tests/test-helpers.ts" },
+  },
   create(context) {
     return {
       AssignmentExpression(node) {

@@ -69,7 +69,9 @@ const normalizeMockDueDateInput = (dueDate: ToolDueDateInput | undefined, timezo
 const formatMockDueDateOutput = (dueDate: string | null | undefined, timezone: string): string | null | undefined =>
   dueDate === undefined || dueDate === null ? dueDate : utcToLocal(dueDate, timezone)
 
-const normalizeMockListTaskParams = (params: Readonly<ListTasksParams>): ListTasksParams => ({ ...params })
+const normalizeMockListTaskParams = (params: Readonly<ListTasksParams>): ListTasksParams => ({
+  ...params,
+})
 
 const normalizeYouTrackMockDueDateInput = (dueDate: ToolDueDateInput | undefined): string | undefined => dueDate?.date
 
@@ -103,13 +105,28 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
     configRequirements: [],
     preferredUserIdentifier: 'id',
     createTask: mock(() =>
-      Promise.resolve({ id: 'task-1', title: 'Test', status: 'todo', url: 'https://test.com/task/1' }),
+      Promise.resolve({
+        id: 'task-1',
+        title: 'Test',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      }),
     ),
     getTask: mock(() =>
-      Promise.resolve({ id: 'task-1', title: 'Test', status: 'todo', url: 'https://test.com/task/1' }),
+      Promise.resolve({
+        id: 'task-1',
+        title: 'Test',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      }),
     ),
     updateTask: mock(() =>
-      Promise.resolve({ id: 'task-1', title: 'Test', status: 'todo', url: 'https://test.com/task/1' }),
+      Promise.resolve({
+        id: 'task-1',
+        title: 'Test',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      }),
     ),
     listTasks: mock(() => Promise.resolve([])),
     searchTasks: mock(
@@ -193,7 +210,13 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
       }),
     ),
     updateWorkItem: mock((_taskId: string, workItemId: string) =>
-      Promise.resolve({ id: workItemId, taskId: _taskId, author: 'user', date: '2024-01-15', duration: 'PT1H' }),
+      Promise.resolve({
+        id: workItemId,
+        taskId: _taskId,
+        author: 'user',
+        date: '2024-01-15',
+        duration: 'PT1H',
+      }),
     ),
     deleteWorkItem: mock((_taskId: string, workItemId: string) => Promise.resolve({ id: workItemId })),
     listAgiles: mock(() => Promise.resolve([{ id: 'agile-1', name: 'Team Board' }])),

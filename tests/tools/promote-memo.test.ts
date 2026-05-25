@@ -21,7 +21,12 @@ describe('promote_memo', () => {
 
   test('promotes memo to task', async () => {
     const createTask = mock(() =>
-      Promise.resolve({ id: 'task-1', title: 'Test Task', status: 'todo', url: 'https://test.com/task/1' }),
+      Promise.resolve({
+        id: 'task-1',
+        title: 'Test Task',
+        status: 'todo',
+        url: 'https://test.com/task/1',
+      }),
     )
     const provider = createMockProvider({ createTask })
     const tool = makePromoteMemoTool(provider, testUserId)

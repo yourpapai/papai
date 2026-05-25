@@ -31,7 +31,13 @@ export async function updateColumn({
   isFinal?: boolean
 }): Promise<UpdateColumnResponse> {
   log.debug(
-    { columnId, hasName: name !== undefined, hasIcon: icon !== undefined, hasColor: color !== undefined, isFinal },
+    {
+      columnId,
+      hasName: name !== undefined,
+      hasIcon: icon !== undefined,
+      hasColor: color !== undefined,
+      isFinal,
+    },
     'updateColumn called',
   )
 

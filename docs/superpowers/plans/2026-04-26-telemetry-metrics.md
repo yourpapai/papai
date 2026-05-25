@@ -873,7 +873,9 @@ const eventHandler =
           if (tokenUsage.inputTokens !== undefined) instruments.llmTokensInput.add(tokenUsage.inputTokens, { model })
           if (tokenUsage.outputTokens !== undefined) instruments.llmTokensOutput.add(tokenUsage.outputTokens, { model })
         }
-        instruments.llmSteps.record(Number(data.steps ?? 0), { model: String(data.model ?? 'unknown') })
+        instruments.llmSteps.record(Number(data.steps ?? 0), {
+          model: String(data.model ?? 'unknown'),
+        })
         break
       }
       case 'llm:error': {
@@ -886,10 +888,16 @@ const eventHandler =
       case 'llm:tool_result': {
         const toolName = String(data.toolName ?? 'unknown')
         const success = data.success === true
-        instruments.toolExecutionDuration.record(Number(data.durationMs ?? 0), { tool_name: toolName, success })
+        instruments.toolExecutionDuration.record(Number(data.durationMs ?? 0), {
+          tool_name: toolName,
+          success,
+        })
         instruments.toolExecutionTotal.add(1, { tool_name: toolName, success })
         if (!success) {
-          instruments.toolExecutionErrors.add(1, { tool_name: toolName, error_type: 'tool_failure' })
+          instruments.toolExecutionErrors.add(1, {
+            tool_name: toolName,
+            error_type: 'tool_failure',
+          })
         }
         break
       }
@@ -1211,7 +1219,10 @@ After `const result = buildResult(...)` and before `deps.putCachedWebFetch(...)`
 ```typescript
 const instruments = getInstruments()
 const fetchDuration = deps.now() - requestStartedAt
-instruments.webFetchDuration.record(fetchDuration, { status: 'success', content_type: result.contentType })
+instruments.webFetchDuration.record(fetchDuration, {
+  status: 'success',
+  content_type: result.contentType,
+})
 instruments.webFetchTotal.add(1, { status: 'success' })
 ```
 
@@ -1256,7 +1267,10 @@ getInstruments().webFetchErrors.add(1, { error_code: 'rate_limited' })
 ```typescript
 const instruments = getInstruments()
 const fetchDuration = deps.now() - requestStartedAt
-instruments.webFetchDuration.record(fetchDuration, { status: 'success', content_type: result.contentType })
+instruments.webFetchDuration.record(fetchDuration, {
+  status: 'success',
+  content_type: result.contentType,
+})
 instruments.webFetchTotal.add(1, { status: 'success' })
 ```
 

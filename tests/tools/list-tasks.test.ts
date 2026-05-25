@@ -229,7 +229,10 @@ describe('list_tasks identity resolution', () => {
       { toolCallId: '1', messages: [] },
     )
 
-    expect(capturedParams).toEqual({ dueAfter: '2026-03-25T23:45:00+02:00', dueBefore: '2026-03-31' })
+    expect(capturedParams).toEqual({
+      dueAfter: '2026-03-25T23:45:00+02:00',
+      dueBefore: '2026-03-31',
+    })
   })
 
   test('should work without assigneeId filter', async () => {

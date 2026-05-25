@@ -51,7 +51,11 @@ Logic per approved entry:
 ```typescript
 export type PluginContextEligibility =
   | { eligible: true }
-  | { eligible: false; reason: 'inactive' | 'disabled' | 'config_missing'; missingKeys?: readonly string[] }
+  | {
+      eligible: false
+      reason: 'inactive' | 'disabled' | 'config_missing'
+      missingKeys?: readonly string[]
+    }
   | { eligible: false; reason: 'capability_missing'; missingCapabilities: readonly string[] }
 ```
 

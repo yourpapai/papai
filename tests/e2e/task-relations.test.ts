@@ -94,7 +94,11 @@ describe('E2E: Task Relations', () => {
   })
 
   test('maps blocks to blocked_by on the target task', async () => {
-    const blockingTask = await createTask({ config: kaneoConfig, projectId, title: 'Blocking task' })
+    const blockingTask = await createTask({
+      config: kaneoConfig,
+      projectId,
+      title: 'Blocking task',
+    })
     const blockedTask = await createTask({ config: kaneoConfig, projectId, title: 'Blocked task' })
     testClient.trackTask(blockingTask.id)
     testClient.trackTask(blockedTask.id)
@@ -107,7 +111,10 @@ describe('E2E: Task Relations', () => {
     })
 
     const blockedTaskWithRel = await getTask({ config: kaneoConfig, taskId: blockedTask.id })
-    expect(blockedTaskWithRel.relations).toContainEqual({ type: 'blocked_by', taskId: blockingTask.id })
+    expect(blockedTaskWithRel.relations).toContainEqual({
+      type: 'blocked_by',
+      taskId: blockingTask.id,
+    })
 
     const rawRelations = await kaneoApiJsonParsed(`/task-relation/${blockedTask.id}`, z.array(RawTaskRelationSchema))
     const rawRelation = requireRelation(rawRelations, blockingTask.id, blockedTask.id)
@@ -179,7 +186,12 @@ describe('E2E: Task Relations', () => {
     testClient.trackTask(task1.id)
     testClient.trackTask(task2.id)
 
-    await addTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task2.id, type: 'related' })
+    await addTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task2.id,
+      type: 'related',
+    })
     const updated = await updateTaskRelation({
       config: kaneoConfig,
       taskId: task1.id,
@@ -200,8 +212,18 @@ describe('E2E: Task Relations', () => {
     testClient.trackTask(task1.id)
     testClient.trackTask(task2.id)
 
-    await addTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task2.id, type: 'related' })
-    await updateTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task2.id, type: 'blocks' })
+    await addTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task2.id,
+      type: 'related',
+    })
+    await updateTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task2.id,
+      type: 'blocks',
+    })
 
     const task1WithRel = await getTask({ config: kaneoConfig, taskId: task1.id })
     expect(task1WithRel.relations).toContainEqual({ type: 'blocks', taskId: task2.id })
@@ -222,8 +244,17 @@ describe('E2E: Task Relations', () => {
     testClient.trackTask(task1.id)
     testClient.trackTask(task2.id)
 
-    await addTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task2.id, type: 'related' })
-    const removed = await removeTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task2.id })
+    await addTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task2.id,
+      type: 'related',
+    })
+    const removed = await removeTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task2.id,
+    })
 
     expect(removed.success).toBe(true)
 
@@ -239,8 +270,18 @@ describe('E2E: Task Relations', () => {
     testClient.trackTask(task2.id)
     testClient.trackTask(task3.id)
 
-    await addTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task2.id, type: 'related' })
-    await addTaskRelation({ config: kaneoConfig, taskId: task1.id, relatedTaskId: task3.id, type: 'blocks' })
+    await addTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task2.id,
+      type: 'related',
+    })
+    await addTaskRelation({
+      config: kaneoConfig,
+      taskId: task1.id,
+      relatedTaskId: task3.id,
+      type: 'blocks',
+    })
 
     const task1WithRels = await getTask({ config: kaneoConfig, taskId: task1.id })
     expect(task1WithRels.relations).toContainEqual({ type: 'related', taskId: task2.id })

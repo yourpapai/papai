@@ -43,7 +43,11 @@ export function getStatsAnonymitySalt(): string {
     .values({ key: STATS_ANONYMITY_SALT_KEY, value: fresh, updatedAt: now, updatedBy: 'stats' })
     .onConflictDoUpdate({
       target: systemConfig.key,
-      set: { value: sql`excluded.value`, updatedAt: sql`excluded.updated_at`, updatedBy: sql`excluded.updated_by` },
+      set: {
+        value: sql`excluded.value`,
+        updatedAt: sql`excluded.updated_at`,
+        updatedBy: sql`excluded.updated_by`,
+      },
     })
     .run()
   cachedSalt = fresh

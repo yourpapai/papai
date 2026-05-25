@@ -4,10 +4,12 @@
 // See LICENSE in the project root for details.
 
 import { APICallError } from '@ai-sdk/provider'
+import type { ModelMessage } from 'ai'
 
 import type { ReplyFn } from './chat/types.js'
 import { emitGlobal, emitUser } from './debug/event-bus.js'
 import { extractAppError, getAppErrorDetails, getUserMessage } from './errors.js'
+import { saveHistory } from './history.js'
 import { logger } from './logger.js'
 import { buildToolFailureResult, isToolFailureResult, type ToolFailureResult } from './tool-failure.js'
 
@@ -180,4 +182,40 @@ export const emitLlmError = (
     },
     turnId,
   )
+}
+
+const orchestratorLog = logger.child({ scope: 'llm-orchestrator' })
+
+export const logProcessMessage = (
+  contextId: string,
+  configContextId: string | undefined,
+  chatUserId: string,
+  userText: string,
+  attachmentIds: readonly string[],
+  turnId: string,
+): void => {
+  orchestratorLog.debug(
+    { contextId, configContextId, chatUserId, userText, newAttachmentIds: attachmentIds, turnId },
+    'processMessage called',
+  )
+  orchestratorLog.info({ contextId, chatUserId, messageLength: userText.length, turnId }, 'Message received from user')
+}
+
+type HandleLlmTurnErrorArgs = {
+  reply: ReplyFn
+  contextId: string
+  chatUserId: string
+  contextType: 'dm' | 'group'
+  mainModel: string
+  startedAt: number
+  baseHistory: readonly ModelMessage[]
+  error: unknown
+  turnId: string
+}
+
+export const handleLlmTurnError = async (args: HandleLlmTurnErrorArgs): Promise<void> => {
+  const { reply, contextId, chatUserId, contextType, mainModel, startedAt, baseHistory, error, turnId } = args
+  emitLlmError(contextId, chatUserId, contextType, mainModel, startedAt, baseHistory.length + 1, error, turnId)
+  saveHistory(contextId, baseHistory)
+  await handleOrchestratorMessageError(reply, contextId, error)
 }

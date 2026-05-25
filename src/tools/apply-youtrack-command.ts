@@ -62,51 +62,60 @@ const rejectBulkCommand = (query: string, taskCount: number): never => {
   )
 }
 
+const applyYouTrackCommandInputSchema = z.object({
+  query: NON_EMPTY_STRING.describe('The YouTrack command string to apply, for example "for me" or "State In Progress"'),
+  taskIds: TASK_IDS_SCHEMA,
+  comment: z.string().optional().describe('Optional comment to add while applying the command'),
+  silent: z.boolean().optional().describe('Whether to suppress notifications for this command when supported'),
+  confidence: confidenceField.optional(),
+})
+
+async function executeApplyYouTrackCommand(
+  provider: Readonly<TaskProvider>,
+  { query, taskIds, comment, silent, confidence }: z.infer<typeof applyYouTrackCommandInputSchema>,
+): Promise<unknown> {
+  const applyCommand = provider.applyCommand
+  if (applyCommand === undefined) {
+    throw new Error('YouTrack command support is unavailable')
+  }
+
+  if (taskIds.length > 1) {
+    rejectBulkCommand(query, taskIds.length)
+  }
+
+  if (requiresConfirmation(query, comment, silent)) {
+    const gate = checkConfidence(confidence ?? 0, describeAction(query, taskIds.length, comment, silent))
+    if (gate !== null) {
+      log.warn(
+        { query, taskCount: taskIds.length, confidence },
+        'apply_youtrack_command blocked — confirmation required',
+      )
+      return gate
+    }
+  }
+
+  try {
+    const result: TaskCommandResult = await applyCommand({ query, taskIds, comment, silent })
+    log.info({ query, taskCount: taskIds.length }, 'YouTrack command applied via tool')
+    return result
+  } catch (error) {
+    log.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        query,
+        tool: 'apply_youtrack_command',
+      },
+      'Tool execution failed',
+    )
+    throw error
+  }
+}
+
 export function makeApplyYouTrackCommandTool(provider: Readonly<TaskProvider>): ToolSet[string] {
   return tool({
     description:
       'Apply a YouTrack command to a single YouTrack issue. Use this only for YouTrack-native command workflows that do not fit the structured tools.',
-    inputSchema: z.object({
-      query: NON_EMPTY_STRING.describe(
-        'The YouTrack command string to apply, for example "for me" or "State In Progress"',
-      ),
-      taskIds: TASK_IDS_SCHEMA,
-      comment: z.string().optional().describe('Optional comment to add while applying the command'),
-      silent: z.boolean().optional().describe('Whether to suppress notifications for this command when supported'),
-      confidence: confidenceField.optional(),
-    }),
-    execute: async ({ query, taskIds, comment, silent, confidence }) => {
-      const applyCommand = provider.applyCommand
-      if (applyCommand === undefined) {
-        throw new Error('YouTrack command support is unavailable')
-      }
-
-      if (taskIds.length > 1) {
-        rejectBulkCommand(query, taskIds.length)
-      }
-
-      if (requiresConfirmation(query, comment, silent)) {
-        const gate = checkConfidence(confidence ?? 0, describeAction(query, taskIds.length, comment, silent))
-        if (gate !== null) {
-          log.warn(
-            { query, taskCount: taskIds.length, confidence },
-            'apply_youtrack_command blocked — confirmation required',
-          )
-          return gate
-        }
-      }
-
-      try {
-        const result: TaskCommandResult = await applyCommand({ query, taskIds, comment, silent })
-        log.info({ query, taskCount: taskIds.length }, 'YouTrack command applied via tool')
-        return result
-      } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error), query, tool: 'apply_youtrack_command' },
-          'Tool execution failed',
-        )
-        throw error
-      }
-    },
+    inputSchema: applyYouTrackCommandInputSchema,
+    execute: (params) => executeApplyYouTrackCommand(provider, params),
   })
 }

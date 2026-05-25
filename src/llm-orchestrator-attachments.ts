@@ -14,6 +14,8 @@ import {
   supportsAttachmentModelInput,
 } from './attachments/index.js'
 import type { AttachmentRef, StoredAttachment } from './attachments/types.js'
+import { getUserTimezoneOrDefault } from './utils/config-timezone.js'
+import { formatCurrentTimeTag } from './utils/current-time-format.js'
 
 type AttachmentPart =
   | { type: 'text'; text: string }
@@ -46,13 +48,17 @@ const loadAttachmentRecords = async (
 
 export const buildUserTurnMessages = async (
   contextId: string,
+  chatUserId: string,
   modelName: string,
   text: string,
   newAttachmentIds: readonly string[],
 ): Promise<{ modelMessage: ModelMessage; historyMessage: ModelMessage }> => {
+  const timeTag = formatCurrentTimeTag(new Date(), getUserTimezoneOrDefault(chatUserId))
+  const prefixedText = `${timeTag}\n${text}`
+
   const textOnly = (): { modelMessage: ModelMessage; historyMessage: ModelMessage } => ({
-    modelMessage: { role: 'user', content: text } as ModelMessage,
-    historyMessage: { role: 'user', content: text } as ModelMessage,
+    modelMessage: { role: 'user', content: prefixedText } as ModelMessage,
+    historyMessage: { role: 'user', content: prefixedText } as ModelMessage,
   })
 
   if (!isS3Configured()) return textOnly()
@@ -61,7 +67,7 @@ export const buildUserTurnMessages = async (
   const selected = selectAttachmentsForTurn({ text, newAttachmentIds, activeAttachments })
 
   const historyLines = buildHistoryAttachmentLines(selected)
-  const historyContent = historyLines.length === 0 ? text : `${historyLines.join('\n')}\n\n${text}`
+  const historyContent = historyLines.length === 0 ? prefixedText : `${timeTag}\n${historyLines.join('\n')}\n\n${text}`
   const historyMessage: ModelMessage = { role: 'user', content: historyContent }
 
   if (selected.length === 0 || !supportsAttachmentModelInput(modelName)) {
@@ -74,7 +80,7 @@ export const buildUserTurnMessages = async (
     const part = recordToPart(record)
     if (part !== null) parts.push(part)
   }
-  parts.push({ type: 'text', text })
+  parts.push({ type: 'text', text: prefixedText })
 
   return { modelMessage: { role: 'user', content: parts } as ModelMessage, historyMessage }
 }

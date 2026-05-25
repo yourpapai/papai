@@ -52,7 +52,10 @@ export function makeCreateDeferredPromptTool(
         return executeCreate(userId, input, { userId: actorUserId, storageContextId, contextType, username })
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'create_deferred_prompt' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'create_deferred_prompt',
+          },
           'Tool execution failed',
         )
         throw error

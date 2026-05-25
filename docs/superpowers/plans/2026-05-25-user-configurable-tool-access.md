@@ -268,7 +268,10 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
 }
 
 export function serializeToolPrefs(prefs: ToolPrefs): string {
-  return JSON.stringify({ disabledDomains: prefs.disabledDomains, toolOverrides: prefs.toolOverrides })
+  return JSON.stringify({
+    disabledDomains: prefs.disabledDomains,
+    toolOverrides: prefs.toolOverrides,
+  })
 }
 
 export function getToolPrefs(contextId: string): ToolPrefs {
@@ -418,14 +421,22 @@ afterEach(() => {
 describe('makeTools preference filtering', () => {
   it('returns the full set when no prefs are configured', () => {
     const provider = makeFakeProvider()
-    const tools = makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: CONTEXT,
+      chatUserId: CONTEXT,
+      contextType: 'dm',
+    })
     expect(Object.keys(tools)).toContain('create_task')
   })
 
   it('removes a tool whose domain is disabled', () => {
     const provider = makeFakeProvider()
     setToolPrefs(CONTEXT, { disabledDomains: ['memo'], toolOverrides: {} })
-    const tools = makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: CONTEXT,
+      chatUserId: CONTEXT,
+      contextType: 'dm',
+    })
     expect(Object.keys(tools)).not.toContain('save_memo')
     expect(Object.keys(tools)).toContain('create_task')
   })
@@ -433,7 +444,11 @@ describe('makeTools preference filtering', () => {
   it('honors a per-tool override that disables one tool in an enabled domain', () => {
     const provider = makeFakeProvider()
     setToolPrefs(CONTEXT, { disabledDomains: [], toolOverrides: { create_task: false } })
-    const tools = makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: CONTEXT,
+      chatUserId: CONTEXT,
+      contextType: 'dm',
+    })
     expect(Object.keys(tools)).not.toContain('create_task')
     expect(Object.keys(tools)).toContain('search_tasks')
   })
@@ -703,7 +718,10 @@ const FRAGMENTS: readonly PromptFragment[] = [
   { text: PROACTIVE, requiredTools: [] },
   { text: WEB_FETCH, requiredTools: ['web_fetch'] },
   { text: WORKFLOW, requiredTools: [] },
-  { text: DESTRUCTIVE, requiredTools: ['delete_task', 'delete_project', 'delete_status', 'remove_label'] },
+  {
+    text: DESTRUCTIVE,
+    requiredTools: ['delete_task', 'delete_project', 'delete_status', 'remove_label'],
+  },
   { text: RELATIONS, requiredTools: ['add_task_relation', 'update_task_relation'] },
   { text: MEMOS, requiredTools: ['save_memo', 'search_memos', 'list_memos'] },
 ]
@@ -925,7 +943,10 @@ function buildFullToolSet(
     mode: 'proactive',
     contextType,
   })
-  return { tools: routeToolsForMessage(prompt, fullTools).tools, enabledToolNames: new Set(Object.keys(fullTools)) }
+  return {
+    tools: routeToolsForMessage(prompt, fullTools).tools,
+    enabledToolNames: new Set(Object.keys(fullTools)),
+  }
 }
 ```
 
@@ -1004,7 +1025,10 @@ describe('buildDomainListView', () => {
   })
 
   it('marks a partially-disabled domain', () => {
-    const view = buildDomainListView('ctx', AVAILABLE, { disabledDomains: [], toolOverrides: { delete_task: false } })
+    const view = buildDomainListView('ctx', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: { delete_task: false },
+    })
     const taskRow = view.text.split('\n').find((l) => l.toLowerCase().includes('task'))
     expect(taskRow).toContain('🟡')
   })
@@ -1012,7 +1036,10 @@ describe('buildDomainListView', () => {
 
 describe('buildDomainDrillView', () => {
   it('renders per-tool buttons with risk labels for the domain', () => {
-    const view = buildDomainDrillView('ctx', 'task', AVAILABLE, { disabledDomains: [], toolOverrides: {} })
+    const view = buildDomainDrillView('ctx', 'task', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:delete_task:'))).toBe(true)
     expect(view.text).toContain('⚠️') // delete_task is destructive
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:back:'))).toBe(true)

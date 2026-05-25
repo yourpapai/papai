@@ -26,7 +26,11 @@ export function makeCreateProjectTool(provider: TaskProvider): ToolSet[string] {
         return project
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), name, tool: 'create_project' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            name,
+            tool: 'create_project',
+          },
           'Tool execution failed',
         )
         throw error

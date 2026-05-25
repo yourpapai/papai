@@ -34,7 +34,11 @@ import type { Progress } from './progress.js'
 import { writeConsolidatedFile } from './report-writer.js'
 
 type ConsolidationProcessResult =
-  | { readonly kind: 'consolidated'; readonly manifest: ConsolidatedManifest; readonly usage: AgentUsage }
+  | {
+      readonly kind: 'consolidated'
+      readonly manifest: ConsolidatedManifest
+      readonly usage: AgentUsage
+    }
   | { readonly kind: 'failed'; readonly manifest: ConsolidatedManifest }
   | { readonly kind: 'skipped'; readonly manifest: ConsolidatedManifest }
 

@@ -33,7 +33,11 @@ export type ToolClassification = {
   risk: ToolRisk
 }
 
-const read = (domain: ToolDomain): ToolClassification => ({ domain, operation: 'read', risk: 'read' })
+const read = (domain: ToolDomain): ToolClassification => ({
+  domain,
+  operation: 'read',
+  risk: 'read',
+})
 const write = (domain: ToolDomain, operation: Exclude<ToolOperation, 'read'>): ToolClassification => ({
   domain,
   operation,

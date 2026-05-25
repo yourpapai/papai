@@ -84,7 +84,13 @@ async function maybeCreateRemainingWorkDoc(
   }
 
   const remainingDocFile = await writeRemainingWorkDoc(planFile, check.status, work, dryRun)
-  return { kind: 'skipped', planFile, status: check.status, reason: check.evidence, remainingDocFile }
+  return {
+    kind: 'skipped',
+    planFile,
+    status: check.status,
+    reason: check.evidence,
+    remainingDocFile,
+  }
 }
 
 async function runAdrAndArchiveFiles(

@@ -164,7 +164,11 @@ export function makeSubjectStats(overrides: Partial<SubjectStats> = {}): Subject
     conversationHistory: { turnCount: 18, summaryPresent: true },
     userIdentityMappings: { kaneo: 1 },
     stagedFiles: { total: 1, byStatus: { staged: 1 }, bytesTotal: 2_048 },
-    userBlock: { addedAt: '2026-05-01T00:00:00.000Z', addedByPresent: true, kaneoWorkspacePresent: true },
+    userBlock: {
+      addedAt: '2026-05-01T00:00:00.000Z',
+      addedByPresent: true,
+      kaneoWorkspacePresent: true,
+    },
     groupBlock: null,
     webFetches: { totalRequests: 11 },
     llmUsage: { rowCount: 42, inputTokensTotal: 18_400, outputTokensTotal: 9_200 },

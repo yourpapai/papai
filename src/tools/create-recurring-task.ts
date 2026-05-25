@@ -45,7 +45,11 @@ const inputSchema = z
   })
   .superRefine(({ triggerType, schedule }, ctx) => {
     if (triggerType === 'cron' && schedule === undefined) {
-      ctx.addIssue({ code: 'custom', message: "schedule is required when triggerType is 'cron'", path: ['schedule'] })
+      ctx.addIssue({
+        code: 'custom',
+        message: "schedule is required when triggerType is 'cron'",
+        path: ['schedule'],
+      })
     }
     if (triggerType === 'on_complete' && schedule !== undefined) {
       ctx.addIssue({
@@ -89,12 +93,28 @@ function executeCreate(userId: string, input: Input, deps: CreateRecurringTaskDe
     timezone: userTimezone,
   })
 
+  const result = buildRecurringTaskResult(record)
+  log.info({ id: record.id, title: input.title, schedule: result.schedule }, 'Recurring task created via tool')
+  return result
+}
+
+function buildRecurringTaskResult(record: RecurringTaskRecord): {
+  id: string
+  title: string
+  projectId: string
+  triggerType: TriggerType
+  schedule: string
+  nextRun: string | null | undefined
+  enabled: boolean
+} {
   const schedule =
     record.triggerType === 'cron' && record.rrule !== null && record.dtstartUtc !== null
-      ? describeCompiledRecurrence({ rrule: record.rrule, dtstartUtc: record.dtstartUtc, timezone: record.timezone })
+      ? describeCompiledRecurrence({
+          rrule: record.rrule,
+          dtstartUtc: record.dtstartUtc,
+          timezone: record.timezone,
+        })
       : 'after completion of current instance'
-
-  log.info({ id: record.id, title: input.title, schedule }, 'Recurring task created via tool')
 
   return {
     id: record.id,
@@ -120,7 +140,10 @@ export function makeCreateRecurringTaskTool(
         return executeCreate(userId, input, deps)
       } catch (error) {
         log.error(
-          { error: error instanceof Error ? error.message : String(error), tool: 'create_recurring_task' },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            tool: 'create_recurring_task',
+          },
           'Tool execution failed',
         )
         throw error

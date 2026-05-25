@@ -48,7 +48,11 @@ describe('makeTools', () => {
 describe('makeTools preference filtering', () => {
   test('returns the full set when no prefs are configured', () => {
     const provider = createMockProvider()
-    const tools = makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: CONTEXT,
+      chatUserId: CONTEXT,
+      contextType: 'dm',
+    })
     expect(Object.keys(tools)).toContain('create_task')
     expect(Object.keys(tools)).toContain('save_memo')
   })
@@ -56,7 +60,11 @@ describe('makeTools preference filtering', () => {
   test('removes a tool whose domain is disabled', () => {
     const provider = createMockProvider()
     setToolPrefs(CONTEXT, { disabledDomains: ['memo'], toolOverrides: {} })
-    const tools = makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: CONTEXT,
+      chatUserId: CONTEXT,
+      contextType: 'dm',
+    })
     expect(Object.keys(tools)).not.toContain('save_memo')
     expect(Object.keys(tools)).toContain('create_task')
   })
@@ -64,7 +72,11 @@ describe('makeTools preference filtering', () => {
   test('honors a per-tool override that disables one tool in an enabled domain', () => {
     const provider = createMockProvider()
     setToolPrefs(CONTEXT, { disabledDomains: [], toolOverrides: { create_task: false } })
-    const tools = makeTools(provider, { storageContextId: CONTEXT, chatUserId: CONTEXT, contextType: 'dm' })
+    const tools = makeTools(provider, {
+      storageContextId: CONTEXT,
+      chatUserId: CONTEXT,
+      contextType: 'dm',
+    })
     expect(Object.keys(tools)).not.toContain('create_task')
     expect(Object.keys(tools)).toContain('search_tasks')
   })
