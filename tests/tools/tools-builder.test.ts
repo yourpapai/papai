@@ -105,7 +105,7 @@ describe('buildTools', () => {
       projectId: 'project-1',
       triggerType: 'on_complete',
     })
-    createAlertPrompt(scopedContextId, 'scoped alert', { field: 'task.status', op: 'eq', value: 'done' })
+    createAlertPrompt(rawChatUserId, 'raw actor alert', { field: 'task.status', op: 'eq', value: 'done' })
     await getToolExecutor(tools['set_my_identity'])({ claim: "I'm alice" })
 
     expect(listMemos(scopedContextId).map((memo) => memo.content)).toContain('scoped memo')
@@ -115,8 +115,8 @@ describe('buildTools', () => {
     const deferredList = await getToolExecutor(tools['list_deferred_prompts'])({})
     expect(isDeferredListResult(deferredList)).toBe(true)
     assertDeferredListResult(deferredList)
-    expect(deferredList.prompts.map((prompt) => prompt.prompt)).toContain('scoped alert')
-    expect(listAlertPrompts(rawChatUserId).map((prompt) => prompt.prompt)).not.toContain('scoped alert')
+    expect(deferredList.prompts.map((prompt) => prompt.prompt)).toContain('raw actor alert')
+    expect(listAlertPrompts(scopedContextId).map((prompt) => prompt.prompt)).not.toContain('raw actor alert')
     const rawIdentity = getIdentityMapping(rawChatUserId, provider.name)
     expect(rawIdentity).not.toBeNull()
     expect(rawIdentity!.providerUserLogin).toBe('alice')

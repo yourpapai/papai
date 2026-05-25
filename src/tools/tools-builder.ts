@@ -279,7 +279,7 @@ export function buildTools(
   addWebFetchTool(tools, contextId, storageOwnerId, contextType)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (mode === 'normal' && storageOwnerId !== undefined) {
-    addDeferredPromptTools(tools, storageOwnerId, contextId, contextType, username)
+    addDeferredPromptTools(tools, storageOwnerId, chatUserId, contextId, contextType, username)
   }
   return tools
 }

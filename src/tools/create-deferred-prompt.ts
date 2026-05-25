@@ -20,12 +20,19 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ scope: 'tool:create-deferred-prompt' })
 
+function resolveActorUserId(userId: string, actorUserId: string | undefined): string {
+  if (actorUserId === undefined) return userId
+  return actorUserId
+}
+
 export function makeCreateDeferredPromptTool(
   userId: string,
   storageContextId: string,
   contextType: ContextType,
-  username?: string | null,
+  ...args: readonly [] | readonly [username: string | null | undefined] | readonly [username: string | null | undefined, actorUserId: string]
 ): ToolSet[string] {
+  const username = args[0]
+  const actorUserId = resolveActorUserId(userId, args[1])
   return tool({
     description:
       'Create a scheduled task or monitoring alert. Provide either a schedule (for time-based) or a condition (for event-based), not both. Always classify the execution mode based on what the prompt needs at fire time.',
@@ -39,7 +46,7 @@ export function makeCreateDeferredPromptTool(
     }),
     execute: (input: CreateInput) => {
       try {
-        return executeCreate(userId, input, { userId, storageContextId, contextType, username })
+        return executeCreate(userId, input, { userId: actorUserId, storageContextId, contextType, username })
       } catch (error) {
         log.error(
           { error: error instanceof Error ? error.message : String(error), tool: 'create_deferred_prompt' },
