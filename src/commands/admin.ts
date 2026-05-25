@@ -9,30 +9,11 @@ import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../
 import { dmTarget } from '../chat/types.js'
 import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
-import {
-  provisionAndConfigure as defaultProvisionAndConfigure,
-  type ProvisionConfig,
-  type ProvisionOutcome,
-} from '../providers/kaneo/provision.js'
 import { addUser, listUsers, removeUser } from '../users.js'
 
 const MAX_CONCURRENT_SENDS = 5
 
 const log = logger.child({ scope: 'admin' })
-
-export interface AdminCommandsDeps {
-  provisionAndConfigure: (userId: string, username: string | null, config: ProvisionConfig) => Promise<ProvisionOutcome>
-}
-
-const defaultAdminDeps: AdminCommandsDeps = {
-  provisionAndConfigure: (...args): Promise<ProvisionOutcome> => defaultProvisionAndConfigure(...args),
-}
-
-const resolveAdminDeps = (args: [] | [deps: AdminCommandsDeps]): AdminCommandsDeps => {
-  const deps = args[0]
-  if (deps === undefined) return defaultAdminDeps
-  return deps
-}
 
 const checkAdmin = (userId: string, platformInstanceId: string): boolean => isAdmin(userId, platformInstanceId)
 
@@ -48,13 +29,7 @@ const parseUserIdentifier = (
   return null
 }
 
-export function registerAdminCommands(
-  chat: ChatProvider,
-  adminUserId: string,
-  ...args: [] | [deps: AdminCommandsDeps]
-): void {
-  const resolvedDeps = resolveAdminDeps(args)
-
+export function registerAdminCommands(chat: ChatProvider, adminUserId: string, ..._args: [] | [unknown]): void {
   const userHandler: CommandHandler = async (msg, reply) => {
     // Reject in groups - these commands are only available in direct messages
     if (msg.contextType === 'group') {
@@ -65,7 +40,7 @@ export function registerAdminCommands(
       await reply.text('Only the admin can manage users.')
       return
     }
-    await handleUserCommand(msg, reply, msg.user.id, adminUserId, resolvedDeps, msg.platformInstanceId)
+    await handleUserCommand(msg, reply, msg.user.id, adminUserId, msg.platformInstanceId)
   }
 
   const usersHandler: CommandHandler = async (msg, reply) => {
@@ -103,7 +78,6 @@ async function handleUserCommand(
   reply: ReplyFn,
   userId: string,
   adminUserId: string,
-  deps: AdminCommandsDeps,
   platformInstanceId: string,
 ): Promise<void> {
   const matchStr = msg.commandMatch
@@ -115,7 +89,7 @@ async function handleUserCommand(
   const subcommand = args[0]
   const identifier = args[1]
   if (subcommand === 'add') {
-    await handleUserAdd(reply, userId, identifier, deps, platformInstanceId)
+    await handleUserAdd(reply, userId, identifier, platformInstanceId)
   } else if (subcommand === 'remove') {
     await handleUserRemove(reply, userId, identifier, adminUserId, platformInstanceId)
   } else {
@@ -143,28 +117,10 @@ async function handleUsersCommand(
   await reply.text(lines.join('\n'))
 }
 
-async function provisionUserKaneo(reply: ReplyFn, userId: string, deps: AdminCommandsDeps): Promise<void> {
-  const publicUrl = process.env['KANEO_CLIENT_URL']
-  if (publicUrl === undefined || publicUrl.trim() === '') return
-
-  const outcome = await deps.provisionAndConfigure(userId, null, {
-    publicUrl,
-    internalUrl: process.env['KANEO_INTERNAL_URL'],
-  })
-  if (outcome.status === 'provisioned') {
-    await reply.text(
-      `Kaneo account created.\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n🌐 ${outcome.kaneoUrl}`,
-    )
-  } else if (outcome.status === 'failed') {
-    await reply.text(`Note: Kaneo auto-provisioning failed (${outcome.error}). User can configure manually via /setup.`)
-  }
-}
-
 async function handleUserAdd(
   reply: ReplyFn,
   adminId: string,
   identifier: string | undefined,
-  deps: AdminCommandsDeps,
   platformInstanceId: string,
 ): Promise<void> {
   if (identifier === undefined || identifier === '') {
@@ -182,7 +138,6 @@ async function handleUserAdd(
     addUser({ userId: parsed.value, platformInstanceId, addedBy: adminId })
     log.info({ adminId, newUserId: parsed.value }, '/user add command executed')
     await reply.text(`User ${parsed.value} authorized.`)
-    await provisionUserKaneo(reply, parsed.value, deps)
   } else {
     const placeholderId = `placeholder-${crypto.randomUUID()}`
     addUser({

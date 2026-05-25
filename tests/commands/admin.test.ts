@@ -6,11 +6,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import type { CommandHandler } from '../../src/chat/types.js'
-import type { AdminCommandsDeps } from '../../src/commands/admin.js'
 import { registerAdminCommands } from '../../src/commands/admin.js'
 import * as schema from '../../src/db/schema.js'
 import { SUPER_ADMIN_PLATFORM_ID, addAdmin } from '../../src/instances/admin-store.js'
-import type { ProvisionOutcome } from '../../src/providers/kaneo/provision.js'
 import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped, listUsers } from '../../src/users.js'
 import {
   createDmMessage,
@@ -46,13 +44,7 @@ const isAuthorized = (userId: string): boolean => isAuthorizedScoped(userId, TES
 describe('Admin Commands', () => {
   let commandHandlers: Map<string, CommandHandler>
 
-  let provisionImpl: () => Promise<ProvisionOutcome>
-  let adminDeps: AdminCommandsDeps
-
   beforeEach(async () => {
-    // Reset mutable state to defaults
-    provisionImpl = (): Promise<ProvisionOutcome> => Promise.resolve({ status: 'registration_disabled' })
-
     // Register mocks
     mockLogger()
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
@@ -63,13 +55,9 @@ describe('Admin Commands', () => {
     addUser(ADMIN_ID, ADMIN_ID)
     addAdmin(ADMIN_ID, TEST_PLATFORM_ID)
 
-    adminDeps = {
-      provisionAndConfigure: (): Promise<ProvisionOutcome> => provisionImpl(),
-    }
-
     const { provider: mockChat, commandHandlers: handlers } = createMockChatWithCommandHandlers()
     commandHandlers = handlers
-    registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+    registerAdminCommands(mockChat, ADMIN_ID)
   })
 
   describe('/user add', () => {
@@ -133,9 +121,27 @@ describe('Admin Commands', () => {
         isGroupAdmin: false,
         storageContextId: ADMIN_ID,
       })
-      expect(getReplies()[0]).toContain('@alice authorized.')
+      expect(getReplies()).toEqual(['User @alice authorized.'])
       const users = listUsers()
       expect(users.some((u) => u.username === 'alice')).toBe(true)
+    })
+
+    test('does not provision username user from global Kaneo env', async () => {
+      process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
+      const handler = commandHandlers.get('user')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+
+      await handler!(createDmMessage(ADMIN_ID, 'add @alice'), reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: ADMIN_ID,
+      })
+
+      expect(getReplies()).toEqual(['User @alice authorized.'])
+      expect(getReplies().join('\n')).not.toContain('Kaneo')
+      expect(listUsers().some((u) => u.username === 'alice')).toBe(true)
     })
 
     test('repeated add by @username is idempotent on the command source platform instance', async () => {
@@ -187,17 +193,7 @@ describe('Admin Commands', () => {
       expect(getReplies()[0]).toContain('Usage: /user add')
     })
 
-    test('provision success replies with email, password, and URL', async () => {
-      provisionImpl = (): Promise<ProvisionOutcome> =>
-        Promise.resolve({
-          status: 'provisioned',
-          email: '12345-a1b2c3d4@pap.ai',
-          password: 'abc123',
-          kaneoUrl: 'https://kaneo.test',
-          apiKey: 'key',
-          workspaceId: 'ws-1',
-        })
-
+    test('does not provision numeric user from global Kaneo env', async () => {
       const handler = commandHandlers.get('user')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
@@ -207,40 +203,13 @@ describe('Admin Commands', () => {
         isGroupAdmin: false,
         storageContextId: ADMIN_ID,
       })
-      const replies = getReplies()
-      // Check for email pattern
-      expect(replies.some((r) => r.includes('@pap.ai'))).toBe(true)
-      expect(replies.some((r) => r.includes('abc123'))).toBe(true)
-      expect(replies.some((r) => r.includes('kaneo.test'))).toBe(true)
+
+      expect(getReplies()).toEqual(['User 12345 authorized.'])
       expect(isAuthorized('12345')).toBe(true)
-    })
-
-    test('provision failure replies with failure note', async () => {
-      provisionImpl = (): Promise<ProvisionOutcome> =>
-        Promise.resolve({ status: 'failed', error: 'KANEO_CLIENT_URL not set' })
-
-      const handler = commandHandlers.get('user')
-      expect(handler).toBeDefined()
-      const { reply, getReplies } = createMockReply()
-      await handler!(createDmMessage(ADMIN_ID, 'add 67890'), reply, {
-        allowed: true,
-        isBotAdmin: true,
-        isGroupAdmin: false,
-        storageContextId: ADMIN_ID,
-      })
-      const replies = getReplies()
-      expect(replies.some((r) => r.includes('auto-provisioning failed'))).toBe(true)
-      expect(isAuthorized('67890')).toBe(true)
     })
 
     test('skips best-effort provisioning when global Kaneo URL is unset', async () => {
       delete process.env['KANEO_CLIENT_URL']
-      let provisionCalls = 0
-      provisionImpl = (): Promise<ProvisionOutcome> => {
-        provisionCalls += 1
-        return Promise.resolve({ status: 'failed', error: 'KANEO_CLIENT_URL not set' })
-      }
-
       const handler = commandHandlers.get('user')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
@@ -252,7 +221,6 @@ describe('Admin Commands', () => {
       })
 
       expect(getReplies()).toEqual(['User 24680 authorized.'])
-      expect(provisionCalls).toBe(0)
       expect(isAuthorized('24680')).toBe(true)
     })
 
@@ -477,7 +445,7 @@ describe('Admin Commands', () => {
           return Promise.resolve()
         },
       })
-      registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+      registerAdminCommands(mockChat, ADMIN_ID)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
@@ -510,7 +478,7 @@ describe('Admin Commands', () => {
           return Promise.resolve()
         },
       })
-      registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+      registerAdminCommands(mockChat, ADMIN_ID)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply } = createMockReply()
@@ -539,7 +507,7 @@ describe('Admin Commands', () => {
           return Promise.resolve()
         },
       })
-      registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+      registerAdminCommands(mockChat, ADMIN_ID)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply } = createMockReply()
@@ -611,7 +579,7 @@ describe('Admin Commands', () => {
         ['user-b', succeed],
       ])
       const { mockChat, handlers } = createMockChatWithHandler((userId) => perUserSend.get(userId)!(userId))
-      registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+      registerAdminCommands(mockChat, ADMIN_ID)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply, getReplies } = createMockReply()
@@ -650,7 +618,7 @@ describe('Admin Commands', () => {
         sentUserIds.push(userId)
         return Promise.resolve()
       })
-      registerAdminCommands(mockChat, ADMIN_ID, adminDeps)
+      registerAdminCommands(mockChat, ADMIN_ID)
       const handler = handlers.get('announce')
       expect(handler).toBeDefined()
       const { reply } = createMockReply()
