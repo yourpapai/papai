@@ -105,6 +105,10 @@ async function fetchWithRedirects(
   const redirectUrl = resolveLocationUrl(response, currentUrl)
   await validateHop(redirectUrl, hostSet, deps.assertPublicUrl)
 
+  // The caller's init (including any Authorization header) is forwarded to the
+  // redirect target. This is acceptable because every hop must pass both the
+  // allowlist check and assertPublicUrl, so headers only ever reach hosts the
+  // plugin manifest already trusts.
   return fetchWithRedirects(redirectUrl, fetchInit, hostSet, deps, logger, redirectsLeft - 1)
 }
 
