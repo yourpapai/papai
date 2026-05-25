@@ -5,6 +5,7 @@
 
 import { logger } from '../logger.js'
 import { registerContributedTaskProviderType, type TaskProviderFactory } from '../providers/registry.js'
+import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginContributions,
@@ -54,6 +55,8 @@ export type PluginContext = {
   readonly kv: PluginKvStore
   readonly log: PluginLogger
   readonly registration: PluginRegistration
+  /** Present only when the 'provider.task' permission is held. */
+  readonly providerRuntime?: PluginProviderRuntime
 }
 
 function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
@@ -161,14 +164,19 @@ export function buildPluginContext(
   const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)
+  const log = buildPluginLogger(manifest.id)
+  const providerRuntime = permissions.has('provider.task')
+    ? buildProviderRuntime(manifest.providerAllowedHosts, log)
+    : undefined
 
   const ctx: PluginContext = Object.freeze({
     pluginId: manifest.id,
     contextId,
     permissions,
     kv,
-    log: buildPluginLogger(manifest.id),
+    log,
     registration: buildRegistration(manifest, collected),
+    providerRuntime,
   })
 
   return { ctx, collected }

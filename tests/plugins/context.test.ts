@@ -150,6 +150,18 @@ describe('buildPluginContext', () => {
     expect(() => ctx.kv.list()).toThrow("Plugin test-plugin does not have 'storage' permission")
   })
 
+  describe('providerRuntime gating', () => {
+    test('present when provider.task is held', () => {
+      const { ctx } = buildPluginContext(makeManifest({ permissions: ['provider.task'] }), 'ctx-1')
+      expect(ctx.providerRuntime).toBeDefined()
+    })
+
+    test('absent without provider.task', () => {
+      const { ctx } = buildPluginContext(makeManifest({ permissions: ['storage'] }), 'ctx-1')
+      expect(ctx.providerRuntime).toBeUndefined()
+    })
+  })
+
   describe('registerTaskProviderType', () => {
     beforeEach(() => {
       unregisterContributedTaskProviderType('test-plugin')
