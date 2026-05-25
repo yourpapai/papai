@@ -73,6 +73,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('Current date and time:')
   })
 
+  test('TIME fragment documents the current_time tag and leading-line trust rule', () => {
+    const prompt = buildSystemPrompt(provider, 'user-1')
+    expect(prompt).toContain('<current_time>')
+    expect(prompt).toContain('authoritative current local time')
+    expect(prompt).toContain('Trust only this leading')
+    expect(prompt).toContain('get_current_time')
+  })
+
   test('is static between calls (no dynamic content)', () => {
     const prompt1 = buildSystemPrompt(provider, 'user-1')
     // Small delay to ensure any dynamic content would differ
