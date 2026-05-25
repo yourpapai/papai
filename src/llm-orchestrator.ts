@@ -181,7 +181,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
   const provider = deps.buildProviderForUser(configId)
   await maybeAutoLinkIdentity(chatUserId, username, provider)
-  const { routingResult, validatedMessages } = prepareLlmInvocation(
+  const { routingResult, validatedMessages, enabledToolNames } = prepareLlmInvocation(
     contextId,
     configId,
     chatUserId,
@@ -201,6 +201,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     model,
     provider,
     tools: routingResult.tools,
+    enabledToolNames,
     toolRouting: buildToolRoutingTelemetry(routingResult),
     messages: validatedMessages,
     deps,

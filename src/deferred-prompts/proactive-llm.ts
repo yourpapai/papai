@@ -200,14 +200,14 @@ function buildFullToolSet(
   storageContextId: string,
   contextType: 'dm' | 'group',
   prompt: string,
-): ToolSet {
+): { tools: ToolSet; enabledToolNames: ReadonlySet<string> } {
   const fullTools = makeTools(provider, {
     storageContextId,
     chatUserId: createdByUserId,
     mode: 'proactive',
     contextType,
   })
-  return routeToolsForMessage(prompt, fullTools).tools
+  return { tools: routeToolsForMessage(prompt, fullTools).tools, enabledToolNames: new Set(Object.keys(fullTools)) }
 }
 
 function buildFullMessages(
@@ -255,8 +255,14 @@ async function invokeFull(
   }
 
   const model = deps.buildModel(config, config.mainModel)
-  const tools = buildFullToolSet(provider, createdByUserId, storageContextId, deliveryTarget.contextType, prompt)
-  const systemPrompt = buildSystemPrompt(provider, createdByUserId)
+  const { tools, enabledToolNames } = buildFullToolSet(
+    provider,
+    createdByUserId,
+    storageContextId,
+    deliveryTarget.contextType,
+    prompt,
+  )
+  const systemPrompt = buildSystemPrompt(provider, createdByUserId, enabledToolNames)
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
 
   log.debug(

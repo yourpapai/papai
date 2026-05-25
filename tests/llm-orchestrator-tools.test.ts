@@ -17,6 +17,7 @@ import type { ToolSet } from 'ai'
 import { userCachesForTesting } from '../src/cache.js'
 import type { StagedFileDownloadFn } from '../src/attachments/types.js'
 import type { TaskProvider } from '../src/providers/types.js'
+import { makeGetCurrentTimeTool } from '../src/tools/get-current-time.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -75,5 +76,57 @@ describe('llm-orchestrator-tools / getOrCreateTools cache behaviour', () => {
     prepareLlmInvocation('ctx-other', 'ctx-other', CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
 
     expect(makeToolsSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () => {
+  let provider: TaskProvider
+
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    userCachesForTesting.clear()
+    makeToolsSpy.mockClear()
+
+    provider = createMockProvider()
+  })
+
+  test('returns enabledToolNames derived from makeTools result before routing', () => {
+    // Use a memo-intent message: 'remember this note' matches MEMO_RE → intent='memo',
+    // confidence=0.85 > HIGH_CONFIDENCE=0.65 → routing narrows to MEMO_DOMAINS
+    // (memo/time/web). create_task (domain: task) is dropped; save_memo (domain: memo)
+    // is kept. This proves enabledToolNames is sourced from the pre-routing full set.
+    //
+    // Tool factory values are placeholders — only the KEYS matter for enabledToolNames;
+    // a real factory is used to satisfy the no-unsafe-type-assertion lint rule.
+    makeToolsSpy.mockReturnValueOnce({
+      // domain: task — dropped by memo routing
+      create_task: makeGetCurrentTimeTool('u'),
+      // domain: memo — kept by memo routing
+      save_memo: makeGetCurrentTimeTool('u'),
+    })
+
+    const result = prepareLlmInvocation(
+      'ctx-prerouting',
+      'ctx-prerouting',
+      'user-pr',
+      null,
+      'dm',
+      provider,
+      [],
+      'remember this note',
+      NO_STAGED_DOWNLOAD,
+    )
+
+    // Pre-routing origin: both keys are present in enabledToolNames even though
+    // routing drops create_task.
+    expect(result.enabledToolNames instanceof Set).toBe(true)
+    expect(result.enabledToolNames.has('create_task')).toBe(true)
+    expect(result.enabledToolNames.has('save_memo')).toBe(true)
+
+    // Contrast: routing actually narrowed the set — create_task is absent from
+    // routingResult.tools, confirming the two sets are genuinely different.
+    expect(Object.keys(result.routingResult.tools)).not.toContain('create_task')
+    expect(Object.keys(result.routingResult.tools)).toContain('save_memo')
   })
 })
