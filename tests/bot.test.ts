@@ -61,6 +61,12 @@ import {
 } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'test-instance'
+const scopedDm = (contextId: string, platformInstanceId: string = TEST_PLATFORM_ID): string =>
+  getThreadScopedStorageContextId(contextId, 'dm', undefined, platformInstanceId)
+const scopedGroup = (contextId: string, platformInstanceId: string = TEST_PLATFORM_ID): string =>
+  getThreadScopedStorageContextId(contextId, 'group', undefined, platformInstanceId)
+const scopedGroupThread = (contextId: string, threadId: string, platformInstanceId: string = TEST_PLATFORM_ID): string =>
+  getThreadScopedStorageContextId(contextId, 'group', threadId, platformInstanceId)
 
 const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
   const username = args[0]
@@ -151,7 +157,7 @@ describe('Authorization Logic', () => {
   })
 
   describe('Bot Admin Authorization', () => {
-    test('Bot admin in DM → allowed with isBotAdmin, storageContextId=userId', () => {
+    test('Bot admin in DM → allowed with isBotAdmin, storageContextId=scoped userId', () => {
       addUser('admin-1', 'system', 'admin')
       addAdmin('admin-1', TEST_PLATFORM_ID)
 
@@ -160,12 +166,12 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: true,
         isGroupAdmin: false,
-        storageContextId: 'admin-1',
-        configContextId: 'admin-1',
+        storageContextId: scopedDm('admin-1'),
+        configContextId: scopedDm('admin-1'),
       })
     })
 
-    test('Bot admin in group → allowed with isBotAdmin, storageContextId=groupId', () => {
+    test('Bot admin in group → allowed with isBotAdmin, storageContextId=scoped groupId', () => {
       addUser('admin-1', 'system', 'admin')
       addAdmin('admin-1', TEST_PLATFORM_ID)
       addAuthorizedGroup('group-1', 'system')
@@ -175,8 +181,8 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: true,
         isGroupAdmin: false,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
       })
     })
 
@@ -190,14 +196,14 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: true,
         isGroupAdmin: true,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
       })
     })
   })
 
   describe('Group Member Authorization', () => {
-    test('Group member → allowed, not bot admin, storageContextId=groupId', () => {
+    test('Group member → allowed, not bot admin, storageContextId=scoped groupId', () => {
       addAuthorizedGroup('group-1', 'system')
       addGroupMember('group-1', 'member-1', 'system')
 
@@ -206,8 +212,8 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: false,
         isGroupAdmin: false,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
       })
     })
 
@@ -220,8 +226,8 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: false,
         isGroupAdmin: true,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
       })
     })
 
@@ -231,8 +237,8 @@ describe('Authorization Logic', () => {
         allowed: false,
         isBotAdmin: false,
         isGroupAdmin: false,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
         reason: 'group_not_allowed',
       })
     })
@@ -245,8 +251,8 @@ describe('Authorization Logic', () => {
         allowed: false,
         isBotAdmin: false,
         isGroupAdmin: false,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
         reason: 'group_member_not_allowed',
       })
     })
@@ -259,14 +265,14 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: false,
         isGroupAdmin: true,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
       })
     })
   })
 
   describe('DM User Resolution by Username', () => {
-    test('DM user resolved by username → allowed, storageContextId=userId', () => {
+    test('DM user resolved by username → allowed, storageContextId=scoped userId', () => {
       addUser('placeholder-id', 'system', 'alice')
 
       const result = checkAuthorizationExtended('real-alice-id', 'alice', 'real-alice-id', 'dm', undefined, false)
@@ -274,8 +280,8 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: false,
         isGroupAdmin: false,
-        storageContextId: 'real-alice-id',
-        configContextId: 'real-alice-id',
+        storageContextId: scopedDm('real-alice-id'),
+        configContextId: scopedDm('real-alice-id'),
       })
     })
 
@@ -285,8 +291,8 @@ describe('Authorization Logic', () => {
         allowed: false,
         isBotAdmin: false,
         isGroupAdmin: false,
-        storageContextId: 'unknown-id',
-        configContextId: 'unknown-id',
+        storageContextId: scopedDm('unknown-id'),
+        configContextId: scopedDm('unknown-id'),
         reason: 'dm_not_allowed',
       })
     })
@@ -304,8 +310,8 @@ describe('Authorization Logic', () => {
         allowed: true,
         isBotAdmin: true,
         isGroupAdmin: false,
-        storageContextId: 'group-1',
-        configContextId: 'group-1',
+        storageContextId: scopedGroup('group-1'),
+        configContextId: scopedGroup('group-1'),
       })
     })
   })
@@ -331,8 +337,8 @@ describe('Demo Mode Auto-Provision', () => {
       allowed: true,
       isBotAdmin: false,
       isGroupAdmin: false,
-      storageContextId: DEMO_USER_ID,
-      configContextId: DEMO_USER_ID,
+      storageContextId: scopedDm(DEMO_USER_ID),
+      configContextId: scopedDm(DEMO_USER_ID),
     })
     expect(isAuthorized(DEMO_USER_ID)).toBe(true)
   })
@@ -347,8 +353,8 @@ describe('Demo Mode Auto-Provision', () => {
       allowed: true,
       isBotAdmin: false,
       isGroupAdmin: false,
-      storageContextId: DEMO_USER_ID,
-      configContextId: DEMO_USER_ID,
+      storageContextId: scopedDm(DEMO_USER_ID),
+      configContextId: scopedDm(DEMO_USER_ID),
     })
   })
 
@@ -381,23 +387,27 @@ describe('Demo Mode Auto-Provision', () => {
 
 // Setup user config to bypass wizard auto-start. Phase 1 removes per-user
 // LLM keys, so only the task-provider key and timezone need to be present.
-function setupContextTaskAssignment(contextId: string): void {
-  const taskInstanceId = `${contextId}-kaneo-test`
-  if (getTaskInstance(taskInstanceId) === null) {
-    insertTaskInstance({
-      id: taskInstanceId,
-      type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
-      status: 'active',
-    })
+function setupContextTaskAssignment(contextId: string, platformInstanceId: string = 'telegram-default'): void {
+  for (const assignedContextId of new Set([contextId, scopedDm(contextId), scopedGroup(contextId)])) {
+    const taskInstanceId = `${assignedContextId}-kaneo-test`
+    if (getTaskInstance(taskInstanceId) === null) {
+      insertTaskInstance({
+        id: taskInstanceId,
+        type: 'kaneo',
+        config: { url: 'https://kaneo.invalid' },
+        status: 'active',
+      })
+    }
+    setContextSettings({ contextId: assignedContextId, taskInstanceId, platformInstanceId })
   }
-  setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
 }
 
 function setupUserConfig(userId: string): void {
-  setupContextTaskAssignment(userId)
-  setConfig(userId, 'kaneo_apikey', 'test-kaneo-key')
-  setConfig(userId, 'timezone', 'UTC')
+  for (const contextId of new Set([userId, scopedDm(userId), scopedGroup(userId)])) {
+    setupContextTaskAssignment(contextId)
+    setConfig(contextId, 'kaneo_apikey', 'test-kaneo-key')
+    setConfig(contextId, 'timezone', 'UTC')
+  }
 }
 
 function waitForNextTick(): Promise<void> {
@@ -556,8 +566,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
       const { reply } = createMockReply()
       await messageHandler!({ ...createDmMessage('auth-user'), text: 'hello' }, reply)
       expect(processMessageCallCount).toBe(1)
-      expect(lastProcessedStorageId).toBe('auth-user')
-      expect(lastProcessedConfigContextId).toBe('auth-user')
+      expect(lastProcessedStorageId).toBe(scopedDm('auth-user'))
+      expect(lastProcessedConfigContextId).toBe(scopedDm('auth-user'))
       expect(lastProcessedContextType).toBe('dm')
     })
 
@@ -573,8 +583,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
       await messageHandler!(createGroupMessage('group-user', '@bot hello', false, 'group-queue'), reply)
 
       expect(processMessageCallCount).toBe(1)
-      expect(lastProcessedStorageId).toBe('group-queue')
-      expect(lastProcessedConfigContextId).toBe('group-queue')
+      expect(lastProcessedStorageId).toBe(scopedGroup('group-queue'))
+      expect(lastProcessedConfigContextId).toBe(scopedGroup('group-queue'))
       expect(lastProcessedContextType).toBe('group')
     })
 
@@ -594,8 +604,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
       await messageHandler!(threadMessage, reply)
 
       expect(processMessageCallCount).toBe(1)
-      expect(lastProcessedStorageId).toBe('group-thread:thread-123')
-      expect(lastProcessedConfigContextId).toBe('group-thread')
+      expect(lastProcessedStorageId).toBe(scopedGroupThread('group-thread', 'thread-123'))
+      expect(lastProcessedConfigContextId).toBe(scopedGroup('group-thread'))
       expect(lastProcessedContextType).toBe('group')
     })
 
@@ -789,8 +799,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
       await messageHandler!(threadMessage, reply)
 
       expect(processMessageCallCount).toBe(1)
-      expect(lastProcessedStorageId).toBe('group-thread-configured:thread-empty')
-      expect(lastProcessedConfigContextId).toBe('group-thread-configured')
+      expect(lastProcessedStorageId).toBe(scopedGroupThread('group-thread-configured', 'thread-empty'))
+      expect(lastProcessedConfigContextId).toBe(scopedGroup('group-thread-configured'))
       expect(textCalls).toHaveLength(0)
     })
 
@@ -803,8 +813,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
         config: { url: 'https://kaneo.invalid' },
         status: 'active',
       })
-      setContextSettings({ contextId: 'dm-needs-setup', taskInstanceId, platformInstanceId: 'telegram-default' })
-      cancelWizard('dm-needs-setup', 'dm-needs-setup')
+      setContextSettings({ contextId: scopedDm('dm-needs-setup'), taskInstanceId, platformInstanceId: 'telegram-default' })
+      cancelWizard('dm-needs-setup', scopedDm('dm-needs-setup'))
 
       const messageHandler = getMessageHandler()
       expect(messageHandler).not.toBeNull()
@@ -816,7 +826,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       expect(textCalls).toHaveLength(1)
       expect(textCalls[0]).toContain('Welcome to papai configuration wizard!')
 
-      cancelWizard('dm-needs-setup', 'dm-needs-setup')
+      cancelWizard('dm-needs-setup', scopedDm('dm-needs-setup'))
     })
 
     test('auto-starts setup selection when authorized DM context has no task assignment', async () => {
@@ -852,7 +862,9 @@ describe('Bot Authorization Gate (setupBot)', () => {
       )
 
       expect(processMessageCallCount).toBe(0)
-      expect(getContextSettings('dm-source-platform')).toMatchObject({ platformInstanceId: 'telegram-secondary' })
+      expect(getContextSettings(scopedDm('dm-source-platform', 'telegram-secondary'))).toMatchObject({
+        platformInstanceId: 'telegram-secondary',
+      })
     })
 
     test('uses source instance button capabilities for DM group settings follow-ups', async () => {
@@ -1861,7 +1873,7 @@ describe('Demo Mode — wizard bypass (setupBot)', () => {
 
     // Should reach processMessage, not be intercepted by wizard
     expect(processMessageCallCount).toBe(1)
-    expect(lastProcessedStorageId).toBe('demo-bypass-1')
+    expect(lastProcessedStorageId).toBe(scopedDm('demo-bypass-1'))
   })
 })
 
@@ -1900,7 +1912,7 @@ describe('Attachment workspace integration (setupBot)', () => {
 
     await getMessageHandler()!(msg, reply)
 
-    expect(capturedStorageId).toBe('relay-user')
+    expect(capturedStorageId).toBe(scopedDm('relay-user'))
     expect(attachmentIdsAtProcessingTime).toHaveLength(1)
     assert.ok(attachmentIdsAtProcessingTime[0] !== undefined)
     expect(attachmentIdsAtProcessingTime[0].startsWith('att_')).toBe(true)
@@ -1914,7 +1926,7 @@ describe('Attachment workspace integration (setupBot)', () => {
     const { reply } = createMockReply()
     await getMessageHandler()!(msg, reply)
 
-    expect(listActiveAttachments('relay-user2')).toEqual([])
+    expect(listActiveAttachments(scopedDm('relay-user2'))).toEqual([])
   })
 
   test('does not persist files for an unauthorized user', async () => {

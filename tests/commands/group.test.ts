@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import type { ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
+import type { AuthorizationResult, ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
 import { registerGroupCommand } from '../../src/commands/group.js'
 import { upsertGroupUserObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
@@ -31,6 +31,14 @@ const flushMicrotasks = async (): Promise<void> => {
   await Promise.resolve()
   await Promise.resolve()
 }
+
+const createGroupStorageAuth = (
+  contextId: string,
+  options: Parameters<typeof createAuth>[1] = {},
+): AuthorizationResult => ({
+  ...createAuth(contextId, options),
+  configContextId: contextId,
+})
 
 // Label-lookup helpers defined outside test blocks — required by no-conditional-in-test
 function resolveGroupLabelByKnownId(groupId: string): Promise<string | null> {
@@ -139,7 +147,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -150,7 +158,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'adduser @user2', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'adduser @user2', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Only group admins can add users.')
@@ -160,7 +168,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('admin1', 'adduser', true), reply, createAuth('admin1', { isGroupAdmin: true }))
+      await handler!(createGroupMessage('admin1', 'adduser', true), reply, createGroupStorageAuth('group1', { isGroupAdmin: true }))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Usage: /group adduser <user-id|@username>')
@@ -173,7 +181,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser invalid@user', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -187,7 +195,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser 12345', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -202,7 +210,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       const { listGroupMembers } = await import('../../src/groups.js')
@@ -219,7 +227,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @user2', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       const { listGroupMembers } = await import('../../src/groups.js')
@@ -237,7 +245,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @unknown_user', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       // With users.resolve capability but null result, should error not fall back
@@ -268,7 +276,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @alice', true, 'channel-42'),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(lastResolveContext).not.toBeNull()
@@ -290,7 +298,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -301,7 +309,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'deluser user2', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'deluser user2', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Only group admins can remove users.')
@@ -311,7 +319,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('admin1', 'deluser', true), reply, createAuth('admin1', { isGroupAdmin: true }))
+      await handler!(createGroupMessage('admin1', 'deluser', true), reply, createGroupStorageAuth('group1', { isGroupAdmin: true }))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Usage: /group deluser <user-id|@username>')
@@ -324,7 +332,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser invalid@user', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -338,7 +346,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser nonexistent', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -356,7 +364,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       const members = listGroupMembers('group1')
@@ -366,11 +374,41 @@ describe('group commands', () => {
   })
 
   describe('users', () => {
+    test('group members are isolated by platform-scoped context id', async () => {
+      const telegramGroup = createGroupMessage('admin', 'adduser user-1', true, 'shared-group')
+      telegramGroup.platformInstanceId = 'telegram-default'
+      const discordGroup = createGroupMessage('admin', 'users', true, 'shared-group')
+      discordGroup.platformInstanceId = 'discord-default'
+      const telegramAuth: AuthorizationResult = {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: true,
+        storageContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw',
+        configContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw',
+      }
+      const discordAuth: AuthorizationResult = {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: true,
+        storageContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw',
+        configContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw',
+      }
+      const telegramReply = createMockReply()
+      const discordReply = createMockReply()
+      const handler = commandHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      await handler!(telegramGroup, telegramReply.reply, telegramAuth)
+      await handler!(discordGroup, discordReply.reply, discordAuth)
+
+      expect(discordReply.textCalls.at(-1)).toBe('No members in this group yet.')
+    })
+
     test('lists empty group', async () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('No members in this group yet.')
@@ -385,7 +423,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Group members:')
@@ -401,7 +439,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Group members:')
@@ -552,7 +590,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'unknown', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'unknown', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Unknown subcommand')
@@ -566,7 +604,7 @@ describe('group commands', () => {
       message.commandMatch = ''
 
       const { reply, textCalls } = createMockReply()
-      await handler!(message, reply, createAuth('user1'))
+      await handler!(message, reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Usage: /group adduser <user-id|@username>')
@@ -597,7 +635,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @someone', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
@@ -611,7 +649,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser @someone', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
@@ -625,7 +663,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser 12345', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('User 12345 added to this group.')
@@ -656,7 +694,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @alice', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
@@ -751,7 +789,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(textCalls[0]).toContain('John Johnson (@itsmike)')
       expect(textCalls[0]).toContain('added by Jane Admin (@janeadmin)')
@@ -776,7 +814,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(seenContexts).toEqual([
         { contextId: 'group1', contextType: 'group', platformInstanceId: 'test-instance' },
@@ -832,7 +870,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply } = createMockReply()
-      const handlerPromise = handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      const handlerPromise = handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       await flushMicrotasks()
 
@@ -901,7 +939,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(textCalls[0]).toContain('- user1 (added by admin1)')
     })
@@ -921,7 +959,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(textCalls[0]).toContain('- user1 (added by admin1)')
     })
@@ -998,7 +1036,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('42', 'users', true, '-100123'),
         reply,
-        createAuth('42', { isGroupAdmin: true }),
+        createGroupStorageAuth('-100123', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toContain('- Worker Ninety Nine (@worker99) (added by John Johnson (@itsmike))')

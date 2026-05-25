@@ -97,7 +97,7 @@ export function registerGroupCommand(chat: ChatProvider): void {
       await handleAuthorizedGroupCommand(msg, reply, auth)
       return
     }
-    await handleGroupMemberCommand(chat, msg, reply)
+    await handleGroupMemberCommand(chat, msg, reply, auth)
   })
   chat.registerCommand('groups', async (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => {
     if (msg.contextType !== 'dm') {
@@ -137,7 +137,12 @@ export function registerGroupCommand(chat: ChatProvider): void {
   })
 }
 
-async function handleGroupMemberCommand(chat: ChatProvider, msg: IncomingMessage, reply: ReplyFn): Promise<void> {
+async function handleGroupMemberCommand(
+  chat: ChatProvider,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+): Promise<void> {
   const match = typeof msg.commandMatch === 'string' ? msg.commandMatch.trim() : ''
   if (!match) {
     await reply.text(GROUP_CHAT_USAGE)
@@ -149,13 +154,13 @@ async function handleGroupMemberCommand(chat: ChatProvider, msg: IncomingMessage
 
   switch (subcommand) {
     case 'adduser':
-      await handleGroupMemberUpdate(chat, msg, reply, targetUser, 'add')
+      await handleGroupMemberUpdate(chat, msg, reply, auth, targetUser, 'add')
       break
     case 'deluser':
-      await handleGroupMemberUpdate(chat, msg, reply, targetUser, 'remove')
+      await handleGroupMemberUpdate(chat, msg, reply, auth, targetUser, 'remove')
       break
     case 'users':
-      await handleListUsers(chat, msg, reply)
+      await handleListUsers(chat, msg, reply, auth)
       break
     case '':
     case undefined:
@@ -210,6 +215,7 @@ async function handleGroupMemberUpdate(
   chat: ChatProvider,
   msg: IncomingMessage,
   reply: ReplyFn,
+  auth: AuthorizationResult,
   targetUser: string | undefined,
   action: 'add' | 'remove',
 ): Promise<void> {
@@ -236,20 +242,26 @@ async function handleGroupMemberUpdate(
   }
 
   const { userId } = result
+  const storageGroupId = auth.configContextId ?? auth.storageContextId
   if (action === 'add') {
-    addGroupMember(msg.contextId, userId, msg.user.id)
+    addGroupMember(storageGroupId, userId, msg.user.id)
     await reply.text(`User ${targetUser} added to this group.`)
-    log.info({ groupId: msg.contextId, userId }, 'Group member added')
+    log.info({ groupId: storageGroupId, nativeGroupId: msg.contextId, userId }, 'Group member added')
     return
   }
 
-  removeGroupMember(msg.contextId, userId)
+  removeGroupMember(storageGroupId, userId)
   await reply.text(`User ${targetUser} removed from this group.`)
-  log.info({ groupId: msg.contextId, userId }, 'Group member removed')
+  log.info({ groupId: storageGroupId, nativeGroupId: msg.contextId, userId }, 'Group member removed')
 }
 
-async function handleListUsers(chat: ChatProvider, msg: IncomingMessage, reply: ReplyFn): Promise<void> {
-  const members = listGroupMembers(msg.contextId)
+async function handleListUsers(
+  chat: ChatProvider,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+): Promise<void> {
+  const members = listGroupMembers(auth.configContextId ?? auth.storageContextId)
 
   if (members.length === 0) {
     await reply.text('No members in this group yet.')

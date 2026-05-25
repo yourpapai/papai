@@ -15,6 +15,8 @@ import {
 import type { TaskInstanceSelectionResult } from '../../src/setup/task-instance-selection.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
+const SCOPED_CTX_1 = 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:Y3R4LTE'
+
 const expectPending = (
   result: TaskInstanceSelectionResult,
 ): Extract<TaskInstanceSelectionResult, { status: 'pending' }> => {
@@ -33,7 +35,7 @@ describe('task instance setup selection', () => {
   test('aborts when there are no active task instances', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
+    const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
     expect(result).toEqual({
       status: 'aborted',
@@ -45,11 +47,11 @@ describe('task instance setup selection', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
+    const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
     expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
-    expect(getContextSettings('ctx-1')).toEqual({
-      contextId: 'ctx-1',
+    expect(getContextSettings(SCOPED_CTX_1)).toEqual({
+      contextId: SCOPED_CTX_1,
       taskInstanceId: 'yt-prod',
       platformInstanceId: 'telegram-default',
     })
@@ -60,11 +62,11 @@ describe('task instance setup selection', () => {
     insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-secondary')
+    const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-secondary')
 
     expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
-    expect(getContextSettings('ctx-1')).toEqual({
-      contextId: 'ctx-1',
+    expect(getContextSettings(SCOPED_CTX_1)).toEqual({
+      contextId: SCOPED_CTX_1,
       taskInstanceId: 'yt-prod',
       platformInstanceId: 'telegram-secondary',
     })
@@ -75,27 +77,27 @@ describe('task instance setup selection', () => {
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
 
-    const result = startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
+    const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
     expect(result.status).toBe('pending')
     const pending = expectPending(result)
     expect(pending.response).toContain('Choose a task tracker for this context')
     expect(pending.response).toContain('kaneo-prod')
     expect(pending.response).toContain('yt-prod')
-    expect(getContextSettings('ctx-1')).toBeNull()
+    expect(getContextSettings(SCOPED_CTX_1)).toBeNull()
   })
 
   test('handles text selection by task instance id', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
-    startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
+    startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
-    const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'yt-prod')
+    const result = handleTaskInstanceSelectionMessage('user-1', SCOPED_CTX_1, 'yt-prod')
 
     expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
-    expect(getContextSettings('ctx-1')).toEqual({
-      contextId: 'ctx-1',
+    expect(getContextSettings(SCOPED_CTX_1)).toEqual({
+      contextId: SCOPED_CTX_1,
       taskInstanceId: 'yt-prod',
       platformInstanceId: 'telegram-default',
     })
@@ -106,13 +108,13 @@ describe('task instance setup selection', () => {
     insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
-    startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-secondary')
+    startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-secondary')
 
-    const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'yt-prod')
+    const result = handleTaskInstanceSelectionMessage('user-1', SCOPED_CTX_1, 'yt-prod')
 
     expect(result).toEqual({ status: 'assigned', taskProvider: 'youtrack' })
-    expect(getContextSettings('ctx-1')).toEqual({
-      contextId: 'ctx-1',
+    expect(getContextSettings(SCOPED_CTX_1)).toEqual({
+      contextId: SCOPED_CTX_1,
       taskInstanceId: 'yt-prod',
       platformInstanceId: 'telegram-secondary',
     })
@@ -123,13 +125,13 @@ describe('task instance setup selection', () => {
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     insertTaskInstance({ id: 'old-prod', type: 'youtrack', config: { url: 'https://old.invalid' }, status: 'stopped' })
-    startTaskInstanceSelection('user-1', 'ctx-1', 'telegram-default')
+    startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
-    const result = handleTaskInstanceSelectionMessage('user-1', 'ctx-1', 'old-prod')
+    const result = handleTaskInstanceSelectionMessage('user-1', SCOPED_CTX_1, 'old-prod')
 
     expect(result.status).toBe('pending')
     const pending = expectPending(result)
     expect(pending.response).toContain('Reply with one of these task instance IDs')
-    expect(getContextSettings('ctx-1')).toBeNull()
+    expect(getContextSettings(SCOPED_CTX_1)).toBeNull()
   })
 })

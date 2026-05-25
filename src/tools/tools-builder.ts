@@ -285,7 +285,7 @@ export function buildTools(
   addMemoTools(tools, provider, chatUserId)
   addInstructionTools(tools, contextId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
-  addWebFetchTool(tools, contextId, chatUserId, contextType)
+  addWebFetchTool(tools, contextId, contextId ?? chatUserId, contextType)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)
   if (mode === 'normal' && chatUserId !== undefined) {
     addDeferredPromptTools(tools, chatUserId, contextId, contextType, username)
