@@ -696,7 +696,7 @@ mutants (currently pushed into `NoCoverage`/`static` by the global reset — see
 | ------------------------------------------------ | -------: | -----: | ------------------ |
 | `providers/youtrack/operations/agiles.ts`        |       19 |     27 | also 16 NoCoverage |
 | `tools/update-status.ts`                         |       18 |      6 |                    |
-| `providers/kaneo/label-resource.ts`              |       16 |      1 |                    |
+| `providers/kaneo/label-resource.ts`              |       16 |      1 | also 2 NoCoverage  |
 | `providers/youtrack/labels.ts`                   |       16 |      6 |                    |
 | `providers/youtrack/operations/comments.ts`      |       14 |     13 |                    |
 | `providers/youtrack/operations/work-items.ts`    |       14 |      8 |                    |
@@ -711,17 +711,17 @@ mutants (currently pushed into `NoCoverage`/`static` by the global reset — see
 
 | File (src/)                                      | NoCoverage | Killed | Notes            |
 | ------------------------------------------------ | ---------: | -----: | ---------------- |
-| `providers/factory.ts`                           |         49 |      0 | 0 survived       |
-| `tools/search-memos.ts`                          |         36 |      3 | 0 survived       |
+| `providers/factory.ts`                           |         49 |      0 | also 3 survived  |
+| `tools/search-memos.ts`                          |         36 |      3 | also 1 survived  |
 | `providers/youtrack/operations/team.ts`          |         26 |      0 | also 12 survived |
-| `providers/kaneo/task-relations.ts`              |         24 |     12 | 0 survived       |
+| `providers/kaneo/task-relations.ts`              |         24 |     12 | also 10 survived |
 | `providers/kaneo/update-label.ts`                |         23 |      0 | 0 survived       |
 | `providers/kaneo/update-project.ts`              |         23 |      0 | 0 survived       |
-| `providers/kaneo/task-resource.ts`               |         20 |      7 | 0 survived       |
+| `providers/kaneo/task-resource.ts`               |         20 |      7 | also 7 survived  |
 | `providers/youtrack/operations/collaboration.ts` |         19 |      2 | also 13 survived |
-| `providers/youtrack/custom-field-values.ts`      |         18 |      7 | 0 survived       |
+| `providers/youtrack/custom-field-values.ts`      |         18 |      7 | also 10 survived |
 | `providers/youtrack/operations/agiles.ts`        |         16 |     27 | also 19 survived |
-| `providers/youtrack/operations/users.ts`         |         15 |      9 | 0 survived       |
+| `providers/youtrack/operations/users.ts`         |         15 |      9 | also 9 survived  |
 | `providers/kaneo/column-resource.ts`             |         12 |      0 | confirmed in A3  |
 
 #### Step 2: Classification of top offenders
@@ -744,7 +744,7 @@ mutants (currently pushed into `NoCoverage`/`static` by the global reset — see
 | `providers/factory.ts`                  | **over-mocked**          | No `factory.test.ts` exists. The global `beforeEach` in `mock-reset.ts` re-mocks `src/providers/factory.js` on every one of ~4 817 tests (B2). 13 additional call sites across `context.test.ts`, `llm-orchestrator.test.ts`, and others mock it further. Stryker's instrumented version is therefore bypassed in virtually every test — NoCoverage is driven by `mock.module` blast, not by a gap in test scenarios. |
 | `tools/search-memos.ts`                 | **measurement-artifact** | `tests/tools/memo-tools.test.ts` exists (no `mock.module`). The 3 kills confirm some perTest coverage was recorded; the 36 NoCoverage mutants represent mutant sites that were reached only during the runner's eager-import preload (while `currentTestId` is `undefined`) and therefore landed in the static bucket, not a genuine test gap.                                                                        |
 | `providers/youtrack/operations/team.ts` | **measurement-artifact** | `tests/providers/youtrack/operations/team.test.ts` exists (246 lines, no `mock.module`, uses `setMockFetch`). The 26 NoCoverage and 12 survived mutants all originate from the static-bucket collapse documented in A2/A3: provider-layer module code is eagerly imported before any `beforeEach`, so perTest hits are not recorded.                                                                                  |
-| `providers/kaneo/task-relations.ts`     | **measurement-artifact** | `tests/providers/kaneo/task-relations.test.ts` exists (136 lines, no `mock.module`). The 12 kills confirm genuine perTest coverage was recorded for part of the file; the 24 NoCoverage mutants are in code paths reached only during preload, not due to missing tests.                                                                                                                                              |
+| `providers/kaneo/task-relations.ts`     | **mixed**                | `tests/providers/kaneo/task-relations.test.ts` exists (136 lines, no `mock.module`). The 12 kills confirm genuine perTest coverage was recorded for part of the file; the 24 NoCoverage mutants are in code paths reached only during preload (measurement artifact), while the 10 survived mutants are a genuine weak-assertion signal on the covered paths.                                                         |
 | `providers/kaneo/update-label.ts`       | **measurement-artifact** | No dedicated unit test in the main suite (only `tests/e2e/label-operations.test.ts`, which is excluded from the mutation run). The file is a provider-layer helper accessed through `label-resource.ts`, itself eagerly imported. 0 kills and 0 survived confirm complete static collapse per A2/A3 — consistent with a file exercised only through the preload path.                                                 |
 | `providers/kaneo/update-project.ts`     | **measurement-artifact** | Same pattern as `update-label.ts`: no main-suite unit test (only e2e imports); provider layer; 0 kills, 0 survived. Tools-level tests (`project-tools.test.ts`) mock the provider and never exercise the real `update-project.ts` implementation. Static-bucket collapse per A2/A3.                                                                                                                                   |
 
