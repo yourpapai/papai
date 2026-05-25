@@ -88,6 +88,14 @@
     // plugin and config tests; they are intentionally outside production flows.
     "src/config.ts": ["exports"],
     "src/plugins/registry.ts": ["exports"],
+    // src/providers/registry.ts ships the plugin-contributed task-provider
+    // registry ahead of its consumers: registerContributedTaskProviderType is
+    // wired from src/plugins/context.ts and unregisterContributedTaskProviderType
+    // from src/plugins/loader.ts within Phase 1; getContributedTaskProviderType is
+    // consumed by registry tests now and by createProvider in Phase 2. Under
+    // knip --strict (test files excluded) these read as unused until the src
+    // callers land.
+    "src/providers/registry.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],

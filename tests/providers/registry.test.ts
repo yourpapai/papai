@@ -10,6 +10,7 @@ import {
   unregisterContributedTaskProviderType,
   getContributedTaskProviderType,
 } from '../../src/providers/registry.js'
+import type { TaskCapability } from '../../src/providers/task-capability.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger } from '../utils/test-helpers.js'
@@ -18,7 +19,7 @@ const fakeProvider: TaskProvider = createMockProvider()
 const entry = {
   pluginId: 'task-provider-kaneo',
   factory: (): TaskProvider => fakeProvider,
-  capabilities: new Set<never>(),
+  capabilities: new Set<TaskCapability>(),
 }
 
 describe('contributed task provider registry', () => {
@@ -41,7 +42,7 @@ describe('contributed task provider registry', () => {
       registerContributedTaskProviderType('kaneo', {
         pluginId: 'other-plugin',
         factory: (): TaskProvider => fakeProvider,
-        capabilities: new Set<never>(),
+        capabilities: new Set<TaskCapability>(),
       }),
     ).toThrow()
   })

@@ -11,7 +11,9 @@ import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
 
-type ProviderFactory = (config: Record<string, string>) => TaskProvider
+export type TaskProviderFactory = (config: Record<string, string>) => TaskProvider
+
+type ProviderFactory = TaskProviderFactory
 
 const providers = new Map<string, ProviderFactory>()
 
@@ -52,8 +54,6 @@ export function createProvider(name: string, config: Record<string, string>): Ta
   log.debug({ name }, 'Creating provider instance')
   return factory(config)
 }
-
-export type TaskProviderFactory = (config: Record<string, string>) => TaskProvider
 
 export type ContributedTaskProviderEntry = {
   pluginId: string
