@@ -103,13 +103,23 @@ function formatValue(value: unknown, settings: AiOutputSettings): string {
   return stableStringify(settings.detailLevel === 'raw' ? value : sanitizeRootValue(value))
 }
 
+function formatErrorValue(error: unknown, settings: AiOutputSettings): string {
+  if (settings.detailLevel === 'raw') return stableStringify(formatError(error))
+  if (error instanceof Error || typeof error === 'string') return stableStringify('[redacted]')
+  return formatValue(error, settings)
+}
+
 function appendToolFinished(lines: string[], event: ToolFinishedEvent, settings: AiOutputSettings): void {
   const status = event.success ? 'success' : 'failed'
   const duration = event.durationMs === undefined ? '' : ` in ${event.durationMs}ms`
   lines.push(`- Tool \`${event.toolName}\` ${status}${duration}`)
   lines.push(`  Input: \`${formatValue(event.input, settings)}\``)
   if (event.output !== undefined) lines.push(`  Output: \`${formatValue(event.output, settings)}\``)
-  if (event.error !== undefined) lines.push(`  Error: \`${formatValue(formatError(event.error), settings)}\``)
+  if (event.error !== undefined) lines.push(`  Error: \`${formatErrorValue(event.error, settings)}\``)
+}
+
+function ignoreToolStarted(event: ToolStartedEvent): void {
+  void event
 }
 
 export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSettings): AiProgressReporter {
@@ -117,11 +127,7 @@ export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSetti
   const reasoningLines: string[] = []
 
   return {
-    toolStarted: (event) => {
-      if (settings.toolVisibility !== 'on') return
-      toolLines.push(`- Tool \`${event.toolName}\` started`)
-      toolLines.push(`  Input: \`${formatValue(event.input, settings)}\``)
-    },
+    toolStarted: ignoreToolStarted,
     toolFinished: (event) => {
       if (settings.toolVisibility !== 'on') return
       appendToolFinished(toolLines, event, settings)

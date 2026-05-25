@@ -65,7 +65,46 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('create_task')
     expect(textCalls[0]).toContain('Visible title')
     expect(textCalls[0]).toContain('42ms')
+    expect(textCalls[0]).not.toContain('started')
     expect(textCalls[0]).not.toContain('secret-key')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('redacts sanitized Error messages that contain secret-like text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-error-message',
+      input: { title: 'Visible title' },
+      durationMs: 5,
+      success: false,
+      error: new Error('token=secret-token'),
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('failed')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('redacts sanitized object error secret keys', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-error-object',
+      input: { title: 'Visible title' },
+      durationMs: 6,
+      success: false,
+      error: { token: 'secret-token', message: 'Visible failure metadata' },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('Visible failure metadata')
     expect(textCalls[0]).not.toContain('secret-token')
     expect(textCalls[0]).toContain('[redacted]')
   })
