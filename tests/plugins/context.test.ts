@@ -8,7 +8,12 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { buildPluginContext } from '../../src/plugins/context.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
+import { getContributedTaskProviderType, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
+import type { TaskProvider } from '../../src/providers/types.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+const stubProviderFactory = (): TaskProvider => createMockProvider()
 
 function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
   return {
@@ -143,5 +148,61 @@ describe('buildPluginContext', () => {
     expect(() => ctx.kv.set('k', 'v')).toThrow("Plugin test-plugin does not have 'storage' permission")
     expect(() => ctx.kv.delete('k')).toThrow("Plugin test-plugin does not have 'storage' permission")
     expect(() => ctx.kv.list()).toThrow("Plugin test-plugin does not have 'storage' permission")
+  })
+
+  describe('registerTaskProviderType', () => {
+    beforeEach(() => {
+      unregisterContributedTaskProviderType('test-plugin')
+    })
+
+    test('registers a declared type when provider.task is held', () => {
+      const manifest = makeManifest({
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['kaneo'],
+        },
+        providerCapabilities: ['labels.list'],
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })
+      expect(getContributedTaskProviderType('kaneo')?.pluginId).toBe('test-plugin')
+    })
+
+    test('throws without provider.task permission', () => {
+      const manifest = makeManifest({
+        permissions: [],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['kaneo'],
+        },
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      expect(() => ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })).toThrow()
+    })
+
+    test('throws when type is not the declared one', () => {
+      const manifest = makeManifest({
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['kaneo'],
+        },
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      expect(() => ctx.registration.registerTaskProviderType('youtrack', { factory: stubProviderFactory })).toThrow()
+    })
   })
 })

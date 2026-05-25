@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
+import { registerContributedTaskProviderType, type TaskProviderFactory } from '../providers/registry.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginContributions,
@@ -41,6 +42,8 @@ export type PluginRegistration = {
   registerCommand(command: PluginCommand): void
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
+  /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
+  registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -120,6 +123,20 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
         throw new Error(`Scheduled job '${job.name}' is not declared in plugin manifest contributes.jobs`)
       }
       collected.jobs = [...(collected.jobs ?? []), job]
+    },
+    registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void {
+      if (!manifest.permissions.includes('provider.task')) {
+        throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
+      }
+      const declared = manifest.contributes.taskProviderTypes
+      if (declared.length !== 1 || declared[0] !== type) {
+        throw new Error(`Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes`)
+      }
+      registerContributedTaskProviderType(type, {
+        pluginId: manifest.id,
+        factory: descriptor.factory,
+        capabilities: new Set(manifest.providerCapabilities),
+      })
     },
   })
 }
