@@ -58,6 +58,42 @@ describe('llm-orchestrator-support', () => {
     ])
   })
 
+  test('handleToolCallFinish logs structured failures when reply is suppressed', () => {
+    const emitCalls: Array<{ event: string; payload: unknown }> = []
+    const deps = {
+      emit: (event: string, payload: unknown): void => {
+        emitCalls.push({ event, payload })
+      },
+      log: {
+        warn: mock(() => {}),
+        error: mock(() => {}),
+      },
+    }
+
+    handleToolCallFinish(
+      'ctx-1',
+      undefined,
+      {
+        toolCall: { toolName: 'search_tasks', toolCallId: 'call-2' },
+        success: false,
+        error: new Error('boom'),
+        durationMs: 15,
+      },
+      deps,
+    )
+
+    expect(emitCalls.map((call) => call.event)).toEqual(['llm:tool_result'])
+    expect(deps.log.warn).toHaveBeenCalledTimes(1)
+    expect(deps.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contextId: 'ctx-1',
+        toolName: 'search_tasks',
+        error: 'boom',
+      }),
+      'Tool execution failed',
+    )
+  })
+
   test('handleOrchestratorMessageError replies with the app error message', async () => {
     const { reply, getReplies } = createMockReply()
     const deps = {

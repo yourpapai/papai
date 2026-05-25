@@ -46,7 +46,10 @@
 
   // Ignore Stryker plugin (loaded at runtime, not imported) and codeindex (linked via `bun link`).
   // svelte is imported by client/debug/index.ts but knip can't follow .svelte file imports.
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex", "svelte"],
+  // msw is the dev-only mock layer dependency consumed exclusively by the
+  // Storybook story harness under client/stories/** (ignored below); it never
+  // ships in a production bundle.
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex", "svelte", "msw"],
 
   "ignoreIssues": {
     "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
@@ -86,6 +89,14 @@
     // plugin and config tests; they are intentionally outside production flows.
     "src/config.ts": ["exports"],
     "src/plugins/registry.ts": ["exports"],
+    // src/providers/registry.ts ships the plugin-contributed task-provider
+    // registry ahead of its consumers: registerContributedTaskProviderType is
+    // wired from src/plugins/context.ts and unregisterContributedTaskProviderType
+    // from src/plugins/loader.ts within Phase 1; getContributedTaskProviderType is
+    // consumed by registry tests now and by createProvider in Phase 2. Under
+    // knip --strict (test files excluded) these read as unused until the src
+    // callers land.
+    "src/providers/registry.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
@@ -117,6 +128,9 @@
   "treatConfigHintsAsErrors": true,
   "ignoreExportsUsedInFile": true,
 
-  // Ignore migration files and generated/runtime-only code that knip should not analyze as files
-  "ignore": ["src/db/migrations/**"],
+  // Ignore migration files and generated/runtime-only code that knip should not analyze as files.
+  // client/stories/** is the dev-only Storybook mock + story harness: it is reachable only through
+  // Storybook's dev entries and .svelte stories (which knip cannot parse), and is excluded from
+  // production bundles by design, so production-mode analysis correctly cannot trace it.
+  "ignore": ["src/db/migrations/**", "client/stories/**"],
 }

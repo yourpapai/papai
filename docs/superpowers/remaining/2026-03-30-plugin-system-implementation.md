@@ -9,8 +9,9 @@ See LICENSE in the project root for details.
 
 **Status:** mvp_implemented
 **Updated:** 2026-05-23
-**Plan:** `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md`
-**Spec:** `docs/superpowers/specs/2026-03-30-plugin-system-design.md`
+**ADR:** `docs/adr/0123-trusted-local-plugin-system.md`
+**Plan:** `docs/archive/2026-03-30-plugin-system-implementation.md`
+**Spec:** `docs/archive/2026-03-30-plugin-system-design.md`
 
 ## Completed MVP Scope
 
@@ -54,7 +55,7 @@ Canonical migration state:
 
 ## Validation Status
 
-Task 9 adds final lifecycle coverage and documentation sync. Final branch validation is tracked in `docs/superpowers/plans/2026-03-30-plugin-system-implementation.md` and should use:
+Task 9 added final lifecycle coverage and documentation sync. Final branch validation was tracked in `docs/archive/2026-03-30-plugin-system-implementation.md` and used:
 
 ```bash
 bun check:full

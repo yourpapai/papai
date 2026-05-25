@@ -5,14 +5,17 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { z } from 'zod'
+
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
 
-const baseManifest = {
+const baseManifest: z.input<typeof pluginManifestSchema> = {
   id: 'hello-world',
   name: 'Hello World',
   version: '1.0.0',
   description: 'A test plugin',
   apiVersion: PLUGIN_API_VERSION,
+  contributes: { taskProviderTypes: [] },
 }
 
 describe('pluginManifestSchema', () => {
@@ -121,6 +124,68 @@ describe('pluginManifestSchema', () => {
       const result = pluginManifestSchema.safeParse({
         ...baseManifest,
         permissions: ['storage', 'unknown.perm'],
+      })
+      expect(result.success).toBe(false)
+    })
+  })
+
+  describe('provider permissions', () => {
+    test('accepts provider.task and identity permissions', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task', 'identity'],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
+  describe('task provider type contribution', () => {
+    test('accepts a single task provider type with provider.task permission', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo'] },
+        providerCapabilities: ['comments.create', 'labels.list'],
+        providerConfigSchema: [{ key: 'base_url', label: 'Kaneo URL', required: true, sensitive: false }],
+        providerAllowedHosts: ['api.kaneo.io'],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('rejects a task provider type without provider.task permission', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['storage'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo'] },
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('rejects more than one task provider type', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo', 'youtrack'] },
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('rejects a structurally invalid providerAllowedHosts entry', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo'] },
+        providerAllowedHosts: ['-bad.example.com'],
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('rejects a non-identifier providerConfigValidator', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo'] },
+        providerConfigValidator: 'not a valid name!',
       })
       expect(result.success).toBe(false)
     })

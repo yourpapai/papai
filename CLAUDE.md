@@ -20,6 +20,9 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun start` — build the debug/admin clients and run the bot
 - `bun start:debug` — build the debug/admin clients and run the bot with `DEBUG_SERVER=true`
 - `bun build:client` — bundle the debug/admin UIs from `client/{debug,admin}/` to `public/`
+- `bun storybook` — run the dashboard component harness on http://localhost:6006 (Storybook + Vite, dev-only)
+- `bun build:storybook` — build the static story site to `storybook-static/` (git-ignored)
+- `bun check:bundle-isolation` — rebuild the client and assert the dev-only `client/stories/**` harness never leaked into the production debug/admin bundles
 - `bun review-loop:start` — run the review-loop workflow
 - `bun lint` — lint with oxlint
 - `bun lint:agent-strict -- <paths...>` — stricter agent-focused lint pass for selected paths
@@ -357,6 +360,15 @@ Tool exposure is capability-gated and also depends on context (`dm` vs `group`, 
 - identity: `set_my_identity`, `clear_my_identity`
 
 Current phase-five provider features such as sprints, activities, saved queries, and agiles are available at the provider layer but do not yet have corresponding tool wrappers.
+
+### User-Configurable Tool Access
+
+Beyond capability + context gating, each personal or managed-group context can disable
+tools. Preferences are an opt-out denylist (default: all enabled) stored as JSON under a
+reserved `tool_prefs` config key and applied as the final filter in `makeTools()`. The
+system prompt (`src/system-prompt.ts`) is composed from tool-gated fragments so it never
+instructs the agent to use a disabled tool, and appends an "Unavailable tools" line for
+partially-disabled domains. Managed via the "🧰 Tools" section of `/config`.
 
 ## Logging
 

@@ -93,6 +93,10 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
   list_attachments: read('attachment'),
   upload_attachment: write('attachment', 'create'),
   remove_attachment: destructive('attachment'),
+  list_files: read('attachment'),
+  delete_file: destructive('attachment'),
+  search_staged_files: read('attachment'),
+  resolve_staged_file: read('attachment'),
 
   list_work: read('work'),
   log_work: write('work', 'create'),

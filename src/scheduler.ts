@@ -11,7 +11,12 @@ import type { TaskProvider } from './providers/types.js'
 import { recordOccurrence } from './recurring-occurrences.js'
 import { type RecurringTaskRecord, getDueRecurringTasks, getRecurringTask } from './recurring.js'
 import { scheduler } from './scheduler-instance.js'
-import { applyLabels, buildRecurringTaskInput, finalizeCreatedRecurringTask } from './scheduler-recurring.js'
+import {
+  applyLabels,
+  buildRecurringTaskInput,
+  canRouteRecurringNotification,
+  finalizeCreatedRecurringTask,
+} from './scheduler-recurring.js'
 
 const log = logger.child({ scope: 'scheduler' })
 
@@ -33,6 +38,11 @@ const HEARTBEAT_INTERVAL = 60
 
 const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDeps): Promise<void> => {
   log.debug({ taskId: task.id, title: task.title, userId: task.userId }, 'Executing recurring task')
+
+  if (!canRouteRecurringNotification(chatProviderRef, task.userId)) {
+    log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: notification route unavailable')
+    return
+  }
 
   const provider = deps.resolve(task.userId)
   if (provider === null) {

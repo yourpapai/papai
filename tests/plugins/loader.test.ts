@@ -14,6 +14,7 @@ import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
+import { getContributedTaskProviderType } from '../../src/providers/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
@@ -30,13 +31,16 @@ function makeManifest(id: string, overrides: Partial<PluginManifest> = {}): Plug
     description: 'A test',
     apiVersion: PLUGIN_API_VERSION,
     main: 'index.ts',
-    contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+    contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
     permissions: [],
     defaultEnabled: false,
     activationTimeoutMs: 5000,
     requiredTaskCapabilities: [],
     requiredChatCapabilities: [],
     configRequirements: [],
+    providerCapabilities: [],
+    providerConfigSchema: [],
+    providerAllowedHosts: [],
     ...overrides,
   }
 }
@@ -107,7 +111,14 @@ describe('activatePlugins', () => {
       }
     `)
     const plugin = makePlugin('factory-plugin', entryPoint, {
-      contributes: { tools: ['registered_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -148,7 +159,14 @@ describe('activatePlugins', () => {
     `)
     const plugin = makePlugin('timeout-plugin', entryPoint, {
       activationTimeoutMs: 100,
-      contributes: { tools: ['partial_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['partial_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -170,7 +188,14 @@ describe('activatePlugins', () => {
       }
     `)
     const plugin = makePlugin('throwing-plugin', entryPoint, {
-      contributes: { tools: ['partial_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['partial_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -223,7 +248,14 @@ describe('activatePlugins', () => {
       }
     `)
     const plugin = makePlugin('deactivate-error-plugin', entryPoint, {
-      contributes: { tools: ['registered_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -232,5 +264,35 @@ describe('activatePlugins', () => {
 
     expect(contributionRegistry.getContributions('deactivate-error-plugin')).toBeUndefined()
     expect(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0]?.message).toContain('deactivate boom')
+  })
+
+  test('removes contributed provider type on deactivation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('demo', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('provider-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['demo'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    expect(getContributedTaskProviderType('demo')?.pluginId).toBe('provider-plugin')
+
+    await deactivateAllPlugins()
+    expect(getContributedTaskProviderType('demo')).toBeUndefined()
   })
 })

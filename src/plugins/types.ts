@@ -21,6 +21,8 @@ export const PLUGIN_PERMISSIONS = [
   'chat.send',
   'tasks.read',
   'tasks.write',
+  'provider.task',
+  'identity',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
@@ -118,12 +120,28 @@ const configKeySchema = z
   .max(64)
   .regex(/^[a-z][a-z0-9_]*$/u, 'Config key must be snake_case starting with a letter')
 
+const providerTypeSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-z0-9-]*$/u, 'Provider type must be lowercase kebab-case starting with a letter')
+
+const providerHostSchema = z
+  .string()
+  .min(1)
+  .max(253)
+  .regex(
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iu,
+    'Provider allowed host must be a valid hostname',
+  )
+
 const pluginContributesSchema = z.object({
   tools: z.array(toolNameSchema).optional().default([]),
   promptFragments: z.array(z.string().min(1).max(64)).optional().default([]),
   commands: z.array(commandNameSchema).optional().default([]),
   jobs: z.array(z.string().min(1).max(64)).optional().default([]),
   configKeys: z.array(configKeySchema).optional().default([]),
+  taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
 })
 
 const pluginConfigRequirementSchema = z.object({
@@ -150,30 +168,45 @@ const chatCapabilityTuple = CHAT_CAPABILITY_VALUES
 const permissionTuple = PLUGIN_PERMISSIONS
 
 /** Zod schema for a plugin manifest (plugin.json). */
-export const pluginManifestSchema = z.object({
-  id: pluginIdSchema,
-  name: z.string().min(1).max(128),
-  version: z.string().regex(/^\d+\.\d+\.\d+/u, 'version must be semver (major.minor.patch)'),
-  description: z.string().min(1).max(512),
-  apiVersion: z.literal(PLUGIN_API_VERSION),
-  main: mainPathSchema.optional().default('index.ts'),
-  contributes: pluginContributesSchema.optional().default({
-    tools: [],
-    promptFragments: [],
-    commands: [],
-    jobs: [],
-    configKeys: [],
-  }),
-  permissions: z.array(z.enum(permissionTuple)).optional().default([]),
-  author: z.string().optional(),
-  homepage: z.url().optional(),
-  license: z.string().optional(),
-  defaultEnabled: z.boolean().optional().default(false),
-  requiredTaskCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
-  requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
-  configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
-  activationTimeoutMs: z.number().int().min(100).max(10000).optional().default(5000),
-})
+export const pluginManifestSchema = z
+  .object({
+    id: pluginIdSchema,
+    name: z.string().min(1).max(128),
+    version: z.string().regex(/^\d+\.\d+\.\d+/u, 'version must be semver (major.minor.patch)'),
+    description: z.string().min(1).max(512),
+    apiVersion: z.literal(PLUGIN_API_VERSION),
+    main: mainPathSchema.optional().default('index.ts'),
+    contributes: pluginContributesSchema.optional().default({
+      tools: [],
+      promptFragments: [],
+      commands: [],
+      jobs: [],
+      configKeys: [],
+      taskProviderTypes: [],
+    }),
+    permissions: z.array(z.enum(permissionTuple)).optional().default([]),
+    author: z.string().optional(),
+    homepage: z.url().optional(),
+    license: z.string().optional(),
+    defaultEnabled: z.boolean().optional().default(false),
+    requiredTaskCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
+    requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
+    configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
+    providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
+    providerConfigSchema: z.array(pluginConfigRequirementSchema).optional().default([]),
+    providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
+    providerConfigValidator: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/u, 'Provider config validator must be a valid identifier')
+      .optional(),
+    activationTimeoutMs: z.number().int().min(100).max(10000).optional().default(5000),
+  })
+  .refine((m) => m.contributes.taskProviderTypes.length === 0 || m.permissions.includes('provider.task'), {
+    message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
+    path: ['permissions'],
+  })
 
 export type PluginManifest = z.output<typeof pluginManifestSchema>
 /** A validated plugin discovered from the filesystem. */

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { buildAiOutputConfigSection } from '../ai-output-config-ui.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
 import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
@@ -14,6 +15,7 @@ import { logger } from '../logger.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
+import { getToolPrefs } from '../tools/tool-preferences.js'
 import type { ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'commands:config' })
@@ -146,7 +148,13 @@ export async function renderConfigForTarget(
   getConfigKeysForContext(targetContextId).forEach((key) => {
     lines.push(formatConfigLine(key, config[key]))
   })
+  const aiOutputSection = buildAiOutputConfigSection(targetContextId)
+  lines.push(...aiOutputSection.lines)
   appendPluginConfigLines(lines, targetContextId)
+  const toolPrefs = getToolPrefs(targetContextId)
+  const disabledCount =
+    toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
+  lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
 
   if (!interactiveButtons) {
     lines.push('\n⚠️ Interactive editing is not available in this chat. Use `/setup` to configure everything.')
@@ -156,7 +164,12 @@ export async function renderConfigForTarget(
 
   lines.push('\n💡 Click a field below to edit it, or use `/setup` to configure everything.')
   await reply.buttons(lines.join('\n'), {
-    buttons: [...buildConfigButtons(config, targetContextId), ...buildPluginButtons(targetContextId)],
+    buttons: [
+      ...buildConfigButtons(config, targetContextId),
+      ...aiOutputSection.buttons,
+      ...buildPluginButtons(targetContextId),
+      { text: '🧰 Tools', callbackData: `tgl:menu:${encodePluginContextId(targetContextId)}`, style: 'secondary' },
+    ],
   })
 }
 

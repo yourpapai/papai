@@ -20,19 +20,35 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
+type EmbedManyInput = Parameters<typeof embedMany>[0]
+type EmbeddingModel = EmbedManyInput['model']
+
 export interface EmbedSlugBatchDeps {
-  readonly embedMany: typeof embedMany
+  readonly embedMany: (input: {
+    readonly model: EmbeddingModel
+    readonly values: readonly string[]
+  }) => Promise<{ readonly embeddings: readonly (readonly number[])[] }>
+  readonly buildEmbeddingModel: (apiKey: string) => EmbeddingModel
+}
+
+function defaultBuildEmbeddingModel(apiKey: string): EmbeddingModel {
+  const provider = createOpenAICompatible({
+    name: 'behavior-audit-embed',
+    apiKey,
+    baseURL: EMBEDDING_BASE_URL,
+  })
+  return provider.embeddingModel(EMBEDDING_MODEL)
 }
 
 async function retryEmbedBatch(
   batch: readonly string[],
-  model: Parameters<typeof embedMany>[0]['model'],
+  model: EmbeddingModel,
   deps: EmbedSlugBatchDeps,
   attempt: number,
   offset: number,
-): Promise<readonly number[][]> {
+): Promise<readonly (readonly number[])[]> {
   try {
-    const { embeddings } = await deps.embedMany({ model, values: [...batch] })
+    const { embeddings } = await deps.embedMany({ model, values: batch })
     return embeddings
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -49,18 +65,21 @@ async function retryEmbedBatch(
   }
 }
 
+const defaultEmbedSlugBatchDeps: EmbedSlugBatchDeps = {
+  embedMany: async ({ model, values }) => {
+    const result = await embedMany({ model, values: [...values] })
+    return { embeddings: result.embeddings }
+  },
+  buildEmbeddingModel: defaultBuildEmbeddingModel,
+}
+
 export function embedSlugBatch(
   slugInputs: readonly string[],
-  deps: EmbedSlugBatchDeps = { embedMany },
+  deps: EmbedSlugBatchDeps = defaultEmbedSlugBatchDeps,
 ): Promise<readonly (readonly number[])[]> {
   if (slugInputs.length === 0) return Promise.resolve([])
   const apiKey = process.env['OPENAI_API_KEY'] ?? 'no-key'
-  const provider = createOpenAICompatible({
-    name: 'behavior-audit-embed',
-    apiKey,
-    baseURL: EMBEDDING_BASE_URL,
-  })
-  const model = provider.embeddingModel(EMBEDDING_MODEL)
+  const model = deps.buildEmbeddingModel(apiKey)
 
   const batchSize = CONSOLIDATION_EMBED_BATCH_SIZE
   const offsets = Array.from({ length: Math.ceil(slugInputs.length / batchSize) }, (_, i) => i * batchSize)

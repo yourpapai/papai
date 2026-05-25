@@ -6,6 +6,7 @@
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
+import { unregisterContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
@@ -95,6 +96,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
     log.error({ pluginId: manifest.id, error: msg }, 'Plugin activation failed')
     activeInstances.delete(manifest.id)
     contributionRegistry.deregister(manifest.id)
+    unregisterContributedTaskProviderType(manifest.id)
     pluginRegistry.markError(manifest.id, `Activation failed: ${msg}`)
     recordRuntimeEvent(manifest.id, 'error', `Activation failed: ${msg}`)
     return false
@@ -131,6 +133,7 @@ async function deactivateOne(pluginId: string): Promise<void> {
     }
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
+    unregisterContributedTaskProviderType(pluginId)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'deactivated')
     log.info({ pluginId }, 'Plugin deactivated')
@@ -139,6 +142,7 @@ async function deactivateOne(pluginId: string): Promise<void> {
     log.error({ pluginId, error: msg }, 'Plugin deactivation error (continuing)')
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
+    unregisterContributedTaskProviderType(pluginId)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
   }
 }

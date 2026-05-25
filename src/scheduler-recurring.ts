@@ -16,6 +16,10 @@ import { markExecuted, type RecurringTaskRecord } from './recurring.js'
 const log = logger.child({ scope: 'scheduler:recurring' })
 
 type CreateTaskInput = Parameters<TaskProvider['createTask']>[0]
+type RouterInstanceActiveLookup = { isInstanceActive: (id: string) => boolean }
+
+const hasRouterInstanceActiveLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceActiveLookup =>
+  typeof Reflect.get(chat, 'isInstanceActive') === 'function'
 
 const getRecurringNotificationRoute = (
   userId: string,
@@ -28,6 +32,14 @@ const getRecurringNotificationRoute = (
   const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
   if (platformInstanceId === null) return null
   return { platformInstanceId, target }
+}
+
+export const canRouteRecurringNotification = (chatProviderRef: ChatProvider | null, userId: string): boolean => {
+  if (chatProviderRef === null) return true
+  const route = getRecurringNotificationRoute(userId)
+  if (route === null) return false
+  if (!hasRouterInstanceActiveLookup(chatProviderRef)) return true
+  return chatProviderRef.isInstanceActive(route.platformInstanceId)
 }
 
 export const buildRecurringTaskInput = (

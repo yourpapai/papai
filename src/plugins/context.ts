@@ -4,6 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
+import { registerContributedTaskProviderType, type TaskProviderFactory } from '../providers/registry.js'
+import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
+import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginContributions,
@@ -41,6 +44,8 @@ export type PluginRegistration = {
   registerCommand(command: PluginCommand): void
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
+  /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
+  registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -51,6 +56,10 @@ export type PluginContext = {
   readonly kv: PluginKvStore
   readonly log: PluginLogger
   readonly registration: PluginRegistration
+  /** Present only when the 'provider.task' permission is held. */
+  readonly providerRuntime?: PluginProviderRuntime
+  /** Present only when 'identity' is held and the plugin declares one task provider type. */
+  readonly identity?: PluginIdentityFacade
 }
 
 function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
@@ -88,6 +97,27 @@ function buildPluginLogger(pluginId: string): PluginLogger {
   })
 }
 
+function buildRegisterTaskProviderType(
+  manifest: PluginManifest,
+): (type: string, descriptor: { factory: TaskProviderFactory }) => void {
+  return function registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void {
+    if (!manifest.permissions.includes('provider.task')) {
+      throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
+    }
+    const declared = manifest.contributes.taskProviderTypes
+    if (declared.length !== 1 || declared[0] !== type) {
+      throw new Error(
+        `Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes (declared: [${declared.join(', ')}])`,
+      )
+    }
+    registerContributedTaskProviderType(type, {
+      pluginId: manifest.id,
+      factory: descriptor.factory,
+      capabilities: new Set(manifest.providerCapabilities),
+    })
+  }
+}
+
 function buildRegistration(manifest: PluginManifest, collected: PluginContributions): PluginRegistration {
   const declaredTools = new Set(manifest.contributes.tools)
   const declaredFragments = new Set(manifest.contributes.promptFragments)
@@ -121,6 +151,7 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
       }
       collected.jobs = [...(collected.jobs ?? []), job]
     },
+    registerTaskProviderType: buildRegisterTaskProviderType(manifest),
   })
 }
 
@@ -136,14 +167,27 @@ export function buildPluginContext(
   const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)
+  const log = buildPluginLogger(manifest.id)
+  const providerRuntime = permissions.has('provider.task')
+    ? buildProviderRuntime(manifest.providerAllowedHosts, log)
+    : undefined
+
+  const declaredTypes = manifest.contributes.taskProviderTypes
+  const [declaredProviderType] = declaredTypes
+  const identity =
+    permissions.has('identity') && declaredTypes.length === 1 && declaredProviderType !== undefined
+      ? buildIdentityFacade(declaredProviderType)
+      : undefined
 
   const ctx: PluginContext = Object.freeze({
     pluginId: manifest.id,
     contextId,
     permissions,
     kv,
-    log: buildPluginLogger(manifest.id),
+    log,
     registration: buildRegistration(manifest, collected),
+    providerRuntime,
+    identity,
   })
 
   return { ctx, collected }

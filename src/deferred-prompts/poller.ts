@@ -15,6 +15,7 @@ import { getUserTimezoneOrDefault } from '../utils/config-timezone.js'
 import { describeCondition, evaluateCondition, getEligibleAlertPrompts, updateAlertTriggerTime } from './alerts.js'
 import { alertsNeedFullTasks, enrichTasks, fetchAllTasks } from './fetch-tasks.js'
 import { groupScheduledPromptsByDelivery } from './poller-groups.js'
+import { stopRegisteredPollerTask } from './poller-lifecycle.js'
 import { finalizeAllPrompts, mergeExecutionMetadata } from './poller-scheduled.js'
 import { resolveProactivePlatformInstanceId, sendProactiveMessage } from './proactive-delivery.js'
 import { getStorageContextId } from './proactive-llm-helpers.js'
@@ -199,6 +200,7 @@ async function executeAlertsForUser(
 ): Promise<void> {
   const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
   const configContextId = configContextIdForDelivery(alerts[0]!.deliveryTarget)
+  if (resolveProactivePlatformInstanceId(chat, alerts[0]!.deliveryTarget) === null) return
   const provider = buildProviderFn(configContextId)
   if (provider === null) {
     log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for alert polling')
@@ -272,10 +274,8 @@ export function startPollers(chat: ChatProvider, buildProviderFn: BuildProviderF
 }
 export function stopPollers(): void {
   log.info('Stopping deferred prompt pollers')
-  scheduler.stop('deferred-scheduled-poll')
-  scheduler.stop('deferred-alert-poll')
-  scheduler.unregister('deferred-scheduled-poll')
-  scheduler.unregister('deferred-alert-poll')
+  stopRegisteredPollerTask(scheduler, 'deferred-scheduled-poll')
+  stopRegisteredPollerTask(scheduler, 'deferred-alert-poll')
   isRunning = false
 }
 export type PollerSnapshot = {

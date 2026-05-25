@@ -25,6 +25,10 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
 - Core tool construction starts in `src/tools/core-tools.ts`.
 - Context-aware assembly happens in `src/tools/tools-builder.ts`.
 - Public entry point is `makeTools(provider, options)` in `src/tools/index.ts`.
+- After capability + context gating and plugin merge, `makeTools()` applies the
+  per-context tool denylist from `src/tools/tool-preferences.ts` (default all-on).
+  Disabled tools are physically removed from the returned `ToolSet`, so they cannot be
+  invoked. Preferences are keyed by the same `storageContextId` used elsewhere.
 
 `MakeToolsOptions` controls tool exposure:
 

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { parseAiOutputCallbackData } from '../ai-output-config-ui.js'
 import { dispatchGroupSelectorResult } from '../group-settings/dispatch.js'
 import { handleGroupSettingsSelectorCallback } from '../group-settings/selector.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
@@ -10,7 +11,8 @@ import { logger } from '../logger.js'
 import { cancelWizard, getNextPrompt } from '../wizard/engine.js'
 import { validateAndSaveWizardConfig } from '../wizard/save.js'
 import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
-import { defaultHandleConfigInteraction } from './interaction-router-config.js'
+import { handleAiOutputConfigInteraction } from './ai-output-config-interaction.js'
+import { defaultHandleConfigInteraction as handleConfigEditorInteraction } from './interaction-router-config.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import {
   getResponseText,
@@ -20,16 +22,20 @@ import {
   parseWizardContextId,
 } from './interaction-router-support.js'
 import { handlePluginInteraction } from './plugin-interaction-handler.js'
+import { handleToolToggleInteraction } from './tool-toggle-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
 
-export type InteractionRouteDeps = {
+type InteractionRouteHandlers = {
   handleGroupSettingsInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handleConfigInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handleWizardInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handlePluginInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
+  handleToolToggleInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
 }
+
+export type InteractionRouteDeps = Partial<InteractionRouteHandlers>
 function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
   const result = handleGroupSettingsSelectorCallback(
     interaction.user.id,
@@ -37,6 +43,24 @@ function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction,
     interaction.platformInstanceId,
   )
   return dispatchGroupSelectorResult(result, reply, interaction.user.id, interaction.platformInstanceId)
+}
+
+async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): Promise<true> {
+  log.warn({ callbackData }, 'Unknown config editor callback data')
+  await replyTextPreferReplace(reply, 'This action is no longer valid. Please start over with /config.')
+  return true
+}
+
+function defaultHandleConfigInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
+  const { callbackData } = interaction
+  if (!callbackData.startsWith('cfg:')) return Promise.resolve(false)
+
+  const aiOutputCallback = parseAiOutputCallbackData(callbackData)
+  if (aiOutputCallback !== null) {
+    return handleAiOutputConfigInteraction(interaction, reply, aiOutputCallback, replyUnknownConfigAction)
+  }
+
+  return handleConfigEditorInteraction(interaction, reply)
 }
 
 async function replyWithWizardButtons(
@@ -145,11 +169,12 @@ async function defaultHandleWizardInteraction(interaction: IncomingInteraction, 
   }
 }
 
-const defaultDeps: InteractionRouteDeps = {
+const defaultDeps: InteractionRouteHandlers = {
   handleGroupSettingsInteraction: defaultHandleGroupSettingsInteraction,
   handleConfigInteraction: defaultHandleConfigInteraction,
   handleWizardInteraction: defaultHandleWizardInteraction,
   handlePluginInteraction,
+  handleToolToggleInteraction,
 }
 
 function getRoutedInteraction(interaction: IncomingInteraction, auth: AuthorizationResult): IncomingInteraction {
@@ -163,9 +188,9 @@ export function routeInteraction(
   ...rest: [] | [InteractionRouteDeps]
 ): Promise<boolean> {
   const deps = rest[0]
-  let resolvedDeps = defaultDeps
+  let resolvedDeps: InteractionRouteHandlers = defaultDeps
   if (deps !== undefined) {
-    resolvedDeps = deps
+    resolvedDeps = { ...defaultDeps, ...deps }
   }
   if (!auth.allowed) {
     return reply.text('You are not authorized to use this bot.').then(() => true)
@@ -178,6 +203,9 @@ export function routeInteraction(
   }
 
   if (callbackData.startsWith('cfg:')) {
+    if (callbackData.startsWith('cfg:ai:') && routedInteraction.contextType === 'group' && !auth.isGroupAdmin) {
+      return reply.text('Only group admins can change AI output visibility for this group.').then(() => true)
+    }
     return resolvedDeps.handleConfigInteraction(routedInteraction, reply)
   }
 
@@ -187,6 +215,10 @@ export function routeInteraction(
 
   if (callbackData.startsWith('plg:')) {
     return resolvedDeps.handlePluginInteraction(routedInteraction, reply)
+  }
+
+  if (callbackData.startsWith('tgl:')) {
+    return resolvedDeps.handleToolToggleInteraction(interaction, reply)
   }
 
   log.debug({ callbackData }, 'No route matched for interaction callback')

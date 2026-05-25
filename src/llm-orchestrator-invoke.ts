@@ -5,14 +5,18 @@
 
 import { generateText } from 'ai'
 
+import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { ReplyFn } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
 import { handleToolCallFinish } from './llm-orchestrator-support.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
 import { buildSystemPrompt } from './system-prompt.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
+
+const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
 export type ToolCallContext = {
   contextId: string
@@ -21,15 +25,25 @@ export type ToolCallContext = {
   model: string
   modelRole: 'main' | 'small'
   turnId: string
-}
+} & Partial<Record<'progressReporter', AiProgressReporter>>
 
 const safeByteLength = (value: unknown): number | null => {
   if (value === undefined || value === null) return null
   try {
-    return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8')
+    return Buffer.byteLength(resolveSerializedValue(JSON.stringify(value)), 'utf8')
   } catch {
     return null
   }
+}
+
+const resolveSerializedValue = (value: string | undefined): string => {
+  if (value === undefined) return ''
+  return value
+}
+
+const resolveRecoveredFlag = (value: boolean | undefined): boolean => {
+  if (value === undefined) return false
+  return value
 }
 
 const contextEnvelope = (
@@ -49,8 +63,50 @@ export type ToolCallFinishEvent = {
   toolCall: { toolName: string; toolCallId: string; input: unknown }
   durationMs: number
   success: boolean
-  output?: unknown
-  error?: unknown
+} & Partial<Record<'output' | 'error', unknown>>
+
+const reportToolStarted = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
+  if (ctx.progressReporter === undefined) return
+  try {
+    ctx.progressReporter.toolStarted({
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      input: event.toolCall.input,
+    })
+  } catch (error) {
+    log.warn(
+      {
+        contextId: ctx.contextId,
+        toolName: event.toolCall.toolName,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'AI progress reporter failed on tool start',
+    )
+  }
+}
+
+const reportToolFinished = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
+  if (ctx.progressReporter === undefined) return
+  try {
+    ctx.progressReporter.toolFinished({
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      input: event.toolCall.input,
+      durationMs: event.durationMs,
+      success: event.success,
+      output: event.output,
+      error: event.error,
+    })
+  } catch (error) {
+    log.warn(
+      {
+        contextId: ctx.contextId,
+        toolName: event.toolCall.toolName,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'AI progress reporter failed on tool finish',
+    )
+  }
 }
 
 export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
@@ -65,6 +121,7 @@ export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEv
     },
     ctx.turnId,
   )
+  reportToolStarted(ctx, event)
 }
 
 export const buildToolCallStartHandler =
@@ -73,10 +130,7 @@ export const buildToolCallStartHandler =
     handleToolCallStart(ctx, event)
   }
 
-const emitFailureClassified = (
-  ctx: ToolCallContext,
-  event: { success: boolean; output?: unknown; error?: unknown; toolCall: { toolName: string; toolCallId: string } },
-): void => {
+const emitFailureClassified = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
   if (event.success && isToolFailureResult(event.output)) {
     const failure = event.output
     emitUser(
@@ -88,7 +142,7 @@ const emitFailureClassified = (
         errorType: failure.errorType,
         errorCode: failure.errorCode,
         retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
+        recovered: resolveRecoveredFlag(failure.recovered),
         ...contextEnvelope(ctx),
       },
       ctx.turnId,
@@ -104,7 +158,7 @@ const emitFailureClassified = (
         errorType: failure.errorType,
         errorCode: failure.errorCode,
         retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
+        recovered: resolveRecoveredFlag(failure.recovered),
         ...contextEnvelope(ctx),
       },
       ctx.turnId,
@@ -112,11 +166,7 @@ const emitFailureClassified = (
   }
 }
 
-export const handleToolCallFinishEvent = (
-  ctx: ToolCallContext,
-  reply: ReplyFn | undefined,
-  event: ToolCallFinishEvent,
-): void => {
+export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
   emitUser(
     'tool:execute_end',
     ctx.contextId,
@@ -132,22 +182,32 @@ export const handleToolCallFinishEvent = (
     ctx.turnId,
   )
   emitFailureClassified(ctx, event)
-  handleToolCallFinish(ctx.contextId, reply, event)
+  reportToolFinished(ctx, event)
+  handleToolCallFinish(ctx.contextId, undefined, event)
 }
 
 export const buildToolCallFinishHandler =
-  (
-    ctx: ToolCallContext,
-    reply: ReplyFn | undefined,
-  ): Parameters<typeof generateText>[0]['experimental_onToolCallFinish'] =>
+  (ctx: ToolCallContext): Parameters<typeof generateText>[0]['experimental_onToolCallFinish'] =>
   (event) => {
-    handleToolCallFinishEvent(ctx, reply, event)
+    handleToolCallFinishEvent(ctx, event)
   }
 
 export const invokeModel = async (
   args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  const { contextId, chatUserId, contextType, mainModel, model, provider, tools, messages, deps, reply, turnId } = args
+  const {
+    contextId,
+    chatUserId,
+    contextType,
+    mainModel,
+    model,
+    provider,
+    tools,
+    messages,
+    deps,
+    turnId,
+    enabledToolNames,
+  } = args
   const start = Date.now()
   emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting, turnId)
   const ctx: ToolCallContext = {
@@ -157,16 +217,17 @@ export const invokeModel = async (
     model: mainModel,
     modelRole: 'main',
     turnId,
+    progressReporter: args.progressReporter,
   }
   const result = await deps.generateText({
     model,
-    system: buildSystemPrompt(provider, contextId),
+    system: buildSystemPrompt(provider, contextId, enabledToolNames),
     messages,
     tools,
     timeout: 1_200_000,
     stopWhen: deps.stepCountIs(25),
     experimental_onToolCallStart: buildToolCallStartHandler(ctx),
-    experimental_onToolCallFinish: buildToolCallFinishHandler(ctx, reply),
+    experimental_onToolCallFinish: buildToolCallFinishHandler(ctx),
   })
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, args.toolRouting, turnId)
   return result

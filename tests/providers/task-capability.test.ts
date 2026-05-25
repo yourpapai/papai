@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { describe, expect, test } from 'bun:test'
+
+import type { TaskCapability } from '../../src/providers/task-capability.js'
+
+describe('TaskCapability', () => {
+  test('known capability values are valid TaskCapability members', () => {
+    const capabilities: TaskCapability[] = [
+      'tasks.delete',
+      'tasks.count',
+      'tasks.relations',
+      'tasks.watchers',
+      'tasks.votes',
+      'tasks.visibility',
+      'tasks.commands',
+      'projects.read',
+      'projects.list',
+      'projects.create',
+      'projects.update',
+      'projects.delete',
+      'projects.team',
+      'comments.read',
+      'comments.create',
+      'comments.update',
+      'comments.delete',
+      'comments.reactions',
+      'labels.list',
+      'labels.create',
+      'labels.update',
+      'labels.delete',
+      'labels.assign',
+      'statuses.list',
+      'statuses.create',
+      'statuses.update',
+      'statuses.delete',
+      'statuses.reorder',
+      'attachments.list',
+      'attachments.upload',
+      'attachments.delete',
+      'workItems.list',
+      'workItems.create',
+      'workItems.update',
+      'workItems.delete',
+      'agiles.list',
+      'sprints.list',
+      'sprints.create',
+      'sprints.update',
+      'sprints.assign',
+      'activities.read',
+      'queries.saved',
+    ]
+    expect(capabilities).toHaveLength(42)
+  })
+})

@@ -1,6 +1,6 @@
 {
   "testRunner": "bun",
-  "appendPlugins": ["@hughescr/stryker-bun-runner"],
+  "appendPlugins": ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
   "checkers": ["typescript"],
   "tsconfigFile": "tsconfig.json",
   "bun": {

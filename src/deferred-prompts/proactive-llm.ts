@@ -4,12 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { generateText, stepCountIs, type ModelMessage, type ToolSet } from 'ai'
+import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
 import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { getConfig } from '../config.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
@@ -19,20 +18,17 @@ import type { TaskProvider } from '../providers/types.js'
 import { getSystemConfig } from '../system-config.js'
 import { buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
-import { makeTools } from '../tools/index.js'
-import { routeToolsForMessage } from '../tools/tool-router.js'
+import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
   buildMetadataMessages,
   buildMinimalSystemPrompt,
   getStorageContextId,
   modelIdForLightweight,
   resultTextOrDone,
-  timezoneOrUtc,
   toolCallCount,
   type ProactiveLlmDispatchArgs,
   wrapPrompt,
 } from './proactive-llm-helpers.js'
-import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm' })
@@ -195,43 +191,16 @@ async function invokeWithContext(
   return resultTextOrDone(result.text)
 }
 
-function buildFullToolSet(
-  provider: TaskProvider,
-  createdByUserId: string,
+function resolveFullProvider(
+  buildProviderFn: BuildProviderFn,
+  userId: string,
   storageContextId: string,
-  contextType: 'dm' | 'group',
-  prompt: string,
-): ToolSet {
-  const fullTools = makeTools(provider, {
-    storageContextId,
-    chatUserId: createdByUserId,
-    mode: 'proactive',
-    contextType,
-  })
-  return routeToolsForMessage(prompt, fullTools).tools
-}
-
-function buildFullMessages(
-  createdByUserId: string,
-  storageContextId: string,
-  type: 'scheduled' | 'alert',
-  prompt: string,
-  matchedTasksSummary: string | undefined,
-  metadata: ExecutionMetadata,
-): { messages: ModelMessage[]; systemPrompt: string } {
-  const timezone = timezoneOrUtc(getConfig(createdByUserId, 'timezone'))
-  const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)
-  const history = getCachedHistory(storageContextId)
-  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
-  return {
-    messages: [
-      ...messagesWithMemory,
-      { role: 'system', content: trigger.systemContext },
-      ...buildMetadataMessages(metadata),
-      { role: 'user', content: trigger.userContent },
-    ],
-    systemPrompt: trigger.systemContext,
-  }
+  configContextId: string,
+): TaskProvider | string {
+  const provider = buildProviderFn(configContextId)
+  if (provider !== null) return provider
+  log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
+  return 'Deferred prompt skipped: task provider not configured.'
 }
 
 async function invokeFull(
@@ -250,18 +219,18 @@ async function invokeFull(
   const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return config
 
-  const provider = buildProviderFn(configContextId)
-  if (provider === null) {
-    log.warn(
-      { userId: createdByUserId, storageContextId, configContextId },
-      'Could not build task provider for deferred prompt',
-    )
-    return 'Deferred prompt skipped: task provider not configured.'
-  }
+  const provider = resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
+  if (typeof provider === 'string') return provider
 
   const model = deps.buildModel(config, config.mainModel)
-  const tools = buildFullToolSet(provider, createdByUserId, storageContextId, deliveryTarget.contextType, prompt)
-  const systemPrompt = buildSystemPrompt(provider, createdByUserId)
+  const { tools, enabledToolNames } = buildFullToolSet(
+    provider,
+    createdByUserId,
+    storageContextId,
+    deliveryTarget.contextType,
+    prompt,
+  )
+  const systemPrompt = buildSystemPrompt(provider, storageContextId, enabledToolNames)
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
 
   log.debug(

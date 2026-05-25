@@ -13,7 +13,7 @@ import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
 import { resolveSourceChatProvider, resolveSourceProviderName } from './chat/source-instance.js'
-import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
+import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
   registerClearCommand,
@@ -26,6 +26,7 @@ import {
   registerStartCommand,
 } from './commands/index.js'
 import { emitUser } from './debug/event-bus.js'
+import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -33,7 +34,6 @@ import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
 
-type ProcessMessageFn = typeof defaultProcessMessage
 type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
 export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
@@ -241,7 +241,6 @@ async function onIncomingMessage(
   if (!willQueueAuthorizedMessage(msg, auth))
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }
-type IncomingInteraction = Parameters<Parameters<NonNullable<ChatProvider['onInteraction']>>[0]>[0]
 async function routeIncomingInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<void> {
   try {
     const auth = checkAuthorizationExtended(

@@ -8,11 +8,20 @@ import type { ToolSet } from 'ai'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
+import { getToolPrefs, partitionToolNames } from './tool-preferences.js'
 import { buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
 export type { MakeToolsOptions, ToolMode }
+
+function applyToolPreferences(tools: ToolSet, contextId: string | undefined): ToolSet {
+  if (contextId === undefined) return tools
+  const prefs = getToolPrefs(contextId)
+  if (prefs.disabledDomains.length === 0 && Object.keys(prefs.toolOverrides).length === 0) return tools
+  const { enabled } = partitionToolNames(prefs, Object.keys(tools))
+  return Object.fromEntries(Object.entries(tools).filter(([name]) => enabled.has(name)))
+}
 
 function wrapToolSet(tools: ToolSet): ToolSet {
   return Object.fromEntries(
@@ -57,9 +66,9 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
         storageContextId: contextId,
         chatUserId,
       })
-      return { ...wrappedBuiltins, ...pluginTools }
+      return applyToolPreferences({ ...wrappedBuiltins, ...pluginTools }, contextId)
     }
   }
 
-  return wrappedBuiltins
+  return applyToolPreferences(wrappedBuiltins, contextId)
 }

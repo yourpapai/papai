@@ -6,12 +6,15 @@
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { KaneoProvider, type KaneoConfig } from './kaneo/index.js'
-import type { TaskCapability, TaskProvider } from './types.js'
+import type { TaskCapability } from './task-capability.js'
+import type { TaskProvider } from './types.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
 
-type ProviderFactory = (config: Record<string, string>) => TaskProvider
+export type TaskProviderFactory = (config: Record<string, string>) => TaskProvider
+
+type ProviderFactory = TaskProviderFactory
 
 const configValue = (config: Record<string, string>, key: string): string => {
   const value = config[key]
@@ -44,6 +47,14 @@ const providers = new Map<string, ProviderFactory>([
   ['youtrack', createYouTrackProvider],
 ])
 
+export type ContributedTaskProviderEntry = {
+  pluginId: string
+  factory: TaskProviderFactory
+  capabilities: ReadonlySet<TaskCapability>
+}
+
+const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
+
 /**
  * Create a TaskProvider instance by name.
  *
@@ -54,12 +65,22 @@ const providers = new Map<string, ProviderFactory>([
  */
 export function createProvider(name: string, config: Record<string, string>): TaskProvider {
   const factory = providers.get(name)
-  if (factory === undefined) {
-    log.error({ name }, 'Unknown provider requested')
-    throw new Error(`Unknown provider: ${name}. Available providers: ${[...providers.keys()].join(', ')}`)
+  if (factory !== undefined) {
+    log.debug({ name }, 'Creating provider instance')
+    return factory(config)
   }
-  log.debug({ name }, 'Creating provider instance')
-  return factory(config)
+  const contributed = pluginContributedTaskProviderFactories.get(name)
+  if (contributed === undefined) {
+    log.error({ name }, 'Unknown provider requested')
+    throw new Error(
+      `Unknown provider: ${name}. Available providers: ${[
+        ...providers.keys(),
+        ...pluginContributedTaskProviderFactories.keys(),
+      ].join(', ')}`,
+    )
+  }
+  log.debug({ name, pluginId: contributed.pluginId }, 'Creating contributed provider instance')
+  return contributed.factory(config)
 }
 
 const capabilityConfigForTaskInstance = (instance: TaskInstance): Record<string, string> => {
@@ -75,5 +96,33 @@ const capabilityConfigForTaskInstance = (instance: TaskInstance): Record<string,
 }
 
 export function getCapabilitiesForTaskInstance(instance: TaskInstance): ReadonlySet<TaskCapability> {
+  const contributed = pluginContributedTaskProviderFactories.get(instance.type)
+  if (contributed !== undefined) return contributed.capabilities
   return createProvider(instance.type, capabilityConfigForTaskInstance(instance)).capabilities
+}
+
+/** Register a plugin-contributed task provider type. First-wins on duplicate type. */
+export function registerContributedTaskProviderType(type: string, entry: ContributedTaskProviderEntry): void {
+  const existing = pluginContributedTaskProviderFactories.get(type)
+  if (existing !== undefined) {
+    log.error({ type, existing: existing.pluginId, attempted: entry.pluginId }, 'Duplicate task provider type')
+    throw new Error(`Task provider type '${type}' already registered by plugin '${existing.pluginId}'`)
+  }
+  pluginContributedTaskProviderFactories.set(type, entry)
+  log.info({ type, pluginId: entry.pluginId }, 'Registered contributed task provider type')
+}
+
+/** Remove all contributed types owned by a plugin (deactivation / failure cleanup). */
+export function unregisterContributedTaskProviderType(pluginId: string): void {
+  for (const [type, entry] of pluginContributedTaskProviderFactories) {
+    if (entry.pluginId === pluginId) {
+      pluginContributedTaskProviderFactories.delete(type)
+      log.debug({ type, pluginId }, 'Unregistered contributed task provider type')
+    }
+  }
+}
+
+/** Look up a contributed task provider entry by type. */
+export function getContributedTaskProviderType(type: string): ContributedTaskProviderEntry | undefined {
+  return pluginContributedTaskProviderFactories.get(type)
 }

@@ -380,6 +380,21 @@ describe('scheduler', () => {
       expect(sendMessageCalls[0]!.platformInstanceId).toBe('telegram-default')
     })
 
+    test('tick() skips stopped recurring notification targets before task creation', async () => {
+      const taskId = createDueTask()
+      mockChatProvider = { ...mockChatProvider, isInstanceActive: (_id: string): boolean => false }
+
+      startScheduler(mockChatProvider, schedulerDeps)
+      await Bun.sleep(50)
+
+      expect(createTaskCallCount).toBe(0)
+      expect(sendMessageCalls).toHaveLength(0)
+      const row = testSqlite
+        .query<{ last_run: string | null }, []>(`SELECT last_run FROM recurring_tasks WHERE id = '${taskId}'`)
+        .get()
+      expect(row!.last_run).toBeNull()
+    })
+
     test('tick() continues when notifyUser throws', async () => {
       sendMessageImpl = (): Promise<void> => Promise.reject(new Error('notification failed'))
       const taskId = createDueTask()

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
+import { getAiOutputSettings } from '../../src/ai-output-settings.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../../src/authorized-groups.js'
 import { buildDiscordInteraction } from '../../src/chat/discord/interaction-helpers.js'
 import { routeInteraction } from '../../src/chat/interaction-router.js'
@@ -128,6 +129,7 @@ describe('routeInteraction', () => {
         handleConfigInteraction: () => Promise.resolve(false),
         handleWizardInteraction: () => Promise.resolve(false),
         handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -145,6 +147,7 @@ describe('routeInteraction', () => {
       },
       handleWizardInteraction: () => Promise.resolve(false),
       handlePluginInteraction: () => Promise.resolve(false),
+      handleToolToggleInteraction: () => Promise.resolve(false),
     })
 
     expect(handled).toBe(true)
@@ -239,6 +242,7 @@ describe('routeInteraction', () => {
           return Promise.resolve(true)
         },
         handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -288,6 +292,7 @@ describe('routeInteraction', () => {
         handleConfigInteraction: () => Promise.resolve(false),
         handleWizardInteraction: () => Promise.resolve(false),
         handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
       },
     )
 
@@ -538,6 +543,91 @@ describe('routeInteraction', () => {
     expect(getConfig(scopedGroupId, 'timezone')).toBe('Europe/Berlin')
     expect(getConfig('group-9', 'timezone')).toBeNull()
     expect(getConfig(interaction.user.id, 'timezone')).toBeNull()
+  })
+
+  test('updates AI output setting for encoded target context', async () => {
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
+    const buttonReplies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `cfg:ai:toolVisibility:on@${Buffer.from('group-9').toString('base64url')}`,
+      },
+      {
+        ...reply,
+        buttons: (content: string): Promise<void> => {
+          buttonReplies.push(content)
+          return Promise.resolve()
+        },
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(getAiOutputSettings(scopedGroupId).toolVisibility).toBe('on')
+    expect(getAiOutputSettings('group-9').toolVisibility).toBe('off')
+    expect(getAiOutputSettings(interaction.user.id).toolVisibility).toBe('off')
+    expect(buttonReplies[0]).toContain('Tool calls: on')
+  })
+
+  test('rejects group AI output callback targeting another context', async () => {
+    const replies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        contextId: 'group-9',
+        contextType: 'group',
+        storageContextId: 'group-9',
+        callbackData: `cfg:ai:toolVisibility:on@${Buffer.from('other-context').toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      {
+        ...createMockAuth(true),
+        storageContextId: 'group-9',
+        isGroupAdmin: true,
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(getAiOutputSettings('other-context').toolVisibility).toBe('off')
+    expect(getAiOutputSettings('group-9').toolVisibility).toBe('off')
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
+  test('blocks non-admin group member from changing group AI output settings', async () => {
+    const replies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        contextId: 'group-9',
+        contextType: 'group',
+        storageContextId: 'group-9',
+        callbackData: 'cfg:ai:detailLevel:raw',
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      {
+        ...createMockAuth(true),
+        storageContextId: 'group-9',
+        isGroupAdmin: false,
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(getAiOutputSettings('group-9').detailLevel).toBe('sanitized')
+    expect(replies).toEqual(['Only group admins can change AI output visibility for this group.'])
   })
 
   test('starts setup for the selected group target', async () => {

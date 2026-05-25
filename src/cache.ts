@@ -6,21 +6,15 @@
 import type { ModelMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 
-import {
-  deleteInstructionFromDb,
-  syncConfigToDb,
-  syncFactToDb,
-  syncHistoryToDb,
-  syncInstructionToDb,
-  syncSummaryToDb,
-  syncWorkspaceToDb,
-} from './cache-db.js'
+import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb, syncWorkspaceToDb } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
-import type { CachedFact, CachedInstruction, UserCache } from './cache-types.js'
+import type { CachedFact, UserCache } from './cache-types.js'
 import { getDrizzleDb } from './db/drizzle.js'
-import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions } from './db/schema.js'
+import { conversationHistory, memoryFacts, memorySummary, userConfig } from './db/schema.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
+
+export { addCachedInstruction, deleteCachedInstruction, getCachedInstructions } from './cache-instructions.js'
 
 const log = logger.child({ scope: 'cache' })
 const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
@@ -52,7 +46,7 @@ export function cleanupExpiredCaches(): void {
   }
 }
 
-function getOrCreateCache(userId: string): UserCache {
+export function getOrCreateCache(userId: string): UserCache {
   let cache = userCaches.get(userId)
   if (cache === undefined) {
     cache = {
@@ -233,6 +227,20 @@ export function clearCachedTools(userId: string): void {
   getOrCreateCache(userId).tools = null
 }
 
+/**
+ * Clear cached tools for a context id and all of its derived group cache keys.
+ * DM cache key is the bare contextId; group cache keys are `${contextId}:${chatUserId}:${username}`.
+ */
+export function clearCachedToolsByPrefix(contextId: string): void {
+  const prefix = `${contextId}:`
+  for (const [key, cache] of userCaches) {
+    if (key === contextId || key.startsWith(prefix)) {
+      cache.tools = null
+    }
+  }
+  log.debug({ contextId }, 'Cleared cached tools by prefix')
+}
+
 export function evictUser(userId: string): void {
   userCaches.delete(userId)
   emitUser('cache:expire', userId, {})
@@ -258,40 +266,4 @@ export function clearCachedHistoryFlag(userId: string): void {
   }
   cache.config.delete('history_loaded')
   log.debug({ userId }, 'History loaded flag cleared')
-}
-
-export function getCachedInstructions(contextId: string): readonly CachedInstruction[] {
-  const cache = getOrCreateCache(contextId)
-  if (cache.instructions === null) {
-    log.debug({ contextId }, 'Loading instructions from DB into cache')
-    const rows = getDrizzleDb()
-      .select({ id: userInstructions.id, text: userInstructions.text, createdAt: userInstructions.createdAt })
-      .from(userInstructions)
-      .where(sql`${userInstructions.contextId} = ${contextId}`)
-      .orderBy(sql`${userInstructions.createdAt} ASC`)
-      .all()
-    cache.instructions = rows
-    emitUser('cache:load', contextId, { field: 'instructions' })
-  }
-  return cache.instructions
-}
-
-export function addCachedInstruction(contextId: string, instruction: { id: string; text: string }): void {
-  const cache = getOrCreateCache(contextId)
-  if (!Array.isArray(cache.instructions)) {
-    cache.instructions = []
-  }
-  const createdAt = new Date().toISOString()
-  cache.instructions.push({ ...instruction, createdAt })
-  syncInstructionToDb(contextId, { ...instruction, createdAt })
-  emitUser('cache:sync', contextId, { field: 'instructions', operation: 'set' })
-}
-
-export function deleteCachedInstruction(contextId: string, id: string): void {
-  const cache = getOrCreateCache(contextId)
-  if (cache.instructions !== null) {
-    cache.instructions = cache.instructions.filter((i) => i.id !== id)
-  }
-  deleteInstructionFromDb(contextId, id)
-  emitUser('cache:sync', contextId, { field: 'instructions', operation: 'delete' })
 }

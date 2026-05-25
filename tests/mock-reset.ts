@@ -61,6 +61,7 @@ import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
 import * as _scheduler from '../src/scheduler.js'
 import * as _systemConfig from '../src/system-config.js'
+import * as _toolsIndex from '../src/tools/index.js'
 import * as _usageIndex from '../src/usage/index.js'
 import * as _users from '../src/users.js'
 
@@ -101,6 +102,7 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],
   ['../src/system-config.js', { ..._systemConfig }],
+  ['../src/tools/index.js', { ..._toolsIndex }],
   ['../src/usage/index.js', { ..._usageIndex }],
   ['../src/users.js', { ..._users }],
 ]

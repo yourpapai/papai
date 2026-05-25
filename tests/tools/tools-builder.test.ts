@@ -486,6 +486,11 @@ describe('buildTools', () => {
 })
 
 describe('makeTools direct integration', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   it('exposes direct tools by default', () => {
     const provider = createMockProvider()
 
@@ -526,13 +531,23 @@ describe('makeTools direct integration', () => {
         description: 'Plugin tool integration test',
         apiVersion: PLUGIN_API_VERSION,
         main: 'index.ts',
-        contributes: { tools: ['runtime_echo'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+        contributes: {
+          tools: ['runtime_echo'],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+        },
         permissions: ['tasks.read'],
         defaultEnabled: false,
         activationTimeoutMs: 5000,
         requiredTaskCapabilities: [],
         requiredChatCapabilities: [],
         configRequirements: [],
+        providerCapabilities: [],
+        providerConfigSchema: [],
+        providerAllowedHosts: [],
       },
       pluginDir: '/tmp/task-five-plugin',
       entryPoint: '/tmp/task-five-plugin/index.ts',
@@ -590,13 +605,23 @@ describe('makeTools direct integration', () => {
         description: 'Plugin disabled integration test',
         apiVersion: PLUGIN_API_VERSION,
         main: 'index.ts',
-        contributes: { tools: ['runtime_echo'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+        contributes: {
+          tools: ['runtime_echo'],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+        },
         permissions: ['tasks.read'],
         defaultEnabled: false,
         activationTimeoutMs: 5000,
         requiredTaskCapabilities: [],
         requiredChatCapabilities: [],
         configRequirements: [],
+        providerCapabilities: [],
+        providerConfigSchema: [],
+        providerAllowedHosts: [],
       },
       pluginDir: '/tmp/task-five-disabled-plugin',
       entryPoint: '/tmp/task-five-disabled-plugin/index.ts',
@@ -649,13 +674,23 @@ describe('makeTools direct integration', () => {
         description: 'Plugin config gating integration test',
         apiVersion: PLUGIN_API_VERSION,
         main: 'index.ts',
-        contributes: { tools: ['runtime_echo'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+        contributes: {
+          tools: ['runtime_echo'],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+        },
         permissions: ['tasks.read'],
         defaultEnabled: false,
         activationTimeoutMs: 5000,
         requiredTaskCapabilities: [],
         requiredChatCapabilities: [],
         configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+        providerCapabilities: [],
+        providerConfigSchema: [],
+        providerAllowedHosts: [],
       },
       pluginDir: '/tmp/task-six-missing-config-plugin',
       entryPoint: '/tmp/task-six-missing-config-plugin/index.ts',

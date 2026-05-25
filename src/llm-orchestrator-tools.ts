@@ -18,7 +18,7 @@ import { routeToolsForMessage } from './tools/tool-router.js'
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
 
 const isToolSet = (value: unknown): value is ToolSet =>
-  typeof value === 'object' && value !== null && Object.keys(value).length > 0
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const getOrCreateTools = (
   contextId: string,
@@ -64,8 +64,13 @@ export const prepareLlmInvocation = (
   history: readonly ModelMessage[],
   userText: string,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
-): { routingResult: ReturnType<typeof routeToolsForMessage>; validatedMessages: ModelMessage[] } => {
+): {
+  routingResult: ReturnType<typeof routeToolsForMessage>
+  validatedMessages: ModelMessage[]
+  enabledToolNames: ReadonlySet<string>
+} => {
   const fullTools = getOrCreateTools(contextId, chatUserId, username, provider, contextType, stagedDownloadFn)
+  const enabledToolNames = new Set(Object.keys(fullTools))
   const routingResult = routeToolsForMessage(userText, fullTools)
   log.debug(
     {
@@ -85,5 +90,5 @@ export const prepareLlmInvocation = (
     { contextId, historyLength: history.length, hasMemory: memoryMsg !== null, timezone },
     'Calling generateText',
   )
-  return { routingResult, validatedMessages }
+  return { routingResult, validatedMessages, enabledToolNames }
 }

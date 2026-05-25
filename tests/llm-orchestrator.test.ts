@@ -40,12 +40,6 @@ const mentionsNotFound =
   (text: string): boolean =>
     text.includes(id) && text.includes('not found')
 
-/** Returns true when a reply text mentions the tool name and the error/content string. */
-const mentionsToolAndContent =
-  (toolName: string, content: string) =>
-  (call: string): boolean =>
-    call.includes(toolName) && call.includes(content)
-
 const containsFact = (
   facts: readonly MemoryFact[],
   expected: Readonly<Pick<MemoryFact, 'identifier' | 'title' | 'url'>>,
@@ -53,6 +47,15 @@ const containsFact = (
   facts.some(
     (fact) => fact.identifier === expected.identifier && fact.title === expected.title && fact.url === expected.url,
   )
+
+const failingAiDetailsReply = (textCalls: string[]): ReplyFn['formatted'] => {
+  let formattedCallCount = 0
+  return (content: string): Promise<void> => {
+    textCalls.push(content)
+    formattedCallCount += 1
+    return formattedCallCount === 1 ? Promise.resolve() : Promise.reject(new Error('details send failed'))
+  }
+}
 
 /** Creates a DebugEvent listener that captures the stepsDetail payload of llm:end events. */
 const makeLlmEndListener =
@@ -82,6 +85,8 @@ type ToolCallFinishHandler = (event: ToolCallFinishEvent) => void
 
 type GenerateTextResult = {
   text: string
+  reasoningText?: string
+  reasoning?: unknown
   toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
   toolResults: Array<{ toolName: string; toolCallId: string; output: unknown }>
   steps: unknown[]
@@ -110,6 +115,11 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
+import {
+  AI_OUTPUT_DETAIL_LEVEL_KEY,
+  AI_REASONING_VISIBILITY_KEY,
+  AI_TOOL_VISIBILITY_KEY,
+} from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
 import { setConfig } from '../src/config.js'
@@ -618,11 +628,17 @@ describe('processMessage', () => {
       }))
     })
 
-    test('sends immediate user feedback when tool execution fails', async () => {
+    test('tool failure is hidden by default and only final answer is sent', async () => {
       seedConfigForContext('tool-fail-ctx')
 
-      generateTextImpl = (): Promise<GenerateTextResult> =>
-        Promise.resolve({
+      generateTextImpl = (args): Promise<GenerateTextResult> => {
+        args.experimental_onToolCallFinish?.({
+          toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
+          durationMs: 100,
+          success: false,
+          error: new Error('Task creation failed'),
+        })
+        return Promise.resolve({
           text: 'Done!',
           toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
           toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
@@ -634,29 +650,61 @@ describe('processMessage', () => {
           request: {},
           providerMetadata: undefined,
         })
+      }
 
       const { reply, textCalls } = createMockReply()
 
       await processMessage(reply, 'tool-fail-ctx', 'user-1', null, 'create a task', 'dm')
 
-      // Simulate a tool failure by calling the captured callback
       assert.ok(capturedOnToolCallFinish !== undefined)
-      capturedOnToolCallFinish({
-        toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
-        durationMs: 100,
-        success: false,
-        error: new Error('Task creation failed'),
-      })
-
-      // Should have received immediate feedback about the tool failure
-      expect(textCalls.some((text) => mentionsToolAndContent('create_task', 'failed')(text))).toBe(true)
+      expect(textCalls).toEqual(['Done!'])
     })
 
-    test('handles non-Error objects in tool failure callback', async () => {
+    test('tool details are flushed after final answer when enabled', async () => {
+      seedConfigForContext('tool-details-ctx')
+      setCachedConfig('tool-details-ctx', AI_TOOL_VISIBILITY_KEY, 'on')
+
+      generateTextImpl = (args): Promise<GenerateTextResult> => {
+        args.experimental_onToolCallFinish?.({
+          toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
+          durationMs: 100,
+          success: false,
+          error: new Error('Task creation failed'),
+        })
+        return Promise.resolve({
+          text: 'Done!',
+          toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
+          toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+      }
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, 'tool-details-ctx', 'user-1', null, 'create a task', 'dm')
+
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('create_task')
+    })
+
+    test('handles non-Error objects in tool failure callback without default warning', async () => {
       seedConfigForContext('tool-fail-string-ctx')
 
-      generateTextImpl = (): Promise<GenerateTextResult> =>
-        Promise.resolve({
+      generateTextImpl = (args): Promise<GenerateTextResult> => {
+        args.experimental_onToolCallFinish?.({
+          toolCall: { toolName: 'search_tasks', toolCallId: 'call-2', input: { q: 'test' } },
+          durationMs: 50,
+          success: false,
+          error: 'String error message',
+        })
+        return Promise.resolve({
           text: 'Done!',
           toolCalls: [],
           toolResults: [],
@@ -668,28 +716,27 @@ describe('processMessage', () => {
           request: {},
           providerMetadata: undefined,
         })
+      }
 
       const { reply, textCalls } = createMockReply()
 
       await processMessage(reply, 'tool-fail-string-ctx', 'user-1', null, 'do something', 'dm')
 
-      // Simulate a tool failure with a string error
       assert.ok(capturedOnToolCallFinish !== undefined)
-      capturedOnToolCallFinish({
-        toolCall: { toolName: 'search_tasks', toolCallId: 'call-2', input: { q: 'test' } },
-        durationMs: 50,
-        success: false,
-        error: 'String error message',
-      })
-
-      expect(textCalls.some((text) => mentionsToolAndContent('search_tasks', 'String error message')(text))).toBe(true)
+      expect(textCalls).toEqual(['Done!'])
     })
 
-    test('sends immediate user feedback when a tool returns a structured failure result', async () => {
+    test('structured tool failure is hidden by default and only final answer is sent', async () => {
       seedConfigForContext('tool-fail-structured-ctx')
 
-      generateTextImpl = (): Promise<GenerateTextResult> =>
-        Promise.resolve({
+      generateTextImpl = (args): Promise<GenerateTextResult> => {
+        args.experimental_onToolCallFinish?.({
+          toolCall: { toolName: 'create_task', toolCallId: 'call-3', input: { title: 'Test' } },
+          durationMs: 75,
+          success: true,
+          output: buildToolFailureResult(new Error('Provider unavailable'), 'create_task', 'call-3'),
+        })
+        return Promise.resolve({
           text: 'Done!',
           toolCalls: [],
           toolResults: [],
@@ -701,24 +748,177 @@ describe('processMessage', () => {
           request: {},
           providerMetadata: undefined,
         })
+      }
 
       const { reply, textCalls } = createMockReply()
 
       await processMessage(reply, 'tool-fail-structured-ctx', 'user-1', null, 'create a task', 'dm')
 
       assert.ok(capturedOnToolCallFinish !== undefined)
-      capturedOnToolCallFinish({
-        toolCall: { toolName: 'create_task', toolCallId: 'call-3', input: { title: 'Test' } },
-        durationMs: 42,
-        success: true,
-        output: buildToolFailureResult(
-          new ProviderClassifiedError('Task lookup failed', providerError.taskNotFound('TASK-9')),
-          'create_task',
-          'call-3',
-        ),
-      })
+      expect(textCalls).toEqual(['Done!'])
+    })
 
-      expect(textCalls.some((text) => mentionsToolAndContent('create_task', 'TASK-9')(text))).toBe(true)
+    test('reasoning visibility hides provider reasoningText by default', async () => {
+      seedConfigForContext('reasoning-hidden-ctx')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'hidden chain of thought',
+          reasoning: [{ type: 'reasoning', text: 'hidden chain of thought' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, 'reasoning-hidden-ctx', 'user-1', null, 'think', 'dm')
+
+      expect(textCalls).toEqual(['Done!'])
+    })
+
+    test('reasoning visibility shows provider reasoningText when enabled', async () => {
+      seedConfigForContext('reasoning-visible-ctx')
+      setCachedConfig('reasoning-visible-ctx', AI_REASONING_VISIBILITY_KEY, 'on')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'visible reasoning summary',
+          reasoning: [{ type: 'reasoning', text: 'visible reasoning summary' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, 'reasoning-visible-ctx', 'user-1', null, 'think', 'dm')
+
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Provider reasoning available')
+      expect(textCalls[1]).not.toContain('visible reasoning summary')
+    })
+
+    test('reasoning visibility raw mode shows provider reasoning payload', async () => {
+      seedConfigForContext('reasoning-raw-ctx')
+      setCachedConfig('reasoning-raw-ctx', AI_REASONING_VISIBILITY_KEY, 'on')
+      setCachedConfig('reasoning-raw-ctx', AI_OUTPUT_DETAIL_LEVEL_KEY, 'raw')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'Provider reasoning text',
+          reasoning: [{ type: 'reasoning', text: 'raw reasoning payload' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, 'reasoning-raw-ctx', 'user-1', null, 'think', 'dm')
+
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('raw reasoning payload')
+    })
+
+    test('group thread reasoning setting uses active storage context over config target', async () => {
+      const threadCtx = 'group-ctx:thread-42'
+      const parentConfigCtx = 'group-ctx'
+      seedConfigForContext(threadCtx)
+      seedConfigForContext(parentConfigCtx)
+      setCachedConfig(threadCtx, AI_REASONING_VISIBILITY_KEY, 'on')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'thread scoped reasoning',
+          reasoning: [{ type: 'reasoning', text: 'thread scoped reasoning' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, threadCtx, 'user-1', null, 'think', 'group', parentConfigCtx)
+
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('Provider reasoning available')
+      expect(textCalls[1]).not.toContain('thread scoped reasoning')
+    })
+
+    test('flush failure after final answer does not send generic error or rewind assistant history', async () => {
+      const ctx = 'flush-failure-ctx'
+      seedConfigForContext(ctx)
+      setCachedConfig(ctx, AI_REASONING_VISIBILITY_KEY, 'on')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'details that fail to send',
+          reasoning: [{ type: 'reasoning', text: 'details that fail to send' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const textCalls: string[] = []
+      const { reply: baseReply } = createMockReply()
+      const reply: ReplyFn = {
+        ...baseReply,
+        text: (content) => {
+          textCalls.push(content)
+          return Promise.resolve()
+        },
+        formatted: failingAiDetailsReply(textCalls),
+      }
+
+      await processMessage(reply, ctx, 'user-1', null, 'think', 'dm')
+
+      expect(textCalls).toHaveLength(2)
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      const history = getCachedHistory(ctx)
+      expect(history).toHaveLength(2)
+      expect(history[0]!.role).toBe('user')
+      expect(history[1]!.role).toBe('assistant')
+      expect(history[1]!.content).toBe('Done!')
     })
   })
 

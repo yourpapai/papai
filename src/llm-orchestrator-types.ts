@@ -6,19 +6,19 @@
 import type { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { generateText, stepCountIs, ModelMessage, ToolSet } from 'ai'
 
+import type { AiProgressReporter } from './ai-progress-reporter.js'
 import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ReplyFn } from './chat/types.js'
 import type { TaskProvider } from './providers/types.js'
 
-export interface LlmOrchestratorDeps {
+export type LlmOrchestratorDeps = {
   generateText: typeof generateText
   stepCountIs: typeof stepCountIs
   buildOpenAI: (apiKey: string, baseURL: string) => ReturnType<typeof createOpenAICompatible>
   resolve: (contextId: string) => TaskProvider | null
   getKaneoWorkspace: (userId: string) => string | null
   maybeProvisionKaneo: (reply: ReplyFn, contextId: string, username: string | null) => Promise<void>
-  stagedDownloadFn?: StagedFileDownloadFn
-}
+} & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>>
 
 type TokenUsage = { inputTokens: number | undefined; outputTokens: number | undefined }
 
@@ -60,10 +60,11 @@ export type InvokeModelArgs = {
   model: ReturnType<ReturnType<typeof createOpenAICompatible>>
   provider: TaskProvider
   tools: ToolSet
+  enabledToolNames: ReadonlySet<string>
   toolRouting: ToolRoutingInfo | undefined
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
-}
+} & Partial<Record<'progressReporter', AiProgressReporter>>
 
 export type StepOutput = {
   stepNumber: number

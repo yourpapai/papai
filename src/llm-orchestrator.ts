@@ -6,6 +6,8 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
+import { getAiOutputSettings } from './ai-output-settings.js'
+import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
@@ -15,6 +17,12 @@ import { attemptAutoLink } from './identity/resolver.js'
 import { buildUserTurnMessages } from './llm-orchestrator-attachments.js'
 import { checkRequiredProviderConfig, getLlmConfig, resolveConfigId } from './llm-orchestrator-config.js'
 import { invokeModelWithTyping } from './llm-orchestrator-invoke.js'
+import {
+  resolveAttachmentIds,
+  resolveDeps,
+  resolveTurnId,
+  type ProcessMessageRest,
+} from './llm-orchestrator-process-args.js'
 import { emitLlmError, handleOrchestratorMessageError } from './llm-orchestrator-support.js'
 import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
@@ -71,11 +79,24 @@ const sendLlmResponse = async (
   reply: ReplyFn,
   contextId: string,
   result: { text: string | undefined; toolCalls: unknown[] | undefined; response: { messages: ModelMessage[] } },
+  progressReporter: AiProgressReporter | undefined,
 ): Promise<void> => {
   const textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
   const responseLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
   await reply.formatted(textToFormat)
+  if (progressReporter === undefined) {
+    log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
+    return
+  }
+  try {
+    await progressReporter.flush()
+  } catch (error) {
+    log.warn(
+      { contextId, error: error instanceof Error ? error.message : String(error) },
+      'AI progress details flush failed after final response',
+    )
+  }
   log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
 }
 
@@ -160,7 +181,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     return { response: { messages: [] } }
   }
   await maybeAutoLinkIdentity(chatUserId, username, provider)
-  const { routingResult, validatedMessages } = prepareLlmInvocation(
+  const { routingResult, validatedMessages, enabledToolNames } = prepareLlmInvocation(
     contextId,
     configId,
     chatUserId,
@@ -171,6 +192,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     userText,
     deps.stagedDownloadFn,
   )
+  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(contextId))
   const result = await invokeModelWithTyping(reply, {
     contextId,
     chatUserId,
@@ -179,19 +201,26 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     model,
     provider,
     tools: routingResult.tools,
+    enabledToolNames,
     toolRouting: buildToolRoutingTelemetry(routingResult),
     messages: validatedMessages,
     deps,
+    progressReporter,
     turnId,
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
   log.debug({ contextId, toolCalls: toolCallCount, usage: result.usage }, 'LLM response received')
+  progressReporter.reasoning(result.reasoningText, result.reasoning)
   persistFactsFromResults(contextId, result)
-  await sendLlmResponse(reply, contextId, result)
+  await sendLlmResponse(reply, contextId, result, progressReporter)
   return result
 }
 
-const resolveModelName = (): string => getSystemConfig('main_model') ?? ''
+const resolveModelName = (): string => {
+  const modelName = getSystemConfig('main_model')
+  if (modelName === null) return ''
+  return modelName
+}
 
 const logProcessMessage = (
   contextId: string,
@@ -226,12 +255,12 @@ export const processMessage = async (
   username: string | null,
   userText: string,
   contextType: 'dm' | 'group',
-  configContextId?: string,
-  deps: LlmOrchestratorDeps = defaultDeps,
-  newAttachmentIds: readonly string[] = [],
-  turnId?: string,
+  ...rest: ProcessMessageRest
 ): Promise<void> => {
-  const resolvedTurnId = turnId ?? crypto.randomUUID()
+  const [configContextId, depsInput, newAttachmentIdsInput, turnId] = rest
+  const deps = resolveDeps(depsInput, defaultDeps)
+  const newAttachmentIds = resolveAttachmentIds(newAttachmentIdsInput)
+  const resolvedTurnId = resolveTurnId(turnId)
   logProcessMessage(contextId, configContextId, chatUserId, userText, newAttachmentIds, resolvedTurnId)
   if (!isSystemConfigComplete()) {
     await replyBotMisconfigured(reply, contextId)
@@ -239,16 +268,7 @@ export const processMessage = async (
   }
   const { baseHistory, modelMessage, historyMessage } = await buildHistory(contextId, userText, newAttachmentIds)
   appendHistory(contextId, [historyMessage])
-  const failureCtx: ProcessFailureContext = {
-    contextId,
-    chatUserId,
-    contextType,
-    mainModel: resolveModelName(),
-    startedAt: Date.now(),
-    messageCount: baseHistory.length + 1,
-    turnId: resolvedTurnId,
-    baseHistory,
-  }
+  const startedAt = Date.now()
   try {
     const result = await callLlm({
       reply,
@@ -264,32 +284,17 @@ export const processMessage = async (
     })
     appendAssistantHistory(contextId, [...baseHistory, historyMessage], result.response.messages)
   } catch (error) {
-    await handleProcessFailure(reply, failureCtx, error)
+    emitLlmError(
+      contextId,
+      chatUserId,
+      contextType,
+      resolveModelName(),
+      startedAt,
+      baseHistory.length + 1,
+      error,
+      resolvedTurnId,
+    )
+    saveHistory(contextId, baseHistory)
+    await handleOrchestratorMessageError(reply, contextId, error)
   }
-}
-
-type ProcessFailureContext = {
-  contextId: string
-  chatUserId: string
-  contextType: 'dm' | 'group'
-  mainModel: string
-  startedAt: number
-  messageCount: number
-  turnId: string
-  baseHistory: readonly ModelMessage[]
-}
-
-const handleProcessFailure = async (reply: ReplyFn, ctx: ProcessFailureContext, error: unknown): Promise<void> => {
-  emitLlmError(
-    ctx.contextId,
-    ctx.chatUserId,
-    ctx.contextType,
-    ctx.mainModel,
-    ctx.startedAt,
-    ctx.messageCount,
-    error,
-    ctx.turnId,
-  )
-  saveHistory(ctx.contextId, ctx.baseHistory)
-  await handleOrchestratorMessageError(reply, ctx.contextId, error)
 }

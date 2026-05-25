@@ -1,0 +1,331 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { describe, expect, test } from 'bun:test'
+
+import type { AiOutputSettings } from '../src/ai-output-settings.js'
+import { createAiProgressReporter } from '../src/ai-progress-reporter.js'
+import { createMockReply } from './utils/test-helpers.js'
+
+const hiddenSettings: AiOutputSettings = {
+  toolVisibility: 'off',
+  reasoningVisibility: 'off',
+  detailLevel: 'sanitized',
+}
+
+const toolSettings: AiOutputSettings = {
+  toolVisibility: 'on',
+  reasoningVisibility: 'off',
+  detailLevel: 'sanitized',
+}
+
+describe('createAiProgressReporter', () => {
+  test('does not emit anything when all visibility is off', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, hiddenSettings)
+
+    reporter.toolStarted({ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'x' } })
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-1',
+      input: { title: 'x' },
+      durationMs: 10,
+      success: true,
+      output: { id: 'T-1' },
+    })
+    reporter.reasoning('Visible provider reasoning')
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(0)
+  })
+
+  test('flushes sanitized tool details without secrets', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolStarted({
+      toolName: 'create_task',
+      toolCallId: 'call-1',
+      input: { title: 'Visible title', apiKey: 'secret-key' },
+    })
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-1',
+      input: { title: 'Visible title', apiKey: 'secret-key' },
+      durationMs: 42,
+      success: true,
+      output: { id: 'T-1', token: 'secret-token' },
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('AI execution details')
+    expect(textCalls[0]).toContain('create_task')
+    expect(textCalls[0]).toContain('Visible title')
+    expect(textCalls[0]).toContain('42ms')
+    expect(textCalls[0]).not.toContain('started')
+    expect(textCalls[0]).not.toContain('secret-key')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('redacts sanitized Error messages that contain secret-like text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-error-message',
+      input: { title: 'Visible title' },
+      durationMs: 5,
+      success: false,
+      error: new Error('token=secret-token'),
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('failed')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('redacts sanitized object error secret keys', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-error-object',
+      input: { title: 'Visible title' },
+      durationMs: 6,
+      success: false,
+      error: { token: 'secret-token', message: 'Visible failure metadata' },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('Visible failure metadata')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('redacts sanitized object error message values with secret-like text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-error-message-value',
+      input: { title: 'Visible title' },
+      durationMs: 8,
+      success: false,
+      error: { message: 'token=secret-token' },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('failed')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('flushes sanitized circular objects and arrays with a safe marker', async () => {
+    const { reply, textCalls } = createMockReply()
+    const circularObject: Record<string, unknown> = { title: 'Circular title' }
+    const circularArray: unknown[] = ['visible item']
+    circularObject['self'] = circularObject
+    circularArray[1] = circularArray
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-circular',
+      input: { title: 'Visible title', circularObject, circularArray },
+      durationMs: 12,
+      success: true,
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Visible title')
+    expect(textCalls[0]).toContain('Circular title')
+    expect(textCalls[0]).toContain('visible item')
+    expect(textCalls[0]).toContain('[circular]')
+  })
+
+  test('redacts sanitized URL and attachment content fields while preserving normal text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'upload_attachment',
+      toolCallId: 'call-redact-content',
+      input: {
+        title: 'Visible title',
+        query: 'Visible query',
+        url: 'https://example.invalid/private?token=secret',
+        rawUrl: 'https://example.invalid/raw',
+        attachment: { filename: 'private.txt' },
+        fileContent: 'private file bytes',
+        content: 'private body text',
+      },
+      durationMs: 15,
+      success: true,
+      output: { attachments: [{ id: 'file-1', content: 'private output text' }] },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('Visible title')
+    expect(textCalls[0]).toContain('Visible query')
+    expect(textCalls[0]).not.toContain('example.invalid')
+    expect(textCalls[0]).not.toContain('private.txt')
+    expect(textCalls[0]).not.toContain('private file bytes')
+    expect(textCalls[0]).not.toContain('private body text')
+    expect(textCalls[0]).not.toContain('private output text')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('raw detail level includes raw tool input and output', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'on',
+      reasoningVisibility: 'off',
+      detailLevel: 'raw',
+    })
+
+    reporter.toolFinished({
+      toolName: 'search_tasks',
+      toolCallId: 'call-2',
+      input: { query: 'secret query' },
+      durationMs: 7,
+      success: true,
+      output: { result: 'secret result' },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('secret query')
+    expect(textCalls[0]).toContain('secret result')
+  })
+
+  test('emits sanitized reasoning availability without provider reasoning text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'sanitized',
+    })
+
+    reporter.reasoning('Provider copied task title, user content, and attachment text into reasoning')
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Reasoning')
+    expect(textCalls[0]).toContain('Provider reasoning available')
+    expect(textCalls[0]).toContain('Enable raw detail to view')
+    expect(textCalls[0]).not.toContain('copied task title')
+    expect(textCalls[0]).not.toContain('user content')
+    expect(textCalls[0]).not.toContain('attachment text')
+  })
+
+  test('does not emit sanitized reasoning secret-like text or URLs', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'sanitized',
+    })
+
+    reporter.reasoning('Provider considered token=secret-token from https://private.example/path')
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Reasoning')
+    expect(textCalls[0]).toContain('Provider reasoning available')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).not.toContain('https://private.example/path')
+  })
+
+  test('flushes a started tool when no finish arrives', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolStarted({
+      toolName: 'search_tasks',
+      toolCallId: 'call-start-only',
+      input: { query: 'Visible query' },
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('search_tasks')
+    expect(textCalls[0]).toContain('started')
+    expect(textCalls[0]).toContain('Visible query')
+  })
+
+  test('does not duplicate a started tool when the same call finishes', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolStarted({
+      toolName: 'search_tasks',
+      toolCallId: 'call-start-finish',
+      input: { query: 'Visible query' },
+    })
+    reporter.toolFinished({
+      toolName: 'search_tasks',
+      toolCallId: 'call-start-finish',
+      input: { query: 'Visible query' },
+      durationMs: 9,
+      success: true,
+      output: { count: 1 },
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('success in 9ms')
+    expect(textCalls[0]).not.toContain('started')
+  })
+
+  test('raw detail level uses raw provider reasoning when supplied', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'raw',
+    })
+
+    reporter.reasoning('Provider reasoning text', [{ type: 'reasoning', text: 'raw reasoning payload' }])
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('raw reasoning payload')
+  })
+
+  test('raw detail level uses raw provider reasoning text when no raw payload is supplied', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'raw',
+    })
+
+    reporter.reasoning('Raw provider reasoning text')
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('Raw provider reasoning text')
+  })
+
+  test('does not emit an empty reasoning section', async () => {
+    const { reply, textCalls } = createMockReply()
+    const emptyReasoning: string | undefined = undefined
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'sanitized',
+    })
+
+    reporter.reasoning(emptyReasoning)
+    reporter.reasoning('')
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(0)
+  })
+})

@@ -12,7 +12,7 @@ import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scope
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
-import { pollAlertsOnce, pollScheduledOnce } from '../../src/deferred-prompts/poller.js'
+import { pollAlertsOnce, pollScheduledOnce, stopPollers } from '../../src/deferred-prompts/poller.js'
 import { createScheduledPrompt, getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import { getSnapshotsForUser, updateSnapshots } from '../../src/deferred-prompts/snapshots.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
@@ -53,6 +53,14 @@ type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unkn
 type ActiveAwareChatProvider = ChatProvider & { isInstanceActive: (id: string) => boolean }
 
 // --- Tests ---
+
+describe('stopPollers', () => {
+  test('does not throw when pollers were not registered', async () => {
+    await setupTestDb()
+
+    expect(() => stopPollers()).not.toThrow()
+  })
+})
 
 describe('pollScheduledOnce', () => {
   let sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
@@ -638,6 +646,39 @@ describe('pollAlertsOnce', () => {
 
     await pollAlertsOnce(chat, () => provider)
 
+    expect(callCount).toBe(0)
+    expect(sentMessages).toHaveLength(0)
+    const updated = getAlertPrompt(created.id, USER_ID)
+    expect(updated).not.toBeNull()
+    expect(updated!.lastTriggeredAt).toBeNull()
+  })
+
+  test('skips alert task-provider work when routed platform instance is stopped', async () => {
+    chat = { ...chat, isInstanceActive: (_id: string): boolean => false } as ActiveAwareChatProvider
+    let buildProviderCalls = 0
+    let callCount = 0
+    generateTextImpl = (): Promise<GenerateTextResult> => {
+      callCount++
+      return Promise.resolve({ text: 'Should not run.', toolCalls: [], toolResults: [], response: { messages: [] } })
+    }
+    const created = createAlertPrompt(USER_ID, 'Notify on done', {
+      field: 'task.status',
+      op: 'eq',
+      value: 'done',
+    })
+    const provider = createMockProvider({
+      listProjects: mock(() => Promise.resolve([{ id: 'proj-1', name: 'Test', url: 'http://test/proj/1' }])),
+      listTasks: mock(() =>
+        Promise.resolve([{ id: 'task-1', title: 'Completed Task', status: 'done', url: 'http://test/1' }]),
+      ),
+    })
+
+    await pollAlertsOnce(chat, () => {
+      buildProviderCalls++
+      return provider
+    })
+
+    expect(buildProviderCalls).toBe(0)
     expect(callCount).toBe(0)
     expect(sentMessages).toHaveLength(0)
     const updated = getAlertPrompt(created.id, USER_ID)

@@ -5,9 +5,10 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import type { AiProgressReporter, ToolFinishedEvent, ToolStartedEvent } from '../src/ai-progress-reporter.js'
 import { type DebugEvent, subscribe, unsubscribe } from '../src/debug/event-bus.js'
 import { handleToolCallFinishEvent, handleToolCallStart, type ToolCallContext } from '../src/llm-orchestrator-invoke.js'
-import { mockLogger } from './utils/test-helpers.js'
+import { createMockReply, mockLogger } from './utils/test-helpers.js'
 
 const baseContext = (): ToolCallContext => ({
   contextId: 'ctx-1',
@@ -17,6 +18,29 @@ const baseContext = (): ToolCallContext => ({
   modelRole: 'main',
   turnId: 'turn-1',
 })
+
+function createReporterSpy(): {
+  reporter: AiProgressReporter
+  startedEvents: ToolStartedEvent[]
+  finishedEvents: ToolFinishedEvent[]
+} {
+  const startedEvents: ToolStartedEvent[] = []
+  const finishedEvents: ToolFinishedEvent[] = []
+  return {
+    startedEvents,
+    finishedEvents,
+    reporter: {
+      toolStarted: (event) => {
+        startedEvents.push(event)
+      },
+      toolFinished: (event) => {
+        finishedEvents.push(event)
+      },
+      reasoning: () => {},
+      flush: () => Promise.resolve(),
+    },
+  }
+}
 
 describe('handleToolCallStart', () => {
   const captured: DebugEvent[] = []
@@ -73,6 +97,25 @@ describe('handleToolCallStart', () => {
     const serialised = JSON.stringify(captured.map((e) => e.data))
     expect(serialised).not.toContain(secret)
   })
+
+  test('forwards tool name, id, and input to progress reporter while preserving debug tool:request', () => {
+    const { reporter, startedEvents } = createReporterSpy()
+    const input = { query: 'x' }
+
+    handleToolCallStart(
+      { ...baseContext(), progressReporter: reporter },
+      {
+        toolCall: {
+          toolName: 'search_tasks',
+          toolCallId: 'call-start',
+          input,
+        },
+      },
+    )
+
+    expect(startedEvents).toEqual([{ toolName: 'search_tasks', toolCallId: 'call-start', input }])
+    expect(captured.some((e) => e.type === 'tool:request')).toBe(true)
+  })
 })
 
 describe('handleToolCallFinishEvent', () => {
@@ -92,7 +135,7 @@ describe('handleToolCallFinishEvent', () => {
   })
 
   test('emits tool:execute_end with the full context envelope and resultBytes on success', () => {
-    handleToolCallFinishEvent(baseContext(), undefined, {
+    handleToolCallFinishEvent(baseContext(), {
       toolCall: {
         toolName: 'create_task',
         toolCallId: 'call-1',
@@ -118,7 +161,7 @@ describe('handleToolCallFinishEvent', () => {
   })
 
   test('resultBytes is null when the tool failed (success=false)', () => {
-    handleToolCallFinishEvent(baseContext(), undefined, {
+    handleToolCallFinishEvent(baseContext(), {
       toolCall: {
         toolName: 'search',
         toolCallId: 'call-2',
@@ -134,7 +177,7 @@ describe('handleToolCallFinishEvent', () => {
   })
 
   test('tool:failure_classified carries chatUserId and contextType', () => {
-    handleToolCallFinishEvent(baseContext(), undefined, {
+    handleToolCallFinishEvent(baseContext(), {
       toolCall: {
         toolName: 'search',
         toolCallId: 'call-3',
@@ -158,7 +201,7 @@ describe('handleToolCallFinishEvent', () => {
   test('does not leak raw result content into the billing event payload', () => {
     const secretResult = 'sensitive-result-string-must-stay-out'
 
-    handleToolCallFinishEvent(baseContext(), undefined, {
+    handleToolCallFinishEvent(baseContext(), {
       toolCall: {
         toolName: 'create_task',
         toolCallId: 'call-4',
@@ -173,5 +216,104 @@ describe('handleToolCallFinishEvent', () => {
     const billingEvents = captured.filter((e) => billingEventTypes.has(e.type))
     const serialised = JSON.stringify(billingEvents.map((e) => e.data))
     expect(serialised).not.toContain(secretResult)
+  })
+
+  test('forwards tool finish details to progress reporter while preserving debug events', () => {
+    const { reporter, finishedEvents } = createReporterSpy()
+    const input = { query: 'x' }
+    const output = { count: 2 }
+
+    handleToolCallFinishEvent(
+      { ...baseContext(), progressReporter: reporter },
+      {
+        toolCall: {
+          toolName: 'search_tasks',
+          toolCallId: 'call-finish',
+          input,
+        },
+        durationMs: 9,
+        success: true,
+        output,
+      },
+    )
+
+    expect(finishedEvents).toEqual([
+      {
+        toolName: 'search_tasks',
+        toolCallId: 'call-finish',
+        input,
+        durationMs: 9,
+        success: true,
+        output,
+        error: undefined,
+      },
+    ])
+    expect(captured.some((e) => e.type === 'tool:execute_end')).toBe(true)
+    expect(captured.some((e) => e.type === 'llm:tool_result')).toBe(true)
+  })
+
+  test('does not send legacy warning reply from hook handling while keeping llm:tool_result debug event', () => {
+    const { reporter, finishedEvents } = createReporterSpy()
+    const { textCalls } = createMockReply()
+    const input = { query: 'x' }
+    const error = new Error('boom')
+
+    handleToolCallFinishEvent(
+      { ...baseContext(), progressReporter: reporter },
+      {
+        toolCall: {
+          toolName: 'search_tasks',
+          toolCallId: 'call-warning',
+          input,
+        },
+        durationMs: 11,
+        success: false,
+        error,
+      },
+    )
+
+    expect(textCalls).toEqual([])
+    expect(finishedEvents).toEqual([
+      {
+        toolName: 'search_tasks',
+        toolCallId: 'call-warning',
+        input,
+        durationMs: 11,
+        success: false,
+        output: undefined,
+        error,
+      },
+    ])
+    expect(captured.some((e) => e.type === 'llm:tool_result')).toBe(true)
+  })
+
+  test('keeps debug failure events when progress reporter throws on tool finish', () => {
+    const reporter: AiProgressReporter = {
+      toolStarted: () => {},
+      toolFinished: () => {
+        throw new Error('reporter failed')
+      },
+      reasoning: () => {},
+      flush: () => Promise.resolve(),
+    }
+
+    expect(() => {
+      handleToolCallFinishEvent(
+        { ...baseContext(), progressReporter: reporter },
+        {
+          toolCall: {
+            toolName: 'search_tasks',
+            toolCallId: 'call-reporter-fails',
+            input: { query: 'x' },
+          },
+          durationMs: 13,
+          success: false,
+          error: new Error('tool failed'),
+        },
+      )
+    }).not.toThrow()
+
+    expect(captured.some((e) => e.type === 'tool:failure_classified')).toBe(true)
+    expect(captured.some((e) => e.type === 'llm:tool_result')).toBe(true)
   })
 })
