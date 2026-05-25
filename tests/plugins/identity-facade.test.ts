@@ -47,6 +47,23 @@ describe('buildIdentityFacade', () => {
     })
   })
 
+  test('lookup returns null for a cleared mapping (provider ids are null)', () => {
+    const identity = buildIdentityFacade('kaneo', {
+      getIdentityMapping: () => ({
+        contextId: 'ctx-cleared',
+        providerName: 'kaneo',
+        providerUserId: null,
+        providerUserLogin: null,
+        displayName: null,
+        matchedAt: new Date().toISOString(),
+        matchMethod: 'unmatched',
+        confidence: 0,
+      }),
+      setIdentityMapping: () => {},
+    })
+    expect(identity.lookupForChatUser('ctx-cleared')).toBeNull()
+  })
+
   test('lookup reports verified when the stored match method is auto', () => {
     const identity = buildIdentityFacade('kaneo', {
       getIdentityMapping: () => ({
