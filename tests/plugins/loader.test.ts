@@ -14,6 +14,7 @@ import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
+import { getContributedTaskProviderType } from '../../src/providers/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
@@ -263,5 +264,35 @@ describe('activatePlugins', () => {
 
     expect(contributionRegistry.getContributions('deactivate-error-plugin')).toBeUndefined()
     expect(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0]?.message).toContain('deactivate boom')
+  })
+
+  test('removes contributed provider type on deactivation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('demo', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('provider-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['demo'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    expect(getContributedTaskProviderType('demo')?.pluginId).toBe('provider-plugin')
+
+    await deactivateAllPlugins()
+    expect(getContributedTaskProviderType('demo')).toBeUndefined()
   })
 })
