@@ -63,7 +63,7 @@ Proactive delivery currently checks instance existence, not active status. Defer
 ## Non-Goals
 
 - Cross-platform account linking.
-- Redesigning plugin storage schema.
+- Redesigning plugin storage schema. Existing plugin context rows are still migrated because their `context_id` values are context-owned data.
 - Replacing every historical table key that is intentionally global.
 - Changing the public `ChatProvider` or `TaskProvider` interfaces beyond small helper methods needed for safe routing.
 - Building new dashboard UX beyond exposing errors that already pass through existing routes.
@@ -94,7 +94,7 @@ Add a migration that backfills single-instance legacy rows into scoped IDs when 
 
 1. If exactly one platform instance exists, rewrite legacy raw context IDs to the scoped form for tables that store context-owned state.
 2. If multiple platform instances exist and a legacy row cannot be attributed, preserve it unchanged and log or expose an operator-visible warning through tests/logging. Do not guess.
-3. Do not mutate plugin tables directly. Plugins remain keyed by the storage context ID supplied by runtime paths; once runtime paths emit scoped IDs, plugin context state follows naturally for new and migrated contexts.
+3. Do not change plugin table schemas. Migrate `plugin_context_state.context_id` and `plugin_kv.context_id` values with the rest of context-owned data so existing plugin enablement and KV remain reachable after runtime paths emit scoped IDs.
 
 Candidate tables for migration and runtime updates:
 
@@ -109,6 +109,8 @@ Candidate tables for migration and runtime updates:
 - `scheduled_prompts.created_by_user_id` and `scheduled_prompts.delivery_context_id`
 - `alert_prompts.created_by_user_id` and `alert_prompts.delivery_context_id`
 - `task_snapshots.user_id`; external provider task IDs in `task_snapshots.task_id` are not rewritten
+- `plugin_context_state.context_id` and `plugin_kv.context_id`; plugin schemas are unchanged
+- `web_rate_limit.actor_id`; runtime web-fetch rate limiting must write the same scoped actor IDs after this migration
 
 ### Runtime Context Flow
 

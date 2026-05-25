@@ -430,6 +430,8 @@ git commit -m "fix(db): migrate context-owned rows to platform scoped ids"
 - Modify: `tests/group-settings/dispatch.test.ts`
 - Modify: `tests/setup/task-instance-selection.test.ts`
 - Modify: `tests/bot.test.ts`
+- Modify: `src/tools/tools-builder.ts`
+- Modify: `tests/tools/web-fetch.test.ts`
 
 - [ ] **Step 1: Write failing runtime isolation tests**
 
@@ -484,6 +486,14 @@ In setup selection tests, assert `setContextSettings()` receives scoped `context
 
 - [ ] **Step 5: Run focused runtime tests**
 
+Before running tests, update web-fetch actor scoping so runtime writes the same scoped actor IDs that migration 043 writes into `web_rate_limit.actor_id`. In `src/tools/tools-builder.ts`, pass the scoped storage context ID as the web-fetch actor when `contextId` is available:
+
+```typescript
+addWebFetchTool(tools, contextId, contextId ?? chatUserId, contextType)
+```
+
+Add or update `tests/tools/web-fetch.test.ts` to assert `fetchAndExtract()` receives `actorUserId` equal to the scoped storage context ID when the tool is assembled with a storage context.
+
 Run: `bun test ./tests/auth.test.ts ./tests/commands/group.test.ts ./tests/group-settings/dispatch.test.ts ./tests/setup/task-instance-selection.test.ts ./tests/bot.test.ts`
 
 Expected: PASS.
@@ -491,7 +501,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit Task 3**
 
 ```bash
-git add src/commands/group.ts src/groups.ts src/authorized-groups.ts src/setup/task-instance-selection.ts tests/commands/group.test.ts tests/group-settings/dispatch.test.ts tests/setup/task-instance-selection.test.ts tests/bot.test.ts
+git add src/commands/group.ts src/groups.ts src/authorized-groups.ts src/setup/task-instance-selection.ts src/tools/tools-builder.ts tests/commands/group.test.ts tests/group-settings/dispatch.test.ts tests/setup/task-instance-selection.test.ts tests/bot.test.ts tests/tools/web-fetch.test.ts
 git commit -m "fix(auth): use scoped context ids for runtime storage"
 ```
 
