@@ -270,6 +270,7 @@ describe('ChatRouter', () => {
   test('routes proactive sends only to the named instance', async () => {
     router.addInstance('telegram-main', 'telegram', {})
     router.addInstance('discord-main', 'discord', {})
+    await router.startInstance('discord-main')
 
     await router.sendMessage('discord-main', dmTarget('user-1'), 'hello')
     await router.sendMessage('missing', dmTarget('user-1'), 'ignored')
@@ -278,6 +279,19 @@ describe('ChatRouter', () => {
     expect(getProvider('discord-main').sent).toEqual([
       { platformInstanceId: 'discord-main', target: dmTarget('user-1'), markdown: 'hello' },
     ])
+  })
+
+  test('refuses routed sends to pending and stopped instances', async () => {
+    router.addInstance('pending-main', 'telegram', {})
+    router.addInstance('stopped-main', 'discord', {})
+    await router.startInstance('stopped-main')
+    await router.stopInstance('stopped-main')
+
+    await router.sendMessage('pending-main', dmTarget('user-1'), 'pending')
+    await router.sendMessage('stopped-main', dmTarget('user-1'), 'stopped')
+
+    expect(getProvider('pending-main').sent).toEqual([])
+    expect(getProvider('stopped-main').sent).toEqual([])
   })
 
   test('reports instance active state only after start and before stop', async () => {
@@ -302,6 +316,7 @@ describe('ChatRouter', () => {
     expect(() => router.addInstance('same-id', 'discord', {})).toThrow('Chat instance already exists: same-id')
 
     expect(routerInstance('same-id').provider).toBe(firstProvider)
+    await router.startInstance('same-id')
     await router.sendMessage('same-id', dmTarget('user-1'), 'hello')
     expect(firstProvider.sent).toEqual([
       { platformInstanceId: 'same-id', target: dmTarget('user-1'), markdown: 'hello' },

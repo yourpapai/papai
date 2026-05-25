@@ -160,11 +160,10 @@ export class ChatRouter implements ChatProvider {
 
   async sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined) {
-      log.warn({ platformInstanceId }, 'cannot route message to unknown chat instance')
+    if (instance === undefined || instance.status !== 'active') {
+      log.warn({ platformInstanceId }, 'cannot route message to inactive or unknown chat instance')
       return
     }
-
     await instance.provider.sendMessage(platformInstanceId, target, markdown)
   }
 
