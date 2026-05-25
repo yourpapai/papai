@@ -688,6 +688,74 @@ mutants (currently pushed into `NoCoverage`/`static` by the global reset — see
 
 ### B4. Test-quality signals from mutation data
 
+#### Step 1: Ranked files by survived and NoCoverage mutants
+
+**Top 12 by survived mutants (descending):**
+
+| File (src/)                                      | Survived | Killed | Notes              |
+| ------------------------------------------------ | -------: | -----: | ------------------ |
+| `providers/youtrack/operations/agiles.ts`        |       19 |     27 | also 16 NoCoverage |
+| `tools/update-status.ts`                         |       18 |      6 |                    |
+| `providers/kaneo/label-resource.ts`              |       16 |      1 |                    |
+| `providers/youtrack/labels.ts`                   |       16 |      6 |                    |
+| `providers/youtrack/operations/comments.ts`      |       14 |     13 |                    |
+| `providers/youtrack/operations/work-items.ts`    |       14 |      8 |                    |
+| `providers/youtrack/operations/collaboration.ts` |       13 |      2 | also 19 NoCoverage |
+| `providers/youtrack/operations/team.ts`          |       12 |      0 | also 26 NoCoverage |
+| `providers/youtrack/task-helpers.ts`             |       11 |      8 |                    |
+| `tools/create-recurring-task.ts`                 |       11 |      5 |                    |
+| `tools/set-my-identity.ts`                       |       11 |      2 |                    |
+| `tools/update-recurring-task.ts`                 |       11 |      7 |                    |
+
+**Top 12 by NoCoverage mutants (descending):**
+
+| File (src/)                                      | NoCoverage | Killed | Notes            |
+| ------------------------------------------------ | ---------: | -----: | ---------------- |
+| `providers/factory.ts`                           |         49 |      0 | 0 survived       |
+| `tools/search-memos.ts`                          |         36 |      3 | 0 survived       |
+| `providers/youtrack/operations/team.ts`          |         26 |      0 | also 12 survived |
+| `providers/kaneo/task-relations.ts`              |         24 |     12 | 0 survived       |
+| `providers/kaneo/update-label.ts`                |         23 |      0 | 0 survived       |
+| `providers/kaneo/update-project.ts`              |         23 |      0 | 0 survived       |
+| `providers/kaneo/task-resource.ts`               |         20 |      7 | 0 survived       |
+| `providers/youtrack/operations/collaboration.ts` |         19 |      2 | also 13 survived |
+| `providers/youtrack/custom-field-values.ts`      |         18 |      7 | 0 survived       |
+| `providers/youtrack/operations/agiles.ts`        |         16 |     27 | also 19 survived |
+| `providers/youtrack/operations/users.ts`         |         15 |      9 | 0 survived       |
+| `providers/kaneo/column-resource.ts`             |         12 |      0 | confirmed in A3  |
+
+#### Step 2: Classification of top offenders
+
+**Top 6 by survived mutants — classification:**
+
+| File                                          | Classification      | Basis                                                                                                                                                                              |
+| --------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `providers/youtrack/operations/agiles.ts`     | **weak-assertions** | `tests/providers/youtrack/operations/agiles.test.ts` exists (432 lines, no `mock.module`). 27 kills confirm tests run; 19 survivors indicate assertions do not cover all branches. |
+| `tools/update-status.ts`                      | **weak-assertions** | `tests/tools/update-status.test.ts` exists (no `mock.module`). 6 kills confirm exercise; 18 survivors indicate parameter/edge-case assertions are incomplete.                      |
+| `providers/kaneo/label-resource.ts`           | **weak-assertions** | `tests/providers/kaneo/label-resource.test.ts` exists (459 lines, no `mock.module`). Only 1 kill against 16 survivors signals very thin assertion coverage.                        |
+| `providers/youtrack/labels.ts`                | **weak-assertions** | `tests/providers/youtrack/labels.test.ts` exists (no `mock.module`). 6 kills vs 16 survivors; tests run but assertions miss many conditional paths.                                |
+| `providers/youtrack/operations/comments.ts`   | **weak-assertions** | `tests/providers/youtrack/operations/comments.test.ts` exists (no `mock.module`). 13 kills vs 14 survivors — roughly half mutations are not caught despite test coverage.          |
+| `providers/youtrack/operations/work-items.ts` | **weak-assertions** | `tests/providers/youtrack/operations/work-items.test.ts` exists (no `mock.module`). 8 kills vs 14 survivors; assertions don't cover return-value and boundary mutations.           |
+
+**Top 6 by NoCoverage mutants — classification:**
+
+| File                                    | Classification           | Basis                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `providers/factory.ts`                  | **over-mocked**          | No `factory.test.ts` exists. The global `beforeEach` in `mock-reset.ts` re-mocks `src/providers/factory.js` on every one of ~4 817 tests (B2). 13 additional call sites across `context.test.ts`, `llm-orchestrator.test.ts`, and others mock it further. Stryker's instrumented version is therefore bypassed in virtually every test — NoCoverage is driven by `mock.module` blast, not by a gap in test scenarios. |
+| `tools/search-memos.ts`                 | **measurement-artifact** | `tests/tools/memo-tools.test.ts` exists (no `mock.module`). The 3 kills confirm some perTest coverage was recorded; the 36 NoCoverage mutants represent mutant sites that were reached only during the runner's eager-import preload (while `currentTestId` is `undefined`) and therefore landed in the static bucket, not a genuine test gap.                                                                        |
+| `providers/youtrack/operations/team.ts` | **measurement-artifact** | `tests/providers/youtrack/operations/team.test.ts` exists (246 lines, no `mock.module`, uses `setMockFetch`). The 26 NoCoverage and 12 survived mutants all originate from the static-bucket collapse documented in A2/A3: provider-layer module code is eagerly imported before any `beforeEach`, so perTest hits are not recorded.                                                                                  |
+| `providers/kaneo/task-relations.ts`     | **measurement-artifact** | `tests/providers/kaneo/task-relations.test.ts` exists (136 lines, no `mock.module`). The 12 kills confirm genuine perTest coverage was recorded for part of the file; the 24 NoCoverage mutants are in code paths reached only during preload, not due to missing tests.                                                                                                                                              |
+| `providers/kaneo/update-label.ts`       | **measurement-artifact** | No dedicated unit test in the main suite (only `tests/e2e/label-operations.test.ts`, which is excluded from the mutation run). The file is a provider-layer helper accessed through `label-resource.ts`, itself eagerly imported. 0 kills and 0 survived confirm complete static collapse per A2/A3 — consistent with a file exercised only through the preload path.                                                 |
+| `providers/kaneo/update-project.ts`     | **measurement-artifact** | Same pattern as `update-label.ts`: no main-suite unit test (only e2e imports); provider layer; 0 kills, 0 survived. Tools-level tests (`project-tools.test.ts`) mock the provider and never exercise the real `update-project.ts` implementation. Static-bucket collapse per A2/A3.                                                                                                                                   |
+
+#### Step 3: Dominant signal narrative
+
+The survived-mutant list is the cleaner of the two quality signals: every top-6 file has a matching test suite with no `mock.module` interference, and all have non-zero kill counts confirming the tests genuinely execute the code. The uniform pattern — many survivors alongside meaningful kills — is the classic weak-assertion signature: tests exercise happy-path flows and verify return shapes but under-assert on conditional branches, parameter boundaries, and error paths. The two highest-priority offenders are `providers/kaneo/label-resource.ts` (16 survivors, only 1 kill — an assertion-to-coverage ratio of 6%) and `tools/update-status.ts` (18 survivors, 6 kills), both of which represent real, actionable test-quality gaps.
+
+The NoCoverage list is substantially contaminated by the A2 measurement defect. Every top-6 NoCoverage file either has a test suite with zero `mock.module` calls (`search-memos.ts`, `team.ts`, `task-relations.ts`) or is a provider-layer helper whose only main-suite coverage comes indirectly through eagerly imported wrapper modules (`update-label.ts`, `update-project.ts`). In all these cases the NoCoverage classification arises because the runner's eager-import preload records module-level hits in the `static` bucket before any `beforeEach` sets `currentTestId`, and `ignoreStatic: true` then drops those mutants from scoring. The one genuine over-mocking case is `providers/factory.ts`, where the global reset's 29-module `mock.module` loop (B2) replaces the instrumented module on every test, depriving its mutants of any perTest hit.
+
+NoCoverage counts in this report cannot be read as pure test-gap counts: they are a mixture of the A2 static-collapse artifact, the B2 `mock.module` blast radius, and — only for files with no main-suite test at all — a genuine absence of coverage. Separating these requires a per-file check (does a test file exist? is the module mocked? do any kills appear?) rather than treating NoCoverage as a monolithic gap metric. The survived-mutant list, by contrast, is largely free of this contamination and is the more reliable proxy for actionable test-quality improvement.
+
 ### B5. Interaction with mutation measurement
 
 ## 4. Track C — Synthesis & Deferred Options
