@@ -210,6 +210,25 @@ describe('pollScheduledOnce', () => {
     expect(updated!.lastExecutedAt).toBeNull()
   })
 
+  test('keeps due prompt active when routed send is refused after active precheck', async () => {
+    chat = {
+      ...chat,
+      isInstanceActive: (_id: string): boolean => true,
+      sendMessage: (_platformInstanceId: string, _target: DeferredDeliveryTarget, _text: string): Promise<false> =>
+        Promise.resolve(false),
+    } as ActiveAwareChatProvider
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    const created = createScheduledPrompt(USER_ID, 'Check my overdue tasks', { fireAt: pastTime })
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(0)
+    const updated = getScheduledPrompt(created.id, USER_ID)
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('active')
+    expect(updated!.lastExecutedAt).toBeNull()
+  })
+
   test('does not execute future prompts', async () => {
     const futureTime = new Date(Date.now() + 3_600_000).toISOString()
     createScheduledPrompt(USER_ID, 'Future task', { fireAt: futureTime })

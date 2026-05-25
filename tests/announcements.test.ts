@@ -275,4 +275,23 @@ describe('announceNewVersion', () => {
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
   })
+
+  test('retries announcement when routed send is refused', async () => {
+    let attempts = 0
+    const routerChat = {
+      ...mockChat,
+      getInstance: (_id: string): unknown => ({ id: PLATFORM_INSTANCE_ID }),
+      sendMessage: (_platformInstanceId: string, _target: unknown, _text: string): Promise<false> => {
+        attempts++
+        return Promise.resolve(false)
+      },
+    } as RouterLikeChatProvider
+    changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+
+    await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+    expect(attempts).toBe(2)
+    expect(sentMessages).toHaveLength(0)
+  })
 })

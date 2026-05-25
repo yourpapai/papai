@@ -81,6 +81,7 @@ export class ChatRouter implements ChatProvider {
   async removeInstance(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) return
+    instance.status = 'stopped'
     try {
       await instance.provider.stop()
     } catch (error) {
@@ -123,8 +124,8 @@ export class ChatRouter implements ChatProvider {
       return
     }
 
-    await instance.provider.stop()
     instance.status = 'stopped'
+    await instance.provider.stop()
   }
 
   async start(): Promise<void> {
@@ -158,13 +159,14 @@ export class ChatRouter implements ChatProvider {
     }
   }
 
-  async sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<boolean> {
     const instance = this.instances.get(platformInstanceId)
     if (instance === undefined || instance.status !== 'active') {
       log.warn({ platformInstanceId }, 'cannot route message to inactive or unknown chat instance')
-      return
+      return false
     }
     await instance.provider.sendMessage(platformInstanceId, target, markdown)
+    return true
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {

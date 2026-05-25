@@ -74,6 +74,11 @@ const defaultThreadCapabilities: ThreadCapabilities = {
 
 const noopPromise = (): Promise<void> => Promise.resolve()
 
+const callResolver = (resolve: (() => void) | undefined): void => {
+  if (resolve === undefined) throw new Error('resolver missing')
+  resolve()
+}
+
 type FakeProviderOptions = Partial<{
   capabilities: readonly ChatCapability[]
   start: () => Promise<void>
@@ -287,11 +292,36 @@ describe('ChatRouter', () => {
     await router.startInstance('stopped-main')
     await router.stopInstance('stopped-main')
 
-    await router.sendMessage('pending-main', dmTarget('user-1'), 'pending')
-    await router.sendMessage('stopped-main', dmTarget('user-1'), 'stopped')
+    const pendingDelivered = await router.sendMessage('pending-main', dmTarget('user-1'), 'pending')
+    const stoppedDelivered = await router.sendMessage('stopped-main', dmTarget('user-1'), 'stopped')
 
+    expect(pendingDelivered).toBe(false)
+    expect(stoppedDelivered).toBe(false)
     expect(getProvider('pending-main').sent).toEqual([])
     expect(getProvider('stopped-main').sent).toEqual([])
+  })
+
+  test('marks instance inactive before awaiting stop to refuse racing sends', async () => {
+    let resolveStop: (() => void) | undefined
+    const stopPromise = new Promise<void>((resolve) => {
+      resolveStop = resolve
+    })
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, { stop: () => stopPromise })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+    await router.startInstance('telegram-main')
+
+    const stopping = router.stopInstance('telegram-main')
+    const delivered = await router.sendMessage('telegram-main', dmTarget('user-1'), 'racing')
+    callResolver(resolveStop)
+    await stopping
+
+    expect(delivered).toBe(false)
+    expect(getProvider('telegram-main').sent).toEqual([])
   })
 
   test('reports instance active state only after start and before stop', async () => {

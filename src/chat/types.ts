@@ -274,14 +274,13 @@ export type ChatProvider = {
   readonly traits: ChatProviderTraits
   /** Environment/config requirements for startup */
   readonly configRequirements: readonly ChatProviderConfigRequirement[]
-
-  /** Register a slash command handler (e.g., 'help' for /help). */
   registerCommand(name: string, handler: CommandHandler): void
-  /** Register the catch-all handler for non-command messages. */
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void
-  /** Send a formatted markdown message to a delivery target (for proactive/announcement sends). */
-  sendMessage(platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void>
-  /** Render a context snapshot into a platform-native representation. */
+  sendMessage(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+  ): Promise<boolean> | Promise<void>
   renderContext(snapshot: ContextSnapshot): ContextRendered
   /** Start the bot event loop. */
   start(): Promise<void>

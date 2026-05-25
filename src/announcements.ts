@@ -57,7 +57,8 @@ async function sendAnnouncementToAdmin(
       const instance = chat.getInstance(platformInstanceId)
       if (instance === undefined || instance === null) return false
     }
-    await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
+    const result = await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
+    if (result === false) return false
     log.debug({ version: VERSION }, 'Announcement sent to admin')
     return true
   } catch (error) {

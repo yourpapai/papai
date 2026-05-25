@@ -119,4 +119,31 @@ describe('sendProactiveMessage', () => {
     expect(delivered).toBe(false)
     expect(sent).toEqual([])
   })
+
+  test('returns false when send is refused after active precheck', async () => {
+    setContextSettings({
+      contextId: 'user-1',
+      taskInstanceId: 'kaneo-default',
+      platformInstanceId: 'telegram-default',
+    })
+    const chat = {
+      name: 'mock',
+      threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+      capabilities: new Set(),
+      traits: { observedGroupMessages: 'all' },
+      configRequirements: [],
+      registerCommand: () => {},
+      onMessage: () => {},
+      sendMessage: (_platformInstanceId: string, _target: DeferredDeliveryTarget, _markdown: string): Promise<false> =>
+        Promise.resolve(false),
+      renderContext: () => ({ method: 'text', content: '' }),
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      isInstanceActive: (_platformInstanceId: string): boolean => true,
+    } as const satisfies ChatProvider
+
+    const delivered = await sendProactiveMessage(chat, dmTarget('user-1'), 'hello')
+
+    expect(delivered).toBe(false)
+  })
 })

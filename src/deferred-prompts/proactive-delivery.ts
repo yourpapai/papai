@@ -33,6 +33,6 @@ export async function sendProactiveMessage(
 ): Promise<boolean> {
   const platformInstanceId = resolveProactivePlatformInstanceId(chat, target)
   if (platformInstanceId === null) return false
-  await chat.sendMessage(platformInstanceId, target, markdown)
-  return true
+  const result = await chat.sendMessage(platformInstanceId, target, markdown)
+  return result !== false
 }

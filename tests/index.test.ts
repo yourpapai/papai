@@ -206,7 +206,7 @@ describe('index.ts - graceful shutdown', () => {
           chatProvider.onMessage(handler)
         }
 
-        sendMessage(...args: Parameters<ChatProvider['sendMessage']>): Promise<void> {
+        sendMessage(...args: Parameters<ChatProvider['sendMessage']>): ReturnType<ChatProvider['sendMessage']> {
           return chatProvider.sendMessage(...args)
         }
 
