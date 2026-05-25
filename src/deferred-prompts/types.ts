@@ -18,7 +18,7 @@ export type DeferredPromptDelivery = {
   mentionUserIds: string[]
   createdByUserId: string
   createdByUsername: string | null
-}
+} & Partial<Readonly<{ storageContextId: string }>>
 
 /** Input shape for delivery spec at creation time (same fields as DeferredPromptDelivery). */
 export type DeferredPromptDeliveryInput = DeferredPromptDelivery

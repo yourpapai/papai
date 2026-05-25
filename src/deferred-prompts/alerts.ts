@@ -5,53 +5,23 @@
 
 import { and, eq } from 'drizzle-orm'
 
-import { dmTarget } from '../chat/types.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { alertPrompts, type AlertPromptRow } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { defaultDeliveryTarget, rowToDeliveryTarget, storageContextIdForTarget } from './delivery-target.js'
 import {
   alertConditionSchema,
   DEFAULT_EXECUTION_METADATA,
   parseExecutionMetadata,
   type AlertCondition,
   type AlertPrompt,
-  type DeferredPromptDelivery,
   type DeferredPromptDeliveryInput,
   type ExecutionMetadata,
 } from './types.js'
 
 const log = logger.child({ scope: 'deferred:alerts' })
 
-// --- Row mapper ---
-
 const parseStatus = (raw: string): AlertPrompt['status'] => (raw === 'cancelled' ? 'cancelled' : 'active')
-
-function rowToDeliveryTarget(row: AlertPromptRow): DeferredPromptDelivery {
-  if (row.deliveryContextId !== null) {
-    const contextType = row.deliveryContextType === 'group' ? 'group' : 'dm'
-    const audience = row.audience === 'shared' ? 'shared' : 'personal'
-    let mentionUserIds: string[] = []
-    try {
-      const parsed: unknown = JSON.parse(row.mentionUserIds)
-      if (Array.isArray(parsed)) mentionUserIds = parsed.filter((x): x is string => typeof x === 'string')
-    } catch {
-      mentionUserIds = []
-    }
-    return {
-      contextId: row.deliveryContextId,
-      contextType,
-      threadId: row.deliveryThreadId,
-      audience,
-      mentionUserIds,
-      createdByUserId: row.createdByUserId,
-      createdByUsername: row.createdByUsername,
-    }
-  }
-  return {
-    ...dmTarget(row.createdByUserId),
-    createdByUsername: row.createdByUsername,
-  }
-}
 
 const toAlertPrompt = (row: AlertPromptRow): AlertPrompt => ({
   type: 'alert',
@@ -82,15 +52,15 @@ export const createAlertPrompt = (
   const id = crypto.randomUUID()
   const db = getDrizzleDb()
 
-  const target = delivery ?? dmTarget(userId)
+  const target = delivery ?? defaultDeliveryTarget(userId)
 
   db.insert(alertPrompts)
     .values({
       id,
-      createdByUserId: target.createdByUserId,
+      createdByUserId: userId,
       createdByUsername: target.createdByUsername,
-      deliveryContextId: target.contextType === 'group' ? target.contextId : null,
-      deliveryContextType: target.contextType === 'group' ? 'group' : null,
+      deliveryContextId: storageContextIdForTarget(target),
+      deliveryContextType: target.contextType,
       deliveryThreadId: target.threadId,
       audience: target.audience,
       mentionUserIds: JSON.stringify(target.mentionUserIds),

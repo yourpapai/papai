@@ -5,15 +5,14 @@
 
 import { and, asc, eq, lte } from 'drizzle-orm'
 
-import { dmTarget } from '../chat/types.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { scheduledPrompts } from '../db/schema.js'
 import type { ScheduledPromptRow } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { defaultDeliveryTarget, rowToDeliveryTarget, storageContextIdForTarget } from './delivery-target.js'
 import {
   DEFAULT_EXECUTION_METADATA,
   parseExecutionMetadata,
-  type DeferredPromptDelivery,
   type DeferredPromptDeliveryInput,
   type ExecutionMetadata,
   type ScheduledPrompt,
@@ -27,33 +26,6 @@ function isValidStatus(value: string): value is ScheduledPrompt['status'] {
 
 function toStatus(value: string): ScheduledPrompt['status'] {
   return isValidStatus(value) ? value : 'active'
-}
-
-function rowToDeliveryTarget(row: ScheduledPromptRow): DeferredPromptDelivery {
-  if (row.deliveryContextId !== null) {
-    const contextType = row.deliveryContextType === 'group' ? 'group' : 'dm'
-    const audience = row.audience === 'shared' ? 'shared' : 'personal'
-    let mentionUserIds: string[] = []
-    try {
-      const parsed: unknown = JSON.parse(row.mentionUserIds)
-      if (Array.isArray(parsed)) mentionUserIds = parsed.filter((x): x is string => typeof x === 'string')
-    } catch {
-      mentionUserIds = []
-    }
-    return {
-      contextId: row.deliveryContextId,
-      contextType,
-      threadId: row.deliveryThreadId,
-      audience,
-      mentionUserIds,
-      createdByUserId: row.createdByUserId,
-      createdByUsername: row.createdByUsername,
-    }
-  }
-  return {
-    ...dmTarget(row.createdByUserId),
-    createdByUsername: row.createdByUsername,
-  }
 }
 
 function toScheduledPrompt(row: ScheduledPromptRow): ScheduledPrompt {
@@ -89,15 +61,15 @@ export function createScheduledPrompt(
   const fireAt = new Date(schedule.fireAt).toISOString()
   const translated = schedule.cronCompiled ?? null
 
-  const target = delivery ?? dmTarget(userId)
+  const target = delivery ?? defaultDeliveryTarget(userId)
 
   db.insert(scheduledPrompts)
     .values({
       id,
-      createdByUserId: target.createdByUserId,
+      createdByUserId: userId,
       createdByUsername: target.createdByUsername,
-      deliveryContextId: target.contextType === 'group' ? target.contextId : null,
-      deliveryContextType: target.contextType === 'group' ? 'group' : null,
+      deliveryContextId: storageContextIdForTarget(target),
+      deliveryContextType: target.contextType,
       deliveryThreadId: target.threadId,
       audience: target.audience,
       mentionUserIds: JSON.stringify(target.mentionUserIds),

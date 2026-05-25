@@ -49,12 +49,14 @@ export function buildDeliveryInput(
   ctx: CreateDeliveryContext,
   policy: DeliveryPolicy | undefined,
 ): DeferredPromptDeliveryInput {
-  if (ctx.contextType === 'dm') return { ...dmTarget(ctx.userId), createdByUsername: nullableUsername(ctx.username) }
+  if (ctx.contextType === 'dm')
+    return { ...dmTarget(ctx.userId), storageContextId: ctx.storageContextId, createdByUsername: nullableUsername(ctx.username) }
 
   const parsedContext = parseGroupDeliveryContext(ctx.storageContextId)
   const audience = deliveryAudience(policy)
   return {
     contextId: parsedContext.contextId,
+    storageContextId: ctx.storageContextId,
     contextType: 'group',
     threadId: parsedContext.threadId,
     audience,

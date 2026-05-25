@@ -10,7 +10,10 @@ import type { ToolSet } from 'ai'
 
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { alertPrompts, scheduledPrompts } from '../../src/db/schema.js'
 import { getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import { getStorageContextId } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import { getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import {
   makeCancelDeferredPromptTool,
@@ -58,6 +61,13 @@ function extractPrompts(result: unknown): unknown[] {
   const prompts: unknown = Reflect.get(result, 'prompts')
   if (!Array.isArray(prompts)) throw new Error('Expected prompts to be array')
   return prompts
+}
+
+function extractPromptIds(result: unknown): string[] {
+  return extractPrompts(result)
+    .filter((prompt): prompt is Readonly<{ id: unknown }> => typeof prompt === 'object' && prompt !== null && 'id' in prompt)
+    .map((prompt) => prompt.id)
+    .filter((id): id is string => typeof id === 'string')
 }
 
 function extractFireAt(result: unknown): unknown {
@@ -529,7 +539,7 @@ describe('delivery classification persistence', () => {
   test('scoped dm scheduled prompt delivers to native user identity', async () => {
     const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
     setConfig(scopedUserId, 'timezone', 'UTC')
-    const tool = makeCreateDeferredPromptTool(USER_ID, scopedUserId, 'dm', undefined, USER_ID)
+    const tool = makeCreateDeferredPromptTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -537,22 +547,29 @@ describe('delivery classification persistence', () => {
       toolCtx,
     )
 
-    const created = getScheduledPrompt(extractId(result), USER_ID)
+    const id = extractId(result)
+    const row = getDrizzleDb().select().from(scheduledPrompts).all().find((prompt) => prompt.id === id)
+    const created = getScheduledPrompt(id, scopedUserId)
+    expect(row).toBeDefined()
+    expect(row!.createdByUserId).toBe(scopedUserId)
+    expect(row!.deliveryContextId).toBe(scopedUserId)
     expect(created).not.toBeNull()
-    expect(created!.createdByUserId).toBe(USER_ID)
+    expect(created!.createdByUserId).toBe(scopedUserId)
     expect(created!.deliveryTarget.contextId).toBe(USER_ID)
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedUserId)
     expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
     expect(created!.deliveryTarget.mentionUserIds).toEqual([])
     expect(created!.deliveryTarget.threadId).toBeNull()
   })
 
   test('scoped group thread alert delivers to native group thread', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
     const scopedThreadContextId = toScopedThreadContextId({
       platformInstanceId: 'telegram-default',
       nativeContextId: '-1001',
       threadId: '42',
     })
-    const tool = makeCreateDeferredPromptTool(USER_ID, scopedThreadContextId, 'group', undefined, USER_ID)
+    const tool = makeCreateDeferredPromptTool(scopedUserId, scopedThreadContextId, 'group', undefined, USER_ID)
     assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
@@ -564,13 +581,81 @@ describe('delivery classification persistence', () => {
       toolCtx,
     )
 
-    const created = getAlertPrompt(extractId(result), USER_ID)
+    const id = extractId(result)
+    const row = getDrizzleDb().select().from(alertPrompts).all().find((alert) => alert.id === id)
+    const created = getAlertPrompt(id, scopedUserId)
+    expect(row).toBeDefined()
+    expect(row!.createdByUserId).toBe(scopedUserId)
+    expect(row!.deliveryContextId).toBe(scopedThreadContextId)
     expect(created).not.toBeNull()
-    expect(created!.createdByUserId).toBe(USER_ID)
+    expect(created!.createdByUserId).toBe(scopedUserId)
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
+  })
+
+  test('scoped owner can list get update and cancel scoped deferred rows', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    const create = makeCreateDeferredPromptTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
+    const list = makeListDeferredPromptsTool(scopedUserId)
+    const get = makeGetDeferredPromptTool(scopedUserId)
+    const update = makeUpdateDeferredPromptTool(scopedUserId)
+    const cancel = makeCancelDeferredPromptTool(scopedUserId)
+    assert.ok(create.execute)
+    assert.ok(list.execute)
+    assert.ok(get.execute)
+    assert.ok(update.execute)
+    assert.ok(cancel.execute)
+    const created: unknown = await create.execute(
+      { prompt: 'Scoped lifecycle', schedule: { fire_at: futureFireAt() } },
+      toolCtx,
+    )
+    const id = extractId(created)
+
+    expect(extractPromptIds(await list.execute({}, toolCtx))).toContain(id)
+    expect(await get.execute({ id }, toolCtx)).toHaveProperty('id', id)
+    expect(await update.execute({ id, prompt: 'Updated scoped lifecycle' }, toolCtx)).toHaveProperty('status', 'updated')
+    expect(await cancel.execute({ id }, toolCtx)).toHaveProperty('status', 'cancelled')
+    expect(getScheduledPrompt(id, scopedUserId)!.status).toBe('cancelled')
+  })
+
+  test('migrated scoped delivery context rows build native adapter targets', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(scheduledPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: scopedThreadContextId,
+        deliveryContextType: 'group',
+        deliveryThreadId: null,
+        audience: 'personal',
+        mentionUserIds: JSON.stringify([USER_ID]),
+        prompt: 'Migrated scoped prompt',
+        fireAt: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getScheduledPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
     expect(created!.deliveryTarget.contextId).toBe('-1001')
     expect(created!.deliveryTarget.threadId).toBe('42')
     expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
     expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
   })
 
   test('group alert persists shared audience and no mention targets chosen at creation', async () => {

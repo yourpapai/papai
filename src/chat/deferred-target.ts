@@ -15,7 +15,7 @@ export type DeferredDeliveryTarget = {
   mentionUserIds: string[]
   createdByUserId: string
   createdByUsername: string | null
-}
+} & Partial<Readonly<{ storageContextId: string }>>
 
 export function dmTarget(userId: string): DeferredDeliveryTarget {
   return {

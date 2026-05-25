@@ -8,6 +8,7 @@ import { mock, beforeEach, describe, expect, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 
 import { setCachedConfig } from '../../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import type { ChatProvider, DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { setConfig } from '../../src/config.js'
 import { createAlertPrompt, getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
@@ -103,6 +104,42 @@ describe('pollScheduledOnce', () => {
 
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
+  })
+
+  test('scoped group thread delivery routes by scoped context and sends native target ids', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    setContextSettings({ contextId: scopedThreadContextId, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
+    const pastTime = new Date(Date.now() - 60_000).toISOString()
+    createScheduledPrompt(
+      scopedUserId,
+      'Scoped thread reminder',
+      { fireAt: pastTime },
+      { mode: 'lightweight', delivery_brief: '', context_snapshot: null },
+      {
+        contextId: '-1001',
+        storageContextId: scopedThreadContextId,
+        contextType: 'group',
+        threadId: '42',
+        audience: 'personal',
+        mentionUserIds: [USER_ID],
+        createdByUserId: USER_ID,
+        createdByUsername: null,
+      },
+    )
+
+    await pollScheduledOnce(chat, () => provider)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.platformInstanceId).toBe('telegram-default')
+    expect(sentMessages[0]!.target.contextId).toBe('-1001')
+    expect(sentMessages[0]!.target.threadId).toBe('42')
+    expect(sentMessages[0]!.target.mentionUserIds).toEqual([USER_ID])
   })
 
   test('keeps due prompt active when delivery route is unresolved', async () => {

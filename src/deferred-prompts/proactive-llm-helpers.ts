@@ -48,10 +48,11 @@ export const toolCallCount = (result: unknown): number | undefined => {
   return toolCalls.length
 }
 
-export const getStorageContextId = (target: DeferredDeliveryTarget): string =>
-  target.contextType === 'group' && target.threadId !== null
-    ? `${target.contextId}:${target.threadId}`
-    : target.contextId
+export const getStorageContextId = (target: DeferredDeliveryTarget): string => {
+  if (target.storageContextId !== undefined) return target.storageContextId
+  if (target.contextType === 'group' && target.threadId !== null) return `${target.contextId}:${target.threadId}`
+  return target.contextId
+}
 
 export function buildMinimalSystemPrompt(type: 'scheduled' | 'alert'): string {
   return [

@@ -35,9 +35,9 @@ export function addDeferredPromptTools(
   if (storageOwnerId === undefined || chatUserId === undefined) return
   const ctxId = getContextId(contextId, storageOwnerId)
   const ctxType = getContextType(contextType)
-  tools['create_deferred_prompt'] = makeCreateDeferredPromptTool(chatUserId, ctxId, ctxType, username, chatUserId)
-  tools['list_deferred_prompts'] = makeListDeferredPromptsTool(chatUserId)
-  tools['get_deferred_prompt'] = makeGetDeferredPromptTool(chatUserId)
-  tools['update_deferred_prompt'] = makeUpdateDeferredPromptTool(chatUserId)
-  tools['cancel_deferred_prompt'] = makeCancelDeferredPromptTool(chatUserId)
+  tools['create_deferred_prompt'] = makeCreateDeferredPromptTool(storageOwnerId, ctxId, ctxType, username, chatUserId)
+  tools['list_deferred_prompts'] = makeListDeferredPromptsTool(storageOwnerId)
+  tools['get_deferred_prompt'] = makeGetDeferredPromptTool(storageOwnerId)
+  tools['update_deferred_prompt'] = makeUpdateDeferredPromptTool(storageOwnerId)
+  tools['cancel_deferred_prompt'] = makeCancelDeferredPromptTool(storageOwnerId)
 }
