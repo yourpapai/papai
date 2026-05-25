@@ -27,6 +27,7 @@ export type AiProgressReporter = {
 }
 
 const SECRET_KEY_PATTERN = /(api[_-]?key|token|secret|password|authorization|cookie)/iu
+const SECRET_VALUE_PATTERN = /(api[_-]?key|token|secret|password|authorization|cookie)\s*[:=]\s*\S+|bearer\s+\S+/iu
 const URL_KEY_PATTERN = /(^|[_-])(url|uri|href|link)([_-]|$)|url$/iu
 const PAYLOAD_KEY_PATTERN = /(attachment|blob|body|content|file[_-]?content)/iu
 const MAX_SANITIZED_STRING_LENGTH = 240
@@ -47,6 +48,7 @@ function formatError(error: unknown): string {
 }
 
 function sanitizeString(value: string): string {
+  if (SECRET_VALUE_PATTERN.test(value)) return '[redacted]'
   return value.length > MAX_SANITIZED_STRING_LENGTH
     ? `${value.slice(0, MAX_SANITIZED_STRING_LENGTH)}... [truncated ${value.length} chars]`
     : value

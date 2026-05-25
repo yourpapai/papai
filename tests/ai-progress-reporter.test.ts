@@ -109,6 +109,25 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('[redacted]')
   })
 
+  test('redacts sanitized object error message values with secret-like text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-error-message-value',
+      input: { title: 'Visible title' },
+      durationMs: 8,
+      success: false,
+      error: { message: 'token=secret-token' },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('failed')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
   test('flushes sanitized circular objects and arrays with a safe marker', async () => {
     const { reply, textCalls } = createMockReply()
     const circularObject: Record<string, unknown> = { title: 'Circular title' }
