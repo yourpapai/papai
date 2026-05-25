@@ -622,6 +622,58 @@ describe('routeInteraction', () => {
     expect(replies[0]).toContain('Editing configuration from the beginning')
   })
 
+  test('cancels encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_cancel@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['❌ Wizard cancelled. Type /setup to restart.'])
+  })
+
+  test('restarts encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_restart@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['Restarting wizard... Type /setup to begin.'])
+  })
+
   test('blocks unauthorized users with unauthorized message', async () => {
     const replies: string[] = []
     const handled = await routeInteraction(

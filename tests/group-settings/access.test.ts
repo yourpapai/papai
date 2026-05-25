@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { listManageableGroups, matchManageableGroup } from '../../src/group-settings/access.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -68,6 +69,40 @@ describe('group settings access', () => {
     expect(listManageableGroups('user-1')).toEqual([])
   })
 
+  test('scopes manageable groups by platform instance when native user ids collide', () => {
+    const telegramGroupId = toScopedContextId({ platformInstanceId: 'telegram-main', nativeContextId: 'group-1' })
+    const discordGroupId = toScopedContextId({ platformInstanceId: 'discord-main', nativeContextId: 'group-2' })
+    upsertKnownGroupContext({ contextId: telegramGroupId, provider: 'telegram', displayName: 'Telegram Ops', parentName: null })
+    upsertKnownGroupContext({ contextId: discordGroupId, provider: 'discord', displayName: 'Discord Ops', parentName: null })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: telegramGroupId,
+      userId: 'same-native-user',
+      username: 'alice',
+      isAdmin: true,
+    })
+    upsertGroupAdminObservation({
+      provider: 'discord',
+      contextId: discordGroupId,
+      userId: 'same-native-user',
+      username: 'alice',
+      isAdmin: true,
+    })
+    addAuthorizedGroup(telegramGroupId, 'admin-1')
+    addAuthorizedGroup(discordGroupId, 'admin-1')
+
+    expect(listManageableGroups('same-native-user', 'telegram-main').map((group) => group.contextId)).toEqual([
+      telegramGroupId,
+    ])
+    expect(listManageableGroups('same-native-user', 'discord-main').map((group) => group.contextId)).toEqual([
+      discordGroupId,
+    ])
+    expect(listManageableGroups('same-native-user').map((group) => group.contextId)).toEqual([
+      discordGroupId,
+      telegramGroupId,
+    ])
+  })
+
   test('matches by context id and display name and reports ambiguity', () => {
     upsertKnownGroupContext({
       contextId: 'group-1',
@@ -100,12 +135,12 @@ describe('group settings access', () => {
 
     const exactMatch = matchManageableGroup('user-1', 'group-1')
     expect(exactMatch.kind).toBe('match')
-    assert(exactMatch.kind === 'match')
+    assert.ok(exactMatch.kind === 'match')
     expect(exactMatch.group.contextId).toBe('group-1')
 
     const ambiguousMatch = matchManageableGroup('user-1', 'operations')
     expect(ambiguousMatch.kind).toBe('ambiguous')
-    assert(ambiguousMatch.kind === 'ambiguous')
+    assert.ok(ambiguousMatch.kind === 'ambiguous')
     expect(ambiguousMatch.matches.map((group) => group.contextId)).toEqual(['group-1', 'group-2'])
   })
 })

@@ -42,7 +42,9 @@ export function listManageableGroups(userId: string, ...args: [] | [platformInst
   const platformInstanceId = args[0]
   log.debug({ userId }, 'listManageableGroups called')
 
-  const groups = listAdminGroupContextsForUser(userId).filter((group) => isAuthorizedGroupContext(group, platformInstanceId))
+  const groups = listAdminGroupContextsForUser(userId, ...args).filter((group) =>
+    isAuthorizedGroupContext(group, platformInstanceId),
+  )
 
   log.debug({ userId, groupCount: groups.length }, 'Listed manageable groups')
   return groups
@@ -54,7 +56,7 @@ export function validateGroupTargetAccess(
   ...args: [] | [platformInstanceId: string]
 ): GroupTargetAccessResult {
   const platformInstanceId = args[0]
-  const adminGroups = listAdminGroupContextsForUser(userId)
+  const adminGroups = listAdminGroupContextsForUser(userId, ...args)
   const group = adminGroups.find(
     (candidate) => {
       if (candidate.contextId === groupId) return true

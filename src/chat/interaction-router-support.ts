@@ -109,6 +109,10 @@ export function getWizardCallbackStorageContextId(
   if (callbackData === 'wizard_edit' && getWizardSession(userId, callbackTargetContextId) !== null) return callbackTargetContextId
   if (callbackData === 'wizard_confirm' && getWizardSession(userId, callbackTargetContextId) !== null)
     return callbackTargetContextId
+  if (callbackData === 'wizard_cancel' && getWizardSession(userId, callbackTargetContextId) !== null)
+    return callbackTargetContextId
+  if (callbackData === 'wizard_restart' && getWizardSession(userId, callbackTargetContextId) !== null)
+    return callbackTargetContextId
   return validatedTargetContextId
 }
 

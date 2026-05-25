@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { getAdminLookupScope, matchesAdminPlatformInstance } from './admin-scope.js'
 import type {
   GroupUserObservation,
   UpsertGroupAdminObservationInput,
@@ -263,8 +264,9 @@ export function findGroupUserObservation(
   return row === undefined ? null : toGroupUserObservation(row)
 }
 
-export function listAdminGroupContextsForUser(userId: string): KnownGroupContext[] {
-  log.debug({ userId }, 'listAdminGroupContextsForUser called')
+export function listAdminGroupContextsForUser(userId: string, ...args: [] | [platformInstanceId: string]): KnownGroupContext[] {
+  const scope = getAdminLookupScope(userId, args[0])
+  log.debug({ userId, platformInstanceId: scope.platformInstanceId }, 'listAdminGroupContextsForUser called')
 
   const groups = getDrizzleDb()
     .select({
@@ -281,14 +283,15 @@ export function listAdminGroupContextsForUser(userId: string): KnownGroupContext
       and(
         eq(knownGroupContexts.provider, groupAdminObservations.provider),
         eq(knownGroupContexts.contextId, groupAdminObservations.contextId),
-        eq(groupAdminObservations.userId, userId),
+        eq(groupAdminObservations.userId, scope.nativeUserId),
         eq(groupAdminObservations.isAdmin, true),
       ),
     )
     .all()
     .map((row) => toKnownGroupContext(row))
+    .filter((group) => matchesAdminPlatformInstance(group.contextId, scope.platformInstanceId))
     .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
 
-  log.debug({ userId, count: groups.length }, 'Listed admin group contexts for user')
+  log.debug({ userId, platformInstanceId: scope.platformInstanceId, count: groups.length }, 'Listed admin group contexts for user')
   return groups
 }
