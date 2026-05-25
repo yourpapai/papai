@@ -48,6 +48,7 @@ const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'alert_prompts', column: 'created_by_user_id', conflictColumns: null },
   { table: 'alert_prompts', column: 'delivery_context_id', conflictColumns: null },
   { table: 'task_snapshots', column: 'user_id', conflictColumns: ['task_id', 'field'] },
+  { table: 'message_metadata', column: 'context_id', conflictColumns: ['message_id'] },
   { table: 'user_instructions', column: 'context_id', conflictColumns: null },
   { table: 'memos', column: 'user_id', conflictColumns: null },
   { table: 'user_identity_mappings', column: 'context_id', conflictColumns: ['provider_name'] },
@@ -56,6 +57,8 @@ const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'group_user_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
   { table: 'attachments', column: 'context_id', conflictColumns: null },
   { table: 'staged_files', column: 'context_id', conflictColumns: null },
+  { table: 'llm_usage_events', column: 'storage_context_id', conflictColumns: null },
+  { table: 'tool_call_events', column: 'storage_context_id', conflictColumns: null },
 ]
 
 const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u

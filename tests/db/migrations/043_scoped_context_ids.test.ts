@@ -46,6 +46,9 @@ describe('migration043ScopedContextIds', () => {
       `CREATE TABLE task_snapshots (user_id TEXT NOT NULL, task_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, task_id, field))`,
     )
     db.run(
+      `CREATE TABLE message_metadata (context_id TEXT NOT NULL, message_id TEXT NOT NULL, author_id TEXT, author_username TEXT, text TEXT, reply_to_message_id TEXT, timestamp INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY (context_id, message_id))`,
+    )
+    db.run(
       `CREATE TABLE user_instructions (id TEXT PRIMARY KEY, context_id TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL)`,
     )
     db.run(
@@ -68,6 +71,12 @@ describe('migration043ScopedContextIds', () => {
     )
     db.run(
       `CREATE TABLE staged_files (staged_id TEXT PRIMARY KEY, context_id TEXT NOT NULL, message_id TEXT, sender_id TEXT NOT NULL, sender_username TEXT, filename TEXT NOT NULL, mime_type TEXT, size INTEGER, platform_file_id TEXT NOT NULL, source_provider TEXT NOT NULL, status TEXT NOT NULL, attachment_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`,
+    )
+    db.run(
+      `CREATE TABLE llm_usage_events (event_id TEXT PRIMARY KEY, occurred_at INTEGER NOT NULL, turn_id TEXT, storage_context_id TEXT NOT NULL, context_type TEXT NOT NULL, chat_user_id TEXT NOT NULL, model TEXT NOT NULL, model_role TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER, step_count INTEGER NOT NULL DEFAULT 0, tool_call_count INTEGER NOT NULL DEFAULT 0, message_count INTEGER NOT NULL DEFAULT 0, finish_reason TEXT, duration_ms INTEGER NOT NULL, response_id TEXT, error TEXT, forwarded_at INTEGER, forward_attempts INTEGER NOT NULL DEFAULT 0, forward_error TEXT)`,
+    )
+    db.run(
+      `CREATE TABLE tool_call_events (event_id TEXT PRIMARY KEY, turn_id TEXT NOT NULL, occurred_at INTEGER NOT NULL, storage_context_id TEXT NOT NULL, context_type TEXT NOT NULL, chat_user_id TEXT NOT NULL, model TEXT NOT NULL, model_role TEXT NOT NULL, tool_name TEXT NOT NULL, tool_call_id TEXT NOT NULL, success INTEGER NOT NULL, duration_ms INTEGER, error_type TEXT, error_code TEXT, retryable INTEGER, recovered INTEGER, args_bytes INTEGER, result_bytes INTEGER, response_id TEXT, forwarded_at INTEGER, forward_attempts INTEGER NOT NULL DEFAULT 0, forward_error TEXT)`,
     )
     db.run(
       `CREATE TABLE users (platform_user_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL, username TEXT, added_at TEXT NOT NULL, added_by TEXT NOT NULL, PRIMARY KEY (platform_instance_id, platform_user_id))`,
@@ -152,11 +161,18 @@ describe('migration043ScopedContextIds', () => {
     db.run(`INSERT INTO group_admin_observations VALUES ('telegram', 'group-1', 'user-1', 'alice', 1, 'now')`)
     db.run(`INSERT INTO group_user_observations VALUES ('telegram', 'group-1', 'user-1', 'alice', 'Alice', 'now')`)
     db.run(`INSERT INTO group_user_observations VALUES ('mattermost', 'group-1', 'user-2', 'bob', 'Bob', 'now')`)
+    db.run(`INSERT INTO message_metadata VALUES ('group-1', 'msg-1', 'user-1', 'alice', 'hello', NULL, 1, 2)`)
     db.run(
       `INSERT INTO attachments VALUES ('att-1', 'user-1', 'telegram', 'msg-1', 'file-1', 'a.txt', NULL, NULL, 'sum', 'blob', 'active', 1, 'now', NULL, NULL)`,
     )
     db.run(
       `INSERT INTO staged_files VALUES ('stg-1', 'user-1', 'msg-1', 'user-1', 'alice', 'a.txt', NULL, NULL, 'file-1', 'telegram', 'staged', NULL, 'now', 'later')`,
+    )
+    db.run(
+      `INSERT INTO llm_usage_events (event_id, occurred_at, storage_context_id, context_type, chat_user_id, model, model_role, duration_ms) VALUES ('llm-1', 1, 'user-1', 'dm', 'user-1', 'model', 'main', 100)`,
+    )
+    db.run(
+      `INSERT INTO tool_call_events (event_id, turn_id, occurred_at, storage_context_id, context_type, chat_user_id, model, model_role, tool_name, tool_call_id, success) VALUES ('tool-1', 'turn-1', 1, 'user-1', 'dm', 'user-1', 'model', 'main', 'create_task', 'call-1', 1)`,
     )
     db.run(
       `CREATE TABLE plugin_context_state (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, enabled INTEGER NOT NULL)`,
@@ -174,8 +190,15 @@ describe('migration043ScopedContextIds', () => {
       { provider: 'mattermost', context_id: scopedGroup },
       { provider: 'telegram', context_id: scopedGroup },
     ])
+    expect(db.query(`SELECT context_id FROM message_metadata`).get()).toEqual({ context_id: scopedGroup })
     expect(db.query(`SELECT context_id FROM attachments`).get()).toEqual({ context_id: scopedUser })
     expect(db.query(`SELECT context_id FROM staged_files`).get()).toEqual({ context_id: scopedUser })
+    expect(db.query(`SELECT storage_context_id FROM llm_usage_events`).get()).toEqual({
+      storage_context_id: scopedUser,
+    })
+    expect(db.query(`SELECT storage_context_id FROM tool_call_events`).get()).toEqual({
+      storage_context_id: scopedUser,
+    })
     expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: 'user-1' })
   })
 
