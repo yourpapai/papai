@@ -544,6 +544,148 @@ execution of the instrumented code.
 
 ### B3. DI adherence
 
+#### Stated preference
+
+`tests/CLAUDE.md` §Mocking Rules (line 29):
+
+> "Prefer dependency injection over module mocking whenever the source module already exposes a
+> `Deps` interface."
+
+> "When a suite must use `mock.module()`, be precise about why and keep the mocked boundary
+> narrow."
+
+`CLAUDE.md` §Testing Notes (line 379):
+
+> "prefer DI over `mock.module()` where the module already supports it"
+
+The "Important Reality Check" section of `tests/CLAUDE.md` (lines 46–50) explicitly acknowledges
+the current state:
+
+> "The repo currently contains both modern DI-first tests and legacy `mock.module()` plus
+> delayed-import suites. Prefer the DI-first pattern for new tests. Do not rewrite existing
+> stable tests just to match DI unless the work already touches that area."
+
+#### Data collection
+
+Commands run (static analysis; no `src/` or `tests/` changes):
+
+```
+# mock.module users
+grep -rl "mock\.module(" tests/ --include="*.ts" | wc -l          → 26
+
+# DI-helper users (getToolExecutor / makeTools / createMockProvider / provider: / deps:)
+grep -rlE "getToolExecutor\(|makeTools\(|createMockProvider\(|new [A-Z][A-Za-z]+Resource\(|provider:|Deps =|deps:" \
+  tests/ --include="*.ts" | wc -l                                  → 120
+
+# total test files
+find tests -name "*.test.ts" | wc -l                               → 545 (includes client/ and e2e/)
+
+# files using BOTH mock.module and a DI helper
+comm -12 \
+  <(grep -rl "mock\.module(" tests/ --include="*.ts" | sort) \
+  <(grep -rlE "getToolExecutor\(|makeTools\(|createMockProvider\(|provider:|deps:" \
+      tests/ --include="*.ts" | sort) | wc -l                      → 11
+
+# Deps interfaces in src/
+grep -rlE "interface .*Deps|type .*Deps" src/ | head
+# → 20 files (sample: src/bot.ts, src/llm-orchestrator-types.ts, src/announcements.ts,
+#    src/scheduler.ts, src/conversation.ts, plus ~15 more, covering most key orchestration modules)
+```
+
+#### Counts and ratio
+
+| Metric                                               | Count |
+| ---------------------------------------------------- | ----: |
+| Total `.test.ts` files                               |   545 |
+| Files using at least one DI helper                   |   120 |
+| Files using `mock.module()`                          |    26 |
+| Files using **both** `mock.module()` and a DI helper |    11 |
+| Files using `mock.module()` **only** (no DI helper)  |    15 |
+
+The 120:26 ratio (~4.6:1) reflects a suite where DI-first is clearly the dominant pattern. Of
+the 26 `mock.module()` users, 11 also use DI helpers, indicating that mixed-pattern files are
+common. 15 files rely on `mock.module()` exclusively — most of these are integration/startup
+tests or cross-cutting utility mocks (e.g., logger, DB, scheduler) where no `Deps` interface
+exists on the imported module.
+
+#### Three representative divergences
+
+**Divergence 1: `tests/commands/context.test.ts` — `src/providers/factory.ts` mocked despite
+`ContextCommandDeps.buildProvider` being available**
+
+- File: `tests/commands/context.test.ts`
+- Mocked: `../../src/providers/factory.js` (5 call sites: lines 129, 166, 206, 262, 306)
+- Why DI was available: `src/commands/context.ts` exposes `ContextCommandDeps` (line 36) with a
+  `buildProvider: (contextId: string) => TaskProvider | null` slot. The test file already imports
+  and uses `ContextCommandDeps` via the `snapshotDeps()` helper. In 4 of those 5 tests the
+  pattern is: `mock.module(factory, () => ({ buildProviderForUser: () => provider }))` immediately
+  followed by `snapshotDeps({})`. The `snapshotDeps` helper defaults `buildProvider` to
+  `safeBuildProvider` (which calls `buildProviderForUser` internally) — meaning the module mock
+  and the Deps slot are wired to the same underlying call. A direct override via
+  `snapshotDeps({ buildProvider: () => provider })` would achieve the same isolation without the
+  process-wide module replacement. The one exception (line 204, "uses injected provider
+  construction instead of the hardwired provider factory") explicitly tests that the DI path is
+  preferred, yet still mocks the factory as a sentinel — this is arguably legitimate.
+
+**Divergence 2: `tests/llm-orchestrator.test.ts` — `src/providers/factory.ts` mocked despite
+`LlmOrchestratorDeps.buildProviderForUser` injection slot**
+
+- File: `tests/llm-orchestrator.test.ts`
+- Mocked: `../src/providers/factory.js` (6 call sites: lines 184, 805, 822, 857, 883, 910)
+- Why DI was available: `src/llm-orchestrator-types.ts` defines `LlmOrchestratorDeps` (line 13)
+  with a `buildProviderForUser: (userId: string) => TaskProvider` field. The test already wires
+  this via the `deps` object passed directly to `callLlm()` (lines 239, 243, 283, 287 etc.) for
+  the outer suite. However the inner "identity resolver" sub-suite (lines ~800–910) also issues
+  per-test `mock.module('../src/providers/factory.js', ...)` calls in addition to overriding
+  `deps.buildProviderForUser`. The per-test module mocks are redundant: passing
+  `buildProviderForUser` in `deps` is already sufficient since `callLlm` reads the provider from
+  `deps`, not from a direct `factory` import. The redundant `mock.module()` calls widen the blast
+  radius (see B2) with no isolation benefit over the Deps-based approach.
+
+**Divergence 3: `tests/index.test.ts` — `src/users.ts` mocked as a module despite
+`BotDeps`-injected wire being the preferred path**
+
+- File: `tests/index.test.ts`
+- Mocked: `../src/users.js` (line 188), along with 15+ other modules in a single `beforeEach`
+- Why DI was partially available: `src/index.ts` wires startup via `BotDeps` passed to
+  `setupBot()`. The test captures the `BotDeps` argument by mocking `setupBot` itself (line 117),
+  which correctly exercises the DI path for the bot layer. However, `src/users.ts` exports bare
+  functions (`addUser`, `isAuthorized`, etc.) with no `Deps` interface — the module has no
+  parameter injection point. The `mock.module('../src/users.js', ...)` call is therefore a
+  **legitimate fallback** (`src/users.ts` provides no injectable surface). This test is better
+  classified as a necessary module-boundary test for a module that does not yet expose a `Deps`
+  interface, rather than a DI adherence gap.
+
+#### Analysis and verdict
+
+**Adherence verdict: mixed, trending DI-first.**
+
+The suite shows clear DI-first adoption — 120 files use DI helpers versus 26 that use
+`mock.module()`, and the majority of the 26 are for modules that genuinely lack a `Deps`
+interface (external SDKs like `ai` / `@ai-sdk/openai-compatible`, infrastructure modules like
+`src/logger.ts`, DB modules, scheduler, and startup glue in `src/index.ts`).
+
+The highest-impact gap is `src/providers/factory.ts`, which is mocked 13 times across at least
+4 test files (cross-reference B2) despite `ContextCommandDeps.buildProvider` and
+`LlmOrchestratorDeps.buildProviderForUser` being available. In `tests/commands/context.test.ts`
+the module mock is largely redundant alongside the `snapshotDeps` helper. In
+`tests/llm-orchestrator.test.ts` the inner sub-suite's per-test `mock.module()` calls duplicate
+what `deps.buildProviderForUser` already accomplishes. Eliminating these redundant module mocks
+would narrow the blast radius identified in B2 and allow Stryker's instrumented version of
+`factory.ts` to execute during those tests, directly improving perTest coverage for `factory.ts`
+mutants.
+
+`src/users.ts` (1 occurrence) and `src/recurring.ts` (1 occurrence) are both mocked in contexts
+where no `Deps` interface exists on those modules; those are legitimate legacy-pattern uses, not
+adherence failures.
+
+**Single highest-impact gap:** Replace `mock.module('…/providers/factory.js', …)` calls in
+`tests/commands/context.test.ts` and the redundant calls in `tests/llm-orchestrator.test.ts`
+with direct overrides via the already-present `ContextCommandDeps.buildProvider` and
+`LlmOrchestratorDeps.buildProviderForUser` injection slots. This would reduce the 13 in-scope
+`factory.ts` module-mock call sites to near zero and unlock perTest coverage for all `factory.ts`
+mutants (currently pushed into `NoCoverage`/`static` by the global reset — see B2).
+
 ### B4. Test-quality signals from mutation data
 
 ### B5. Interaction with mutation measurement
