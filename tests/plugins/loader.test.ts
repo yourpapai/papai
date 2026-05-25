@@ -30,13 +30,16 @@ function makeManifest(id: string, overrides: Partial<PluginManifest> = {}): Plug
     description: 'A test',
     apiVersion: PLUGIN_API_VERSION,
     main: 'index.ts',
-    contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+    contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
     permissions: [],
     defaultEnabled: false,
     activationTimeoutMs: 5000,
     requiredTaskCapabilities: [],
     requiredChatCapabilities: [],
     configRequirements: [],
+    providerCapabilities: [],
+    providerConfigSchema: [],
+    providerAllowedHosts: [],
     ...overrides,
   }
 }
@@ -107,7 +110,14 @@ describe('activatePlugins', () => {
       }
     `)
     const plugin = makePlugin('factory-plugin', entryPoint, {
-      contributes: { tools: ['registered_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -148,7 +158,14 @@ describe('activatePlugins', () => {
     `)
     const plugin = makePlugin('timeout-plugin', entryPoint, {
       activationTimeoutMs: 100,
-      contributes: { tools: ['partial_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['partial_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -170,7 +187,14 @@ describe('activatePlugins', () => {
       }
     `)
     const plugin = makePlugin('throwing-plugin', entryPoint, {
-      contributes: { tools: ['partial_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['partial_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 
@@ -223,7 +247,14 @@ describe('activatePlugins', () => {
       }
     `)
     const plugin = makePlugin('deactivate-error-plugin', entryPoint, {
-      contributes: { tools: ['registered_tool'], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     approvePlugin(plugin)
 

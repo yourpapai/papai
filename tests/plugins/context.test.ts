@@ -24,6 +24,7 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
       commands: ['allowed_command'],
       jobs: ['allowed_job'],
       configKeys: [],
+      taskProviderTypes: [],
     },
     permissions: ['storage'],
     defaultEnabled: false,
@@ -31,6 +32,9 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     requiredTaskCapabilities: [],
     requiredChatCapabilities: [],
     configRequirements: [],
+    providerCapabilities: [],
+    providerConfigSchema: [],
+    providerAllowedHosts: [],
     ...overrides,
   }
 }

@@ -41,13 +41,23 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     description: 'A test plugin',
     apiVersion: 1,
     main: 'index.ts',
-    contributes: { tools: ['my_tool'], promptFragments: ['hint'], commands: [], jobs: [], configKeys: [] },
+    contributes: {
+      tools: ['my_tool'],
+      promptFragments: ['hint'],
+      commands: [],
+      jobs: [],
+      configKeys: [],
+      taskProviderTypes: [],
+    },
     permissions: [],
     defaultEnabled: false,
     activationTimeoutMs: 5000,
     requiredTaskCapabilities: [],
     requiredChatCapabilities: [],
     configRequirements: [],
+    providerCapabilities: [],
+    providerConfigSchema: [],
+    providerAllowedHosts: [],
     ...overrides,
   }
 }
@@ -121,7 +131,7 @@ describe('PluginContributionRegistry', () => {
 
   test('filters out undeclared tools', () => {
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
     })
     const contributions: PluginContributions = {
       tools: [{ name: 'undeclared_tool', description: 'Not in manifest', execute: () => Promise.resolve<unknown>('') }],
@@ -134,7 +144,7 @@ describe('PluginContributionRegistry', () => {
 
   test('filters out undeclared prompt fragments', () => {
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [] },
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
     })
     const contributions: PluginContributions = {
       tools: [],
@@ -155,7 +165,14 @@ describe('PluginContributionRegistry', () => {
   test('registers declared plugin commands with namespaced chat commands', async () => {
     let executed = false
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: ['sync'], jobs: [], configKeys: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: ['sync'],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     contributionRegistry.register(
       'test-plugin',
@@ -196,7 +213,14 @@ describe('PluginContributionRegistry', () => {
   test('runs scheduled jobs only for explicitly enabled plugin contexts', async () => {
     const seenContexts: string[] = []
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['daily'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     contributionRegistry.register(
       'test-plugin',
@@ -228,7 +252,14 @@ describe('PluginContributionRegistry', () => {
 
   test('deregister removes scheduled jobs owned by the plugin', () => {
     const manifest = makeManifest({
-      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['daily'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
     })
     contributionRegistry.register(
       'test-plugin',

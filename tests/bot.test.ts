@@ -355,13 +355,23 @@ function makePluginCommandManifest(pluginId: string): PluginManifest {
     description: 'Plugin command bot test',
     apiVersion: PLUGIN_API_VERSION,
     main: 'index.ts',
-    contributes: { tools: [], promptFragments: [], commands: ['sync'], jobs: [], configKeys: [] },
+    contributes: {
+      tools: [],
+      promptFragments: [],
+      commands: ['sync'],
+      jobs: [],
+      configKeys: [],
+      taskProviderTypes: [],
+    },
     permissions: [],
     defaultEnabled: false,
     activationTimeoutMs: 5000,
     requiredTaskCapabilities: [],
     requiredChatCapabilities: [],
     configRequirements: [],
+    providerCapabilities: [],
+    providerConfigSchema: [],
+    providerAllowedHosts: [],
   }
 }
 
