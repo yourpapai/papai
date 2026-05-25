@@ -251,6 +251,79 @@ project-level preload script executes.
 
 ### A6. True-score probe (ignoreStatic:false, scoped)
 
+**Target:** `src/providers/kaneo/search-tasks.ts` with its companion suite
+`tests/providers/kaneo/search-tasks.test.ts`.
+
+**Config:** `/tmp/stryker.A6.json` (ephemeral). Key deltas from A3: `mutate` points to
+`search-tasks.ts`; `ignoreStatic: false`; `concurrency: 8`.
+
+**Run duration:** 7 minutes 1 second (start 11:57:42, end 12:04:43 — well within the 30-minute
+cost cap).
+
+**Stryker planner warning (confirming static dominance):**
+
+```
+WARN MutantTestPlanner  Detected 43 static mutants (88% of total) that are estimated
+to take 100% of the time running the tests!
+```
+
+This warning fires because `ignoreStatic: false` forces every static mutant to run the full
+4 817-test suite — each static mutant exercises the entire test run rather than a small
+per-test subset.
+
+**Mutant status counts (from `/tmp/A6.mutation.json`):**
+
+```json
+{
+  "CompileError": 25,
+  "NoCoverage": 2,
+  "Killed": 16,
+  "Survived": 6
+}
+```
+
+Total mutants instrumented: **49**. Valid (scored) mutants = Killed + Survived + NoCoverage +
+Timeout = 16 + 6 + 2 + 0 = **24**.
+
+**Per-file true score:** (16 + 0) / 24 = **66.7%** (Stryker reports 66.67%).
+
+**Before/after framing:**
+
+Under `ignoreStatic: true` (A3 methodology), covered files collapse to 0% — all mutants are
+either Ignored (static) or NoCoverage; zero are Killed or Survived. Under `ignoreStatic: false`
+(this probe), the same class of file yields **16 Killed and 6 Survived** mutants against the
+full suite, confirming the existing tests do actively kill mutants once static attribution is
+removed from the equation. The 25 `CompileError` mutants were rejected at the TypeScript
+checker stage before any test ran.
+
+**Static → Killed/Survived conversion:**
+
+Of the 49 instrumented mutants, 43 were flagged as static by the planner (88%). After running
+the full suite against each, 16 emerged as Killed and 6 as Survived — at least 22 of those 43
+static mutants resolved to a scoreable outcome. Only 2 remained NoCoverage (no test reached
+them even when the static guard was lifted).
+
+**Contrast with A3 column-resource result:**
+
+A3 (`column-resource.ts`, `ignoreStatic: true`): 69 Ignored, 12 NoCoverage, 0 Killed, 0
+Survived — score 0%.
+A6 (`search-tasks.ts`, `ignoreStatic: false`): 16 Killed, 6 Survived, 2 NoCoverage — score
+66.7%.
+
+These are different files, so the comparison is qualitative rather than numeric, but the
+direction is unambiguous: flipping `ignoreStatic` converts the static bucket from a wall of
+zeros into a meaningful Killed/Survived distribution.
+
+**Extrapolation uncertainty statement:**
+
+This single-file probe shows the existing tests DO kill mutants once static attribution is
+corrected, suggesting the repo-wide true score is materially higher than the headline 23.54%
+produced by the current `ignoreStatic: true` baseline. However, a full `ignoreStatic: false`
+run across all 16 491 source files would be extremely time-intensive (each static mutant runs
+the entire 4 817-test suite; with ~8 032 static mutants repo-wide, wall-clock time is
+estimated at many hours even at `concurrency: 8`). Quantifying the true repo-wide score is
+therefore deferred to a future dedicated run — see C3.
+
 ## 3. Track B — Test-Infrastructure Quality
 
 ### B1. Preload architecture
