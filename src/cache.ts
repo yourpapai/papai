@@ -224,6 +224,20 @@ export function clearCachedTools(userId: string): void {
   getOrCreateCache(userId).tools = null
 }
 
+/**
+ * Clear cached tools for a context id and all of its derived group cache keys.
+ * DM cache key is the bare contextId; group cache keys are `${contextId}:${chatUserId}:${username}`.
+ */
+export function clearCachedToolsByPrefix(contextId: string): void {
+  const prefix = `${contextId}:`
+  for (const [key, cache] of userCaches) {
+    if (key === contextId || key.startsWith(prefix)) {
+      cache.tools = null
+    }
+  }
+  log.debug({ contextId }, 'Cleared cached tools by prefix')
+}
+
 export function evictUser(userId: string): void {
   userCaches.delete(userId)
   emitUser('cache:expire', userId, {})
