@@ -28,6 +28,7 @@ export type AiProgressReporter = {
 
 const SECRET_KEY_PATTERN = /(api[_-]?key|token|secret|password|authorization|cookie)/iu
 const SECRET_VALUE_PATTERN = /(api[_-]?key|token|secret|password|authorization|cookie)\s*[:=]\s*\S+|bearer\s+\S+/iu
+const URL_VALUE_PATTERN = /https?:\/\/\S+/iu
 const URL_KEY_PATTERN = /(^|[_-])(url|uri|href|link)([_-]|$)|url$/iu
 const PAYLOAD_KEY_PATTERN = /(attachment|blob|body|content|file[_-]?content)/iu
 const MAX_SANITIZED_STRING_LENGTH = 240
@@ -49,6 +50,7 @@ function formatError(error: unknown): string {
 
 function sanitizeString(value: string): string {
   if (SECRET_VALUE_PATTERN.test(value)) return '[redacted]'
+  if (URL_VALUE_PATTERN.test(value)) return '[redacted]'
   return value.length > MAX_SANITIZED_STRING_LENGTH
     ? `${value.slice(0, MAX_SANITIZED_STRING_LENGTH)}... [truncated ${value.length} chars]`
     : value
@@ -120,18 +122,28 @@ function appendToolFinished(lines: string[], event: ToolFinishedEvent, settings:
   if (event.error !== undefined) lines.push(`  Error: \`${formatErrorValue(event.error, settings)}\``)
 }
 
-function ignoreToolStarted(event: ToolStartedEvent): void {
-  void event
+function formatToolStarted(event: ToolStartedEvent, settings: AiOutputSettings): readonly string[] {
+  return [`- Tool \`${event.toolName}\` started`, `  Input: \`${formatValue(event.input, settings)}\``]
+}
+
+function formatReasoningText(text: string, settings: AiOutputSettings): string {
+  if (settings.detailLevel === 'raw') return text.trim()
+  return stableStringify(sanitizeRootValue(text.trim()))
 }
 
 export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSettings): AiProgressReporter {
+  const pendingToolStarts = new Map<string, ToolStartedEvent>()
   const toolLines: string[] = []
   const reasoningLines: string[] = []
 
   return {
-    toolStarted: ignoreToolStarted,
+    toolStarted: (event) => {
+      if (settings.toolVisibility !== 'on') return
+      pendingToolStarts.set(event.toolCallId, event)
+    },
     toolFinished: (event) => {
       if (settings.toolVisibility !== 'on') return
+      pendingToolStarts.delete(event.toolCallId)
       appendToolFinished(toolLines, event, settings)
     },
     reasoning: (...args) => {
@@ -142,14 +154,19 @@ export function createAiProgressReporter(reply: ReplyFn, settings: AiOutputSetti
         return
       }
       if (text === undefined || text.trim() === '') return
-      reasoningLines.push(text.trim())
+      reasoningLines.push(formatReasoningText(text, settings))
     },
     flush: async () => {
-      if (toolLines.length === 0 && reasoningLines.length === 0) return
+      const startedToolLines = Array.from(pendingToolStarts.values()).flatMap((event) =>
+        formatToolStarted(event, settings),
+      )
+      if (startedToolLines.length === 0 && toolLines.length === 0 && reasoningLines.length === 0) return
       const lines = ['AI execution details']
-      if (toolLines.length > 0) lines.push('', 'Tool calls', ...toolLines)
+      if (startedToolLines.length > 0 || toolLines.length > 0)
+        lines.push('', 'Tool calls', ...startedToolLines, ...toolLines)
       if (reasoningLines.length > 0) lines.push('', 'Reasoning', ...reasoningLines)
       await reply.formatted(lines.join('\n'))
+      pendingToolStarts.clear()
       toolLines.length = 0
       reasoningLines.length = 0
     },

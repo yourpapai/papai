@@ -222,6 +222,65 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('Provider exposed reasoning text')
   })
 
+  test('redacts sanitized reasoning secret-like text and URLs', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, {
+      toolVisibility: 'off',
+      reasoningVisibility: 'on',
+      detailLevel: 'sanitized',
+    })
+
+    reporter.reasoning('Provider considered token=secret-token from https://private.example/path')
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Reasoning')
+    expect(textCalls[0]).not.toContain('secret-token')
+    expect(textCalls[0]).not.toContain('https://private.example/path')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
+  test('flushes a started tool when no finish arrives', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolStarted({
+      toolName: 'search_tasks',
+      toolCallId: 'call-start-only',
+      input: { query: 'Visible query' },
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('search_tasks')
+    expect(textCalls[0]).toContain('started')
+    expect(textCalls[0]).toContain('Visible query')
+  })
+
+  test('does not duplicate a started tool when the same call finishes', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolStarted({
+      toolName: 'search_tasks',
+      toolCallId: 'call-start-finish',
+      input: { query: 'Visible query' },
+    })
+    reporter.toolFinished({
+      toolName: 'search_tasks',
+      toolCallId: 'call-start-finish',
+      input: { query: 'Visible query' },
+      durationMs: 9,
+      success: true,
+      output: { count: 1 },
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('success in 9ms')
+    expect(textCalls[0]).not.toContain('started')
+  })
+
   test('raw detail level uses raw provider reasoning when supplied', async () => {
     const { reply, textCalls } = createMockReply()
     const reporter = createAiProgressReporter(reply, {
