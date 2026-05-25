@@ -17,6 +17,11 @@ import { addUser as addScopedUser } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
+const SCOPED_GROUP1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:Z3JvdXAx'
+const SCOPED_GROUP1_THREAD123 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:Z3JvdXAx:thread:dGhyZWFkMTIz'
+const SCOPED_GROUP1_THREAD456 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:Z3JvdXAx:thread:dGhyZWFkNDU2'
+const SCOPED_STRANGER1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:c3RyYW5nZXIx'
+const SCOPED_USER1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:dXNlcjE'
 
 const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
   const username = args[0]
@@ -66,6 +71,18 @@ describe('auth', () => {
       const result = getThreadScopedStorageContextId('group456', 'group', 'thread789')
       expect(result).toBe('group456:thread789')
     })
+
+    test('returns scoped user id for DM context when platform is provided', () => {
+      const result = getThreadScopedStorageContextId('user123', 'dm', undefined, 'telegram-default')
+
+      expect(result).toBe('pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:dXNlcjEyMw')
+    })
+
+    test('returns scoped group thread id when platform is provided', () => {
+      const result = getThreadScopedStorageContextId('group456', 'group', 'thread789', 'discord-default')
+
+      expect(result).toBe('pi:ZGlzY29yZC1kZWZhdWx0:ctx:Z3JvdXA0NTY:thread:dGhyZWFkNzg5')
+    })
   })
 
   describe('checkAuthorizationExtended', () => {
@@ -79,7 +96,7 @@ describe('auth', () => {
 
         expect(groupAuth.allowed).toBe(true)
         expect(groupAuth.isBotAdmin).toBe(true)
-        expect(groupAuth.configContextId).toBe('group1')
+        expect(groupAuth.configContextId).toBe(SCOPED_GROUP1)
         expect(groupAuth.configContextId).toBe(groupAuth.storageContextId)
       })
 
@@ -92,8 +109,8 @@ describe('auth', () => {
 
         expect(threadAuth.allowed).toBe(true)
         expect(threadAuth.isBotAdmin).toBe(true)
-        expect(threadAuth.storageContextId).toBe('group1:thread123')
-        expect(threadAuth.configContextId).toBe('group1')
+        expect(threadAuth.storageContextId).toBe(SCOPED_GROUP1_THREAD123)
+        expect(threadAuth.configContextId).toBe(SCOPED_GROUP1)
       })
 
       test('isGroupAdmin reflects platform admin status', () => {
@@ -115,8 +132,8 @@ describe('auth', () => {
         expect(unauthorizedAuth.allowed).toBe(false)
         expect(unauthorizedAuth.isBotAdmin).toBe(false)
         expect(unauthorizedAuth.isGroupAdmin).toBe(false)
-        expect(unauthorizedAuth.storageContextId).toBe('group1')
-        expect(unauthorizedAuth.configContextId).toBe('group1')
+        expect(unauthorizedAuth.storageContextId).toBe(SCOPED_GROUP1)
+        expect(unauthorizedAuth.configContextId).toBe(SCOPED_GROUP1)
         expect(unauthorizedAuth.reason).toBe('group_not_allowed')
       })
     })
@@ -132,7 +149,7 @@ describe('auth', () => {
         expect(memberAuth.allowed).toBe(true)
         expect(memberAuth.isBotAdmin).toBe(false)
         expect(memberAuth.isGroupAdmin).toBe(false)
-        expect(memberAuth.configContextId).toBe('group1')
+        expect(memberAuth.configContextId).toBe(SCOPED_GROUP1)
       })
 
       test('in thread has isolated storage but shared config', () => {
@@ -144,8 +161,8 @@ describe('auth', () => {
 
         expect(threadAuth.allowed).toBe(true)
         expect(threadAuth.isBotAdmin).toBe(false)
-        expect(threadAuth.storageContextId).toBe('group1:thread456')
-        expect(threadAuth.configContextId).toBe('group1')
+        expect(threadAuth.storageContextId).toBe(SCOPED_GROUP1_THREAD456)
+        expect(threadAuth.configContextId).toBe(SCOPED_GROUP1)
       })
 
       test('authorized non-admin user stays non-admin in both DM and allowlisted group contexts', () => {
@@ -170,8 +187,8 @@ describe('auth', () => {
         expect(unauthorizedAuth.allowed).toBe(false)
         expect(unauthorizedAuth.isBotAdmin).toBe(false)
         expect(unauthorizedAuth.isGroupAdmin).toBe(false)
-        expect(unauthorizedAuth.storageContextId).toBe('group1')
-        expect(unauthorizedAuth.configContextId).toBe('group1')
+        expect(unauthorizedAuth.storageContextId).toBe(SCOPED_GROUP1)
+        expect(unauthorizedAuth.configContextId).toBe(SCOPED_GROUP1)
         expect(unauthorizedAuth.reason).toBe('group_not_allowed')
       })
 
@@ -224,6 +241,16 @@ describe('auth', () => {
         expect(auth.reason).toBe('dm_not_allowed')
       })
 
+      test('authorized DM gets scoped storage context', () => {
+        addScopedUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'root-user' })
+
+        const auth = checkAuthorizationExtendedScoped('u1', null, 'u1', 'dm', undefined, false, 'telegram-default')
+
+        expect(auth.allowed).toBe(true)
+        expect(auth.storageContextId).toBe('pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:dTE')
+        expect(auth.configContextId).toBe('pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:dTE')
+      })
+
       test('authorized user has DM access but is not bot admin', () => {
         addUser('user1', 'user1')
 
@@ -232,8 +259,8 @@ describe('auth', () => {
         expect(dmAuth.allowed).toBe(true)
         expect(dmAuth.isBotAdmin).toBe(false)
         expect(dmAuth.isGroupAdmin).toBe(false)
-        expect(dmAuth.storageContextId).toBe('user1')
-        expect(dmAuth.configContextId).toBe('user1')
+        expect(dmAuth.storageContextId).toBe(SCOPED_USER1)
+        expect(dmAuth.configContextId).toBe(SCOPED_USER1)
       })
 
       test('unauthorized user has no access but gets context IDs', () => {
@@ -242,8 +269,8 @@ describe('auth', () => {
         expect(unauthorizedDmAuth.allowed).toBe(false)
         expect(unauthorizedDmAuth.isBotAdmin).toBe(false)
         expect(unauthorizedDmAuth.isGroupAdmin).toBe(false)
-        expect(unauthorizedDmAuth.storageContextId).toBe('stranger1')
-        expect(unauthorizedDmAuth.configContextId).toBe('stranger1')
+        expect(unauthorizedDmAuth.storageContextId).toBe(SCOPED_STRANGER1)
+        expect(unauthorizedDmAuth.configContextId).toBe(SCOPED_STRANGER1)
         expect(unauthorizedDmAuth.reason).toBe('dm_not_allowed')
       })
 
@@ -255,7 +282,7 @@ describe('auth', () => {
 
         expect(resolvedAuth.allowed).toBe(true)
         expect(resolvedAuth.isBotAdmin).toBe(false)
-        expect(resolvedAuth.configContextId).toBe('stranger1')
+        expect(resolvedAuth.configContextId).toBe(SCOPED_STRANGER1)
       })
     })
   })

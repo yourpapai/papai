@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { isAuthorizedGroup } from './authorized-groups.js'
+import { toScopedContextId, toScopedThreadContextId } from './chat/scoped-context.js'
 import type { AuthorizationResult, ContextType } from './chat/types.js'
 import { isGroupMember } from './groups.js'
 import { isAdmin } from './instances/admin-store.js'
@@ -22,8 +23,14 @@ export function getThreadScopedStorageContextId(
   ...args:
     | [contextId: string, contextType: ContextType]
     | [contextId: string, contextType: ContextType, threadId: string | undefined]
+    | [contextId: string, contextType: ContextType, threadId: string | undefined, platformInstanceId: string]
 ): string {
-  const [contextId, contextType, threadId] = args
+  const [contextId, contextType, threadId, platformInstanceId] = args
+  if (platformInstanceId !== undefined) {
+    const input = { platformInstanceId, nativeContextId: contextId }
+    if (contextType === 'dm') return toScopedContextId(input)
+    return toScopedThreadContextId({ ...input, threadId })
+  }
   if (contextType === 'dm') return contextId
   // Main chat: use groupId
   if (threadId === undefined) return contextId
@@ -36,12 +43,13 @@ const getBotAdminAuth = (
   contextType: ContextType,
   threadId: string | undefined,
   isPlatformAdmin: boolean,
+  platformInstanceId: string,
 ): AuthorizationResult => ({
   allowed: true,
   isBotAdmin: true,
   isGroupAdmin: isPlatformAdmin,
-  storageContextId: getThreadScopedStorageContextId(contextId, contextType, threadId),
-  configContextId: contextId,
+  storageContextId: getThreadScopedStorageContextId(contextId, contextType, threadId, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(contextId, contextType, undefined, platformInstanceId),
 })
 
 const getGroupMemberAuth = (
@@ -49,40 +57,43 @@ const getGroupMemberAuth = (
   contextType: ContextType,
   threadId: string | undefined,
   isPlatformAdmin: boolean,
+  platformInstanceId: string,
 ): AuthorizationResult => ({
   allowed: true,
   isBotAdmin: false,
   isGroupAdmin: isPlatformAdmin,
-  storageContextId: getThreadScopedStorageContextId(contextId, contextType, threadId),
-  configContextId: contextId,
+  storageContextId: getThreadScopedStorageContextId(contextId, contextType, threadId, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(contextId, contextType, undefined, platformInstanceId),
 })
 
 const getUnauthorizedGroupAuth = (
   contextId: string,
+  threadId: string | undefined,
+  platformInstanceId: string,
   reason: 'group_not_allowed' | 'group_member_not_allowed',
 ): AuthorizationResult => ({
   allowed: false,
   isBotAdmin: false,
   isGroupAdmin: false,
-  storageContextId: contextId,
-  configContextId: contextId,
+  storageContextId: getThreadScopedStorageContextId(contextId, 'group', threadId, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(contextId, 'group', undefined, platformInstanceId),
   reason,
 })
 
-const getDmUserAuth = (userId: string): AuthorizationResult => ({
+const getDmUserAuth = (userId: string, platformInstanceId: string): AuthorizationResult => ({
   allowed: true,
   isBotAdmin: false,
   isGroupAdmin: false,
-  storageContextId: userId,
-  configContextId: userId,
+  storageContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
 })
 
-const getUnauthorizedDmAuth = (userId: string): AuthorizationResult => ({
+const getUnauthorizedDmAuth = (userId: string, platformInstanceId: string): AuthorizationResult => ({
   allowed: false,
   isBotAdmin: false,
   isGroupAdmin: false,
-  storageContextId: userId,
-  configContextId: userId,
+  storageContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
+  configContextId: getThreadScopedStorageContextId(userId, 'dm', undefined, platformInstanceId),
   reason: 'dm_not_allowed',
 })
 
@@ -104,7 +115,7 @@ const maybeAuthorizeDemoModeUser = (
   } else {
     addUser({ userId, platformInstanceId, addedBy: 'demo-auto', username })
   }
-  return getGroupMemberAuth(contextId, contextType, threadId, false)
+  return getGroupMemberAuth(contextId, contextType, threadId, false, platformInstanceId)
 }
 
 const getAuthorizedUserAuth = (
@@ -116,12 +127,12 @@ const getAuthorizedUserAuth = (
   platformInstanceId: string,
 ): AuthorizationResult => {
   if (contextType === 'dm' && isDemoUser(userId, platformInstanceId)) {
-    return getGroupMemberAuth(contextId, contextType, threadId, false)
+    return getGroupMemberAuth(contextId, contextType, threadId, false, platformInstanceId)
   }
   if (contextType === 'dm') {
-    return getDmUserAuth(userId)
+    return getDmUserAuth(userId, platformInstanceId)
   }
-  return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin)
+  return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
 }
 
 const getUnauthenticatedGroupAuth = (
@@ -130,15 +141,16 @@ const getUnauthenticatedGroupAuth = (
   contextType: ContextType,
   threadId: string | undefined,
   isPlatformAdmin: boolean,
+  platformInstanceId: string,
 ): AuthorizationResult => {
   if (isPlatformAdmin) {
-    return getGroupMemberAuth(contextId, contextType, threadId, true)
+    return getGroupMemberAuth(contextId, contextType, threadId, true, platformInstanceId)
   }
 
   if (isGroupMember(contextId, userId)) {
-    return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin)
+    return getGroupMemberAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
-  return getUnauthorizedGroupAuth(contextId, 'group_member_not_allowed')
+  return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_member_not_allowed')
 }
 
 export const checkAuthorizationExtended = (
@@ -153,7 +165,7 @@ export const checkAuthorizationExtended = (
   log.debug({ userId, contextId, contextType, threadId }, 'Checking authorization')
 
   if (contextType === 'group' && !isAuthorizedGroup(contextId)) {
-    return getUnauthorizedGroupAuth(contextId, 'group_not_allowed')
+    return getUnauthorizedGroupAuth(contextId, threadId, platformInstanceId, 'group_not_allowed')
   }
 
   const demoModeAuth = maybeAuthorizeDemoModeUser(
@@ -169,7 +181,7 @@ export const checkAuthorizationExtended = (
   }
 
   if (isAdmin(userId, platformInstanceId)) {
-    return getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin)
+    return getBotAdminAuth(contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 
   if (isAuthorized(userId, platformInstanceId)) {
@@ -177,12 +189,12 @@ export const checkAuthorizationExtended = (
   }
 
   if (contextType === 'group') {
-    return getUnauthenticatedGroupAuth(userId, contextId, contextType, threadId, isPlatformAdmin)
+    return getUnauthenticatedGroupAuth(userId, contextId, contextType, threadId, isPlatformAdmin, platformInstanceId)
   }
 
   if (username !== null && resolveUserByUsername(userId, username, platformInstanceId)) {
-    return getDmUserAuth(userId)
+    return getDmUserAuth(userId, platformInstanceId)
   }
 
-  return getUnauthorizedDmAuth(userId)
+  return getUnauthorizedDmAuth(userId, platformInstanceId)
 }
