@@ -155,6 +155,37 @@ Total mutants: 85. Killed: **0**. Survived: **0**.
 
 ### A4. Variable test — concurrency
 
+**Hypothesis (from A2):** Section A2 established that `@hughescr/stryker-bun-runner` appends `--concurrency=1` to every Bun invocation unconditionally, regardless of the Stryker-level `concurrency` setting. If Stryker's `concurrency` were the cause of the high static-mutant rate, reducing it from 8 to 1 should change the distribution.
+
+**Variable changed:** `concurrency: 8` → `concurrency: 1`. All other config identical to A3 (`mutate: ["src/providers/kaneo/column-resource.ts"]`, `coverageAnalysis: "perTest"`, `ignoreStatic: true`, same file target).
+
+**Config:** `/tmp/stryker.A4.json` (ephemeral; derived from A3 config via `sed`).
+
+**Run duration:** 2 minutes 32 seconds.
+
+**Mutant status counts (A4, `concurrency: 1`):**
+
+```json
+{
+  "Ignored": 69,
+  "NoCoverage": 12,
+  "CompileError": 4
+}
+```
+
+**Side-by-side comparison:**
+
+| Status       | A3 (`concurrency: 8`) | A4 (`concurrency: 1`) |
+| ------------ | --------------------- | --------------------- |
+| Ignored      | 69                    | 69                    |
+| NoCoverage   | 12                    | 12                    |
+| CompileError | 4                     | 4                     |
+| Killed       | 0                     | 0                     |
+| Survived     | 0                     | 0                     |
+| **Total**    | **85**                | **85**                |
+
+**Verdict:** Setting `concurrency: 1` did **not** reduce the static share, **ruling out** the concurrency hypothesis. The counts are bit-for-bit identical to A3. This confirms A2's finding: the runner forces `--concurrency=1` inside every Bun worker regardless of the Stryker-level `concurrency` setting, so the process-level parallelism has no effect on the per-mutant static classification. The root cause lies entirely in the eager-preload behaviour that imports mutated modules while `currentTestId` is `undefined`.
+
 ### A5. Variable test — preload isolation
 
 ### A6. True-score probe (ignoreStatic:false, scoped)
