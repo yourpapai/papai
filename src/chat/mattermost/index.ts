@@ -3,10 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getThreadScopedStorageContextId } from '../../auth.js'
 import { logger } from '../../logger.js'
 import type {
-  AuthorizationResult,
   ChatProvider,
   CommandHandler,
   ContextRendered,
@@ -17,6 +15,7 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../types.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
@@ -67,7 +66,13 @@ export class MattermostChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private wsSeq = 1
 
-  constructor(config: MattermostConstructorConfig = {}) {
+  constructor(...args: [] | [MattermostConstructorConfig]) {
+    let config: MattermostConstructorConfig
+    if (args[0] === undefined) {
+      config = {}
+    } else {
+      config = args[0]
+    }
     const resolved = resolveMattermostConfig(config)
     this.baseUrl = resolved.baseUrl
     this.token = resolved.token
@@ -164,23 +169,7 @@ export class MattermostChatProvider implements ChatProvider {
     cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
     if (command !== null) {
-      const auth: AuthorizationResult = {
-        allowed: true,
-        isBotAdmin: isAdmin,
-        isGroupAdmin: isAdmin,
-        storageContextId: getThreadScopedStorageContextId(
-          msg.contextId,
-          msg.contextType,
-          msg.threadId,
-          this.platformInstanceId,
-        ),
-        configContextId: getThreadScopedStorageContextId(
-          msg.contextId,
-          msg.contextType,
-          undefined,
-          this.platformInstanceId,
-        ),
-      }
+      const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await command.handler(msg, reply, auth)
     } else if (this.messageHandler !== null) {
       await this.messageHandler(msg, reply)
@@ -280,11 +269,13 @@ export class MattermostChatProvider implements ChatProvider {
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveMattermostGroupLabel(this.apiFetch.bind(this), groupId)
   }
-  resolveUserLabel(userId: string, _context?: ResolveUserContext): Promise<string | null> {
+  resolveUserLabel(userId: string): Promise<string | null>
+  resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null>
+  resolveUserLabel(userId: string, ..._rest: [] | [ResolveUserContext | undefined]): Promise<string | null> {
     return resolveMattermostUserLabel(this.apiFetch.bind(this), userId)
   }
   private wsSend(data: unknown): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data))
+    if (this.ws !== null && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data))
   }
   private async apiFetch(method: string, path: string, body: unknown): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}${path}`, {

@@ -5,7 +5,7 @@
 
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
-import { toScopedContextId } from '../chat/scoped-context.js'
+import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { getConfig } from '../config.js'
@@ -171,7 +171,7 @@ export async function startSetupForTarget(
   const scopedPersonalTarget = toScopedContextId({ platformInstanceId, nativeContextId: userId })
   const isGroupTarget = targetContextId !== userId && targetContextId !== scopedPersonalTarget
 
-  if (isGroupTarget && !deps.isAuthorizedGroup(targetContextId)) {
+  if (isGroupTarget && !deps.isAuthorizedGroup(targetContextId) && !deps.isAuthorizedGroup(getNativeContextId(targetContextId))) {
     await reply.text(
       `This group is not authorized yet. Ask the bot admin to run \`/group add ${targetContextId}\` in DM first.`,
     )

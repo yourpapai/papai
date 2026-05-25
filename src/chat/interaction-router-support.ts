@@ -5,20 +5,46 @@
 
 import { listManageableGroups } from '../group-settings/access.js'
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../group-settings/state.js'
-import { isScopedContextId, toScopedContextId } from './scoped-context.js'
+import { getNativeContextId, isScopedContextId, toScopedContextId } from './scoped-context.js'
 import type { IncomingInteraction } from './types.js'
 
 const toScopedGroupTarget = (platformInstanceId: string, nativeContextId: string): string =>
   isScopedContextId(nativeContextId) ? nativeContextId : toScopedContextId({ platformInstanceId, nativeContextId })
 
+const isSameContextTarget = (platformInstanceId: string, candidateContextId: string, targetContextId: string): boolean => {
+  if (candidateContextId === targetContextId) return true
+  if (getNativeContextId(candidateContextId) === targetContextId) return true
+  return toScopedGroupTarget(platformInstanceId, candidateContextId) === targetContextId
+}
+
+const getValidatedGroupTargetContextId = (
+  userId: string,
+  targetContextId: string,
+  platformInstanceId: string,
+): string | null => {
+  const group = listManageableGroups(userId, platformInstanceId).find((candidate) =>
+    isSameContextTarget(platformInstanceId, candidate.contextId, targetContextId),
+  )
+  if (group === undefined) return null
+  return toScopedGroupTarget(platformInstanceId, group.contextId)
+}
+
+const getValidatedPersonalTargetContextId = (
+  userId: string,
+  targetContextId: string,
+  platformInstanceId: string,
+): string | null => {
+  const scopedUserTarget = toScopedContextId({ platformInstanceId, nativeContextId: userId })
+  if (targetContextId === userId || targetContextId === scopedUserTarget) return scopedUserTarget
+  return null
+}
+
 export function getValidatedDmTargetContextId(userId: string, platformInstanceId: string): string | null {
   const activeGroupTarget = getActiveGroupSettingsTarget(userId)
   if (activeGroupTarget === null) return null
 
-  const hasAccess = listManageableGroups(userId, platformInstanceId).some(
-    (group) => toScopedGroupTarget(platformInstanceId, group.contextId) === activeGroupTarget,
-  )
-  if (hasAccess) return activeGroupTarget
+  const validatedTargetContextId = getValidatedGroupTargetContextId(userId, activeGroupTarget, platformInstanceId)
+  if (validatedTargetContextId !== null) return validatedTargetContextId
 
   deleteGroupSettingsSession(userId)
   return null
@@ -29,12 +55,11 @@ export function getValidatedDmCallbackTargetContextId(
   targetContextId: string,
   platformInstanceId: string,
 ): string | null {
-  if (targetContextId === toScopedContextId({ platformInstanceId, nativeContextId: userId })) return targetContextId
+  const personalTargetContextId = getValidatedPersonalTargetContextId(userId, targetContextId, platformInstanceId)
+  if (personalTargetContextId !== null) return personalTargetContextId
 
-  const hasAccess = listManageableGroups(userId, platformInstanceId).some(
-    (group) => toScopedGroupTarget(platformInstanceId, group.contextId) === targetContextId,
-  )
-  if (hasAccess) return targetContextId
+  const groupTargetContextId = getValidatedGroupTargetContextId(userId, targetContextId, platformInstanceId)
+  if (groupTargetContextId !== null) return groupTargetContextId
 
   deleteGroupSettingsSession(userId)
   return null

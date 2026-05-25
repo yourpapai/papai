@@ -447,16 +447,18 @@ describe('routeInteraction', () => {
 
   test('saves edited config into the selected group context instead of the DM user context', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
     createEditorSession({
       userId: interaction.user.id,
-      storageContextId: 'group-9',
+      storageContextId: scopedGroupId,
       editingKey: 'timezone',
     })
-    handleEditorMessage(interaction.user.id, 'group-9', 'Europe/Berlin')
+    handleEditorMessage(interaction.user.id, scopedGroupId, 'Europe/Berlin')
 
     await routeInteraction({ ...interaction, callbackData: 'cfg:save:timezone' }, reply, createMockAuth(true))
 
-    expect(getConfig('group-9', 'timezone')).toBe('Europe/Berlin')
+    expect(getConfig(scopedGroupId, 'timezone')).toBe('Europe/Berlin')
+    expect(getConfig('group-9', 'timezone')).toBeNull()
     expect(getConfig(interaction.user.id, 'timezone')).toBeNull()
   })
 
@@ -468,9 +470,10 @@ describe('routeInteraction', () => {
       parentName: 'Platform',
     })
     addAuthorizedGroup('group-9', 'admin-1')
-    assignKaneoContext('group-9')
-    setConfig('group-9', 'kaneo_apikey', 'test-kaneo-key')
-    setKaneoWorkspace('group-9', 'workspace-9')
+    const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
+    assignKaneoContext(scopedGroupId)
+    setConfig(scopedGroupId, 'kaneo_apikey', 'test-kaneo-key')
+    setKaneoWorkspace(scopedGroupId, 'workspace-9')
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: 'group-9',

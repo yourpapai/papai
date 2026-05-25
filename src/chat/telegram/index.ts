@@ -5,10 +5,8 @@
 
 import { Bot, type Context } from 'grammy'
 
-import { getThreadScopedStorageContextId } from '../../auth.js'
 import { logger } from '../../logger.js'
 import type {
-  AuthorizationResult,
   ChatProvider,
   CommandHandler,
   ContextRendered,
@@ -21,6 +19,7 @@ import type {
   ReplyOptions,
   ResolveUserContext,
 } from '../types.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
 import { createTelegramFileFetcher, getTelegramFileFetcher } from './file-fetcher.js'
@@ -99,23 +98,7 @@ export class TelegramChatProvider implements ChatProvider {
       if (msg === null) return
       msg.commandMatch = typeof ctx.match === 'string' ? ctx.match : ''
       const reply = this.buildReplyFn(ctx, msg.threadId, false)
-      const auth: AuthorizationResult = {
-        allowed: true,
-        isBotAdmin: isAdmin,
-        isGroupAdmin: isAdmin,
-        storageContextId: getThreadScopedStorageContextId(
-          msg.contextId,
-          msg.contextType,
-          msg.threadId,
-          this.platformInstanceId,
-        ),
-        configContextId: getThreadScopedStorageContextId(
-          msg.contextId,
-          msg.contextType,
-          undefined,
-          this.platformInstanceId,
-        ),
-      }
+      const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await handler(msg, reply, auth)
     })
   }

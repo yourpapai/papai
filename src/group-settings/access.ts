@@ -33,13 +33,16 @@ const getAuthorizedGroupId = (group: KnownGroupContext, platformInstanceId: stri
   return toScopedContextId({ platformInstanceId, nativeContextId: group.contextId })
 }
 
+const isAuthorizedGroupContext = (group: KnownGroupContext, platformInstanceId: string | undefined): boolean => {
+  if (isAuthorizedGroup(getAuthorizedGroupId(group, platformInstanceId))) return true
+  return isAuthorizedGroup(getNativeContextId(group.contextId))
+}
+
 export function listManageableGroups(userId: string, ...args: [] | [platformInstanceId: string]): KnownGroupContext[] {
   const platformInstanceId = args[0]
   log.debug({ userId }, 'listManageableGroups called')
 
-  const groups = listAdminGroupContextsForUser(userId).filter((group) =>
-    isAuthorizedGroup(getAuthorizedGroupId(group, platformInstanceId)),
-  )
+  const groups = listAdminGroupContextsForUser(userId).filter((group) => isAuthorizedGroupContext(group, platformInstanceId))
 
   log.debug({ userId, groupCount: groups.length }, 'Listed manageable groups')
   return groups
@@ -62,7 +65,7 @@ export function validateGroupTargetAccess(
     return { kind: 'not_admin' }
   }
 
-  if (!isAuthorizedGroup(getAuthorizedGroupId(group, platformInstanceId))) {
+  if (!isAuthorizedGroupContext(group, platformInstanceId)) {
     return { kind: 'not_authorized' }
   }
 

@@ -66,19 +66,23 @@ function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction,
   return dispatchGroupSelectorResult(result, reply, interaction.user.id, interaction.platformInstanceId)
 }
 
-async function validateImplicitDmConfigTarget(userId: string, platformInstanceId: string, reply: ReplyFn): Promise<boolean> {
+async function validateImplicitDmConfigTarget(
+  userId: string,
+  platformInstanceId: string,
+  reply: ReplyFn,
+): Promise<string | true | null> {
   if (getActiveGroupSettingsTarget(userId) === null) return true
 
   const previousActiveTarget = getActiveGroupSettingsTarget(userId)
   const validatedTargetContextId = getValidatedDmTargetContextId(userId, platformInstanceId)
-  if (validatedTargetContextId !== null) return true
+  if (validatedTargetContextId !== null) return validatedTargetContextId
 
   const message =
     previousActiveTarget === null
       ? 'That group is no longer available. Run /config or /setup again.'
       : getMissingGroupTargetMessage(userId, previousActiveTarget)
   await replyTextPreferReplace(reply, message)
-  return false
+  return null
 }
 
 async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): Promise<true> {
@@ -97,13 +101,11 @@ async function defaultHandleConfigInteraction(interaction: IncomingInteraction, 
     return replyUnknownConfigAction(reply, callbackData)
   }
 
-  const targetContextId = getTargetContextId(parsed.targetContextId, interaction)
-  if (
-    interaction.contextType === 'dm' &&
-    parsed.targetContextId === undefined &&
-    !(await validateImplicitDmConfigTarget(user.id, interaction.platformInstanceId, reply))
-  ) {
-    return true
+  let targetContextId = getTargetContextId(parsed.targetContextId, interaction)
+  if (interaction.contextType === 'dm' && parsed.targetContextId === undefined) {
+    const validatedTargetContextId = await validateImplicitDmConfigTarget(user.id, interaction.platformInstanceId, reply)
+    if (validatedTargetContextId === null) return true
+    if (validatedTargetContextId !== true) targetContextId = validatedTargetContextId
   }
   if (interaction.contextType === 'dm' && parsed.targetContextId !== undefined) {
     const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
@@ -115,6 +117,7 @@ async function defaultHandleConfigInteraction(interaction: IncomingInteraction, 
       await replyTextPreferReplace(reply, getMissingGroupTargetMessage(user.id, targetContextId, interaction.platformInstanceId))
       return true
     }
+    targetContextId = validatedTargetContextId
   }
   log.debug(
     { userId: user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },
@@ -171,6 +174,30 @@ async function handleWizardEdit(userId: string, storageContextId: string, reply:
   return true
 }
 
+async function getDmWizardStorageContextId(
+  interaction: IncomingInteraction,
+  callbackContextId: string | undefined,
+  reply: ReplyFn,
+): Promise<string | null> {
+  let storageContextId = getTargetContextId(callbackContextId, interaction)
+  if (interaction.contextType !== 'dm' || callbackContextId === undefined) return storageContextId
+
+  const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
+    interaction.user.id,
+    storageContextId,
+    interaction.platformInstanceId,
+  )
+  if (validatedTargetContextId === null) {
+    await replyTextPreferReplace(
+      reply,
+      getMissingGroupTargetMessage(interaction.user.id, storageContextId, interaction.platformInstanceId),
+    )
+    return null
+  }
+  storageContextId = validatedTargetContextId
+  return storageContextId
+}
+
 function parseWizardContextId(callbackData: string): { action: string; targetContextId: string | undefined } {
   const atIdx = callbackData.indexOf('@')
   if (atIdx === -1) return { action: callbackData, targetContextId: undefined }
@@ -188,19 +215,8 @@ async function defaultHandleWizardInteraction(interaction: IncomingInteraction, 
 
   const userId = user.id
   const { action, targetContextId: callbackContextId } = parseWizardContextId(callbackData)
-  const storageContextId = getTargetContextId(callbackContextId, interaction)
-
-  if (interaction.contextType === 'dm' && callbackContextId !== undefined) {
-    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
-      userId,
-      storageContextId,
-      interaction.platformInstanceId,
-    )
-    if (validatedTargetContextId === null) {
-      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(userId, storageContextId, interaction.platformInstanceId))
-      return true
-    }
-  }
+  const storageContextId = await getDmWizardStorageContextId(interaction, callbackContextId, reply)
+  if (storageContextId === null) return true
 
   switch (action) {
     case 'wizard_confirm': {
