@@ -202,6 +202,25 @@ describe('migration043ScopedContextIds', () => {
     expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: 'user-1' })
   })
 
+  test('handles raw and scoped staged file duplicates with same platform file id', () => {
+    const scopedUser = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' })
+    db.run(`CREATE UNIQUE INDEX idx_staged_platform_context ON staged_files(platform_file_id, context_id)`)
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(
+      `INSERT INTO staged_files VALUES ('stg-raw', 'user-1', 'msg-1', 'user-1', 'alice', 'a.txt', NULL, NULL, 'file-1', 'telegram', 'staged', NULL, 'now', 'later')`,
+    )
+    db.run(
+      `INSERT INTO staged_files VALUES ('stg-scoped', ?, 'msg-2', 'user-1', 'alice', 'a.txt', NULL, NULL, 'file-1', 'telegram', 'staged', NULL, 'now', 'later')`,
+      [scopedUser],
+    )
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT staged_id, context_id FROM staged_files WHERE platform_file_id = 'file-1'`).all()).toEqual([
+      { staged_id: 'stg-scoped', context_id: scopedUser },
+    ])
+  })
+
   test('preserves ambiguous legacy rows when multiple platform instances exist', () => {
     db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
     db.run(`INSERT INTO platform_instances VALUES ('discord-default', 'discord', '{}', 'active', 'now')`)

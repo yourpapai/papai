@@ -56,7 +56,7 @@ const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'group_admin_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
   { table: 'group_user_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
   { table: 'attachments', column: 'context_id', conflictColumns: null },
-  { table: 'staged_files', column: 'context_id', conflictColumns: null },
+  { table: 'staged_files', column: 'context_id', conflictColumns: ['platform_file_id'] },
   { table: 'llm_usage_events', column: 'storage_context_id', conflictColumns: null },
   { table: 'tool_call_events', column: 'storage_context_id', conflictColumns: null },
 ]
