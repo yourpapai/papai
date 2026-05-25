@@ -328,6 +328,99 @@ therefore deferred to a future dedicated run — see C3.
 
 ### B1. Preload architecture
 
+`bunfig.toml` declares `preload = ["./tests/setup.ts", "./tests/mock-reset.ts"]` (in that
+order). Both files are loaded once — before any test file is discovered — in the single Bun
+worker process.
+
+#### `tests/setup.ts` (lines 1–30)
+
+- Sets `process.env['LOG_LEVEL'] = 'silent'` at module-load time, before any source module is
+  imported (line 10). This ensures pino and any other LOG_LEVEL-gated logger is silenced for
+  the entire test run.
+- Replaces `console.log`, `console.info`, `console.warn`, and `console.debug` with no-ops
+  (lines 21–24). `console.error` is intentionally left intact for debugging test failures
+  (comment at line 26).
+- Exports `originalConsole` (line 30) for the rare test that needs to capture or assert on
+  real console output.
+- No hooks (`beforeEach`/`afterEach`) are installed; all side-effects are module-level and
+  permanent for the process lifetime.
+
+#### `tests/mock-reset.ts` (lines 1–106)
+
+- At module-load time (lines 19–56), imports **29 real source/vendor modules** — 27 project
+  modules from `src/` plus `ai` and `@ai-sdk/openai-compatible` — and captures a shallow
+  spread-copy of each export namespace into the `originals` array (lines 58–88). This is the
+  "snapshot originals before any test can mock them" step, described in the module-level JSDoc
+  at line 8.
+- The file comment at lines 22–25 explicitly documents the process-wide leak risk: _"Bun's
+  `mock.module()` is process-wide, so any module mocked there leaks into subsequent test
+  files."_ The preload is the deliberate countermeasure.
+- Installs a **global `beforeEach`** (lines 90–99) that runs before every test in the process:
+  1. Calls `resetDrizzleDbForTesting()` to reset the Drizzle DB singleton (line 91).
+  2. Calls `setBlobStoreForTesting(createInMemoryBlobStoreForTesting())` to reset the blob
+     store to a fresh in-memory instance (line 92).
+  3. Sets three S3-shaped env vars to test-safe placeholder values (lines 93–95).
+  4. Iterates `originals` and calls `mock.module(path, () => ({ ...exports }))` for all 29
+     modules (lines 96–98), restoring them to their pre-test state.
+- Installs a **global `afterEach`** (lines 101–106) that:
+  1. Calls `mock.restore()` to clear all `mock()` spy overrides (line 102).
+  2. Deletes the three S3 env vars (lines 103–105).
+
+**Per-test execution order** (stated in the module-level JSDoc, line 13):
+
+> global `beforeEach` (restore originals) → file `beforeEach` (apply mocks) → test → global
+> `afterEach` (restore spies)
+
+This ordering is established by Bun's hook registration order: preload files are evaluated
+first, so their `beforeEach`/`afterEach` registrations precede those in any test file. The
+runner's own coverage-preload hooks are registered via a separate `--preload` flag that the
+runner passes at invocation time; see the ambiguity note below.
+
+#### Risks / Smells
+
+1. **Global hooks fire with `currentTestId` undefined (ties to A2).** The global `beforeEach`
+   in `mock-reset.ts` is registered during preload, which runs before the
+   `@hughescr/stryker-bun-runner` coverage-preload's own `beforeEach` sets
+   `strykerGlobal.currentTestId`. Because Bun executes `beforeEach` hooks in registration
+   order, the `mock.module()` restore loop in the global `beforeEach` may fire while
+   `currentTestId` is still `undefined`. Any mutant hits recorded during that loop land in the
+   `static` bucket. The `stabilizeCoverage` promotion rule (A2 §4) then escalates any remaining
+   perTest hits that span multiple tests into `static` as well, amplifying the effect across all
+   29 reset modules.
+
+2. **`mock.module()` is process-wide — a single forgotten module poisons all subsequent files.**
+   The comment at lines 22–25 acknowledges this explicitly. If any test file calls
+   `mock.module()` on a module that is NOT in the `originals` list, that mock persists across
+   every later test file in the run until the process exits. Adding a new commonly-mocked module
+   to the project requires a coordinated update to `mock-reset.ts`; omitting it creates
+   non-deterministic cross-file contamination.
+
+3. **`originals` snapshot is a shallow spread, not a deep clone.** `{ ..._logger }` captures
+   the export bindings at the moment the preload runs. If any captured export is itself a
+   mutable object (e.g., a class instance or a shared registry), mutations to its internals
+   during a test survive the restore step. The pattern is safe for pure-function exports and
+   function-valued exports but fragile for stateful singletons.
+
+4. **Every test pays the cost of 29 `mock.module()` calls unconditionally.** The global
+   `beforeEach` rebuilds all 29 module entries before each of the ~4 817 tests regardless of
+   whether the test touches any of those modules. This adds constant overhead per-test and makes
+   the global hook a high-traffic path in the Stryker dry-run, where it is exercised once per
+   test per mutant batch.
+
+5. **All test files implicitly depend on the global reset — tight invisible coupling.** Any test
+   file that relies on a module being reset to its "real" state is relying on the global
+   `beforeEach` running first. There is no explicit import or declaration; the dependency is
+   structural and invisible. Removing a module from `originals` silently breaks tests that
+   assumed it would be restored.
+
+6. **Hook registration order vis-à-vis the runner's own preload is environment-dependent.**
+   When running under Stryker, the runner injects its own preload via `--preload=<runner-preload>`
+   in addition to the project's `bunfig.toml` preload. The order in which multiple `--preload`
+   entries and `bunfig.toml` preloads are evaluated is not explicitly documented in Bun's
+   runner; if the runner's preload is evaluated after `mock-reset.ts`, its `beforeEach`
+   registration order changes and `currentTestId` may or may not be set when the global reset
+   hook fires. This ambiguity is unresolvable without empirical measurement (see A5).
+
 ### B2. mock.module() blast radius
 
 ### B3. DI adherence
