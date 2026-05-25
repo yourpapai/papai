@@ -286,9 +286,8 @@ describe('auth', () => {
       })
 
       test('user resolved by username gets access without bot admin privileges', () => {
-        // First add a user with a username
-        addUser('realuser1', 'admin1', 'realuser1')
-        // Then check that the username resolves to the user
+        addUser('placeholder-realuser1', 'admin1', 'realuser1')
+
         const resolvedAuth = checkAuthorizationExtended('stranger1', 'realuser1', 'stranger1', 'dm', undefined, false)
 
         expect(resolvedAuth.allowed).toBe(true)
