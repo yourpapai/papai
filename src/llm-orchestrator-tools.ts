@@ -18,7 +18,7 @@ import { routeToolsForMessage } from './tools/tool-router.js'
 const log = logger.child({ scope: 'llm-orchestrator:tools' })
 
 const isToolSet = (value: unknown): value is ToolSet =>
-  typeof value === 'object' && value !== null && Object.keys(value).length > 0
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const getOrCreateTools = (
   contextId: string,
