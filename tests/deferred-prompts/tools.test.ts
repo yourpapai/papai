@@ -658,6 +658,101 @@ describe('delivery classification persistence', () => {
     expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
   })
 
+  test('legacy scoped scheduled dm row keeps scoped routing context with native adapter target', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(scheduledPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: null,
+        deliveryContextType: null,
+        deliveryThreadId: null,
+        audience: 'personal',
+        mentionUserIds: '[]',
+        prompt: 'Legacy scoped scheduled DM',
+        fireAt: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getScheduledPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe(USER_ID)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.threadId).toBeNull()
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedUserId)
+  })
+
+  test('legacy scoped alert dm row keeps scoped routing context with native adapter target', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(alertPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: null,
+        deliveryContextType: null,
+        deliveryThreadId: null,
+        audience: 'personal',
+        mentionUserIds: '[]',
+        prompt: 'Legacy scoped alert DM',
+        condition: JSON.stringify({ field: 'task.dueDate', op: 'overdue' }),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getAlertPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe(USER_ID)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.threadId).toBeNull()
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedUserId)
+  })
+
+  test('scoped main group row with delivery thread id routes through scoped thread context', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedGroupContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(scheduledPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: scopedGroupContextId,
+        deliveryContextType: 'group',
+        deliveryThreadId: '42',
+        audience: 'personal',
+        mentionUserIds: JSON.stringify([USER_ID]),
+        prompt: 'Scoped main group with thread column',
+        fireAt: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getScheduledPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
+  })
+
   test('group alert persists shared audience and no mention targets chosen at creation', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
     assert.ok(tool.execute)

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { parseScopedContextId } from '../chat/scoped-context.js'
+import { parseScopedContextId, toScopedThreadContextId } from '../chat/scoped-context.js'
 import { dmTarget } from '../chat/types.js'
 import type { DeferredPromptDelivery } from './types.js'
 
@@ -21,6 +21,12 @@ export function nativeIdFromScoped(id: string): string {
   const parsed = parseScopedContextId(id)
   if (parsed === null) return id
   return parsed.nativeContextId
+}
+
+function scopedOrUndefined(id: string): string | undefined {
+  const parsed = parseScopedContextId(id)
+  if (parsed === null) return undefined
+  return id
 }
 
 function parseMentionUserIds(raw: string): string[] {
@@ -60,8 +66,29 @@ function deliveryThreadId(storageContextId: string, threadId: string | null): st
   return scoped.threadId
 }
 
+function routingStorageContextId(row: DeliveryRow): string | undefined {
+  if (row.deliveryContextId === null) return scopedOrUndefined(row.createdByUserId)
+  const scoped = parseScopedContextId(row.deliveryContextId)
+  if (scoped === null) return row.deliveryContextId
+  if (row.deliveryThreadId !== null && scoped.threadId === undefined) {
+    return toScopedThreadContextId({
+      platformInstanceId: scoped.platformInstanceId,
+      nativeContextId: scoped.nativeContextId,
+      threadId: row.deliveryThreadId,
+    })
+  }
+  return row.deliveryContextId
+}
+
 export function rowToDeliveryTarget(row: DeliveryRow): DeferredPromptDelivery {
   if (row.deliveryContextId === null) {
+    const storageId = routingStorageContextId(row)
+    if (storageId !== undefined)
+      return {
+        ...dmTarget(nativeIdFromScoped(row.createdByUserId)),
+        storageContextId: storageId,
+        createdByUsername: row.createdByUsername,
+      }
     return {
       ...dmTarget(nativeIdFromScoped(row.createdByUserId)),
       createdByUsername: row.createdByUsername,
@@ -69,7 +96,7 @@ export function rowToDeliveryTarget(row: DeliveryRow): DeferredPromptDelivery {
   }
   return {
     contextId: nativeContextId(row.deliveryContextId, row.deliveryContextType),
-    storageContextId: row.deliveryContextId,
+    storageContextId: routingStorageContextId(row),
     contextType: contextType(row.deliveryContextType),
     threadId: deliveryThreadId(row.deliveryContextId, row.deliveryThreadId),
     audience: row.audience === 'shared' ? 'shared' : 'personal',
