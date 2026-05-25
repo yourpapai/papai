@@ -11,6 +11,7 @@ import { pluginRegistry } from '../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../src/plugins/types.js'
 import { buildSystemPrompt } from '../src/system-prompt.js'
+import { setToolPrefs } from '../src/tools/tool-preferences.js'
 import { createMockProvider } from './tools/mock-provider.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
@@ -102,5 +103,62 @@ describe('buildSystemPrompt', () => {
 
     expect(prompt).toContain('CONFIGURED_PLUGIN_GUIDANCE')
     contributionRegistry.deregister(pluginId)
+  })
+})
+
+describe('buildSystemPrompt fragment coherence', () => {
+  const provider = createMockProvider()
+
+  beforeEach(async () => {
+    mockLogger()
+    mock.restore()
+    await setupTestDb()
+  })
+
+  test('legacy no-arg path includes RECURRING TASKS and WEB FETCH and no Unavailable tools line', () => {
+    const prompt = buildSystemPrompt(provider, 'frag-legacy')
+    expect(prompt).toContain('RECURRING TASKS')
+    expect(prompt).toContain('WEB FETCH')
+    expect(prompt).not.toContain('Unavailable tools')
+  })
+
+  test('includes web_fetch fragment when web_fetch is in enabled set', () => {
+    const enabled = new Set(['web_fetch', 'create_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-web-on', enabled)
+    expect(prompt).toContain('WEB FETCH')
+  })
+
+  test('omits web_fetch fragment when web_fetch is not in enabled set', () => {
+    const enabled = new Set(['create_task', 'update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-web-off', enabled)
+    expect(prompt).not.toContain('WEB FETCH')
+  })
+
+  test('omits RECURRING TASKS fragment when no recurring tools are enabled', () => {
+    const enabled = new Set(['create_task', 'update_task', 'web_fetch', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-recur-off', enabled)
+    expect(prompt).not.toContain('RECURRING TASKS')
+  })
+
+  test('appends safety-net line for partially-disabled domain tools', () => {
+    const contextId = 'frag-safety-net-ctx'
+    setToolPrefs(contextId, { disabledDomains: [], toolOverrides: { delete_task: false } })
+    const enabled = new Set(['create_task', 'update_task', 'search_tasks', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled)
+    expect(prompt).toContain('Unavailable tools')
+    expect(prompt).toContain('delete_task')
+  })
+
+  test('omits the instructions rule when save_instruction is not in the enabled set', () => {
+    const enabled = new Set(['create_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-no-instr', enabled)
+    expect(prompt).not.toContain('save_instruction')
+    expect(prompt).toContain('OUTPUT RULES')
+  })
+
+  test('omits the deferred-prompts fragment when no deferred tool is enabled', () => {
+    const enabled = new Set(['create_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, 'frag-deferred-off', enabled)
+    expect(prompt).not.toContain('DEFERRED PROMPTS')
   })
 })
