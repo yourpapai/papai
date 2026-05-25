@@ -11,7 +11,7 @@ import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-trackin
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn } from './chat/types.js'
+import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
   registerClearCommand,
@@ -25,7 +25,7 @@ import {
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
 import { emitUser } from './debug/event-bus.js'
-import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -36,18 +36,6 @@ import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
 
-type ProcessMessageFn = (
-  reply: ReplyFn,
-  contextId: string,
-  chatUserId: string,
-  username: string | null,
-  userText: string,
-  contextType: 'dm' | 'group',
-  configContextId: string | undefined,
-  deps: LlmOrchestratorDeps,
-  newAttachmentIds: readonly string[],
-  turnId: string,
-) => Promise<void>
 type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
 export interface BotDeps {
@@ -266,7 +254,6 @@ async function onIncomingMessage(
   if (!willQueueAuthorizedMessage(msg, auth))
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
 }
-type IncomingInteraction = Parameters<Parameters<NonNullable<ChatProvider['onInteraction']>>[0]>[0]
 async function routeIncomingInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<void> {
   try {
     const auth = checkAuthorizationExtended(

@@ -48,6 +48,15 @@ const containsFact = (
     (fact) => fact.identifier === expected.identifier && fact.title === expected.title && fact.url === expected.url,
   )
 
+const failingAiDetailsReply = (textCalls: string[]): ReplyFn['formatted'] => {
+  let formattedCallCount = 0
+  return (content: string): Promise<void> => {
+    textCalls.push(content)
+    formattedCallCount += 1
+    return formattedCallCount === 1 ? Promise.resolve() : Promise.reject(new Error('details send failed'))
+  }
+}
+
 /** Creates a DebugEvent listener that captures the stepsDetail payload of llm:end events. */
 const makeLlmEndListener =
   (onDetail: (detail: unknown) => void) =>
@@ -798,17 +807,14 @@ describe('processMessage', () => {
           textCalls.push(content)
           return Promise.resolve()
         },
-        formatted: (content) => {
-          textCalls.push(content)
-          return content.includes('AI execution details')
-            ? Promise.reject(new Error('details send failed'))
-            : Promise.resolve()
-        },
+        formatted: failingAiDetailsReply(textCalls),
       }
 
       await processMessage(reply, ctx, 'user-1', null, 'think', 'dm')
 
-      expect(textCalls).toEqual(['Done!', expect.stringContaining('AI execution details')])
+      expect(textCalls).toHaveLength(2)
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
       const history = getCachedHistory(ctx)
       expect(history).toHaveLength(2)
       expect(history[0]!.role).toBe('user')

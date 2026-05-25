@@ -24,12 +24,6 @@ type SetAiOutputSettingArgs =
   | [contextId: string, name: 'reasoningVisibility', value: AiVisibility]
   | [contextId: string, name: 'detailLevel', value: AiOutputDetailLevel]
 
-const DEFAULT_SETTINGS = {
-  toolVisibility: 'off',
-  reasoningVisibility: 'off',
-  detailLevel: 'sanitized',
-} as const satisfies AiOutputSettings
-
 const SETTING_KEY_BY_NAME = {
   toolVisibility: AI_TOOL_VISIBILITY_KEY,
   reasoningVisibility: AI_REASONING_VISIBILITY_KEY,
@@ -50,10 +44,6 @@ export function getAiOutputSettings(contextId: string): AiOutputSettings {
     reasoningVisibility: parseVisibility(getCachedConfig(contextId, AI_REASONING_VISIBILITY_KEY)),
     detailLevel: parseDetailLevel(getCachedConfig(contextId, AI_OUTPUT_DETAIL_LEVEL_KEY)),
   }
-}
-
-export function getDefaultAiOutputSettings(): AiOutputSettings {
-  return { ...DEFAULT_SETTINGS }
 }
 
 export function setAiOutputSetting(...args: SetAiOutputSettingArgs): void {
