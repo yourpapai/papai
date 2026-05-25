@@ -26,11 +26,11 @@ Allow users to configure, per conversation context, whether papai shows AI agent
 
 Add three context-scoped config settings:
 
-| Setting | Values | Default | Meaning |
-| --- | --- | --- | --- |
-| `ai_tool_visibility` | `on`, `off` | `off` | `on` shows tool-call progress/details; `off` hides intermediate tool-call output. |
-| `ai_reasoning_visibility` | `on`, `off` | `off` | `on` shows provider-exposed reasoning text when available; `off` hides reasoning. |
-| `ai_output_detail_level` | `sanitized`, `raw` | `sanitized` | Controls whether enabled outputs use safe summaries or raw data. |
+| Setting                   | Values             | Default     | Meaning                                                                           |
+| ------------------------- | ------------------ | ----------- | --------------------------------------------------------------------------------- |
+| `ai_tool_visibility`      | `on`, `off`        | `off`       | `on` shows tool-call progress/details; `off` hides intermediate tool-call output. |
+| `ai_reasoning_visibility` | `on`, `off`        | `off`       | `on` shows provider-exposed reasoning text when available; `off` hides reasoning. |
+| `ai_output_detail_level`  | `sanitized`, `raw` | `sanitized` | Controls whether enabled outputs use safe summaries or raw data.                  |
 
 Missing or invalid stored values fall back to these defaults. With all defaults, no tool progress, tool failure warning, or reasoning is shown as intermediate chat output. Final answers and top-level error messages still send normally.
 
@@ -38,13 +38,13 @@ Missing or invalid stored values fall back to these defaults. With all defaults,
 
 The feature is split into small units with clear boundaries:
 
-| Component | Purpose |
-| --- | --- |
-| `src/ai-output-settings.ts` | Defines setting keys, allowed values, defaults, parsers, and `getAiOutputSettings(contextId)`. |
-| `src/ai-progress-reporter.ts` | Owns no-op, live, and buffered user-visible reporting plus the sanitization boundary. |
-| `/config` integration | Adds an “AI Output” section and buttons for tool visibility, reasoning visibility, and detail level for the selected context. |
-| LLM invocation wiring | Creates the reporter for each turn, passes it into model invocation, calls it from tool hooks, and flushes buffered details around the final response. |
-| Tests | Cover settings, config rendering/callbacks, reporter behavior, suppression/defaults, reasoning availability, and final-response regressions. |
+| Component                     | Purpose                                                                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/ai-output-settings.ts`   | Defines setting keys, allowed values, defaults, parsers, and `getAiOutputSettings(contextId)`.                                                         |
+| `src/ai-progress-reporter.ts` | Owns no-op, live, and buffered user-visible reporting plus the sanitization boundary.                                                                  |
+| `/config` integration         | Adds an “AI Output” section and buttons for tool visibility, reasoning visibility, and detail level for the selected context.                          |
+| LLM invocation wiring         | Creates the reporter for each turn, passes it into model invocation, calls it from tool hooks, and flushes buffered details around the final response. |
+| Tests                         | Cover settings, config rendering/callbacks, reporter behavior, suppression/defaults, reasoning availability, and final-response regressions.           |
 
 The reporter is a request-scoped abstraction. Tool execution and LLM orchestration report events to it, not to chat adapters directly. Chat-provider differences stay inside the reporter or a small delivery helper.
 
@@ -69,24 +69,24 @@ The grouped details block is complete, not compressed. “Compact” means group
 
 Tool output:
 
-| Setting | Behavior |
-| --- | --- |
+| Setting                  | Behavior                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------ |
 | `ai_tool_visibility=off` | Do not send intermediate tool-call output, including tool-specific failure warnings. |
-| `ai_tool_visibility=on` | Show tool start and finish details according to `ai_output_detail_level`. |
+| `ai_tool_visibility=on`  | Show tool start and finish details according to `ai_output_detail_level`.            |
 
 Reasoning output:
 
-| Setting | Behavior |
-| --- | --- |
-| `ai_reasoning_visibility=off` | Do not show reasoning. |
-| `ai_reasoning_visibility=on` | Show provider-exposed reasoning text when available. If unavailable, omit the reasoning section. |
+| Setting                       | Behavior                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| `ai_reasoning_visibility=off` | Do not show reasoning.                                                                           |
+| `ai_reasoning_visibility=on`  | Show provider-exposed reasoning text when available. If unavailable, omit the reasoning section. |
 
 Detail level:
 
-| Setting | Behavior |
-| --- | --- |
+| Setting                            | Behavior                                                                                                                                                                                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ai_output_detail_level=sanitized` | Show tool names, status, duration, and safe summaries of inputs/results. Redact secrets, credentials, risky URLs, long blobs, attachment contents, and excessive structured data. Reasoning uses provider-exposed visible reasoning text only. |
-| `ai_output_detail_level=raw` | Show raw tool inputs/results and raw provider reasoning where the SDK/provider exposes them. `/config` labels this setting as sensitive. |
+| `ai_output_detail_level=raw`       | Show raw tool inputs/results and raw provider reasoning where the SDK/provider exposes them. `/config` labels this setting as sensitive.                                                                                                       |
 
 Raw detail level is available wherever the context settings can be changed. It is intentionally not bot-admin-only.
 
@@ -94,9 +94,9 @@ Raw detail level is available wherever the context settings can be changed. It i
 
 The reporter chooses delivery style per platform capability and reliability:
 
-| Delivery Style | Behavior |
-| --- | --- |
-| Live messages | Sends separate intermediate messages during the turn where this is practical and not overly noisy. |
+| Delivery Style | Behavior                                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Live messages  | Sends separate intermediate messages during the turn where this is practical and not overly noisy.                                  |
 | Buffered block | Accumulates all enabled details and sends one complete block before or after the final response where live delivery is impractical. |
 
 The first implementation can choose conservative buffered delivery for any platform where live behavior is uncertain. The design allows later provider-specific tuning without changing the settings model.
@@ -105,10 +105,10 @@ The first implementation can choose conservative buffered delivery for any platf
 
 Tool failures are handled through two channels:
 
-| Channel | Behavior |
-| --- | --- |
+| Channel                  | Behavior                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Intermediate tool output | Controlled by `ai_tool_visibility`. If `off`, no tool-specific progress or warning messages are sent during the turn. If `on`, failures appear with sanitized or raw detail according to `ai_output_detail_level`. |
-| Final/top-level response | Always preserved. If the model recovers and returns a final answer, the final answer is sent. If the whole turn fails, the existing user-facing top-level error message is sent. |
+| Final/top-level response | Always preserved. If the model recovers and returns a final answer, the final answer is sent. If the whole turn fails, the existing user-facing top-level error message is sent.                                   |
 
 Reasoning absence is quiet. If the provider or SDK does not expose reasoning text, no reasoning section is shown. If raw reasoning is unavailable, raw mode does not fabricate it.
 
@@ -118,15 +118,15 @@ Sanitization failures fail closed. If a value cannot be safely summarized, sanit
 
 Tests should cover:
 
-| Area | Coverage |
-| --- | --- |
-| Settings parsing | Missing keys resolve to `tool=off`, `reasoning=off`, `level=sanitized`; invalid stored values fall back safely. |
-| `/config` UI | AI Output section renders for selected context; buttons write to the target context; existing permission and group-selection behavior is reused. |
-| Tool visibility off | Tool start/finish hooks do not send intermediate chat output, including tool failure warnings. |
-| Tool visibility on | Tool activity is shown with sanitized values by default and raw values only at `raw` level. |
-| Reasoning visibility | Provider-exposed `reasoningText` is shown only when reasoning is on; unavailable reasoning produces no invented summary. |
-| Buffered delivery | If live delivery is disabled or unavailable, the full details block is emitted once and remains complete. |
-| Regression | Final answers and top-level failures still send as before. Debug trace events still collect tool details. |
+| Area                 | Coverage                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Settings parsing     | Missing keys resolve to `tool=off`, `reasoning=off`, `level=sanitized`; invalid stored values fall back safely.                                  |
+| `/config` UI         | AI Output section renders for selected context; buttons write to the target context; existing permission and group-selection behavior is reused. |
+| Tool visibility off  | Tool start/finish hooks do not send intermediate chat output, including tool failure warnings.                                                   |
+| Tool visibility on   | Tool activity is shown with sanitized values by default and raw values only at `raw` level.                                                      |
+| Reasoning visibility | Provider-exposed `reasoningText` is shown only when reasoning is on; unavailable reasoning produces no invented summary.                         |
+| Buffered delivery    | If live delivery is disabled or unavailable, the full details block is emitted once and remains complete.                                        |
+| Regression           | Final answers and top-level failures still send as before. Debug trace events still collect tool details.                                        |
 
 Verification should include targeted unit tests first, then `bun typecheck` and the relevant `bun test ...` command. Client tests are only needed if implementation touches client-side code.
 
