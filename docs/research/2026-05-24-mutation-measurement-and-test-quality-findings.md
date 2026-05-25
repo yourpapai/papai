@@ -124,6 +124,35 @@ then drops all static mutants from scoring, producing the 77.2% exclusion rate.
 
 ### A3. Scoped reproduction (single well-tested file)
 
+**Target:** `src/providers/kaneo/column-resource.ts` (its `list()` method exercised by `tests/providers/kaneo/column-resource.test.ts`).
+
+**Bun coverage proof (Step 1):**
+
+```
+src/providers/kaneo/column-resource.ts  |  42.86 |  21.43 | 35-122
+```
+
+Bun reports 42.86 % function coverage and 21.43 % line coverage — confirming `list()` is genuinely executed by the test suite.
+
+**Stryker scoped run (Step 3, `/tmp/stryker.A3.json`):**
+
+Config: `mutate: ["src/providers/kaneo/column-resource.ts"]`, `coverageAnalysis: "perTest"`, `ignoreStatic: true`.
+Run duration: **2 minutes 18 seconds**.
+
+**Mutant status counts (Step 4):**
+
+```json
+{
+  "Ignored": 69,
+  "NoCoverage": 12,
+  "CompileError": 4
+}
+```
+
+Total mutants: 85. Killed: **0**. Survived: **0**.
+
+**Contradiction:** Bun's own instrumented coverage shows the file's `list()` method runs during the test suite, yet Stryker classified 69 of 85 mutants as `Ignored` (static) and the remaining 12 as `NoCoverage` — zero were killed or survived. The `@hughescr/stryker-bun-runner` eagerly imports every mutated module during preload while `currentTestId` is `undefined`, so all module-level mutant hits land in the `static` bucket; `ignoreStatic: true` then drops them. Mutants that survive preload without a hit fall into `NoCoverage`. The result is a mutation score of 0.00 % for a file that is demonstrably covered — the measurement defect is fully reproduced, not a test gap.
+
 ### A4. Variable test — concurrency
 
 ### A5. Variable test — preload isolation
