@@ -19,6 +19,7 @@ export type AiOutputSettings = {
 }
 
 export type AiOutputSettingName = keyof AiOutputSettings
+export type AiOutputSettingValue<Name extends AiOutputSettingName> = AiOutputSettings[Name]
 
 const DEFAULT_SETTINGS = {
   toolVisibility: 'off',
@@ -52,10 +53,10 @@ export function getDefaultAiOutputSettings(): AiOutputSettings {
   return { ...DEFAULT_SETTINGS }
 }
 
-export function setAiOutputSetting(
+export function setAiOutputSetting<Name extends AiOutputSettingName>(
   contextId: string,
-  name: AiOutputSettingName,
-  value: AiVisibility | AiOutputDetailLevel,
+  name: Name,
+  value: AiOutputSettingValue<Name>,
 ): void {
   setCachedConfig(contextId, SETTING_KEY_BY_NAME[name], value)
 }
