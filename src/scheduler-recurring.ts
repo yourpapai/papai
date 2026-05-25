@@ -61,11 +61,14 @@ export const notifyUser = async (
   if (platformInstanceId === null) return
 
   try {
-    await chatProviderRef.sendMessage(
+    const delivered = await chatProviderRef.sendMessage(
       platformInstanceId,
       target,
       `Recurring task created: **${created.title}** in project.`,
     )
+    if (delivered === false) {
+      log.warn({ userId, platformInstanceId, taskId: created.id }, 'Recurring task notification refused')
+    }
   } catch (notifyError) {
     log.warn(
       { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },
