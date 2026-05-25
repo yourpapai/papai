@@ -11,20 +11,34 @@ const log = logger.child({ scope: 'group-settings:state' })
 const GROUP_SETTINGS_SESSION_TTL_MS = 30 * 60 * 1000
 const activeSessions = new Map<string, GroupSettingsSession>()
 
-type CreateGroupSettingsSessionParams = {
-  userId: string
-  command: GroupSettingsCommand
-  stage: GroupSettingsSessionStage
-  targetContextId?: string
-}
+type CreateGroupSettingsSessionParams = Readonly<
+  {
+    userId: string
+    command: GroupSettingsCommand
+    stage: GroupSettingsSessionStage
+  } & Partial<Record<'platformInstanceId' | 'targetContextId', string>>
+>
 
-type GroupSettingsSessionUpdate = {
-  stage?: GroupSettingsSessionStage
-  targetContextId?: string
-}
+type GroupSettingsSessionUpdate = Readonly<Partial<Record<'stage', GroupSettingsSessionStage> & Record<'targetContextId', string>>>
 
 const isExpired = (session: GroupSettingsSession): boolean =>
   Date.now() - session.startedAt.getTime() > GROUP_SETTINGS_SESSION_TTL_MS
+
+const getSessionKey = (userId: string, platformInstanceId: string | undefined): string =>
+  platformInstanceId === undefined ? userId : `${platformInstanceId}:${userId}`
+
+const getSessionEntry = (
+  userId: string,
+  platformInstanceId: string | undefined,
+): { key: string; session: GroupSettingsSession } | null => {
+  const sessionKey = getSessionKey(userId, platformInstanceId)
+  const session = activeSessions.get(sessionKey)
+  if (session !== undefined) return { key: sessionKey, session }
+  if (platformInstanceId === undefined) return null
+
+  const legacySession = activeSessions.get(userId)
+  return legacySession === undefined ? null : { key: userId, session: legacySession }
+}
 
 export function createGroupSettingsSession(params: CreateGroupSettingsSessionParams): GroupSettingsSession {
   log.debug(
@@ -34,42 +48,52 @@ export function createGroupSettingsSession(params: CreateGroupSettingsSessionPar
 
   const session: GroupSettingsSession = {
     userId: params.userId,
+    platformInstanceId: params.platformInstanceId,
     command: params.command,
     stage: params.stage,
     startedAt: new Date(),
     targetContextId: params.targetContextId,
   }
 
-  activeSessions.set(params.userId, session)
+  activeSessions.set(getSessionKey(params.userId, params.platformInstanceId), session)
   log.info({ userId: params.userId, command: params.command, stage: params.stage }, 'Created group settings session')
   return session
 }
 
-export function getGroupSettingsSession(userId: string): GroupSettingsSession | null {
-  log.debug({ userId }, 'getGroupSettingsSession called')
+const getGroupSettingsSessionForScope = (
+  userId: string,
+  platformInstanceId: string | undefined,
+): GroupSettingsSession | null => {
+  log.debug({ userId, platformInstanceId }, 'getGroupSettingsSession called')
 
-  const session = activeSessions.get(userId)
-  if (session === undefined) {
+  const entry = getSessionEntry(userId, platformInstanceId)
+  if (entry === null) {
     return null
   }
-  if (isExpired(session)) {
-    activeSessions.delete(userId)
+  if (isExpired(entry.session)) {
+    activeSessions.delete(entry.key)
     log.info({ userId }, 'Expired group settings session')
     return null
   }
-  return session
+  return entry.session
+}
+
+export function getGroupSettingsSession(userId: string, ...scope: [] | [platformInstanceId: string]): GroupSettingsSession | null {
+  return getGroupSettingsSessionForScope(userId, scope.length === 0 ? undefined : scope[0])
 }
 
 export function updateGroupSettingsSession(
   userId: string,
   update: GroupSettingsSessionUpdate,
+  ...scope: [] | [platformInstanceId: string]
 ): GroupSettingsSession | null {
+  const platformInstanceId = scope.length === 0 ? undefined : scope[0]
   log.debug(
     { userId, stage: update.stage, targetContextId: update.targetContextId },
     'updateGroupSettingsSession called',
   )
 
-  const session = getGroupSettingsSession(userId)
+  const session = getGroupSettingsSessionForScope(userId, platformInstanceId)
   if (session === null) {
     return null
   }
@@ -82,7 +106,7 @@ export function updateGroupSettingsSession(
     ...targetContextIdUpdate,
   }
 
-  activeSessions.set(userId, nextSession)
+  activeSessions.set(getSessionKey(userId, session.platformInstanceId), nextSession)
   log.info(
     { userId, stage: nextSession.stage, targetContextId: nextSession.targetContextId },
     'Updated group settings session',
@@ -98,22 +122,26 @@ export function updateGroupSettingsSession(
   return nextSession
 }
 
-export function deleteGroupSettingsSession(userId: string): boolean {
-  log.debug({ userId }, 'deleteGroupSettingsSession called')
+export function deleteGroupSettingsSession(userId: string, ...scope: [] | [platformInstanceId: string]): boolean {
+  const platformInstanceId = scope.length === 0 ? undefined : scope[0]
+  log.debug({ userId, platformInstanceId }, 'deleteGroupSettingsSession called')
 
-  const deleted = activeSessions.delete(userId)
+  const entry = getSessionEntry(userId, platformInstanceId)
+  const deleted = entry === null ? false : activeSessions.delete(entry.key)
   if (deleted) {
     log.info({ userId }, 'Deleted group settings session')
   }
   return deleted
 }
 
-export function getActiveGroupSettingsTarget(userId: string): string | null {
-  log.debug({ userId }, 'getActiveGroupSettingsTarget called')
+export function getActiveGroupSettingsTarget(userId: string, ...scope: [] | [platformInstanceId: string]): string | null {
+  const platformInstanceId = scope.length === 0 ? undefined : scope[0]
+  log.debug({ userId, platformInstanceId }, 'getActiveGroupSettingsTarget called')
 
-  const session = getGroupSettingsSession(userId)
+  const session = getGroupSettingsSessionForScope(userId, platformInstanceId)
   if (session === null || session.stage !== 'active') {
     return null
   }
-  return session.targetContextId ?? null
+  if (session.targetContextId === undefined) return null
+  return session.targetContextId
 }

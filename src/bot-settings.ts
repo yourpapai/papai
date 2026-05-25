@@ -38,7 +38,7 @@ async function validateActiveGroupSettingsTarget(
   auth: AuthorizationResult,
 ): Promise<string | null> {
   if (msg.contextType !== 'dm' || !auth.allowed) return null
-  const activeTarget = getActiveGroupSettingsTarget(msg.user.id)
+  const activeTarget = getActiveGroupSettingsTarget(msg.user.id, msg.platformInstanceId)
   if (activeTarget === null) return null
   if (
     listManageableGroups(msg.user.id, msg.platformInstanceId).some(
@@ -47,7 +47,7 @@ async function validateActiveGroupSettingsTarget(
   ) {
     return activeTarget
   }
-  deleteGroupSettingsSession(msg.user.id)
+  deleteGroupSettingsSession(msg.user.id, msg.platformInstanceId)
   await reply.text(getMissingGroupTargetMessage(msg.user.id, activeTarget, msg.platformInstanceId))
   return '__deleted__'
 }

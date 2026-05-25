@@ -6,7 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { toScopedContextId } from '../../../src/chat/scoped-context.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
 import { migration043ScopedContextIds } from '../../../src/db/migrations/043_scoped_context_ids.js'
 
 describe('migration043ScopedContextIds', () => {
@@ -223,6 +223,38 @@ describe('migration043ScopedContextIds', () => {
 
     expect(db.query('SELECT user_id FROM user_config').get()).toEqual({
       user_id: toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'pi:native-user' }),
+    })
+  })
+
+  test('preserves legacy raw thread keys as scoped thread context ids', () => {
+    const scopedThread = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-1',
+    })
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO conversation_history VALUES ('group-1:thread-1', '[]')`)
+    db.run(`INSERT INTO memory_summary VALUES ('group-1:thread-1', 'summary', 'now')`)
+    db.run(`INSERT INTO memory_facts VALUES ('group-1:thread-1', 'fact-1', 'title', '', 'now')`)
+    db.run(`INSERT INTO message_metadata VALUES ('group-1:thread-1', 'message-1', NULL, NULL, NULL, NULL, 1, 2)`)
+    db.run(
+      `INSERT INTO llm_usage_events VALUES ('llm-1', 1, NULL, 'group-1:thread-1', 'group', 'user-1', 'model', 'main', NULL, NULL, 0, 0, 0, NULL, 10, NULL, NULL, NULL, 0, NULL)`,
+    )
+    db.run(
+      `INSERT INTO tool_call_events VALUES ('tool-1', 'turn-1', 1, 'group-1:thread-1', 'group', 'user-1', 'model', 'main', 'list_tasks', 'call-1', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL)`,
+    )
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query('SELECT user_id FROM conversation_history').get()).toEqual({ user_id: scopedThread })
+    expect(db.query('SELECT user_id FROM memory_summary').get()).toEqual({ user_id: scopedThread })
+    expect(db.query('SELECT user_id FROM memory_facts').get()).toEqual({ user_id: scopedThread })
+    expect(db.query('SELECT context_id FROM message_metadata').get()).toEqual({ context_id: scopedThread })
+    expect(db.query('SELECT storage_context_id FROM llm_usage_events').get()).toEqual({
+      storage_context_id: scopedThread,
+    })
+    expect(db.query('SELECT storage_context_id FROM tool_call_events').get()).toEqual({
+      storage_context_id: scopedThread,
     })
   })
 

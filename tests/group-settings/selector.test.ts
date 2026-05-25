@@ -43,6 +43,7 @@ describe('group settings selector', () => {
     mockLogger()
     await setupTestDb()
     deleteGroupSettingsSession('user-1')
+    deleteGroupSettingsSession('user-1', 'telegram-default')
   })
 
   test('starts with a personal/group scope picker', () => {
@@ -64,7 +65,7 @@ describe('group settings selector', () => {
       handled: true,
       continueWith: { command: 'config', targetContextId: scopedUser1 },
     })
-    expect(getActiveGroupSettingsTarget('user-1')).toBeNull()
+    expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBeNull()
   })
 
   test('returns guidance when the user has no known manageable groups', () => {
@@ -100,7 +101,7 @@ describe('group settings selector', () => {
       handled: true,
       continueWith: { command: 'config', targetContextId: scopedGroup1 },
     })
-    expect(getActiveGroupSettingsTarget('user-1')).toBe(scopedGroup1)
+    expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBe(scopedGroup1)
   })
 
   test('does not double-scope an already-scoped manageable group context', () => {
@@ -127,6 +128,6 @@ describe('group settings selector', () => {
       handled: true,
       continueWith: { command: 'setup', targetContextId: scopedGroup1 },
     })
-    expect(getActiveGroupSettingsTarget('user-1')).toBe(scopedGroup1)
+    expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBe(scopedGroup1)
   })
 })

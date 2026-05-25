@@ -74,9 +74,9 @@ async function validateImplicitDmConfigTarget(
   platformInstanceId: string,
   reply: ReplyFn,
 ): Promise<string | true | null> {
-  if (getActiveGroupSettingsTarget(userId) === null) return true
+  if (getActiveGroupSettingsTarget(userId, platformInstanceId) === null) return true
 
-  const previousActiveTarget = getActiveGroupSettingsTarget(userId)
+  const previousActiveTarget = getActiveGroupSettingsTarget(userId, platformInstanceId)
   const validatedTargetContextId = getValidatedDmTargetContextId(userId, platformInstanceId)
   if (validatedTargetContextId !== null) return validatedTargetContextId
 

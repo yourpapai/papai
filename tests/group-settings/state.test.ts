@@ -16,6 +16,8 @@ import {
 describe('group settings state', () => {
   beforeEach(() => {
     deleteGroupSettingsSession('user-1')
+    deleteGroupSettingsSession('user-1', 'telegram-default')
+    deleteGroupSettingsSession('user-1', 'discord-default')
   })
 
   test('stores one selector session per DM user and exposes active group target only in active stage', () => {
@@ -24,7 +26,7 @@ describe('group settings state', () => {
 
     updateGroupSettingsSession('user-1', { stage: 'active', targetContextId: 'group-1' })
 
-    expect(getGroupSettingsSession('user-1')?.targetContextId).toBe('group-1')
+    expect(getGroupSettingsSession('user-1')).toMatchObject({ targetContextId: 'group-1' })
     expect(getActiveGroupSettingsTarget('user-1')).toBe('group-1')
   })
 
@@ -33,5 +35,34 @@ describe('group settings state', () => {
     session.startedAt = new Date(Date.now() - 31 * 60 * 1000)
 
     expect(getGroupSettingsSession('user-1')).toBeNull()
+  })
+
+  test('isolates selector sessions for the same native user across platform instances', () => {
+    createGroupSettingsSession({
+      userId: 'user-1',
+      command: 'config',
+      stage: 'choose_scope',
+      platformInstanceId: 'telegram-default',
+    })
+    createGroupSettingsSession({
+      userId: 'user-1',
+      command: 'setup',
+      stage: 'choose_scope',
+      platformInstanceId: 'discord-default',
+    })
+
+    updateGroupSettingsSession(
+      'user-1',
+      { stage: 'active', targetContextId: 'telegram-group' },
+      'telegram-default',
+    )
+    updateGroupSettingsSession('user-1', { stage: 'active', targetContextId: 'discord-group' }, 'discord-default')
+
+    expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBe('telegram-group')
+    expect(getActiveGroupSettingsTarget('user-1', 'discord-default')).toBe('discord-group')
+
+    expect(deleteGroupSettingsSession('user-1', 'telegram-default')).toBe(true)
+    expect(getGroupSettingsSession('user-1', 'telegram-default')).toBeNull()
+    expect(getActiveGroupSettingsTarget('user-1', 'discord-default')).toBe('discord-group')
   })
 })

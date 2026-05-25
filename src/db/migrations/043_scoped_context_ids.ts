@@ -5,17 +5,12 @@
 
 import type { Database } from 'bun:sqlite'
 
-import { toScopedContextId } from '../../chat/scoped-context.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../chat/scoped-context.js'
 import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
+import { CONTEXT_OWNED_COLUMNS, type ContextOwnedColumn } from './043_scoped_context_ids_columns.js'
 
 const log = logger.child({ scope: 'migration:043' })
-
-type ContextOwnedColumn = Readonly<{
-  table: string
-  column: string
-  conflictColumns: readonly string[] | null
-}>
 
 type UsernameDuplicateGroup = Readonly<{
   platform_instance_id: string
@@ -35,36 +30,6 @@ type ContextOwnedRow = Readonly<{
   value: string
 }> &
   Readonly<Record<string, string | number | null>>
-
-const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
-  { table: 'context_settings', column: 'context_id', conflictColumns: [] },
-  { table: 'user_config', column: 'user_id', conflictColumns: ['key'] },
-  { table: 'conversation_history', column: 'user_id', conflictColumns: [] },
-  { table: 'memory_summary', column: 'user_id', conflictColumns: [] },
-  { table: 'memory_facts', column: 'user_id', conflictColumns: ['identifier'] },
-  { table: 'authorized_groups', column: 'group_id', conflictColumns: [] },
-  { table: 'group_members', column: 'group_id', conflictColumns: ['user_id'] },
-  { table: 'recurring_tasks', column: 'user_id', conflictColumns: null },
-  { table: 'scheduled_prompts', column: 'created_by_user_id', conflictColumns: null },
-  { table: 'scheduled_prompts', column: 'delivery_context_id', conflictColumns: null },
-  { table: 'alert_prompts', column: 'created_by_user_id', conflictColumns: null },
-  { table: 'alert_prompts', column: 'delivery_context_id', conflictColumns: null },
-  { table: 'task_snapshots', column: 'user_id', conflictColumns: ['task_id', 'field'] },
-  { table: 'message_metadata', column: 'context_id', conflictColumns: ['message_id'] },
-  { table: 'user_instructions', column: 'context_id', conflictColumns: null },
-  { table: 'memos', column: 'user_id', conflictColumns: null },
-  { table: 'user_identity_mappings', column: 'context_id', conflictColumns: ['provider_name'] },
-  { table: 'known_group_contexts', column: 'context_id', conflictColumns: ['provider'] },
-  { table: 'group_admin_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
-  { table: 'group_user_observations', column: 'context_id', conflictColumns: ['provider', 'user_id'] },
-  { table: 'attachments', column: 'context_id', conflictColumns: null },
-  { table: 'staged_files', column: 'context_id', conflictColumns: ['platform_file_id'] },
-  { table: 'llm_usage_events', column: 'storage_context_id', conflictColumns: null },
-  { table: 'tool_call_events', column: 'storage_context_id', conflictColumns: null },
-  { table: 'plugin_context_state', column: 'context_id', conflictColumns: ['plugin_id'] },
-  { table: 'plugin_kv', column: 'context_id', conflictColumns: ['plugin_id', 'key'] },
-  { table: 'web_rate_limit', column: 'actor_id', conflictColumns: ['window_start'] },
-]
 
 const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u
 const UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID = '__unscoped_legacy__'
@@ -98,9 +63,22 @@ const getPlatformInstanceId = (db: Database): string | null => {
   return `${chatProvider}-default`
 }
 
-const scopeValue = (platformInstanceId: string, value: string | null): string | null => {
+const parseLegacyThreadKey = (value: string): { nativeContextId: string; threadId: string } | null => {
+  const separatorIndex = value.lastIndexOf(':')
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) return null
+  return {
+    nativeContextId: value.slice(0, separatorIndex),
+    threadId: value.slice(separatorIndex + 1),
+  }
+}
+
+const scopeValue = (platformInstanceId: string, value: string | null, threadScoped: boolean): string | null => {
   if (value === null) return null
   if (SCOPED_CONTEXT_ID_PATTERN.test(value)) return value
+  const legacyThreadKey = threadScoped ? parseLegacyThreadKey(value) : null
+  if (legacyThreadKey !== null) {
+    return toScopedThreadContextId({ platformInstanceId, ...legacyThreadKey })
+  }
   return toScopedContextId({ platformInstanceId, nativeContextId: value })
 }
 
@@ -150,7 +128,7 @@ const scopeContextOwnedColumn = (db: Database, platformInstanceId: string, input
   const rows = getContextOwnedRows(db, input)
 
   for (const row of rows) {
-    const scopedValue = scopeValue(platformInstanceId, row.value)
+    const scopedValue = scopeValue(platformInstanceId, row.value, input.threadScoped)
     if (scopedValue === null) continue
     if (existingScopedConflict(db, input, row, scopedValue)) {
       db.run(`DELETE FROM ${input.table} WHERE rowid = ?`, [row.rowid])

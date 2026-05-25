@@ -42,13 +42,13 @@ const getValidatedPersonalTargetContextId = (
 }
 
 export function getValidatedDmTargetContextId(userId: string, platformInstanceId: string): string | null {
-  const activeGroupTarget = getActiveGroupSettingsTarget(userId)
+  const activeGroupTarget = getActiveGroupSettingsTarget(userId, platformInstanceId)
   if (activeGroupTarget === null) return null
 
   const validatedTargetContextId = getValidatedGroupTargetContextId(userId, activeGroupTarget, platformInstanceId)
   if (validatedTargetContextId !== null) return validatedTargetContextId
 
-  deleteGroupSettingsSession(userId)
+  deleteGroupSettingsSession(userId, platformInstanceId)
   return null
 }
 
@@ -63,7 +63,7 @@ export function getValidatedDmCallbackTargetContextId(
   const groupTargetContextId = getValidatedGroupTargetContextId(userId, targetContextId, platformInstanceId)
   if (groupTargetContextId !== null) return groupTargetContextId
 
-  deleteGroupSettingsSession(userId)
+  deleteGroupSettingsSession(userId, platformInstanceId)
   return null
 }
 
@@ -79,7 +79,7 @@ export function getTargetContextId(
     return interaction.storageContextId
   }
 
-  const activeGroupTarget = getActiveGroupSettingsTarget(interaction.user.id)
+  const activeGroupTarget = getActiveGroupSettingsTarget(interaction.user.id, interaction.platformInstanceId)
   if (activeGroupTarget === undefined || activeGroupTarget === null) {
     return interaction.storageContextId
   }

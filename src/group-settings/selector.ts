@@ -79,7 +79,7 @@ const buildGroupResponse = (
 ): GroupSettingsSelectorResult => {
   const groups = listManageableGroups(userId, platformInstanceId)
   if (groups.length === 0) {
-    deleteGroupSettingsSession(userId)
+    deleteGroupSettingsSession(userId, platformInstanceId)
     return {
       handled: true,
       response:
@@ -118,8 +118,9 @@ const continueWithTarget = (
   command: GroupSettingsCommand,
   targetContextId: string,
   source: 'callback' | 'text',
+  platformInstanceId: string,
 ): GroupSettingsSelectorResult => {
-  updateGroupSettingsSession(userId, { stage: 'active', targetContextId })
+  updateGroupSettingsSession(userId, { stage: 'active', targetContextId }, platformInstanceId)
   log.info({ userId, command, targetContextId, source }, 'Selected group settings target')
   return { handled: true, continueWith: { command, targetContextId } }
 }
@@ -132,11 +133,11 @@ const handleChooseScopeMessage = (
   platformInstanceId: string,
 ): GroupSettingsSelectorResult => {
   if (normalizedText === 'personal' || normalizedText === 'personal settings') {
-    deleteGroupSettingsSession(userId)
+    deleteGroupSettingsSession(userId, platformInstanceId)
     return { handled: true, continueWith: { command, targetContextId: toTargetContextId(platformInstanceId, userId) } }
   }
   if (normalizedText === 'group' || normalizedText === 'group settings') {
-    updateGroupSettingsSession(userId, { stage: 'choose_group' })
+    updateGroupSettingsSession(userId, { stage: 'choose_group' }, platformInstanceId)
     return buildGroupResponse(userId, interactiveButtons, platformInstanceId)
   }
   return { handled: true, response: 'Reply with "personal" or "group".' }
@@ -150,7 +151,7 @@ const handleChooseGroupMessage = (
 ): GroupSettingsSelectorResult => {
   const match = matchManageableGroup(userId, text, platformInstanceId)
   if (match.kind === 'match') {
-    return continueWithTarget(userId, command, toTargetContextId(platformInstanceId, match.group.contextId), 'text')
+    return continueWithTarget(userId, command, toTargetContextId(platformInstanceId, match.group.contextId), 'text', platformInstanceId)
   }
   if (match.kind === 'ambiguous') {
     return {
@@ -173,11 +174,11 @@ export function startGroupSettingsSelection(
   userId: string,
   command: GroupSettingsCommand,
   interactiveButtons: boolean,
-  _platformInstanceId: string,
+  platformInstanceId: string,
 ): GroupSettingsSelectorResult {
   log.debug({ userId, command, interactiveButtons }, 'startGroupSettingsSelection called')
 
-  createGroupSettingsSession({ userId, command, stage: 'choose_scope' })
+  createGroupSettingsSession({ userId, platformInstanceId, command, stage: 'choose_scope' })
   return buildScopeResponse(interactiveButtons)
 }
 
@@ -188,23 +189,23 @@ export function handleGroupSettingsSelectorCallback(
 ): GroupSettingsSelectorResult {
   log.debug({ userId, callbackData }, 'handleGroupSettingsSelectorCallback called')
 
-  const session = getGroupSettingsSession(userId)
+  const session = getGroupSettingsSession(userId, platformInstanceId)
   if (session === null || !callbackData.startsWith('gsel:')) {
     return { handled: false }
   }
   if (callbackData === 'gsel:cancel') {
-    deleteGroupSettingsSession(userId)
+    deleteGroupSettingsSession(userId, platformInstanceId)
     return { handled: true, response: 'Cancelled group settings selection.' }
   }
   if (callbackData === 'gsel:scope:personal') {
-    deleteGroupSettingsSession(userId)
+    deleteGroupSettingsSession(userId, platformInstanceId)
     return {
       handled: true,
       continueWith: { command: session.command, targetContextId: toTargetContextId(platformInstanceId, userId) },
     }
   }
   if (callbackData === 'gsel:scope:group') {
-    updateGroupSettingsSession(userId, { stage: 'choose_group' })
+    updateGroupSettingsSession(userId, { stage: 'choose_group' }, platformInstanceId)
     return buildGroupResponse(userId, true, platformInstanceId)
   }
   if (!callbackData.startsWith('gsel:group:')) {
@@ -216,7 +217,13 @@ export function handleGroupSettingsSelectorCallback(
     return { handled: true, response: 'That group is no longer available. Run /config or /setup again.' }
   }
 
-  return continueWithTarget(userId, session.command, toTargetContextId(platformInstanceId, match.group.contextId), 'callback')
+  return continueWithTarget(
+    userId,
+    session.command,
+    toTargetContextId(platformInstanceId, match.group.contextId),
+    'callback',
+    platformInstanceId,
+  )
 }
 
 export function handleGroupSettingsSelectorMessage(
@@ -227,7 +234,7 @@ export function handleGroupSettingsSelectorMessage(
 ): GroupSettingsSelectorResult {
   log.debug({ userId, interactiveButtons }, 'handleGroupSettingsSelectorMessage called')
 
-  const session = getGroupSettingsSession(userId)
+  const session = getGroupSettingsSession(userId, platformInstanceId)
   if (session === null) {
     return { handled: false }
   }
