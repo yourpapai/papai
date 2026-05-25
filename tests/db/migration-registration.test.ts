@@ -18,8 +18,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('040_platform_instances')
   })
 
-  test('042 is the last migration', () => {
+  test('043 is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('042_user_workspace_config_backfill')
+    expect(lastMigration.id).toBe('043_scoped_context_ids')
   })
 })

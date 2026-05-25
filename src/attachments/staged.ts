@@ -35,6 +35,7 @@ const STAGED_STATUS_BY_VALUE: Readonly<Record<string, StagedFileStatus>> = {
 const toStagedStatus = (value: string): StagedFileStatus => STAGED_STATUS_BY_VALUE[value] ?? 'expired'
 
 type StagedRow = typeof stagedFiles.$inferSelect
+type StagedInsert = typeof stagedFiles.$inferInsert
 
 const toRef = (row: StagedRow): StagedFileRef => ({
   stagedId: row.stagedId,
@@ -58,7 +59,7 @@ const buildStagedValues = (
   stagedId: string,
   nowIso: string,
   expiresIso: string,
-): StagedRow => ({
+): StagedInsert => ({
   stagedId,
   contextId: params.contextId,
   messageId: params.messageId ?? null,

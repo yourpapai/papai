@@ -53,6 +53,7 @@ import { migration039Plugins } from './migrations/039_plugins.js'
 import { migration040PlatformInstances } from './migrations/040_platform_instances.js'
 import { migration041UsersPlatformInstanceIndex } from './migrations/041_users_platform_instance_index.js'
 import { migration042UserWorkspaceConfigBackfill } from './migrations/042_user_workspace_config_backfill.js'
+import { migration043ScopedContextIds } from './migrations/043_scoped_context_ids.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -130,6 +131,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration040PlatformInstances,
   migration041UsersPlatformInstanceIndex,
   migration042UserWorkspaceConfigBackfill,
+  migration043ScopedContextIds,
 ]
 
 export const initDb = (): void => {

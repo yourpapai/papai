@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { sql } from 'drizzle-orm'
-import { blob, sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
+import { blob, sqliteTable, text, integer, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable(
   'users',
@@ -22,6 +22,9 @@ export const users = sqliteTable(
     primaryKey({ columns: [table.platformInstanceId, table.platformUserId] }),
     index('idx_users_platform_user').on(table.platformInstanceId, table.platformUserId),
     index('idx_users_platform_username').on(table.platformInstanceId, table.username),
+    uniqueIndex('idx_users_platform_username_unique')
+      .on(table.platformInstanceId, table.username)
+      .where(sql`${table.username} IS NOT NULL`),
   ],
 )
 export const userConfig = sqliteTable(
