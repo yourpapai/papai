@@ -359,6 +359,15 @@ Tool exposure is capability-gated and also depends on context (`dm` vs `group`, 
 
 Current phase-five provider features such as sprints, activities, saved queries, and agiles are available at the provider layer but do not yet have corresponding tool wrappers.
 
+### User-Configurable Tool Access
+
+Beyond capability + context gating, each personal or managed-group context can disable
+tools. Preferences are an opt-out denylist (default: all enabled) stored as JSON under a
+reserved `tool_prefs` config key and applied as the final filter in `makeTools()`. The
+system prompt (`src/system-prompt.ts`) is composed from tool-gated fragments so it never
+instructs the agent to use a disabled tool, and appends an "Unavailable tools" line for
+partially-disabled domains. Managed via the "🧰 Tools" section of `/config`.
+
 ## Logging
 
 Logging is mandatory and uses pino with structured metadata-first calls.

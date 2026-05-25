@@ -33,6 +33,7 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 - `/clear` clears conversation history, summary, and facts for the current storage context. The bot admin can also clear another user or all users; non-bot group admins are limited to clearing the current group context.
 - `/group` is the group authorization command surface and must use `supportsUserResolution(chat)` before assuming `@username` lookup works.
 - `/plugin` is DM-only and bot-admin-only. Subcommands: `list`, `info <id>`, `approve <id>`, `reject <id>`, `enable <id> [context-id]`, `disable <id> [context-id]`. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly. Per-context plugin enable toggles are also surfaced as `plg:` inline buttons inside `/config`.
+- `/config` includes a "🧰 Tools" section. Tapping it opens a domain list; users toggle whole domains (`tgl:dom:`) or drill in (`tgl:open:`) to toggle individual tools (`tgl:tool:`) with risk labels. Callbacks are routed in `src/chat/interaction-router.ts` to `handleToolToggleInteraction`. Personal-vs-group targeting reuses the group-settings selector, identical to plugin toggles.
 
 ## Interception Flow
 
