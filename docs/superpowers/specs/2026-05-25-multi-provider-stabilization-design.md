@@ -8,7 +8,7 @@ See LICENSE in the project root for details.
 # Multi-Provider Stabilization Design
 
 **Date:** 2026-05-25
-**Status:** Draft
+**Status:** Implemented
 **Parent:** [`2026-04-13-multi-provider-router-design.md`](./2026-04-13-multi-provider-router-design.md)
 
 ## Summary
