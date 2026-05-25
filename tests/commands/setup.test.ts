@@ -392,7 +392,7 @@ describe('/setup command', () => {
     process.env['KANEO_AUTO_PROVISION'] = 'false'
     const { reply, textCalls } = createMockReply()
     let provisionCalls = 0
-    const provisionConfigs: Array<{ publicUrl: string; internalUrl: string | undefined }> = []
+    const provisionConfigs: Array<{ publicUrl: string | undefined; internalUrl: string | undefined }> = []
     let getContextSettingsImpl: SetupCommandDeps['getContextSettings'] = noContextSettings
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
@@ -440,5 +440,41 @@ describe('/setup command', () => {
     ])
     expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
     expect(textCalls).toContain('wizard-started')
+  })
+
+  test('reports missing assigned Kaneo task instance URL before starting wizard', async () => {
+    const { reply, textCalls } = createMockReply()
+    let provisionCalls = 0
+    const deps: SetupCommandDeps = {
+      isAuthorizedGroup: () => true,
+      provisionAndConfigure: (_userId, _username, config) => {
+        provisionCalls++
+        expect(config).toEqual({ publicUrl: ' ', internalUrl: undefined })
+        return Promise.resolve({ status: 'failed', error: 'Kaneo task instance public URL is missing' })
+      },
+      createWizard: () => ({ success: true, prompt: 'wizard-started' }),
+      getConfig: () => null,
+      getKaneoWorkspace: () => null,
+      getContextSettings: () => ({
+        contextId: 'group-1',
+        taskInstanceId: 'kaneo-prod',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: () => ({
+        id: 'kaneo-prod',
+        type: 'kaneo',
+        config: { baseUrl: ' ' },
+        status: 'active',
+        createdAt: '2026-05-23T00:00:00.000Z',
+      }),
+      startTaskInstanceSelection: () => ({ status: 'assigned', taskProvider: 'kaneo' }),
+    }
+
+    await startSetupForTarget('admin-1', reply, 'group-1', 'telegram-default', deps)
+
+    expect(provisionCalls).toBe(1)
+    expect(textCalls).toEqual([
+      'Kaneo account could not be created for this group: Kaneo task instance public URL is missing',
+    ])
   })
 })

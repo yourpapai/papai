@@ -31,6 +31,11 @@ type ProvisionResult = {
   workspaceId: string
 }
 
+type NormalizedProvisionConfig = Readonly<{
+  publicUrl: string
+  internalUrl: string | undefined
+}>
+
 const REGISTRATION_DISABLED_MARKERS = ['signup_disabled', 'registration disabled', 'sign up is disabled'] as const
 
 function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
@@ -185,20 +190,36 @@ export type ProvisionOutcome =
   | { status: 'failed'; error: string }
 
 export type ProvisionConfig = Readonly<{
-  publicUrl: string
+  publicUrl: string | undefined
   internalUrl: string | undefined
 }>
+
+function normalizeProvisionConfig(config: ProvisionConfig): NormalizedProvisionConfig | null {
+  const publicUrl = config.publicUrl
+  if (publicUrl === undefined) return null
+  const trimmedPublicUrl = publicUrl.trim()
+  if (trimmedPublicUrl === '') return null
+
+  const internalUrl = config.internalUrl
+  if (internalUrl === undefined) return { publicUrl: trimmedPublicUrl, internalUrl: undefined }
+  const trimmedInternalUrl = internalUrl.trim()
+  if (trimmedInternalUrl === '') return { publicUrl: trimmedPublicUrl, internalUrl: undefined }
+  return { publicUrl: trimmedPublicUrl, internalUrl: trimmedInternalUrl }
+}
 
 export async function provisionAndConfigure(
   userId: string,
   username: string | null,
   config: ProvisionConfig,
 ): Promise<ProvisionOutcome> {
+  const normalizedConfig = normalizeProvisionConfig(config)
+  if (normalizedConfig === null) return { status: 'failed', error: 'Kaneo task instance public URL is missing' }
+
   try {
-    const kaneoUrl = config.publicUrl
+    const kaneoUrl = normalizedConfig.publicUrl
     let kaneoInternalUrl = kaneoUrl
-    if (config.internalUrl !== undefined) {
-      kaneoInternalUrl = config.internalUrl
+    if (normalizedConfig.internalUrl !== undefined) {
+      kaneoInternalUrl = normalizedConfig.internalUrl
     }
     const result = await provisionKaneoUser(kaneoInternalUrl, kaneoUrl, userId, username)
     setConfig(userId, 'kaneo_apikey', result.kaneoKey)
@@ -238,13 +259,6 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
   }
 
   const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
-  if (publicUrl === undefined || publicUrl.trim() === '') {
-    provLog.warn(
-      { contextId, taskInstanceId: taskInstance.id },
-      'Kaneo auto-provisioning skipped: task instance URL missing',
-    )
-    return
-  }
   const internalUrl = taskInstance.config['internalUrl']
 
   provLog.info({ contextId, username }, 'Auto-provisioning Kaneo account')
@@ -261,6 +275,7 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
     )
     provLog.warn({ contextId }, 'Kaneo auto-provisioning failed: registration disabled')
   } else {
+    await reply.text(`Kaneo account could not be created — ${outcome.error}. Please ask the admin to check setup.`)
     provLog.error({ contextId, error: outcome.error }, 'Kaneo auto-provisioning failed')
   }
 }

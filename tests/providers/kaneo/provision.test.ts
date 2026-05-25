@@ -409,6 +409,17 @@ describe('provisionKaneoUser - unique email generation', () => {
     expect(getCachedTools('group-1:user-b')).toBeUndefined()
     expect(getCachedTools('group-2:user-c')).toEqual({ scope: 'other-group' })
   })
+
+  test('provisionAndConfigure fails clearly when public URL is blank', async () => {
+    setMockFetch(() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 })))
+
+    const result = await provisionAndConfigure('user-missing-url', 'testuser', {
+      publicUrl: '   ',
+      internalUrl: undefined,
+    })
+
+    expect(result).toEqual({ status: 'failed', error: 'Kaneo task instance public URL is missing' })
+  })
 })
 
 describe('maybeProvisionKaneo', () => {
@@ -485,6 +496,32 @@ describe('maybeProvisionKaneo', () => {
     expect(textCalls[0]).toContain('https://kaneo.public.invalid')
     expect(requestedUrls.every((url) => url.startsWith('https://kaneo.internal.invalid/'))).toBe(true)
     expect(origins).toEqual(['undefined', 'https://kaneo.public.invalid', 'https://kaneo.public.invalid'])
+  })
+
+  test('reports missing assigned task instance URL during auto-provisioning', async () => {
+    insertTaskInstance({
+      id: 'kaneo-missing-url',
+      type: 'kaneo',
+      status: 'active',
+      config: { url: '   ' },
+    })
+    setContextSettings({
+      contextId: 'ctx-missing-url',
+      taskInstanceId: 'kaneo-missing-url',
+      platformInstanceId: 'telegram-default',
+    })
+    let fetchCalls = 0
+    setMockFetch(() => {
+      fetchCalls += 1
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    })
+
+    await maybeProvisionKaneo(mockReply, 'ctx-missing-url', 'alice')
+
+    expect(fetchCalls).toBe(0)
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Kaneo account could not be created')
+    expect(textCalls[0]).toContain('public URL is missing')
   })
 
   test('skips auto-provisioning when context has no task assignment', async () => {

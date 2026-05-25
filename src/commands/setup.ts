@@ -80,13 +80,12 @@ function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): str
 function getKaneoProvisionConfig(
   targetContextId: string,
   deps: SetupCommandDeps,
-): { publicUrl: string; internalUrl: string | undefined } | null {
+): { publicUrl: string | undefined; internalUrl: string | undefined } | null {
   const settings = deps.getContextSettings(targetContextId)
   if (settings === null) return null
   const taskInstance = deps.getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return null
   const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
-  if (publicUrl === undefined || publicUrl.trim() === '') return null
   return { publicUrl, internalUrl: taskInstance.config['internalUrl'] }
 }
 
