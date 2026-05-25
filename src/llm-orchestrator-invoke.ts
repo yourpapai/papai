@@ -195,7 +195,19 @@ export const buildToolCallFinishHandler =
 export const invokeModel = async (
   args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  const { contextId, chatUserId, contextType, mainModel, model, provider, tools, messages, deps, turnId, enabledToolNames } = args
+  const {
+    contextId,
+    chatUserId,
+    contextType,
+    mainModel,
+    model,
+    provider,
+    tools,
+    messages,
+    deps,
+    turnId,
+    enabledToolNames,
+  } = args
   const start = Date.now()
   emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting, turnId)
   const ctx: ToolCallContext = {

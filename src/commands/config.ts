@@ -8,12 +8,12 @@ import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/cap
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
 import { getAllConfig, getPluginConfig, maskValue } from '../config.js'
-import { getToolPrefs } from '../tools/tool-preferences.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
+import { getToolPrefs } from '../tools/tool-preferences.js'
 import { CONFIG_KEYS, type ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'commands:config' })
@@ -145,7 +145,8 @@ export async function renderConfigForTarget(
   lines.push(...aiOutputSection.lines)
   appendPluginConfigLines(lines, targetContextId)
   const toolPrefs = getToolPrefs(targetContextId)
-  const disabledCount = toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
+  const disabledCount =
+    toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
   lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
 
   if (!interactiveButtons) {
