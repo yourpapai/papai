@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../logger.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatProvider,
   CommandHandler,
@@ -15,7 +16,6 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../types.js'
-import { buildScopedCommandAuth } from '../command-auth.js'
 import { checkChannelAdmin } from './channel-helpers.js'
 import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
@@ -36,8 +36,6 @@ import { createMattermostReplyFn } from './reply-helpers.js'
 import { ChannelSchema, extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
 
 const log = logger.child({ scope: 'chat:mattermost' })
-
-let mattermostFileFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
 
 type PostedMessageResult = {
   msg: IncomingMessage
@@ -113,7 +111,6 @@ export class MattermostChatProvider implements ChatProvider {
     const user = UserMeSchema.parse(data)
     this.botUserId = user.id
     this.botUsername = typeof user.username === 'string' ? user.username : null
-    mattermostFileFetcher = (fileId): Promise<Buffer | null> => downloadMattermostFile(this.baseUrl, this.token, fileId)
     log.info({ botUserId: this.botUserId, botUsername: this.botUsername }, 'Mattermost bot started')
     this.connectWebSocket()
   }
@@ -269,6 +266,9 @@ export class MattermostChatProvider implements ChatProvider {
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveMattermostGroupLabel(this.apiFetch.bind(this), groupId)
   }
+  downloadFile(fileId: string): Promise<Buffer | null> {
+    return downloadMattermostFile(this.baseUrl, this.token, fileId)
+  }
   resolveUserLabel(userId: string): Promise<string | null>
   resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null>
   resolveUserLabel(userId: string, ..._rest: [] | [ResolveUserContext | undefined]): Promise<string | null> {
@@ -289,8 +289,4 @@ export class MattermostChatProvider implements ChatProvider {
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderMattermostContext(snapshot)
   }
-}
-
-export function getMattermostFileFetcher(): ((fileId: string) => Promise<Buffer | null>) | undefined {
-  return mattermostFileFetcher
 }

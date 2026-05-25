@@ -103,8 +103,6 @@ describe('index.ts - graceful shutdown', () => {
     let capturedAnnouncementPlatformInstanceId: string | undefined
     const resolverContexts: string[] = []
     const loggedErrors: Array<readonly unknown[]> = []
-    let telegramFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
-    let mattermostFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
     let createChatProviderCalls = 0
     let createChatProviderFromConfigCalls = 0
     const runtimeRouterCalls: ChatProvider[] = []
@@ -141,21 +139,20 @@ describe('index.ts - graceful shutdown', () => {
       isS3Configured: (): boolean => true,
     }))
     void mock.module('../src/attachments/staged-download.js', () => ({
-      createStagedDownloader: (deps: {
-        telegramFetcher: (fileId: string) => Promise<Buffer | null>
-        mattermostFetcher: (fileId: string) => Promise<Buffer | null>
-      }): ((
-        fileId: string,
-        sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
-      ) => Promise<Buffer | null>) => {
-        const fetchers = {
-          telegram: deps.telegramFetcher,
-          mattermost: deps.mattermostFetcher,
-          discord: (): Promise<Buffer | null> => Promise.resolve(null),
-          unknown: (): Promise<Buffer | null> => Promise.resolve(null),
-        } as const
-        return (fileId, sourceProvider) => fetchers[sourceProvider](fileId)
-      },
+      createStagedDownloader:
+        (deps: {
+          downloadFileFromInstance: (
+            platformInstanceId: string,
+            sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
+            fileId: string,
+          ) => Promise<Buffer | null>
+        }) =>
+        (
+          fileId: string,
+          sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
+          platformInstanceId: string,
+        ): Promise<Buffer | null> =>
+          deps.downloadFileFromInstance(platformInstanceId, sourceProvider, fileId),
     }))
     void mock.module('../src/bot.js', () => ({
       setupBot: (_chat: ChatProvider, _adminUserId: string, deps: BotDeps): void => {
@@ -213,6 +210,14 @@ describe('index.ts - graceful shutdown', () => {
           return chatProvider.sendMessage(...args)
         }
 
+        downloadFileFromInstance(
+          platformInstanceId: string,
+          sourceProvider: 'telegram' | 'mattermost' | 'discord' | 'unknown',
+          fileId: string,
+        ): Promise<Buffer | null> {
+          return Promise.resolve(Buffer.from(`${sourceProvider}:${platformInstanceId}:${fileId}`))
+        }
+
         renderContext(
           snapshot: Parameters<ChatProvider['renderContext']>[0],
         ): ReturnType<ChatProvider['renderContext']> {
@@ -231,12 +236,6 @@ describe('index.ts - graceful shutdown', () => {
     }))
     void mock.module('../src/chat/startup.js', () => ({
       registerCommandMenuIfSupported: (): Promise<void> => Promise.resolve(),
-    }))
-    void mock.module('../src/chat/telegram/index.js', () => ({
-      getTelegramFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => telegramFetcher,
-    }))
-    void mock.module('../src/chat/mattermost/index.js', () => ({
-      getMattermostFileFetcher: (): ((fileId: string) => Promise<Buffer | null>) | undefined => mattermostFetcher,
     }))
     void mock.module('../src/db/drizzle.js', () => ({
       closeDrizzleDb: (): void => undefined,
@@ -352,19 +351,15 @@ describe('index.ts - graceful shutdown', () => {
     assert.ok(capturedDeps !== undefined)
     assert.ok(capturedDeps.stagedDownloadFn !== undefined)
 
-    telegramFetcher = (fileId: string): Promise<Buffer | null> => Promise.resolve(Buffer.from(`telegram:${fileId}`))
-
-    const downloaded = await capturedDeps.stagedDownloadFn('file-123', 'telegram')
+    const downloaded = await capturedDeps.stagedDownloadFn('file-123', 'telegram', 'telegram-active')
 
     assert.ok(downloaded !== null)
-    expect(downloaded.toString()).toBe('telegram:file-123')
+    expect(downloaded.toString()).toBe('telegram:telegram-active:file-123')
 
-    mattermostFetcher = (fileId: string): Promise<Buffer | null> => Promise.resolve(Buffer.from(`mattermost:${fileId}`))
-
-    const mattermostDownloaded = await capturedDeps.stagedDownloadFn('file-456', 'mattermost')
+    const mattermostDownloaded = await capturedDeps.stagedDownloadFn('file-456', 'mattermost', 'mattermost-active')
 
     assert.ok(mattermostDownloaded !== null)
-    expect(mattermostDownloaded.toString()).toBe('mattermost:file-456')
+    expect(mattermostDownloaded.toString()).toBe('mattermost:mattermost-active:file-456')
   })
 
   test('global preload restores the real message queue module before the next test', async () => {

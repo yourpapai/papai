@@ -6,6 +6,7 @@
 import { Bot, type Context } from 'grammy'
 
 import { logger } from '../../logger.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatProvider,
   CommandHandler,
@@ -19,10 +20,9 @@ import type {
   ReplyOptions,
   ResolveUserContext,
 } from '../types.js'
-import { buildScopedCommandAuth } from '../command-auth.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
-import { createTelegramFileFetcher, getTelegramFileFetcher } from './file-fetcher.js'
+import { createTelegramFileFetcher } from './file-fetcher.js'
 import { extractFileCandidatesFromContext, extractFilesFromContext } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
@@ -51,7 +51,6 @@ import {
   telegramIsBotMentioned,
 } from './reply-helpers.js'
 export { extractReplyContext } from './message-extraction.js'
-export { getTelegramFileFetcher } from './file-fetcher.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
 const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
@@ -88,7 +87,6 @@ export class TelegramChatProvider implements ChatProvider {
     this.platformInstanceId = platformInstanceId
     this.bot = new Bot(token)
     log.debug({ platformInstanceId: this.platformInstanceId }, 'TelegramChatProvider constructed')
-    createTelegramFileFetcher(this.bot.api, this.token, log)
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
   registerCommand(name: string, handler: CommandHandler): void {
@@ -181,6 +179,9 @@ export class TelegramChatProvider implements ChatProvider {
   }
   async setCommands(adminUserId: string): Promise<void> {
     await registerTelegramCommands(this.bot, adminUserId)
+  }
+  downloadFile(fileId: string): Promise<Buffer | null> {
+    return createTelegramFileFetcher(this.bot.api, this.token, log)(fileId)
   }
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderTelegramContext(snapshot)
@@ -286,9 +287,6 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const fetcher = getTelegramFileFetcher()
-    if (fetcher === undefined)
-      return extractFilesFromContext(ctx, createTelegramFileFetcher(this.bot.api, this.token, log))
-    return extractFilesFromContext(ctx, fetcher)
+    return extractFilesFromContext(ctx, (fileId) => this.downloadFile(fileId))
   }
 }

@@ -5,16 +5,23 @@
 
 import pLimit from 'p-limit'
 
+import type { AttachmentSourceProvider } from '../attachments/types.js'
 import { getContextSettings } from '../instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import {
   activeManagedInstances,
+  capabilitiesForManagedInstance,
+  downloadFileFromManagedInstance,
   errorMessage,
-  fallbackContextRendered,
-  fallbackThreadCapabilities,
-  fallbackTraits,
-  firstActiveManagedInstance,
+  managedInstanceOrNull,
+  managedInstanceSnapshots,
+  providerForManagedInstance,
+  renderContextForManagedInstance,
+  renderContextFromManagedInstances,
+  threadCapabilitiesForManagedInstances,
+  traitsForManagedInstance,
+  traitsForManagedInstances,
 } from './router-helpers.js'
 import type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
@@ -49,9 +56,7 @@ export class ChatRouter implements ChatProvider {
   constructor(private readonly factory: ManagedChatInstanceFactory) {}
 
   get threadCapabilities(): ThreadCapabilities {
-    const instance = firstActiveManagedInstance(this.instances.values())
-    if (instance === null) return fallbackThreadCapabilities
-    return instance.provider.threadCapabilities
+    return threadCapabilitiesForManagedInstances(this.instances.values())
   }
 
   get capabilities(): ReadonlySet<ChatCapability> {
@@ -59,9 +64,7 @@ export class ChatRouter implements ChatProvider {
   }
 
   get traits(): ChatProviderTraits {
-    const instance = firstActiveManagedInstance(this.instances.values())
-    if (instance === null) return fallbackTraits
-    return instance.provider.traits
+    return traitsForManagedInstances(this.instances.values())
   }
 
   addInstance(id: string, type: PlatformInstanceType, config: InstanceConfig): ManagedChatInstance {
@@ -90,17 +93,11 @@ export class ChatRouter implements ChatProvider {
   }
 
   getInstance(id: string): ManagedChatInstance | null {
-    const instance = this.instances.get(id)
-    if (instance === undefined) return null
-    return instance
+    return managedInstanceOrNull(this.instances.get(id))
   }
 
   listInstances(): readonly ManagedChatInstanceSnapshot[] {
-    return [...this.instances.values()].map((instance) => ({
-      id: instance.id,
-      type: instance.type,
-      status: instance.status,
-    }))
+    return managedInstanceSnapshots(this.instances.values())
   }
 
   async startInstance(id: string): Promise<void> {
@@ -172,15 +169,15 @@ export class ChatRouter implements ChatProvider {
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {
-    const instance = firstActiveManagedInstance(this.instances.values())
-    if (instance === null) return fallbackContextRendered
-    return instance.provider.renderContext(snapshot)
+    return renderContextFromManagedInstances(this.instances.values(), snapshot)
   }
 
   renderContextForInstance(platformInstanceId: string, snapshot: ContextSnapshot): ContextRendered {
-    const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined) return this.renderContext(snapshot)
-    return instance.provider.renderContext(snapshot)
+    return renderContextForManagedInstance(
+      this.instances.get(platformInstanceId),
+      this.renderContext(snapshot),
+      snapshot,
+    )
   }
 
   async setCommands(adminUserId: string): Promise<void> {
@@ -191,15 +188,19 @@ export class ChatRouter implements ChatProvider {
   }
 
   getInstanceTraits(platformInstanceId: string): ChatProviderTraits | null {
-    const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined) return null
-    return instance.provider.traits
+    return traitsForManagedInstance(this.instances.get(platformInstanceId))
   }
 
   getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
-    const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined || instance.status !== 'active') return new Set()
-    return instance.provider.capabilities
+    return capabilitiesForManagedInstance(this.instances.get(platformInstanceId))
+  }
+
+  downloadFileFromInstance(
+    platformInstanceId: string,
+    sourceProvider: AttachmentSourceProvider,
+    fileId: string,
+  ): Promise<Buffer | null> {
+    return downloadFileFromManagedInstance(this.instances.get(platformInstanceId), sourceProvider, fileId)
   }
 
   resolveUserId(username: string, context: ResolveUserContext): Promise<string | null> {
@@ -267,9 +268,7 @@ export class ChatRouter implements ChatProvider {
   private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {
     const platformInstanceId = this.platformInstanceIdForResolveContext(context)
     if (platformInstanceId === null) return null
-    const instance = this.instances.get(platformInstanceId)
-    if (instance === undefined) return null
-    return instance.provider
+    return providerForManagedInstance(this.instances.get(platformInstanceId))
   }
 
   private platformInstanceIdForResolveContext(context: ResolveUserContext): string | null {

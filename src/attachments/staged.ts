@@ -48,6 +48,7 @@ const toRef = (row: StagedRow): StagedFileRef => ({
   size: row.size,
   platformFileId: row.platformFileId,
   sourceProvider: toSourceProvider(row.sourceProvider),
+  sourcePlatformInstanceId: row.sourcePlatformInstanceId,
   status: toStagedStatus(row.status),
   attachmentId: row.attachmentId,
   createdAt: row.createdAt,
@@ -70,6 +71,7 @@ const buildStagedValues = (
   size: params.size ?? null,
   platformFileId: params.platformFileId,
   sourceProvider: params.sourceProvider,
+  sourcePlatformInstanceId: params.sourcePlatformInstanceId,
   status: 'staged' as const,
   attachmentId: null,
   createdAt: nowIso,
@@ -97,6 +99,7 @@ export function stageFileMetadata(params: StageFileParams): StagedFileRef {
         filename: params.filename,
         mimeType: params.mimeType ?? null,
         size: params.size ?? null,
+        sourcePlatformInstanceId: params.sourcePlatformInstanceId,
         createdAt: nowIso,
         expiresAt: expiresIso,
         status: 'staged',
@@ -216,7 +219,11 @@ const downloadAndPersist = async (
   stagedId: string,
   downloadFn: StagedFileDownloadFn,
 ): Promise<AttachmentRef | StagedResolutionError> => {
-  const content = await downloadFn(row.platformFileId, toSourceProvider(row.sourceProvider))
+  const content = await downloadFn(
+    row.platformFileId,
+    toSourceProvider(row.sourceProvider),
+    row.sourcePlatformInstanceId,
+  )
   if (content === null) {
     markStagedStatus(stagedId, 'failed')
     return {

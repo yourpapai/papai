@@ -7,11 +7,9 @@ import { announceNewVersion } from './announcements.js'
 import { isS3Configured } from './attachments/index.js'
 import { createStagedDownloader } from './attachments/staged-download.js'
 import { setupBot, type BotDeps } from './bot.js'
-import { getMattermostFileFetcher } from './chat/mattermost/index.js'
 import { createChatProviderFromConfig } from './chat/registry.js'
 import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
-import { getTelegramFileFetcher } from './chat/telegram/index.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
@@ -103,16 +101,7 @@ log.info(
 )
 
 const createStagedDownloadFn = (): import('./attachments/types.js').StagedFileDownloadFn =>
-  createStagedDownloader({
-    telegramFetcher: (fileId) => {
-      const fetcher = getTelegramFileFetcher()
-      return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
-    },
-    mattermostFetcher: (fileId) => {
-      const fetcher = getMattermostFileFetcher()
-      return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
-    },
-  })
+  createStagedDownloader(chatProvider)
 
 const processMessage: BotDeps['processMessage'] = (...args) =>
   import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args))

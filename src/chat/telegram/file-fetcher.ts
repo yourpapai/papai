@@ -14,8 +14,6 @@ type TelegramFileLogger = {
   error: (metadata: Record<string, unknown>, message: string) => void
 }
 
-let telegramFileFetcher: TelegramFileFetcher | undefined
-
 export const createTelegramFileFetcher = (
   api: TelegramFileApi,
   token: string,
@@ -38,10 +36,5 @@ export const createTelegramFileFetcher = (
       return null
     }
   }
-  telegramFileFetcher = fetcher
   return fetcher
-}
-
-export function getTelegramFileFetcher(): TelegramFileFetcher | undefined {
-  return telegramFileFetcher
 }

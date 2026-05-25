@@ -65,6 +65,7 @@ export type StagedFileRef = {
   size: number | null
   platformFileId: string
   sourceProvider: AttachmentSourceProvider
+  sourcePlatformInstanceId: string
   status: StagedFileStatus
   attachmentId: string | null
   createdAt: string
@@ -81,6 +82,7 @@ export type StageFileParams = {
   size: number | null
   platformFileId: string
   sourceProvider: AttachmentSourceProvider
+  sourcePlatformInstanceId: string
 }
 
 export type StagedResolutionError =
@@ -92,4 +94,5 @@ export type StagedResolutionError =
 export type StagedFileDownloadFn = (
   platformFileId: string,
   sourceProvider: AttachmentSourceProvider,
+  sourcePlatformInstanceId: string,
 ) => Promise<Buffer | null>

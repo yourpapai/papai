@@ -28,6 +28,8 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 type FakeProvider = ChatProvider & {
   deliverMessage: (msg: IncomingMessage) => Promise<void>
   deliverInteraction: (interaction: IncomingInteraction) => Promise<void>
+  downloadFile: (fileId: string) => Promise<Buffer | null>
+  downloadFileCalls: string[]
   sent: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; markdown: string }>
   commandNames: string[]
   commandHandlers: Record<string, CommandHandler>
@@ -79,6 +81,7 @@ type FakeProviderOptions = Partial<{
   render: ContextRendered
   setCommands: (adminUserId: string, calls: string[]) => Promise<void>
   threadCapabilities: ThreadCapabilities
+  downloadFile: (fileId: string) => Promise<Buffer | null>
 }>
 
 const threadCapabilitiesForOptions = (options: FakeProviderOptions): ThreadCapabilities => {
@@ -114,6 +117,7 @@ const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider 
   const commandNames: string[] = []
   const commandHandlers: Record<string, CommandHandler> = {}
   const setCommandsCalls: string[] = []
+  const downloadFileCalls: string[] = []
   const setCommands = options.setCommands
   const render = options.render
   return {
@@ -139,6 +143,11 @@ const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider 
     resolveUserId: (username): Promise<string | null> => Promise.resolve(`${name}:${username}`),
     resolveUserLabel: (userId): Promise<string | null> => Promise.resolve(`${name}:${userId}`),
     resolveGroupLabel: (groupId): Promise<string | null> => Promise.resolve(`${name}:${groupId}`),
+    downloadFile: (fileId: string): Promise<Buffer | null> => {
+      downloadFileCalls.push(fileId)
+      if (options.downloadFile === undefined) return Promise.resolve(null)
+      return options.downloadFile(fileId)
+    },
     setCommands: (adminUserId): Promise<void> => {
       setCommandsCalls.push(adminUserId)
       if (setCommands === undefined) return Promise.resolve()
@@ -159,6 +168,7 @@ const makeProvider = (name: string, options: FakeProviderOptions): FakeProvider 
       await interactionHandler(interaction, fakeReply)
     },
     sent,
+    downloadFileCalls,
     commandNames,
     commandHandlers,
     setCommandsCalls,
@@ -428,6 +438,39 @@ describe('ChatRouter', () => {
     await capabilityRouter.stopInstance('telegram-a')
 
     expect(capabilityRouter.getPlatformInstanceCapabilities('telegram-a')).toEqual(new Set())
+  })
+
+  test('downloads staged files through the active exact source instance', async () => {
+    const bytes = Buffer.from('telegram-file')
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, { downloadFile: () => Promise.resolve(bytes) })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-a', 'telegram', {})
+    router.addInstance('telegram-b', 'telegram', {})
+    await router.startInstance('telegram-a')
+    await router.startInstance('telegram-b')
+
+    const result = await router.downloadFileFromInstance('telegram-a', 'telegram', 'file-1')
+
+    expect(result).toEqual(bytes)
+    expect(getProvider('telegram-a').downloadFileCalls).toEqual(['file-1'])
+    expect(getProvider('telegram-b').downloadFileCalls).toEqual([])
+  })
+
+  test('returns null when staged file source instance is missing inactive wrong-provider or lacks downloader', async () => {
+    router.addInstance('inactive', 'telegram', {})
+    router.addInstance('wrong-provider', 'mattermost', {})
+    router.addInstance('active-no-downloader', 'discord', {})
+    await router.startInstance('wrong-provider')
+    await router.startInstance('active-no-downloader')
+
+    expect(await router.downloadFileFromInstance('missing', 'telegram', 'file-1')).toBeNull()
+    expect(await router.downloadFileFromInstance('inactive', 'telegram', 'file-1')).toBeNull()
+    expect(await router.downloadFileFromInstance('wrong-provider', 'telegram', 'file-1')).toBeNull()
+    expect(await router.downloadFileFromInstance('active-no-downloader', 'discord', 'file-1')).toBeNull()
   })
 
   test('uses context settings to resolve users and groups when platform instance context is absent', async () => {

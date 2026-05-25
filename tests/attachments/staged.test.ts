@@ -10,9 +10,15 @@ import {
   purgeExpiredStagedFiles,
   resolveStagedFile,
   searchStagedFiles,
-  stageFileMetadata,
+  stageFileMetadata as rawStageFileMetadata,
 } from '../../src/attachments/staged.js'
+import type { StageFileParams, StagedFileRef } from '../../src/attachments/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+const stageFileMetadata = (
+  params: Omit<StageFileParams, 'sourcePlatformInstanceId'> &
+    Partial<Pick<StageFileParams, 'sourcePlatformInstanceId'>>,
+): StagedFileRef => rawStageFileMetadata({ sourcePlatformInstanceId: 'telegram-default', ...params })
 
 describe('staged file cache', () => {
   beforeEach(async () => {
@@ -495,5 +501,28 @@ describe('staged file cache', () => {
       const remaining = getDrizzleDb().select().from(sf).where(eq(sf.platformFileId, 'tg_timedout')).get()
       expect(remaining).toBeUndefined()
     })
+  })
+
+  test('passes source platform instance id to staged downloader', async () => {
+    const staged = await stageFileMetadata({
+      contextId: 'ctx-1',
+      messageId: 'msg-1',
+      senderId: 'sender-1',
+      senderUsername: 'alice',
+      filename: 'note.txt',
+      mimeType: 'text/plain',
+      size: 4,
+      platformFileId: 'file-1',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-a',
+    })
+    const calls: Array<{ fileId: string; sourceProvider: string; sourcePlatformInstanceId: string }> = []
+
+    await resolveStagedFile(staged.stagedId, 'ctx-1', (fileId, sourceProvider, sourcePlatformInstanceId) => {
+      calls.push({ fileId, sourceProvider, sourcePlatformInstanceId })
+      return Promise.resolve(Buffer.from('test'))
+    })
+
+    expect(calls).toEqual([{ fileId: 'file-1', sourceProvider: 'telegram', sourcePlatformInstanceId: 'telegram-a' }])
   })
 })

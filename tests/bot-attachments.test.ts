@@ -17,6 +17,7 @@ import { loadAttachmentRecord } from '../src/attachments/store.js'
 import type { StagedFileRef, StageFileParams } from '../src/attachments/types.js'
 import { addAuthorizedGroup } from '../src/authorized-groups.js'
 import { setupBot } from '../src/bot.js'
+import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider, ReplyFn } from '../src/chat/types.js'
 import type { IncomingFile, IncomingFileCandidate, IncomingMessage } from '../src/chat/types.js'
 import { mockLogger, setupTestDb, createMockChat, createDmMessage, createGroupMessage } from './utils/test-helpers.js'
@@ -182,6 +183,45 @@ describe('bot-attachments', () => {
       expect(staged).toHaveLength(2)
     })
 
+    test('stages candidates with source platform instance id', async () => {
+      const { stageGroupFileCandidates } = await import('../src/bot-attachments.js')
+      const stagedParams: StageFileParams[] = []
+      const msg: IncomingMessage = {
+        ...createGroupMessage('group-user', 'hello'),
+        platformInstanceId: 'telegram-a',
+        messageId: 'msg-source-instance',
+        fileCandidates: [makeCandidate({ fileId: 'f-source' })],
+      }
+
+      stageGroupFileCandidates(
+        { storageContextId: 'group-1', msg, sourceProvider: 'telegram' },
+        {
+          stageFileMetadataFn: (params) => {
+            stagedParams.push(params)
+            return {
+              stagedId: 'stg_1',
+              contextId: params.contextId,
+              messageId: params.messageId,
+              senderId: params.senderId,
+              senderUsername: params.senderUsername,
+              filename: params.filename,
+              mimeType: params.mimeType,
+              size: params.size,
+              platformFileId: params.platformFileId,
+              sourceProvider: params.sourceProvider,
+              sourcePlatformInstanceId: params.sourcePlatformInstanceId,
+              status: 'staged',
+              attachmentId: null,
+              createdAt: 'now',
+              expiresAt: 'later',
+            }
+          },
+        },
+      )
+
+      expect(stagedParams.map((params) => params.sourcePlatformInstanceId)).toEqual(['telegram-a'])
+    })
+
     test('uses source instance provider when staging router-delivered candidates', async () => {
       const sourceProvider = { ...createMockChat(), name: 'mattermost' }
       const { chat, getMessageHandler } = createRouterLikeChat(sourceProvider)
@@ -201,7 +241,8 @@ describe('bot-attachments', () => {
 
       await handler(msg, { text: async () => {}, formatted: async () => {}, buttons: async () => {}, typing: () => {} })
 
-      const staged = findStagedFilesByMessageId('group-1', 'msg-router')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'mattermost-source', nativeContextId: 'group-1' })
+      const staged = findStagedFilesByMessageId(scopedGroupId, 'msg-router')
       expect(staged[0]).not.toBeUndefined()
       assert.ok(staged[0] !== undefined, 'expected staged attachment')
       expect(staged[0].sourceProvider).toBe('mattermost')

@@ -11,8 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider, getTelegramFileFetcher } from '../../../src/chat/telegram/index.js'
-import type { AuthorizationResult } from '../../../src/chat/types.js'
+import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -21,8 +20,9 @@ import {
   type CacheContext,
   type MinimalContext,
 } from '../../../src/chat/telegram/message-extraction.js'
+import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { DeferredDeliveryTarget, IncomingMessage, ReplyFn } from '../../../src/chat/types.js'
-import { mockLogger } from '../../utils/test-helpers.js'
+import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type EditMessageCall = [text: string, options: Partial<{ reply_markup: unknown }> | undefined]
 type SendMessageCall = [
@@ -128,13 +128,32 @@ describe('TelegramChatProvider', () => {
     expect(typeof TelegramChatProvider).toBe('function')
   })
 
-  test('eagerly initializes module-level file fetcher on construction', () => {
+  test('downloads files through the provider instance', async () => {
     process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
     const provider = new TelegramChatProvider()
-    expect(provider).toBeDefined()
-    const fetcher = getTelegramFileFetcher()
-    expect(typeof fetcher).toBe('function')
-    delete process.env['TELEGRAM_BOT_TOKEN']
+    Reflect.set(provider, 'bot', {
+      api: {
+        getFile: (fileId: string): Promise<{ file_path: string }> => {
+          expect(fileId).toBe('file-1')
+          return Promise.resolve({ file_path: 'docs/file.txt' })
+        },
+      },
+    })
+    setMockFetch((url) => {
+      expect(url).toBe('https://api.telegram.org/file/bottest-token/docs/file.txt')
+      return Promise.resolve(new Response('file-bytes'))
+    })
+
+    try {
+      const downloaded = await provider.downloadFile('file-1')
+
+      expect(provider).toBeDefined()
+      assert.ok(downloaded !== null, 'Expected downloaded file bytes')
+      expect(downloaded.toString()).toBe('file-bytes')
+    } finally {
+      restoreFetch()
+      delete process.env['TELEGRAM_BOT_TOKEN']
+    }
   })
 
   describe('thread capabilities', () => {
@@ -430,23 +449,30 @@ describe('TelegramChatProvider', () => {
         registeredHandler = handler
       }
       Reflect.set(provider as object, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(true))
-      Reflect.set(provider as object, 'extractMessage', (): Promise<IncomingMessage> =>
-        Promise.resolve({
-          user: { id: '42', username: 'alice', isAdmin: true },
-          contextId: '100',
-          contextType: 'group',
-          isMentioned: true,
-          text: '/setup',
-          platformInstanceId: 'telegram-secondary',
-          threadId: '5',
+      Reflect.set(
+        provider as object,
+        'extractMessage',
+        (): Promise<IncomingMessage> =>
+          Promise.resolve({
+            user: { id: '42', username: 'alice', isAdmin: true },
+            contextId: '100',
+            contextType: 'group',
+            isMentioned: true,
+            text: '/setup',
+            platformInstanceId: 'telegram-secondary',
+            threadId: '5',
+          }),
+      )
+      Reflect.set(
+        provider as object,
+        'buildReplyFn',
+        (): ReplyFn => ({
+          text: async (): Promise<void> => {},
+          formatted: async (): Promise<void> => {},
+          buttons: async (): Promise<void> => {},
+          typing: (): void => {},
         }),
       )
-      Reflect.set(provider as object, 'buildReplyFn', (): ReplyFn => ({
-        text: async (): Promise<void> => {},
-        formatted: async (): Promise<void> => {},
-        buttons: async (): Promise<void> => {},
-        typing: (): void => {},
-      }))
       let auth: AuthorizationResult | undefined
       provider.registerCommand('setup', (_msg, _reply, commandAuth): Promise<void> => {
         auth = commandAuth
