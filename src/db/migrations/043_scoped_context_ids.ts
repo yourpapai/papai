@@ -5,7 +5,7 @@
 
 import type { Database } from 'bun:sqlite'
 
-import { toScopedContextId, toScopedThreadContextId } from '../../chat/scoped-context.js'
+import { isScopedContextId, toScopedContextId, toScopedThreadContextId } from '../../chat/scoped-context.js'
 import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
 import { CONTEXT_OWNED_COLUMNS, type ContextOwnedColumn } from './043_scoped_context_ids_columns.js'
@@ -31,7 +31,6 @@ type ContextOwnedRow = Readonly<{
 }> &
   Readonly<Record<string, string | number | null>>
 
-const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u
 const UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID = '__unscoped_legacy__'
 
 const tableExists = (db: Database, table: string): boolean =>
@@ -74,7 +73,7 @@ const parseLegacyThreadKey = (value: string): { nativeContextId: string; threadI
 
 const scopeValue = (platformInstanceId: string, value: string | null, threadScoped: boolean): string | null => {
   if (value === null) return null
-  if (SCOPED_CONTEXT_ID_PATTERN.test(value)) return value
+  if (isScopedContextId(value)) return value
   const legacyThreadKey = threadScoped ? parseLegacyThreadKey(value) : null
   if (legacyThreadKey !== null) {
     return toScopedThreadContextId({ platformInstanceId, ...legacyThreadKey })
@@ -118,7 +117,7 @@ const getContextOwnedRows = (db: Database, input: ContextOwnedColumn): readonly 
       `SELECT rowid, ${input.column} AS value${selectedConflictColumns.join('')} FROM ${input.table} WHERE ${input.column} IS NOT NULL`,
     )
     .all()
-    .filter((row) => !SCOPED_CONTEXT_ID_PATTERN.test(row.value))
+    .filter((row) => !isScopedContextId(row.value))
 }
 
 const scopeContextOwnedColumn = (db: Database, platformInstanceId: string, input: ContextOwnedColumn): void => {

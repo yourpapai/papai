@@ -8,7 +8,7 @@ import { parseScopedContextId } from '../chat/scoped-context.js'
 export const matchesAdminPlatformInstance = (contextId: string, platformInstanceId: string | undefined): boolean => {
   if (platformInstanceId === undefined) return true
   const parsed = parseScopedContextId(contextId)
-  if (parsed === null) return true
+  if (parsed === null) return false
   return parsed.platformInstanceId === platformInstanceId
 }
 

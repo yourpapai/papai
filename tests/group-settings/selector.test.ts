@@ -79,7 +79,7 @@ describe('group settings selector', () => {
 
   test('returns a continuation when the user selects a manageable group', () => {
     upsertKnownGroupContext({
-      contextId: 'group-1',
+      contextId: scopedGroup1,
       provider: 'telegram',
       displayName: 'Operations',
       parentName: 'Platform',
@@ -87,7 +87,7 @@ describe('group settings selector', () => {
     addAuthorizedGroup(scopedGroup1, 'admin-id')
     upsertGroupAdminObservation({
       provider: 'telegram',
-      contextId: 'group-1',
+      contextId: scopedGroup1,
       userId: 'user-1',
       username: 'alice',
       isAdmin: true,

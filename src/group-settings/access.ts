@@ -35,6 +35,7 @@ const getAuthorizedGroupId = (group: KnownGroupContext, platformInstanceId: stri
 
 const isAuthorizedGroupContext = (group: KnownGroupContext, platformInstanceId: string | undefined): boolean => {
   if (isAuthorizedGroup(getAuthorizedGroupId(group, platformInstanceId))) return true
+  if (platformInstanceId !== undefined) return false
   return isAuthorizedGroup(getNativeContextId(group.contextId))
 }
 

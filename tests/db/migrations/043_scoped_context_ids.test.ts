@@ -226,6 +226,17 @@ describe('migration043ScopedContextIds', () => {
     })
   })
 
+  test('scopes malformed scoped-looking legacy native ids instead of preserving them', () => {
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO user_config VALUES ('pi:abc:ctx:def', 'timezone', 'UTC')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query('SELECT user_id FROM user_config').get()).toEqual({
+      user_id: toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'pi:abc:ctx:def' }),
+    })
+  })
+
   test('preserves legacy raw thread keys as scoped thread context ids', () => {
     const scopedThread = toScopedThreadContextId({
       platformInstanceId: 'telegram-default',

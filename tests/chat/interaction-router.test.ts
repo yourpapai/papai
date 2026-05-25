@@ -63,25 +63,27 @@ const captureReplyText = (replies: string[]): ReplyFn['text'] => {
 }
 
 function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'): void {
+  const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
   upsertKnownGroupContext({
-    contextId: 'group-9',
+    contextId: scopedGroupId,
     provider: 'telegram',
     displayName: 'Operations',
     parentName: 'Platform',
   })
   upsertGroupAdminObservation({
     provider: 'telegram',
-    contextId: 'group-9',
+    contextId: scopedGroupId,
     userId,
     username: interaction.user.username,
     isAdmin: true,
   })
-  addAuthorizedGroup('group-9', 'admin-1')
+  addAuthorizedGroup(scopedGroupId, 'admin-1')
   createGroupSettingsSession({
     userId,
+    platformInstanceId: interaction.platformInstanceId,
     command,
     stage: 'active',
-    targetContextId: 'group-9',
+    targetContextId: scopedGroupId,
   })
 }
 
@@ -101,8 +103,12 @@ describe('routeInteraction', () => {
     await setupTestDb()
     deleteWizardSession(interaction.user.id, interaction.contextId)
     deleteEditorSession(interaction.user.id, interaction.contextId)
-    deleteEditorSession(interaction.user.id, 'group-9')
+    deleteEditorSession(
+      interaction.user.id,
+      toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+    )
     deleteGroupSettingsSession(interaction.user.id)
+    deleteGroupSettingsSession(interaction.user.id, interaction.platformInstanceId)
   })
 
   test('routes gsel callbacks through the group settings interaction dependency', async () => {
@@ -294,7 +300,7 @@ describe('routeInteraction', () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
     createEditorSession({
       userId: interaction.user.id,
-      storageContextId: 'group-9',
+      storageContextId: toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
       editingKey: 'timezone',
     })
 
@@ -320,7 +326,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -342,7 +355,11 @@ describe('routeInteraction', () => {
   test('clears stale active DM-selected group target when cfg callback allowlist access is lost', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
-    expect(removeAuthorizedGroup('group-9')).toBe(true)
+    expect(
+      removeAuthorizedGroup(
+        toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+      ),
+    ).toBe(true)
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -366,7 +383,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -393,7 +417,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     createEditorSession({
       userId: interaction.user.id,
@@ -486,26 +517,27 @@ describe('routeInteraction', () => {
   })
 
   test('starts setup for the selected group target', async () => {
+    const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
     upsertKnownGroupContext({
-      contextId: 'group-9',
+      contextId: scopedGroupId,
       provider: 'telegram',
       displayName: 'Operations',
       parentName: 'Platform',
     })
-    addAuthorizedGroup('group-9', 'admin-1')
-    const scopedGroupId = toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' })
+    addAuthorizedGroup(scopedGroupId, 'admin-1')
     assignKaneoContext(scopedGroupId)
     setConfig(scopedGroupId, 'kaneo_apikey', 'test-kaneo-key')
     setKaneoWorkspace(scopedGroupId, 'workspace-9')
     upsertGroupAdminObservation({
       provider: 'telegram',
-      contextId: 'group-9',
+      contextId: scopedGroupId,
       userId: interaction.user.id,
       username: interaction.user.username,
       isAdmin: true,
     })
     createGroupSettingsSession({
       userId: interaction.user.id,
+      platformInstanceId: interaction.platformInstanceId,
       command: 'setup',
       stage: 'choose_group',
     })
@@ -529,7 +561,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     const replies: string[] = []
     const handled = await routeInteraction(

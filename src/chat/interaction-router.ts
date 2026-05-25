@@ -83,7 +83,7 @@ async function validateImplicitDmConfigTarget(
   const message =
     previousActiveTarget === null
       ? 'That group is no longer available. Run /config or /setup again.'
-      : getMissingGroupTargetMessage(userId, previousActiveTarget)
+      : getMissingGroupTargetMessage(userId, previousActiveTarget, platformInstanceId)
   await replyTextPreferReplace(reply, message)
   return null
 }

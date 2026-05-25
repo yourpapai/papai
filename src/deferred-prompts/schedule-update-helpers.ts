@@ -4,16 +4,20 @@
 // See LICENSE in the project root for details.
 
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc } from '../utils/datetime.js'
 import { getScheduledPrompt } from './scheduled.js'
 import type { ScheduleInput } from './types.js'
 
-export type ScheduleFieldUpdates = {
-  fireAt?: string
-  rrule?: string | null
-  dtstartUtc?: string | null
-  timezone?: string | null
+export type ScheduleFieldUpdates = Partial<
+  Record<'fireAt', string> & Record<'rrule' | 'dtstartUtc' | 'timezone', string | null>
+>
+
+const getRecurrenceAnchor = (updates: ScheduleFieldUpdates, existing: NonNullable<ReturnType<typeof getScheduledPrompt>>): string => {
+  if (updates.fireAt !== undefined) return updates.fireAt
+  if (existing.dtstartUtc !== null) return existing.dtstartUtc
+  return existing.fireAt
 }
 
 export function buildScheduleUpdates(
@@ -21,7 +25,7 @@ export function buildScheduleUpdates(
   userId: string,
   schedule: ScheduleInput,
 ): ScheduleFieldUpdates | { error: string } {
-  const timezone = getUserTimezoneOrError(userId)
+  const timezone = getUserTimezoneOrError(getConfigContextIdFromStorageContextId(userId))
   if (typeof timezone !== 'string') return timezone
   const updates: ScheduleFieldUpdates = {}
   if (schedule.fire_at !== undefined) {
@@ -46,10 +50,7 @@ export function buildScheduleUpdates(
     const existing = getScheduledPrompt(id, userId)
     if (existing === null) return { error: 'Deferred prompt not found.' }
     const { startDate, startTime, ...scheduleRest } = schedule.rrule
-    const anchor =
-      startDate === undefined
-        ? (updates.fireAt ?? existing.dtstartUtc ?? existing.fireAt)
-        : localDatetimeToUtc(startDate, startTime, timezone)
+    const anchor = startDate === undefined ? getRecurrenceAnchor(updates, existing) : localDatetimeToUtc(startDate, startTime, timezone)
     const compiled = recurrenceSpecToRrule(
       { ...scheduleRest, dtstart: anchor } as Omit<Parameters<typeof recurrenceSpecToRrule>[0], 'timezone'>,
       timezone,

@@ -247,6 +247,20 @@ describe('group-settings registry', () => {
     ])
   })
 
+  test('does not expose unscoped legacy admin groups during scoped platform lookup', () => {
+    upsertKnownGroupContext({ contextId: 'legacy-group', provider: 'telegram', displayName: 'Legacy', parentName: null })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'legacy-group',
+      userId: 'same-native-user',
+      username: 'alice',
+      isAdmin: true,
+    })
+
+    expect(listAdminGroupContextsForUser('same-native-user', 'telegram-main')).toEqual([])
+    expect(listAdminGroupContextsForUser('same-native-user').map((group) => group.contextId)).toEqual(['legacy-group'])
+  })
+
   test('returns empty array when user has no admin groups', () => {
     upsertKnownGroupContext({ contextId: 'g-1', provider: 'telegram', displayName: 'Alpha', parentName: null })
     upsertGroupAdminObservation({

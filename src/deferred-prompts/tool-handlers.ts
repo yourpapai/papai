@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { emitUser } from '../debug/event-bus.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
 import { nextOccurrence, recurrenceSpecToRrule } from '../recurrence.js'
@@ -88,7 +89,7 @@ function createScheduled(
 ): CreateResult {
   const hasFireAt = schedule.fire_at !== undefined
   const hasRrule = schedule.rrule !== undefined
-  const timezone = getUserTimezoneOrError(userId)
+  const timezone = getUserTimezoneOrError(getConfigContextIdFromStorageContextId(userId))
   if (typeof timezone !== 'string') return timezone
 
   if (hasFireAt) {

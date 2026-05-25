@@ -596,6 +596,55 @@ describe('delivery classification persistence', () => {
     expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
   })
 
+  test('scoped group thread scheduled prompt uses main group timezone while storing thread owner', async () => {
+    const scopedMainGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
+    const tool = makeCreateDeferredPromptTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
+    assert.ok(tool.execute)
+
+    const result: unknown = await tool.execute(
+      { prompt: 'Scoped group scheduled', schedule: { fire_at: { date: '2027-01-15', time: '09:00' } } },
+      toolCtx,
+    )
+
+    const created = getScheduledPrompt(extractId(result), scopedThreadContextId)
+    expect(created).not.toBeNull()
+    expect(created!.createdByUserId).toBe(scopedThreadContextId)
+    expect(created!.fireAt).toBe('2027-01-15T08:00:00.000Z')
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+  })
+
+  test('scoped group thread scheduled update uses main group timezone while preserving thread owner', async () => {
+    const scopedMainGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
+    const create = makeCreateDeferredPromptTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
+    const update = makeUpdateDeferredPromptTool(scopedThreadContextId)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
+    const created: unknown = await create.execute(
+      { prompt: 'Scoped group scheduled', schedule: { fire_at: { date: '2027-01-15', time: '09:00' } } },
+      toolCtx,
+    )
+
+    await update.execute({ id: extractId(created), schedule: { fire_at: { date: '2027-01-16', time: '09:00' } } }, toolCtx)
+
+    const updated = getScheduledPrompt(extractId(created), scopedThreadContextId)
+    expect(updated).not.toBeNull()
+    expect(updated!.createdByUserId).toBe(scopedThreadContextId)
+    expect(updated!.fireAt).toBe('2027-01-16T08:00:00.000Z')
+  })
+
   test('scoped owner can list get update and cancel scoped deferred rows', async () => {
     const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
     setConfig(scopedUserId, 'timezone', 'UTC')

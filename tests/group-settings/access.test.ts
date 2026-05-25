@@ -103,6 +103,21 @@ describe('group settings access', () => {
     ])
   })
 
+  test('does not authorize unscoped legacy groups during scoped platform lookup', () => {
+    upsertKnownGroupContext({ contextId: 'legacy-group', provider: 'telegram', displayName: 'Legacy', parentName: null })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: 'legacy-group',
+      userId: 'same-native-user',
+      username: 'alice',
+      isAdmin: true,
+    })
+    addAuthorizedGroup('legacy-group', 'admin-1')
+
+    expect(listManageableGroups('same-native-user', 'telegram-main')).toEqual([])
+    expect(listManageableGroups('same-native-user').map((group) => group.contextId)).toEqual(['legacy-group'])
+  })
+
   test('matches by context id and display name and reports ambiguity', () => {
     upsertKnownGroupContext({
       contextId: 'group-1',
