@@ -700,6 +700,85 @@ describe('processMessage', () => {
       expect(textCalls[1]).toContain('AI execution details')
       expect(textCalls[1]).toContain('visible reasoning summary')
     })
+
+    test('group thread reasoning setting uses active storage context over config target', async () => {
+      const threadCtx = 'group-ctx:thread-42'
+      const parentConfigCtx = 'group-ctx'
+      seedConfigForContext(threadCtx)
+      seedConfigForContext(parentConfigCtx)
+      setCachedConfig(threadCtx, AI_REASONING_VISIBILITY_KEY, 'on')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'thread scoped reasoning',
+          reasoning: [{ type: 'reasoning', text: 'thread scoped reasoning' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const { reply, textCalls } = createMockReply()
+
+      await processMessage(reply, threadCtx, 'user-1', null, 'think', 'group', parentConfigCtx)
+
+      expect(textCalls[0]).toBe('Done!')
+      expect(textCalls[1]).toContain('AI execution details')
+      expect(textCalls[1]).toContain('thread scoped reasoning')
+    })
+
+    test('flush failure after final answer does not send generic error or rewind assistant history', async () => {
+      const ctx = 'flush-failure-ctx'
+      seedConfigForContext(ctx)
+      setCachedConfig(ctx, AI_REASONING_VISIBILITY_KEY, 'on')
+
+      generateTextImpl = (): Promise<GenerateTextResult> =>
+        Promise.resolve({
+          text: 'Done!',
+          reasoningText: 'details that fail to send',
+          reasoning: [{ type: 'reasoning', text: 'details that fail to send' }],
+          toolCalls: [],
+          toolResults: [],
+          steps: [],
+          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+          usage: {},
+          finishReason: 'stop',
+          warnings: undefined,
+          request: {},
+          providerMetadata: undefined,
+        })
+
+      const textCalls: string[] = []
+      const { reply: baseReply } = createMockReply()
+      const reply: ReplyFn = {
+        ...baseReply,
+        text: (content) => {
+          textCalls.push(content)
+          return Promise.resolve()
+        },
+        formatted: (content) => {
+          textCalls.push(content)
+          return content.includes('AI execution details')
+            ? Promise.reject(new Error('details send failed'))
+            : Promise.resolve()
+        },
+      }
+
+      await processMessage(reply, ctx, 'user-1', null, 'think', 'dm')
+
+      expect(textCalls).toEqual(['Done!', expect.stringContaining('AI execution details')])
+      const history = getCachedHistory(ctx)
+      expect(history).toHaveLength(2)
+      expect(history[0]!.role).toBe('user')
+      expect(history[1]!.role).toBe('assistant')
+      expect(history[1]!.content).toBe('Done!')
+    })
   })
 
   describe('success path history', () => {

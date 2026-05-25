@@ -79,7 +79,14 @@ const sendLlmResponse = async (
   const responseLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
   await reply.formatted(textToFormat)
-  await progressReporter?.flush()
+  try {
+    await progressReporter?.flush()
+  } catch (error) {
+    log.warn(
+      { contextId, error: error instanceof Error ? error.message : String(error) },
+      'AI progress details flush failed after final response',
+    )
+  }
   log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
 }
 
@@ -175,7 +182,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     userText,
     deps.stagedDownloadFn,
   )
-  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(configId))
+  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(contextId))
   const result = await invokeModelWithTyping(reply, {
     contextId,
     chatUserId,
