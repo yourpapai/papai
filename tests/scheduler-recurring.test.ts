@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { ChatProvider } from '../src/chat/types.js'
 import type { Task } from '../src/providers/types.js'
 
@@ -44,5 +45,34 @@ describe('scheduler-recurring notifyUser', () => {
     await notifyUser(chat, USER_ID, createdTask)
 
     expect(sentTo).toEqual(['telegram-default'])
+  })
+
+  test('sends scoped recurring notifications to native DM target', async () => {
+    const { notifyUser } = await import('../src/scheduler-recurring.js')
+    const sentTargets: Array<{ platformInstanceId: string; contextId: string }> = []
+    const chat = {
+      name: 'mock',
+      threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+      capabilities: new Set(),
+      traits: { observedGroupMessages: 'all' },
+      configRequirements: [],
+      registerCommand: () => {},
+      onMessage: () => {},
+      sendMessage: (platformInstanceId, target, _text): Promise<void> => {
+        sentTargets.push({ platformInstanceId, contextId: target.contextId })
+        return Promise.resolve()
+      },
+      renderContext: () => ({ method: 'text', content: '' }),
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+    } as const satisfies ChatProvider
+
+    await notifyUser(
+      chat,
+      toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID }),
+      createdTask,
+    )
+
+    expect(sentTargets).toEqual([{ platformInstanceId: 'telegram-default', contextId: USER_ID }])
   })
 })
