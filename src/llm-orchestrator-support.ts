@@ -68,7 +68,6 @@ const emitToolFailure = (
     result: toolFailure,
     error: toolFailure.error,
   })
-  if (reply === undefined) return
   deps.log.warn(
     {
       contextId,
@@ -79,6 +78,7 @@ const emitToolFailure = (
     },
     'Tool execution failed',
   )
+  if (reply === undefined) return
   void reply.text(`⚠️ Tool "${toolName}" failed: ${toolFailure.userMessage}`)
 }
 

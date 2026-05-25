@@ -11,9 +11,12 @@ import { emitUser } from './debug/event-bus.js'
 import { emitLlmEnd, emitLlmStart } from './llm-orchestrator-events.js'
 import { handleToolCallFinish } from './llm-orchestrator-support.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
+import { logger } from './logger.js'
 import { withReplyTypingHeartbeat } from './reply-typing-heartbeat.js'
 import { buildSystemPrompt } from './system-prompt.js'
 import { buildToolFailureResult, isToolFailureResult } from './tool-failure.js'
+
+const log = logger.child({ scope: 'llm-orchestrator:invoke' })
 
 export type ToolCallContext = {
   contextId: string
@@ -55,6 +58,40 @@ export type ToolCallFinishEvent = {
   error?: unknown
 }
 
+const reportToolStarted = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
+  try {
+    ctx.progressReporter?.toolStarted({
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      input: event.toolCall.input,
+    })
+  } catch (error) {
+    log.warn(
+      { contextId: ctx.contextId, toolName: event.toolCall.toolName, error: error instanceof Error ? error.message : String(error) },
+      'AI progress reporter failed on tool start',
+    )
+  }
+}
+
+const reportToolFinished = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
+  try {
+    ctx.progressReporter?.toolFinished({
+      toolName: event.toolCall.toolName,
+      toolCallId: event.toolCall.toolCallId,
+      input: event.toolCall.input,
+      durationMs: event.durationMs,
+      success: event.success,
+      output: event.output,
+      error: event.error,
+    })
+  } catch (error) {
+    log.warn(
+      { contextId: ctx.contextId, toolName: event.toolCall.toolName, error: error instanceof Error ? error.message : String(error) },
+      'AI progress reporter failed on tool finish',
+    )
+  }
+}
+
 export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
   emitUser(
     'tool:request',
@@ -67,11 +104,7 @@ export const handleToolCallStart = (ctx: ToolCallContext, event: ToolCallStartEv
     },
     ctx.turnId,
   )
-  ctx.progressReporter?.toolStarted({
-    toolName: event.toolCall.toolName,
-    toolCallId: event.toolCall.toolCallId,
-    input: event.toolCall.input,
-  })
+  reportToolStarted(ctx, event)
 }
 
 export const buildToolCallStartHandler =
@@ -121,7 +154,6 @@ const emitFailureClassified = (
 
 export const handleToolCallFinishEvent = (
   ctx: ToolCallContext,
-  reply: ReplyFn | undefined,
   event: ToolCallFinishEvent,
 ): void => {
   emitUser(
@@ -139,31 +171,20 @@ export const handleToolCallFinishEvent = (
     ctx.turnId,
   )
   emitFailureClassified(ctx, event)
-  ctx.progressReporter?.toolFinished({
-    toolName: event.toolCall.toolName,
-    toolCallId: event.toolCall.toolCallId,
-    input: event.toolCall.input,
-    durationMs: event.durationMs,
-    success: event.success,
-    output: event.output,
-    error: event.error,
-  })
+  reportToolFinished(ctx, event)
   handleToolCallFinish(ctx.contextId, undefined, event)
 }
 
 export const buildToolCallFinishHandler =
-  (
-    ctx: ToolCallContext,
-    reply: ReplyFn | undefined,
-  ): Parameters<typeof generateText>[0]['experimental_onToolCallFinish'] =>
+  (ctx: ToolCallContext): Parameters<typeof generateText>[0]['experimental_onToolCallFinish'] =>
   (event) => {
-    handleToolCallFinishEvent(ctx, reply, event)
+    handleToolCallFinishEvent(ctx, event)
   }
 
 export const invokeModel = async (
   args: InvokeModelArgs & { reply: ReplyFn | undefined; turnId: string },
 ): ReturnType<LlmOrchestratorDeps['generateText']> => {
-  const { contextId, chatUserId, contextType, mainModel, model, provider, tools, messages, deps, reply, turnId } = args
+  const { contextId, chatUserId, contextType, mainModel, model, provider, tools, messages, deps, turnId } = args
   const start = Date.now()
   emitLlmStart(contextId, mainModel, messages, tools, args.toolRouting, turnId)
   const ctx: ToolCallContext = {
@@ -183,7 +204,7 @@ export const invokeModel = async (
     timeout: 1_200_000,
     stopWhen: deps.stepCountIs(25),
     experimental_onToolCallStart: buildToolCallStartHandler(ctx),
-    experimental_onToolCallFinish: buildToolCallFinishHandler(ctx, reply),
+    experimental_onToolCallFinish: buildToolCallFinishHandler(ctx),
   })
   emitLlmEnd(contextId, chatUserId, contextType, mainModel, result, start, messages, tools, args.toolRouting, turnId)
   return result
