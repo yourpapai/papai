@@ -27,6 +27,8 @@ export type AiProgressReporter = {
 }
 
 const SECRET_KEY_PATTERN = /(api[_-]?key|token|secret|password|authorization|cookie)/iu
+const URL_KEY_PATTERN = /(^|[_-])(url|uri|href|link)([_-]|$)|url$/iu
+const PAYLOAD_KEY_PATTERN = /(attachment|blob|body|content|file[_-]?content)/iu
 const MAX_SANITIZED_STRING_LENGTH = 240
 const MAX_ARRAY_ITEMS = 10
 const MAX_OBJECT_ENTRIES = 20
@@ -50,18 +52,43 @@ function sanitizeString(value: string): string {
     : value
 }
 
-function sanitizeValue(value: unknown): unknown {
+function shouldRedactKey(key: string): boolean {
+  if (SECRET_KEY_PATTERN.test(key)) return true
+  if (URL_KEY_PATTERN.test(key)) return true
+  return PAYLOAD_KEY_PATTERN.test(key)
+}
+
+function sanitizeArray(value: readonly unknown[], seen: WeakSet<object>): unknown {
+  if (seen.has(value)) return '[circular]'
+  seen.add(value)
+  const sanitized = value.slice(0, MAX_ARRAY_ITEMS).map((nested) => sanitizeValue(nested, seen))
+  seen.delete(value)
+  return sanitized
+}
+
+function sanitizeRecord(value: Record<string, unknown>, seen: WeakSet<object>): unknown {
+  if (seen.has(value)) return '[circular]'
+  seen.add(value)
+  const sanitized = Object.fromEntries(
+    Object.entries(value)
+      .slice(0, MAX_OBJECT_ENTRIES)
+      .map(([key, nested]) => [key, shouldRedactKey(key) ? '[redacted]' : sanitizeValue(nested, seen)]),
+  )
+  seen.delete(value)
+  return sanitized
+}
+
+function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value === null || value === undefined) return value
   if (typeof value === 'string') return sanitizeString(value)
   if (typeof value === 'number' || typeof value === 'boolean') return value
-  if (Array.isArray(value)) return value.slice(0, MAX_ARRAY_ITEMS).map((nested) => sanitizeValue(nested))
+  if (Array.isArray(value)) return sanitizeArray(value, seen)
   if (!isPlainRecord(value)) return `[${typeof value}]`
+  return sanitizeRecord(value, seen)
+}
 
-  return Object.fromEntries(
-    Object.entries(value)
-      .slice(0, MAX_OBJECT_ENTRIES)
-      .map(([key, nested]) => [key, SECRET_KEY_PATTERN.test(key) ? '[redacted]' : sanitizeValue(nested)]),
-  )
+function sanitizeRootValue(value: unknown): unknown {
+  return sanitizeValue(value, new WeakSet())
 }
 
 function stableStringify(value: unknown): string {
@@ -73,7 +100,7 @@ function stableStringify(value: unknown): string {
 }
 
 function formatValue(value: unknown, settings: AiOutputSettings): string {
-  return stableStringify(settings.detailLevel === 'raw' ? value : sanitizeValue(value))
+  return stableStringify(settings.detailLevel === 'raw' ? value : sanitizeRootValue(value))
 }
 
 function appendToolFinished(lines: string[], event: ToolFinishedEvent, settings: AiOutputSettings): void {

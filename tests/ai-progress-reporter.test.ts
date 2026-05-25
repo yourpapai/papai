@@ -70,6 +70,62 @@ describe('createAiProgressReporter', () => {
     expect(textCalls[0]).toContain('[redacted]')
   })
 
+  test('flushes sanitized circular objects and arrays with a safe marker', async () => {
+    const { reply, textCalls } = createMockReply()
+    const circularObject: Record<string, unknown> = { title: 'Circular title' }
+    const circularArray: unknown[] = ['visible item']
+    circularObject['self'] = circularObject
+    circularArray[1] = circularArray
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'create_task',
+      toolCallId: 'call-circular',
+      input: { title: 'Visible title', circularObject, circularArray },
+      durationMs: 12,
+      success: true,
+    })
+    await reporter.flush()
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Visible title')
+    expect(textCalls[0]).toContain('Circular title')
+    expect(textCalls[0]).toContain('visible item')
+    expect(textCalls[0]).toContain('[circular]')
+  })
+
+  test('redacts sanitized URL and attachment content fields while preserving normal text', async () => {
+    const { reply, textCalls } = createMockReply()
+    const reporter = createAiProgressReporter(reply, toolSettings)
+
+    reporter.toolFinished({
+      toolName: 'upload_attachment',
+      toolCallId: 'call-redact-content',
+      input: {
+        title: 'Visible title',
+        query: 'Visible query',
+        url: 'https://example.invalid/private?token=secret',
+        rawUrl: 'https://example.invalid/raw',
+        attachment: { filename: 'private.txt' },
+        fileContent: 'private file bytes',
+        content: 'private body text',
+      },
+      durationMs: 15,
+      success: true,
+      output: { attachments: [{ id: 'file-1', content: 'private output text' }] },
+    })
+    await reporter.flush()
+
+    expect(textCalls[0]).toContain('Visible title')
+    expect(textCalls[0]).toContain('Visible query')
+    expect(textCalls[0]).not.toContain('example.invalid')
+    expect(textCalls[0]).not.toContain('private.txt')
+    expect(textCalls[0]).not.toContain('private file bytes')
+    expect(textCalls[0]).not.toContain('private body text')
+    expect(textCalls[0]).not.toContain('private output text')
+    expect(textCalls[0]).toContain('[redacted]')
+  })
+
   test('raw detail level includes raw tool input and output', async () => {
     const { reply, textCalls } = createMockReply()
     const reporter = createAiProgressReporter(reply, {
