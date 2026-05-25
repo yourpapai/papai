@@ -24,7 +24,15 @@ export type AiOutputConfigSection = {
 }
 
 const encodeContextId = (contextId: string): string => Buffer.from(contextId).toString('base64url')
-const decodeContextId = (encoded: string): string => Buffer.from(encoded, 'base64url').toString('utf8')
+const BASE64URL_RE = /^[A-Za-z0-9_-]+$/u
+
+function decodeContextId(encoded: string): string | null {
+  if (encoded.length === 0 || !BASE64URL_RE.test(encoded)) return null
+
+  const decoded = Buffer.from(encoded, 'base64url').toString('utf8')
+  if (decoded.length === 0) return null
+  return decoded
+}
 
 function appendContext(data: string, targetContextId: string | undefined): string {
   return targetContextId === undefined ? data : `${data}@${encodeContextId(targetContextId)}`
@@ -80,11 +88,9 @@ export function parseAiOutputCallbackData(data: string): ParsedAiOutputCallbackD
   if (parsed === null) return null
   if (atIdx === -1) return { ...parsed, targetContextId: undefined }
 
-  try {
-    return { ...parsed, targetContextId: decodeContextId(data.slice(atIdx + 1)) }
-  } catch {
-    return null
-  }
+  const decodedTargetContextId = decodeContextId(data.slice(atIdx + 1))
+  if (decodedTargetContextId === null) return null
+  return { ...parsed, targetContextId: decodedTargetContextId }
 }
 
 export function buildAiOutputConfigSection(targetContextId: string): AiOutputConfigSection {

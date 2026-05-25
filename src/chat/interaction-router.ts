@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { handleParsedAiOutputConfigCallback, parseAiOutputCallbackData } from '../ai-output-config-ui.js'
+import { parseAiOutputCallbackData } from '../ai-output-config-ui.js'
 import { handleEditorCallback, parseCallbackData, serializeCallbackData } from '../config-editor/index.js'
 import { dispatchGroupSelectorResult } from '../group-settings/dispatch.js'
 import { handleGroupSettingsSelectorCallback } from '../group-settings/selector.js'
@@ -12,6 +12,7 @@ import { logger } from '../logger.js'
 import { cancelWizard, getNextPrompt } from '../wizard/engine.js'
 import { validateAndSaveWizardConfig } from '../wizard/save.js'
 import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
+import { handleAiOutputConfigInteraction } from './ai-output-config-interaction.js'
 import { getValidatedDmCallbackTargetContextId, validateImplicitDmConfigTarget } from './config-target-validation.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import { getResponseText, getTargetContextId } from './interaction-router-support.js'
@@ -72,35 +73,6 @@ async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): P
   return true
 }
 
-async function handleAiOutputConfigInteraction(
-  interaction: IncomingInteraction,
-  reply: ReplyFn,
-  parsed: NonNullable<ReturnType<typeof parseAiOutputCallbackData>>,
-): Promise<boolean> {
-  const targetContextId = getTargetContextId(parsed.targetContextId, interaction)
-  if (
-    interaction.contextType === 'dm' &&
-    parsed.targetContextId === undefined &&
-    !(await validateImplicitDmConfigTarget(interaction.user.id, reply))
-  ) {
-    return true
-  }
-  if (interaction.contextType === 'dm' && parsed.targetContextId !== undefined) {
-    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(interaction.user.id, targetContextId)
-    if (validatedTargetContextId === null) {
-      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, targetContextId))
-      return true
-    }
-  }
-
-  const section = handleParsedAiOutputConfigCallback(targetContextId, parsed)
-  if (section === null) {
-    return replyUnknownConfigAction(reply, interaction.callbackData)
-  }
-  await replyButtonsPreferReplace(reply, section.lines.join('\n'), section.buttons)
-  return true
-}
-
 async function handleEditorConfigInteraction(
   interaction: IncomingInteraction,
   reply: ReplyFn,
@@ -144,7 +116,9 @@ function defaultHandleConfigInteraction(interaction: IncomingInteraction, reply:
   if (!callbackData.startsWith('cfg:')) return Promise.resolve(false)
 
   const aiOutputCallback = parseAiOutputCallbackData(callbackData)
-  if (aiOutputCallback !== null) return handleAiOutputConfigInteraction(interaction, reply, aiOutputCallback)
+  if (aiOutputCallback !== null) {
+    return handleAiOutputConfigInteraction(interaction, reply, aiOutputCallback, replyUnknownConfigAction)
+  }
 
   const parsed = parseCallbackData(callbackData)
 

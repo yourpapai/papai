@@ -406,6 +406,33 @@ describe('routeInteraction', () => {
     expect(buttonReplies[0]).toContain('Tool calls: on')
   })
 
+  test('rejects group AI output callback targeting another context', async () => {
+    const replies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        contextId: 'group-9',
+        contextType: 'group',
+        storageContextId: 'group-9',
+        callbackData: `cfg:ai:toolVisibility:on@${Buffer.from('other-context').toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      {
+        ...createMockAuth(true),
+        storageContextId: 'group-9',
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(getAiOutputSettings('other-context').toolVisibility).toBe('off')
+    expect(getAiOutputSettings('group-9').toolVisibility).toBe('off')
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
   test('starts setup for the selected group target', async () => {
     upsertKnownGroupContext({
       contextId: 'group-9',

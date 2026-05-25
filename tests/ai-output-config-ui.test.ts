@@ -52,6 +52,11 @@ describe('ai-output-config-ui', () => {
     expect(parseAiOutputCallbackData('cfg:ai:detailLevel:on')).toBeNull()
   })
 
+  test('rejects malformed encoded target callback data', () => {
+    expect(parseAiOutputCallbackData('cfg:ai:toolVisibility:on@!!!')).toBeNull()
+    expect(parseAiOutputCallbackData('cfg:ai:toolVisibility:on@')).toBeNull()
+  })
+
   test('callback writes target context and returns refreshed section', () => {
     const section = handleAiOutputConfigCallback('ctx-write', 'toolVisibility', 'on')
 
