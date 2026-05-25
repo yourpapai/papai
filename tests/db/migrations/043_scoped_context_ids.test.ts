@@ -87,6 +87,9 @@ describe('migration043ScopedContextIds', () => {
       `CREATE TABLE plugin_kv (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (plugin_id, context_id, key))`,
     )
     db.run(
+      `CREATE TABLE web_rate_limit (actor_id TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (actor_id, window_start))`,
+    )
+    db.run(
       `CREATE TABLE users (platform_user_id TEXT NOT NULL, platform_instance_id TEXT NOT NULL, username TEXT, added_at TEXT NOT NULL, added_by TEXT NOT NULL, PRIMARY KEY (platform_instance_id, platform_user_id))`,
     )
   })
@@ -285,6 +288,7 @@ describe('migration043ScopedContextIds', () => {
       `INSERT INTO tool_call_events (event_id, turn_id, occurred_at, storage_context_id, context_type, chat_user_id, model, model_role, tool_name, tool_call_id, success) VALUES ('tool-1', 'turn-1', 1, 'user-1', 'dm', 'user-1', 'model', 'main', 'create_task', 'call-1', 1)`,
     )
     db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', 'user-1', 1)`)
+    db.run(`INSERT INTO web_rate_limit VALUES ('user-1', 123, 2)`)
 
     migration043ScopedContextIds.up(db)
 
@@ -307,6 +311,21 @@ describe('migration043ScopedContextIds', () => {
       storage_context_id: scopedUser,
     })
     expect(db.query(`SELECT context_id FROM plugin_context_state`).get()).toEqual({ context_id: scopedUser })
+    expect(db.query(`SELECT actor_id FROM web_rate_limit`).get()).toEqual({ actor_id: scopedUser })
+  })
+
+  test('handles raw and scoped web rate limit duplicates with same window start', () => {
+    const scopedUser = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'user-1' })
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO web_rate_limit VALUES ('user-1', 123, 1)`)
+    db.run(`INSERT INTO web_rate_limit VALUES (?, 123, 5)`, [scopedUser])
+
+    migration043ScopedContextIds.up(db)
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT actor_id, window_start, count FROM web_rate_limit`).all()).toEqual([
+      { actor_id: scopedUser, window_start: 123, count: 5 },
+    ])
   })
 
   test('scopes plugin context data and handles raw and scoped duplicates idempotently', () => {

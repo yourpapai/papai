@@ -28,10 +28,7 @@ type UserDuplicateCandidate = Readonly<{
   is_placeholder: number
 }>
 
-type LegacyUserRow = Readonly<{
-  rowid: number
-  platform_user_id: string
-}>
+type LegacyUserRow = Readonly<{ rowid: number; platform_user_id: string }>
 
 type ContextOwnedRow = Readonly<{
   rowid: number
@@ -66,6 +63,7 @@ const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
   { table: 'tool_call_events', column: 'storage_context_id', conflictColumns: null },
   { table: 'plugin_context_state', column: 'context_id', conflictColumns: ['plugin_id'] },
   { table: 'plugin_kv', column: 'context_id', conflictColumns: ['plugin_id', 'key'] },
+  { table: 'web_rate_limit', column: 'actor_id', conflictColumns: ['window_start'] },
 ]
 
 const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u
