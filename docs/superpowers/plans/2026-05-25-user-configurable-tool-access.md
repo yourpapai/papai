@@ -18,6 +18,7 @@ See LICENSE in the project root for details.
 **Spec:** `docs/superpowers/specs/2026-05-25-user-configurable-tool-access-design.md`
 
 **Conventions reminder:**
+
 - Every new `.ts` file starts with the 4-line BUSL-1.1 `//` header (copy from any existing `src/**/*.ts`).
 - Use `.js` extensions in imports.
 - Never add `eslint-disable`/`@ts-ignore`; fix the underlying issue.
@@ -29,12 +30,14 @@ See LICENSE in the project root for details.
 ## File Structure
 
 **New files:**
+
 - `src/tools/tool-preferences.ts` — `ToolPrefs` type, parse/serialize, read/write via config KV, effective-state evaluation, domain status, toggle helpers. Owns cache invalidation on write.
 - `src/commands/tool-config-view.ts` — pure rendering of the Tools menu (domain list + per-domain drill-in) into status text + `ChatButton[]`.
 - `src/chat/tool-toggle-interaction-handler.ts` — routes `tgl:` callbacks, applies toggles, re-renders the menu.
 - Test files mirroring each under `tests/`.
 
 **Modified files:**
+
 - `src/cache.ts` — add `clearCachedToolsByPrefix(contextId)`.
 - `src/tools/index.ts` — apply the preference filter inside `makeTools()`.
 - `src/system-prompt.ts` — fragment refactor + optional `enabledToolNames` awareness.
@@ -52,6 +55,7 @@ See LICENSE in the project root for details.
 ## Task 1: Tool-preferences module + cache prefix clear
 
 **Files:**
+
 - Create: `src/tools/tool-preferences.ts`
 - Modify: `src/cache.ts` (add `clearCachedToolsByPrefix`)
 - Test: `tests/tools/tool-preferences.test.ts`
@@ -306,7 +310,11 @@ export function partitionToolNames(
 
 export type DomainStatus = 'on' | 'off' | 'partial'
 
-export function getDomainStatus(prefs: ToolPrefs, domain: ToolDomain, domainToolNames: readonly string[]): DomainStatus {
+export function getDomainStatus(
+  prefs: ToolPrefs,
+  domain: ToolDomain,
+  domainToolNames: readonly string[],
+): DomainStatus {
   if (domainToolNames.length === 0) return domainEnabled(prefs, domain) ? 'on' : 'off'
   const states = domainToolNames.map((name) => isToolEnabled(prefs, name))
   const allOn = states.every((s) => s)
@@ -380,6 +388,7 @@ git commit -m "feat(tools): add per-context tool preferences module + cache pref
 ## Task 2: Apply the preference filter in `makeTools()`
 
 **Files:**
+
 - Modify: `src/tools/index.ts`
 - Test: `tests/tools/make-tools-preferences.test.ts`
 
@@ -507,10 +516,12 @@ git commit -m "feat(tools): filter disabled tools out of makeTools by context pr
 ## Task 3: System-prompt fragment refactor + enabled-set awareness
 
 **Files:**
+
 - Modify: `src/system-prompt.ts`
 - Test: `tests/system-prompt.test.ts` (extend if it exists; otherwise create)
 
 **Behavior contract:**
+
 - `buildSystemPrompt(provider, contextId)` (no enabled set) → identical output to today (all fragments, no safety-net line). Backward-compatible.
 - `buildSystemPrompt(provider, contextId, enabledToolNames)` → include a domain fragment only if ≥1 of its tools is in `enabledToolNames`; append a safety-net line listing **partially-disabled** tools (a tool disabled by prefs whose domain still has ≥1 enabled tool).
 
@@ -713,10 +724,7 @@ function buildOutputRules(enabled: ReadonlySet<string> | undefined): string {
  * one enabled tool (a "partial" disable). Whole-domain disables are already handled by
  * fragment exclusion, so they are intentionally not repeated here.
  */
-function buildUnavailableLine(
-  prefs: ToolPrefs,
-  enabled: ReadonlySet<string>,
-): string | null {
+function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): string | null {
   const enabledDomains = new Set<string>()
   for (const name of enabled) {
     const meta = getToolMetadata(name)
@@ -792,6 +800,7 @@ git commit -m "feat(prompt): compose system prompt from tool-gated fragments + s
 ## Task 4: Thread the enabled-tool set into the prompt builders
 
 **Files:**
+
 - Modify: `src/llm-orchestrator-tools.ts`, `src/llm-orchestrator-types.ts`, `src/llm-orchestrator.ts`, `src/llm-orchestrator-invoke.ts`, `src/deferred-prompts/proactive-llm.ts`
 - Test: `tests/llm-orchestrator-tools.test.ts` (extend or create)
 
@@ -815,17 +824,7 @@ import { makeFakeProvider } from './utils/test-helpers.js'
 describe('prepareLlmInvocation enabledToolNames', () => {
   it('returns the full pre-routing enabled tool-name set', () => {
     const provider = makeFakeProvider()
-    const result = prepareLlmInvocation(
-      'ctx-1',
-      'ctx-1',
-      'ctx-1',
-      null,
-      'dm',
-      provider,
-      [],
-      'hello there',
-      undefined,
-    )
+    const result = prepareLlmInvocation('ctx-1', 'ctx-1', 'ctx-1', null, 'dm', provider, [], 'hello there', undefined)
     expect(result.enabledToolNames instanceof Set).toBe(true)
     expect(result.enabledToolNames.has('create_task')).toBe(true)
   })
@@ -842,7 +841,7 @@ Expected: FAIL — `enabledToolNames` is not on the return value.
 In `src/llm-orchestrator-tools.ts`, change the return type and value of `prepareLlmInvocation` (currently `src/llm-orchestrator-tools.ts:57-89`). After `const fullTools = getOrCreateTools(...)` add:
 
 ```typescript
-  const enabledToolNames = new Set(Object.keys(fullTools))
+const enabledToolNames = new Set(Object.keys(fullTools))
 ```
 
 Update the function's return type annotation and final `return`:
@@ -856,7 +855,7 @@ Update the function's return type annotation and final `return`:
 ```
 
 ```typescript
-  return { routingResult, validatedMessages, enabledToolNames }
+return { routingResult, validatedMessages, enabledToolNames }
 ```
 
 - [ ] **Step 4: Add `enabledToolNames` to `InvokeModelArgs`**
@@ -864,8 +863,8 @@ Update the function's return type annotation and final `return`:
 In `src/llm-orchestrator-types.ts`, add the field to the `InvokeModelArgs` type (after `tools: ToolSet`):
 
 ```typescript
-  tools: ToolSet
-  enabledToolNames: ReadonlySet<string>
+tools: ToolSet
+enabledToolNames: ReadonlySet<string>
 ```
 
 - [ ] **Step 5: Pass it through in `src/llm-orchestrator.ts`**
@@ -888,7 +887,20 @@ and add to the invoke args object (next to `tools: routingResult.tools,`):
 In `invokeModel` (currently `src/llm-orchestrator-invoke.ts:147-173`), destructure `enabledToolNames` from `args` and pass it to `buildSystemPrompt`:
 
 ```typescript
-  const { contextId, chatUserId, contextType, mainModel, model, provider, tools, messages, deps, reply, turnId, enabledToolNames } = args
+const {
+  contextId,
+  chatUserId,
+  contextType,
+  mainModel,
+  model,
+  provider,
+  tools,
+  messages,
+  deps,
+  reply,
+  turnId,
+  enabledToolNames,
+} = args
 ```
 
 ```typescript
@@ -920,14 +932,14 @@ function buildFullToolSet(
 In `invokeFull` (currently `:236-276`), replace the two relevant lines:
 
 ```typescript
-  const { tools, enabledToolNames } = buildFullToolSet(
-    provider,
-    createdByUserId,
-    storageContextId,
-    deliveryTarget.contextType,
-    prompt,
-  )
-  const systemPrompt = buildSystemPrompt(provider, createdByUserId, enabledToolNames)
+const { tools, enabledToolNames } = buildFullToolSet(
+  provider,
+  createdByUserId,
+  storageContextId,
+  deliveryTarget.contextType,
+  prompt,
+)
+const systemPrompt = buildSystemPrompt(provider, createdByUserId, enabledToolNames)
 ```
 
 - [ ] **Step 8: Run tests**
@@ -952,11 +964,13 @@ git commit -m "feat(prompt): pass effective enabled tool set into system-prompt 
 ## Task 5: Tools menu rendering + `tgl:` interaction handler + `/config` entry
 
 **Files:**
+
 - Create: `src/commands/tool-config-view.ts`, `src/chat/tool-toggle-interaction-handler.ts`
 - Modify: `src/commands/config.ts`, `src/chat/interaction-router.ts`
 - Test: `tests/commands/tool-config-view.test.ts`, `tests/chat/tool-toggle-interaction-handler.test.ts`
 
 **Callback scheme** (base64url-encoded context id, mirroring `plg:`):
+
 - `tgl:menu:<ctx>` — open the domain list
 - `tgl:open:<domain>:<ctx>` — drill into a domain's tools
 - `tgl:dom:<domain>:<ctx>` — toggle a whole domain, re-render domain list
@@ -1098,7 +1112,11 @@ export function buildDomainListView(
       callbackData: `tgl:dom:${domain}:${ctx}`,
       style: status === 'off' ? 'secondary' : 'primary',
     })
-    buttons.push({ text: `✏️ Edit ${DOMAIN_LABELS[domain]}`, callbackData: `tgl:open:${domain}:${ctx}`, style: 'secondary' })
+    buttons.push({
+      text: `✏️ Edit ${DOMAIN_LABELS[domain]}`,
+      callbackData: `tgl:open:${domain}:${ctx}`,
+      style: 'secondary',
+    })
   }
   return { text: lines.join('\n'), buttons }
 }
@@ -1264,10 +1282,7 @@ async function renderView(reply: ReplyFn, view: ToolMenuView): Promise<void> {
 }
 
 /** Handle tgl: callbacks for per-context tool enable/disable. */
-export async function handleToolToggleInteraction(
-  interaction: IncomingInteraction,
-  reply: ReplyFn,
-): Promise<boolean> {
+export async function handleToolToggleInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
   const { callbackData } = interaction
   if (!callbackData.startsWith('tgl:')) return false
 
@@ -1342,11 +1357,15 @@ export async function handleToolToggleInteraction(
 ```
 
 > **Avoid `require`:** the lazy `require` above is a placeholder to dodge a potential import cycle. Prefer a static `import { TOOL_METADATA } from '../tools/tool-metadata.js'` at the top of the file and delete the `getToolMetadataDomainSet`/`require` machinery if no cycle exists (tool-metadata.ts imports nothing from this module, so there is no cycle — use the static import). Rewrite `isToolDomain` as:
+>
 > ```typescript
 > import { TOOL_METADATA } from '../tools/tool-metadata.js'
 > const DOMAIN_SET = new Set<string>(Object.values(TOOL_METADATA).map((m) => m.domain))
-> function isToolDomain(value: string): value is ToolDomain { return DOMAIN_SET.has(value) }
+> function isToolDomain(value: string): value is ToolDomain {
+>   return DOMAIN_SET.has(value)
+> }
 > ```
+>
 > Use this static form in the final code; `require` is forbidden by lint.
 
 - [ ] **Step 8: Run the handler test to verify it passes**
@@ -1365,9 +1384,9 @@ import { handleToolToggleInteraction } from './tool-toggle-interaction-handler.j
 Add a branch alongside the `plg:` branch (currently `src/chat/interaction-router.ts:280-282`):
 
 ```typescript
-  if (callbackData.startsWith('tgl:')) {
-    return handleToolToggleInteraction(interaction, reply)
-  }
+if (callbackData.startsWith('tgl:')) {
+  return handleToolToggleInteraction(interaction, reply)
+}
 ```
 
 > If the router dispatches through an injected `resolvedDeps` object (as `plg:` does via `resolvedDeps.handlePluginInteraction`), follow that pattern: add `handleToolToggleInteraction` to the deps type/defaults and call `resolvedDeps.handleToolToggleInteraction(...)`. Inspect how `handlePluginInteraction` is wired into the deps (search `handlePluginInteraction` in this file and its deps definition) and mirror it exactly so tests that inject deps keep working.
@@ -1385,22 +1404,22 @@ import { getToolPrefs } from '../tools/tool-preferences.js'
 Add a status line in `renderConfigForTarget` after `appendPluginConfigLines(lines, targetContextId)` (currently `src/commands/config.ts:142`):
 
 ```typescript
-  const toolPrefs = getToolPrefs(targetContextId)
-  const disabledCount = toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
-  lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
+const toolPrefs = getToolPrefs(targetContextId)
+const disabledCount = toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
+lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
 ```
 
 Add a Tools button to the interactive button set. In the `reply.buttons` call (currently `src/commands/config.ts:151-153`), include a tools-menu opener:
 
 ```typescript
-  const encodedCtx = Buffer.from(targetContextId).toString('base64url')
-  await reply.buttons(lines.join('\n'), {
-    buttons: [
-      ...buildConfigButtons(config, targetContextId),
-      ...buildPluginButtons(targetContextId),
-      { text: '🧰 Tools', callbackData: `tgl:menu:${encodedCtx}`, style: 'secondary' },
-    ],
-  })
+const encodedCtx = Buffer.from(targetContextId).toString('base64url')
+await reply.buttons(lines.join('\n'), {
+  buttons: [
+    ...buildConfigButtons(config, targetContextId),
+    ...buildPluginButtons(targetContextId),
+    { text: '🧰 Tools', callbackData: `tgl:menu:${encodedCtx}`, style: 'secondary' },
+  ],
+})
 ```
 
 - [ ] **Step 11: Run targeted tests + the command/chat suites**
@@ -1425,6 +1444,7 @@ git commit -m "feat(config): add Tools toggle section to /config with tgl: inter
 ## Task 6: Documentation
 
 **Files:**
+
 - Modify: `CLAUDE.md`, `src/tools/CLAUDE.md`, `src/commands/CLAUDE.md`
 
 - [ ] **Step 1: Document in `src/tools/CLAUDE.md`**
@@ -1490,6 +1510,6 @@ In a DM: `/config` → tap **🧰 Tools** → toggle **Memos** off → confirm t
 ## Self-Review Notes (author)
 
 - **Spec coverage:** §1 storage → Task 1; §2 filter placement → Task 2; §3 cache invalidation → Task 1 (`clearCachedToolsByPrefix`) + Task 2 (write path via `setToolPrefs`); §4 prompt coherence → Tasks 3 & 4; §5 UI → Task 5; §6 edge cases → covered by Task 1 tests (empty/corrupt prefs, unclassified tools) and Task 2 (plugin tools filterable, backward-compat); testing section → per-task tests + final `bun check:full`.
-- **Safety-net scope decision:** the "Unavailable tools" line intentionally lists only *partially-disabled* domains' tools (e.g. `delete_task` off while task domain on). Whole-domain disables are handled by fragment exclusion, so repeating them would be redundant noise. This is the meaningful safety case (disabling a destructive tool while keeping its domain) the spec's safety motivation targets.
+- **Safety-net scope decision:** the "Unavailable tools" line intentionally lists only _partially-disabled_ domains' tools (e.g. `delete_task` off while task domain on). Whole-domain disables are handled by fragment exclusion, so repeating them would be redundant noise. This is the meaningful safety case (disabling a destructive tool while keeping its domain) the spec's safety motivation targets.
 - **Type consistency:** `ToolPrefs`, `getToolPrefs`, `setToolPrefs`, `isToolEnabled`, `partitionToolNames`, `getDomainStatus`, `toggleDomain`, `toggleTool` are defined in Task 1 and used unchanged in Tasks 2–5. View functions `buildDomainListView`/`buildDomainDrillView` defined in Task 5 Step 3 and consumed by the handler in Step 7. `enabledToolNames` (a `ReadonlySet<string>`) is introduced in Task 4 and consumed by the Task 3 `buildSystemPrompt` signature.
 - **Known adapt-on-contact points (flagged inline):** exact test-helper names (`makeFakeProvider`, `makeReplyCapture`) and the `ChatButton` style union must be confirmed against the repo before writing each test; the interaction-router `tgl:` branch must mirror however `plg:` is wired (direct call vs injected deps).
