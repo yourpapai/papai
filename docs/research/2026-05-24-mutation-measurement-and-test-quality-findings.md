@@ -188,6 +188,67 @@ Total mutants: 85. Killed: **0**. Survived: **0**.
 
 ### A5. Variable test — preload isolation
 
+**Hypothesis H1/H4:** The global `beforeEach` installed by `tests/mock-reset.ts` and the
+`mock.module()` calls it runs at process scope contribute to the `Ignored (static)` collapse
+observed in A3. To test this in isolation, the preload list (`bunfig.toml [test] preload`)
+would need to be reduced from `["./tests/setup.ts", "./tests/mock-reset.ts"]` to
+`["./tests/setup.ts"]` for a single Stryker run, without permanently modifying the committed
+file.
+
+**Step 1 — Capability check (read-only investigation of `@hughescr/stryker-bun-runner`):**
+
+The runner's sandboxing logic was inspected in:
+
+- `node_modules/@hughescr/stryker-bun-runner/README.md` §"How the sandboxed config works" (line 102)
+- `node_modules/@hughescr/stryker-bun-runner/dist/index.js` lines 7586–7642
+  (`generateSanitizedBunfig`) and lines 6261–6285 (`runBunTests` arg assembly)
+
+Key findings:
+
+1. **The sanitizer reads `bunfig.toml` exclusively.** `generateSanitizedBunfig` resolves the
+   path as `path.join(projectCwd, "bunfig.toml")`, parses it, and forwards an explicit
+   allowlist of `[test]` keys — including `preload` — into a temporary TOML file which is
+   passed to every `bun test` call via `--config=<tmp-bunfig>`.
+
+2. **`preload` is unconditionally forwarded.** `SAFE_TEST_KEYS` includes `"preload"`, and the
+   sanitizer copies it verbatim (with paths absolutized). There is no flag, env var, or
+   `bun: {}` config-block option to suppress or replace the preload array coming from
+   `bunfig.toml`.
+
+3. **The `bun: {}` config block in Stryker offers no preload override.** The documented
+   options are: `bunPath`, `timeout`, `inspectorTimeout`, `env`, `bunArgs`, and `testFiles`.
+   - `bunArgs` appends additional CLI flags but cannot remove entries already baked into the
+     sanitized bunfig passed via `--config`.
+   - `env` passes extra environment variables; there is no `BUN_PRELOAD`-style env-var
+     override in Bun that suppresses config-declared preloads.
+
+4. **Conclusion: preload is NOT overridable from the ephemeral Stryker config alone.**
+   Dropping `mock-reset.ts` from the preload for a single experiment would require temporarily
+   editing `bunfig.toml` (a committed file), which is out of scope for this read-only
+   investigation.
+
+**Step 2b — Constraint documented, experiment not run.**
+
+Isolating the preload without touching `bunfig.toml` is not possible with the current runner.
+The hypothesis is therefore assessed indirectly:
+
+- **A2 (mechanism)** established that static collapse originates in the runner's own
+  coverage-preload script, which eager-imports every mutated module before any test runs and
+  while `currentTestId` is `undefined`. Coverage recorded at that point is attributed to the
+  `static` bucket regardless of which `beforeEach` hooks the test suite installs.
+- **B2 (mock.module blast radius)** will characterise how widely `mock-reset.ts` replaces
+  module bindings and whether that forces more of the real module code to execute only inside
+  the runner's preload window — but the primary driver of static collapse is the eager-import
+  mechanism, not the presence or absence of `mock-reset.ts` in the preload list.
+
+**Verdict:** Preload isolation is **assessed indirectly (not directly tested)**. The
+`mock-reset.ts` / global-hook mechanism cannot be surgically excluded from a Stryker run
+without editing `bunfig.toml`. Based on A2's mechanistic analysis the eager-import
+coverage-preload is the dominant cause of static collapse; dropping `mock-reset.ts` from the
+preload list would not eliminate the static bucket because the module-level code of the
+mutated file runs unconditionally inside the runner's own preload script — before any
+project-level preload script executes.
+
 ### A6. True-score probe (ignoreStatic:false, scoped)
 
 ## 3. Track B — Test-Infrastructure Quality
