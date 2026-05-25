@@ -130,7 +130,10 @@ const providerHostSchema = z
   .string()
   .min(1)
   .max(253)
-  .regex(/^[a-z0-9.-]+$/iu, 'Provider allowed host must be a bare hostname')
+  .regex(
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iu,
+    'Provider allowed host must be a valid hostname',
+  )
 
 const pluginContributesSchema = z.object({
   tools: z.array(toolNameSchema).optional().default([]),
@@ -192,7 +195,12 @@ export const pluginManifestSchema = z
     providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
     providerConfigSchema: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
-    providerConfigValidator: z.string().min(1).max(64).optional(),
+    providerConfigValidator: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/u, 'Provider config validator must be a valid identifier')
+      .optional(),
     activationTimeoutMs: z.number().int().min(100).max(10000).optional().default(5000),
   })
   .refine((m) => m.contributes.taskProviderTypes.length === 0 || m.permissions.includes('provider.task'), {

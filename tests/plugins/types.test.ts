@@ -5,15 +5,17 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { z } from 'zod'
+
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
 
-const baseManifest = {
+const baseManifest: z.input<typeof pluginManifestSchema> = {
   id: 'hello-world',
   name: 'Hello World',
   version: '1.0.0',
   description: 'A test plugin',
   apiVersion: PLUGIN_API_VERSION,
-  contributes: { taskProviderTypes: [] as string[] },
+  contributes: { taskProviderTypes: [] },
 }
 
 describe('pluginManifestSchema', () => {
@@ -164,6 +166,26 @@ describe('pluginManifestSchema', () => {
         ...baseManifest,
         permissions: ['provider.task'],
         contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo', 'youtrack'] },
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('rejects a structurally invalid providerAllowedHosts entry', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo'] },
+        providerAllowedHosts: ['-bad.example.com'],
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test('rejects a non-identifier providerConfigValidator', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: ['kaneo'] },
+        providerConfigValidator: 'not a valid name!',
       })
       expect(result.success).toBe(false)
     })
