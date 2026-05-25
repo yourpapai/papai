@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import {
   findStagedFilesByMessageId,
@@ -13,6 +14,7 @@ import {
   stageFileMetadata as rawStageFileMetadata,
 } from '../../src/attachments/staged.js'
 import type { StageFileParams, StagedFileRef } from '../../src/attachments/types.js'
+import { toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const stageFileMetadata = (
@@ -446,6 +448,83 @@ describe('staged file cache', () => {
       await expect(
         resolveStagedFile(staged.stagedId, 'ctx-1', () => Promise.reject(new Error('network timeout'))),
       ).rejects.toThrow('network timeout')
+    })
+
+    test('derives and backfills legacy empty source instance from scoped thread context', async () => {
+      const scopedContextId = toScopedThreadContextId({
+        platformInstanceId: 'telegram-a',
+        nativeContextId: 'group-1',
+        threadId: 'thread-1',
+      })
+      const staged = await stageFileMetadata({
+        contextId: scopedContextId,
+        messageId: 'msg-legacy-scoped',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'legacy.txt',
+        mimeType: 'text/plain',
+        size: 4,
+        platformFileId: 'file-legacy-scoped',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'will-be-cleared',
+      })
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles: sf } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb().update(sf).set({ sourcePlatformInstanceId: '' }).where(eq(sf.stagedId, staged.stagedId)).run()
+      const calls: Array<{ fileId: string; sourceProvider: string; sourcePlatformInstanceId: string }> = []
+
+      const result = await resolveStagedFile(
+        staged.stagedId,
+        scopedContextId,
+        (fileId, sourceProvider, sourcePlatformInstanceId) => {
+          calls.push({ fileId, sourceProvider, sourcePlatformInstanceId })
+          return Promise.resolve(Buffer.from('test'))
+        },
+      )
+
+      const row = getDrizzleDb().select().from(sf).where(eq(sf.stagedId, staged.stagedId)).get()
+      assert.ok(row !== undefined, 'expected staged row to remain after scoped legacy resolution')
+      expect(result).toMatchObject({ status: 'available', filename: 'legacy.txt' })
+      expect(calls).toEqual([
+        { fileId: 'file-legacy-scoped', sourceProvider: 'telegram', sourcePlatformInstanceId: 'telegram-a' },
+      ])
+      expect(row.sourcePlatformInstanceId).toBe('telegram-a')
+    })
+
+    test('keeps raw legacy empty source instance ambiguous and safe', async () => {
+      const staged = await stageFileMetadata({
+        contextId: 'raw-group-1',
+        messageId: 'msg-legacy-raw',
+        senderId: 'user-1',
+        senderUsername: 'alice',
+        filename: 'legacy-raw.txt',
+        mimeType: 'text/plain',
+        size: 4,
+        platformFileId: 'file-legacy-raw',
+        sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'will-be-cleared',
+      })
+      const { getDrizzleDb } = await import('../../src/db/drizzle.js')
+      const { stagedFiles: sf } = await import('../../src/db/schema.js')
+      const { eq } = await import('drizzle-orm')
+      getDrizzleDb().update(sf).set({ sourcePlatformInstanceId: '' }).where(eq(sf.stagedId, staged.stagedId)).run()
+      const calls: string[] = []
+
+      const result = await resolveStagedFile(
+        staged.stagedId,
+        'raw-group-1',
+        (_fileId, _sourceProvider, sourcePlatformInstanceId) => {
+          calls.push(sourcePlatformInstanceId)
+          return Promise.resolve(null)
+        },
+      )
+
+      const row = getDrizzleDb().select().from(sf).where(eq(sf.stagedId, staged.stagedId)).get()
+      assert.ok(row !== undefined, 'expected staged row to remain after raw legacy resolution')
+      expect(result).toMatchObject({ status: 'download_failed' })
+      expect(calls).toEqual([''])
+      expect(row.sourcePlatformInstanceId).toBe('')
     })
   })
 

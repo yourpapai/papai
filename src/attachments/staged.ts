@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 
 import { and, eq, or, sql } from 'drizzle-orm'
 
+import { parseScopedContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { stagedFiles } from '../db/schema.js'
 import { logger } from '../logger.js'
@@ -192,6 +193,18 @@ const markStagedResolved = (stagedId: string, attachmentId: string): void => {
     .run()
 }
 
+const resolveSourcePlatformInstanceId = (row: StagedRow, stagedId: string): string => {
+  if (row.sourcePlatformInstanceId !== '') return row.sourcePlatformInstanceId
+  const scoped = parseScopedContextId(row.contextId)
+  if (scoped === null) return ''
+  getDrizzleDb()
+    .update(stagedFiles)
+    .set({ sourcePlatformInstanceId: scoped.platformInstanceId })
+    .where(eq(stagedFiles.stagedId, stagedId))
+    .run()
+  return scoped.platformInstanceId
+}
+
 const checkStagedRowState = (row: StagedRow, stagedId: string): StagedResolutionError | null => {
   if (row.status === 'resolved') {
     return { status: 'already_resolved', attachmentId: row.attachmentId ?? 'unknown' }
@@ -219,11 +232,8 @@ const downloadAndPersist = async (
   stagedId: string,
   downloadFn: StagedFileDownloadFn,
 ): Promise<AttachmentRef | StagedResolutionError> => {
-  const content = await downloadFn(
-    row.platformFileId,
-    toSourceProvider(row.sourceProvider),
-    row.sourcePlatformInstanceId,
-  )
+  const sourcePlatformInstanceId = resolveSourcePlatformInstanceId(row, stagedId)
+  const content = await downloadFn(row.platformFileId, toSourceProvider(row.sourceProvider), sourcePlatformInstanceId)
   if (content === null) {
     markStagedStatus(stagedId, 'failed')
     return {
