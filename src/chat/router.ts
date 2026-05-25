@@ -165,8 +165,8 @@ export class ChatRouter implements ChatProvider {
       log.warn({ platformInstanceId }, 'cannot route message to inactive or unknown chat instance')
       return false
     }
-    await instance.provider.sendMessage(platformInstanceId, target, markdown)
-    return true
+    const result = await instance.provider.sendMessage(platformInstanceId, target, markdown)
+    return result !== false
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {

@@ -324,6 +324,28 @@ describe('ChatRouter', () => {
     expect(getProvider('telegram-main').sent).toEqual([])
   })
 
+  test('propagates delegated provider send refusal', async () => {
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = {
+        ...makeProvider(type, {}),
+        sendMessage: (
+          _platformInstanceId: string,
+          _target: DeferredDeliveryTarget,
+          _markdown: string,
+        ): Promise<false> => Promise.resolve(false),
+      }
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+    await router.startInstance('telegram-main')
+
+    const delivered = await router.sendMessage('telegram-main', dmTarget('user-1'), 'refused')
+
+    expect(delivered).toBe(false)
+  })
+
   test('reports instance active state only after start and before stop', async () => {
     router.addInstance('telegram-main', 'telegram', {})
 

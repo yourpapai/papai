@@ -595,6 +595,31 @@ describe('Admin Commands', () => {
       expect(replyText).toContain('1')
     })
 
+    test('counts explicit send refusal as failed delivery', async () => {
+      addUser('user-a', ADMIN_ID)
+      const refusedUserIds: string[] = []
+      const { provider: mockChat, commandHandlers: handlers } = createMockChatWithCommandHandlers({
+        sendMessage: (_platformInstanceId, target): Promise<false> => {
+          refusedUserIds.push(target.contextId)
+          return Promise.resolve(false)
+        },
+      })
+      registerAdminCommands(mockChat, ADMIN_ID)
+      const handler = handlers.get('announce')
+      expect(handler).toBeDefined()
+      const { reply, getReplies } = createMockReply()
+
+      await handler!(createDmMessage(ADMIN_ID, 'Important update'), reply, {
+        allowed: true,
+        isBotAdmin: true,
+        isGroupAdmin: false,
+        storageContextId: ADMIN_ID,
+      })
+
+      expect(refusedUserIds.toSorted()).toEqual([ADMIN_ID, 'user-a'])
+      expect(getReplies()[0]).toBe('Announcement sent to 0 user(s). Failed to deliver to 2 user(s).')
+    })
+
     test('reports when no users exist', async () => {
       getTestDb().delete(schema.users).run()
       const handler = commandHandlers.get('announce')

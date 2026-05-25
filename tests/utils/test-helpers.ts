@@ -316,10 +316,14 @@ type CreateAuthOptions = Partial<
 type CreateMockChatOptions = Partial<
   Readonly<{
     commandHandlers: Map<string, CommandHandler>
-    sendMessage: (platformInstanceId: string, target: DeferredDeliveryTarget, text: string) => Promise<void>
+    sendMessage: (
+      platformInstanceId: string,
+      target: DeferredDeliveryTarget,
+      text: string,
+    ) => ReturnType<ChatProvider['sendMessage']>
     onMessageHandler: (handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>) => void
     resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
-    resolveUserLabel: (userId: string, context?: ResolveUserContext) => Promise<string | null>
+    resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
     resolveGroupLabel: (groupId: string) => Promise<string | null>
     onInteractionHandler: (handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) => void
     setCommands: (adminUserId: string) => Promise<void>
@@ -336,14 +340,16 @@ const DEFAULT_SEND_MESSAGE: (
   platformInstanceId: string,
   target: DeferredDeliveryTarget,
   text: string,
-) => Promise<void> = (_platformInstanceId, _target, _text) => Promise.resolve()
+) => ReturnType<ChatProvider['sendMessage']> = (_platformInstanceId, _target, _text) => Promise.resolve()
 const DEFAULT_SET_COMMANDS: (adminUserId: string) => Promise<void> = (_adminUserId) => Promise.resolve()
 const DEFAULT_RESOLVE_USER_ID = (username: string, _context: ResolveUserContext): Promise<string | null> => {
   const clean = username.startsWith('@') ? username.slice(1) : username
   return Promise.resolve(clean)
 }
-const DEFAULT_RESOLVE_USER_LABEL = (_userId: string, _context?: ResolveUserContext): Promise<string | null> =>
-  Promise.resolve(null)
+const DEFAULT_RESOLVE_USER_LABEL = (
+  _userId: string,
+  _context: ResolveUserContext | undefined,
+): Promise<string | null> => Promise.resolve(null)
 const DEFAULT_RESOLVE_GROUP_LABEL = (_groupId: string): Promise<string | null> => Promise.resolve(null)
 
 function hasAppError(error: Error): error is Error & { appError: AppError } {
@@ -451,8 +457,11 @@ export function createMockChat(...args: [] | [options: CreateMockChatOptions]): 
   const resolveGroupLabel = options.resolveGroupLabel
   const setCommands = options.setCommands
 
-  let sendMessageImpl: (platformInstanceId: string, target: DeferredDeliveryTarget, text: string) => Promise<void> =
-    DEFAULT_SEND_MESSAGE
+  let sendMessageImpl: (
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    text: string,
+  ) => ReturnType<ChatProvider['sendMessage']> = DEFAULT_SEND_MESSAGE
   if (sendMessage !== undefined) {
     sendMessageImpl = sendMessage
   }

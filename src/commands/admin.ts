@@ -207,14 +207,14 @@ async function handleAnnounce(chat: ChatProvider, reply: ReplyFn, msg: IncomingM
   const results = await Promise.allSettled(
     users.map((user) =>
       limit(async () => {
-        await chat.sendMessage(msg.platformInstanceId, dmTarget(user.platform_user_id), message)
-        return user.platform_user_id
+        const result = await chat.sendMessage(msg.platformInstanceId, dmTarget(user.platform_user_id), message)
+        return result !== false
       }),
     ),
   )
 
-  const successCount = results.filter((r) => r.status === 'fulfilled').length
-  const failCount = results.filter((r) => r.status === 'rejected').length
+  const successCount = results.filter((r) => r.status === 'fulfilled' && r.value).length
+  const failCount = results.length - successCount
 
   // Log individual failures at warn level
   results.forEach((result) => {
