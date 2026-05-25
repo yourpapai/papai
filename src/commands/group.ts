@@ -7,7 +7,7 @@ import pLimit from 'p-limit'
 
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
 import { resolveChatGroupDisplayLabel, resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
-import { toScopedContextId } from '../chat/scoped-context.js'
+import { getNativeContextId, toStorageContextId } from '../chat/scoped-context.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn, ResolveUserContext } from '../chat/types.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.js'
 import { logger } from '../logger.js'
@@ -30,6 +30,11 @@ type ScheduleLookup = (lookup: () => Promise<string | null>) => Promise<string |
 function makeDisplayLabel(label: string | null, fallback: string): string {
   if (label === null) return fallback
   return label
+}
+
+function getGroupStorageContextId(auth: AuthorizationResult): string {
+  if (auth.configContextId !== undefined) return auth.configContextId
+  return auth.storageContextId
 }
 
 function resolveUserContextForLabelLookup(resolverContext: LabelResolverContext): ResolveUserContext {
@@ -119,17 +124,18 @@ export function registerGroupCommand(chat: ChatProvider): void {
     const limit = pLimit(MAX_CONCURRENT_LABEL_LOOKUPS)
     const lines = await Promise.all(
       groups.map(async (group) => {
+        const nativeGroupId = getNativeContextId(group.group_id)
         const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
-          resolveGroupLabelCached(chat, group.group_id, groupLabelCache, limit),
+          resolveGroupLabelCached(chat, nativeGroupId, groupLabelCache, limit),
           resolveUserLabelCached(
-            { chat, contextId: group.group_id, contextType: 'group', platformInstanceId: undefined },
+            { chat, contextId: nativeGroupId, contextType: 'group', platformInstanceId: undefined },
             group.added_by,
             userLabelCache,
             limit,
           ),
         ])
 
-        const groupLabel = makeDisplayLabel(resolvedGroupLabel, group.group_id)
+        const groupLabel = makeDisplayLabel(resolvedGroupLabel, nativeGroupId)
         const userLabel = makeDisplayLabel(resolvedUserLabel, group.added_by)
         return `${groupLabel} (added by ${userLabel})`
       }),
@@ -195,7 +201,7 @@ async function handleAuthorizedGroupCommand(
     return
   }
 
-  const storageGroupId = toScopedContextId({ platformInstanceId: msg.platformInstanceId, nativeContextId: groupId })
+  const storageGroupId = toStorageContextId(msg.platformInstanceId, groupId)
 
   if (subcommand === 'add') {
     addAuthorizedGroup(storageGroupId, msg.user.id)
@@ -245,7 +251,7 @@ async function handleGroupMemberUpdate(
   }
 
   const { userId } = result
-  const storageGroupId = auth.configContextId ?? auth.storageContextId
+  const storageGroupId = getGroupStorageContextId(auth)
   if (action === 'add') {
     addGroupMember(storageGroupId, userId, msg.user.id)
     await reply.text(`User ${targetUser} added to this group.`)
@@ -264,7 +270,7 @@ async function handleListUsers(
   reply: ReplyFn,
   auth: AuthorizationResult,
 ): Promise<void> {
-  const members = listGroupMembers(auth.configContextId ?? auth.storageContextId)
+  const members = listGroupMembers(getGroupStorageContextId(auth))
 
   if (members.length === 0) {
     await reply.text('No members in this group yet.')

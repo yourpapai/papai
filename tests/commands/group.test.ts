@@ -34,13 +34,19 @@ const flushMicrotasks = async (): Promise<void> => {
   await Promise.resolve()
 }
 
-const createGroupStorageAuth = (
-  contextId: string,
-  options: Parameters<typeof createAuth>[1] = {},
-): AuthorizationResult => ({
-  ...createAuth(contextId, options),
-  configContextId: contextId,
-})
+const createGroupStorageAuth = (contextId: string, ...args: [] | [Parameters<typeof createAuth>[1]]): AuthorizationResult => {
+  const options = args[0]
+  if (options === undefined) {
+    return {
+      ...createAuth(contextId, {}),
+      configContextId: contextId,
+    }
+  }
+  return {
+    ...createAuth(contextId, options),
+    configContextId: contextId,
+  }
+}
 
 // Label-lookup helpers defined outside test blocks — required by no-conditional-in-test
 function resolveGroupLabelByKnownId(groupId: string): Promise<string | null> {
@@ -506,6 +512,24 @@ describe('group commands', () => {
       expect(auth.allowed).toBe(true)
     })
 
+    test('adds already-scoped group id without double scoping in DM', async () => {
+      const handler = commandHandlers.get('group')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', `add ${scopedGroupId}`)
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe(`Group ${scopedGroupId} authorized.`)
+      const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(true)
+      expect(
+        isAuthorizedGroup(toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: scopedGroupId })),
+      ).toBe(false)
+    })
+
     test('removes an authorized group in DM for bot admin', async () => {
       const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
       const scopedGroupId = toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' })
@@ -534,6 +558,22 @@ describe('group commands', () => {
       await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
 
       expect(textCalls[0]).toBe('Group shared-group removed.')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
+    })
+
+    test('removes already-scoped group id without double scoping in DM', async () => {
+      const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+      const handler = commandHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', `remove ${scopedGroupId}`)
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe(`Group ${scopedGroupId} removed.`)
       expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
     })
 
@@ -783,6 +823,38 @@ describe('group commands', () => {
 
       expect(textCalls[0]).toContain('group-123 (added by Alice One (@admin1))')
       expect(textCalls[0]).toContain('group-456 (added by Alice Two (@admin1))')
+    })
+
+    test('uses native group id for provider label resolution when stored group is scoped', async () => {
+      const seenGroupIds: string[] = []
+      const seenContexts: Array<ResolveUserContext | undefined> = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const labeledChat = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveGroupLabel: (groupId: string): Promise<string | null> => {
+          seenGroupIds.push(groupId)
+          return Promise.resolve('Native Group Label')
+        },
+        resolveUserLabel: (_userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
+          seenContexts.push(context)
+          return Promise.resolve('Admin Label')
+        },
+      })
+      registerGroupCommand(labeledChat)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-123' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(seenGroupIds).toEqual(['group-123'])
+      expect(seenContexts).toEqual([{ contextId: 'group-123', contextType: 'group' }])
+      expect(textCalls[0]).toContain('Native Group Label (added by Admin Label)')
     })
 
     test('does not pass DM platform instance into /groups added-by label lookups', async () => {

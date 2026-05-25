@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { handleConfigEditorMessage } from './chat/config-editor-integration.js'
-import { toScopedContextId } from './chat/scoped-context.js'
+import { toScopedContextId, toStorageContextId } from './chat/scoped-context.js'
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from './chat/types.js'
 import { startWizardForAssignedTask } from './commands/setup.js'
 import { listManageableGroups } from './group-settings/access.js'
@@ -42,9 +42,7 @@ async function validateActiveGroupSettingsTarget(
   if (activeTarget === null) return null
   if (
     listManageableGroups(msg.user.id, msg.platformInstanceId).some(
-      (group) =>
-        toScopedContextId({ platformInstanceId: msg.platformInstanceId, nativeContextId: group.contextId }) ===
-        activeTarget,
+      (group) => toStorageContextId(msg.platformInstanceId, group.contextId) === activeTarget,
     )
   ) {
     return activeTarget

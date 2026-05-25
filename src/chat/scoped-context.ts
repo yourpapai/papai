@@ -14,6 +14,14 @@ export type PlatformScopedThreadContext = PlatformScopedContext &
   }>
 
 const encodeComponent = (value: string): string => Buffer.from(value, 'utf8').toString('base64url')
+const decodeComponent = (value: string): string | null => {
+  try {
+    const decoded = Buffer.from(value, 'base64url').toString('utf8')
+    return encodeComponent(decoded) === value ? decoded : null
+  } catch {
+    return null
+  }
+}
 const SCOPED_CONTEXT_PREFIX = 'pi:'
 const SCOPED_CONTEXT_MARKER = ':ctx:'
 const SCOPED_THREAD_MARKER = ':thread:'
@@ -29,6 +37,25 @@ export const toScopedThreadContextId = (input: PlatformScopedThreadContext): str
 
 export const isScopedContextId = (contextId: string): boolean =>
   contextId.startsWith(SCOPED_CONTEXT_PREFIX) && contextId.includes(SCOPED_CONTEXT_MARKER)
+
+export const toStorageContextId = (platformInstanceId: string, nativeOrScopedContextId: string): string => {
+  if (isScopedContextId(nativeOrScopedContextId)) return nativeOrScopedContextId
+  return toScopedContextId({ platformInstanceId, nativeContextId: nativeOrScopedContextId })
+}
+
+export const getNativeContextId = (scopedOrNativeContextId: string): string => {
+  if (!isScopedContextId(scopedOrNativeContextId)) return scopedOrNativeContextId
+  const scopedBody = scopedOrNativeContextId.slice(SCOPED_CONTEXT_PREFIX.length)
+  const contextMarkerIndex = scopedBody.indexOf(SCOPED_CONTEXT_MARKER)
+  if (contextMarkerIndex === -1) return scopedOrNativeContextId
+  const contextStart = contextMarkerIndex + SCOPED_CONTEXT_MARKER.length
+  const threadMarkerIndex = scopedBody.indexOf(SCOPED_THREAD_MARKER, contextStart)
+  const encodedContext =
+    threadMarkerIndex === -1 ? scopedBody.slice(contextStart) : scopedBody.slice(contextStart, threadMarkerIndex)
+  const nativeContextId = decodeComponent(encodedContext)
+  if (nativeContextId === null) return scopedOrNativeContextId
+  return nativeContextId
+}
 
 export const isScopedThreadContextId = (contextId: string): boolean =>
   isScopedContextId(contextId) && contextId.includes(SCOPED_THREAD_MARKER)
