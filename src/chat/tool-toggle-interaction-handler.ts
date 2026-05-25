@@ -116,6 +116,7 @@ export async function handleToolToggleInteraction(interaction: IncomingInteracti
   }
   const contextId = decodeContextId(encodedContextId)
   if (contextId === null) {
+    log.warn({ callbackData }, 'Malformed tool toggle callback context')
     await replyTextPreferReplace(reply, 'Invalid tool action. Please try again.')
     return true
   }
