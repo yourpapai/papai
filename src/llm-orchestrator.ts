@@ -6,6 +6,8 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
+import { getAiOutputSettings } from './ai-output-settings.js'
+import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
 import type { ReplyFn } from './chat/types.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
@@ -71,11 +73,13 @@ const sendLlmResponse = async (
   reply: ReplyFn,
   contextId: string,
   result: { text: string | undefined; toolCalls: unknown[] | undefined; response: { messages: ModelMessage[] } },
+  progressReporter?: AiProgressReporter,
 ): Promise<void> => {
   const textToFormat = result.text !== undefined && result.text !== '' ? result.text : 'Done.'
   const responseLength = result.text === undefined ? 0 : result.text.length
   const toolCallCount = result.toolCalls === undefined ? 0 : result.toolCalls.length
   await reply.formatted(textToFormat)
+  await progressReporter?.flush()
   log.info({ contextId, responseLength, toolCalls: toolCallCount }, 'Response sent successfully')
 }
 
@@ -171,6 +175,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     userText,
     deps.stagedDownloadFn,
   )
+  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(configId))
   const result = await invokeModelWithTyping(reply, {
     contextId,
     chatUserId,
@@ -182,12 +187,14 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     toolRouting: buildToolRoutingTelemetry(routingResult),
     messages: validatedMessages,
     deps,
+    progressReporter,
     turnId,
   })
   const toolCallCount = result.toolCalls === undefined ? undefined : result.toolCalls.length
   log.debug({ contextId, toolCalls: toolCallCount, usage: result.usage }, 'LLM response received')
+  progressReporter.reasoning(result.reasoningText, result.reasoning)
   persistFactsFromResults(contextId, result)
-  await sendLlmResponse(reply, contextId, result)
+  await sendLlmResponse(reply, contextId, result, progressReporter)
   return result
 }
 

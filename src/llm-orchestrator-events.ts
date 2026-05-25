@@ -62,6 +62,8 @@ export type ResolvedStreamTextResult = {
   usage: TokenUsage
   finishReason: string
 } & Partial<{
+  reasoningText: string
+  reasoning: unknown
   warnings: unknown[]
   request: unknown
   providerMetadata: unknown
