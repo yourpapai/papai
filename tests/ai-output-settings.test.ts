@@ -5,7 +5,6 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { setCachedConfig } from '../src/cache.js'
 import {
   AI_OUTPUT_DETAIL_LEVEL_KEY,
   AI_REASONING_VISIBILITY_KEY,
@@ -13,6 +12,7 @@ import {
   getAiOutputSettings,
   setAiOutputSetting,
 } from '../src/ai-output-settings.js'
+import { setCachedConfig } from '../src/cache.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 describe('ai-output-settings', () => {

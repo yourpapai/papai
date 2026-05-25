@@ -106,9 +106,9 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
+import { AI_REASONING_VISIBILITY_KEY, AI_TOOL_VISIBILITY_KEY } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
-import { AI_REASONING_VISIBILITY_KEY, AI_TOOL_VISIBILITY_KEY } from '../src/ai-output-settings.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'

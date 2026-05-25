@@ -11,15 +11,14 @@ import type { StagedFileDownloadFn } from './attachments/types.js'
 import type { ReplyFn } from './chat/types.js'
 import type { TaskProvider } from './providers/types.js'
 
-export interface LlmOrchestratorDeps {
+export type LlmOrchestratorDeps = {
   generateText: typeof generateText
   stepCountIs: typeof stepCountIs
   buildOpenAI: (apiKey: string, baseURL: string) => ReturnType<typeof createOpenAICompatible>
   buildProviderForUser: (userId: string) => TaskProvider
   getKaneoWorkspace: (userId: string) => string | null
   maybeProvisionKaneo: (reply: ReplyFn, contextId: string, username: string | null) => Promise<void>
-  stagedDownloadFn?: StagedFileDownloadFn
-}
+} & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>>
 
 type TokenUsage = { inputTokens: number | undefined; outputTokens: number | undefined }
 
@@ -64,8 +63,7 @@ export type InvokeModelArgs = {
   toolRouting: ToolRoutingInfo | undefined
   messages: ModelMessage[]
   deps: LlmOrchestratorDeps
-  progressReporter?: AiProgressReporter
-}
+} & Partial<Record<'progressReporter', AiProgressReporter>>
 
 export type StepOutput = {
   stepNumber: number

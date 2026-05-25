@@ -37,7 +37,7 @@ function getFieldEmoji(key: ConfigKey): string {
     youtrack_token: '🔐',
     timezone: '🌍',
   }
-  return emojiMap[key] ?? '⚙️'
+  return emojiMap[key]
 }
 
 function formatConfigLine(key: ConfigKey, value: string | undefined): string {
@@ -177,7 +177,7 @@ async function replyWithConfigSelection(reply: ReplyFn, userId: string, interact
 
 export function registerConfigCommand(
   chat: ChatProvider,
-  _checkAuthorization: (userId: string, username?: string | null) => boolean,
+  _checkAuthorization: (userId: string, username: string | null | undefined) => boolean,
 ): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return

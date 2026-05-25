@@ -77,7 +77,7 @@ function stringifySingleToolSchema(toolName: string, value: unknown): string {
       if (key === '') return nestedValue
       if (typeof nestedValue === 'function') return '[function]'
       if (nestedValue !== null && typeof nestedValue === 'object') {
-        if (seen.has(nestedValue)) return undefined
+        if (seen.has(nestedValue)) return '[circular]'
         seen.add(nestedValue)
       }
       return nestedValue

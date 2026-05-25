@@ -25,6 +25,7 @@ import {
 } from './commands/index.js'
 import { getAllConfig } from './config.js'
 import { emitUser } from './debug/event-bus.js'
+import type { LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
 import { logger } from './logger.js'
 import { enqueueMessage } from './message-queue/index.js'
@@ -35,7 +36,18 @@ import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
 
-type ProcessMessageFn = typeof defaultProcessMessage
+type ProcessMessageFn = (
+  reply: ReplyFn,
+  contextId: string,
+  chatUserId: string,
+  username: string | null,
+  userText: string,
+  contextType: 'dm' | 'group',
+  configContextId: string | undefined,
+  deps: LlmOrchestratorDeps,
+  newAttachmentIds: readonly string[],
+  turnId: string,
+) => Promise<void>
 type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
 export interface BotDeps {

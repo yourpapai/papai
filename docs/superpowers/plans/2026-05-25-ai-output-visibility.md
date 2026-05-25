@@ -40,6 +40,7 @@ Do not modify the debug dashboard, trace collector, debug schemas, or client UI.
 ### Task 1: AI Output Settings Model
 
 **Files:**
+
 - Create: `src/ai-output-settings.ts`
 - Create: `tests/ai-output-settings.test.ts`
 
@@ -211,6 +212,7 @@ git commit -m "feat: add ai output settings model"
 ### Task 2: Buffered Progress Reporter
 
 **Files:**
+
 - Create: `src/ai-progress-reporter.ts`
 - Create: `tests/ai-progress-reporter.test.ts`
 
@@ -513,6 +515,7 @@ git commit -m "feat: add ai progress reporter"
 ### Task 3: Config UI Section and Callbacks
 
 **Files:**
+
 - Create: `src/ai-output-config-ui.ts`
 - Create: `tests/ai-output-config-ui.test.ts`
 - Modify: `src/commands/config.ts`
@@ -641,7 +644,10 @@ function isSetting(value: string): value is AiOutputSettingName {
   return value === 'toolVisibility' || value === 'reasoningVisibility' || value === 'detailLevel'
 }
 
-function isValidSettingValue(setting: AiOutputSettingName, value: string): value is AiOutputSettings[AiOutputSettingName] {
+function isValidSettingValue(
+  setting: AiOutputSettingName,
+  value: string,
+): value is AiOutputSettings[AiOutputSettingName] {
   if (setting === 'detailLevel') return value === 'sanitized' || value === 'raw'
   return value === 'on' || value === 'off'
 }
@@ -740,16 +746,16 @@ Expected: PASS.
 Append this test inside `tests/commands/config.test.ts` in the interactive button support describe block:
 
 ```typescript
-    test('renders AI Output section and buttons', async () => {
-      const { reply, buttonCalls } = createMockReply()
-      await renderConfigForTarget(reply, USER_ID, true)
+test('renders AI Output section and buttons', async () => {
+  const { reply, buttonCalls } = createMockReply()
+  await renderConfigForTarget(reply, USER_ID, true)
 
-      assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
-      expect(buttonCalls[0]).toContain('AI Output')
-      expect(buttonCalls[0]).toContain('Tool calls: off')
-      expect(buttonCalls[0]).toContain('Reasoning: off')
-      expect(buttonCalls[0]).toContain('Detail level: sanitized')
-    })
+  assert(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+  expect(buttonCalls[0]).toContain('AI Output')
+  expect(buttonCalls[0]).toContain('Tool calls: off')
+  expect(buttonCalls[0]).toContain('Reasoning: off')
+  expect(buttonCalls[0]).toContain('Detail level: sanitized')
+})
 ```
 
 - [ ] **Step 6: Run the failing `/config` rendering test**
@@ -769,16 +775,20 @@ import { buildAiOutputConfigSection } from '../ai-output-config-ui.js'
 Then update `renderConfigForTarget()` after `appendPluginConfigLines(lines, targetContextId)`:
 
 ```typescript
-  const aiOutputSection = buildAiOutputConfigSection(targetContextId)
-  lines.push(...aiOutputSection.lines)
+const aiOutputSection = buildAiOutputConfigSection(targetContextId)
+lines.push(...aiOutputSection.lines)
 ```
 
 Then update the interactive buttons call:
 
 ```typescript
-  await reply.buttons(lines.join('\n'), {
-    buttons: [...buildConfigButtons(config, targetContextId), ...buildPluginButtons(targetContextId), ...aiOutputSection.buttons],
-  })
+await reply.buttons(lines.join('\n'), {
+  buttons: [
+    ...buildConfigButtons(config, targetContextId),
+    ...buildPluginButtons(targetContextId),
+    ...aiOutputSection.buttons,
+  ],
+})
 ```
 
 - [ ] **Step 8: Run `/config` tests**
@@ -834,8 +844,8 @@ async function handleAiOutputConfigInteraction(
 Then add this near the start of `defaultHandleConfigInteraction()` after the `startsWith('cfg:')` guard:
 
 ```typescript
-  const aiOutputHandled = await handleAiOutputConfigInteraction(interaction, reply)
-  if (aiOutputHandled !== null) return aiOutputHandled
+const aiOutputHandled = await handleAiOutputConfigInteraction(interaction, reply)
+if (aiOutputHandled !== null) return aiOutputHandled
 ```
 
 - [ ] **Step 10: Add an interaction-router callback test**
@@ -901,6 +911,7 @@ git commit -m "feat: add ai output config controls"
 ### Task 4: Wire Reporter Into Tool Hooks
 
 **Files:**
+
 - Modify: `src/llm-orchestrator-types.ts`
 - Modify: `src/llm-orchestrator-invoke.ts`
 - Modify: `tests/llm-orchestrator-invoke.test.ts`
@@ -939,43 +950,43 @@ function createReporterSpy(): { reporter: AiProgressReporter; calls: string[] } 
 Add this test in `describe('handleToolCallStart')`:
 
 ```typescript
-  test('forwards tool start to progress reporter', () => {
-    const { reporter, calls } = createReporterSpy()
+test('forwards tool start to progress reporter', () => {
+  const { reporter, calls } = createReporterSpy()
 
-    handleToolCallStart(
-      { ...baseContext(), progressReporter: reporter },
-      {
-        toolCall: {
-          toolName: 'search_tasks',
-          toolCallId: 'call-start',
-          input: { query: 'x' },
-        },
+  handleToolCallStart(
+    { ...baseContext(), progressReporter: reporter },
+    {
+      toolCall: {
+        toolName: 'search_tasks',
+        toolCallId: 'call-start',
+        input: { query: 'x' },
       },
-    )
+    },
+  )
 
-    expect(calls).toEqual(['started:search_tasks:call-start'])
-  })
+  expect(calls).toEqual(['started:search_tasks:call-start'])
+})
 ```
 
 Add this test in `describe('handleToolCallFinishEvent')`:
 
 ```typescript
-  test('forwards tool finish to progress reporter without user-warning reply', () => {
-    const { reporter, calls } = createReporterSpy()
+test('forwards tool finish to progress reporter without user-warning reply', () => {
+  const { reporter, calls } = createReporterSpy()
 
-    handleToolCallFinishEvent({ ...baseContext(), progressReporter: reporter }, undefined, {
-      toolCall: {
-        toolName: 'search_tasks',
-        toolCallId: 'call-finish',
-        input: { query: 'x' },
-      },
-      durationMs: 9,
-      success: false,
-      error: new Error('boom'),
-    })
-
-    expect(calls).toEqual(['finished:search_tasks:call-finish:false'])
+  handleToolCallFinishEvent({ ...baseContext(), progressReporter: reporter }, undefined, {
+    toolCall: {
+      toolName: 'search_tasks',
+      toolCallId: 'call-finish',
+      input: { query: 'x' },
+    },
+    durationMs: 9,
+    success: false,
+    error: new Error('boom'),
   })
+
+  expect(calls).toEqual(['finished:search_tasks:call-finish:false'])
+})
 ```
 
 - [ ] **Step 2: Run failing hook tests**
@@ -1035,31 +1046,31 @@ export type ToolCallContext = {
 At the end of `handleToolCallStart()`, add:
 
 ```typescript
-  ctx.progressReporter?.toolStarted({
-    toolName: event.toolCall.toolName,
-    toolCallId: event.toolCall.toolCallId,
-    input: event.toolCall.input,
-  })
+ctx.progressReporter?.toolStarted({
+  toolName: event.toolCall.toolName,
+  toolCallId: event.toolCall.toolCallId,
+  input: event.toolCall.input,
+})
 ```
 
 In `handleToolCallFinishEvent()`, add the reporter call before `handleToolCallFinish(...)`:
 
 ```typescript
-  ctx.progressReporter?.toolFinished({
-    toolName: event.toolCall.toolName,
-    toolCallId: event.toolCall.toolCallId,
-    input: event.toolCall.input,
-    durationMs: event.durationMs,
-    success: event.success,
-    output: event.output,
-    error: event.error,
-  })
+ctx.progressReporter?.toolFinished({
+  toolName: event.toolCall.toolName,
+  toolCallId: event.toolCall.toolCallId,
+  input: event.toolCall.input,
+  durationMs: event.durationMs,
+  success: event.success,
+  output: event.output,
+  error: event.error,
+})
 ```
 
 Then change the final support call to avoid direct user-warning replies:
 
 ```typescript
-  handleToolCallFinish(ctx.contextId, undefined, event)
+handleToolCallFinish(ctx.contextId, undefined, event)
 ```
 
 This preserves `llm:tool_result` debug/trace emission while moving user-visible tool failure messages to `AiProgressReporter`.
@@ -1090,6 +1101,7 @@ git commit -m "feat: route tool progress through reporter"
 ### Task 5: Orchestrator Integration and Reasoning Output
 
 **Files:**
+
 - Modify: `src/llm-orchestrator-events.ts`
 - Modify: `src/llm-orchestrator.ts`
 - Modify: `tests/llm-orchestrator.test.ts`
@@ -1122,48 +1134,48 @@ Update `defaultGenerateTextResult()` to include no reasoning text by omission.
 In `tests/llm-orchestrator.test.ts`, replace the test named `sends immediate user feedback when tool execution fails` with:
 
 ```typescript
-    test('does not send intermediate tool failure feedback by default', async () => {
-      seedConfigForContext('tool-fail-ctx')
+test('does not send intermediate tool failure feedback by default', async () => {
+  seedConfigForContext('tool-fail-ctx')
 
-      generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
-          toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
-          durationMs: 100,
-          success: false,
-          error: new Error('Task creation failed'),
-        })
-        return Promise.resolve({
-          text: 'Done!',
-          toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
-          toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
-          steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
-          usage: {},
-          finishReason: 'stop',
-          warnings: undefined,
-          request: {},
-          providerMetadata: undefined,
-        })
-      }
-
-      const { reply, textCalls } = createMockReply()
-
-      await processMessage(reply, 'tool-fail-ctx', 'user-1', null, 'create a task', 'dm')
-
-      expect(textCalls).toEqual(['Done!'])
+  generateTextImpl = (args): Promise<GenerateTextResult> => {
+    args.experimental_onToolCallFinish?.({
+      toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
+      durationMs: 100,
+      success: false,
+      error: new Error('Task creation failed'),
     })
+    return Promise.resolve({
+      text: 'Done!',
+      toolCalls: [{ toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } }],
+      toolResults: [{ toolName: 'create_task', toolCallId: 'call-1', output: { error: 'failed' } }],
+      steps: [],
+      response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+      usage: {},
+      finishReason: 'stop',
+      warnings: undefined,
+      request: {},
+      providerMetadata: undefined,
+    })
+  }
+
+  const { reply, textCalls } = createMockReply()
+
+  await processMessage(reply, 'tool-fail-ctx', 'user-1', null, 'create a task', 'dm')
+
+  expect(textCalls).toEqual(['Done!'])
+})
 ```
 
 Delete these two old tests from `tests/llm-orchestrator.test.ts` because `tests/llm-orchestrator-invoke.test.ts` already covers non-Error and structured tool-failure shapes after tool-hook routing changes:
 
 ```typescript
-    test('handles non-Error objects in tool failure callback', async () => {
-      // delete this entire test block
-    })
+test('handles non-Error objects in tool failure callback', async () => {
+  // delete this entire test block
+})
 
-    test('sends immediate user feedback when a tool returns a structured failure result', async () => {
-      // delete this entire test block
-    })
+test('sends immediate user feedback when a tool returns a structured failure result', async () => {
+  // delete this entire test block
+})
 ```
 
 - [ ] **Step 3: Add enabled tool-output integration test**
@@ -1171,39 +1183,39 @@ Delete these two old tests from `tests/llm-orchestrator.test.ts` because `tests/
 Add this test in the `tool execution failure` describe block:
 
 ```typescript
-    test('flushes tool details when tool visibility is on', async () => {
-      seedConfigForContext('tool-visible-ctx')
-      setCachedConfig('tool-visible-ctx', 'ai_tool_visibility', 'on')
+test('flushes tool details when tool visibility is on', async () => {
+  seedConfigForContext('tool-visible-ctx')
+  setCachedConfig('tool-visible-ctx', 'ai_tool_visibility', 'on')
 
-      generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
-          toolCall: { toolName: 'search_tasks', toolCallId: 'call-visible', input: { query: 'visible query' } },
-          durationMs: 12,
-          success: true,
-          output: { count: 2 },
-        })
-        return Promise.resolve({
-          text: 'Done!',
-          toolCalls: [],
-          toolResults: [],
-          steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
-          usage: {},
-          finishReason: 'stop',
-          warnings: undefined,
-          request: {},
-          providerMetadata: undefined,
-        })
-      }
-
-      const { reply, textCalls } = createMockReply()
-
-      await processMessage(reply, 'tool-visible-ctx', 'user-1', null, 'search tasks', 'dm')
-
-      expect(textCalls[0]).toBe('Done!')
-      expect(textCalls.some((text) => text.includes('AI execution details'))).toBe(true)
-      expect(textCalls.some((text) => text.includes('search_tasks'))).toBe(true)
+  generateTextImpl = (args): Promise<GenerateTextResult> => {
+    args.experimental_onToolCallFinish?.({
+      toolCall: { toolName: 'search_tasks', toolCallId: 'call-visible', input: { query: 'visible query' } },
+      durationMs: 12,
+      success: true,
+      output: { count: 2 },
     })
+    return Promise.resolve({
+      text: 'Done!',
+      toolCalls: [],
+      toolResults: [],
+      steps: [],
+      response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+      usage: {},
+      finishReason: 'stop',
+      warnings: undefined,
+      request: {},
+      providerMetadata: undefined,
+    })
+  }
+
+  const { reply, textCalls } = createMockReply()
+
+  await processMessage(reply, 'tool-visible-ctx', 'user-1', null, 'search tasks', 'dm')
+
+  expect(textCalls[0]).toBe('Done!')
+  expect(textCalls.some((text) => text.includes('AI execution details'))).toBe(true)
+  expect(textCalls.some((text) => text.includes('search_tasks'))).toBe(true)
+})
 ```
 
 - [ ] **Step 4: Add reasoning integration tests**
@@ -1211,56 +1223,56 @@ Add this test in the `tool execution failure` describe block:
 Add this describe block near other success-path tests:
 
 ```typescript
-  describe('reasoning visibility', () => {
-    test('does not show provider reasoning by default', async () => {
-      seedConfigForContext('reasoning-hidden-ctx')
-      generateTextImpl = (): Promise<GenerateTextResult> =>
-        Promise.resolve({
-          text: 'Done!',
-          reasoningText: 'Provider reasoning text',
-          toolCalls: [],
-          toolResults: [],
-          steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
-          usage: {},
-          finishReason: 'stop',
-          warnings: undefined,
-          request: {},
-          providerMetadata: undefined,
-        })
+describe('reasoning visibility', () => {
+  test('does not show provider reasoning by default', async () => {
+    seedConfigForContext('reasoning-hidden-ctx')
+    generateTextImpl = (): Promise<GenerateTextResult> =>
+      Promise.resolve({
+        text: 'Done!',
+        reasoningText: 'Provider reasoning text',
+        toolCalls: [],
+        toolResults: [],
+        steps: [],
+        response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+        usage: {},
+        finishReason: 'stop',
+        warnings: undefined,
+        request: {},
+        providerMetadata: undefined,
+      })
 
-      const { reply, textCalls } = createMockReply()
-      await processMessage(reply, 'reasoning-hidden-ctx', 'user-1', null, 'hello', 'dm')
+    const { reply, textCalls } = createMockReply()
+    await processMessage(reply, 'reasoning-hidden-ctx', 'user-1', null, 'hello', 'dm')
 
-      expect(textCalls).toEqual(['Done!'])
-    })
-
-    test('shows provider reasoning when reasoning visibility is on', async () => {
-      seedConfigForContext('reasoning-visible-ctx')
-      setCachedConfig('reasoning-visible-ctx', 'ai_reasoning_visibility', 'on')
-      generateTextImpl = (): Promise<GenerateTextResult> =>
-        Promise.resolve({
-          text: 'Done!',
-          reasoningText: 'Provider reasoning text',
-          toolCalls: [],
-          toolResults: [],
-          steps: [],
-          response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
-          usage: {},
-          finishReason: 'stop',
-          warnings: undefined,
-          request: {},
-          providerMetadata: undefined,
-        })
-
-      const { reply, textCalls } = createMockReply()
-      await processMessage(reply, 'reasoning-visible-ctx', 'user-1', null, 'hello', 'dm')
-
-      expect(textCalls[0]).toBe('Done!')
-      expect(textCalls[1]).toContain('Reasoning')
-      expect(textCalls[1]).toContain('Provider reasoning text')
-    })
+    expect(textCalls).toEqual(['Done!'])
   })
+
+  test('shows provider reasoning when reasoning visibility is on', async () => {
+    seedConfigForContext('reasoning-visible-ctx')
+    setCachedConfig('reasoning-visible-ctx', 'ai_reasoning_visibility', 'on')
+    generateTextImpl = (): Promise<GenerateTextResult> =>
+      Promise.resolve({
+        text: 'Done!',
+        reasoningText: 'Provider reasoning text',
+        toolCalls: [],
+        toolResults: [],
+        steps: [],
+        response: { messages: [{ role: 'assistant' as const, content: 'Done!' }] },
+        usage: {},
+        finishReason: 'stop',
+        warnings: undefined,
+        request: {},
+        providerMetadata: undefined,
+      })
+
+    const { reply, textCalls } = createMockReply()
+    await processMessage(reply, 'reasoning-visible-ctx', 'user-1', null, 'hello', 'dm')
+
+    expect(textCalls[0]).toBe('Done!')
+    expect(textCalls[1]).toContain('Reasoning')
+    expect(textCalls[1]).toContain('Provider reasoning text')
+  })
+})
 ```
 
 - [ ] **Step 5: Run failing orchestrator integration tests**
@@ -1330,7 +1342,7 @@ const sendLlmResponse = async (
 In `callLlm()`, after `prepareLlmInvocation(...)`, create the reporter:
 
 ```typescript
-  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(contextId))
+const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(contextId))
 ```
 
 Pass it into `invokeModelWithTyping()`:
@@ -1342,13 +1354,13 @@ Pass it into `invokeModelWithTyping()`:
 After `const result = await invokeModelWithTyping(...)`, before `persistFactsFromResults(...)`, report reasoning:
 
 ```typescript
-  progressReporter.reasoning(result.reasoningText, result.reasoning)
+progressReporter.reasoning(result.reasoningText, result.reasoning)
 ```
 
 Then call:
 
 ```typescript
-  await sendLlmResponse(reply, contextId, result, progressReporter)
+await sendLlmResponse(reply, contextId, result, progressReporter)
 ```
 
 - [ ] **Step 8: Run orchestrator integration tests**
@@ -1377,6 +1389,7 @@ git commit -m "feat: show configured ai output details"
 ### Task 6: Final Verification and Documentation Check
 
 **Files:**
+
 - Modify only files changed by prior tasks if verification exposes issues.
 
 - [ ] **Step 1: Run focused feature tests**

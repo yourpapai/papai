@@ -25,16 +25,25 @@ export type ToolCallContext = {
   model: string
   modelRole: 'main' | 'small'
   turnId: string
-  progressReporter?: AiProgressReporter
-}
+} & Partial<Record<'progressReporter', AiProgressReporter>>
 
 const safeByteLength = (value: unknown): number | null => {
   if (value === undefined || value === null) return null
   try {
-    return Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8')
+    return Buffer.byteLength(resolveSerializedValue(JSON.stringify(value)), 'utf8')
   } catch {
     return null
   }
+}
+
+const resolveSerializedValue = (value: string | undefined): string => {
+  if (value === undefined) return ''
+  return value
+}
+
+const resolveRecoveredFlag = (value: boolean | undefined): boolean => {
+  if (value === undefined) return false
+  return value
 }
 
 const contextEnvelope = (
@@ -54,28 +63,32 @@ export type ToolCallFinishEvent = {
   toolCall: { toolName: string; toolCallId: string; input: unknown }
   durationMs: number
   success: boolean
-  output?: unknown
-  error?: unknown
-}
+} & Partial<Record<'output' | 'error', unknown>>
 
 const reportToolStarted = (ctx: ToolCallContext, event: ToolCallStartEvent): void => {
+  if (ctx.progressReporter === undefined) return
   try {
-    ctx.progressReporter?.toolStarted({
+    ctx.progressReporter.toolStarted({
       toolName: event.toolCall.toolName,
       toolCallId: event.toolCall.toolCallId,
       input: event.toolCall.input,
     })
   } catch (error) {
     log.warn(
-      { contextId: ctx.contextId, toolName: event.toolCall.toolName, error: error instanceof Error ? error.message : String(error) },
+      {
+        contextId: ctx.contextId,
+        toolName: event.toolCall.toolName,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'AI progress reporter failed on tool start',
     )
   }
 }
 
 const reportToolFinished = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
+  if (ctx.progressReporter === undefined) return
   try {
-    ctx.progressReporter?.toolFinished({
+    ctx.progressReporter.toolFinished({
       toolName: event.toolCall.toolName,
       toolCallId: event.toolCall.toolCallId,
       input: event.toolCall.input,
@@ -86,7 +99,11 @@ const reportToolFinished = (ctx: ToolCallContext, event: ToolCallFinishEvent): v
     })
   } catch (error) {
     log.warn(
-      { contextId: ctx.contextId, toolName: event.toolCall.toolName, error: error instanceof Error ? error.message : String(error) },
+      {
+        contextId: ctx.contextId,
+        toolName: event.toolCall.toolName,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'AI progress reporter failed on tool finish',
     )
   }
@@ -113,10 +130,7 @@ export const buildToolCallStartHandler =
     handleToolCallStart(ctx, event)
   }
 
-const emitFailureClassified = (
-  ctx: ToolCallContext,
-  event: { success: boolean; output?: unknown; error?: unknown; toolCall: { toolName: string; toolCallId: string } },
-): void => {
+const emitFailureClassified = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
   if (event.success && isToolFailureResult(event.output)) {
     const failure = event.output
     emitUser(
@@ -128,7 +142,7 @@ const emitFailureClassified = (
         errorType: failure.errorType,
         errorCode: failure.errorCode,
         retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
+        recovered: resolveRecoveredFlag(failure.recovered),
         ...contextEnvelope(ctx),
       },
       ctx.turnId,
@@ -144,7 +158,7 @@ const emitFailureClassified = (
         errorType: failure.errorType,
         errorCode: failure.errorCode,
         retryable: failure.retryable,
-        recovered: failure.recovered ?? false,
+        recovered: resolveRecoveredFlag(failure.recovered),
         ...contextEnvelope(ctx),
       },
       ctx.turnId,
@@ -152,10 +166,7 @@ const emitFailureClassified = (
   }
 }
 
-export const handleToolCallFinishEvent = (
-  ctx: ToolCallContext,
-  event: ToolCallFinishEvent,
-): void => {
+export const handleToolCallFinishEvent = (ctx: ToolCallContext, event: ToolCallFinishEvent): void => {
   emitUser(
     'tool:execute_end',
     ctx.contextId,

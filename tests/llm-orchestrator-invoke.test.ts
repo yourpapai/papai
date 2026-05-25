@@ -223,16 +223,19 @@ describe('handleToolCallFinishEvent', () => {
     const input = { query: 'x' }
     const output = { count: 2 }
 
-    handleToolCallFinishEvent({ ...baseContext(), progressReporter: reporter }, {
-      toolCall: {
-        toolName: 'search_tasks',
-        toolCallId: 'call-finish',
-        input,
+    handleToolCallFinishEvent(
+      { ...baseContext(), progressReporter: reporter },
+      {
+        toolCall: {
+          toolName: 'search_tasks',
+          toolCallId: 'call-finish',
+          input,
+        },
+        durationMs: 9,
+        success: true,
+        output,
       },
-      durationMs: 9,
-      success: true,
-      output,
-    })
+    )
 
     expect(finishedEvents).toEqual([
       {
@@ -255,16 +258,19 @@ describe('handleToolCallFinishEvent', () => {
     const input = { query: 'x' }
     const error = new Error('boom')
 
-    handleToolCallFinishEvent({ ...baseContext(), progressReporter: reporter }, {
-      toolCall: {
-        toolName: 'search_tasks',
-        toolCallId: 'call-warning',
-        input,
+    handleToolCallFinishEvent(
+      { ...baseContext(), progressReporter: reporter },
+      {
+        toolCall: {
+          toolName: 'search_tasks',
+          toolCallId: 'call-warning',
+          input,
+        },
+        durationMs: 11,
+        success: false,
+        error,
       },
-      durationMs: 11,
-      success: false,
-      error,
-    })
+    )
 
     expect(textCalls).toEqual([])
     expect(finishedEvents).toEqual([
@@ -292,16 +298,19 @@ describe('handleToolCallFinishEvent', () => {
     }
 
     expect(() => {
-      handleToolCallFinishEvent({ ...baseContext(), progressReporter: reporter }, {
-        toolCall: {
-          toolName: 'search_tasks',
-          toolCallId: 'call-reporter-fails',
-          input: { query: 'x' },
+      handleToolCallFinishEvent(
+        { ...baseContext(), progressReporter: reporter },
+        {
+          toolCall: {
+            toolName: 'search_tasks',
+            toolCallId: 'call-reporter-fails',
+            input: { query: 'x' },
+          },
+          durationMs: 13,
+          success: false,
+          error: new Error('tool failed'),
         },
-        durationMs: 13,
-        success: false,
-        error: new Error('tool failed'),
-      })
+      )
     }).not.toThrow()
 
     expect(captured.some((e) => e.type === 'tool:failure_classified')).toBe(true)
