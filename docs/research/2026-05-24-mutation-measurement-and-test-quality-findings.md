@@ -423,6 +423,125 @@ runner passes at invocation time; see the ambiguity note below.
 
 ### B2. mock.module() blast radius
 
+#### Data collection
+
+Commands run (static analysis only; no `src/` or `tests/` changes):
+
+```
+# Total call count and file count
+grep -rn  "mock\.module(" tests/ --include="*.ts" | wc -l   → 97
+grep -rln "mock\.module(" tests/ --include="*.ts" | wc -l   → 26
+
+# Ranked mocked specifiers
+grep -rhn "mock\.module(" tests/ --include="*.ts" \
+  | sed -E "s/.*mock\.module\(['\"]([^'\"]+)['\"].*/\1/" \
+  | sort | uniq -c | sort -rn
+```
+
+#### Raw counts
+
+- **97 total `mock.module()` call sites** across **26 test files**.
+- `tests/mock-reset.ts` contributes **1 call site** (a loop that issues 29 `mock.module()` calls
+  per `beforeEach` invocation); the remaining 96 are scattered across 25 individual test files.
+
+#### Mocked-modules table (top specifiers, normalized)
+
+Relative paths are normalized to the canonical `src/` module. The mutate scope (from
+`stryker.config.json`) covers: `src/providers/**/*.ts` (excl. index/constants/types),
+`src/tools/**/*.ts` (excl. index), `src/errors.ts`, `src/config.ts`, `src/memory.ts`,
+`src/users.ts`, `src/cron.ts`, `src/recurring.ts`, `src/history.ts`, `src/conversation.ts`.
+
+| Module (normalized)                      | Raw specifiers                                                  | Occurrences |  In mutate scope?  |
+| ---------------------------------------- | --------------------------------------------------------------- | ----------: | :----------------: |
+| `ai` (external)                          | `ai`                                                            |          15 |         N          |
+| `@ai-sdk/openai-compatible` (external)   | `@ai-sdk/openai-compatible`                                     |          13 |         N          |
+| `src/providers/factory.ts`               | `../src/providers/factory.js`, `../../src/providers/factory.js` |          13 |       **Y**        |
+| `src/logger.ts`                          | `../../src/logger.js`, `../src/logger.js`                       |           9 |         N          |
+| `src/tools/index.ts`                     | `../src/tools/index.js`                                         |           2 | N (index excluded) |
+| `src/chat/interaction-router.ts`         | `../src/chat/interaction-router.js`                             |           2 |         N          |
+| `src/recurrence.ts`                      | `../../src/recurrence.js`                                       |           2 |  N (not in scope)  |
+| `src/db/drizzle.ts`                      | `../../src/db/drizzle.js`, `../src/db/drizzle.js`               |           3 |         N          |
+| `src/auth.ts`                            | `../../../src/auth.js`                                          |           2 |         N          |
+| `src/providers/kaneo/provision.ts`       | `../src/providers/kaneo/provision.js`                           |           1 |       **Y**        |
+| `src/recurring.ts`                       | `../../src/recurring.js`                                        |           1 |       **Y**        |
+| `src/users.ts`                           | `../src/users.js`                                               |           1 |       **Y**        |
+| `src/system-config.ts`                   | `../src/system-config.js`                                       |           1 |         N          |
+| `src/scheduler.ts`                       | `../src/scheduler.js`                                           |           1 |         N          |
+| `src/scheduler-instance.ts`              | `../src/scheduler-instance.js`                                  |           1 |         N          |
+| `src/message-queue/index.ts`             | `../src/message-queue/index.js`                                 |           1 |         N          |
+| `src/message-cache/index.ts`             | `../src/message-cache/index.js`                                 |           1 |         N          |
+| `src/deferred-prompts/poller.ts`         | `../src/deferred-prompts/poller.js`                             |           1 |         N          |
+| `src/db/index.ts`                        | `../src/db/index.js`                                            |           1 |         N          |
+| other (chat, attachments, bot, scripts…) | various                                                         |          11 |         N          |
+
+**In-scope summary (4 distinct modules, 16 combined occurrences):**
+
+| Module                             | Combined occurrences |
+| ---------------------------------- | -------------------: |
+| `src/providers/factory.ts`         |                   13 |
+| `src/providers/kaneo/provision.ts` |                    1 |
+| `src/recurring.ts`                 |                    1 |
+| `src/users.ts`                     |                    1 |
+
+#### B1 global reset cross-reference
+
+The 29-module `originals` array in `tests/mock-reset.ts` (B1) issues a `mock.module()` call per
+entry on every `beforeEach`. Of those 29, **4 are in the mutate scope**:
+
+- `../src/providers/factory.js` → `src/providers/factory.ts`
+- `../src/providers/kaneo/provision.js` → `src/providers/kaneo/provision.ts`
+- `../src/recurring.js` → `src/recurring.ts`
+- `../src/users.js` → `src/users.ts`
+
+(The other 25 global reset modules — `src/bot.ts`, `src/logger.ts`, DB modules, chat adapters,
+etc. — are outside the mutate scope and do not affect mutation coverage directly.)
+
+#### Analysis
+
+**Process-wide leakage.** Bun's `mock.module()` replaces the module binding globally for the
+entire worker process. Any call to `mock.module(specifier, factory)` in any test file immediately
+replaces that module's exports for all subsequent imports in all other test files that share the
+same process, regardless of describe/test boundaries. The `mock-reset.ts` global `beforeEach`
+exists precisely to counter this leakage: it restores known modules before each test. But the
+restoration itself is a `mock.module()` call — meaning it re-issues a process-wide override every
+single test, keeping those module slots permanently occupied by mock machinery rather than real
+code.
+
+**Impact on perTest coverage (the mutation story).** For a mutant to accrue `perTest` coverage,
+its source file must be executed while `currentTestId` is set to the running test. When a module
+is replaced by `mock.module()`, Stryker's instrumented version of that module is bypassed: the
+mock factory returns whatever the test author chose, not the instrumented real code. Any mutant
+inside the replaced module therefore sees no execution during those test runs, contributing
+zero perTest hits. Stryker records such mutants as `NoCoverage` (or, if the module was
+eager-imported during the runner's preload before any `mock.module()` call, as `static` via the
+mechanism described in A2).
+
+**Direct link to NoCoverage/static.** The 13 call sites that mock `src/providers/factory.ts`
+(the highest-frequency in-scope module) are spread across at least 3 test files
+(`tests/llm-orchestrator.test.ts` with 6 calls, `tests/index.test.ts` with 1, and
+`tests/commands/context-tool-resolution.test.ts` and others). Every test in those files that
+executes while `src/providers/factory.ts` is mocked contributes zero perTest coverage for any
+mutant inside `factory.ts`. Combined with the 29-module global reset running on all ~4 817 tests
+(each unconditionally re-mocking `factory.ts`), virtually every test in the suite replaces
+`factory.ts` with a mock before executing. The result is that `factory.ts` mutants are almost
+entirely deprived of perTest hits, pushing them into the `NoCoverage` or `static` bucket.
+
+**Scale.** With 97 call sites across 26 files and 4 in-scope modules receiving combined 16
+explicit mock.module() invocations (plus 29 × ~4 817 invocations from the global beforeEach
+loop), the blast radius is wide: the global reset alone performs approximately 140 000
+`mock.module()` calls per full test run. Every in-scope module in the global reset list
+effectively has zero chance of accumulating real perTest coverage, regardless of how thoroughly
+its tests exercise its logic.
+
+**Cross-reference to B1 and A2.** B1 §Risks/Smells item 1 notes that the global `beforeEach`
+fires while `currentTestId` may be `undefined`, so the 29 module-reset calls themselves land in
+the `static` bucket. A2 §3–4 establishes that the runner's coverage-preload eager-imports every
+mutated module unconditionally — also before any test, while `currentTestId` is `undefined`.
+Both paths funnel the same in-scope modules into `static`. The mock.module() blast radius is a
+secondary amplifier: even if the eager-import issue were resolved, in-scope modules that are
+heavily mocked would still accrue limited perTest coverage because the mock short-circuits
+execution of the instrumented code.
+
 ### B3. DI adherence
 
 ### B4. Test-quality signals from mutation data
