@@ -28,6 +28,11 @@ type UserDuplicateCandidate = Readonly<{
   is_placeholder: number
 }>
 
+type LegacyUserRow = Readonly<{
+  rowid: number
+  platform_user_id: string
+}>
+
 type ContextOwnedRow = Readonly<{
   rowid: number
   value: string
@@ -64,6 +69,7 @@ const CONTEXT_OWNED_COLUMNS: readonly ContextOwnedColumn[] = [
 ]
 
 const SCOPED_CONTEXT_ID_PATTERN = /^pi:[^:]+:ctx:[^:]+(?::thread:[^:]+)?$/u
+const UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID = '__unscoped_legacy__'
 
 const tableExists = (db: Database, table: string): boolean =>
   db
@@ -77,7 +83,9 @@ const columnExists = (db: Database, table: string, column: string): boolean =>
     .some((row) => row.name === column)
 
 const parseBootstrapChatProvider = (value: string | undefined): string | null => {
-  if (value === 'telegram' || value === 'mattermost' || value === 'discord') return value
+  if (value === undefined) return null
+  const trimmed = value.trim()
+  if (trimmed === 'telegram' || trimmed === 'mattermost' || trimmed === 'discord') return trimmed
   return null
 }
 
@@ -165,6 +173,33 @@ const addStagedSourcePlatformColumn = (db: Database): void => {
   if (columnExists(db, 'staged_files', 'source_platform_instance_id')) return
 
   db.run(`ALTER TABLE staged_files ADD COLUMN source_platform_instance_id TEXT NOT NULL DEFAULT ''`)
+}
+
+const targetUserExists = (db: Database, platformInstanceId: string, row: LegacyUserRow): boolean =>
+  db
+    .query<{ one: number }, [string, string, number]>(
+      `SELECT 1 AS one FROM users WHERE platform_instance_id = ? AND platform_user_id = ? AND rowid <> ?`,
+    )
+    .get(platformInstanceId, row.platform_user_id, row.rowid) !== null
+
+const migrateLegacyUsersToPlatform = (db: Database, platformInstanceId: string): void => {
+  if (!tableExists(db, 'users')) return
+  if (!columnExists(db, 'users', 'platform_instance_id')) return
+  if (!columnExists(db, 'users', 'platform_user_id')) return
+
+  const rows = db
+    .query<LegacyUserRow, [string]>(
+      `SELECT rowid, platform_user_id FROM users WHERE platform_instance_id = ? ORDER BY added_at, platform_user_id`,
+    )
+    .all(UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID)
+
+  for (const row of rows) {
+    if (targetUserExists(db, platformInstanceId, row)) {
+      db.run(`DELETE FROM users WHERE rowid = ?`, [row.rowid])
+    } else {
+      db.run(`UPDATE users SET platform_instance_id = ? WHERE rowid = ?`, [platformInstanceId, row.rowid])
+    }
+  }
 }
 
 const getUsernameDuplicateGroups = (db: Database): readonly UsernameDuplicateGroup[] => {
@@ -255,6 +290,7 @@ export const migration043ScopedContextIds: Migration = {
     if (platformInstanceId === null) {
       log.warn('migration 043: preserving legacy context ids because platform ownership is ambiguous')
     } else {
+      migrateLegacyUsersToPlatform(db, platformInstanceId)
       scopeContextOwnedRows(db, platformInstanceId)
     }
     addStagedSourcePlatformColumn(db)
@@ -262,5 +298,3 @@ export const migration043ScopedContextIds: Migration = {
     createUsernameUniqueIndex(db)
   },
 }
-
-export default migration043ScopedContextIds

@@ -132,6 +132,77 @@ describe('migration043ScopedContextIds', () => {
     })
   })
 
+  test('moves direct-upgrade legacy users to future bootstrap platform id', () => {
+    process.env['CHAT_PROVIDER'] = 'telegram'
+    db.run(`INSERT INTO users VALUES ('user-1', '__unscoped_legacy__', 'alice', '2026-01-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT platform_user_id, platform_instance_id, username FROM users`).all()).toEqual([
+      { platform_user_id: 'user-1', platform_instance_id: 'telegram-default', username: 'alice' },
+    ])
+  })
+
+  test('keeps existing target user when migrating legacy sentinel duplicate would conflict', () => {
+    process.env['CHAT_PROVIDER'] = 'telegram'
+    db.run(`INSERT INTO users VALUES ('user-1', 'telegram-default', 'alice', '2026-01-01', 'admin')`)
+    db.run(`INSERT INTO users VALUES ('user-1', '__unscoped_legacy__', 'legacy-alice', '2026-02-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT platform_user_id, platform_instance_id, username FROM users`).all()).toEqual([
+      { platform_user_id: 'user-1', platform_instance_id: 'telegram-default', username: 'alice' },
+    ])
+  })
+
+  test('trims chat provider before deriving future bootstrap platform id', () => {
+    process.env['CHAT_PROVIDER'] = ' telegram '
+    db.run(`INSERT INTO users VALUES ('user-1', '__unscoped_legacy__', 'alice', '2026-01-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT platform_instance_id FROM users`).get()).toEqual({
+      platform_instance_id: 'telegram-default',
+    })
+  })
+
+  test('preserves legacy sentinel users when platform ownership is ambiguous or invalid', () => {
+    process.env['CHAT_PROVIDER'] = 'invalid'
+    db.run(`INSERT INTO users VALUES ('invalid-env-user', '__unscoped_legacy__', 'alice', '2026-01-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(
+      db.query(`SELECT platform_instance_id FROM users WHERE platform_user_id = 'invalid-env-user'`).get(),
+    ).toEqual({
+      platform_instance_id: '__unscoped_legacy__',
+    })
+
+    delete process.env['CHAT_PROVIDER']
+    db.run(`INSERT INTO users VALUES ('absent-env-user', '__unscoped_legacy__', 'bob', '2026-01-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(db.query(`SELECT platform_instance_id FROM users WHERE platform_user_id = 'absent-env-user'`).get()).toEqual(
+      {
+        platform_instance_id: '__unscoped_legacy__',
+      },
+    )
+
+    process.env['CHAT_PROVIDER'] = 'telegram'
+    db.run(`INSERT INTO platform_instances VALUES ('telegram-default', 'telegram', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO platform_instances VALUES ('discord-default', 'discord', '{}', 'active', 'now')`)
+    db.run(`INSERT INTO users VALUES ('multi-platform-user', '__unscoped_legacy__', 'carol', '2026-01-01', 'admin')`)
+
+    migration043ScopedContextIds.up(db)
+
+    expect(
+      db.query(`SELECT platform_instance_id FROM users WHERE platform_user_id = 'multi-platform-user'`).get(),
+    ).toEqual({
+      platform_instance_id: '__unscoped_legacy__',
+    })
+  })
+
   test('preserves zero-instance legacy rows when chat provider is absent', () => {
     delete process.env['CHAT_PROVIDER']
     db.run(`INSERT INTO user_config VALUES ('user-1', 'timezone', 'UTC')`)
