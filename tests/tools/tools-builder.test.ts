@@ -406,6 +406,11 @@ describe('buildTools', () => {
 })
 
 describe('makeTools direct integration', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
   it('exposes direct tools by default', () => {
     const provider = createMockProvider()
 
