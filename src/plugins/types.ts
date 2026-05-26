@@ -149,6 +149,7 @@ const pluginConfigRequirementSchema = z.object({
   label: z.string().min(1),
   required: z.boolean(),
   sensitive: z.boolean().optional().default(false),
+  scope: z.enum(['instance', 'user']).optional().default('instance'),
 })
 
 const mainPathSchema = z.string().refine(

@@ -37,7 +37,9 @@ function makePromptPlugin(pluginId: string): DiscoveredPlugin {
       activationTimeoutMs: 5000,
       requiredTaskCapabilities: [],
       requiredChatCapabilities: [],
-      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+      configRequirements: [
+        { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'instance' },
+      ],
       providerCapabilities: [],
       providerConfigSchema: [],
       providerAllowedHosts: [],
