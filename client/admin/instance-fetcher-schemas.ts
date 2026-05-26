@@ -33,7 +33,7 @@ export const TaskProviderTypeViewSchema = z.object({
     z.object({ key: z.string(), label: z.string(), required: z.boolean(), sensitive: z.boolean() }),
   ),
   capabilities: z.array(z.string()),
-  source: z.union([z.literal('builtin'), z.object({ plugin: z.string() })]),
+  source: z.union([z.literal('builtin'), z.object({ plugin: z.string().min(1) })]),
 })
 
 export const AdminInstanceViewSchema = z.object({

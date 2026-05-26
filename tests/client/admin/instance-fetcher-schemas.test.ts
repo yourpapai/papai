@@ -71,4 +71,15 @@ describe('TaskProviderTypeViewSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  test('rejects plugin source with empty plugin id', () => {
+    const result = TaskProviderTypeViewSchema.safeParse({
+      type: 'custom-tracker',
+      displayName: 'Custom Tracker',
+      configSchema: [],
+      capabilities: [],
+      source: { plugin: '' },
+    })
+    expect(result.success).toBe(false)
+  })
 })
