@@ -176,13 +176,13 @@ describe('buildPluginContext', () => {
           commands: [],
           jobs: [],
           configKeys: [],
-          taskProviderTypes: ['kaneo'],
+          taskProviderTypes: ['custom-tracker'],
         },
         providerCapabilities: ['labels.list'],
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })
-      expect(getContributedTaskProviderType('kaneo')?.pluginId).toBe('test-plugin')
+      ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
+      expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('test-plugin')
     })
 
     test('throws without provider.task permission', () => {
