@@ -70,4 +70,15 @@ describe('TreeView', () => {
     expect(target.textContent).toContain('child')
     void unmount(component)
   })
+
+  test('TreeView source contains scoped styles for tree-row, tree-key, tree-toggle', async () => {
+    const url = new URL('../../../../client/shared/TreeView.svelte', import.meta.url)
+    const source = await Bun.file(url).text()
+    const styleMatch = source.match(/<style[^>]*>([\s\S]*?)<\/style>/u)
+    expect(styleMatch).not.toBeNull()
+    const css = styleMatch![1]
+    expect(css).toContain('.tree-row')
+    expect(css).toContain('.tree-key')
+    expect(css).toContain('.tree-toggle')
+  })
 })

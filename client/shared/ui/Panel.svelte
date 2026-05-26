@@ -13,9 +13,10 @@
     action?: Snippet
     dense?: boolean
     flat?: boolean
+    pad?: number
   }
 
-  let { title, count, body, action, dense = false, flat = false }: Props = $props()
+  let { title, count, body, action, dense = false, flat = false, pad }: Props = $props()
 </script>
 
 <div class="ui-panel" class:ui-panel--flat={flat}>
@@ -32,7 +33,7 @@
       {/if}
     </div>
   {/if}
-  <div class="ui-panel__body">{@render body()}</div>
+  <div class="ui-panel__body" style:padding={pad !== undefined ? `${pad}px` : null}>{@render body()}</div>
 </div>
 
 <style>

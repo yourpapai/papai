@@ -24,3 +24,8 @@
 
 <Story name="Long label edge"
   >a very long button label that should not wrap unexpectedly inside the surrounding layout</Story>
+
+<Story name="Icon button" args={{ variant: 'primary' }}>
+  {#snippet icon()}<span>+</span>{/snippet}
+  Add subject
+</Story>

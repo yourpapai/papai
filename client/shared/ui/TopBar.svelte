@@ -8,7 +8,7 @@
 
   interface Props {
     page: string
-    statusRow: Snippet
+    statusRow?: Snippet
     secondaryRow?: Snippet
   }
 
@@ -22,7 +22,9 @@
       <span class="ui-topbar__brand-page">::{page}</span>
     </div>
     <div class="ui-topbar__spacer"></div>
-    <div class="ui-topbar__status">{@render statusRow()}</div>
+    {#if statusRow}
+      <div class="ui-topbar__status">{@render statusRow()}</div>
+    {/if}
   </div>
   {#if secondaryRow}
     <div class="ui-topbar__secondary">{@render secondaryRow()}</div>

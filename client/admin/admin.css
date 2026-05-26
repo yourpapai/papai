@@ -35,13 +35,6 @@
   color: var(--fg);
 }
 
-.panel {
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 0;
-  background: var(--surface);
-}
-
 .admin-section-header {
   display: flex;
   gap: 12px;
@@ -151,6 +144,7 @@
 }
 
 .admin-section {
+  padding: 20px;
   scroll-margin-top: 96px;
 }
 
@@ -169,4 +163,25 @@
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* --- Masked secret values --- */
+
+.masked-value {
+  background: var(--inset);
+  border: 1px solid var(--hair);
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg3);
+  letter-spacing: 0.04em;
+}
+
+.masked-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg4);
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }

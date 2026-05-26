@@ -63,4 +63,25 @@ describe('Panel.svelte', () => {
     expect(target.querySelector('.ui-panel__body')!.textContent).toContain('only body')
     void unmount(component)
   })
+
+  test('applies pad value as inline padding to body', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Panel, {
+      target,
+      props: { body: textSnippet('x'), pad: 12 },
+    })
+    const bodyEl = target.querySelector<HTMLElement>('.ui-panel__body')!
+    expect(bodyEl.style.padding).toBe('12px')
+    void unmount(component)
+  })
+
+  test('does not apply padding when pad prop is omitted', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Panel, { target, props: { body: textSnippet('x') } })
+    const bodyEl = target.querySelector<HTMLElement>('.ui-panel__body')!
+    expect(bodyEl.style.padding).toBe('')
+    void unmount(component)
+  })
 })

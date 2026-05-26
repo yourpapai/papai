@@ -4,9 +4,11 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import type { Snippet } from 'svelte'
+
   interface Props {
     k: string
-    v: string | number
+    v: string | number | Snippet
     sub?: string
     vColor?: string
     dim?: boolean
@@ -17,7 +19,13 @@
 
 <div class="ui-kv" class:ui-kv--stacked={sub !== undefined}>
   <span class="ui-kv__k" style:color={dim ? 'var(--fg4)' : 'var(--fg3)'}>{k}</span>
-  <span class="ui-kv__v" style:color={vColor ?? 'var(--fg)'}>{v}</span>
+  <span class="ui-kv__v" style:color={vColor ?? 'var(--fg)'}>
+    {#if typeof v === 'function'}
+      {@render (v as Snippet)()}
+    {:else}
+      {v}
+    {/if}
+  </span>
   {#if sub !== undefined}
     <span class="ui-kv__sub">{sub}</span>
   {/if}

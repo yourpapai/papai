@@ -32,3 +32,7 @@
     {/snippet}
   </TopBar>
 </Story>
+
+<Story name="Without status row" asChild>
+  <TopBar page="admin" />
+</Story>

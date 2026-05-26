@@ -59,7 +59,7 @@
   })
 </script>
 
-<section id="billing" class="panel billing-panel admin-section">
+<section id="billing" class="billing-panel admin-section">
   <header class="billing-header">
     <div>
       <p class="eyebrow">Usage</p>

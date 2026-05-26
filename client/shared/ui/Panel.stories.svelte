@@ -40,3 +40,11 @@
     {/snippet}
   </Panel>
 </Story>
+
+<Story name="Padded body" asChild>
+  <Panel title="Events" pad={12}>
+    {#snippet body()}
+      <p>body with 12px padding</p>
+    {/snippet}
+  </Panel>
+</Story>

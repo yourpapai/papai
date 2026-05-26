@@ -57,4 +57,29 @@ describe('Btn.svelte', () => {
     expect(clicked).toBe(true)
     void unmount(component)
   })
+
+  test('Btn.svelte source contains :hover rules for every variant', async () => {
+    const url = new URL('../../../../client/shared/ui/Btn.svelte', import.meta.url)
+    const source = await Bun.file(url).text()
+    for (const variant of ['primary', 'secondary', 'outline', 'ghost', 'danger'] as const) {
+      expect(source).toContain(`.ui-btn--${variant}:hover`)
+    }
+  })
+
+  test('renders icon Snippet before children when provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const iconSnippet = createRawSnippet(() => ({
+      render: (): string => '<span data-testid="icon">+</span>',
+    }))
+    const component = mount(Btn, {
+      target,
+      props: { children: textSnippet('Save'), icon: iconSnippet },
+    })
+    const btn = target.querySelector<HTMLButtonElement>('.ui-btn')!
+    const icon = btn.querySelector('[data-testid="icon"]')
+    expect(icon).not.toBeNull()
+    expect(btn.innerHTML.indexOf('data-testid="icon"')).toBeLessThan(btn.innerHTML.indexOf('Save'))
+    void unmount(component)
+  })
 })

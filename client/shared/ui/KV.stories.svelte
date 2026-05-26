@@ -7,6 +7,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf'
 
   import KV from './KV.svelte'
+  import Pill from './Pill.svelte'
 
   const { Story } = defineMeta({
     title: 'shared/ui/KV',
@@ -21,3 +22,11 @@
 <Story name="Colored value" args={{ k: 'Status', v: 'error', vColor: 'var(--danger)' }} />
 
 <Story name="Dim" args={{ k: 'Idle since', v: '3h', dim: true }} />
+
+<Story name="With Pill value" asChild>
+  <KV k="status">
+    {#snippet v()}
+      <Pill tone="accent" dot>active</Pill>
+    {/snippet}
+  </KV>
+</Story>
