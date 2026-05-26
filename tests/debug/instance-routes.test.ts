@@ -274,6 +274,39 @@ describe('instance API routes', () => {
     expect(expectInstance(router, instanceId).status).toBe('active')
   })
 
+  test('apply bounds concurrent platform starts', async () => {
+    let activeStarts = 0
+    let maxActiveStarts = 0
+    const start = mock(async () => {
+      activeStarts += 1
+      maxActiveStarts = Math.max(maxActiveStarts, activeStarts)
+      await Bun.sleep(5)
+      activeStarts -= 1
+    })
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    const instances: PlatformInstance[] = Array.from({ length: 6 }, (_, index) => ({
+      id: `telegram-apply-${index}`,
+      type: 'telegram',
+      config: { token: `secret-${index}` },
+      status: 'active',
+      createdAt: '2026-05-24 00:00:00',
+    }))
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => instances },
+        { method: 'POST', headers: jsonHeaders },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(start).toHaveBeenCalledTimes(instances.length)
+    expect(maxActiveStarts).toBeLessThanOrEqual(4)
+    expect(await readJson(res)).toEqual({ applied: instances.length })
+  })
+
   test('apply starts stopped runtime instances whose DB rows are active', async () => {
     const start = mock(async () => {})
     const stop = mock(async () => {})

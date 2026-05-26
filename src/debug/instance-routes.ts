@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatRouter } from '../chat/router.js'
 import * as adminStore from '../instances/admin-store.js'
 import {
   deleteContextsByPlatformInstance,
@@ -33,6 +32,8 @@ import { listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import {
   adminSchema,
+  applyPlatformInstances,
+  type InstanceApiDeps,
   instanceExistsError,
   instancePatchSchema,
   parseBody,
@@ -46,11 +47,6 @@ import { jsonResponse } from './json-response.js'
 import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
-
-type InstanceApiDeps = {
-  readonly getRuntimeChatRouter: () => ChatRouter | null
-  readonly listActivePlatformInstances: () => PlatformInstance[]
-}
 
 const defaultDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
@@ -117,6 +113,11 @@ const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Re
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
+const resolveAdminPlatformInstanceId = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId !== undefined) return platformInstanceId
+  return adminStore.SUPER_ADMIN_PLATFORM_ID
+}
+
 const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApiDeps): Promise<Response | null> => {
   const parts = splitPath(url)
 
@@ -161,32 +162,6 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
   }
 
   return null
-}
-
-const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Response> => {
-  const router = deps.getRuntimeChatRouter()
-  if (router === null) return jsonResponse({ error: 'router not initialised' }, { status: 503 })
-
-  const activeInstances = deps.listActivePlatformInstances()
-  const activeIds = new Set(activeInstances.map((instance) => instance.id))
-  const runtimeIds = router.listInstances().map((instance) => instance.id)
-  const removed = runtimeIds.filter((id) => !activeIds.has(id))
-  const missing = activeInstances.filter((instance) => router.getInstance(instance.id) === null)
-  const stopped = activeInstances.filter((instance) => {
-    const runtimeInstance = router.getInstance(instance.id)
-    return runtimeInstance !== null && runtimeInstance.status === 'stopped'
-  })
-
-  await Promise.all(removed.map((id) => router.removeInstance(id)))
-  await Promise.all(
-    missing.map((instance) => {
-      router.addInstance(instance.id, instance.type, instance.config)
-      return router.startInstance(instance.id)
-    }),
-  )
-  await Promise.all(stopped.map((instance) => router.startInstance(instance.id)))
-
-  return jsonResponse({ applied: activeInstances.length })
 }
 
 const handleTaskInstances = async (req: Request, url: URL): Promise<Response | null> => {
@@ -241,7 +216,7 @@ const handleAdmins = async (req: Request, url: URL): Promise<Response | null> =>
   if (url.pathname === '/api/admins' && req.method === 'POST') {
     const body = await parseBody(req, adminSchema)
     if (body instanceof Response) return body
-    const platformInstanceId = body.platformInstanceId ?? adminStore.SUPER_ADMIN_PLATFORM_ID
+    const platformInstanceId = resolveAdminPlatformInstanceId(body.platformInstanceId)
     adminStore.addAdmin(body.userId, platformInstanceId)
     return jsonResponse({ userId: body.userId, platformInstanceId }, { status: 201 })
   }
