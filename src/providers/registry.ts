@@ -154,7 +154,7 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
   },
 ]
 
-/** Merge built-in and plugin-contributed task provider types into a static catalog. */
+/** Returns the built-in task provider type descriptors. Plugin-contributed types are merged in a later task. */
 export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
   const builtin: TaskProviderTypeDescriptor[] = builtinDescriptorSeeds.map((seed) => ({
     type: seed.type,

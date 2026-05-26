@@ -86,6 +86,9 @@ describe('contributed task provider registry', () => {
 describe('listTaskProviderTypes (built-in catalog)', () => {
   test('includes kaneo and youtrack as built-in descriptors', () => {
     const types = listTaskProviderTypes()
+
+    expect(types).toHaveLength(2)
+
     const kaneo = types.find((descriptor) => descriptor.type === 'kaneo')
     const youtrack = types.find((descriptor) => descriptor.type === 'youtrack')
 
@@ -95,7 +98,11 @@ describe('listTaskProviderTypes (built-in catalog)', () => {
     expect(kaneo?.configSchema).toEqual([{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }])
     expect(kaneo?.capabilities.size).toBeGreaterThan(0)
 
+    expect(youtrack).toBeDefined()
     expect(youtrack?.source).toBe('builtin')
-    expect(youtrack?.configSchema[0]?.key).toBe('baseUrl')
+    expect(youtrack?.displayName).toBe('YouTrack')
+    expect(youtrack?.configSchema).toEqual([
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false },
+    ])
   })
 })
