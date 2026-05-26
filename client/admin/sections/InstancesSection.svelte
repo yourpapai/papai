@@ -25,7 +25,7 @@
     fetchPlatformInstances,
     fetchTaskInstances,
     fetchTaskProviderTypes,
-    setPlatformInstanceStatus,
+    updatePlatformInstance,
   } from '../fetchers.js'
 
   type FormStatus = { readonly kind: 'success' | 'error'; readonly message: string }
@@ -133,7 +133,7 @@
   async function updatePlatformStatus(instance: PlatformInstanceView): Promise<void> {
     try {
       const nextStatus = instance.status === 'active' ? 'stopped' : 'active'
-      await setPlatformInstanceStatus(instance.id, nextStatus)
+      await updatePlatformInstance(instance.id, { status: nextStatus })
       platformDirty = true
       await loadPlatformInstances()
       setSuccess(`Platform instance ${nextStatus}. Platform changes are unapplied.`)

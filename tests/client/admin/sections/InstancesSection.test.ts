@@ -102,7 +102,7 @@ const responseFor = (method: string, url: string): Response => {
     ])
   if (method === 'POST' && url === '/api/platform-instances') return jsonResponse(platformInstance)
   if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse({ applied: 1 })
-  if (method === 'POST' && url === '/api/platform-instances/telegram-main/status')
+  if (method === 'PATCH' && url === '/api/platform-instances/telegram-main')
     return jsonResponse(stoppedPlatformInstance)
   if (method === 'DELETE' && url === '/api/platform-instances/telegram-main') return jsonResponse({ ok: true })
   if (method === 'POST' && url === '/api/task-instances') return jsonResponse(taskInstance)
@@ -305,7 +305,8 @@ describe('InstancesSection', () => {
     click(target, 'platform-delete-telegram-main')
     await drain()
 
-    expect(callNames(calls)).toContain('POST /api/platform-instances/telegram-main/status')
+    expect(callNames(calls)).toContain('PATCH /api/platform-instances/telegram-main')
+    expect(expectCall(calls[4], 4).body).toBe(JSON.stringify({ status: 'stopped' }))
     expect(callNames(calls)).toContain('DELETE /api/platform-instances/telegram-main')
 
     void unmount(component)

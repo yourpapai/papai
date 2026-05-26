@@ -131,6 +131,50 @@ describe('instance API routes', () => {
     expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '***', label: 'main' })
   })
 
+  test('duplicate platform create returns instance_exists conflict', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'other-secret' } }),
+      }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await readJson(res)).toEqual({ error: 'instance_exists', id: 'telegram-main' })
+  })
+
+  test('PATCH /api/platform-instances/:id updates config and status with masked config', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ config: { bot_token: 'new-secret', label: 'main' }, status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = assertObject(await readJson(res))
+    expect(pick(body, 'status')).toBe('stopped')
+    expect(pick(body, 'config')).toEqual({ bot_token: '***', label: 'main' })
+  })
+
+  test('platform PATCH missing instance returns 404', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances/missing-platform', {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(404)
+  })
+
   test('returns null for unrelated API paths', async () => {
     const res = await route('/api/not-instances')
 
@@ -370,6 +414,43 @@ describe('instance API routes', () => {
       api_key: '***',
       url: 'https://kaneo.invalid',
     })
+  })
+
+  test('duplicate task create returns instance_exists conflict', async () => {
+    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/task-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://other.invalid' } }),
+      }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await readJson(res)).toEqual({ error: 'instance_exists', id: 'tasks-main' })
+  })
+
+  test('PATCH /api/task-instances/:id updates config and status and clears referencing context tool cache', async () => {
+    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { api_key: 'secret' }, status: 'active' })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
+
+    const res = expectResponse(
+      await route('/api/task-instances/tasks-main', {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ config: { api_key: 'new-secret' }, status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = assertObject(await readJson(res))
+    expect(pick(body, 'status')).toBe('stopped')
+    expect(pick(body, 'config')).toEqual({ api_key: '***' })
+    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
   })
 
   test('creates and deletes super-admin rows', async () => {
