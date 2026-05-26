@@ -12,6 +12,20 @@ import {
   resolveInstanceConfigKey,
 } from '../../src/instances/encryption.js'
 
+describe('maskConfig with explicit sensitive keys', () => {
+  test('masks only the keys in the provided set', () => {
+    // 'token' matches the name pattern but is not in the explicit set — must NOT be masked
+    // 'secretField' is in the explicit set — must be masked
+    const masked = maskConfig({ baseUrl: 'u', secretField: 's', token: 't' }, new Set(['secretField']))
+    expect(masked).toEqual({ baseUrl: 'u', secretField: '***', token: 't' })
+  })
+
+  test('falls back to the name pattern when no set is given', () => {
+    const masked = maskConfig({ token: 't', baseUrl: 'u' })
+    expect(masked).toEqual({ token: '***', baseUrl: 'u' })
+  })
+})
+
 const originalEnv = process.env['INSTANCE_CONFIG_KEY']
 
 describe('encryption', () => {

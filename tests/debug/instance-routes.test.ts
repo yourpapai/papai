@@ -21,6 +21,11 @@ import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const TOKEN = 'instance-api-token'
@@ -319,7 +324,11 @@ describe('instance API routes', () => {
     expect(pick(row, 'referencingContextCount')).toBe(2)
   })
 
-  test('creates and lists masked task instances', async () => {
+  test('creates and lists task instances with descriptor-driven masking', async () => {
+    // Kaneo has no instance-scoped sensitive fields (credentials are user-scoped and never stored in
+    // task_instances.config). The descriptor-driven masking therefore returns an empty sensitive-key
+    // set, so no task-instance config fields are masked — even keys that would have matched the old
+    // name pattern (e.g. "api_key").
     const created = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
@@ -327,15 +336,14 @@ describe('instance API routes', () => {
         body: JSON.stringify({
           id: 'tasks-main',
           type: 'kaneo',
-          config: { api_key: 'secret', url: 'https://kaneo.invalid' },
+          config: { baseUrl: 'https://kaneo.invalid' },
         }),
       }),
     )
 
     expect(created.status).toBe(201)
     expect(pick(assertObject(await readJson(created)), 'config')).toEqual({
-      api_key: '***',
-      url: 'https://kaneo.invalid',
+      baseUrl: 'https://kaneo.invalid',
     })
     expect(expectTaskInstance('tasks-main').status).toBe('active')
 
@@ -344,8 +352,7 @@ describe('instance API routes', () => {
     expect(listed.status).toBe(200)
     expect(listTaskInstances()).toHaveLength(1)
     expect(pick(assertObject(assertArray(await readJson(listed))[0]), 'config')).toEqual({
-      api_key: '***',
-      url: 'https://kaneo.invalid',
+      baseUrl: 'https://kaneo.invalid',
     })
   })
 
@@ -408,5 +415,58 @@ describe('instance API routes', () => {
     const body = assertObject(await readJson(res))
     expect(pick(body, 'error')).toBe('unknown_task_provider_type')
     expect(pick(body, 'type')).toBe('mystery')
+  })
+
+  test('masks instance-scoped sensitive fields declared by a contributed task provider type', async () => {
+    mockLogger()
+    registerContributedTaskProviderType('masktest', {
+      pluginId: 'mask-plugin',
+      factory: () => createMockProvider({ name: 'masktest' }),
+      capabilities: new Set<never>(),
+      displayName: 'Mask Test',
+      configSchema: [
+        { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' },
+        { key: 'apiSecret', label: 'Secret', required: true, sensitive: true, scope: 'instance' },
+      ],
+    })
+
+    try {
+      const created = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders,
+            body: JSON.stringify({
+              id: 'masktest-1',
+              type: 'masktest',
+              config: { baseUrl: 'https://masktest.invalid', apiSecret: 'super-secret-value' },
+            }),
+          },
+        ),
+      )
+
+      expect(created.status).toBe(201)
+      const createdConfig = assertObject(pick(assertObject(await readJson(created)), 'config'))
+      expect(pick(createdConfig, 'baseUrl')).toBe('https://masktest.invalid')
+      expect(pick(createdConfig, 'apiSecret')).toBe('***')
+
+      const listed = expectResponse(
+        await routeWithDeps('/api/task-instances', {
+          getRuntimeChatRouter: () => null,
+          listActivePlatformInstances: () => [],
+        }),
+      )
+
+      expect(listed.status).toBe(200)
+      const rows = assertArray(await readJson(listed))
+      const masktestRow = rows.find((row) => pick(assertObject(row), 'type') === 'masktest')
+      const listedConfig = assertObject(pick(assertObject(masktestRow), 'config'))
+      expect(pick(listedConfig, 'baseUrl')).toBe('https://masktest.invalid')
+      expect(pick(listedConfig, 'apiSecret')).toBe('***')
+    } finally {
+      unregisterContributedTaskProviderType('mask-plugin')
+    }
   })
 })

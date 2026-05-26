@@ -65,9 +65,19 @@ const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance =>
   config: maskConfig(instance.config),
 })
 
+const instanceScopedSensitiveKeys = (type: string): ReadonlySet<string> | undefined => {
+  const descriptor = listTaskProviderTypes().find((d) => d.type === type)
+  if (descriptor === undefined) return undefined
+  return new Set(
+    descriptor.configSchema
+      .filter((field) => (field.scope ?? 'instance') === 'instance' && field.sensitive === true)
+      .map((field) => field.key),
+  )
+}
+
 const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
   ...instance,
-  config: maskConfig(instance.config),
+  config: maskConfig(instance.config, instanceScopedSensitiveKeys(instance.type)),
 })
 
 const taskInstanceView = (

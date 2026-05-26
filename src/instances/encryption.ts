@@ -71,10 +71,11 @@ export const decryptInstanceConfig = (encoded: string): InstanceConfig => {
   return result
 }
 
-export const maskConfig = (plain: InstanceConfig): InstanceConfig => {
+export const maskConfig = (plain: InstanceConfig, sensitiveKeys?: ReadonlySet<string>): InstanceConfig => {
   const out: InstanceConfig = {}
   for (const [k, v] of Object.entries(plain)) {
-    out[k] = SECRET_KEY_PATTERN.test(k) ? '***' : v
+    const sensitive = sensitiveKeys === undefined ? SECRET_KEY_PATTERN.test(k) : sensitiveKeys.has(k)
+    out[k] = sensitive ? '***' : v
   }
   return out
 }
