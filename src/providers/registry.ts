@@ -151,12 +151,20 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
   {
     type: 'kaneo',
     displayName: 'Kaneo',
-    configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+    configSchema: [
+      { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
+      { key: 'credential', label: 'Kaneo API Key', required: true, sensitive: true, scope: 'user' },
+      { key: 'workspaceId', label: 'Workspace ID', required: true, sensitive: false, scope: 'user' },
+    ],
   },
   {
     type: 'youtrack',
     displayName: 'YouTrack',
-    configSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+    configSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'token', label: 'YouTrack Permanent Token', required: true, sensitive: true, scope: 'user' },
+    ],
   },
 ]
 

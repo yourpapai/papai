@@ -74,3 +74,17 @@ describe('handleTaskProviderTypes', () => {
     expect(route('/api/task-provider-types', 'POST')).toBeNull()
   })
 })
+
+describe('handleTaskProviderTypes scope filtering', () => {
+  test('omits user-scoped fields from the catalog response', async () => {
+    const res = expectResponse(route('/api/task-provider-types'))
+    const body = assertArray(await readJson(res))
+    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
+    const kaneo = assertObject(kaneoRaw)
+    const keys = assertArray(pick(kaneo, 'configSchema')).map((f) => pick(assertObject(f), 'key'))
+
+    expect(keys).toContain('baseUrl')
+    expect(keys).not.toContain('credential')
+    expect(keys).not.toContain('workspaceId')
+  })
+})

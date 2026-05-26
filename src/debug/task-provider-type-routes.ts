@@ -17,12 +17,14 @@ export type TaskProviderTypeView = {
 const taskProviderTypeView = (descriptor: TaskProviderTypeDescriptor): TaskProviderTypeView => ({
   type: descriptor.type,
   displayName: descriptor.displayName,
-  configSchema: descriptor.configSchema.map((field) => ({
-    key: field.key,
-    label: field.label,
-    required: field.required,
-    sensitive: field.sensitive ?? false,
-  })),
+  configSchema: descriptor.configSchema
+    .filter((field) => (field.scope ?? 'instance') === 'instance')
+    .map((field) => ({
+      key: field.key,
+      label: field.label,
+      required: field.required,
+      sensitive: field.sensitive ?? false,
+    })),
   capabilities: [...descriptor.capabilities],
   source: descriptor.source,
 })
