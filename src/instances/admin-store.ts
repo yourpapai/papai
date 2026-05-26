@@ -37,6 +37,16 @@ export const removeAdmin = (userId: string, platformInstanceId: string): void =>
   log.info({ userId, platformInstanceId }, 'admin removed')
 }
 
+export const deleteAdminsByPlatformInstance = (platformInstanceId: string): number => {
+  const deletedRows = getDrizzleDb()
+    .delete(admins)
+    .where(eq(admins.platformInstanceId, platformInstanceId))
+    .returning({ userId: admins.userId })
+    .all()
+  log.info({ platformInstanceId, deletedCount: deletedRows.length }, 'admins removed for platform instance')
+  return deletedRows.length
+}
+
 const hasAdminRow = (userId: string, platformInstanceId: string): boolean => {
   const row = getDrizzleDb()
     .select({ userId: admins.userId })

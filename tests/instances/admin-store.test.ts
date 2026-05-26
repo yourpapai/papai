@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   addAdmin,
+  deleteAdminsByPlatformInstance,
   isAdmin,
   isPlatformAdmin,
   isSuperAdmin,
@@ -85,6 +86,20 @@ describe('admin-store', () => {
       .map((a) => a.userId)
       .toSorted()
     expect(ids).toEqual(['u1', 'u2'])
+  })
+
+  test('deleteAdminsByPlatformInstance removes only rows for that platform', () => {
+    addAdmin('platform-1', 'tg-default')
+    addAdmin('platform-2', 'tg-default')
+    addAdmin('other-platform', 'mm-default')
+    addAdmin('super-user', SUPER_ADMIN_PLATFORM_ID)
+
+    expect(deleteAdminsByPlatformInstance('tg-default')).toBe(2)
+
+    const rows = listAdmins()
+      .map((a) => `${a.platformInstanceId}:${a.userId}`)
+      .toSorted()
+    expect(rows).toEqual(['__super__:super-user', 'mm-default:other-platform'])
   })
 
   test('listAdmins returns all admin rows', () => {
