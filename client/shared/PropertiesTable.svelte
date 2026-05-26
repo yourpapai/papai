@@ -36,3 +36,31 @@
     </table>
   </div>
 {/if}
+
+<style>
+  .tree-empty {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg4);
+    padding: 8px 0;
+  }
+  .tree-container {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .tree-table {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 16px;
+    padding: 4px 0;
+  }
+  .tree-key-cell {
+    color: var(--fg2);
+    white-space: nowrap;
+  }
+  .tree-value-cell {
+    color: var(--fg);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+</style>
