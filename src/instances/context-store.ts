@@ -8,6 +8,7 @@ import { eq, sql } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { contextSettings } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { clearToolCachesForContexts } from './tool-cache-invalidation.js'
 import type { ContextSettings } from './types.js'
 
 const log = logger.child({ scope: 'instances:context-store' })
@@ -19,6 +20,7 @@ const rowToSettings = (row: typeof contextSettings.$inferSelect): ContextSetting
 })
 
 export const setContextSettings = (input: ContextSettings): void => {
+  const existing = getContextSettings(input.contextId)
   getDrizzleDb()
     .insert(contextSettings)
     .values(input)
@@ -30,6 +32,7 @@ export const setContextSettings = (input: ContextSettings): void => {
       },
     })
     .run()
+  clearToolCachesForContexts([input.contextId, existing?.contextId].filter((id): id is string => id !== undefined))
   log.info(
     {
       contextId: input.contextId,
@@ -69,6 +72,7 @@ export const deleteContextsByTaskInstance = (taskInstanceId: string): number => 
     .where(eq(contextSettings.taskInstanceId, taskInstanceId))
     .returning({ contextId: contextSettings.contextId })
     .all()
+  clearToolCachesForContexts(deletedRows.map((row) => row.contextId))
   log.info({ taskInstanceId, deletedCount: deletedRows.length }, 'context settings deleted for task instance')
   return deletedRows.length
 }
@@ -79,6 +83,7 @@ export const deleteContextsByPlatformInstance = (platformInstanceId: string): nu
     .where(eq(contextSettings.platformInstanceId, platformInstanceId))
     .returning({ contextId: contextSettings.contextId })
     .all()
+  clearToolCachesForContexts(deletedRows.map((row) => row.contextId))
   log.info({ platformInstanceId, deletedCount: deletedRows.length }, 'context settings deleted for platform instance')
   return deletedRows.length
 }
