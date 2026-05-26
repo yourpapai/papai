@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfig } from '../config.js'
+import { getConfig, isConfigKey } from '../config.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
 import type { TaskInstance } from '../instances/types.js'
@@ -18,7 +18,8 @@ const log = logger.child({ scope: 'provider:resolver' })
 export interface TaskProviderResolverDeps {
   getContextSettings: typeof getContextSettings
   getTaskInstance: typeof getTaskInstance
-  getConfig: typeof getConfig
+  /** Wider than `typeof getConfig`: resolver must look up arbitrary contributed-type field names. */
+  getConfig: (contextId: string, key: string) => string | null
   getKaneoWorkspace: typeof getKaneoWorkspace
   getTaskProviderDescriptor: typeof getTaskProviderDescriptor
   createProvider: typeof createProvider
@@ -27,17 +28,16 @@ export interface TaskProviderResolverDeps {
 const defaultDeps: TaskProviderResolverDeps = {
   getContextSettings,
   getTaskInstance,
-  getConfig,
+  getConfig: (contextId, key) => (isConfigKey(key) ? getConfig(contextId, key) : null),
   getKaneoWorkspace,
   getTaskProviderDescriptor,
   createProvider,
 }
 
 /**
- * Source a user-scoped config field for a built-in provider type from per-context storage.
- * This is the single place that knows storage-key and special-store mappings. Plugin types
- * keep the same mappings keyed by type when they migrate; pure-instance contributed types
- * never reach this branch.
+ * Source a user-scoped config field from per-context storage. Built-in types use
+ * dedicated storage-key/special-store mappings; all other (plugin-contributed) types
+ * fall back to the generic per-context store keyed by the field name (spec §2.3).
  */
 const readUserScopedField = (
   type: string,
@@ -48,7 +48,7 @@ const readUserScopedField = (
   if (type === 'kaneo' && fieldKey === 'credential') return deps.getConfig(contextId, 'kaneo_apikey')
   if (type === 'kaneo' && fieldKey === 'workspaceId') return deps.getKaneoWorkspace(contextId)
   if (type === 'youtrack' && fieldKey === 'token') return deps.getConfig(contextId, 'youtrack_token')
-  return null
+  return deps.getConfig(contextId, fieldKey)
 }
 
 const readInstanceScopedField = (instance: TaskInstance, fieldKey: string): string | undefined => {
