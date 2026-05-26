@@ -31,6 +31,8 @@ const entry = {
   pluginId: 'task-provider-kaneo',
   factory: (): TaskProvider => fakeProvider,
   capabilities: new Set<TaskCapability>(),
+  displayName: 'Kaneo (Plugin)',
+  configSchema: [] as const,
 }
 
 describe('provider registry capability lookup', () => {
@@ -53,6 +55,7 @@ describe('contributed task provider registry', () => {
   afterEach(() => {
     unregisterContributedTaskProviderType('task-provider-kaneo')
     unregisterContributedTaskProviderType('other-plugin')
+    unregisterContributedTaskProviderType('task-provider-demo')
   })
 
   test('registers and resolves a contributed type', () => {
@@ -71,6 +74,8 @@ describe('contributed task provider registry', () => {
         pluginId: 'other-plugin',
         factory: (): TaskProvider => fakeProvider,
         capabilities: new Set<TaskCapability>(),
+        displayName: 'Other',
+        configSchema: [] as const,
       }),
     ).toThrow()
   })
@@ -80,6 +85,22 @@ describe('contributed task provider registry', () => {
     registerContributedTaskProviderType('kaneo', entry)
     unregisterContributedTaskProviderType('task-provider-kaneo')
     expect(getContributedTaskProviderType('kaneo')).toBeUndefined()
+  })
+
+  test('listTaskProviderTypes includes contributed descriptors with displayName and configSchema', () => {
+    registerContributedTaskProviderType('demo-tracker', {
+      pluginId: 'task-provider-demo',
+      factory: () => createMockProvider(),
+      capabilities: new Set<TaskCapability>(['comments.read']),
+      displayName: 'Demo Tracker',
+      configSchema: [{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }],
+    })
+
+    const descriptor = listTaskProviderTypes().find((d) => d.type === 'demo-tracker')
+    expect(descriptor).toBeDefined()
+    expect(descriptor?.displayName).toBe('Demo Tracker')
+    expect(descriptor?.source).toEqual({ plugin: 'task-provider-demo' })
+    expect(descriptor?.configSchema).toEqual([{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }])
   })
 })
 

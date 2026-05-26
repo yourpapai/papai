@@ -51,6 +51,8 @@ export type ContributedTaskProviderEntry = {
   pluginId: string
   factory: TaskProviderFactory
   capabilities: ReadonlySet<TaskCapability>
+  displayName: string
+  configSchema: readonly ProviderConfigRequirement[]
 }
 
 const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
@@ -154,7 +156,7 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
   },
 ]
 
-/** Returns the built-in task provider type descriptors. Plugin-contributed types are merged in a later task. */
+/** Merge built-in and plugin-contributed task provider types into a static catalog. */
 export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
   const builtin: TaskProviderTypeDescriptor[] = builtinDescriptorSeeds.map((seed) => ({
     type: seed.type,
@@ -163,5 +165,14 @@ export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
     capabilities: createProvider(seed.type, {}).capabilities,
     source: 'builtin',
   }))
-  return builtin
+  const contributed: TaskProviderTypeDescriptor[] = [...pluginContributedTaskProviderFactories.entries()].map(
+    ([type, entry]) => ({
+      type,
+      displayName: entry.displayName,
+      configSchema: entry.configSchema,
+      capabilities: entry.capabilities,
+      source: { plugin: entry.pluginId },
+    }),
+  )
+  return [...builtin, ...contributed]
 }

@@ -114,6 +114,8 @@ function buildRegisterTaskProviderType(
       pluginId: manifest.id,
       factory: descriptor.factory,
       capabilities: new Set(manifest.providerCapabilities),
+      displayName: manifest.name,
+      configSchema: manifest.providerConfigSchema,
     })
   }
 }
