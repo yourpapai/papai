@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { autoStartWizardIfNeeded } from '../src/bot-auto-setup.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -17,7 +18,6 @@ describe('bot-auto-setup', () => {
   })
 
   test('autoStartWizardIfNeeded returns false (no wizard) for a contributed provider type', async () => {
-    const { autoStartWizardIfNeeded } = await import('../src/bot-auto-setup.js')
     insertTaskInstance({
       id: 'demo-1',
       type: 'demo-tracker',

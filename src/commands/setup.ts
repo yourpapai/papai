@@ -12,18 +12,13 @@ import { getConfig } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
+import { isBuiltinTaskType } from '../instances/types.js'
 import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { provisionAndConfigure, type ProvisionOutcome } from '../providers/kaneo/provision.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
 import { getKaneoWorkspace } from '../users.js'
 import { createWizard } from '../wizard/engine.js'
-
-// The credential wizard only applies to built-in provider types.
-// Contributed provider types use instance.config directly — no per-user credential wizard.
-type BuiltinTaskType = 'kaneo' | 'youtrack'
-
-const isBuiltinTaskType = (type: string): type is BuiltinTaskType => type === 'kaneo' || type === 'youtrack'
 
 const log = logger.child({ scope: 'commands:setup' })
 const GROUP_SETUP_REDIRECT =
