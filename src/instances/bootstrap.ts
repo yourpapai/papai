@@ -11,9 +11,13 @@ import { logger } from '../logger.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from './admin-store.js'
 import { insertPlatformInstance } from './platform-store.js'
 import { insertTaskInstance } from './task-store.js'
-import type { BootstrapResult, InstanceConfig, PlatformInstanceType, TaskInstanceType } from './types.js'
+import type { BootstrapResult, InstanceConfig, PlatformInstanceType } from './types.js'
 
 const log = logger.child({ scope: 'instances:bootstrap' })
+
+// Bootstrap from env only supports the two built-in provider types.
+// Contributed provider types are added via the admin UI after first start.
+type BuiltinTaskType = 'kaneo' | 'youtrack'
 
 const CHAT_ENV_REQUIREMENTS: Readonly<Record<PlatformInstanceType, readonly string[]>> = {
   telegram: ['TELEGRAM_BOT_TOKEN'],
@@ -21,7 +25,7 @@ const CHAT_ENV_REQUIREMENTS: Readonly<Record<PlatformInstanceType, readonly stri
   discord: ['DISCORD_BOT_TOKEN'],
 }
 
-const TASK_ENV_REQUIREMENTS: Readonly<Record<TaskInstanceType, readonly string[]>> = {
+const TASK_ENV_REQUIREMENTS: Readonly<Record<BuiltinTaskType, readonly string[]>> = {
   kaneo: ['KANEO_CLIENT_URL'],
   youtrack: ['YOUTRACK_URL'],
 }
@@ -42,7 +46,7 @@ const parsePlatformType = (value: string | undefined): PlatformInstanceType | nu
   return null
 }
 
-const parseTaskType = (value: string | undefined): TaskInstanceType | null => {
+const parseTaskType = (value: string | undefined): BuiltinTaskType | null => {
   if (value === 'kaneo' || value === 'youtrack') return value
   return null
 }
@@ -63,7 +67,7 @@ const buildPlatformConfig = (type: PlatformInstanceType): InstanceConfig => {
   }
 }
 
-const buildTaskConfig = (type: TaskInstanceType): InstanceConfig => {
+const buildTaskConfig = (type: BuiltinTaskType): InstanceConfig => {
   switch (type) {
     case 'kaneo':
       return { url: getTrimmedEnv('KANEO_CLIENT_URL') ?? '' }
@@ -83,7 +87,7 @@ const countInstances = (): { platforms: number; tasks: number } => {
 
 interface ParsedEnv {
   chatType: PlatformInstanceType | null
-  taskType: TaskInstanceType | null
+  taskType: BuiltinTaskType | null
   adminUserId: string | undefined
 }
 
@@ -113,7 +117,7 @@ const collectMissing = (parsed: ParsedEnv): string[] => {
 
 const seedInstances = (
   chatType: PlatformInstanceType,
-  taskType: TaskInstanceType,
+  taskType: BuiltinTaskType,
   adminUserId: string,
 ): { platformInstanceId: string; taskInstanceId: string } => {
   const platformInstanceId = `${chatType}-default`

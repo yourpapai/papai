@@ -111,7 +111,9 @@ export class TaskProviderResolver {
     const config =
       instance.type === 'kaneo'
         ? buildKaneoConfig(contextId, instance, this.deps)
-        : buildYouTrackConfig(contextId, instance, this.deps)
+        : instance.type === 'youtrack'
+          ? buildYouTrackConfig(contextId, instance, this.deps)
+          : { ...instance.config }
     if (config === null) return null
 
     log.info({ contextId, taskInstanceId: instance.id, taskProvider: instance.type }, 'Task provider resolved')

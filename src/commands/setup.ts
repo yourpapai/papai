@@ -19,6 +19,12 @@ import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
 import { getKaneoWorkspace } from '../users.js'
 import { createWizard } from '../wizard/engine.js'
 
+// The credential wizard only applies to built-in provider types.
+// Contributed provider types use instance.config directly — no per-user credential wizard.
+type BuiltinTaskType = 'kaneo' | 'youtrack'
+
+const isBuiltinTaskType = (type: string): type is BuiltinTaskType => type === 'kaneo' || type === 'youtrack'
+
 const log = logger.child({ scope: 'commands:setup' })
 const GROUP_SETUP_REDIRECT =
   'Group settings are configured in direct messages with the bot. Open a DM with me and run /setup.'
@@ -133,6 +139,8 @@ export async function startWizardForAssignedTask(
   isGroupTarget: boolean,
   ...rest: [] | [SetupCommandDeps]
 ): Promise<void> {
+  // Contributed provider types have no wizard-managed credentials; instance config is used directly
+  if (!isBuiltinTaskType(taskProvider)) return
   const deps = rest.length === 0 ? defaultDeps : rest[0]
   if (await maybeProvisionKaneoGroup(reply, targetContextId, taskProvider, isGroupTarget, deps)) return
   const result = deps.createWizard(userId, targetContextId, taskProvider)

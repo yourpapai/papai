@@ -64,4 +64,16 @@ describe('task-store', () => {
   test('get returns null for missing id', () => {
     expect(getTaskInstance('nope')).toBeNull()
   })
+
+  test('insert + get round-trips a contributed provider type', () => {
+    insertTaskInstance({
+      id: 'demo-1',
+      type: 'demo-tracker',
+      config: { baseUrl: 'https://demo.invalid', region: 'eu' },
+      status: 'active',
+    })
+    const row = getTaskInstance('demo-1')
+    expect(row?.type).toBe('demo-tracker')
+    expect(row?.config).toEqual({ baseUrl: 'https://demo.invalid', region: 'eu' })
+  })
 })

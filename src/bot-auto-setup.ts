@@ -13,11 +13,20 @@ import { isDemoUser } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
 import { getWizardSteps } from './wizard/steps.js'
 
+// The credential wizard only applies to built-in provider types.
+// Contributed provider types use instance.config directly — no per-user credential wizard.
+type BuiltinTaskType = 'kaneo' | 'youtrack'
+
+const isBuiltinTaskType = (type: string): type is BuiltinTaskType => type === 'kaneo' || type === 'youtrack'
+
 function userNeedsSetup(storageContextId: string): boolean {
   const settings = getContextSettings(storageContextId)
   if (settings === null) return true
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') return true
+
+  // Contributed provider types have no wizard-managed credentials
+  if (!isBuiltinTaskType(taskInstance.type)) return false
 
   const config = getAllConfig(storageContextId)
   const contextKeys = getConfigKeysForContext(storageContextId)
@@ -45,6 +54,8 @@ export async function autoStartWizardIfNeeded(
   if (settings === null) {
     const selection = startTaskInstanceSelection(userId, storageContextId, platformInstanceId)
     if (selection.status === 'assigned') {
+      // Contributed provider types have no wizard-managed credentials
+      if (!isBuiltinTaskType(selection.taskProvider)) return false
       const result = createWizard(userId, storageContextId, selection.taskProvider)
       if (result.success) await reply.text(result.prompt)
       return result.success
@@ -58,6 +69,8 @@ export async function autoStartWizardIfNeeded(
 
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') return false
+  // Contributed provider types have no wizard-managed credentials
+  if (!isBuiltinTaskType(taskInstance.type)) return false
   const result = createWizard(userId, storageContextId, taskInstance.type)
   if (result.success) await reply.text(result.prompt)
   return result.success

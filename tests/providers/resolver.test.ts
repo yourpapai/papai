@@ -127,4 +127,20 @@ describe('TaskProviderResolver', () => {
 
     expect(() => resolver.resolveStrict('ctx-missing')).toThrow('Context ctx-missing needs /setup')
   })
+
+  test('resolves a contributed provider type by passing instance config through unchanged', () => {
+    insertTaskInstance({
+      id: 'demo-1',
+      type: 'demo-tracker',
+      config: { baseUrl: 'https://demo.invalid', region: 'eu' },
+      status: 'active',
+    })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'demo-1', platformInstanceId: 'telegram-default' })
+    const resolver = makeResolver()
+
+    const provider = resolver.resolve('ctx-1')
+
+    expect(provider).not.toBeNull()
+    expect(created).toEqual([{ name: 'demo-tracker', config: { baseUrl: 'https://demo.invalid', region: 'eu' } }])
+  })
 })

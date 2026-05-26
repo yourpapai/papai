@@ -13,7 +13,6 @@ import type { InstanceConfig, InstanceStatus, TaskInstance, TaskInstanceType } f
 
 const log = logger.child({ scope: 'instances:task-store' })
 
-const TASK_INSTANCE_TYPES: readonly TaskInstanceType[] = ['kaneo', 'youtrack']
 const INSTANCE_STATUSES: readonly InstanceStatus[] = ['pending', 'active', 'stopped']
 
 export interface InsertTaskInstanceInput {
@@ -28,12 +27,6 @@ export interface UpdateTaskInstanceInput {
   status: InstanceStatus | undefined
 }
 
-const parseTaskInstanceType = (value: string): TaskInstanceType => {
-  const match = TASK_INSTANCE_TYPES.find((candidate) => candidate === value)
-  if (match === undefined) throw new Error(`unknown task instance type stored: ${value}`)
-  return match
-}
-
 const parseInstanceStatus = (value: string): InstanceStatus => {
   const match = INSTANCE_STATUSES.find((candidate) => candidate === value)
   if (match === undefined) throw new Error(`unknown instance status stored: ${value}`)
@@ -42,7 +35,7 @@ const parseInstanceStatus = (value: string): InstanceStatus => {
 
 const rowToInstance = (row: typeof taskInstances.$inferSelect): TaskInstance => ({
   id: row.id,
-  type: parseTaskInstanceType(row.type),
+  type: row.type,
   config: decryptInstanceConfig(row.config),
   status: parseInstanceStatus(row.status),
   createdAt: row.createdAt,

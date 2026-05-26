@@ -6,7 +6,7 @@
 export type InstanceConfig = Record<string, string>
 
 export type PlatformInstanceType = 'telegram' | 'mattermost' | 'discord'
-export type TaskInstanceType = 'kaneo' | 'youtrack'
+export type TaskInstanceType = string
 export type InstanceStatus = 'pending' | 'active' | 'stopped'
 
 export interface PlatformInstance {
