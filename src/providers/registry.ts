@@ -7,7 +7,7 @@ import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
-import type { TaskProvider } from './types.js'
+import type { ProviderConfigRequirement, TaskProvider } from './types.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
@@ -125,4 +125,43 @@ export function unregisterContributedTaskProviderType(pluginId: string): void {
 /** Look up a contributed task provider entry by type. */
 export function getContributedTaskProviderType(type: string): ContributedTaskProviderEntry | undefined {
   return pluginContributedTaskProviderFactories.get(type)
+}
+
+export type TaskProviderTypeDescriptor = {
+  type: string
+  displayName: string
+  configSchema: readonly ProviderConfigRequirement[]
+  capabilities: ReadonlySet<TaskCapability>
+  source: 'builtin' | { plugin: string }
+}
+
+type BuiltinDescriptorSeed = {
+  type: string
+  displayName: string
+  configSchema: readonly ProviderConfigRequirement[]
+}
+
+const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
+  {
+    type: 'kaneo',
+    displayName: 'Kaneo',
+    configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+  },
+  {
+    type: 'youtrack',
+    displayName: 'YouTrack',
+    configSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+  },
+]
+
+/** Merge built-in and plugin-contributed task provider types into a static catalog. */
+export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
+  const builtin: TaskProviderTypeDescriptor[] = builtinDescriptorSeeds.map((seed) => ({
+    type: seed.type,
+    displayName: seed.displayName,
+    configSchema: seed.configSchema,
+    capabilities: createProvider(seed.type, {}).capabilities,
+    source: 'builtin',
+  }))
+  return builtin
 }

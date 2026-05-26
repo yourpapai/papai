@@ -9,6 +9,7 @@ import type { TaskInstance } from '../../src/instances/types.js'
 import {
   getCapabilitiesForTaskInstance,
   getContributedTaskProviderType,
+  listTaskProviderTypes,
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
@@ -79,5 +80,22 @@ describe('contributed task provider registry', () => {
     registerContributedTaskProviderType('kaneo', entry)
     unregisterContributedTaskProviderType('task-provider-kaneo')
     expect(getContributedTaskProviderType('kaneo')).toBeUndefined()
+  })
+})
+
+describe('listTaskProviderTypes (built-in catalog)', () => {
+  test('includes kaneo and youtrack as built-in descriptors', () => {
+    const types = listTaskProviderTypes()
+    const kaneo = types.find((descriptor) => descriptor.type === 'kaneo')
+    const youtrack = types.find((descriptor) => descriptor.type === 'youtrack')
+
+    expect(kaneo).toBeDefined()
+    expect(kaneo?.source).toBe('builtin')
+    expect(kaneo?.displayName).toBe('Kaneo')
+    expect(kaneo?.configSchema).toEqual([{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }])
+    expect(kaneo?.capabilities.size).toBeGreaterThan(0)
+
+    expect(youtrack?.source).toBe('builtin')
+    expect(youtrack?.configSchema[0]?.key).toBe('baseUrl')
   })
 })

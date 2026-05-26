@@ -74,7 +74,7 @@ export interface UserIdentityResolver {
 }
 
 /** Configuration keys that a provider requires to function. */
-export type ProviderConfigRequirement = { key: string; label: string; required: boolean }
+export type ProviderConfigRequirement = { key: string; label: string; required: boolean; sensitive?: boolean }
 /** Core task tracker interface: required task CRUD plus optional capability-gated methods. */
 export interface TaskProvider {
   /** Provider identifier, e.g. "kaneo", "linear", "jira". */
