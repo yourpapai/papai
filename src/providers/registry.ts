@@ -16,6 +16,10 @@ const log = logger.child({ scope: 'provider:registry' })
 
 export type TaskProviderFactory = (config: Record<string, string>) => TaskProvider
 
+export type TaskProviderConfigValidator = (
+  config: Record<string, string>,
+) => Promise<{ ok: true } | { ok: false; reason: string }>
+
 type ProviderFactory = TaskProviderFactory
 
 const configValue = (config: Record<string, string>, key: string): string => {
@@ -52,6 +56,7 @@ const providers = new Map<string, ProviderFactory>([
 export type ContributedTaskProviderEntry = {
   pluginId: string
   factory: TaskProviderFactory
+  validateConfig?: TaskProviderConfigValidator
   capabilities: ReadonlySet<TaskCapability>
   displayName: string
   configSchema: readonly ProviderConfigRequirement[]
@@ -124,6 +129,11 @@ export function unregisterContributedTaskProviderType(pluginId: string): void {
 /** Look up a contributed task provider entry by type. */
 export function getContributedTaskProviderType(type: string): ContributedTaskProviderEntry | undefined {
   return pluginContributedTaskProviderFactories.get(type)
+}
+
+/** Resolve the optional instance-config validator for a task-provider type. */
+export function getTaskProviderConfigValidator(type: string): TaskProviderConfigValidator | undefined {
+  return pluginContributedTaskProviderFactories.get(type)?.validateConfig
 }
 
 export type TaskProviderTypeDescriptor = {

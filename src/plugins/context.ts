@@ -4,7 +4,11 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import { registerContributedTaskProviderType, type TaskProviderFactory } from '../providers/registry.js'
+import {
+  registerContributedTaskProviderType,
+  type TaskProviderFactory,
+  type TaskProviderConfigValidator,
+} from '../providers/registry.js'
 import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
@@ -45,7 +49,10 @@ export type PluginRegistration = {
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
-  registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void
+  registerTaskProviderType(
+    type: string,
+    descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
+  ): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -99,8 +106,11 @@ function buildPluginLogger(pluginId: string): PluginLogger {
 
 function buildRegisterTaskProviderType(
   manifest: PluginManifest,
-): (type: string, descriptor: { factory: TaskProviderFactory }) => void {
-  return function registerTaskProviderType(type: string, descriptor: { factory: TaskProviderFactory }): void {
+): (type: string, descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator }) => void {
+  return function registerTaskProviderType(
+    type: string,
+    descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
+  ): void {
     if (!manifest.permissions.includes('provider.task')) {
       throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
     }
@@ -113,6 +123,7 @@ function buildRegisterTaskProviderType(
     registerContributedTaskProviderType(type, {
       pluginId: manifest.id,
       factory: descriptor.factory,
+      validateConfig: descriptor.validateConfig,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       configSchema: manifest.providerConfigSchema,

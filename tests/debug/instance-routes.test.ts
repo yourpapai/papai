@@ -417,6 +417,61 @@ describe('instance API routes', () => {
     expect(pick(body, 'type')).toBe('mystery')
   })
 
+  test('rejects a task-instance create when the provider validator fails', async () => {
+    registerContributedTaskProviderType('validated', {
+      pluginId: 'val',
+      factory: () => createMockProvider({ name: 'validated' }),
+      validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
+      capabilities: new Set<never>(),
+      displayName: 'Validated',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = await routeWithDeps(
+        '/api/task-instances',
+        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+        {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'bad' } }),
+        },
+      )
+      expect(res?.status).toBe(400)
+      const body = assertObject(await readJson(res!))
+      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
+      expect(pick(body, 'reason')).toBe('bad url')
+    } finally {
+      unregisterContributedTaskProviderType('val')
+    }
+  })
+
+  test('allows a task-instance create when the provider validator passes', async () => {
+    registerContributedTaskProviderType('validated-ok', {
+      pluginId: 'val-ok',
+      factory: () => createMockProvider({ name: 'validated-ok' }),
+      validateConfig: () => Promise.resolve({ ok: true as const }),
+      capabilities: new Set<never>(),
+      displayName: 'Validated OK',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = await routeWithDeps(
+        '/api/task-instances',
+        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+        {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
+        },
+      )
+      expect(res?.status).toBe(201)
+      const instance = getTaskInstance('v-ok-1')
+      expect(instance).not.toBeNull()
+    } finally {
+      unregisterContributedTaskProviderType('val-ok')
+    }
+  })
+
   test('masks instance-scoped sensitive fields declared by a contributed task provider type', async () => {
     mockLogger()
     registerContributedTaskProviderType('masktest', {

@@ -27,7 +27,7 @@ import { logger } from '../logger.js'
 import { listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { jsonResponse } from './json-response.js'
-import { handleTaskProviderTypes } from './task-provider-type-routes.js'
+import { handleTaskProviderTypes, validateTaskInstanceConfig } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
@@ -217,6 +217,8 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
     if (!listTaskProviderTypes().some((descriptor) => descriptor.type === body.type)) {
       return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
     }
+    const configError = await validateTaskInstanceConfig(body.type, body.config)
+    if (configError !== null) return configError
     insertTaskInstance({ ...body, status: 'active' })
     const instance = getTaskInstance(body.id)
     return jsonResponse(instance === null ? null : maskedTaskInstance(instance), { status: 201 })

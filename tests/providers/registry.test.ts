@@ -10,6 +10,7 @@ import {
   createProvider,
   getCapabilitiesForTaskInstance,
   getContributedTaskProviderType,
+  getTaskProviderConfigValidator,
   listTaskProviderTypes,
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -198,6 +199,51 @@ describe('registerContributedTaskProviderType duplicates', () => {
         configSchema: [] as const,
       }),
     ).toThrow()
+  })
+})
+
+describe('getTaskProviderConfigValidator', () => {
+  test('returns the validator function for a contributed type that declares one', async () => {
+    mockLogger()
+    const validator = (): Promise<{ ok: true }> => Promise.resolve({ ok: true })
+    registerContributedTaskProviderType('validated-reg', {
+      pluginId: 'validator-plugin',
+      factory: () => createMockProvider({ name: 'validated-reg' }),
+      validateConfig: validator,
+      capabilities: new Set<never>(),
+      displayName: 'Validated Reg',
+      configSchema: [],
+    })
+    try {
+      const resolved = getTaskProviderConfigValidator('validated-reg')
+      expect(resolved).toBe(validator)
+      const result = await resolved!({ baseUrl: 'https://ok.invalid' })
+      expect(result).toEqual({ ok: true })
+    } finally {
+      unregisterContributedTaskProviderType('validator-plugin')
+    }
+  })
+
+  test('returns undefined for a built-in type (kaneo)', () => {
+    const resolved = getTaskProviderConfigValidator('kaneo')
+    expect(resolved).toBeUndefined()
+  })
+
+  test('returns undefined for a contributed type with no validator', () => {
+    mockLogger()
+    registerContributedTaskProviderType('no-validator', {
+      pluginId: 'no-validator-plugin',
+      factory: () => createMockProvider({ name: 'no-validator' }),
+      capabilities: new Set<never>(),
+      displayName: 'No Validator',
+      configSchema: [],
+    })
+    try {
+      const resolved = getTaskProviderConfigValidator('no-validator')
+      expect(resolved).toBeUndefined()
+    } finally {
+      unregisterContributedTaskProviderType('no-validator-plugin')
+    }
   })
 })
 
