@@ -89,6 +89,16 @@ const responseFor = (method: string, url: string): Response => {
         capabilities: ['comments.read'],
         source: 'builtin',
       },
+      {
+        type: 'linear',
+        displayName: 'Linear',
+        configSchema: [
+          { key: 'baseUrl', label: 'Linear URL', required: true, sensitive: false },
+          { key: 'apiKey', label: 'API Key', required: true, sensitive: true },
+        ],
+        capabilities: ['comments.read'],
+        source: { plugin: 'linear-plugin' },
+      },
     ])
   if (method === 'POST' && url === '/api/platform-instances') return jsonResponse(platformInstance)
   if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse({ applied: 1 })
@@ -138,6 +148,19 @@ const enterValue = (el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEleme
   el.value = value
   el.dispatchEvent(new Event('input', { bubbles: true }))
   el.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+// happy-dom (v20) does not sync <option> :checked/selected state from select.value, so
+// Svelte 5's change-event bind:value path never updates. Drive selection via the
+// [selected]-attribute + form-reset path, which Svelte reads on the is_reset branch.
+const selectTaskType = (target: HTMLElement, formTestId: string, value: string): void => {
+  const el = select(target, 'task-type-input')
+  const option = el.querySelector<HTMLOptionElement>(`option[value="${value}"]`)
+  if (option === null) throw new Error(`option ${value} missing`)
+  option.setAttribute('selected', '')
+  const form = target.querySelector<HTMLFormElement>(`[data-testid="${formTestId}"]`)
+  if (form === null) throw new Error(`${formTestId} missing`)
+  form.dispatchEvent(new Event('reset', { bubbles: true }))
 }
 
 const setConfirm = (value: boolean): void => {
@@ -399,6 +422,40 @@ describe('InstancesSection', () => {
       'GET /api/admins',
       'GET /api/task-provider-types',
     ])
+
+    void unmount(component)
+  })
+
+  test('renders sensitive task config fields as password inputs', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    selectTaskType(target, 'task-create-form', 'linear')
+    await drain()
+
+    expect(input(target, 'task-config-baseUrl').type).toBe('text')
+    expect(input(target, 'task-config-apiKey').type).toBe('password')
+
+    void unmount(component)
+  })
+
+  test('rebuilds task config inputs when the selected provider type changes', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    expect(target.querySelector('[data-testid="task-config-baseUrl"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="task-config-apiKey"]')).toBeNull()
+
+    selectTaskType(target, 'task-create-form', 'linear')
+    await drain()
+
+    expect(target.querySelector('[data-testid="task-config-apiKey"]')).not.toBeNull()
 
     void unmount(component)
   })
