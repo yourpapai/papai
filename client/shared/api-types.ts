@@ -184,12 +184,27 @@ export type PlatformInstanceView = {
 
 export type TaskInstanceView = Readonly<{
   id: string
-  type: 'kaneo' | 'youtrack'
+  type: string
   config: InstanceConfigView
   status: InstanceStatusView
   createdAt: string
 }> &
   Partial<Readonly<{ referencingContextIds: readonly string[]; referencingContextCount: number }>>
+
+export type ProviderConfigRequirementView = {
+  readonly key: string
+  readonly label: string
+  readonly required: boolean
+  readonly sensitive: boolean
+}
+
+export type TaskProviderTypeView = Readonly<{
+  type: string
+  displayName: string
+  configSchema: readonly ProviderConfigRequirementView[]
+  capabilities: readonly string[]
+  source: 'builtin' | { readonly plugin: string }
+}>
 
 export type AdminInstanceView = Readonly<
   { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>

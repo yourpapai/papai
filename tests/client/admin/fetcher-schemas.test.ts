@@ -119,9 +119,10 @@ describe('instance API schemas', () => {
     expect(ApplyInstancesResultSchema.parse({ applied: 2 }).applied).toBe(2)
   })
 
-  test('rejects unknown platform, task, and status enums', () => {
+  test('rejects unknown platform and status enums; task type is open string', () => {
     expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, type: 'slack' }).success).toBe(false)
-    expect(TaskInstanceViewSchema.safeParse({ ...platformInstance, type: 'jira' }).success).toBe(false)
+    // TaskInstanceViewSchema.type is now open (string) — any string is valid
+    expect(TaskInstanceViewSchema.safeParse({ ...platformInstance, type: 'jira' }).success).toBe(true)
     expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, status: 'running' }).success).toBe(false)
   })
 

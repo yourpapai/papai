@@ -24,6 +24,7 @@ import {
   fetchRecentRequests,
   fetchRecurringTasks,
   fetchTaskInstances,
+  fetchTaskProviderTypes,
   setPlatformInstanceStatus,
   submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
@@ -479,4 +480,24 @@ describe('instance API fetchers', () => {
       init: { method: 'DELETE' },
     })
   })
+})
+
+test('fetchTaskProviderTypes parses the catalog', async () => {
+  setMockFetch(() =>
+    Promise.resolve(
+      Response.json([
+        {
+          type: 'kaneo',
+          displayName: 'Kaneo',
+          configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          capabilities: ['comments.read'],
+          source: 'builtin',
+        },
+      ]),
+    ),
+  )
+  const types = await fetchTaskProviderTypes()
+  expect(types[0]?.type).toBe('kaneo')
+  expect(types[0]?.configSchema[0]?.key).toBe('baseUrl')
+  restoreFetch()
 })

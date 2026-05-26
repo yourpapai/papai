@@ -21,9 +21,19 @@ export const PlatformInstanceViewSchema = InstanceViewBaseSchema.extend({
 })
 
 export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
-  type: z.enum(['kaneo', 'youtrack']),
+  type: z.string(),
   referencingContextIds: z.array(z.string()).optional(),
   referencingContextCount: z.number().optional(),
+})
+
+export const TaskProviderTypeViewSchema = z.object({
+  type: z.string(),
+  displayName: z.string(),
+  configSchema: z.array(
+    z.object({ key: z.string(), label: z.string(), required: z.boolean(), sensitive: z.boolean() }),
+  ),
+  capabilities: z.array(z.string()),
+  source: z.union([z.literal('builtin'), z.object({ plugin: z.string() })]),
 })
 
 export const AdminInstanceViewSchema = z.object({

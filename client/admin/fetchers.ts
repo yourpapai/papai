@@ -22,6 +22,7 @@ import type {
   PlatformInstanceView,
   RecurringTask,
   TaskInstanceView,
+  TaskProviderTypeView,
 } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
@@ -42,6 +43,7 @@ import {
   SubjectStatsSchema,
   SubmitAdminLlmResponseSchema,
   TaskInstanceViewSchema,
+  TaskProviderTypeViewSchema,
   type RecentRequestRow,
   type SubmitAdminLlmKey,
 } from './fetcher-schemas.js'
@@ -255,6 +257,12 @@ export const deleteTaskInstance = async (id: string): Promise<void> => {
   const res = await fetch(`/api/task-instances/${encodeURIComponent(id)}`, { method: 'DELETE' })
   const body = await readBody(res)
   requireOk(res, body)
+}
+
+export const fetchTaskProviderTypes = async (): Promise<TaskProviderTypeView[]> => {
+  const res = await fetch('/api/task-provider-types')
+  const body = await readBody(res)
+  return z.array(TaskProviderTypeViewSchema).parse(body)
 }
 
 export const fetchAdmins = async (): Promise<AdminInstanceView[]> => {
