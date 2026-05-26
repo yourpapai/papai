@@ -6,6 +6,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { setCachedConfig } from '../src/cache.js'
+import { setContextSettings } from '../src/instances/context-store.js'
+import { insertTaskInstance } from '../src/instances/task-store.js'
 import {
   checkRequiredProviderConfig,
   getLlmConfig,
@@ -15,8 +17,15 @@ import {
 import { setSystemConfig } from '../src/system-config.js'
 import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
 
-const stubDeps = { getKaneoWorkspace: (): string => 'workspace-1' }
-const stubDepsNoWorkspace = { getKaneoWorkspace: (): string | null => null }
+const assignKaneoContext = (contextId: string): void => {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
+}
 
 describe('llm-orchestrator-config', () => {
   beforeEach(async () => {
@@ -77,40 +86,44 @@ describe('llm-orchestrator-config', () => {
 
   describe('checkRequiredProviderConfig', () => {
     test('with kaneo: returns only missing provider keys when system_config is set', () => {
+      assignKaneoContext('user-1')
       setSystemConfig('llm_apikey', 'sk-system', 'env')
       setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
       setSystemConfig('main_model', 'main-system', 'env')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDeps)
+      const missing = checkRequiredProviderConfig('user-1')
       expect(missing).toEqual(['kaneo_apikey'])
     })
 
-    test('with kaneo: reports workspaceId when getKaneoWorkspace returns null', () => {
+    test('with kaneo: ignores internal workspace state when visible credentials are present', () => {
+      assignKaneoContext('user-1')
       setSystemConfig('llm_apikey', 'sk-system', 'env')
       setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
       setSystemConfig('main_model', 'main-system', 'env')
 
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDepsNoWorkspace)
-      expect(missing).toEqual(['workspaceId'])
+      const missing = checkRequiredProviderConfig('user-1')
+      expect(missing).toEqual([])
     })
 
     test('returns no LLM keys even when system_config is missing', () => {
+      assignKaneoContext('user-1')
       // checkRequiredProviderConfig is provider-only; system config completeness
       // is checked separately at the orchestrator entry point.
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDeps)
+      const missing = checkRequiredProviderConfig('user-1')
       expect(missing).not.toContain('llm_apikey')
       expect(missing).not.toContain('llm_baseurl')
       expect(missing).not.toContain('main_model')
     })
 
     test('returns an empty list when provider config is complete', () => {
+      assignKaneoContext('user-1')
       setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
-      const missing = checkRequiredProviderConfig('user-1', stubDeps)
+      const missing = checkRequiredProviderConfig('user-1')
       expect(missing).toEqual([])
     })
   })

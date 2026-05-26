@@ -10,7 +10,12 @@ import type { GroupSettingsSelectorResult } from './types.js'
 
 export type DispatchGroupSelectorDeps = {
   renderConfigForTarget: (reply: ReplyFn, targetContextId: string, interactiveButtons: boolean) => Promise<void>
-  startSetupForTarget: (userId: string, reply: ReplyFn, targetContextId: string) => Promise<void>
+  startSetupForTarget: (
+    userId: string,
+    reply: ReplyFn,
+    targetContextId: string,
+    platformInstanceId: string,
+  ) => Promise<void>
 }
 
 const defaultDeps: DispatchGroupSelectorDeps = {
@@ -26,17 +31,20 @@ export async function dispatchGroupSelectorResult(
   result: GroupSettingsSelectorResult,
   reply: ReplyFn,
   userId: string,
+  platformInstanceId: string,
 ): Promise<boolean>
 export async function dispatchGroupSelectorResult(
   result: GroupSettingsSelectorResult,
   reply: ReplyFn,
   userId: string,
+  platformInstanceId: string,
   interactiveButtons: boolean | undefined,
 ): Promise<boolean>
 export async function dispatchGroupSelectorResult(
   result: GroupSettingsSelectorResult,
   reply: ReplyFn,
   userId: string,
+  platformInstanceId: string,
   interactiveButtons: boolean | undefined,
   deps: DispatchGroupSelectorDeps | undefined,
 ): Promise<boolean>
@@ -44,6 +52,7 @@ export async function dispatchGroupSelectorResult(
   result: GroupSettingsSelectorResult,
   reply: ReplyFn,
   userId: string,
+  platformInstanceId: string,
   ...rest: [] | [boolean | undefined] | [boolean | undefined, DispatchGroupSelectorDeps | undefined]
 ): Promise<boolean> {
   const interactiveButtons = rest[0]
@@ -62,7 +71,7 @@ export async function dispatchGroupSelectorResult(
     if (result.continueWith.command === 'config') {
       await resolvedDeps.renderConfigForTarget(reply, result.continueWith.targetContextId, shouldUseInteractiveButtons)
     } else {
-      await resolvedDeps.startSetupForTarget(userId, reply, result.continueWith.targetContextId)
+      await resolvedDeps.startSetupForTarget(userId, reply, result.continueWith.targetContextId, platformInstanceId)
     }
     return true
   }

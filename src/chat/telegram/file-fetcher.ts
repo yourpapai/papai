@@ -6,15 +6,13 @@
 import type { TelegramFileFetcher } from './file-helpers.js'
 
 type TelegramFileApi = {
-  getFile: (fileId: string) => Promise<{ file_path?: string }>
+  getFile: (fileId: string) => Promise<object>
 }
 
 type TelegramFileLogger = {
   warn: (metadata: Record<string, unknown>, message: string) => void
   error: (metadata: Record<string, unknown>, message: string) => void
 }
-
-let telegramFileFetcher: TelegramFileFetcher | undefined
 
 export const createTelegramFileFetcher = (
   api: TelegramFileApi,
@@ -24,7 +22,7 @@ export const createTelegramFileFetcher = (
   const fetcher: TelegramFileFetcher = async (fileId: string): Promise<Buffer | null> => {
     try {
       const fileInfo = await api.getFile(fileId)
-      if (fileInfo.file_path === undefined) return null
+      if (!('file_path' in fileInfo) || typeof fileInfo.file_path !== 'string') return null
       const url = `https://api.telegram.org/file/bot${token}/${fileInfo.file_path}`
       const response = await fetch(url)
       if (!response.ok) {
@@ -38,10 +36,5 @@ export const createTelegramFileFetcher = (
       return null
     }
   }
-  telegramFileFetcher = fetcher
   return fetcher
-}
-
-export function getTelegramFileFetcher(): TelegramFileFetcher | undefined {
-  return telegramFileFetcher
 }

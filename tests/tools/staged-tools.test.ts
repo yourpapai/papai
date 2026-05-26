@@ -53,6 +53,7 @@ describe('staged file tools', () => {
       size: 1024,
       platformFileId: 'tg_123',
       sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-a',
     })
 
     await stageFileMetadata({
@@ -65,6 +66,7 @@ describe('staged file tools', () => {
       size: 50,
       platformFileId: 'tg_456',
       sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-a',
     })
   })
 
@@ -111,6 +113,7 @@ describe('staged file tools', () => {
         size: 100,
         platformFileId: 'tg_resolve_ok',
         sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'telegram-a',
       })
 
       const execute = getToolExecutor(makeResolveStagedFileTool(CTX, mockDownloadFn))
@@ -137,6 +140,7 @@ describe('staged file tools', () => {
         size: 100,
         platformFileId: 'tg_dup',
         sourceProvider: 'telegram',
+        sourcePlatformInstanceId: 'telegram-a',
       })
 
       const tool = makeResolveStagedFileTool(CTX, mockDownloadFn)

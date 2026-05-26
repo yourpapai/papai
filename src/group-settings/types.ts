@@ -18,13 +18,18 @@ export type GroupSettingsSessionStage = 'choose_scope' | 'choose_group' | 'activ
 
 export type GroupSettingsSession = {
   userId: string
+  platformInstanceId: string | undefined
   command: GroupSettingsCommand
   stage: GroupSettingsSessionStage
   startedAt: Date
-  targetContextId?: string
+  targetContextId: string | undefined
 }
+
+type GroupSettingsSelectorResponse =
+  | { handled: true; response: string }
+  | { handled: true; response: string; buttons: import('../chat/types.js').ChatButton[] }
 
 export type GroupSettingsSelectorResult =
   | { handled: false }
-  | { handled: true; response: string; buttons?: import('../chat/types.js').ChatButton[] }
+  | GroupSettingsSelectorResponse
   | { handled: true; continueWith: { command: GroupSettingsCommand; targetContextId: string } }

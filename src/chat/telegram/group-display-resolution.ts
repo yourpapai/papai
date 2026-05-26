@@ -9,6 +9,7 @@ import {
   upsertGroupUserObservation,
 } from '../../group-settings/registry.js'
 import { logger } from '../../logger.js'
+import { toScopedContextId } from '../scoped-context.js'
 import type { ChatProvider } from '../types.js'
 
 const TELEGRAM_PROVIDER = 'telegram'
@@ -51,7 +52,24 @@ const resolveLiveUserLabel = async (chat: ChatProvider, contextId: string, userI
   }
 }
 
-export async function resolveTelegramGroupDisplayLabel(chat: ChatProvider, groupId: string): Promise<string | null> {
+const findCachedGroupLabel = (groupId: string, platformInstanceId: string | undefined): string | null => {
+  if (platformInstanceId !== undefined) {
+    const scopedGroup = findKnownGroupContext(
+      TELEGRAM_PROVIDER,
+      toScopedContextId({ platformInstanceId, nativeContextId: groupId }),
+    )
+    if (scopedGroup !== null) return scopedGroup.displayName
+  }
+  const cachedGroup = findKnownGroupContext(TELEGRAM_PROVIDER, groupId)
+  if (cachedGroup === null) return null
+  return cachedGroup.displayName
+}
+
+export async function resolveTelegramGroupDisplayLabel(
+  chat: ChatProvider,
+  groupId: string,
+  platformInstanceId: string | undefined,
+): Promise<string | null> {
   if (!isTelegramChat(chat)) {
     return null
   }
@@ -61,12 +79,7 @@ export async function resolveTelegramGroupDisplayLabel(chat: ChatProvider, group
     return liveLabel
   }
 
-  const cachedGroup = findKnownGroupContext(TELEGRAM_PROVIDER, groupId)
-  if (cachedGroup === null) {
-    return null
-  }
-
-  return cachedGroup.displayName
+  return findCachedGroupLabel(groupId, platformInstanceId)
 }
 
 export async function resolveTelegramUserDisplayLabel(

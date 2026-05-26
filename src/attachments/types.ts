@@ -14,7 +14,11 @@ export const SOURCE_PROVIDER_BY_NAME: Readonly<Record<string, AttachmentSourcePr
   unknown: 'unknown',
 }
 
-export const toSourceProvider = (name: string): AttachmentSourceProvider => SOURCE_PROVIDER_BY_NAME[name] ?? 'unknown'
+export const toSourceProvider = (name: string): AttachmentSourceProvider => {
+  const sourceProvider = SOURCE_PROVIDER_BY_NAME[name]
+  if (sourceProvider === undefined) return 'unknown'
+  return sourceProvider
+}
 
 export type AttachmentRef = {
   attachmentId: string
@@ -54,6 +58,24 @@ export type SaveAttachmentInput = {
 
 export type StagedFileStatus = 'staged' | 'resolved' | 'failed' | 'expired'
 
+const STAGED_STATUS_BY_VALUE: Readonly<Record<string, StagedFileStatus>> = {
+  staged: 'staged',
+  resolved: 'resolved',
+  failed: 'failed',
+  expired: 'expired',
+}
+
+export const toStagedStatus = (value: string): StagedFileStatus => {
+  const status = STAGED_STATUS_BY_VALUE[value]
+  if (status === undefined) return 'expired'
+  return status
+}
+
+export const toUndefinedIfNull = <T>(value: T | null): T | undefined => {
+  if (value !== null) return value
+  return undefined
+}
+
 export type StagedFileRef = {
   stagedId: string
   contextId: string
@@ -65,6 +87,7 @@ export type StagedFileRef = {
   size: number | null
   platformFileId: string
   sourceProvider: AttachmentSourceProvider
+  sourcePlatformInstanceId: string
   status: StagedFileStatus
   attachmentId: string | null
   createdAt: string
@@ -81,6 +104,7 @@ export type StageFileParams = {
   size: number | null
   platformFileId: string
   sourceProvider: AttachmentSourceProvider
+  sourcePlatformInstanceId: string
 }
 
 export type StagedResolutionError =
@@ -92,4 +116,5 @@ export type StagedResolutionError =
 export type StagedFileDownloadFn = (
   platformFileId: string,
   sourceProvider: AttachmentSourceProvider,
+  sourcePlatformInstanceId: string,
 ) => Promise<Buffer | null>

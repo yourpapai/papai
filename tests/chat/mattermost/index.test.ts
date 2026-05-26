@@ -10,10 +10,13 @@ import { fetchMattermostFiles } from '../../../src/chat/mattermost/file-helpers.
 import { MattermostChatProvider } from '../../../src/chat/mattermost/index.js'
 import { mattermostCapabilities } from '../../../src/chat/mattermost/metadata.js'
 import type { MattermostPost } from '../../../src/chat/mattermost/schema.js'
+import { toScopedThreadContextId } from '../../../src/chat/scoped-context.js'
+import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { createMockReply, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type BuiltPostedMessage = { readonly msg: IncomingMessage }
+type PostedEventHandler = (data: Record<string, unknown>) => Promise<void>
 
 function isIncomingMessage(value: unknown): value is IncomingMessage {
   return (
@@ -28,6 +31,21 @@ function isIncomingMessage(value: unknown): value is IncomingMessage {
 
 function isBuiltPostedMessage(value: unknown): value is BuiltPostedMessage {
   return typeof value === 'object' && value !== null && 'msg' in value && isIncomingMessage(value.msg)
+}
+
+function isPostedEventHandler(value: unknown): value is PostedEventHandler {
+  return typeof value === 'function'
+}
+
+function getPostedEventHandler(provider: MattermostChatProvider): PostedEventHandler {
+  const handler = Reflect.get(provider as object, 'handlePostedEvent') as unknown
+  if (!isPostedEventHandler(handler)) throw new Error('Expected Mattermost posted event handler')
+  return handler
+}
+
+function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult {
+  if (auth === undefined) throw new Error('Expected command auth to be captured')
+  return auth
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +263,7 @@ describe('MattermostChatProvider', () => {
       Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
+        'mattermost-default',
         {
           contextId: 'chan-1',
           contextType: 'group',
@@ -273,6 +292,7 @@ describe('MattermostChatProvider', () => {
       Reflect.set(provider, 'apiFetch', makeApiFetchPostOnly(requests))
 
       await provider.sendMessage(
+        'mattermost-default',
         {
           contextId: 'chan-1',
           contextType: 'group',
@@ -301,6 +321,7 @@ describe('MattermostChatProvider', () => {
       Reflect.set(provider, 'apiFetch', makeApiFetchWithUserPostAndRecording('user-2', 'alex', requests))
 
       await provider.sendMessage(
+        'mattermost-default',
         {
           contextId: 'chan-1',
           contextType: 'group',
@@ -356,6 +377,55 @@ describe('MattermostChatProvider', () => {
 
     expect(result.msg.contextName).toBe('Operations')
     expect(result.msg.contextParentName).toBe('Platform')
+  })
+
+  test('buildPostedMessage emits constructor-provided platform instance ID', async () => {
+    const { reply } = createMockReply()
+
+    provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+
+    Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
+    Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
+    Reflect.set(provider, 'buildReplyFn', () => reply)
+
+    const result = await provider.buildPostedMessage(
+      {
+        id: 'post-1',
+        user_id: 'user-1',
+        channel_id: 'chan-1',
+        message: '@papai hi',
+        user_name: 'alice',
+        file_ids: [],
+      },
+      'alice',
+      undefined,
+    )
+
+    expect(result?.msg.platformInstanceId).toBe('mattermost-secondary')
+  })
+
+  test('buildPostedMessage emits default Mattermost platform instance ID when config omits it', async () => {
+    const { reply } = createMockReply()
+
+    provider = new MattermostChatProvider()
+
+    Reflect.set(provider, 'apiFetch', makeApiFetchChannelAndTeam())
+    Reflect.set(provider, 'checkChannelAdmin', () => Promise.resolve(true))
+    Reflect.set(provider, 'buildReplyFn', () => reply)
+    const post: MattermostPost = {
+      id: 'post-1',
+      user_id: 'user-1',
+      channel_id: 'chan-1',
+      message: '@papai hi',
+      user_name: 'alice',
+      file_ids: [],
+    }
+    const replyToMessageId = post.root_id
+
+    const result = await provider.buildPostedMessage(post, 'alice', replyToMessageId)
+
+    assert.ok(result !== null)
+    expect(result.msg.platformInstanceId).toBe('mattermost-default')
   })
 
   describe('renderContext', () => {
@@ -450,6 +520,39 @@ describe('MattermostChatProvider', () => {
 
       // Verify threadId is properly set in the IncomingMessage
       expect(result.msg.threadId).toBe('threadRoot')
+
+      restoreFetch()
+    })
+
+    test('command auth uses scoped storage context for active platform instance', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+      provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+      let auth: AuthorizationResult | undefined
+      provider.registerCommand('test', (_msg, _reply, commandAuth): Promise<void> => {
+        auth = commandAuth
+        return Promise.resolve()
+      })
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '/test',
+          root_id: 'threadRoot',
+          parent_id: '',
+        }),
+      })
+
+      expect(requireAuth(auth).storageContextId).toBe(
+        toScopedThreadContextId({
+          platformInstanceId: 'mattermost-secondary',
+          nativeContextId: 'channel789',
+          threadId: 'threadRoot',
+        }),
+      )
 
       restoreFetch()
     })

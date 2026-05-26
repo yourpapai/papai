@@ -7,29 +7,32 @@ import { announceNewVersion } from './announcements.js'
 import { isS3Configured } from './attachments/index.js'
 import { createStagedDownloader } from './attachments/staged-download.js'
 import { setupBot, type BotDeps } from './bot.js'
-import { getMattermostFileFetcher } from './chat/mattermost/index.js'
-import { createChatProvider } from './chat/registry.js'
+import { createChatProviderFromConfig } from './chat/registry.js'
+import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
-import { getTelegramFileFetcher } from './chat/telegram/index.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
+import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
+import { listActivePlatformInstances } from './instances/platform-store.js'
+import { listTaskInstances } from './instances/task-store.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
 import { discoverPlugins } from './plugins/discovery.js'
 import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from './plugins/loader.js'
 import { pluginRegistry, syncRegistryFromDb } from './plugins/registry.js'
-import { buildProviderForUser } from './providers/factory.js'
+import { collectStartupCompatibilityInstances } from './plugins/startup-compatibility.js'
+import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
-import { addUser } from './users.js'
 
 const log = logger.child({ scope: 'main' })
 
-const REQUIRED_ENV_VARS = ['CHAT_PROVIDER', 'ADMIN_USER_ID', 'TASK_PROVIDER'] as const
+const REQUIRED_ENV_VARS = ['ADMIN_USER_ID'] as const
 
 const getEnvValue = (key: string): string => {
   const value = process.env[key]
@@ -43,29 +46,6 @@ if (missing.length > 0) {
   process.exit(1)
 }
 
-// Validate TASK_PROVIDER value and check provider-specific env vars
-const TASK_PROVIDER = process.env['TASK_PROVIDER']!
-if (TASK_PROVIDER !== 'kaneo' && TASK_PROVIDER !== 'youtrack') {
-  log.error({ TASK_PROVIDER }, 'TASK_PROVIDER must be either "kaneo" or "youtrack"')
-  process.exit(1)
-}
-
-if (TASK_PROVIDER === 'kaneo') {
-  const missingKaneo = ['KANEO_CLIENT_URL'].filter((v) => getEnvValue(v) === '')
-  if (missingKaneo.length > 0) {
-    log.error({ variables: missingKaneo }, 'Missing required Kaneo environment variables')
-    process.exit(1)
-  }
-}
-
-if (TASK_PROVIDER === 'youtrack') {
-  const missingYouTrack = ['YOUTRACK_URL'].filter((v) => getEnvValue(v) === '')
-  if (missingYouTrack.length > 0) {
-    log.error({ variables: missingYouTrack }, 'Missing required YouTrack environment variables')
-    process.exit(1)
-  }
-}
-
 log.info('Starting papai...')
 
 try {
@@ -76,6 +56,8 @@ try {
 }
 
 seedSystemConfigFromEnv()
+const bootstrapResult = bootstrapInstancesFromEnv()
+log.info({ bootstrapResult }, 'instance bootstrap evaluated')
 const missingSystemKeys = missingSystemConfigKeys()
 if (missingSystemKeys.length > 0) {
   log.warn(
@@ -89,49 +71,43 @@ initUsageRecorder()
 initializeMessageCache()
 
 const adminUserId = process.env['ADMIN_USER_ID']!
-addUser(adminUserId, adminUserId)
 
-const chatProvider = createChatProvider(process.env['CHAT_PROVIDER']!)
+const activePlatformInstances = listActivePlatformInstances()
+const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
+for (const instance of activePlatformInstances) {
+  try {
+    chatProvider.addInstance(instance.id, instance.type, instance.config)
+  } catch (error) {
+    log.error(
+      {
+        platformInstanceId: instance.id,
+        type: instance.type,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Skipping invalid active platform instance during startup',
+    )
+  }
+}
+setRuntimeChatRouter(chatProvider)
 
 log.info(
   {
     adminUserConfigured: Boolean(adminUserId),
     chatProvider: process.env['CHAT_PROVIDER'],
-    taskProvider: TASK_PROVIDER,
+    taskProviderSource: 'context_settings',
     s3Storage: isS3Configured(),
   },
   'Starting papai...',
 )
 
-const createStagedDownloadFn = (
-  chat: typeof chatProvider,
-): import('./attachments/types.js').StagedFileDownloadFn | null => {
-  if (chat.name === 'telegram') {
-    return createStagedDownloader({
-      telegramFetcher: (fileId) => {
-        const fetcher = getTelegramFileFetcher()
-        return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
-      },
-      mattermostFetcher: () => Promise.resolve(null),
-    })
-  }
-  if (chat.name === 'mattermost') {
-    return createStagedDownloader({
-      telegramFetcher: () => Promise.resolve(null),
-      mattermostFetcher: (fileId) => {
-        const fetcher = getMattermostFileFetcher()
-        return fetcher === undefined ? Promise.resolve(null) : fetcher(fileId)
-      },
-    })
-  }
-  return null
-}
+const createStagedDownloadFn = (): import('./attachments/types.js').StagedFileDownloadFn =>
+  createStagedDownloader(chatProvider)
 
 const processMessage: BotDeps['processMessage'] = (...args) =>
   import('./llm-orchestrator.js').then((mod) => mod.processMessage(...args))
 
-const stagedDownloadFn = createStagedDownloadFn(chatProvider)
-const botDeps: BotDeps = stagedDownloadFn === null ? { processMessage } : { processMessage, stagedDownloadFn }
+const stagedDownloadFn = createStagedDownloadFn()
+const botDeps: BotDeps = { processMessage, stagedDownloadFn }
 
 setupBot(chatProvider, adminUserId, botDeps)
 
@@ -139,11 +115,18 @@ await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
-void announceNewVersion(chatProvider, adminUserId)
+const [firstActivePlatformInstance] = activePlatformInstances
+const announcementPlatformInstanceId =
+  firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
+if (announcementPlatformInstanceId === undefined) {
+  log.warn('Skipping startup announcement: cannot determine current platform instance')
+} else {
+  void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)
+}
 
 startScheduler(chatProvider)
 
-startPollers(chatProvider, (userId) => buildProviderForUser(userId, false))
+startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
 
 // Start the central scheduler with all cleanup tasks
 scheduler.startAll()
@@ -156,12 +139,12 @@ if (pluginErrors.length > 0) {
 }
 syncRegistryFromDb(discoveredPlugins)
 try {
-  const adminProvider = buildProviderForUser(adminUserId, false)
-  if (adminProvider !== null) {
-    for (const plugin of discoveredPlugins) {
-      pluginRegistry.evaluateCompatibility(plugin.manifest.id, adminProvider.capabilities, chatProvider.capabilities)
-    }
-  }
+  const compatibilityInstances = collectStartupCompatibilityInstances(
+    chatProvider,
+    listTaskInstances(),
+    activePlatformInstances,
+  )
+  pluginRegistry.evaluateCompatibilityAcrossInstances(compatibilityInstances)
 } catch (error) {
   log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Plugin compatibility evaluation skipped')
 }
@@ -183,6 +166,7 @@ if (process.env['DEBUG_SERVER'] === 'true') {
 // Graceful shutdown handlers
 const shutdown = (signal: string): void => {
   log.info(`${signal} received, starting graceful shutdown...`)
+  clearRuntimeChatRouter()
   void flushOnShutdown({ timeoutMs: 5000 })
     .then(async () => {
       await deactivateAllPlugins()

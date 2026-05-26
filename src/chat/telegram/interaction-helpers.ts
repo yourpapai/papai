@@ -36,6 +36,7 @@ function computeStorageContextId(contextId: string, contextType: ContextType, th
 export function buildTelegramInteraction(
   ctx: TelegramInteractionContext,
   isAdmin: boolean,
+  platformInstanceId = 'telegram-default',
 ): IncomingInteraction | null {
   const callbackData = ctx.callbackQuery?.data ?? ''
   if (callbackData === '') return null
@@ -53,6 +54,7 @@ export function buildTelegramInteraction(
     user: { id: userId, username: ctx.from?.username ?? null, isAdmin },
     contextId,
     contextType,
+    platformInstanceId,
     storageContextId: computeStorageContextId(contextId, contextType, threadId),
     callbackData,
     messageId: callbackMessageId(ctx),

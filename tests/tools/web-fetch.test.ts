@@ -5,8 +5,12 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { webRateLimit } from '../../src/db/schema.js'
+import { buildTools } from '../../src/tools/tools-builder.js'
 import { makeWebFetchTool } from '../../src/tools/web-fetch.js'
-import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
+import { putCachedWebFetch } from '../../src/web/cache.js'
+import { getTestDb, getToolExecutor, mockLogger, schemaValidates, setupTestDb } from '../utils/test-helpers.js'
+import { createMockProvider } from './mock-provider.js'
 
 describe('makeWebFetchTool', () => {
   beforeEach(() => {
@@ -78,5 +82,33 @@ describe('makeWebFetchTool', () => {
         { toolCallId: '1', messages: [], abortSignal: undefined },
       ),
     ).rejects.toBe(expectedError)
+  })
+
+  test('uses scoped storage context as actor id when assembled with storage context', async () => {
+    await setupTestDb()
+    const storageContextId = 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw'
+    putCachedWebFetch(
+      'https://example.com/article',
+      {
+        url: 'https://example.com/article',
+        title: 'Example',
+        summary: 'Summary',
+        excerpt: 'Excerpt',
+        truncated: false,
+        contentType: 'text/html',
+        source: 'fetch',
+        fetchedAt: 1,
+      },
+      Date.now() + 60_000,
+    )
+    const tools = buildTools(createMockProvider(), 'user-456', storageContextId, 'normal', 'group')
+
+    await getToolExecutor(tools['web_fetch']!)(
+      { url: 'https://example.com/article' },
+      { toolCallId: '1', messages: [] },
+    )
+
+    const actors = getTestDb().select({ actorId: webRateLimit.actorId }).from(webRateLimit).all()
+    expect(actors).toEqual([{ actorId: storageContextId }])
   })
 })

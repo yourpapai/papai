@@ -20,11 +20,16 @@ import { migration004KaneoWorkspace } from '../src/db/migrations/004_kaneo_works
 import { migration005RenameConfigKeys } from '../src/db/migrations/005_rename_config_keys.js'
 import { migration006VersionAnnouncements } from '../src/db/migrations/006_version_announcements.js'
 import { migration007PlatformUserId } from '../src/db/migrations/007_platform_user_id.js'
+import { migration040PlatformInstances } from '../src/db/migrations/040_platform_instances.js'
+import { migration041UsersPlatformInstanceIndex } from '../src/db/migrations/041_users_platform_instance_index.js'
 import * as schema from '../src/db/schema.js'
 import { extractChangelogSection } from './helpers/extract-changelog-section.js'
-import { createMockChatWithHandler, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
+import { createMockChat, mockLogger, setTestDrizzleDb } from './utils/test-helpers.js'
 
 const ADMIN_USER_ID = 'admin123'
+const PLATFORM_INSTANCE_ID = 'telegram-default'
+
+type RouterLikeChatProvider = ChatProvider & { getInstance: (id: string) => unknown }
 
 const MIGRATIONS = [
   migration001Initial,
@@ -34,6 +39,8 @@ const MIGRATIONS = [
   migration005RenameConfigKeys,
   migration006VersionAnnouncements,
   migration007PlatformUserId,
+  migration040PlatformInstances,
+  migration041UsersPlatformInstanceIndex,
 ] as const
 
 const VERSION: string = packageJson.version
@@ -112,8 +119,8 @@ describe('announceNewVersion', () => {
   let testSqlite: Database
 
   // --- Mock ChatProvider for testing ---
-  let sentMessages: Array<{ userId: string; text: string }>
-  let sendMessageImpl: (userId: string, text: string) => Promise<void>
+  let sentMessages: Array<{ platformInstanceId: string; userId: string; text: string }>
+  let sendMessageImpl: (platformInstanceId: string, userId: string, text: string) => Promise<void>
 
   let mockChat: ChatProvider
 
@@ -124,8 +131,8 @@ describe('announceNewVersion', () => {
   beforeEach(() => {
     // Reset mutable state to defaults
     sentMessages = []
-    sendMessageImpl = (userId: string, text: string): Promise<void> => {
-      sentMessages.push({ userId, text })
+    sendMessageImpl = (platformInstanceId: string, userId: string, text: string): Promise<void> => {
+      sentMessages.push({ platformInstanceId, userId, text })
       return Promise.resolve()
     }
     changelogProvider = null
@@ -149,12 +156,15 @@ describe('announceNewVersion', () => {
     runMigrations(testSqlite, MIGRATIONS)
 
     // Add admin user to the database
-    testDb.insert(schema.users).values({ platformUserId: ADMIN_USER_ID, addedBy: ADMIN_USER_ID }).run()
+    testDb
+      .insert(schema.users)
+      .values({ platformUserId: ADMIN_USER_ID, platformInstanceId: PLATFORM_INSTANCE_ID, addedBy: ADMIN_USER_ID })
+      .run()
 
-    const { mockChat: chat } = createMockChatWithHandler(
-      (userId: string, text: string): Promise<void> => sendMessageImpl(userId, text),
-    )
-    mockChat = chat
+    mockChat = createMockChat({
+      sendMessage: (platformInstanceId, target, text): Promise<void> =>
+        sendMessageImpl(platformInstanceId, target.contextId, text),
+    })
   })
 
   test('sends announcement only to admin user', async () => {
@@ -164,45 +174,46 @@ describe('announceNewVersion', () => {
 
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     // Only admin should receive announcement, not regular users
     expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]?.userId).toBe(ADMIN_USER_ID)
-    expect(sentMessages[0]?.text).toContain(VERSION)
+    expect(sentMessages[0]!.platformInstanceId).toBe(PLATFORM_INSTANCE_ID)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+    expect(sentMessages[0]!.text).toContain(VERSION)
   })
 
   test('does not send announcement twice for the same version', async () => {
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     // Only one message should be sent (to admin) on first call
     expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]?.userId).toBe(ADMIN_USER_ID)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
   })
 
   test('marks version as announced and sends to admin', async () => {
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     // Admin should receive announcement
     expect(sentMessages).toHaveLength(1)
-    expect(sentMessages[0]?.userId).toBe(ADMIN_USER_ID)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
 
     // Verify idempotency - second call should not send messages
     sentMessages.length = 0
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
     expect(sentMessages).toHaveLength(0)
   })
 
   test('returns early without sending when CHANGELOG.md cannot be read', async () => {
     changelogProvider = null
 
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     expect(sentMessages).toHaveLength(0)
   })
@@ -211,21 +222,76 @@ describe('announceNewVersion', () => {
     changelogProvider = (): Promise<string> =>
       Promise.resolve('# Changelog\n\n## [0.0.1] - 2024-01-01\n\n- old stuff\n')
 
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     expect(sentMessages).toHaveLength(0)
   })
 
   test('handles send failure to admin gracefully', async () => {
-    sendMessageImpl = (_userId: string, _text: string): Promise<void> => {
+    sendMessageImpl = (_platformInstanceId: string, _userId: string, _text: string): Promise<void> => {
       return Promise.reject(new Error('API error'))
     }
 
     changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
 
-    await announceNewVersion(mockChat, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
 
     // No messages sent due to failure
+    expect(sentMessages).toHaveLength(0)
+  })
+
+  test('retries announcement after send failure', async () => {
+    const sendResponses: Array<(platformInstanceId: string, userId: string, text: string) => Promise<void>> = [
+      () => Promise.reject(new Error('API error')),
+      (platformInstanceId, userId, text) => {
+        sentMessages.push({ platformInstanceId, userId, text })
+        return Promise.resolve()
+      },
+    ]
+    sendMessageImpl = (platformInstanceId, userId, text): Promise<void> =>
+      sendResponses.shift()!(platformInstanceId, userId, text)
+    changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+  })
+
+  test('retries announcement when router instance is unknown', async () => {
+    const routerChat = { ...mockChat, getInstance: (_id: string): unknown => undefined } as RouterLikeChatProvider
+    changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+
+    await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    expect(sentMessages).toHaveLength(0)
+
+    mockChat = createMockChat({
+      sendMessage: (platformInstanceId, target, text): Promise<void> =>
+        sendMessageImpl(platformInstanceId, target.contextId, text),
+    })
+    await announceNewVersion(mockChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+    expect(sentMessages).toHaveLength(1)
+    expect(sentMessages[0]!.userId).toBe(ADMIN_USER_ID)
+  })
+
+  test('retries announcement when routed send is refused', async () => {
+    let attempts = 0
+    const routerChat = {
+      ...mockChat,
+      getInstance: (_id: string): unknown => ({ id: PLATFORM_INSTANCE_ID }),
+      sendMessage: (_platformInstanceId: string, _target: unknown, _text: string): Promise<false> => {
+        attempts++
+        return Promise.resolve(false)
+      },
+    } as RouterLikeChatProvider
+    changelogProvider = (): Promise<string> => Promise.resolve(CHANGELOG)
+
+    await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+    await announceNewVersion(routerChat, PLATFORM_INSTANCE_ID, ADMIN_USER_ID, announcementDeps)
+
+    expect(attempts).toBe(2)
     expect(sentMessages).toHaveLength(0)
   })
 })

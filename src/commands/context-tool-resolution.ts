@@ -7,7 +7,7 @@ import type { ToolSet } from 'ai'
 
 import { getCachedTools } from '../cache.js'
 import { logger } from '../logger.js'
-import { buildProviderForUser } from '../providers/factory.js'
+import { defaultTaskProviderResolver } from '../providers/resolver.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeTools } from '../tools/index.js'
 import { routeToolsForMessage, type ToolRoutingIntent } from '../tools/tool-router.js'
@@ -34,7 +34,7 @@ export interface ResolvedContextToolSurface {
 
 export function safeBuildProvider(contextId: string): TaskProvider | null {
   try {
-    return buildProviderForUser(contextId, false)
+    return defaultTaskProviderResolver.resolve(contextId)
   } catch (error) {
     log.warn(
       { contextId, error: error instanceof Error ? error.message : String(error) },

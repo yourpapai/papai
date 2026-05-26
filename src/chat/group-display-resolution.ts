@@ -13,9 +13,13 @@ const TELEGRAM_PROVIDER = 'telegram'
 
 const isTelegramChat = (chat: Pick<ChatProvider, 'name'>): boolean => chat.name === TELEGRAM_PROVIDER
 
-export const resolveChatGroupDisplayLabel = (chat: ChatProvider, groupId: string): Promise<string | null> => {
+export const resolveChatGroupDisplayLabel = (
+  chat: ChatProvider,
+  groupId: string,
+  platformInstanceId: string | undefined,
+): Promise<string | null> => {
   if (isTelegramChat(chat)) {
-    return resolveTelegramGroupDisplayLabel(chat, groupId)
+    return resolveTelegramGroupDisplayLabel(chat, groupId, platformInstanceId)
   }
 
   const lookup = chat.resolveGroupLabel

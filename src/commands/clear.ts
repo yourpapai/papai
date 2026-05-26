@@ -5,9 +5,10 @@
 
 import type { AuthorizationResult, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { clearHistory } from '../history.js'
+import { isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import { clearFacts, clearSummary } from '../memory.js'
-import { listUsers } from '../users.js'
+import { isAuthorized, listUsers } from '../users.js'
 
 const log = logger.child({ scope: 'commands:clear' })
 
@@ -27,11 +28,15 @@ async function clearSelf(msg: { user: { id: string } }, reply: ReplyFn, auth: Au
   return true
 }
 
-async function clearAll(msg: { user: { id: string } }, reply: ReplyFn): Promise<boolean> {
-  const users = listUsers()
-  for (const user of users) {
+async function clearAll(
+  msg: { user: { id: string } },
+  reply: ReplyFn,
+  platformInstanceId: string | null,
+): Promise<boolean> {
+  const users = platformInstanceId === null ? listUsers() : listUsers(platformInstanceId)
+  users.forEach((user) => {
     clearContext(user.platform_user_id)
-  }
+  })
   log.info({ userId: msg.user.id, clearedCount: users.length }, '/clear all executed')
   await reply.text(`Cleared history, memory, and facts for all ${users.length} users.`)
   return true
@@ -44,11 +49,7 @@ async function clearUser(msg: { user: { id: string } }, reply: ReplyFn, targetId
   return true
 }
 
-export function registerClearCommand(
-  chat: ChatProvider,
-  _checkAuthorization: (userId: string, username?: string | null) => boolean,
-  adminUserId: string,
-): void {
+export function registerClearCommand(chat: ChatProvider, _checkAuthorization: unknown, _adminUserId: string): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
 
@@ -58,20 +59,28 @@ export function registerClearCommand(
     }
 
     log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/clear command called')
-    const arg = (msg.commandMatch ?? '').trim()
+    const commandMatch = typeof msg.commandMatch === 'string' ? msg.commandMatch : ''
+    const arg = commandMatch.trim()
 
     if (arg === '') {
       await clearSelf(msg, reply, auth)
       return
     }
 
-    if (msg.user.id !== adminUserId) {
+    if (!auth.isBotAdmin) {
       await reply.text("Only the admin can clear other users' history.")
       return
     }
 
+    const isGlobalAdmin = isSuperAdmin(msg.user.id)
+
     if (arg === 'all') {
-      await clearAll(msg, reply)
+      await clearAll(msg, reply, isGlobalAdmin ? null : msg.platformInstanceId)
+      return
+    }
+
+    if (!isGlobalAdmin && !isAuthorized(arg, msg.platformInstanceId)) {
+      await reply.text('Target user is not authorized on this platform.')
       return
     }
 

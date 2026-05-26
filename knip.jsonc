@@ -20,6 +20,7 @@
     "scripts/behavior-audit/migrate-trust.ts!",
     "tests/scripts/behavior-audit*.ts!",
     "tests/scripts/behavior-audit/**/*.ts!",
+    "tests/instances/**/*.test.ts!",
   ],
 
   // All source files (production only)

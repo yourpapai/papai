@@ -4,14 +4,17 @@
 // See LICENSE in the project root for details.
 
 import type { ChatCapability } from '../chat/types.js'
-import { getPluginConfig } from '../config.js'
 import { logger } from '../logger.js'
 import type { TaskCapability } from '../providers/types.js'
 import { checkPluginCompatibility } from './compatibility.js'
 import {
+  NO_ACTIVE_INSTANCE_COMPATIBILITY_REASON,
+  normalizeCompatibilityInstances,
+  type PluginCompatibilityInstance,
+} from './registry-compatibility.js'
+import { getPluginContextEligibilityForEntry, type PluginContextEligibility } from './registry-context-eligibility.js'
+import {
   getPluginAdminState,
-  getPluginContextState,
-  isPluginEnabledForContext,
   setPluginContextEnabled,
   upsertPluginAdminState,
   updatePluginAdminStateField,
@@ -49,40 +52,36 @@ function toPluginState(value: string): PluginState {
   return 'discovered'
 }
 
-export { checkPluginCompatibility } from './compatibility.js'
+function toOptionalReason(value: string | null | undefined): string | undefined {
+  if (value === null) return undefined
+  return value
+}
 
-export type PluginContextEligibility =
-  | { eligible: true }
-  | {
-      eligible: false
-      reason: 'inactive' | 'disabled' | 'config_missing'
-      missingKeys?: readonly string[]
-    }
+export { checkPluginCompatibility } from './compatibility.js'
+export type { PluginContextEligibility } from './registry-context-eligibility.js'
 
 export type PluginRegistryEntry = {
   discoveredPlugin: DiscoveredPlugin
-  /** Current effective state (may be in-memory only for runtime states). */
   state: PluginState
-  compatibilityReason?: string
+  compatibilityReason: string | undefined
 }
 
-/** In-memory registry of all known plugins for the current process lifetime. */
+export type { PluginCompatibilityInstance } from './registry-compatibility.js'
+
 export class PluginRegistry {
   private readonly entries = new Map<string, PluginRegistryEntry>()
 
-  /** Register a newly discovered plugin. Updates DB if first time seen or hash changed. */
   registerDiscovered(plugin: DiscoveredPlugin): void {
     const { manifest, manifestHash } = plugin
     const existing = getPluginAdminState(manifest.id)
 
     if (existing === undefined) {
       upsertPluginAdminState(manifest.id, 'discovered', { lastSeenManifestHash: manifestHash })
-      this.entries.set(manifest.id, { discoveredPlugin: plugin, state: 'discovered' })
+      this.entries.set(manifest.id, { discoveredPlugin: plugin, state: 'discovered', compatibilityReason: undefined })
       log.info({ pluginId: manifest.id }, 'Plugin registered as discovered')
       return
     }
 
-    // If manifest hash changed and plugin was previously approved, revert to discovered
     if (
       existing.approvedManifestHash !== null &&
       existing.approvedManifestHash !== undefined &&
@@ -104,21 +103,21 @@ export class PluginRegistry {
       return
     }
 
-    // Update last seen hash
     const normalizedState = resolveStartupState(toPluginState(existing.state), existing.approvedManifestHash)
+    const compatibilityReason =
+      normalizedState === 'approved' ? undefined : toOptionalReason(existing.compatibilityReason)
     updatePluginAdminStateField(manifest.id, {
       lastSeenManifestHash: manifestHash,
       state: normalizedState,
-      compatibilityReason: normalizedState === 'approved' ? null : (existing.compatibilityReason ?? null),
+      compatibilityReason: normalizedState === 'approved' ? null : existing.compatibilityReason,
     })
     this.entries.set(manifest.id, {
       discoveredPlugin: plugin,
       state: normalizedState,
-      compatibilityReason: normalizedState === 'approved' ? undefined : (existing.compatibilityReason ?? undefined),
+      compatibilityReason,
     })
   }
 
-  /** Bot admin approves a plugin for loading. */
   approve(pluginId: string, adminUserId: string, manifestHash: string): boolean {
     const entry = this.entries.get(pluginId)
     if (entry === undefined) {
@@ -137,7 +136,6 @@ export class PluginRegistry {
     return true
   }
 
-  /** Bot admin rejects (globally disables) a plugin. */
   reject(pluginId: string): boolean {
     const entry = this.entries.get(pluginId)
     if (entry === undefined) {
@@ -153,7 +151,6 @@ export class PluginRegistry {
     return true
   }
 
-  /** Evaluate compatibility and update state for approved plugins. */
   evaluateCompatibility(
     pluginId: string,
     taskCapabilities: ReadonlySet<TaskCapability>,
@@ -170,7 +167,28 @@ export class PluginRegistry {
     }
   }
 
-  /** Mark plugin as active after successful activation. */
+  evaluateCompatibilityAcrossInstances(instances: readonly PluginCompatibilityInstance[]): void {
+    const candidates = normalizeCompatibilityInstances(instances)
+    for (const [pluginId, entry] of this.entries.entries()) {
+      if (entry.state !== 'approved') continue
+      const compatible = candidates.some((candidate) => {
+        const result = checkPluginCompatibility(
+          entry.discoveredPlugin.manifest,
+          candidate.taskCapabilities,
+          candidate.chatCapabilities,
+        )
+        return result.compatible
+      })
+      if (compatible) {
+        entry.compatibilityReason = undefined
+        continue
+      }
+      entry.state = 'incompatible'
+      entry.compatibilityReason = NO_ACTIVE_INSTANCE_COMPATIBILITY_REASON
+      log.warn({ pluginId, reason: NO_ACTIVE_INSTANCE_COMPATIBILITY_REASON }, 'Plugin marked incompatible')
+    }
+  }
+
   markActive(pluginId: string): void {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined) {
@@ -179,7 +197,6 @@ export class PluginRegistry {
     log.info({ pluginId }, 'Plugin marked active')
   }
 
-  /** Mark plugin as error after activation failure. */
   markError(pluginId: string, reason: string): void {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined) {
@@ -189,7 +206,6 @@ export class PluginRegistry {
     log.error({ pluginId, reason }, 'Plugin marked as error')
   }
 
-  /** Mark plugin back to approved on clean deactivation. */
   markDeactivated(pluginId: string): void {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined && entry.state === 'active') {
@@ -222,50 +238,24 @@ export class PluginRegistry {
   }
 }
 
-function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
-  return plugin.manifest.configRequirements
-    .filter((requirement) => requirement.required)
-    .filter((requirement) => {
-      const value = getPluginConfig(contextId, plugin.manifest.id, requirement.key)
-      return value === null || value.trim() === ''
-    })
-    .map((requirement) => requirement.key)
-}
-
-/** Singleton plugin registry for the current process. */
 export const pluginRegistry = new PluginRegistry()
 
 export function resetPluginRegistryForTesting(): void {
   pluginRegistry.clearForTesting()
 }
 
-/** Enable or disable a plugin for a specific context (user or group). */
 export function setPluginEnabledForContext(pluginId: string, contextId: string, enabled: boolean): void {
   setPluginContextEnabled(pluginId, contextId, enabled)
 }
 
-/** Check if a plugin is enabled for a specific context. */
 export function isPluginActiveForContext(pluginId: string, contextId: string): boolean {
   return getPluginContextEligibility(pluginId, contextId).eligible
 }
 
 export function getPluginContextEligibility(pluginId: string, contextId: string): PluginContextEligibility {
-  const entry = pluginRegistry.getEntry(pluginId)
-  if (entry === undefined || entry.state !== 'active') return { eligible: false, reason: 'inactive' }
-  const contextState = getPluginContextState(pluginId, contextId)
-  const enabled =
-    contextState === undefined
-      ? entry.discoveredPlugin.manifest.defaultEnabled
-      : isPluginEnabledForContext(pluginId, contextId)
-  if (!enabled) return { eligible: false, reason: 'disabled' }
-
-  const missingKeys = getMissingRequiredConfigKeys(entry.discoveredPlugin, contextId)
-  if (missingKeys.length > 0) return { eligible: false, reason: 'config_missing', missingKeys }
-
-  return { eligible: true }
+  return getPluginContextEligibilityForEntry(pluginRegistry.getEntry(pluginId), pluginId, contextId)
 }
 
-/** Load admin state from DB into the in-memory registry for all known plugins. */
 export function syncRegistryFromDb(discoveredPlugins: DiscoveredPlugin[]): void {
   for (const plugin of discoveredPlugins) {
     pluginRegistry.registerDiscovered(plugin)
@@ -273,7 +263,6 @@ export function syncRegistryFromDb(discoveredPlugins: DiscoveredPlugin[]): void 
   log.info({ count: discoveredPlugins.length }, 'Registry synced from DB')
 }
 
-/** Get plugins that are active AND enabled for the given context. */
 export function getPluginsForContext(contextId: string): DiscoveredPlugin[] {
   return pluginRegistry
     .getActivePlugins()

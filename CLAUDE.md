@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through a configurable chat platform (Telegram, Mattermost, or Discord), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the active chat provider, task provider, conversation context, and per-user or group-targeted configuration stored in SQLite.
+papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, or Discord), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
 
 Notable current behaviors:
 
 - Telegram and Mattermost group contexts are thread-aware via thread-scoped storage context IDs; Discord group contexts are not thread-scoped today
+- chat startup runs through `ChatRouter`, which manages DB-backed platform instances and tags incoming messages/interactions with `platformInstanceId`
 - `/setup` and `/config` are DM-driven and can target either personal settings or a managed group
 - the bot supports incoming files, file-to-task relay, identity mapping, memo search, recurring tasks, deferred prompts, and public web fetching
 - an optional local debug server serves separate `client/debug/` and `client/admin/` clients for live observability and operator/admin workflows
@@ -125,9 +126,7 @@ Security checks cover OWASP-style issues, TypeScript/JavaScript pitfalls, and AI
 
 Required at startup:
 
-- `CHAT_PROVIDER`
 - `ADMIN_USER_ID`
-- `TASK_PROVIDER`
 
 The bot also needs central LLM credentials before it can serve any message.
 They live in the admin-owned `system_config` SQLite table, seeded once from
@@ -138,23 +137,36 @@ environment variables on first start and from the DB on subsequent starts:
 - `MAIN_MODEL` (seeded into `system_config.main_model`)
 - `SMALL_MODEL` — optional; callsites fall back to `main_model`
 - `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
+- `INSTANCE_CONFIG_KEY` — 32-byte AES-256-GCM key (64 hex chars) used to
+  encrypt `platform_instances.config` and `task_instances.config` at rest.
+  Non-hex values are SHA-256-hashed. When unset, a derived host-local
+  fallback key is used and a one-shot `WARN` is logged at startup;
+  production deployments must set this explicitly.
 
 If `system_config` is missing any of the three required entries at runtime,
 the bot logs `WARN` at startup and replies "the bot is not fully configured"
-to incoming messages until the admin restarts with the env vars set.
+to incoming messages until the admin sets them via env + restart or through
+`/admin#system`.
 
 `ADMIN_USER_ID` is stored as the initial authorized `platform_user_id`, so it must match the user ID string the active chat adapter sees. For Telegram this is numeric; for Mattermost and Discord it is the platform user ID string, not a display name.
 
-Chat-provider requirements:
+First-run env bootstrap requirements when the instance tables are empty:
+
+- `CHAT_PROVIDER` (`telegram`, `mattermost`, or `discord`)
+- `TASK_PROVIDER` (`kaneo` or `youtrack`)
+
+Chat-provider bootstrap requirements:
 
 - Telegram: `TELEGRAM_BOT_TOKEN`
 - Mattermost: `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`
 - Discord: `DISCORD_BOT_TOKEN`
 
-Task-provider requirements:
+Task-provider bootstrap requirements:
 
 - Kaneo: `KANEO_CLIENT_URL`
 - YouTrack: `YOUTRACK_URL`
+
+`CHAT_PROVIDER` and `TASK_PROVIDER` are used only by first-run env bootstrap when the instance tables are empty. After bootstrap, platform/task instance selection is read from `context_settings`, platform/task instance base config lives in `platform_instances` and `task_instances`, and per-context credentials stay in `user_config`.
 
 Optional but important runtime flags include:
 
@@ -173,6 +185,9 @@ The admin system surface lives at `/admin#system` and includes the
 credentials form backed by `GET`/`POST /admin/llm`. The admin billing
 surface lives at `/admin#billing`, and the admin stats surface lives at
 `/admin#stats` and uses `GET /stats/global` and `GET /stats/subject/:id`.
+The admin instances surface lives at `/admin#instances` and manages
+platform instances, task instances, and admin assignments through
+`/api/platform-instances`, `/api/task-instances`, and `/api/admins`.
 When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer
 token. When it is unset, read-only debug/admin routes remain available
 without a token. `POST /admin/llm` is the special case: it returns 401
@@ -230,7 +245,8 @@ Provider-specific per-user runtime keys:
 
 ```text
 User (Telegram/Mattermost/Discord)
-  -> ChatProvider
+  -> ChatRouter
+  -> source ChatProvider instance
   -> bot.ts
      -> group-settings selector / config editor / setup wizard interception
      -> message queue + reply-context enrichment + file relay
@@ -244,10 +260,11 @@ Optional: debug server + debug/admin clients
 
 ### Main Modules
 
-- `src/index.ts` — startup, env validation, DB initialization, scheduler/poller start, optional debug server start
+- `src/index.ts` — startup, env validation, DB initialization, instance bootstrap, chat router startup, scheduler/poller start, optional debug server start
 - `src/bot.ts` — command registration, auth checks, interception flow, queueing, interaction routing
 - `src/chat/types.ts` — `ChatProvider`, `ReplyFn`, `IncomingMessage`, `IncomingInteraction`, context-rendering types
 - `src/chat/registry.ts` — chat provider registry (`telegram`, `mattermost`, `discord`)
+- `src/chat/router.ts` — `ChatRouter` runtime fan-out over active platform instances; tags incoming messages/interactions with `platformInstanceId` and routes proactive sends back to the source instance
 - `src/chat/startup.ts` — command-menu registration when supported by provider capabilities
 - `src/chat/interaction-router.ts` — config-editor, group-selector, and wizard callback routing
 - `src/config.ts` — per-user config store
@@ -259,10 +276,11 @@ Optional: debug server + debug/admin clients
 - `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
 - `src/providers/` — Kaneo and YouTrack normalized provider implementations
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
-- `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side.
+- `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side. The Instances section at `/admin#instances` is backed by `src/debug/instance-routes.ts` and manages platform instances, task instances, and admin assignments.
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
 - `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 - `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
+- `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
 
 ## Plugin System
 
@@ -280,7 +298,7 @@ Trusted, repository-local first-party plugins only — no sandbox, no marketplac
 2. **Approve** — bot admin runs `/plugin approve <id>` (DM-only). Approval is keyed to the manifest hash; any change to manifest or entry source clears approval and reverts the plugin to `discovered`.
 3. **Activate** — on next startup, approved plugins are imported with a per-plugin activation timeout (`activationTimeoutMs`, 100–10000ms, default 5000) and bounded `p-limit` concurrency. Activation failures are isolated; `plugin_runtime_events` records `activated`/`deactivated`/`error` rows.
 4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group `contextId` via `/plugin enable <id> [context-id]`, the `plg:` inline buttons in `/config`, or `defaultEnabled: true` in the manifest. Per-context state lives in `plugin_context_state`.
-5. **Eligibility** — `getPluginContextEligibility(pluginId, contextId)` returns `inactive`, `disabled`, `config_missing`, or `eligible`. Missing required `configRequirements` is per-context only; it hides the plugin's tools and prompt fragments for that context without breaking activation globally.
+5. **Eligibility** — `getPluginContextEligibility(pluginId, contextId)` returns `inactive`, `disabled`, `config_missing`, `capability_missing`, or `eligible`. Missing required `configRequirements` or missing capabilities on the context's assigned platform/task instance is per-context only; it hides the plugin's tools and prompt fragments for that context without breaking activation globally.
 
 ### Storage
 

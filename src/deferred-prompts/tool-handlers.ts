@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { CompiledRecurrence } from '../recurrence.js'
@@ -11,13 +12,8 @@ import type { RecurrenceSpec } from '../types/recurrence.js'
 import { getUserTimezoneOrError } from '../utils/config-timezone.js'
 import { localDatetimeToUtc, midnightUtcForTimezone, utcToLocal } from '../utils/datetime.js'
 import { cancelAlertPrompt, createAlertPrompt, getAlertPrompt, listAlertPrompts, updateAlertPrompt } from './alerts.js'
-import {
-  buildDeliveryInput,
-  buildScheduleUpdates,
-  parseExecution,
-  type CreateDeliveryContext,
-  type ScheduleFieldUpdates,
-} from './schedule-update-helpers.js'
+import { buildDeliveryInput, type CreateDeliveryContext, type DeliveryPolicy } from './delivery-input.js'
+import { buildScheduleUpdates, parseExecution, type ScheduleFieldUpdates } from './schedule-update-helpers.js'
 import {
   cancelScheduledPrompt,
   createScheduledPrompt,
@@ -39,7 +35,7 @@ import {
   type UpdateResult,
 } from './types.js'
 
-export type { CreateDeliveryContext } from './schedule-update-helpers.js'
+export type { CreateDeliveryContext } from './delivery-input.js'
 
 const log = logger.child({ scope: 'deferred:tools' })
 
@@ -47,34 +43,33 @@ const log = logger.child({ scope: 'deferred:tools' })
 
 export type CreateInput = {
   prompt: string
-  schedule?: ScheduleInput
-  condition?: AlertCondition
-  cooldown_minutes?: number
-  execution?: {
-    mode: 'lightweight' | 'context' | 'full'
-    delivery_brief: string
-    context_snapshot?: string
-  }
-  delivery?: { audience?: 'personal' | 'shared'; mention_user_ids?: string[] }
-}
+} & Partial<
+  Readonly<{
+    schedule: ScheduleInput
+    condition: AlertCondition
+    cooldown_minutes: number
+    execution: ExecutionInput
+    delivery: DeliveryPolicy
+  }>
+>
+
+type ExecutionInput = { mode: 'lightweight' | 'context' | 'full'; delivery_brief: string } & Partial<
+  Readonly<{ context_snapshot: string }>
+>
 
 export type UpdateInput = {
   id: string
-  prompt?: string
-  schedule?: ScheduleInput
-  condition?: AlertCondition
-  cooldown_minutes?: number
-  execution?: {
-    mode: 'lightweight' | 'context' | 'full'
-    delivery_brief: string
-    context_snapshot?: string
-  }
-}
+} & Partial<
+  Readonly<{
+    prompt: string
+    schedule: ScheduleInput
+    condition: AlertCondition
+    cooldown_minutes: number
+    execution: ExecutionInput
+  }>
+>
 
-export type ListInput = {
-  type?: 'scheduled' | 'alert'
-  status?: 'active' | 'completed' | 'cancelled'
-}
+export type ListInput = Partial<Readonly<{ type: 'scheduled' | 'alert'; status: 'active' | 'completed' | 'cancelled' }>>
 
 // --- Handlers ---
 
@@ -91,11 +86,11 @@ function createScheduled(
   prompt: string,
   schedule: ScheduleInput,
   executionMetadata: ExecutionMetadata,
-  delivery?: DeferredPromptDeliveryInput,
+  delivery: DeferredPromptDeliveryInput | undefined,
 ): CreateResult {
   const hasFireAt = schedule.fire_at !== undefined
   const hasRrule = schedule.rrule !== undefined
-  const timezone = getUserTimezoneOrError(userId)
+  const timezone = getUserTimezoneOrError(getConfigContextIdFromStorageContextId(userId))
   if (typeof timezone !== 'string') return timezone
 
   if (hasFireAt) {
@@ -125,11 +120,14 @@ function createScheduled(
 
   const result = createScheduledPrompt(userId, prompt, { fireAt, cronCompiled }, executionMetadata, delivery)
   log.info({ id: result.id, userId, type: 'scheduled' }, 'Deferred prompt created')
+  const localizedFireAt = utcToLocal(result.fireAt, timezone)
+  let displayFireAt = result.fireAt
+  if (localizedFireAt !== null && localizedFireAt !== undefined) displayFireAt = localizedFireAt
   return {
     status: 'created',
     type: 'scheduled',
     id: result.id,
-    fireAt: utcToLocal(result.fireAt, timezone) ?? result.fireAt,
+    fireAt: displayFireAt,
     rrule: result.rrule,
   }
 }
@@ -140,22 +138,21 @@ function createAlert(
   condition: unknown,
   cooldownMinutes: number | undefined,
   executionMetadata: ExecutionMetadata,
-  delivery?: DeferredPromptDeliveryInput,
+  delivery: DeferredPromptDeliveryInput | undefined,
 ): CreateResult {
   const parseResult = alertConditionSchema.safeParse(condition)
   if (!parseResult.success) return { error: `Invalid condition: ${parseResult.error.message}` }
 
   const result = createAlertPrompt(userId, prompt, parseResult.data, cooldownMinutes, executionMetadata, delivery)
   log.info({ id: result.id, userId, type: 'alert' }, 'Deferred prompt created')
-  return {
-    status: 'created',
-    type: 'alert',
-    id: result.id,
-    cooldownMinutes: result.cooldownMinutes,
-  }
+  return { status: 'created', type: 'alert', id: result.id, cooldownMinutes: result.cooldownMinutes }
 }
 
-export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: CreateDeliveryContext): CreateResult {
+export function executeCreate(
+  userId: string,
+  input: CreateInput,
+  ...deliveryArgs: readonly [] | readonly [deliveryCtx: CreateDeliveryContext]
+): CreateResult {
   const hasSchedule = input.schedule !== undefined
   const hasCondition = input.condition !== undefined
   log.debug({ userId, hasSchedule, hasCondition }, 'create_deferred_prompt called')
@@ -167,10 +164,11 @@ export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: 
   }
 
   const executionMetadata = parseExecution(input.execution)
+  const deliveryCtx = deliveryArgs[0]
   const delivery = deliveryCtx === undefined ? undefined : buildDeliveryInput(deliveryCtx, input.delivery)
 
   if (hasSchedule) {
-    const result = createScheduled(userId, input.prompt, input.schedule!, executionMetadata, delivery)
+    const result = createScheduled(userId, input.prompt, input.schedule, executionMetadata, delivery)
     if (result !== undefined && 'id' in result) emitUser('deferred:created', userId, { promptId: result.id })
     return result
   }
@@ -179,10 +177,7 @@ export function executeCreate(userId: string, input: CreateInput, deliveryCtx?: 
   return result
 }
 
-export function executeList(
-  userId: string,
-  input: { type?: 'scheduled' | 'alert'; status?: 'active' | 'completed' | 'cancelled' },
-): ListResult {
+export function executeList(userId: string, input: ListInput): ListResult {
   log.debug({ userId, type: input.type, status: input.status }, 'list_deferred_prompts called')
   const prompts: ListResult['prompts'] = []
   if (input.type !== 'alert') prompts.push(...listScheduledPrompts(userId, input.status))
@@ -193,20 +188,17 @@ export function executeList(
 
 export function executeGet(userId: string, input: { id: string }): GetResult {
   log.debug({ userId, id: input.id }, 'get_deferred_prompt called')
-  return (
-    getScheduledPrompt(input.id, userId) ?? getAlertPrompt(input.id, userId) ?? { error: 'Deferred prompt not found.' }
-  )
+  const scheduled = getScheduledPrompt(input.id, userId)
+  if (scheduled !== null) return scheduled
+  const alert = getAlertPrompt(input.id, userId)
+  if (alert !== null) return alert
+  return { error: 'Deferred prompt not found.' }
 }
 
 function updateScheduledFields(id: string, userId: string, input: UpdateInput): UpdateResult {
   if (input.condition !== undefined)
-    return {
-      error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.',
-    }
-  const updates: {
-    prompt?: string
-    executionMetadata?: ExecutionMetadata
-  } & ScheduleFieldUpdates = {}
+    return { error: 'Cannot apply a condition to a scheduled prompt. Use schedule fields instead.' }
+  const updates: Partial<{ prompt: string; executionMetadata: ExecutionMetadata }> & ScheduleFieldUpdates = {}
   if (input.prompt !== undefined) updates.prompt = input.prompt
   if (input.schedule !== undefined) {
     const scheduleUpdates = buildScheduleUpdates(id, userId, input.schedule)
@@ -226,12 +218,12 @@ function updateScheduledFields(id: string, userId: string, input: UpdateInput): 
 function updateAlertFields(id: string, userId: string, input: UpdateInput): UpdateResult {
   if (input.schedule !== undefined)
     return { error: 'Cannot apply a schedule to an alert prompt. Use condition fields instead.' }
-  const updates: {
-    prompt?: string
-    condition?: AlertCondition
-    cooldownMinutes?: number
-    executionMetadata?: ExecutionMetadata
-  } = {}
+  const updates: Partial<{
+    prompt: string
+    condition: AlertCondition
+    cooldownMinutes: number
+    executionMetadata: ExecutionMetadata
+  }> = {}
   if (input.prompt !== undefined) updates.prompt = input.prompt
   if (input.condition !== undefined) {
     const parseResult = alertConditionSchema.safeParse(input.condition)

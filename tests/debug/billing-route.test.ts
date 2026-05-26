@@ -68,6 +68,7 @@ const insertUser = (platformUserId: string, username: string | null): void => {
     .insert(users)
     .values({
       platformUserId,
+      platformInstanceId: 'legacy-single',
       username,
       addedBy: 'test',
       addedAt: new Date(NOW).toISOString(),

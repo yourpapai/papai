@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const stagedFiles = sqliteTable(
   'staged_files',
@@ -18,6 +18,7 @@ export const stagedFiles = sqliteTable(
     size: integer('size'),
     platformFileId: text('platform_file_id').notNull(),
     sourceProvider: text('source_provider').notNull(),
+    sourcePlatformInstanceId: text('source_platform_instance_id').notNull().default(''),
     status: text('status').notNull().default('staged'),
     attachmentId: text('attachment_id'),
     createdAt: text('created_at').notNull(),
@@ -27,6 +28,7 @@ export const stagedFiles = sqliteTable(
     index('idx_staged_context_sender').on(table.contextId, table.senderId, table.expiresAt),
     index('idx_staged_context_message').on(table.contextId, table.messageId),
     index('idx_staged_expires_at').on(table.expiresAt),
+    uniqueIndex('idx_staged_platform_context').on(table.platformFileId, table.contextId),
   ],
 )
 export type StagedFileRow = typeof stagedFiles.$inferSelect

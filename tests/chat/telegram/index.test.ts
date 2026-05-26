@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { extractFilesFromContext } from '../../../src/chat/telegram/file-helpers.js'
-import { TelegramChatProvider, getTelegramFileFetcher } from '../../../src/chat/telegram/index.js'
+import { TelegramChatProvider } from '../../../src/chat/telegram/index.js'
 import {
   cacheTelegramMessage,
   extractContextInfo,
@@ -20,8 +20,9 @@ import {
   type CacheContext,
   type MinimalContext,
 } from '../../../src/chat/telegram/message-extraction.js'
+import type { AuthorizationResult } from '../../../src/chat/types.js'
 import type { DeferredDeliveryTarget, IncomingMessage, ReplyFn } from '../../../src/chat/types.js'
-import { mockLogger } from '../../utils/test-helpers.js'
+import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type EditMessageCall = [text: string, options: Partial<{ reply_markup: unknown }> | undefined]
 type SendMessageCall = [
@@ -29,6 +30,7 @@ type SendMessageCall = [
   text: string,
   options: Partial<{ entities: unknown[]; message_thread_id: number }> | undefined,
 ]
+type BotCommandRegistrar = { command: (name: string, handler: (ctx: unknown) => Promise<void>) => void }
 
 const isBotMentionedFalse = (): boolean => false
 const includesTestBotMention = (text: string): boolean => text.includes('@testbot')
@@ -55,6 +57,26 @@ function isIncomingMessage(value: unknown): value is IncomingMessage {
 
 function isReplyFn(value: unknown): value is ReplyFn {
   return typeof value === 'object' && value !== null && 'text' in value && 'buttons' in value && 'formatted' in value
+}
+
+function isBotCommandRegistrar(value: unknown): value is BotCommandRegistrar {
+  return typeof value === 'object' && value !== null && 'command' in value
+}
+
+function requireBotCommandRegistrar(value: unknown): BotCommandRegistrar {
+  if (!isBotCommandRegistrar(value)) throw new Error('Expected Telegram bot command registrar')
+  return value
+}
+
+function encodeScoped(platformInstanceId: string, contextId: string, threadId: string | undefined): string {
+  const scoped = `pi:${Buffer.from(platformInstanceId).toString('base64url')}:ctx:${Buffer.from(contextId).toString('base64url')}`
+  if (threadId === undefined) return scoped
+  return `${scoped}:thread:${Buffer.from(threadId).toString('base64url')}`
+}
+
+function requireAuth(auth: AuthorizationResult | undefined): AuthorizationResult {
+  if (auth === undefined) throw new Error('Expected command auth to be captured')
+  return auth
 }
 
 function isBotWithSendMessage(
@@ -87,7 +109,9 @@ void mock.module('../../../src/auth.js', () => ({
     contextId: string,
     _contextType: 'dm' | 'group',
     threadId: string | undefined,
+    platformInstanceId: string | undefined,
   ): string => {
+    if (platformInstanceId !== undefined) return encodeScoped(platformInstanceId, contextId, threadId)
     // Thread-scoped: groupId:threadId for threads
     if (threadId !== undefined) return `${contextId}:${threadId}`
     return contextId
@@ -104,13 +128,32 @@ describe('TelegramChatProvider', () => {
     expect(typeof TelegramChatProvider).toBe('function')
   })
 
-  test('eagerly initializes module-level file fetcher on construction', () => {
+  test('downloads files through the provider instance', async () => {
     process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
     const provider = new TelegramChatProvider()
-    expect(provider).toBeDefined()
-    const fetcher = getTelegramFileFetcher()
-    expect(typeof fetcher).toBe('function')
-    delete process.env['TELEGRAM_BOT_TOKEN']
+    Reflect.set(provider, 'bot', {
+      api: {
+        getFile: (fileId: string): Promise<{ file_path: string }> => {
+          expect(fileId).toBe('file-1')
+          return Promise.resolve({ file_path: 'docs/file.txt' })
+        },
+      },
+    })
+    setMockFetch((url) => {
+      expect(url).toBe('https://api.telegram.org/file/bottest-token/docs/file.txt')
+      return Promise.resolve(new Response('file-bytes'))
+    })
+
+    try {
+      const downloaded = await provider.downloadFile('file-1')
+
+      expect(provider).toBeDefined()
+      assert.ok(downloaded !== null, 'Expected downloaded file bytes')
+      expect(downloaded.toString()).toBe('file-bytes')
+    } finally {
+      restoreFetch()
+      delete process.env['TELEGRAM_BOT_TOKEN']
+    }
   })
 
   describe('thread capabilities', () => {
@@ -146,7 +189,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: 'alice',
       }
 
-      await provider.sendMessage(target, 'hello')
+      await provider.sendMessage('telegram-default', target, 'hello')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -189,7 +232,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: null,
       }
 
-      await provider.sendMessage(target, '**hi**')
+      await provider.sendMessage('telegram-default', target, '**hi**')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -236,7 +279,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: 'alice',
       }
 
-      await provider.sendMessage(target, 'hello')
+      await provider.sendMessage('telegram-default', target, 'hello')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -271,7 +314,7 @@ describe('TelegramChatProvider', () => {
         createdByUsername: 'alice',
       }
 
-      await provider.sendMessage(target, '**hi**')
+      await provider.sendMessage('telegram-default', target, '**hi**')
 
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual([
@@ -330,6 +373,50 @@ describe('TelegramChatProvider', () => {
       delete process.env['TELEGRAM_BOT_TOKEN']
     })
 
+    test('extractMessage emits constructor-provided platform instance ID', async () => {
+      const provider = new TelegramChatProvider('test-token', 'telegram-secondary')
+      const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
+      expect(extractMessage).toBeInstanceOf(Function)
+      assert(typeof extractMessage === 'function', 'extractMessage not available')
+
+      const result: unknown = await Promise.resolve(
+        extractMessage.call(
+          provider,
+          {
+            from: { id: 1, username: 'alice' },
+            chat: { id: 99, type: 'supergroup', title: 'Operations' },
+            message: { text: '/help', message_id: 42 },
+          },
+          true,
+        ),
+      )
+
+      assert(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
+      expect(result.platformInstanceId).toBe('telegram-secondary')
+    })
+
+    test('extractMessage emits default Telegram platform instance ID when constructor omits it', async () => {
+      const provider = new TelegramChatProvider('test-token')
+      const extractMessage: unknown = Reflect.get(provider, 'extractMessage')
+      expect(extractMessage).toBeInstanceOf(Function)
+      assert.ok(typeof extractMessage === 'function', 'extractMessage not available')
+
+      const result: unknown = await Promise.resolve(
+        extractMessage.call(
+          provider,
+          {
+            from: { id: 1, username: 'alice' },
+            chat: { id: 99, type: 'supergroup', title: 'Operations' },
+            message: { text: '/help', message_id: 42 },
+          },
+          true,
+        ),
+      )
+
+      assert.ok(isIncomingMessage(result), 'Expected extractMessage to return an IncomingMessage')
+      expect(result.platformInstanceId).toBe('telegram-default')
+    })
+
     test('async extractMessage returns IncomingMessage with threadId when mentioned', () => {
       process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
       const provider = new TelegramChatProvider()
@@ -349,6 +436,52 @@ describe('TelegramChatProvider', () => {
       provider.registerCommand('test', async () => {
         // Handler
       })
+
+      delete process.env['TELEGRAM_BOT_TOKEN']
+    })
+
+    test('registerCommand passes scoped storage context for active platform instance', async () => {
+      process.env['TELEGRAM_BOT_TOKEN'] = 'test-token'
+      const provider = new TelegramChatProvider('test-token', 'telegram-secondary')
+      const bot = requireBotCommandRegistrar(Reflect.get(provider as object, 'bot'))
+      let registeredHandler: ((ctx: unknown) => Promise<void>) | undefined
+      bot.command = (_name, handler): void => {
+        registeredHandler = handler
+      }
+      Reflect.set(provider as object, 'checkAdminStatus', (): Promise<boolean> => Promise.resolve(true))
+      Reflect.set(
+        provider as object,
+        'extractMessage',
+        (): Promise<IncomingMessage> =>
+          Promise.resolve({
+            user: { id: '42', username: 'alice', isAdmin: true },
+            contextId: '100',
+            contextType: 'group',
+            isMentioned: true,
+            text: '/setup',
+            platformInstanceId: 'telegram-secondary',
+            threadId: '5',
+          }),
+      )
+      Reflect.set(
+        provider as object,
+        'buildReplyFn',
+        (): ReplyFn => ({
+          text: async (): Promise<void> => {},
+          formatted: async (): Promise<void> => {},
+          buttons: async (): Promise<void> => {},
+          typing: (): void => {},
+        }),
+      )
+      let auth: AuthorizationResult | undefined
+      provider.registerCommand('setup', (_msg, _reply, commandAuth): Promise<void> => {
+        auth = commandAuth
+        return Promise.resolve()
+      })
+
+      await registeredHandler!({ match: '', from: { id: 42 } })
+
+      expect(requireAuth(auth).storageContextId).toBe(encodeScoped('telegram-secondary', '100', '5'))
 
       delete process.env['TELEGRAM_BOT_TOKEN']
     })

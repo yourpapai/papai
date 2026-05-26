@@ -10,6 +10,7 @@ import { generateText } from 'ai'
 import { z } from 'zod'
 
 import { getCachedHistory } from '../cache.js'
+import { getMainContextIdFromThreadContextId } from '../chat/scoped-context.js'
 import { logger } from '../logger.js'
 import { getSystemConfig } from '../system-config.js'
 
@@ -123,8 +124,7 @@ export function makeLookupGroupHistoryTool(userId?: string, contextId?: string):
       if (userId === undefined || contextId === undefined) {
         return Promise.resolve('Unable to search: missing user or context information.')
       }
-      // Extract groupId from contextId (remove thread suffix if present)
-      const groupId = contextId.includes(':') ? (contextId.split(':')[0] ?? contextId) : contextId
+      const groupId = getMainContextIdFromThreadContextId(contextId)
       return executeLookupGroupHistory(userId, groupId, queries)
     },
   })

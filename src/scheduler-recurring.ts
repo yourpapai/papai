@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { resolveDeliveryPlatformInstanceId } from './chat/delivery-routing.js'
+import { parseScopedContextId } from './chat/scoped-context.js'
 import type { ChatProvider } from './chat/types.js'
 import { dmTarget } from './chat/types.js'
 import { emitUser } from './debug/event-bus.js'
@@ -14,6 +16,31 @@ import { markExecuted, type RecurringTaskRecord } from './recurring.js'
 const log = logger.child({ scope: 'scheduler:recurring' })
 
 type CreateTaskInput = Parameters<TaskProvider['createTask']>[0]
+type RouterInstanceActiveLookup = { isInstanceActive: (id: string) => boolean }
+
+const hasRouterInstanceActiveLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceActiveLookup =>
+  typeof Reflect.get(chat, 'isInstanceActive') === 'function'
+
+const getRecurringNotificationRoute = (
+  userId: string,
+): { platformInstanceId: string; target: ReturnType<typeof dmTarget> } | null => {
+  const scoped = parseScopedContextId(userId)
+  if (scoped !== null)
+    return { platformInstanceId: scoped.platformInstanceId, target: dmTarget(scoped.nativeContextId) }
+
+  const target = dmTarget(userId)
+  const platformInstanceId = resolveDeliveryPlatformInstanceId(target)
+  if (platformInstanceId === null) return null
+  return { platformInstanceId, target }
+}
+
+export const canRouteRecurringNotification = (chatProviderRef: ChatProvider | null, userId: string): boolean => {
+  if (chatProviderRef === null) return true
+  const route = getRecurringNotificationRoute(userId)
+  if (route === null) return false
+  if (!hasRouterInstanceActiveLookup(chatProviderRef)) return true
+  return chatProviderRef.isInstanceActive(route.platformInstanceId)
+}
 
 export const buildRecurringTaskInput = (
   ...args: [task: RecurringTaskRecord] | [task: RecurringTaskRecord, dueDate: string]
@@ -55,8 +82,21 @@ export const notifyUser = async (
 ): Promise<void> => {
   if (chatProviderRef === null) return
 
+  const route = getRecurringNotificationRoute(userId)
+  if (route === null) return
+
   try {
-    await chatProviderRef.sendMessage(dmTarget(userId), `Recurring task created: **${created.title}** in project.`)
+    const delivered = await chatProviderRef.sendMessage(
+      route.platformInstanceId,
+      route.target,
+      `Recurring task created: **${created.title}** in project.`,
+    )
+    if (delivered === false) {
+      log.warn(
+        { userId, platformInstanceId: route.platformInstanceId, taskId: created.id },
+        'Recurring task notification refused',
+      )
+    }
   } catch (notifyError) {
     log.warn(
       { userId, error: notifyError instanceof Error ? notifyError.message : String(notifyError) },

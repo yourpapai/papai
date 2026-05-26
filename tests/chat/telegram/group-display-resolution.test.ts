@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import {
   resolveTelegramGroupDisplayLabel,
   resolveTelegramUserDisplayLabel,
@@ -42,8 +43,9 @@ describe('telegram group display resolution', () => {
     const chat = createTelegramChat({
       resolveGroupLabel: (): Promise<string | null> => Promise.resolve('Live Operations'),
     })
+    const platformInstanceId: string | undefined = undefined
 
-    expect(await resolveTelegramGroupDisplayLabel(chat, '-1001')).toBe('Live Operations')
+    expect(await resolveTelegramGroupDisplayLabel(chat, '-1001', platformInstanceId)).toBe('Live Operations')
   })
 
   test('falls back to cached known-group labels when live group lookup returns null', async () => {
@@ -57,8 +59,46 @@ describe('telegram group display resolution', () => {
     const chat = createTelegramChat({
       resolveGroupLabel: (): Promise<string | null> => Promise.resolve(null),
     })
+    const platformInstanceId: string | undefined = undefined
 
-    expect(await resolveTelegramGroupDisplayLabel(chat, '-1001')).toBe('Cached Operations')
+    expect(await resolveTelegramGroupDisplayLabel(chat, '-1001', platformInstanceId)).toBe('Cached Operations')
+  })
+
+  test('falls back to scoped cached known-group labels before legacy native labels', async () => {
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    upsertKnownGroupContext({
+      contextId: '-1001',
+      provider: 'telegram',
+      displayName: 'Legacy Cached Operations',
+      parentName: null,
+    })
+    upsertKnownGroupContext({
+      contextId: scopedContextId,
+      provider: 'telegram',
+      displayName: 'Scoped Cached Operations',
+      parentName: null,
+    })
+
+    const chat = createTelegramChat({
+      resolveGroupLabel: (): Promise<string | null> => Promise.resolve(null),
+    })
+
+    expect(await resolveTelegramGroupDisplayLabel(chat, '-1001', 'telegram-default')).toBe('Scoped Cached Operations')
+  })
+
+  test('falls back to legacy native known-group labels when scoped cache is absent', async () => {
+    upsertKnownGroupContext({
+      contextId: '-1001',
+      provider: 'telegram',
+      displayName: 'Legacy Cached Operations',
+      parentName: null,
+    })
+
+    const chat = createTelegramChat({
+      resolveGroupLabel: (): Promise<string | null> => Promise.resolve(null),
+    })
+
+    expect(await resolveTelegramGroupDisplayLabel(chat, '-1001', 'telegram-default')).toBe('Legacy Cached Operations')
   })
 
   test('falls back to cached observed user labels when live member lookup returns null', async () => {

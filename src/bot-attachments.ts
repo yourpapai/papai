@@ -10,6 +10,7 @@ import {
   stageFileMetadata,
 } from './attachments/index.js'
 import { toSourceProvider, type AttachmentRef, type AttachmentSourceProvider } from './attachments/types.js'
+import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { ChatProvider, IncomingFile, IncomingFileCandidate, IncomingMessage } from './chat/types.js'
 import { logger } from './logger.js'
 
@@ -45,22 +46,33 @@ const defaultStageGroupCandidatesDeps: StageGroupCandidatesDeps = {
 
 export function stageGroupFileCandidates(
   params: StageGroupCandidatesParams,
-  deps: StageGroupCandidatesDeps = defaultStageGroupCandidatesDeps,
+  ...rest: [] | [StageGroupCandidatesDeps]
 ): void {
   if (!isS3Configured()) return
-  const candidates: readonly IncomingFileCandidate[] = params.msg.fileCandidates ?? []
+  const deps = rest.length === 0 ? defaultStageGroupCandidatesDeps : rest[0]
+  let candidates: readonly IncomingFileCandidate[] = []
+  if (params.msg.fileCandidates !== undefined) candidates = params.msg.fileCandidates
   for (const candidate of candidates) {
     try {
+      let messageId: string | null = null
+      if (params.msg.messageId !== undefined) messageId = params.msg.messageId
+      let senderUsername: string | null = null
+      if (params.msg.user.username !== undefined) senderUsername = params.msg.user.username
+      let mimeType: string | null = null
+      if (candidate.mimeType !== undefined) mimeType = candidate.mimeType
+      let size: number | null = null
+      if (candidate.size !== undefined) size = candidate.size
       deps.stageFileMetadataFn({
         contextId: params.storageContextId,
-        messageId: params.msg.messageId ?? null,
+        messageId,
         senderId: params.msg.user.id,
-        senderUsername: params.msg.user.username ?? null,
+        senderUsername,
         filename: candidate.filename,
-        mimeType: candidate.mimeType ?? null,
-        size: candidate.size ?? null,
+        mimeType,
+        size,
         platformFileId: candidate.fileId,
         sourceProvider: params.sourceProvider,
+        sourcePlatformInstanceId: params.msg.platformInstanceId,
       })
     } catch (error: unknown) {
       log.warn(
@@ -83,7 +95,7 @@ export async function ingestDmAttachments(params: IngestDmAttachmentsParams): Pr
   }
   const persistParams: Parameters<typeof persistIncomingAttachments>[0] = {
     contextId: params.storageContextId,
-    sourceProvider: toSourceProvider(params.chat.name),
+    sourceProvider: toSourceProvider(resolveSourceProviderName(params.chat, params.msg.platformInstanceId)),
     files: params.files,
   }
   if (params.msg.messageId !== undefined) persistParams.sourceMessageId = params.msg.messageId
@@ -101,7 +113,8 @@ export async function resolveMessageAttachments(
   storageContextId: string,
 ): Promise<IngestAttachmentsResult> {
   if (msg.contextType === 'dm') {
-    const files: readonly IncomingFile[] = msg.files ?? []
+    let files: readonly IncomingFile[] = []
+    if (msg.files !== undefined) files = msg.files
     if (files.length > 0) {
       const result = await ingestDmAttachments({ chat, msg, storageContextId, files })
       return result

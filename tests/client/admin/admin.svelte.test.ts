@@ -6,8 +6,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
+  adminSections,
   adminState,
   refreshAll,
+  sectionFromHash,
+  sectionLabel,
   setSection,
   setWindow,
   syncSectionFromLocation,
@@ -36,6 +39,14 @@ describe('admin.svelte', () => {
   test('setSection updates currentSection', () => {
     setSection('billing')
     expect(adminState.currentSection).toBe('billing')
+  })
+
+  test('registers instances before system', () => {
+    const ids = adminSections.map((section) => section.id)
+    expect(ids).toContain('instances')
+    expect(ids.indexOf('instances')).toBe(ids.indexOf('system') - 1)
+    expect(sectionFromHash('#instances')).toBe('instances')
+    expect(sectionLabel('instances')).toBe('Instances')
   })
 
   test('setWindow writes to adminGlobals.window', () => {
@@ -72,7 +83,17 @@ describe('admin.svelte', () => {
     syncSectionFromLocation()
     // Result depends on whatever location.hash is at this point; just verify it
     // returns a valid AdminSectionId (not undefined / not throwing).
-    const validIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'system']
+    const validIds = [
+      'overview',
+      'billing',
+      'stats',
+      'memos',
+      'reminders',
+      'identities',
+      'groups',
+      'instances',
+      'system',
+    ]
     expect(validIds).toContain(adminState.currentSection)
   })
 })

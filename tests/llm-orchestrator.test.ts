@@ -12,7 +12,7 @@ import type { ModelMessage } from 'ai'
 import type { ReplyFn } from '../src/chat/types.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
-import { processMessage } from '../src/llm-orchestrator.js'
+import { defaultDeps, processMessage } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -85,8 +85,6 @@ type ToolCallFinishHandler = (event: ToolCallFinishEvent) => void
 
 type GenerateTextResult = {
   text: string
-  reasoningText?: string
-  reasoning?: unknown
   toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>
   toolResults: Array<{ toolName: string; toolCallId: string; output: unknown }>
   steps: unknown[]
@@ -96,6 +94,14 @@ type GenerateTextResult = {
   warnings: unknown[] | undefined
   request: unknown
   providerMetadata: unknown
+} & Partial<Readonly<{ reasoningText: string; reasoning: unknown }>>
+
+const callToolFinish = (
+  handler: GenerateTextArgs['experimental_onToolCallFinish'],
+  event: ToolCallFinishEvent,
+): void => {
+  assert.ok(handler !== undefined, 'expected tool-call finish handler')
+  handler(event)
 }
 
 const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
@@ -122,7 +128,10 @@ import {
 } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
+import { setConfig } from '../src/config.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
+import { setContextSettings } from '../src/instances/context-store.js'
+import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
 import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
@@ -132,6 +141,64 @@ import type { MakeToolsOptions } from '../src/tools/index.js'
 import { setKaneoWorkspace } from '../src/users.js'
 
 const CTX_ID = 'ctx-1'
+
+/** Seed the central LLM config used by every orchestrator call. */
+const seedSystemLlmConfig = (): void => {
+  setSystemConfig('llm_apikey', 'test-key', 'env')
+  setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
+  setSystemConfig('main_model', 'test-model', 'env')
+}
+
+const assignKaneoContext = (contextId: string): void => {
+  const taskInstanceId = `${contextId}-kaneo`
+  if (getTaskInstance(taskInstanceId) === null) {
+    insertTaskInstance({
+      id: taskInstanceId,
+      type: 'kaneo',
+      config: { url: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+  }
+  setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+}
+
+const assignYouTrackContext = (contextId: string): void => {
+  const taskInstanceId = `${contextId}-yt`
+  if (getTaskInstance(taskInstanceId) === null) {
+    insertTaskInstance({
+      id: taskInstanceId,
+      type: 'youtrack',
+      config: { url: 'https://yt.invalid' },
+      status: 'active',
+    })
+  }
+  setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
+}
+
+/** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
+const seedConfigForContext = (ctxId: string): void => {
+  assignKaneoContext(ctxId)
+  setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
+  setCachedConfig(ctxId, 'timezone', 'UTC')
+  setKaneoWorkspace(ctxId, 'workspace-1')
+}
+
+const seedConfig = (): void => seedConfigForContext(CTX_ID)
+
+const createReplyWithTypingSpy = (): { reply: ReplyFn; textCalls: string[]; typingCalls: number[] } => {
+  const { reply: baseReply, textCalls } = createMockReply()
+  const typingCalls: number[] = []
+  return {
+    reply: {
+      ...baseReply,
+      typing: (): void => {
+        typingCalls.push(Date.now())
+      },
+    },
+    textCalls,
+    typingCalls,
+  }
+}
 
 const originalDemoMode = process.env['DEMO_MODE']
 const originalAdminUserId = process.env['ADMIN_USER_ID']
@@ -145,46 +212,11 @@ describe('processMessage', () => {
 
   // Provider factory — returns a mock provider to avoid real HTTP calls and env var checks
   const mockProvider = createMockProvider({ name: 'mock' })
-  const buildMockProviderForUser = (): TaskProvider => mockProvider
+  const resolveMockProvider = (): TaskProvider => mockProvider
 
   // AI SDK — the key control point for success/failure simulation
   // generateText returns a result object with direct values
   let generateTextImpl: (args: GenerateTextArgs) => Promise<GenerateTextResult>
-
-  /** Seed the central LLM config used by every orchestrator call. */
-  const seedSystemLlmConfig = (): void => {
-    setSystemConfig('llm_apikey', 'test-key', 'env')
-    setSystemConfig('llm_baseurl', 'http://localhost:11434', 'env')
-    setSystemConfig('main_model', 'test-model', 'env')
-  }
-
-  /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
-  const seedConfigForContext = (ctxId: string): void => {
-    setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
-    setCachedConfig(ctxId, 'timezone', 'UTC')
-    setKaneoWorkspace(ctxId, 'workspace-1')
-  }
-
-  const seedConfig = (): void => seedConfigForContext(CTX_ID)
-
-  const createReplyWithTypingSpy = (): {
-    reply: ReplyFn
-    textCalls: string[]
-    typingCalls: number[]
-  } => {
-    const { reply: baseReply, textCalls } = createMockReply()
-    const typingCalls: number[] = []
-    return {
-      reply: {
-        ...baseReply,
-        typing: (): void => {
-          typingCalls.push(Date.now())
-        },
-      },
-      textCalls,
-      typingCalls,
-    }
-  }
 
   // Partial DI for modules that are easy to mock
   // Complex modules (ai SDK) still use mock.module
@@ -194,10 +226,6 @@ describe('processMessage', () => {
 
     // Register mocks
     mockLogger()
-
-    void mock.module('../src/providers/factory.js', () => ({
-      buildProviderForUser: (): typeof mockProvider => mockProvider,
-    }))
 
     void mock.module('../src/providers/kaneo/provision.js', () => ({
       provisionAndConfigure: (): Promise<{ status: string }> => Promise.resolve({ status: 'already_configured' }),
@@ -250,11 +278,12 @@ describe('processMessage', () => {
     test('group context does not call maybeProvisionKaneo before missing-provider-config handling', async () => {
       let maybeProvisionCalls = 0
       const freshGroupCtx = 'group-1:thread-1'
+      assignKaneoContext('group-1')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        buildProviderForUser: buildMockProviderForUser,
+        resolve: resolveMockProvider,
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => {
           maybeProvisionCalls++
@@ -290,15 +319,15 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('not fully configured')
     })
 
-    test('missing Kaneo workspace is handled as setup-remediable missing configuration', async () => {
-      const freshCtx = 'missing-kaneo-workspace'
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+    test('missing Kaneo provider config is derived from assigned task instance', async () => {
+      const freshCtx = 'missing-kaneo-api-key'
+      assignKaneoContext(freshCtx)
 
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        buildProviderForUser: buildMockProviderForUser,
+        resolve: resolveMockProvider,
         getKaneoWorkspace: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
@@ -307,8 +336,80 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('workspaceId')
+      expect(textCalls[0]).toContain('kaneo_apikey')
       expect(textCalls[0]).toContain('/setup')
+    })
+
+    test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
+      const freshCtx = 'missing-kaneo-workspace'
+      assignKaneoContext(freshCtx)
+      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+      let resolverCalls = 0
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => {
+          resolverCalls++
+          return null
+        },
+        getKaneoWorkspace: () => null,
+        maybeProvisionKaneo: () => Promise.resolve(),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      expect(resolverCalls).toBe(1)
+      expect(textCalls).toContain('I need /setup before I can do that.')
+    })
+
+    test('missing provider config is derived from assigned task instance', async () => {
+      const freshCtx = 'missing-youtrack-token'
+      assignYouTrackContext(freshCtx)
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: resolveMockProvider,
+        getKaneoWorkspace: () => null,
+        maybeProvisionKaneo: () => Promise.resolve(),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      expect(textCalls[0]).toContain('youtrack_token')
+      expect(textCalls[0]).toContain('/setup')
+    })
+
+    test('replies with setup guidance when resolver returns null after credentials pass', async () => {
+      const freshCtx = 'resolver-null-context'
+      insertTaskInstance({
+        id: 'yt-prod-null',
+        type: 'youtrack',
+        config: { url: 'https://yt.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: freshCtx,
+        taskInstanceId: 'yt-prod-null',
+        platformInstanceId: 'telegram-default',
+      })
+      setConfig(freshCtx, 'youtrack_token', 'perm:abc')
+      const deps: LlmOrchestratorDeps = {
+        generateText: (...args) => realAi.generateText(...args),
+        stepCountIs: (...args) => realAi.stepCountIs(...args),
+        buildOpenAI: buildMockOpenAI,
+        resolve: () => null,
+        getKaneoWorkspace: () => null,
+        maybeProvisionKaneo: () => Promise.resolve(),
+      }
+
+      const { reply, textCalls } = createMockReply()
+      await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
+
+      expect(textCalls).toContain('I need /setup before I can do that.')
     })
   })
 
@@ -537,7 +638,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -570,7 +671,7 @@ describe('processMessage', () => {
       setCachedConfig('tool-details-ctx', AI_TOOL_VISIBILITY_KEY, 'on')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-1', input: { title: 'Test' } },
           durationMs: 100,
           success: false,
@@ -603,7 +704,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-string-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'search_tasks', toolCallId: 'call-2', input: { q: 'test' } },
           durationMs: 50,
           success: false,
@@ -635,7 +736,7 @@ describe('processMessage', () => {
       seedConfigForContext('tool-fail-structured-ctx')
 
       generateTextImpl = (args): Promise<GenerateTextResult> => {
-        args.experimental_onToolCallFinish?.({
+        callToolFinish(args.experimental_onToolCallFinish, {
           toolCall: { toolName: 'create_task', toolCallId: 'call-3', input: { title: 'Test' } },
           durationMs: 75,
           success: true,
@@ -852,7 +953,7 @@ describe('processMessage', () => {
       expect(history[0]!.role).toBe('user')
       // The persisted user turn is prefixed with a <current_time> tag (intentional per spec).
       const userContent = history[0]!.content
-      assert(typeof userContent === 'string', 'expected string content')
+      assert.ok(typeof userContent === 'string', 'expected string content')
       expect(userContent).toMatch(/^<current_time>.*<\/current_time>\nhello$/u)
       expect(history[1]!.role).toBe('assistant')
       expect(history[1]!.content).toBe('Hi!')
@@ -1014,13 +1115,12 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
       // Pass null for username - should skip auto-link
-      await processMessage(reply, GROUP_CTX, USER_ID, null, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, null, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // No mapping should be created
       const mapping = getIdentityMapping(GROUP_CTX, 'mock')
@@ -1030,13 +1130,11 @@ describe('processMessage', () => {
     test('skips auto-link when provider has no identity resolver', async () => {
       seedConfigForContext(GROUP_CTX)
 
-      // Use mockProvider without identityResolver
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof mockProvider => mockProvider,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof mockProvider => mockProvider,
+      })
 
       // No mapping should be created
       const mapping = getIdentityMapping(GROUP_CTX, 'mock')
@@ -1066,12 +1164,11 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // Existing mapping should be preserved (stored under user ID)
       const mapping = getIdentityMapping(USER_ID, 'mock')
@@ -1092,12 +1189,11 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, USERNAME, 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // Auto-link should have created a mapping under the user ID (not group context)
       const mapping = getIdentityMapping(USER_ID, 'mock')
@@ -1119,12 +1215,11 @@ describe('processMessage', () => {
         },
       }
 
-      void mock.module('../src/providers/factory.js', () => ({
-        buildProviderForUser: (): typeof providerWithResolver => providerWithResolver,
-      }))
-
       const { reply } = createMockReply()
-      await processMessage(reply, GROUP_CTX, USER_ID, 'unknownuser', 'hello', 'group')
+      await processMessage(reply, GROUP_CTX, USER_ID, 'unknownuser', 'hello', 'group', undefined, {
+        ...defaultDeps,
+        resolve: (): typeof providerWithResolver => providerWithResolver,
+      })
 
       // Should store unmatched mapping under the user ID (not group context)
       const mapping = getIdentityMapping(USER_ID, 'mock')
@@ -1214,10 +1309,10 @@ describe('processMessage', () => {
       )
 
       const lastMsg = capturedMessages.at(-1)
-      assert(isRecord(lastMsg), 'Expected last message to be an object')
+      assert.ok(isRecord(lastMsg), 'Expected last message to be an object')
       const content = lastMsg['content']
-      assert(Array.isArray(content), 'Expected content to be an array of parts')
-      const partTypes = content.map(extractPartType)
+      assert.ok(Array.isArray(content), 'Expected content to be an array of parts')
+      const partTypes = content.map((part) => extractPartType(part))
       expect(partTypes).toContain('image')
       expect(partTypes).toContain('text')
 
@@ -1266,9 +1361,9 @@ describe('processMessage', () => {
       )
 
       const lastMsg = capturedMessages.at(-1)
-      assert(isRecord(lastMsg), 'Expected last message to be an object')
+      assert.ok(isRecord(lastMsg), 'Expected last message to be an object')
       const content = lastMsg['content']
-      assert(typeof content === 'string', 'Expected content to be a string for non-multimodal model')
+      assert.ok(typeof content === 'string', 'Expected content to be a string for non-multimodal model')
       expect(content).toContain('[User attached')
     })
 

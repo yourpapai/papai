@@ -7,8 +7,16 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerStartCommand } from '../../src/commands/start.js'
-import { addUser, isAuthorized } from '../../src/users.js'
+import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped } from '../../src/users.js'
 import { createMockChatWithCommandHandlers, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'test-instance'
+
+const addUser = (userId: string, addedBy: string, username?: string): void => {
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
+const isAuthorized = (userId: string): boolean => isAuthorizedScoped(userId, TEST_PLATFORM_ID)
 
 describe('start command — demo mode auto-add', () => {
   let lastHandler: CommandHandler | null = null
@@ -47,6 +55,7 @@ describe('start command — demo mode auto-add', () => {
       contextId: 'demo-start-1',
       contextType: 'dm' as const,
       text: '/start',
+      platformInstanceId: 'test-instance',
       commandMatch: 'start',
       isMentioned: false,
     }
@@ -69,6 +78,7 @@ describe('start command — demo mode auto-add', () => {
       contextId: 'no-demo-1',
       contextType: 'dm' as const,
       text: '/start',
+      platformInstanceId: 'test-instance',
       commandMatch: 'start',
       isMentioned: false,
     }
@@ -92,6 +102,7 @@ describe('start command — demo mode auto-add', () => {
       contextId: 'existing-1',
       contextType: 'dm' as const,
       text: '/start',
+      platformInstanceId: 'test-instance',
       commandMatch: 'start',
       isMentioned: false,
     }

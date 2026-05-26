@@ -8,8 +8,12 @@ import assert from 'node:assert/strict'
 
 import type { ToolSet } from 'ai'
 
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.js'
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { alertPrompts, scheduledPrompts } from '../../src/db/schema.js'
 import { getAlertPrompt } from '../../src/deferred-prompts/alerts.js'
+import { getStorageContextId } from '../../src/deferred-prompts/proactive-llm-helpers.js'
 import { getScheduledPrompt } from '../../src/deferred-prompts/scheduled.js'
 import {
   makeCancelDeferredPromptTool,
@@ -63,6 +67,15 @@ function extractPrompts(result: unknown): unknown[] {
   return prompts
 }
 
+function extractPromptIds(result: unknown): string[] {
+  return extractPrompts(result)
+    .filter(
+      (prompt): prompt is Readonly<{ id: unknown }> => typeof prompt === 'object' && prompt !== null && 'id' in prompt,
+    )
+    .map((prompt) => prompt.id)
+    .filter((id): id is string => typeof id === 'string')
+}
+
 function extractFireAt(result: unknown): unknown {
   if (typeof result !== 'object' || result === null || !('fireAt' in result)) {
     throw new Error('Expected result with fireAt property')
@@ -99,7 +112,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with schedule (returns type scheduled)', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'Remind me', schedule: { fire_at: futureFireAt() } }, toolCtx)
     expect(result).toHaveProperty('status', 'created')
     expect(result).toHaveProperty('type', 'scheduled')
@@ -109,7 +122,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with rrule schedule', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute(
       { prompt: 'Daily', schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } } },
       toolCtx,
@@ -121,7 +134,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with condition (returns type alert)', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'Urgent',
@@ -137,7 +150,7 @@ describe('create_deferred_prompt', () => {
 
   test('rejects both schedule and condition', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'X',
@@ -151,14 +164,14 @@ describe('create_deferred_prompt', () => {
 
   test('rejects neither schedule nor condition', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'X' }, toolCtx)
     expect(result).toHaveProperty('error')
   })
 
   test('rejects past fire_at', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute(
       { prompt: 'X', schedule: { fire_at: { date: '2020-01-01', time: '00:00' } } },
       toolCtx,
@@ -168,7 +181,7 @@ describe('create_deferred_prompt', () => {
 
   test('creates with weekly rrule schedule and stores correct rrule string', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'Weekly',
@@ -183,7 +196,7 @@ describe('create_deferred_prompt', () => {
 
   test('rejects empty schedule object', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'X', schedule: {} }, toolCtx)
     expect(result).toHaveProperty('error')
   })
@@ -191,7 +204,7 @@ describe('create_deferred_prompt', () => {
   test('converts structured fire_at from local time to UTC', async () => {
     setConfig(USER_ID, 'timezone', 'Asia/Karachi')
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
 
     // Use a date far in the future to avoid "must be future" check
     const result: unknown = await t.execute(
@@ -218,8 +231,8 @@ describe('list_deferred_prompts', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const list = tools['list_deferred_prompts']!
-    assert(create.execute)
-    assert(list.execute)
+    assert.ok(create.execute)
+    assert.ok(list.execute)
     await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     await create.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
     expect(extractPrompts(await list.execute({}, toolCtx))).toHaveLength(2)
@@ -229,8 +242,8 @@ describe('list_deferred_prompts', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const list = tools['list_deferred_prompts']!
-    assert(create.execute)
-    assert(list.execute)
+    assert.ok(create.execute)
+    assert.ok(list.execute)
     await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     await create.execute({ prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } }, toolCtx)
     expect(extractPrompts(await list.execute({ type: 'scheduled' }, toolCtx))).toHaveLength(1)
@@ -248,8 +261,8 @@ describe('get_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    assert(create.execute)
-    assert(get.execute)
+    assert.ok(create.execute)
+    assert.ok(get.execute)
     const created: unknown = await create.execute(
       { prompt: 'Fetch me', schedule: { fire_at: futureFireAt() } },
       toolCtx,
@@ -261,7 +274,7 @@ describe('get_deferred_prompt', () => {
 
   test('returns error for non-existent ID', async () => {
     const get = getTools()['get_deferred_prompt']!
-    assert(get.execute)
+    assert.ok(get.execute)
     expect(await get.execute({ id: 'non-existent' }, toolCtx)).toHaveProperty('error')
   })
 })
@@ -276,8 +289,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    assert(create.execute)
-    assert(update.execute)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
     const created: unknown = await create.execute(
       { prompt: 'Original', schedule: { fire_at: futureFireAt() } },
       toolCtx,
@@ -291,8 +304,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    assert(create.execute)
-    assert(update.execute)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
     const created: unknown = await create.execute(
       { prompt: 'Original', condition: { field: 'task.status', op: 'eq', value: 'done' } },
       toolCtx,
@@ -306,8 +319,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    assert(create.execute)
-    assert(update.execute)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
     const created: unknown = await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const result: unknown = await update.execute(
       { id: extractId(created), condition: { field: 'task.status', op: 'eq', value: 'done' } },
@@ -320,8 +333,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    assert(create.execute)
-    assert(update.execute)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
     const created: unknown = await create.execute(
       { prompt: 'A', condition: { field: 'task.status', op: 'eq', value: 'done' } },
       toolCtx,
@@ -335,7 +348,7 @@ describe('update_deferred_prompt', () => {
 
   test('returns error for non-existent ID', async () => {
     const update = getTools()['update_deferred_prompt']!
-    assert(update.execute)
+    assert.ok(update.execute)
     expect(await update.execute({ id: 'missing', prompt: 'X' }, toolCtx)).toHaveProperty('error')
   })
 
@@ -343,8 +356,8 @@ describe('update_deferred_prompt', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
-    assert(create.execute)
-    assert(update.execute)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
     const created: unknown = await create.execute({ prompt: 'S', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const result: unknown = await update.execute(
       { id: extractId(created), schedule: { fire_at: { date: '2020-01-01', time: '00:00' } } },
@@ -365,9 +378,9 @@ describe('cancel_deferred_prompt', () => {
     const create = tools['create_deferred_prompt']!
     const cancel = tools['cancel_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    assert(create.execute)
-    assert(cancel.execute)
-    assert(get.execute)
+    assert.ok(create.execute)
+    assert.ok(cancel.execute)
+    assert.ok(get.execute)
     const created: unknown = await create.execute(
       { prompt: 'Cancel me', schedule: { fire_at: futureFireAt() } },
       toolCtx,
@@ -381,7 +394,7 @@ describe('cancel_deferred_prompt', () => {
 
   test('returns error for non-existent ID', async () => {
     const cancel = getTools()['cancel_deferred_prompt']!
-    assert(cancel.execute)
+    assert.ok(cancel.execute)
     expect(await cancel.execute({ id: 'non-existent' }, toolCtx)).toHaveProperty('error')
   })
 })
@@ -394,7 +407,7 @@ describe('execution metadata', () => {
 
   test('creates with execution metadata', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute(
       {
         prompt: 'Drink water',
@@ -408,7 +421,7 @@ describe('execution metadata', () => {
 
   test('creates without execution metadata (backward compat)', async () => {
     const t = getTools()['create_deferred_prompt']!
-    assert(t.execute)
+    assert.ok(t.execute)
     const result: unknown = await t.execute({ prompt: 'Remind me', schedule: { fire_at: futureFireAt() } }, toolCtx)
     expect(result).toHaveProperty('status', 'created')
   })
@@ -417,8 +430,8 @@ describe('execution metadata', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    assert(create.execute)
-    assert(get.execute)
+    assert.ok(create.execute)
+    assert.ok(get.execute)
 
     const created: unknown = await create.execute(
       {
@@ -444,8 +457,8 @@ describe('execution metadata', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    assert(create.execute)
-    assert(get.execute)
+    assert.ok(create.execute)
+    assert.ok(get.execute)
 
     const created: unknown = await create.execute(
       {
@@ -465,8 +478,8 @@ describe('execution metadata', () => {
     const tools = getTools()
     const create = tools['create_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    assert(create.execute)
-    assert(get.execute)
+    assert.ok(create.execute)
+    assert.ok(get.execute)
 
     const created: unknown = await create.execute({ prompt: 'No exec', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const id = extractId(created)
@@ -480,9 +493,9 @@ describe('execution metadata', () => {
     const create = tools['create_deferred_prompt']!
     const update = tools['update_deferred_prompt']!
     const get = tools['get_deferred_prompt']!
-    assert(create.execute)
-    assert(update.execute)
-    assert(get.execute)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
+    assert.ok(get.execute)
 
     const created: unknown = await create.execute({ prompt: 'Test', schedule: { fire_at: futureFireAt() } }, toolCtx)
     const id = extractId(created)
@@ -507,7 +520,7 @@ describe('delivery classification persistence', () => {
 
   test('group scheduled prompt persists personal audience and mention target chosen at creation', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, '-1001:42', 'group')
-    assert(tool.execute)
+    assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
       {
@@ -533,9 +546,295 @@ describe('delivery classification persistence', () => {
     expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
   })
 
+  test('scoped dm scheduled prompt delivers to native user identity', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    const tool = makeCreateDeferredPromptTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
+    assert.ok(tool.execute)
+
+    const result: unknown = await tool.execute(
+      { prompt: 'Scoped DM reminder', schedule: { fire_at: futureFireAt() } },
+      toolCtx,
+    )
+
+    const id = extractId(result)
+    const row = getDrizzleDb()
+      .select()
+      .from(scheduledPrompts)
+      .all()
+      .find((prompt) => prompt.id === id)
+    const created = getScheduledPrompt(id, scopedUserId)
+    expect(row).toBeDefined()
+    expect(row!.createdByUserId).toBe(scopedUserId)
+    expect(row!.deliveryContextId).toBe(scopedUserId)
+    expect(created).not.toBeNull()
+    expect(created!.createdByUserId).toBe(scopedUserId)
+    expect(created!.deliveryTarget.contextId).toBe(USER_ID)
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedUserId)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.mentionUserIds).toEqual([])
+    expect(created!.deliveryTarget.threadId).toBeNull()
+  })
+
+  test('scoped group thread alert delivers to native group thread', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const tool = makeCreateDeferredPromptTool(scopedUserId, scopedThreadContextId, 'group', undefined, USER_ID)
+    assert.ok(tool.execute)
+
+    const result: unknown = await tool.execute(
+      {
+        prompt: 'Scoped group alert',
+        condition: { field: 'task.dueDate', op: 'overdue' },
+        delivery: { audience: 'personal', mention_user_ids: [USER_ID] },
+      },
+      toolCtx,
+    )
+
+    const id = extractId(result)
+    const row = getDrizzleDb()
+      .select()
+      .from(alertPrompts)
+      .all()
+      .find((alert) => alert.id === id)
+    const created = getAlertPrompt(id, scopedUserId)
+    expect(row).toBeDefined()
+    expect(row!.createdByUserId).toBe(scopedUserId)
+    expect(row!.deliveryContextId).toBe(scopedThreadContextId)
+    expect(created).not.toBeNull()
+    expect(created!.createdByUserId).toBe(scopedUserId)
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
+  })
+
+  test('scoped group thread scheduled prompt uses main group timezone while storing thread owner', async () => {
+    const scopedMainGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
+    const tool = makeCreateDeferredPromptTool(scopedThreadContextId, scopedThreadContextId, 'group', undefined, USER_ID)
+    assert.ok(tool.execute)
+
+    const result: unknown = await tool.execute(
+      { prompt: 'Scoped group scheduled', schedule: { fire_at: { date: '2027-01-15', time: '09:00' } } },
+      toolCtx,
+    )
+
+    const created = getScheduledPrompt(extractId(result), scopedThreadContextId)
+    expect(created).not.toBeNull()
+    expect(created!.createdByUserId).toBe(scopedThreadContextId)
+    expect(created!.fireAt).toBe('2027-01-15T08:00:00.000Z')
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+  })
+
+  test('scoped group thread scheduled update uses main group timezone while preserving thread owner', async () => {
+    const scopedMainGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    setConfig(scopedMainGroupId, 'timezone', 'Europe/Berlin')
+    const create = makeCreateDeferredPromptTool(
+      scopedThreadContextId,
+      scopedThreadContextId,
+      'group',
+      undefined,
+      USER_ID,
+    )
+    const update = makeUpdateDeferredPromptTool(scopedThreadContextId)
+    assert.ok(create.execute)
+    assert.ok(update.execute)
+    const created: unknown = await create.execute(
+      { prompt: 'Scoped group scheduled', schedule: { fire_at: { date: '2027-01-15', time: '09:00' } } },
+      toolCtx,
+    )
+
+    await update.execute(
+      { id: extractId(created), schedule: { fire_at: { date: '2027-01-16', time: '09:00' } } },
+      toolCtx,
+    )
+
+    const updated = getScheduledPrompt(extractId(created), scopedThreadContextId)
+    expect(updated).not.toBeNull()
+    expect(updated!.createdByUserId).toBe(scopedThreadContextId)
+    expect(updated!.fireAt).toBe('2027-01-16T08:00:00.000Z')
+  })
+
+  test('scoped owner can list get update and cancel scoped deferred rows', async () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    setConfig(scopedUserId, 'timezone', 'UTC')
+    const create = makeCreateDeferredPromptTool(scopedUserId, scopedUserId, 'dm', undefined, USER_ID)
+    const list = makeListDeferredPromptsTool(scopedUserId)
+    const get = makeGetDeferredPromptTool(scopedUserId)
+    const update = makeUpdateDeferredPromptTool(scopedUserId)
+    const cancel = makeCancelDeferredPromptTool(scopedUserId)
+    assert.ok(create.execute)
+    assert.ok(list.execute)
+    assert.ok(get.execute)
+    assert.ok(update.execute)
+    assert.ok(cancel.execute)
+    const created: unknown = await create.execute(
+      { prompt: 'Scoped lifecycle', schedule: { fire_at: futureFireAt() } },
+      toolCtx,
+    )
+    const id = extractId(created)
+
+    expect(extractPromptIds(await list.execute({}, toolCtx))).toContain(id)
+    expect(await get.execute({ id }, toolCtx)).toHaveProperty('id', id)
+    expect(await update.execute({ id, prompt: 'Updated scoped lifecycle' }, toolCtx)).toHaveProperty(
+      'status',
+      'updated',
+    )
+    expect(await cancel.execute({ id }, toolCtx)).toHaveProperty('status', 'cancelled')
+    expect(getScheduledPrompt(id, scopedUserId)!.status).toBe('cancelled')
+  })
+
+  test('migrated scoped delivery context rows build native adapter targets', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(scheduledPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: scopedThreadContextId,
+        deliveryContextType: 'group',
+        deliveryThreadId: null,
+        audience: 'personal',
+        mentionUserIds: JSON.stringify([USER_ID]),
+        prompt: 'Migrated scoped prompt',
+        fireAt: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getScheduledPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.mentionUserIds).toEqual([USER_ID])
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
+  })
+
+  test('legacy scoped scheduled dm row keeps scoped routing context with native adapter target', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(scheduledPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: null,
+        deliveryContextType: null,
+        deliveryThreadId: null,
+        audience: 'personal',
+        mentionUserIds: '[]',
+        prompt: 'Legacy scoped scheduled DM',
+        fireAt: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getScheduledPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe(USER_ID)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.threadId).toBeNull()
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedUserId)
+  })
+
+  test('legacy scoped alert dm row keeps scoped routing context with native adapter target', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(alertPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: null,
+        deliveryContextType: null,
+        deliveryThreadId: null,
+        audience: 'personal',
+        mentionUserIds: '[]',
+        prompt: 'Legacy scoped alert DM',
+        condition: JSON.stringify({ field: 'task.dueDate', op: 'overdue' }),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getAlertPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe(USER_ID)
+    expect(created!.deliveryTarget.createdByUserId).toBe(USER_ID)
+    expect(created!.deliveryTarget.threadId).toBeNull()
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedUserId)
+  })
+
+  test('scoped main group row with delivery thread id routes through scoped thread context', () => {
+    const scopedUserId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER_ID })
+    const scopedGroupContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: '-1001' })
+    const scopedThreadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-1001',
+      threadId: '42',
+    })
+    const id = crypto.randomUUID()
+    getDrizzleDb()
+      .insert(scheduledPrompts)
+      .values({
+        id,
+        createdByUserId: scopedUserId,
+        createdByUsername: null,
+        deliveryContextId: scopedGroupContextId,
+        deliveryContextType: 'group',
+        deliveryThreadId: '42',
+        audience: 'personal',
+        mentionUserIds: JSON.stringify([USER_ID]),
+        prompt: 'Scoped main group with thread column',
+        fireAt: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'active',
+        executionMetadata: JSON.stringify({ mode: 'full', delivery_brief: '', context_snapshot: null }),
+      })
+      .run()
+
+    const created = getScheduledPrompt(id, scopedUserId)
+
+    expect(created).not.toBeNull()
+    expect(created!.deliveryTarget.contextId).toBe('-1001')
+    expect(created!.deliveryTarget.threadId).toBe('42')
+    expect(getStorageContextId(created!.deliveryTarget)).toBe(scopedThreadContextId)
+  })
+
   test('group alert persists shared audience and no mention targets chosen at creation', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
-    assert(tool.execute)
+    assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
       {
@@ -563,7 +862,7 @@ describe('delivery classification persistence', () => {
 
   test('group shared delivery drops stale mention targets chosen by the model', async () => {
     const tool = makeCreateDeferredPromptTool(USER_ID, 'chan-1', 'group')
-    assert(tool.execute)
+    assert.ok(tool.execute)
 
     const result: unknown = await tool.execute(
       {

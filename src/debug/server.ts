@@ -13,6 +13,7 @@ import { listMemos } from '../memos.js'
 import { listRecurringTasks } from '../recurring.js'
 import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
+import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
@@ -34,11 +35,15 @@ function getPort(): number {
 }
 
 function getHostname(): string {
-  return process.env['DEBUG_HOSTNAME'] ?? DEFAULT_HOSTNAME
+  const hostname = process.env['DEBUG_HOSTNAME']
+  if (hostname !== undefined) return hostname
+  return DEFAULT_HOSTNAME
 }
 
 function getDebugToken(): string | null {
-  return process.env['DEBUG_TOKEN'] ?? null
+  const token = process.env['DEBUG_TOKEN']
+  if (token !== undefined) return token
+  return null
 }
 
 function isAuthorizedRequest(req: Request): boolean {
@@ -46,8 +51,14 @@ function isAuthorizedRequest(req: Request): boolean {
   // No token required if not set
   if (token === null) return true
 
-  const headerToken = req.headers.get('Authorization')?.replace('Bearer ', '')
+  const authorization = req.headers.get('Authorization')
+  if (authorization === null) return false
+  const headerToken = authorization.replace('Bearer ', '')
   return headerToken === token
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
 }
 
 function handleEvents(req: Request): Response {
@@ -79,18 +90,21 @@ function parseIntParam(value: string | null): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed
 }
 
+function searchParam(value: string | null): string | undefined {
+  if (value !== null) return value
+  return undefined
+}
+
 function handleLogs(url: URL): Response {
   const results = logBuffer.search({
     level: parseIntParam(url.searchParams.get('level')),
-    scope: url.searchParams.get('scope') ?? undefined,
-    turnId: url.searchParams.get('turnId') ?? undefined,
-    q: url.searchParams.get('q') ?? undefined,
+    scope: searchParam(url.searchParams.get('scope')),
+    turnId: searchParam(url.searchParams.get('turnId')),
+    q: searchParam(url.searchParams.get('q')),
     limit: parseIntParam(url.searchParams.get('limit')),
   })
 
-  return new Response(JSON.stringify(results), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return jsonResponse(results)
 }
 
 let server: ReturnType<typeof Bun.serve> | null = null
@@ -99,17 +113,14 @@ function handleDebugFile(pathname: string): Response {
   if (pathname === '/debug') {
     return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.html')))
   }
-
   if (pathname === '/debug.js') {
     return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.js')), {
       headers: { 'Content-Type': 'text/javascript' },
     })
   }
-
   if (pathname === '/debug.css') {
     return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.css')))
   }
-
   return new Response('Not found', { status: 404 })
 }
 
@@ -123,11 +134,9 @@ function handleAdminFile(pathname: string): Response {
       headers: { 'Content-Type': 'text/javascript' },
     })
   }
-
   if (pathname === '/admin.css') {
     return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.css')))
   }
-
   return new Response('Not found', { status: 404 })
 }
 
@@ -136,9 +145,7 @@ function handleTurnLookup(url: URL): Response {
   if (turnId !== '') {
     const turn = findTurnById(turnId)
     if (turn !== undefined) {
-      return new Response(JSON.stringify(turn), {
-        headers: { 'Content-Type': 'application/json' },
-      })
+      return jsonResponse(turn)
     }
   }
   return new Response('Not found', { status: 404 })
@@ -150,9 +157,7 @@ function handleRecurring(url: URL): Response {
     return new Response('Missing userId parameter', { status: 400 })
   }
   const tasks = listRecurringTasks(userId)
-  return new Response(JSON.stringify(tasks), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return jsonResponse(tasks)
 }
 
 function handleDeferred(url: URL): Response {
@@ -161,9 +166,7 @@ function handleDeferred(url: URL): Response {
     return new Response('Missing userId parameter', { status: 400 })
   }
   const prompts = listScheduledPrompts(userId)
-  return new Response(JSON.stringify(prompts), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return jsonResponse(prompts)
 }
 
 function handleMemos(url: URL): Response {
@@ -171,11 +174,9 @@ function handleMemos(url: URL): Response {
   if (userId === null || userId === '') {
     return new Response('Missing userId parameter', { status: 400 })
   }
-  const state = url.searchParams.get('state') ?? 'active'
+  const state = resolveParamDefault(url.searchParams.get('state'), 'active')
   const memos = listMemos(userId, 100, state)
-  return new Response(JSON.stringify(memos), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return jsonResponse(memos)
 }
 
 function handleIdentity(url: URL): Response {
@@ -183,21 +184,22 @@ function handleIdentity(url: URL): Response {
   if (userId === null || userId === '') {
     return new Response('Missing userId parameter', { status: 400 })
   }
-  const providerName = url.searchParams.get('provider') ?? 'task-provider'
+  const providerName = resolveParamDefault(url.searchParams.get('provider'), 'task-provider')
   const mapping = getIdentityMapping(userId, providerName)
   if (mapping === null) {
     return new Response('Not found', { status: 404 })
   }
-  return new Response(JSON.stringify(mapping), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return jsonResponse(mapping)
+}
+
+function resolveParamDefault(value: string | null, fallback: string): string {
+  if (value !== null) return value
+  return fallback
 }
 
 function handleAuthGroups(): Response {
   const groups = listAuthorizedGroups()
-  return new Response(JSON.stringify(groups), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return jsonResponse(groups)
 }
 
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
@@ -219,19 +221,20 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   return null
 }
 
-function routeRequest(req: Request): Response | Promise<Response> {
+async function routeRequest(req: Request): Promise<Response> {
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
   }
 
   const url = new URL(req.url)
 
+  const instanceApiResponse = await handleInstanceApiRoute(req, url)
+  if (instanceApiResponse !== null) return instanceApiResponse
+
   if (url.pathname === '/events') return handleEvents(req)
   if (url.pathname === '/logs') return handleLogs(url)
   if (url.pathname === '/logs/stats') {
-    return new Response(JSON.stringify(logBuffer.stats()), {
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonResponse(logBuffer.stats())
   }
   if (url.pathname.startsWith('/turns/')) return handleTurnLookup(url)
   if (url.pathname === '/recurring') return handleRecurring(url)
@@ -260,8 +263,9 @@ function routeRequest(req: Request): Response | Promise<Response> {
   return new Response('Not found', { status: 404 })
 }
 
-export function startDebugServer(adminUserId: string, logLevel = getLogLevel()): void {
+export function startDebugServer(adminUserId: string, ...args: [] | [string]): void {
   init(adminUserId)
+  const logLevel = args.length === 0 ? getLogLevel() : args[0]
   logMultistream.add({ stream: logBufferStream, level: logLevel })
 
   const port = getPort()

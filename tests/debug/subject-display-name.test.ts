@@ -36,8 +36,8 @@ describe('resolveDmDisplayNames', () => {
     getDrizzleDb()
       .insert(users)
       .values([
-        { platformUserId: 'u1', username: 'alice', addedBy: 'test' },
-        { platformUserId: 'u2', username: 'bob', addedBy: 'test' },
+        { platformUserId: 'u1', platformInstanceId: 'legacy-single', username: 'alice', addedBy: 'test' },
+        { platformUserId: 'u2', platformInstanceId: 'legacy-single', username: 'bob', addedBy: 'test' },
       ])
       .run()
 
@@ -59,7 +59,7 @@ describe('resolveDmDisplayNames', () => {
   test('ignores group subjects when DM subjects are mixed in', () => {
     getDrizzleDb()
       .insert(users)
-      .values([{ platformUserId: 'u1', username: 'alice', addedBy: 'test' }])
+      .values([{ platformUserId: 'u1', platformInstanceId: 'legacy-single', username: 'alice', addedBy: 'test' }])
       .run()
 
     const result = resolveDmDisplayNames([
@@ -138,7 +138,7 @@ describe('resolveSubjectDisplayNames', () => {
   test('returns DM and group names in one map', () => {
     getDrizzleDb()
       .insert(users)
-      .values([{ platformUserId: 'u1', username: 'alice', addedBy: 'test' }])
+      .values([{ platformUserId: 'u1', platformInstanceId: 'legacy-single', username: 'alice', addedBy: 'test' }])
       .run()
     insertKnownGroup('telegram', 'group-7', 'Eng', '2026-01-01T00:00:00Z')
 

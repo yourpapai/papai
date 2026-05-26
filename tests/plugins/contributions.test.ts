@@ -5,6 +5,10 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { ChatRouter } from '../../src/chat/router.js'
+import type { ChatCapability } from '../../src/chat/types.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
 import { namespacedCommandName, registerPluginCommands } from '../../src/plugins/command-contributions.js'
 import {
   buildPluginToolSet,
@@ -13,6 +17,7 @@ import {
   namespacedToolName,
   runPluginScheduledJob,
   sanitizePluginId,
+  type PluginScheduledJobDeps,
   type PluginToolSetRuntime,
 } from '../../src/plugins/contributions.js'
 import {
@@ -20,8 +25,12 @@ import {
   MAX_TOTAL_PLUGIN_PROMPT_LENGTH,
   buildPluginPromptSection,
 } from '../../src/plugins/prompt-contributions.js'
-import { setPluginEnabledForContext } from '../../src/plugins/registry.js'
-import type { PluginContributions, PluginManifest } from '../../src/plugins/types.js'
+import {
+  pluginRegistry,
+  resetPluginRegistryForTesting,
+  setPluginEnabledForContext,
+} from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
@@ -33,8 +42,26 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
-function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
-  return {
+type ManifestOverrides = Omit<Partial<PluginManifest>, 'contributes'> &
+  Partial<Record<'contributes', Partial<PluginManifest['contributes']>>>
+
+type MakeManifestArgs = readonly [] | readonly [overrides: ManifestOverrides]
+
+type MakeRuntimeArgs = readonly [] | readonly [overrides: Partial<PluginToolSetRuntime>]
+
+function getManifestOverrides(args: MakeManifestArgs): ManifestOverrides {
+  if (args.length === 0) return {}
+  return args[0]
+}
+
+function getRuntimeOverrides(args: MakeRuntimeArgs): Partial<PluginToolSetRuntime> {
+  if (args.length === 0) return {}
+  return args[0]
+}
+
+function makeManifest(...args: MakeManifestArgs): PluginManifest {
+  const overrides = getManifestOverrides(args)
+  const base: PluginManifest = {
     id: 'test-plugin',
     name: 'Test Plugin',
     version: '1.0.0',
@@ -58,16 +85,44 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     providerCapabilities: [],
     providerConfigSchema: [],
     providerAllowedHosts: [],
-    ...overrides,
   }
+  return { ...base, ...overrides, contributes: { ...base.contributes, ...overrides.contributes } }
 }
 
-function makeRuntime(overrides: Partial<PluginToolSetRuntime> = {}): PluginToolSetRuntime {
+function makeRuntime(...args: MakeRuntimeArgs): PluginToolSetRuntime {
   return {
     provider: createMockProvider(),
     storageContextId: 'ctx-1',
     chatUserId: 'user-1',
-    ...overrides,
+    ...getRuntimeOverrides(args),
+  }
+}
+
+function makeDiscoveredPlugin(manifest: PluginManifest): DiscoveredPlugin {
+  return {
+    manifest,
+    pluginDir: `/tmp/${manifest.id}`,
+    entryPoint: `/tmp/${manifest.id}/index.ts`,
+    manifestHash: `hash-${manifest.id}`,
+  }
+}
+
+function markPluginActive(manifest: PluginManifest): void {
+  const plugin = makeDiscoveredPlugin(manifest)
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.markActive(manifest.id)
+}
+
+class ThrowingCapabilityRouter extends ChatRouter {
+  constructor() {
+    super(() => {
+      throw new Error('unused test factory')
+    })
+  }
+
+  override getPlatformInstanceCapabilities(platformInstanceId: string): ReadonlySet<ChatCapability> {
+    if (platformInstanceId === 'platform-a') throw new Error('eligibility boom')
+    return new Set(['messages.buttons'])
   }
 }
 
@@ -107,6 +162,7 @@ describe('PluginContributionRegistry', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    resetPluginRegistryForTesting()
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
   })
@@ -114,6 +170,8 @@ describe('PluginContributionRegistry', () => {
   afterEach(() => {
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
+    resetPluginRegistryForTesting()
+    clearRuntimeChatRouter()
   })
 
   test('registers and retrieves contributions', () => {
@@ -131,8 +189,8 @@ describe('PluginContributionRegistry', () => {
     contributionRegistry.register('test-plugin', contributions, manifest)
     const result = contributionRegistry.getContributions('test-plugin')
     expect(result).toBeDefined()
-    expect(result?.tools).toHaveLength(1)
-    expect(result?.promptFragments).toHaveLength(1)
+    expect(result!.tools).toHaveLength(1)
+    expect(result!.promptFragments).toHaveLength(1)
   })
 
   test('filters out undeclared tools', () => {
@@ -158,7 +216,7 @@ describe('PluginContributionRegistry', () => {
     }
     contributionRegistry.register('test-plugin', contributions, manifest)
     const result = contributionRegistry.getContributions('test-plugin')
-    expect(result?.tools).toHaveLength(0)
+    expect(result!.tools).toHaveLength(0)
   })
 
   test('filters out undeclared prompt fragments', () => {
@@ -178,7 +236,7 @@ describe('PluginContributionRegistry', () => {
     }
     contributionRegistry.register('test-plugin', contributions, manifest)
     const result = contributionRegistry.getContributions('test-plugin')
-    expect(result?.promptFragments).toHaveLength(0)
+    expect(result!.promptFragments).toHaveLength(0)
   })
 
   test('deregister removes contributions', () => {
@@ -221,12 +279,14 @@ describe('PluginContributionRegistry', () => {
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
 
     registerPluginCommands(provider)
-    await commandHandlers.get('plugin_test_plugin_sync')?.(
+    const handler = commandHandlers.get('plugin_test_plugin_sync')
+    expect(handler).toBeDefined()
+    await handler!(
       createDmMessage('user-1'),
       {
         text: () => Promise.resolve(),
         formatted: () => Promise.resolve(),
-        typing: () => undefined,
+        typing: () => {},
         buttons: () => Promise.resolve(),
       },
       createAuth('user-1'),
@@ -248,6 +308,7 @@ describe('PluginContributionRegistry', () => {
         taskProviderTypes: [],
       },
     })
+    markPluginActive(manifest)
     contributionRegistry.register(
       'test-plugin',
       {
@@ -273,7 +334,290 @@ describe('PluginContributionRegistry', () => {
 
     expect(seenContexts).toEqual(['ctx-enabled'])
     expect(scheduler.hasTask('plugin:test-plugin:daily')).toBe(true)
-    expect(scheduler.getTaskState('plugin:test-plugin:daily')?.running).toBe(true)
+    const taskState = scheduler.getTaskState('plugin:test-plugin:daily')
+    expect(taskState).toBeDefined()
+    expect(taskState!.running).toBe(true)
+  })
+
+  test('scheduled jobs skip contexts that are not plugin eligible', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toEqual([])
+  })
+
+  test('scheduled jobs skip task plugins when resolver returns null for the context', async () => {
+    const seenContexts: string[] = []
+    const resolvedContexts: string[] = []
+    const manifest = makeManifest({
+      permissions: ['tasks.read'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        resolvedContexts.push(contextId)
+        return null
+      },
+    })
+
+    expect(resolvedContexts).toEqual(['ctx-enabled'])
+    expect(seenContexts).toEqual([])
+  })
+
+  test('scheduled jobs continue after one context task resolver throws', async () => {
+    const seenContexts: string[] = []
+    const resolverByContext = new Map([
+      [
+        'ctx-a',
+        (): ReturnType<PluginScheduledJobDeps['resolveTaskProvider']> => {
+          throw new Error('resolver boom')
+        },
+      ],
+      ['ctx-b', (): ReturnType<PluginScheduledJobDeps['resolveTaskProvider']> => createMockProvider()],
+    ])
+    const manifest = makeManifest({
+      permissions: ['tasks.read'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-b', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        const resolver = resolverByContext.get(contextId)
+        expect(resolver).toBeDefined()
+        return resolver!()
+      },
+    })
+
+    expect(seenContexts).toEqual(['ctx-b'])
+  })
+
+  test('scheduled jobs continue after one context eligibility check throws', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      requiredChatCapabilities: ['messages.buttons'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setRuntimeChatRouter(new ThrowingCapabilityRouter())
+    setContextSettings({ contextId: 'ctx-a', taskInstanceId: 'task-a', platformInstanceId: 'platform-a' })
+    setContextSettings({ contextId: 'ctx-b', taskInstanceId: 'task-b', platformInstanceId: 'platform-b' })
+    setPluginEnabledForContext('test-plugin', 'ctx-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-b', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toEqual(['ctx-b'])
+  })
+
+  test('scheduled jobs require resolver for tasks.write plugins', async () => {
+    const seenContexts: string[] = []
+    const resolvedContexts: string[] = []
+    const manifest = makeManifest({
+      permissions: ['tasks.write'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        resolvedContexts.push(contextId)
+        return null
+      },
+    })
+
+    expect(resolvedContexts).toEqual(['ctx-enabled'])
+    expect(seenContexts).toEqual([])
+  })
+
+  test('scheduled jobs require resolver for required task capabilities', async () => {
+    const seenContexts: string[] = []
+    const resolvedContexts: string[] = []
+    const manifest = makeManifest({
+      requiredTaskCapabilities: ['workItems.list'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily', {
+      resolveTaskProvider: (contextId) => {
+        resolvedContexts.push(contextId)
+        return null
+      },
+    })
+
+    expect(resolvedContexts).toEqual(['ctx-enabled'])
+    expect(seenContexts).toEqual([])
+  })
+
+  test('scheduled jobs continue after one context throws', async () => {
+    const seenContexts: string[] = []
+    const executions = new Map<string, () => void>([
+      [
+        'ctx-a',
+        (): void => {
+          throw new Error('boom')
+        },
+      ],
+      [
+        'ctx-b',
+        (): void => {
+          seenContexts.push('ctx-b')
+        },
+      ],
+    ])
+    const manifest = makeManifest({
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              const execution = executions.get(contextId)
+              expect(execution).toBeDefined()
+              execution!()
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'ctx-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-b', true)
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toEqual(['ctx-b'])
   })
 
   test('deregister removes scheduled jobs owned by the plugin', () => {

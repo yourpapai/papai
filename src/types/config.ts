@@ -7,8 +7,8 @@
  * Configuration types shared between production and tests.
  */
 
-// Task-tracker specific config keys (filtered by TASK_PROVIDER env var)
-// Note: kaneo_workspace_id is auto-provisioned and not user-visible in CONFIG_KEYS
+// Task-tracker specific config keys.
+// Note: kaneo_workspace_id is auto-provisioned and not user-visible.
 export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
 
 // User preference config keys (always available)
@@ -17,25 +17,6 @@ export type PreferenceConfigKey = 'timezone'
 // All per-user config keys. LLM credentials live in `system_config` (see
 // `src/system-config.ts`) and are owned by the bot admin, not per-user.
 export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
-
-// Get the task provider from env
-const TASK_PROVIDER = process.env['TASK_PROVIDER'] ?? 'kaneo'
-
-// User-visible config keys: shown in /config and settable via /setup
-// Internal keys are intentionally excluded here
-const PREFERENCE_KEYS: readonly PreferenceConfigKey[] = ['timezone']
-
-function getConfigKeysForProvider(provider: string): readonly ConfigKey[] {
-  if (provider === 'youtrack') {
-    return ['youtrack_token', ...PREFERENCE_KEYS]
-  }
-
-  // Default to kaneo - note: kaneo_workspace_id is auto-provisioned, not user-visible
-  return ['kaneo_apikey', ...PREFERENCE_KEYS]
-}
-
-// Config keys available for the current task provider (user-visible only)
-export const CONFIG_KEYS: readonly ConfigKey[] = getConfigKeysForProvider(TASK_PROVIDER)
 
 // All valid config keys (not filtered by provider)
 // Note: kaneo_workspace_id is auto-provisioned and stored separately

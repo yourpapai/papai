@@ -5,15 +5,25 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
+import type { TaskInstance } from '../../src/instances/types.js'
 import {
+  getCapabilitiesForTaskInstance,
+  getContributedTaskProviderType,
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
-  getContributedTaskProviderType,
 } from '../../src/providers/registry.js'
 import type { TaskCapability } from '../../src/providers/task-capability.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger } from '../utils/test-helpers.js'
+
+const taskInstance = (type: TaskInstance['type']): TaskInstance => ({
+  id: `${type}-default`,
+  type,
+  config: { url: `https://${type}.invalid` },
+  status: 'active',
+  createdAt: 'now',
+})
 
 const fakeProvider: TaskProvider = createMockProvider()
 const entry = {
@@ -21,6 +31,22 @@ const entry = {
   factory: (): TaskProvider => fakeProvider,
   capabilities: new Set<TaskCapability>(),
 }
+
+describe('provider registry capability lookup', () => {
+  test('returns Kaneo task capabilities without requiring context credentials', () => {
+    const capabilities = getCapabilitiesForTaskInstance(taskInstance('kaneo'))
+
+    expect(capabilities.has('comments.read')).toBe(true)
+    expect(capabilities.has('workItems.list')).toBe(false)
+  })
+
+  test('returns YouTrack task capabilities without requiring context credentials', () => {
+    const capabilities = getCapabilitiesForTaskInstance(taskInstance('youtrack'))
+
+    expect(capabilities.has('comments.read')).toBe(true)
+    expect(capabilities.has('workItems.list')).toBe(true)
+  })
+})
 
 describe('contributed task provider registry', () => {
   afterEach(() => {
@@ -32,7 +58,8 @@ describe('contributed task provider registry', () => {
     mockLogger()
     registerContributedTaskProviderType('kaneo', entry)
     const found = getContributedTaskProviderType('kaneo')
-    expect(found?.pluginId).toBe('task-provider-kaneo')
+    expect(found).toBeDefined()
+    expect(found!.pluginId).toBe('task-provider-kaneo')
   })
 
   test('first-wins: duplicate type from another plugin throws', () => {

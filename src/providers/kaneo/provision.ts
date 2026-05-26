@@ -8,6 +8,8 @@ import { z } from 'zod'
 import { userCachesForTesting, clearCachedTools } from '../../cache.js'
 import type { ReplyFn } from '../../chat/types.js'
 import { getConfig, setConfig } from '../../config.js'
+import { getContextSettings } from '../../instances/context-store.js'
+import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
 import { getKaneoWorkspace, setKaneoWorkspace } from '../../users.js'
 
@@ -29,7 +31,18 @@ type ProvisionResult = {
   workspaceId: string
 }
 
+type NormalizedProvisionConfig = Readonly<{
+  publicUrl: string
+  internalUrl: string | undefined
+}>
+
 const REGISTRATION_DISABLED_MARKERS = ['signup_disabled', 'registration disabled', 'sign up is disabled'] as const
+
+function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
+  const baseUrl = config['baseUrl']
+  if (baseUrl !== undefined) return baseUrl
+  return config['url']
+}
 
 function generatePassword(): string {
   const uuid = crypto.randomUUID().replaceAll('-', '')
@@ -51,7 +64,13 @@ function clearProvisionedContextToolCaches(contextId: string): void {
   }
 }
 
-async function doSignUp(baseUrl: string, email: string, password: string, name: string): Promise<string> {
+async function doSignUp(
+  baseUrl: string,
+  publicUrl: string,
+  email: string,
+  password: string,
+  name: string,
+): Promise<string> {
   log.debug({ email }, 'Kaneo sign-up')
   const res = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
     method: 'POST',
@@ -82,12 +101,7 @@ async function doSignUp(baseUrl: string, email: string, password: string, name: 
   // the cookie from the token returned in the JSON body.
   // Use the public/auth-facing URL to decide whether better-auth would emit a
   // secure-prefixed cookie. Internal API traffic may be HTTP behind a proxy.
-  let publicAuthUrl = baseUrl
-  const configuredClientUrl = process.env['KANEO_CLIENT_URL']
-  if (configuredClientUrl !== undefined) {
-    publicAuthUrl = configuredClientUrl
-  }
-  const cookieName = publicAuthUrl.startsWith('https://')
+  const cookieName = publicUrl.startsWith('https://')
     ? '__Secure-better-auth.session_token'
     : 'better-auth.session_token'
   log.debug({ email, cookieName }, 'No session cookie in sign-up response; constructing from JSON token')
@@ -154,7 +168,7 @@ export async function provisionKaneoUser(
 
   log.info({ platformUserId, email }, 'Provisioning Kaneo user account')
   const trustedOrigin = publicUrl === '' ? baseUrl : publicUrl
-  const sessionCookie = await doSignUp(baseUrl, email, password, name)
+  const sessionCookie = await doSignUp(baseUrl, publicUrl, email, password, name)
   const workspaceId = await doCreateWorkspace(baseUrl, trustedOrigin, sessionCookie, name, slug)
 
   let kaneoKey = sessionCookie
@@ -182,15 +196,37 @@ export type ProvisionOutcome =
   | { status: 'registration_disabled' }
   | { status: 'failed'; error: string }
 
-export async function provisionAndConfigure(userId: string, username: string | null): Promise<ProvisionOutcome> {
-  const kaneoUrl = process.env['KANEO_CLIENT_URL']
-  if (kaneoUrl === undefined) return { status: 'failed', error: 'KANEO_CLIENT_URL not set' }
+export type ProvisionConfig = Readonly<{
+  publicUrl: string | undefined
+  internalUrl: string | undefined
+}>
+
+function normalizeProvisionConfig(config: ProvisionConfig): NormalizedProvisionConfig | null {
+  const publicUrl = config.publicUrl
+  if (publicUrl === undefined) return null
+  const trimmedPublicUrl = publicUrl.trim()
+  if (trimmedPublicUrl === '') return null
+
+  const internalUrl = config.internalUrl
+  if (internalUrl === undefined) return { publicUrl: trimmedPublicUrl, internalUrl: undefined }
+  const trimmedInternalUrl = internalUrl.trim()
+  if (trimmedInternalUrl === '') return { publicUrl: trimmedPublicUrl, internalUrl: undefined }
+  return { publicUrl: trimmedPublicUrl, internalUrl: trimmedInternalUrl }
+}
+
+export async function provisionAndConfigure(
+  userId: string,
+  username: string | null,
+  config: ProvisionConfig,
+): Promise<ProvisionOutcome> {
+  const normalizedConfig = normalizeProvisionConfig(config)
+  if (normalizedConfig === null) return { status: 'failed', error: 'Kaneo task instance public URL is missing' }
 
   try {
+    const kaneoUrl = normalizedConfig.publicUrl
     let kaneoInternalUrl = kaneoUrl
-    const configuredInternalUrl = process.env['KANEO_INTERNAL_URL']
-    if (configuredInternalUrl !== undefined) {
-      kaneoInternalUrl = configuredInternalUrl
+    if (normalizedConfig.internalUrl !== undefined) {
+      kaneoInternalUrl = normalizedConfig.internalUrl
     }
     const result = await provisionKaneoUser(kaneoInternalUrl, kaneoUrl, userId, username)
     setConfig(userId, 'kaneo_apikey', result.kaneoKey)
@@ -216,26 +252,24 @@ export async function provisionAndConfigure(userId: string, username: string | n
 const provLog = logger.child({ scope: 'kaneo:auto-provision' })
 
 /**
- * Auto-provisions a Kaneo account for a user if they don't have one.
- * Called on /start or first natural language message.
- * Skips auto-provisioning if TASK_PROVIDER is not 'kaneo'.
+ * Auto-provisions a Kaneo account for a context assigned to an active Kaneo task instance.
+ * Unassigned contexts return without provisioning; /setup owns task-instance assignment.
  */
 export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, username: string | null): Promise<void> {
-  let taskProvider = 'kaneo'
-  const configuredTaskProvider = process.env['TASK_PROVIDER']
-  if (configuredTaskProvider !== undefined) {
-    taskProvider = configuredTaskProvider
-  }
-  if (taskProvider !== 'kaneo') {
-    return
-  }
+  const settings = getContextSettings(contextId)
+  if (settings === null) return
+  const taskInstance = getTaskInstance(settings.taskInstanceId)
+  if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return
 
   if (getKaneoWorkspace(contextId) !== null && getConfig(contextId, 'kaneo_apikey') !== null) {
     return
   }
 
+  const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
+  const internalUrl = taskInstance.config['internalUrl']
+
   provLog.info({ contextId, username }, 'Auto-provisioning Kaneo account')
-  const outcome = await provisionAndConfigure(contextId, username)
+  const outcome = await provisionAndConfigure(contextId, username, { publicUrl, internalUrl })
 
   if (outcome.status === 'provisioned') {
     await reply.text(
@@ -248,6 +282,7 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
     )
     provLog.warn({ contextId }, 'Kaneo auto-provisioning failed: registration disabled')
   } else {
+    await reply.text(`Kaneo account could not be created — ${outcome.error}. Please ask the admin to check setup.`)
     provLog.error({ contextId, error: outcome.error }, 'Kaneo auto-provisioning failed')
   }
 }

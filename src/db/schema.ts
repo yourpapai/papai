@@ -4,17 +4,29 @@
 // See LICENSE in the project root for details.
 
 import { sql } from 'drizzle-orm'
-import { blob, sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
+import { blob, sqliteTable, text, integer, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
-export const users = sqliteTable('users', {
-  platformUserId: text('platform_user_id').primaryKey(),
-  username: text('username').unique(),
-  addedAt: text('added_at')
-    .notNull()
-    .default(sql`(datetime('now'))`),
-  addedBy: text('added_by').notNull(),
-  kaneoWorkspaceId: text('kaneo_workspace_id'),
-})
+export const users = sqliteTable(
+  'users',
+  {
+    platformUserId: text('platform_user_id').notNull(),
+    platformInstanceId: text('platform_instance_id').notNull(),
+    username: text('username'),
+    addedAt: text('added_at')
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    addedBy: text('added_by').notNull(),
+    kaneoWorkspaceId: text('kaneo_workspace_id'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.platformInstanceId, table.platformUserId] }),
+    index('idx_users_platform_user').on(table.platformInstanceId, table.platformUserId),
+    index('idx_users_platform_username').on(table.platformInstanceId, table.username),
+    uniqueIndex('idx_users_platform_username_unique')
+      .on(table.platformInstanceId, table.username)
+      .where(sql`${table.username} IS NOT NULL`),
+  ],
+)
 export const userConfig = sqliteTable(
   'user_config',
   {
@@ -87,9 +99,7 @@ export const recurringTasks = sqliteTable(
   'recurring_tasks',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.platformUserId, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
     projectId: text('project_id').notNull(),
     title: text('title').notNull(),
     description: text('description'),
@@ -138,19 +148,7 @@ export type RecurringTask = typeof recurringTasks.$inferSelect
 export type RecurringTaskOccurrence = typeof recurringTaskOccurrences.$inferSelect
 export { scheduledPrompts, alertPrompts, taskSnapshots } from './deferred-schema.js'
 export type { ScheduledPromptRow, AlertPromptRow } from './deferred-schema.js'
-export const userInstructions = sqliteTable(
-  'user_instructions',
-  {
-    id: text('id').primaryKey(),
-    contextId: text('context_id').notNull(),
-    text: text('text').notNull(),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`(datetime('now'))`),
-  },
-  (table) => [index('idx_user_instructions_context').on(table.contextId)],
-)
-export type UserInstruction = typeof userInstructions.$inferSelect
+export { userInstructions, type UserInstruction } from './user-instructions-schema.js'
 export type GroupMember = typeof groupMembers.$inferSelect
 export type AuthorizedGroup = typeof authorizedGroups.$inferSelect
 export const messageMetadata = sqliteTable(
@@ -298,3 +296,5 @@ export const attachments = sqliteTable(
 )
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
+export { admins, contextSettings, platformInstances, taskInstances } from './instance-schema.js'
+export type { AdminRow, ContextSettingsRow, PlatformInstanceRow, TaskInstanceRow } from './instance-schema.js'

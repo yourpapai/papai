@@ -5,7 +5,9 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import type { ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
+import { checkAuthorizationExtended } from '../../src/auth.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
+import type { AuthorizationResult, ChatProvider, CommandHandler, ResolveUserContext } from '../../src/chat/types.js'
 import { registerGroupCommand } from '../../src/commands/group.js'
 import { upsertGroupUserObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
@@ -32,6 +34,23 @@ const flushMicrotasks = async (): Promise<void> => {
   await Promise.resolve()
 }
 
+const createGroupStorageAuth = (
+  contextId: string,
+  ...args: [] | [Parameters<typeof createAuth>[1]]
+): AuthorizationResult => {
+  const options = args[0]
+  if (options === undefined) {
+    return {
+      ...createAuth(contextId, {}),
+      configContextId: contextId,
+    }
+  }
+  return {
+    ...createAuth(contextId, options),
+    configContextId: contextId,
+  }
+}
+
 // Label-lookup helpers defined outside test blocks — required by no-conditional-in-test
 function resolveGroupLabelByKnownId(groupId: string): Promise<string | null> {
   if (groupId === 'group-123') return Promise.resolve('Engineering Chat')
@@ -54,6 +73,28 @@ function resolveUserLabelForMembersAndAdder(userId: string): Promise<string | nu
   if (userId === 'user1') return Promise.resolve('John Johnson (@itsmike)')
   if (userId === 'admin1') return Promise.resolve('Jane Admin (@janeadmin)')
   return Promise.resolve(null)
+}
+
+function resolvePlatformAdminLabel(_userId: string, context: ResolveUserContext | undefined): Promise<string | null> {
+  if (context !== undefined && context.platformInstanceId === 'telegram-default')
+    return Promise.resolve('Telegram Admin')
+  if (context !== undefined && context.platformInstanceId === 'discord-default') return Promise.resolve('Discord Admin')
+  return Promise.resolve(null)
+}
+
+const createPlatformInstanceLookup = (
+  telegramProvider: ChatProvider,
+  discordProvider: ChatProvider,
+): ((id: string) => { readonly provider: ChatProvider } | null) => {
+  const instances = new Map<string, { readonly provider: ChatProvider }>([
+    ['telegram-default', { provider: telegramProvider }],
+    ['discord-default', { provider: discordProvider }],
+  ])
+  return (id: string): { readonly provider: ChatProvider } | null => {
+    const instance = instances.get(id)
+    if (instance === undefined) return null
+    return instance
+  }
 }
 
 const createBlockingLabelLookup = (): {
@@ -139,7 +180,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -150,7 +191,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'adduser @user2', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'adduser @user2', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Only group admins can add users.')
@@ -160,7 +201,11 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('admin1', 'adduser', true), reply, createAuth('admin1', { isGroupAdmin: true }))
+      await handler!(
+        createGroupMessage('admin1', 'adduser', true),
+        reply,
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
+      )
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Usage: /group adduser <user-id|@username>')
@@ -173,7 +218,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser invalid@user', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -187,7 +232,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser 12345', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -202,7 +247,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       const { listGroupMembers } = await import('../../src/groups.js')
@@ -219,7 +264,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @user2', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       const { listGroupMembers } = await import('../../src/groups.js')
@@ -237,7 +282,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @unknown_user', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       // With users.resolve capability but null result, should error not fall back
@@ -250,7 +295,7 @@ describe('group commands', () => {
       expect(members.some((m) => m.user_id === 'unknown_user')).toBe(false)
     })
 
-    test('passes msg context into ChatProvider.resolveUserId', async () => {
+    test('passes msg context and platform instance into ChatProvider.resolveUserId', async () => {
       let lastResolveContext: ResolveUserContext | null = null
       const contextHandlers = new Map<string, CommandHandler>()
       const contextChat = createMockChat({
@@ -268,12 +313,13 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @alice', true, 'channel-42'),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(lastResolveContext).not.toBeNull()
       expect(lastResolveContext!.contextId).toBe('channel-42')
       expect(lastResolveContext!.contextType).toBe('group')
+      expect(lastResolveContext!.platformInstanceId).toBe('test-instance')
     })
   })
 
@@ -289,7 +335,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -300,7 +346,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'deluser user2', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'deluser user2', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Only group admins can remove users.')
@@ -310,7 +356,11 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('admin1', 'deluser', true), reply, createAuth('admin1', { isGroupAdmin: true }))
+      await handler!(
+        createGroupMessage('admin1', 'deluser', true),
+        reply,
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
+      )
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('Usage: /group deluser <user-id|@username>')
@@ -323,7 +373,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser invalid@user', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -337,7 +387,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser nonexistent', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       lastReply = getFirstReply(textCalls)
@@ -355,7 +405,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser user1', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       const members = listGroupMembers('group1')
@@ -365,11 +415,41 @@ describe('group commands', () => {
   })
 
   describe('users', () => {
+    test('group members are isolated by platform-scoped context id', async () => {
+      const telegramGroup = createGroupMessage('admin', 'adduser user-1', true, 'shared-group')
+      telegramGroup.platformInstanceId = 'telegram-default'
+      const discordGroup = createGroupMessage('admin', 'users', true, 'shared-group')
+      discordGroup.platformInstanceId = 'discord-default'
+      const telegramAuth: AuthorizationResult = {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: true,
+        storageContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw',
+        configContextId: 'pi:dGVsZWdyYW0tZGVmYXVsdA:ctx:c2hhcmVkLWdyb3Vw',
+      }
+      const discordAuth: AuthorizationResult = {
+        allowed: true,
+        isBotAdmin: false,
+        isGroupAdmin: true,
+        storageContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw',
+        configContextId: 'pi:ZGlzY29yZC1kZWZhdWx0:ctx:c2hhcmVkLWdyb3Vw',
+      }
+      const telegramReply = createMockReply()
+      const discordReply = createMockReply()
+      const handler = commandHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      await handler!(telegramGroup, telegramReply.reply, telegramAuth)
+      await handler!(discordGroup, discordReply.reply, discordAuth)
+
+      expect(discordReply.textCalls.at(-1)).toBe('No members in this group yet.')
+    })
+
     test('lists empty group', async () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toBe('No members in this group yet.')
@@ -384,7 +464,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Group members:')
@@ -400,7 +480,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Group members:')
@@ -445,12 +525,66 @@ describe('group commands', () => {
       expect(textCalls[0]).toBe('Group group-123 authorized.')
 
       const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      expect(isAuthorizedGroup('group-123')).toBe(true)
+      expect(
+        isAuthorizedGroup(toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' })),
+      ).toBe(true)
+    })
+
+    test('adds native group id as platform-scoped authorized group in DM', async () => {
+      const handler = commandHandlers.get('group')
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', 'add shared-group')
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe('Group shared-group authorized.')
+      const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(true)
+      const auth = checkAuthorizationExtended(
+        'platform-admin',
+        null,
+        'shared-group',
+        'group',
+        undefined,
+        true,
+        'telegram-default',
+      )
+      expect(auth.allowed).toBe(true)
+    })
+
+    test('adds already-scoped group id without double scoping in DM', async () => {
+      const handler = commandHandlers.get('group')
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', `add ${scopedGroupId}`)
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe(`Group ${scopedGroupId} authorized.`)
+      const { isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(true)
+      expect(
+        isAuthorizedGroup(
+          toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: scopedGroupId }),
+        ),
+      ).toBe(false)
     })
 
     test('removes an authorized group in DM for bot admin', async () => {
       const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
-      addAuthorizedGroup('group-123', 'admin1')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'test-instance', nativeContextId: 'group-123' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
 
       const handler = commandHandlers.get('group')
       expect(handler).toBeDefined()
@@ -459,7 +593,45 @@ describe('group commands', () => {
       await handler!(createDmMessage('admin1', 'remove group-123'), reply, createAuth('admin1', { isBotAdmin: true }))
 
       expect(textCalls[0]).toBe('Group group-123 removed.')
-      expect(isAuthorizedGroup('group-123')).toBe(false)
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
+    })
+
+    test('removes native group id as platform-scoped authorized group in DM', async () => {
+      const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+      const handler = commandHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', 'remove shared-group')
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe('Group shared-group removed.')
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
+    })
+
+    test('removes already-scoped group id without double scoping in DM', async () => {
+      const { addAuthorizedGroup, isAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({
+        platformInstanceId: 'telegram-default',
+        nativeContextId: 'shared-group',
+      })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+      const handler = commandHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const message = createDmMessage('admin1', `remove ${scopedGroupId}`)
+      message.platformInstanceId = 'telegram-default'
+      const { reply, textCalls } = createMockReply()
+      await handler!(message, reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toBe(`Group ${scopedGroupId} removed.`)
+      expect(isAuthorizedGroup(scopedGroupId)).toBe(false)
     })
 
     test('reports when removing a group that was not authorized', async () => {
@@ -551,7 +723,7 @@ describe('group commands', () => {
       const handler = commandHandlers.get('group')
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'unknown', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'unknown', false), reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Unknown subcommand')
@@ -565,7 +737,7 @@ describe('group commands', () => {
       message.commandMatch = ''
 
       const { reply, textCalls } = createMockReply()
-      await handler!(message, reply, createAuth('user1'))
+      await handler!(message, reply, createGroupStorageAuth('group1'))
 
       lastReply = getFirstReply(textCalls)
       expect(lastReply).toContain('Usage: /group adduser <user-id|@username>')
@@ -596,7 +768,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser @someone', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
@@ -610,7 +782,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'deluser @someone', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
@@ -624,10 +796,42 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('admin1', 'adduser 12345', true),
         reply,
-        createAuth('admin1', { isGroupAdmin: true }),
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toBe('User 12345 added to this group.')
+    })
+
+    test('adduser @username uses source instance capability before router resolution', async () => {
+      let aggregateResolveCalls = 0
+      const routerHandlers = new Map<string, CommandHandler>()
+      const sourceProvider = createMockChat({ capabilities: TELEGRAM_LIKE_CAPABILITIES })
+      const aggregateProvider = createMockChat({
+        commandHandlers: routerHandlers,
+        resolveUserId: (): Promise<string | null> => {
+          aggregateResolveCalls += 1
+          return Promise.resolve(null)
+        },
+      })
+      const routerProvider: ChatProvider & {
+        readonly getInstance: (id: string) => { readonly provider: ChatProvider } | null
+      } = {
+        ...aggregateProvider,
+        getInstance: (_id: string): { readonly provider: ChatProvider } | null => ({ provider: sourceProvider }),
+      }
+      registerGroupCommand(routerProvider)
+      const handler = routerHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(
+        createGroupMessage('admin1', 'adduser @alice', true),
+        reply,
+        createGroupStorageAuth('group1', { isGroupAdmin: true }),
+      )
+
+      expect(textCalls[0]).toBe('This chat provider does not support username lookup. Use an explicit user ID.')
+      expect(aggregateResolveCalls).toBe(0)
     })
   })
 
@@ -678,6 +882,142 @@ describe('group commands', () => {
       expect(textCalls[0]).toContain('group-456 (added by Alice Two (@admin1))')
     })
 
+    test('uses native group id for provider label resolution when stored group is scoped', async () => {
+      const seenGroupIds: string[] = []
+      const seenContexts: Array<ResolveUserContext | undefined> = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const labeledChat = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveGroupLabel: (groupId: string): Promise<string | null> => {
+          seenGroupIds.push(groupId)
+          return Promise.resolve('Native Group Label')
+        },
+        resolveUserLabel: (_userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
+          seenContexts.push(context)
+          return Promise.resolve('Admin Label')
+        },
+      })
+      registerGroupCommand(labeledChat)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-123' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(seenGroupIds).toEqual(['group-123'])
+      expect(seenContexts).toEqual([
+        { contextId: 'group-123', contextType: 'group', platformInstanceId: 'telegram-default' },
+      ])
+      expect(textCalls[0]).toContain('Native Group Label (added by Admin Label)')
+    })
+
+    test('routes scoped authorized group labels through the source platform instance', async () => {
+      const seenSourceGroupIds: string[] = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const sourceProvider = createMockChat({
+        resolveGroupLabel: (groupId: string): Promise<string | null> => {
+          seenSourceGroupIds.push(groupId)
+          return Promise.resolve('Source Group Label')
+        },
+        resolveUserLabel: (): Promise<string | null> => Promise.resolve('Source Admin Label'),
+      })
+      const aggregateProvider = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveGroupLabel: (): Promise<string | null> => Promise.resolve(null),
+        resolveUserLabel: (): Promise<string | null> => Promise.resolve(null),
+      })
+      const routerProvider: ChatProvider & {
+        readonly getInstance: (id: string) => { readonly provider: ChatProvider } | null
+      } = {
+        ...aggregateProvider,
+        getInstance: (_id: string): { readonly provider: ChatProvider } | null => ({ provider: sourceProvider }),
+      }
+      registerGroupCommand(routerProvider)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      const scopedGroupId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'group-123' })
+      addAuthorizedGroup(scopedGroupId, 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(seenSourceGroupIds).toEqual(['group-123'])
+      expect(textCalls[0]).toContain('Source Group Label')
+    })
+
+    test('caches /groups labels separately per platform instance', async () => {
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const telegramProvider = createMockChat({
+        resolveGroupLabel: (): Promise<string | null> => Promise.resolve('Telegram Shared Group'),
+      })
+      const discordProvider = createMockChat({
+        resolveGroupLabel: (): Promise<string | null> => Promise.resolve('Discord Shared Group'),
+      })
+      const aggregateProvider = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveUserLabel: resolvePlatformAdminLabel,
+      })
+      const routerProvider: ChatProvider & {
+        readonly getInstance: (id: string) => { readonly provider: ChatProvider } | null
+      } = {
+        ...aggregateProvider,
+        getInstance: createPlatformInstanceLookup(telegramProvider, discordProvider),
+      }
+      registerGroupCommand(routerProvider)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      addAuthorizedGroup(
+        toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: 'shared-group' }),
+        'admin1',
+      )
+      addAuthorizedGroup(
+        toScopedContextId({ platformInstanceId: 'discord-default', nativeContextId: 'shared-group' }),
+        'admin1',
+      )
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply, textCalls } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(textCalls[0]).toContain('Telegram Shared Group (added by Telegram Admin)')
+      expect(textCalls[0]).toContain('Discord Shared Group (added by Discord Admin)')
+    })
+
+    test('does not pass DM platform instance into /groups added-by label lookups', async () => {
+      const seenContexts: Array<ResolveUserContext | undefined> = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const labeledChat = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveGroupLabel: (groupId: string): Promise<string | null> => Promise.resolve(groupId),
+        resolveUserLabel: (_userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
+          seenContexts.push(context)
+          return Promise.resolve(null)
+        },
+      })
+      registerGroupCommand(labeledChat)
+
+      const { addAuthorizedGroup } = await import('../../src/authorized-groups.js')
+      addAuthorizedGroup('group-123', 'admin1')
+
+      const handler = labeledHandlers.get('groups')
+      expect(handler).toBeDefined()
+
+      const { reply } = createMockReply()
+      await handler!(createDmMessage('admin1'), reply, createAuth('admin1', { isBotAdmin: true }))
+
+      expect(seenContexts).toEqual([{ contextId: 'group-123', contextType: 'group' }])
+    })
+
     test('lists group users with resolved member and adder labels', async () => {
       const labeledHandlers = new Map<string, CommandHandler>()
       const labeledChat = createMockChat({
@@ -693,10 +1033,37 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(textCalls[0]).toContain('John Johnson (@itsmike)')
       expect(textCalls[0]).toContain('added by Jane Admin (@janeadmin)')
+    })
+
+    test('passes source platform instance into /group users label lookups', async () => {
+      const seenContexts: Array<ResolveUserContext | undefined> = []
+      const labeledHandlers = new Map<string, CommandHandler>()
+      const labeledChat = createMockChat({
+        commandHandlers: labeledHandlers,
+        resolveUserLabel: (_userId: string, context: ResolveUserContext | undefined): Promise<string | null> => {
+          seenContexts.push(context)
+          return Promise.resolve(null)
+        },
+      })
+      registerGroupCommand(labeledChat)
+
+      const { addGroupMember } = await import('../../src/groups.js')
+      addGroupMember('group1', 'user1', 'admin1')
+
+      const handler = labeledHandlers.get('group')
+      expect(handler).toBeDefined()
+
+      const { reply } = createMockReply()
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
+
+      expect(seenContexts).toEqual([
+        { contextId: 'group1', contextType: 'group', platformInstanceId: 'test-instance' },
+        { contextId: 'group1', contextType: 'group', platformInstanceId: 'test-instance' },
+      ])
     })
 
     test('bounds concurrent /groups label lookups', async () => {
@@ -747,7 +1114,11 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply } = createMockReply()
-      const handlerPromise = handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      const handlerPromise = handler!(
+        createGroupMessage('user1', 'users', false),
+        reply,
+        createGroupStorageAuth('group1'),
+      )
 
       await flushMicrotasks()
 
@@ -816,7 +1187,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(textCalls[0]).toContain('- user1 (added by admin1)')
     })
@@ -836,7 +1207,7 @@ describe('group commands', () => {
       expect(handler).toBeDefined()
 
       const { reply, textCalls } = createMockReply()
-      await handler!(createGroupMessage('user1', 'users', false), reply, createAuth('user1'))
+      await handler!(createGroupMessage('user1', 'users', false), reply, createGroupStorageAuth('group1'))
 
       expect(textCalls[0]).toContain('- user1 (added by admin1)')
     })
@@ -913,7 +1284,7 @@ describe('group commands', () => {
       await handler!(
         createGroupMessage('42', 'users', true, '-100123'),
         reply,
-        createAuth('42', { isGroupAdmin: true }),
+        createGroupStorageAuth('-100123', { isGroupAdmin: true }),
       )
 
       expect(textCalls[0]).toContain('- Worker Ninety Nine (@worker99) (added by John Johnson (@itsmike))')

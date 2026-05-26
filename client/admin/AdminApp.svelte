@@ -15,19 +15,21 @@
   import BillingSection from './sections/BillingSection.svelte'
   import GroupsSection from './sections/GroupsSection.svelte'
   import IdentitiesSection from './sections/IdentitiesSection.svelte'
+  import InstancesSection from './sections/InstancesSection.svelte'
   import MemosSection from './sections/MemosSection.svelte'
   import OverviewSection from './sections/OverviewSection.svelte'
   import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
   import SystemSection from './sections/SystemSection.svelte'
 
-  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'system']
+  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances', 'system']
 
   onMount(() => {
     void refreshAll()
     const initial = window.location.hash.replace(/^#/u, '')
     if (sectionIds.includes(initial)) {
-      document.getElementById(initial)?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+      const target = document.querySelector<HTMLElement>(`#${initial}`)
+      if (target !== null) target.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
     }
     const spy = useScrollSpy(sectionIds, (id) => {
       setSection(id as typeof adminState.currentSection)
@@ -36,7 +38,7 @@
       }
     })
     spy.start()
-    return () => spy.stop()
+    return (): void => spy.stop()
   })
 </script>
 
@@ -55,6 +57,7 @@
         <RemindersSection />
         <IdentitiesSection />
         <GroupsSection />
+        <InstancesSection />
         <SystemSection />
       </main>
     </div>

@@ -15,7 +15,11 @@ export type DiscordInteractionContext = {
   message: { id: string }
 }
 
-export function buildDiscordInteraction(ctx: DiscordInteractionContext, isAdmin: boolean): IncomingInteraction | null {
+export function buildDiscordInteraction(
+  ctx: DiscordInteractionContext,
+  isAdmin: boolean,
+  platformInstanceId = 'discord-default',
+): IncomingInteraction | null {
   const callbackData = ctx.customId
   if (callbackData === '') return null
 
@@ -31,6 +35,7 @@ export function buildDiscordInteraction(ctx: DiscordInteractionContext, isAdmin:
     },
     contextId,
     contextType,
+    platformInstanceId,
     storageContextId: contextId,
     callbackData,
     messageId: ctx.message.id,

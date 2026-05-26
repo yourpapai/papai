@@ -8,25 +8,31 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { setPluginConfig } from '../../src/config.js'
+import { ChatRouter } from '../../src/chat/router.js'
+import { setConfig, setPluginConfig } from '../../src/config.js'
+import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { discoverPlugins } from '../../src/plugins/discovery.js'
 import { activatePlugins, deactivateAllPlugins } from '../../src/plugins/loader.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
+import { defaultTaskProviderResolver } from '../../src/providers/resolver.js'
 import { buildSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
+import { setKaneoWorkspace } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { createMockChat, getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 type TempPluginOptions = {
   readonly pluginId: string
   readonly source: string
-  readonly manifestPatch?: Record<string, unknown>
+  readonly manifestPatch: Record<string, unknown>
 }
 
 const tempDirs: string[] = []
 
-function createTempPlugin({ pluginId, source, manifestPatch = {} }: TempPluginOptions): string {
+function createTempPlugin({ pluginId, source, manifestPatch }: TempPluginOptions): string {
   const rootDir = mkdtempSync(join(tmpdir(), 'papai-plugin-integration-'))
   tempDirs.push(rootDir)
   const pluginDir = join(rootDir, pluginId)
@@ -98,13 +104,14 @@ describe('plugin lifecycle integration', () => {
   })
 
   afterEach(async () => {
+    clearRuntimeChatRouter()
     await deactivateAllPlugins()
     tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
   })
 
   test('discovers, approves, activates, opts in, exposes tools/prompts, then deactivates', async () => {
     const provider = createMockProvider()
-    const rootDir = createTempPlugin({ pluginId: 'lifecycle-plugin', source: workingPluginSource })
+    const rootDir = createTempPlugin({ pluginId: 'lifecycle-plugin', source: workingPluginSource, manifestPatch: {} })
     const plugin = discoverSinglePlugin(rootDir)
 
     pluginRegistry.registerDiscovered(plugin)
@@ -148,7 +155,7 @@ describe('plugin lifecycle integration', () => {
   })
 
   test('requires reapproval when a discovered manifest hash changes', () => {
-    const rootDir = createTempPlugin({ pluginId: 'changed-plugin', source: workingPluginSource })
+    const rootDir = createTempPlugin({ pluginId: 'changed-plugin', source: workingPluginSource, manifestPatch: {} })
     const plugin = discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
@@ -157,8 +164,9 @@ describe('plugin lifecycle integration', () => {
     pluginRegistry.registerDiscovered(changed)
 
     const entry = pluginRegistry.getEntry(plugin.manifest.id)
-    expect(entry?.state).toBe('discovered')
-    expect(entry?.compatibilityReason).toContain('Manifest changed')
+    expect(entry).toBeDefined()
+    expect(entry!.state).toBe('discovered')
+    expect(entry!.compatibilityReason).toContain('Manifest changed')
   })
 
   test('does not activate plugins missing required provider capabilities', async () => {
@@ -175,7 +183,7 @@ describe('plugin lifecycle integration', () => {
 
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
-    expect(pluginRegistry.getEntry(plugin.manifest.id)?.state).toBe('incompatible')
+    expect(pluginRegistry.getEntry(plugin.manifest.id)!.state).toBe('incompatible')
   })
 
   test('does not expose active contributions when required context config is missing', async () => {
@@ -217,6 +225,7 @@ describe('plugin lifecycle integration', () => {
           return { activate() { throw new Error('activation failed') } }
         }
       `,
+      manifestPatch: {},
     })
     const plugin = discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
@@ -224,7 +233,7 @@ describe('plugin lifecycle integration', () => {
 
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
-    expect(pluginRegistry.getEntry(plugin.manifest.id)?.state).toBe('error')
+    expect(pluginRegistry.getEntry(plugin.manifest.id)!.state).toBe('error')
     expect(
       makeTools(createMockProvider(), {
         storageContextId: 'ctx-enabled',
@@ -254,5 +263,54 @@ describe('plugin lifecycle integration', () => {
     })
     expect(tools).not.toHaveProperty('plugin_opt_out_plugin__echo_context')
     expect(buildSystemPrompt(provider, 'ctx-opt-out')).not.toContain('INTEGRATION_PLUGIN_GUIDANCE')
+  })
+
+  test('exposes plugin tools only for contexts whose resolved provider has required capabilities', async () => {
+    const rootDir = createTempPlugin({
+      pluginId: 'provider-capability-plugin',
+      source: workingPluginSource,
+      manifestPatch: { defaultEnabled: true, requiredTaskCapabilities: ['workItems.list'] },
+    })
+    const plugin = discoverSinglePlugin(rootDir)
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
+    pluginRegistry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(['workItems.list']), chatCapabilities: new Set() },
+    ])
+    await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
+
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'youtrack-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-default' })
+    setContextSettings({
+      contextId: 'ctx-youtrack',
+      taskInstanceId: 'youtrack-a',
+      platformInstanceId: 'telegram-default',
+    })
+    setConfig('ctx-kaneo', 'kaneo_apikey', 'kn-key')
+    setKaneoWorkspace('ctx-kaneo', 'workspace-1')
+    setConfig('ctx-youtrack', 'youtrack_token', 'perm:abc')
+    const router = new ChatRouter(() => createMockChat())
+    router.addInstance('telegram-default', 'telegram', { token: 'x' })
+    setRuntimeChatRouter(router)
+
+    const kaneoProvider = defaultTaskProviderResolver.resolve('ctx-kaneo')
+    const youtrackProvider = defaultTaskProviderResolver.resolve('ctx-youtrack')
+    expect(kaneoProvider).not.toBeNull()
+    expect(youtrackProvider).not.toBeNull()
+
+    const kaneoTools = makeTools(kaneoProvider!, {
+      storageContextId: 'ctx-kaneo',
+      chatUserId: 'user-1',
+      contextType: 'dm',
+    })
+    const youtrackTools = makeTools(youtrackProvider!, {
+      storageContextId: 'ctx-youtrack',
+      chatUserId: 'user-1',
+      contextType: 'dm',
+    })
+
+    expect(kaneoTools).not.toHaveProperty('plugin_provider_capability_plugin__echo_context')
+    expect(youtrackTools).toHaveProperty('plugin_provider_capability_plugin__echo_context')
   })
 })

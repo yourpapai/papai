@@ -6,33 +6,27 @@
 import type { ModelMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 
-import {
-  deleteInstructionFromDb,
-  syncConfigToDb,
-  syncFactToDb,
-  syncHistoryToDb,
-  syncInstructionToDb,
-  syncSummaryToDb,
-  syncWorkspaceToDb,
-} from './cache-db.js'
+import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb, syncWorkspaceToDb } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
 import { userCacheStore } from './cache-store.js'
-import type { CachedFact, CachedInstruction, UserCache } from './cache-types.js'
+import type { CachedFact, UserCache } from './cache-types.js'
 import { getDrizzleDb } from './db/drizzle.js'
-import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions, users } from './db/schema.js'
+import { conversationHistory, memoryFacts, memorySummary, userConfig } from './db/schema.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
 
+export { addCachedInstruction, deleteCachedInstruction, getCachedInstructions } from './cache-instructions.js'
 export { cleanupExpiredCaches, evictUser } from './cache-eviction.js'
 
 const log = logger.child({ scope: 'cache' })
+const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
 
 // --- User Session Cache ---
 
 // Exported for testing purposes only.
 export const userCachesForTesting = userCacheStore
 
-function getOrCreateCache(userId: string): UserCache {
+export function getOrCreateCache(userId: string): UserCache {
   let cache = userCacheStore.get(userId)
   if (cache === undefined) {
     cache = {
@@ -60,7 +54,7 @@ export function getCachedHistory(userId: string): readonly ModelMessage[] {
       .from(conversationHistory)
       .where(sql`${conversationHistory.userId} = ${userId}`)
       .get()
-    if (row?.messages !== undefined) {
+    if (row !== undefined) {
       const parsed = parseHistoryFromDb(row.messages)
       if (parsed !== null) {
         cache.history = parsed
@@ -95,7 +89,7 @@ export function getCachedSummary(userId: string): string | null {
       .from(memorySummary)
       .where(sql`${memorySummary.userId} = ${userId}`)
       .get()
-    cache.summary = row?.summary ?? null
+    cache.summary = row === undefined ? null : row.summary
     cache.config.set('summary_loaded', 'true')
     emitUser('cache:load', userId, { field: 'summary' })
   }
@@ -156,10 +150,14 @@ export function getCachedConfig(userId: string, key: string): string | null {
       .from(userConfig)
       .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${key}`)
       .get()
-    cache.config.set(key, row?.value ?? null)
+    cache.config.set(key, row === undefined ? null : row.value)
     emitUser('cache:load', userId, { field: 'config' })
   }
-  return cache.config.get(key) ?? null
+  const value = cache.config.get(key)
+  if (value === undefined) {
+    return null
+  }
+  return value
 }
 
 export function setCachedConfig(userId: string, key: string, value: string): void {
@@ -174,11 +172,15 @@ export function getCachedWorkspace(userId: string): string | null {
   if (cache.workspaceId === null && !cache.config.has('workspace_loaded')) {
     log.debug({ userId }, 'Loading workspace from DB into cache')
     const row = getDrizzleDb()
-      .select({ kaneoWorkspaceId: users.kaneoWorkspaceId })
-      .from(users)
-      .where(sql`${users.platformUserId} = ${userId}`)
+      .select({ value: userConfig.value })
+      .from(userConfig)
+      .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY}`)
       .get()
-    cache.workspaceId = row?.kaneoWorkspaceId ?? null
+    if (row === undefined) {
+      cache.workspaceId = null
+    } else {
+      cache.workspaceId = row.value
+    }
     cache.config.set('workspace_loaded', 'true')
     emitUser('cache:load', userId, { field: 'workspace' })
   }
@@ -238,42 +240,4 @@ export function clearCachedHistoryFlag(userId: string): void {
   }
   cache.config.delete('history_loaded')
   log.debug({ userId }, 'History loaded flag cleared')
-}
-
-export function getCachedInstructions(contextId: string): readonly CachedInstruction[] {
-  const cache = getOrCreateCache(contextId)
-  if (cache.instructions === null) {
-    log.debug({ contextId }, 'Loading instructions from DB into cache')
-    const rows = getDrizzleDb()
-      .select({
-        id: userInstructions.id,
-        text: userInstructions.text,
-        createdAt: userInstructions.createdAt,
-      })
-      .from(userInstructions)
-      .where(sql`${userInstructions.contextId} = ${contextId}`)
-      .orderBy(sql`${userInstructions.createdAt} ASC`)
-      .all()
-    cache.instructions = rows
-    emitUser('cache:load', contextId, { field: 'instructions' })
-  }
-  return cache.instructions
-}
-
-export function addCachedInstruction(contextId: string, instruction: { id: string; text: string }): void {
-  const cache = getOrCreateCache(contextId)
-  cache.instructions ??= []
-  const createdAt = new Date().toISOString()
-  cache.instructions.push({ ...instruction, createdAt })
-  syncInstructionToDb(contextId, { ...instruction, createdAt })
-  emitUser('cache:sync', contextId, { field: 'instructions', operation: 'set' })
-}
-
-export function deleteCachedInstruction(contextId: string, id: string): void {
-  const cache = getOrCreateCache(contextId)
-  if (cache.instructions !== null) {
-    cache.instructions = cache.instructions.filter((i) => i.id !== id)
-  }
-  deleteInstructionFromDb(contextId, id)
-  emitUser('cache:sync', contextId, { field: 'instructions', operation: 'delete' })
 }

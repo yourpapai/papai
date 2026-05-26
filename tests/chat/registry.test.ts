@@ -61,4 +61,39 @@ describe('chat registry', () => {
   test('createChatProvider("mattermost") throws when required env vars are missing', () => {
     expect(() => createChatProvider('mattermost', { env: {} })).toThrow(/Missing mattermost env vars/u)
   })
+
+  test('createChatProviderFromConfig creates telegram from encrypted-row config token', async () => {
+    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
+
+    const provider = createChatProviderFromConfig('telegram-default', 'telegram', { token: '123:test-token' })
+
+    expect(provider.name).toBe('telegram')
+  })
+
+  test('createChatProviderFromConfig creates discord from encrypted-row config token', async () => {
+    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
+
+    const provider = createChatProviderFromConfig('discord-default', 'discord', { token: 'discord-token' })
+
+    expect(provider.name).toBe('discord')
+  })
+
+  test('createChatProviderFromConfig creates mattermost from encrypted-row url and token', async () => {
+    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
+
+    const provider = createChatProviderFromConfig('mattermost-default', 'mattermost', {
+      url: 'https://mattermost.example.test',
+      token: 'mattermost-token',
+    })
+
+    expect(provider.name).toBe('mattermost')
+  })
+
+  test('createChatProviderFromConfig rejects missing config values before adapter construction', async () => {
+    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
+
+    expect(() =>
+      createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' }),
+    ).toThrow('Missing mattermost instance config')
+  })
 })

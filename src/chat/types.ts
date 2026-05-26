@@ -20,14 +20,16 @@ export type ContextType = 'dm' | 'group'
 import type { DeferredDeliveryTarget } from './deferred-target.js'
 export type { DeferredAudience, DeferredDeliveryTarget } from './deferred-target.js'
 export { dmTarget } from './deferred-target.js'
-
 /** Context passed to resolveUserId so adapters can scope searches. */
 export type ResolveUserContext = {
   /** Storage key of the conversation where the lookup originated (userId in DMs, channel/group ID in groups). */
   contextId: string
   /** 'dm' or 'group' — adapters may use this to decide whether guild-scoped search is possible. */
   contextType: ContextType
-}
+} & Partial<{
+  /** Source platform instance for router delegation when context_settings is not available yet. */
+  platformInstanceId: string
+}>
 
 /** Thread support capabilities for a chat platform. */
 export type ThreadCapabilities = {
@@ -130,6 +132,8 @@ export type IncomingMessage = {
   /** bot was @mentioned */
   isMentioned: boolean
   text: string
+  /** ID of the chat provider instance this message arrived on. */
+  platformInstanceId: string
 } & Partial<{
   /** Human-readable channel/group name when the adapter knows it */
   contextName: string
@@ -155,6 +159,8 @@ export type IncomingInteraction = {
   user: ChatUser
   contextId: string
   contextType: ContextType
+  /** ID of the chat provider instance this interaction arrived on. */
+  platformInstanceId: string
   /**
    * Thread-scoped storage key for session/config lookup.
    * Same as contextId in DMs, groupId:threadId in forum topics.
@@ -198,7 +204,6 @@ export type ChatButton = {
 
 /** Extended reply options with buttons */
 export interface ButtonReplyOptions extends ReplyOptions, Partial<{ buttons: ChatButton[] }> {}
-
 import type { ContextSnapshot } from './context-types.js'
 export type { ContextSection, ContextSnapshot } from './context-types.js'
 
@@ -269,21 +274,16 @@ export type ChatProvider = {
   readonly traits: ChatProviderTraits
   /** Environment/config requirements for startup */
   readonly configRequirements: readonly ChatProviderConfigRequirement[]
-
-  /** Register a slash command handler (e.g., 'help' for /help). */
   registerCommand(name: string, handler: CommandHandler): void
-
-  /** Register the catch-all handler for non-command messages. */
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void
-
-  /** Send a formatted markdown message to a delivery target (for proactive/announcement sends). */
-  sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void>
-  /** Render a context snapshot into a platform-native representation. */
+  sendMessage(
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    markdown: string,
+  ): Promise<boolean> | Promise<void>
   renderContext(snapshot: ContextSnapshot): ContextRendered
-
   /** Start the bot event loop. */
   start(): Promise<void>
-
   /** Graceful shutdown. */
   stop(): Promise<void>
 } & Partial<{
@@ -292,6 +292,8 @@ export type ChatProvider = {
   resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
   resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
   resolveGroupLabel: (groupId: string) => Promise<string | null>
+  renderContextForInstance: (platformInstanceId: string, snapshot: ContextSnapshot) => ContextRendered
+  isInstanceActive: (platformInstanceId: string) => boolean
   /** Register the bot's command list with the platform (for command menus). */
   setCommands: (adminUserId: string) => Promise<void>
 }>

@@ -25,6 +25,7 @@ describe('StagedFileRef', () => {
       size: null,
       platformFileId: 'file-123',
       sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-a',
       status: 'staged',
       attachmentId: null,
       createdAt: '2025-01-01T00:00:00Z',
@@ -54,6 +55,7 @@ describe('StageFileParams', () => {
       size: null,
       platformFileId: 'pf-1',
       sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-a',
     }
     expect(params.contextId).toBe('ctx-1')
     expect(params.filename).toBe('doc.pdf')

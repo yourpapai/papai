@@ -25,6 +25,7 @@ describe('userBlockForSubject', () => {
       .insert(users)
       .values({
         platformUserId: 'u1',
+        platformInstanceId: 'legacy-single',
         username: 'alice',
         addedAt: '2026-01-01T00:00:00Z',
         addedBy: 'admin',

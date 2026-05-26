@@ -16,12 +16,11 @@ export type DiscordMessageLike = {
   id: string
   author: { id: string; username: string; bot: boolean }
   content: string
-  channel: { id: string; type: number; name?: string }
-  guild?: { id: string; name: string } | null
+  channel: { id: string; type: number } & Partial<{ name: string }>
   mentions: { has: (id: string) => boolean }
-  reference: { messageId?: string } | null
+  reference: Partial<{ messageId: string }> | null
   type: number
-}
+} & Partial<{ guild: { id: string; name: string } | null }>
 
 // Discord.js ChannelType: DM = 1. Everything else maps to 'group'.
 const CHANNEL_TYPE_DM = 1
@@ -31,10 +30,12 @@ const ACCEPTED_MESSAGE_TYPES = new Set<number>([0, 19])
 
 /** Map a Discord message to papai's IncomingMessage. Returns null if the message should be ignored. */
 export function mapDiscordMessage(
-  message: DiscordMessageLike,
-  botId: string,
-  adminUserId: string,
+  ...args:
+    | [message: DiscordMessageLike, botId: string, _adminUserId: string]
+    | [message: DiscordMessageLike, botId: string, _adminUserId: string, platformInstanceId: string]
 ): IncomingMessage | null {
+  const [message, botId] = args
+  const platformInstanceId = args.length === 4 ? args[3] : 'discord-default'
   if (message.author.bot) {
     log.debug({ messageId: message.id, authorId: message.author.id }, 'Skipping bot-authored message')
     return null
@@ -54,13 +55,15 @@ export function mapDiscordMessage(
 
   const text = stripBotMention(message.content, botId)
   const contextName = contextType === 'group' ? message.channel.name : undefined
-  const contextParentName = contextType === 'group' ? (message.guild?.name ?? undefined) : undefined
+  const guild = 'guild' in message ? message.guild : undefined
+  const contextParentName = contextType === 'group' && guild !== undefined && guild !== null ? guild.name : undefined
+  const replyToMessageId = message.reference === null ? undefined : message.reference.messageId
 
   return {
     user: {
       id: message.author.id,
       username: message.author.username.length > 0 ? message.author.username : null,
-      isAdmin: message.author.id === adminUserId,
+      isAdmin: false,
     },
     contextId,
     contextType,
@@ -68,7 +71,8 @@ export function mapDiscordMessage(
     contextParentName,
     isMentioned: mentioned,
     text,
+    platformInstanceId,
     messageId: message.id,
-    replyToMessageId: message.reference?.messageId,
+    replyToMessageId,
   }
 }

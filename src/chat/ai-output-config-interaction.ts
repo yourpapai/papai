@@ -25,18 +25,30 @@ async function validateDmAiOutputTarget(
   reply: ReplyFn,
   parsed: ParsedAiOutputCallback,
   targetContextId: string,
-): Promise<boolean> {
-  if (parsed.targetContextId === undefined && !(await validateImplicitDmConfigTarget(interaction.user.id, reply))) {
-    return false
+): Promise<string | null> {
+  if (
+    parsed.targetContextId === undefined &&
+    !(await validateImplicitDmConfigTarget(interaction.user.id, interaction.platformInstanceId, reply))
+  ) {
+    return null
   }
+  if (parsed.targetContextId === undefined) return targetContextId
   if (parsed.targetContextId !== undefined) {
-    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(interaction.user.id, targetContextId)
+    const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
+      interaction.user.id,
+      targetContextId,
+      interaction.platformInstanceId,
+    )
     if (validatedTargetContextId === null) {
-      await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, targetContextId))
-      return false
+      await replyTextPreferReplace(
+        reply,
+        getMissingGroupTargetMessage(interaction.user.id, targetContextId, interaction.platformInstanceId),
+      )
+      return null
     }
+    return validatedTargetContextId
   }
-  return true
+  return targetContextId
 }
 
 export async function handleAiOutputConfigInteraction(
@@ -49,12 +61,11 @@ export async function handleAiOutputConfigInteraction(
     return replyInvalidAction(reply, interaction.callbackData)
   }
 
-  const targetContextId = getTargetContextId(parsed.targetContextId, interaction)
-  if (
-    interaction.contextType === 'dm' &&
-    !(await validateDmAiOutputTarget(interaction, reply, parsed, targetContextId))
-  ) {
-    return true
+  let targetContextId = getTargetContextId(parsed.targetContextId, interaction)
+  if (interaction.contextType === 'dm') {
+    const validatedTargetContextId = await validateDmAiOutputTarget(interaction, reply, parsed, targetContextId)
+    if (validatedTargetContextId === null) return true
+    targetContextId = validatedTargetContextId
   }
 
   const section = handleParsedAiOutputConfigCallback(targetContextId, parsed)

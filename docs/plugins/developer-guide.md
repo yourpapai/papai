@@ -65,8 +65,8 @@ Supported optional fields:
 | `contributes.configKeys`      | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
 | `permissions`                 | Permission claims checked by framework facades.                                                                                                   |
 | `defaultEnabled`              | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
-| `requiredTaskCapabilities`    | Task provider capabilities required before activation.                                                                                            |
-| `requiredChatCapabilities`    | Chat provider capabilities required before activation.                                                                                            |
+| `requiredTaskCapabilities`    | Task provider capabilities required before activation and per-context eligibility.                                                                |
+| `requiredChatCapabilities`    | Chat platform capabilities required before activation and per-context eligibility.                                                                |
 | `configRequirements`          | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
 | `activationTimeoutMs`         | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
 
@@ -161,6 +161,8 @@ Unsupported in the MVP: raw chat provider access, raw task provider access, raw 
 ## Context Config And Eligibility
 
 Required `configRequirements` are evaluated per target context. Missing required config does not globally break activation; it makes that plugin ineligible for that context, so tools and prompt fragments are hidden and enable actions report the missing keys. Sensitive plugin config values are masked in `/config` output.
+
+Capability requirements are evaluated in two layers. At startup, Papai checks approved plugins against the union of active platform/task instances and marks a plugin globally incompatible only when no active instance combination can satisfy the manifest. At request or scheduled-job time, `getPluginContextEligibility(pluginId, contextId)` checks the context's assigned platform and task instances. If that concrete assignment lacks required capabilities, the plugin is ineligible for that context with `capability_missing`, and its tools, prompt fragments, and jobs are hidden there without affecting other contexts.
 
 ## Admin Workflow
 

@@ -20,7 +20,7 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 - Check `auth.allowed` before doing work unless the command is intentionally responsible for its own rejection message.
 - Do not import Telegram, Mattermost, or Discord modules into command handlers. Chat-specific behavior must be expressed through `ChatProvider` capabilities or `ReplyFn`.
 - Use injected reply helpers only: `reply.text()`, `reply.formatted()`, `reply.buttons()`, `reply.file?.()`, `reply.embed?.()`, `reply.redactMessage?.()`.
-- Feature-detect platform affordances. Use helpers from `src/chat/capabilities.ts` instead of branching on `chat.name` when deciding whether buttons, command menus, file replies, or username resolution are available.
+- Feature-detect platform affordances. Use helpers from `src/chat/capabilities.ts` and source-instance helpers instead of branching on `chat.name`; at runtime `chat` may be the `ChatRouter`, not the source adapter.
 - Group-specific behavior belongs behind `msg.contextType` and the appropriate admin gate for that flow, usually `auth.isGroupAdmin`.
 - Admin-only commands must stay DM-only unless there is an explicit group-safe flow.
 
@@ -31,7 +31,7 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 - `/setup` and `/config` are DM-driven. In groups they redirect admins to DM, then the user chooses personal settings or a manageable group through the group-settings selector.
 - `/context` is no longer an admin-only export command. It builds a tokenized `ContextSnapshot` and sends a platform-native view through `chat.renderContext()`.
 - `/clear` clears conversation history, summary, and facts for the current storage context. The bot admin can also clear another user or all users; non-bot group admins are limited to clearing the current group context.
-- `/group` is the group authorization command surface and must use `supportsUserResolution(chat)` before assuming `@username` lookup works.
+- `/group` is the group authorization command surface and must route username lookup through `extractGroupUserId()` / source-instance resolution before assuming `@username` lookup works.
 - `/plugin` is DM-only and bot-admin-only. Subcommands: `list`, `info <id>`, `approve <id>`, `reject <id>`, `enable <id> [context-id]`, `disable <id> [context-id]`. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly. Per-context plugin enable toggles are also surfaced as `plg:` inline buttons inside `/config`.
 - `/config` includes a "🧰 Tools" section. Tapping it opens a domain list; users toggle whole domains (`tgl:dom:`) or drill in (`tgl:open:`) to toggle individual tools (`tgl:tool:`) with risk labels. Callbacks are routed in `src/chat/interaction-router.ts` to `handleToolToggleInteraction`. Personal-vs-group targeting reuses the group-settings selector, identical to plugin toggles.
 
@@ -49,6 +49,6 @@ Interactive callbacks are routed separately through `src/chat/interaction-router
 ## Types
 
 - `CommandHandler`: `(msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void>`
-- `IncomingMessage`: includes `contextId`, `contextType`, optional `threadId`, optional `replyContext`, and optional incoming `files`
+- `IncomingMessage`: includes `contextId`, `contextType`, `platformInstanceId`, optional `threadId`, optional `replyContext`, and optional incoming `files`
 - `AuthorizationResult`: includes `allowed`, `isBotAdmin`, `isGroupAdmin`, `storageContextId`, and optional `configContextId`
 - `ReplyFn`: always includes `text`, `formatted`, `typing`, and `buttons`; other reply methods are optional by platform

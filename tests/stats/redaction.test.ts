@@ -54,7 +54,14 @@ const SUBJECT_ID = 'subject-redaction-1'
 function seedForbiddenRows(): void {
   const db = getDrizzleDb()
 
-  db.insert(users).values({ platformUserId: SUBJECT_ID, addedBy: 'admin', username: 'FORBIDDEN_USERNAME_XYZ' }).run()
+  db.insert(users)
+    .values({
+      platformUserId: SUBJECT_ID,
+      platformInstanceId: 'legacy-single',
+      addedBy: 'admin',
+      username: 'FORBIDDEN_USERNAME_XYZ',
+    })
+    .run()
   db.insert(authorizedGroups).values({ groupId: 'group-redaction-1', addedBy: 'admin' }).run()
 
   db.insert(memos)

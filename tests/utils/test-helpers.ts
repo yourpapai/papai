@@ -269,6 +269,7 @@ export function createDmMessage(
     contextType: 'dm',
     isMentioned: false,
     text: '',
+    platformInstanceId: 'test-instance',
     commandMatch,
   }
 }
@@ -295,6 +296,7 @@ export function createGroupMessage(
     contextType: 'group',
     isMentioned: text.includes('@bot'),
     text,
+    platformInstanceId: 'test-instance',
     commandMatch: text.replace(/^\//u, ''),
   }
 }
@@ -318,10 +320,14 @@ type CreateAuthOptions = Partial<
 type CreateMockChatOptions = Partial<
   Readonly<{
     commandHandlers: Map<string, CommandHandler>
-    sendMessage: (target: DeferredDeliveryTarget, text: string) => Promise<void>
+    sendMessage: (
+      platformInstanceId: string,
+      target: DeferredDeliveryTarget,
+      text: string,
+    ) => ReturnType<ChatProvider['sendMessage']>
     onMessageHandler: (handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>) => void
     resolveUserId: (username: string, context: ResolveUserContext) => Promise<string | null>
-    resolveUserLabel: (userId: string, context?: ResolveUserContext) => Promise<string | null>
+    resolveUserLabel: (userId: string, context: ResolveUserContext | undefined) => Promise<string | null>
     resolveGroupLabel: (groupId: string) => Promise<string | null>
     onInteractionHandler: (handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) => void
     setCommands: (adminUserId: string) => Promise<void>
@@ -334,15 +340,20 @@ type CreateMockChatOptions = Partial<
 const EMPTY_CREATE_AUTH_OPTIONS: CreateAuthOptions = {}
 const EMPTY_CREATE_MOCK_CHAT_OPTIONS: CreateMockChatOptions = {}
 const DEFAULT_MOCK_CHAT_TRAITS: ChatProviderTraits = { observedGroupMessages: 'all' }
-const DEFAULT_SEND_MESSAGE: (target: DeferredDeliveryTarget, text: string) => Promise<void> = (_target, _text) =>
-  Promise.resolve()
+const DEFAULT_SEND_MESSAGE: (
+  platformInstanceId: string,
+  target: DeferredDeliveryTarget,
+  text: string,
+) => ReturnType<ChatProvider['sendMessage']> = (_platformInstanceId, _target, _text) => Promise.resolve()
 const DEFAULT_SET_COMMANDS: (adminUserId: string) => Promise<void> = (_adminUserId) => Promise.resolve()
 const DEFAULT_RESOLVE_USER_ID = (username: string, _context: ResolveUserContext): Promise<string | null> => {
   const clean = username.startsWith('@') ? username.slice(1) : username
   return Promise.resolve(clean)
 }
-const DEFAULT_RESOLVE_USER_LABEL = (_userId: string, _context?: ResolveUserContext): Promise<string | null> =>
-  Promise.resolve(null)
+const DEFAULT_RESOLVE_USER_LABEL = (
+  _userId: string,
+  _context: ResolveUserContext | undefined,
+): Promise<string | null> => Promise.resolve(null)
 const DEFAULT_RESOLVE_GROUP_LABEL = (_groupId: string): Promise<string | null> => Promise.resolve(null)
 
 function hasAppError(error: Error): error is Error & { appError: AppError } {
@@ -450,7 +461,11 @@ export function createMockChat(...args: [] | [options: CreateMockChatOptions]): 
   const resolveGroupLabel = options.resolveGroupLabel
   const setCommands = options.setCommands
 
-  let sendMessageImpl: (target: DeferredDeliveryTarget, text: string) => Promise<void> = DEFAULT_SEND_MESSAGE
+  let sendMessageImpl: (
+    platformInstanceId: string,
+    target: DeferredDeliveryTarget,
+    text: string,
+  ) => ReturnType<ChatProvider['sendMessage']> = DEFAULT_SEND_MESSAGE
   if (sendMessage !== undefined) {
     sendMessageImpl = sendMessage
   }
@@ -546,7 +561,7 @@ export function createMockChatWithHandler(sendMessageImpl: (userId: string, mark
   const handlers = new Map<string, CommandHandler>()
   const mockChat = createMockChat({
     commandHandlers: handlers,
-    sendMessage: (target: DeferredDeliveryTarget, text: string): Promise<void> =>
+    sendMessage: (_platformInstanceId: string, target: DeferredDeliveryTarget, text: string): Promise<void> =>
       sendMessageImpl(target.contextId, text),
   })
   return { mockChat, handlers }
@@ -586,13 +601,13 @@ export function createMockChatForBot(): {
  */
 export function createMockChatWithSentMessages(): {
   provider: ChatProvider
-  sentMessages: Array<{ target: DeferredDeliveryTarget; text: string }>
+  sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }>
 } {
-  const sentMessages: Array<{ target: DeferredDeliveryTarget; text: string }> = []
+  const sentMessages: Array<{ platformInstanceId: string; target: DeferredDeliveryTarget; text: string }> = []
 
   const provider = createMockChat({
-    sendMessage: (target: DeferredDeliveryTarget, text: string): Promise<void> => {
-      sentMessages.push({ target, text })
+    sendMessage: (platformInstanceId: string, target: DeferredDeliveryTarget, text: string): Promise<void> => {
+      sentMessages.push({ platformInstanceId, target, text })
       return Promise.resolve()
     },
   })

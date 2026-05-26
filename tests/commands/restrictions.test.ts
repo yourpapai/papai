@@ -10,7 +10,8 @@ import type { ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerAdminCommands } from '../../src/commands/admin.js'
 import { registerClearCommand } from '../../src/commands/clear.js'
 import { registerConfigCommand } from '../../src/commands/config.js'
-import { addUser } from '../../src/users.js'
+import { addAdmin } from '../../src/instances/admin-store.js'
+import { addUser as addScopedUser } from '../../src/users.js'
 import {
   createAuth,
   createDmMessage,
@@ -21,8 +22,15 @@ import {
   setupTestDb,
 } from '../utils/test-helpers.js'
 
+const TEST_PLATFORM_ID = 'test-instance'
+
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args[0]
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
 function firstCall(calls: readonly string[]): string {
-  assert(calls.length > 0, 'Expected at least one call')
+  assert.ok(calls.length > 0, 'Expected at least one call')
   return calls[0]!
 }
 
@@ -42,6 +50,7 @@ describe('command context restrictions', () => {
 
     // Add admin user
     addUser(adminUserId, adminUserId)
+    addAdmin(adminUserId, TEST_PLATFORM_ID)
 
     // Setup mock chat provider
     const { provider, commandHandlers: handlers } = createMockChatWithCommandHandlers()

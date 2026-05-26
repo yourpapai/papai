@@ -5,15 +5,16 @@
 
 import pLimit from 'p-limit'
 
-import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
-import { supportsUserResolution } from '../chat/capabilities.js'
-import { resolveChatGroupDisplayLabel, resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
+import { addAuthorizedGroup, removeAuthorizedGroup } from '../authorized-groups.js'
+import { resolveChatUserDisplayLabel } from '../chat/group-display-resolution.js'
+import { toStorageContextId } from '../chat/scoped-context.js'
 import type { AuthorizationResult, ChatProvider, IncomingMessage, ReplyFn, ResolveUserContext } from '../chat/types.js'
 import { addGroupMember, listGroupMembers, removeGroupMember } from '../groups.js'
 import { logger } from '../logger.js'
+import { listAuthorizedGroupDisplayLines } from './group-authorized-list.js'
+import { extractGroupUserId } from './group-user-id.js'
 
 const log = logger.child({ scope: 'commands:group' })
-
 const GROUP_CHAT_USAGE = 'Usage: /group adduser <user-id|@username> | /group deluser <user-id|@username> | /group users'
 const DM_ADMIN_USAGE = 'Usage: /group add <group-id> | /group remove <group-id> | /groups'
 const MAX_CONCURRENT_LABEL_LOOKUPS = 5
@@ -22,6 +23,7 @@ type LabelResolverContext = {
   readonly chat: ChatProvider
   readonly contextId: string
   readonly contextType: 'dm' | 'group'
+  readonly platformInstanceId: string | undefined
 }
 
 type ScheduleLookup = (lookup: () => Promise<string | null>) => Promise<string | null>
@@ -31,6 +33,20 @@ function makeDisplayLabel(label: string | null, fallback: string): string {
   return label
 }
 
+function getGroupStorageContextId(auth: AuthorizationResult): string {
+  if (auth.configContextId !== undefined) return auth.configContextId
+  return auth.storageContextId
+}
+
+function resolveUserContextForLabelLookup(resolverContext: LabelResolverContext): ResolveUserContext {
+  return resolverContext.platformInstanceId === undefined
+    ? { contextId: resolverContext.contextId, contextType: resolverContext.contextType }
+    : {
+        contextId: resolverContext.contextId,
+        contextType: resolverContext.contextType,
+        platformInstanceId: resolverContext.platformInstanceId,
+      }
+}
 function resolveUserLabelCached(
   resolverContext: LabelResolverContext,
   userId: string,
@@ -41,45 +57,23 @@ function resolveUserLabelCached(
   const existing = cache.get(cacheKey)
   if (existing !== undefined) return existing
   const pending = scheduleLookup(() =>
-    resolveChatUserDisplayLabel(resolverContext.chat, userId, {
-      contextId: resolverContext.contextId,
-      contextType: resolverContext.contextType,
-    }).catch((error: unknown): string | null => {
-      log.warn(
-        {
-          userId,
-          contextId: resolverContext.contextId,
-          contextType: resolverContext.contextType,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'User label lookup failed in group command',
-      )
-      return null
-    }),
+    resolveChatUserDisplayLabel(resolverContext.chat, userId, resolveUserContextForLabelLookup(resolverContext)).catch(
+      (error: unknown): string | null => {
+        log.warn(
+          {
+            userId,
+            contextId: resolverContext.contextId,
+            contextType: resolverContext.contextType,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'User label lookup failed in group command',
+        )
+        return null
+      },
+    ),
   )
 
   cache.set(cacheKey, pending)
-  return pending
-}
-
-function resolveGroupLabelCached(
-  chat: ChatProvider,
-  groupId: string,
-  cache: Map<string, Promise<string | null>>,
-  scheduleLookup: ScheduleLookup,
-): Promise<string | null> {
-  const existing = cache.get(groupId)
-  if (existing !== undefined) return existing
-  const pending = scheduleLookup(() =>
-    resolveChatGroupDisplayLabel(chat, groupId).catch((error: unknown): string | null => {
-      log.warn(
-        { groupId, error: error instanceof Error ? error.message : String(error) },
-        'Group label lookup failed in group command',
-      )
-      return null
-    }),
-  )
-  cache.set(groupId, pending)
   return pending
 }
 
@@ -89,7 +83,7 @@ export function registerGroupCommand(chat: ChatProvider): void {
       await handleAuthorizedGroupCommand(msg, reply, auth)
       return
     }
-    await handleGroupMemberCommand(chat, msg, reply)
+    await handleGroupMemberCommand(chat, msg, reply, auth)
   })
   chat.registerCommand('groups', async (msg: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => {
     if (msg.contextType !== 'dm') {
@@ -100,36 +94,21 @@ export function registerGroupCommand(chat: ChatProvider): void {
       await reply.text('Only bot admins can list authorized groups.')
       return
     }
-    const groups = listAuthorizedGroups()
-    if (groups.length === 0) {
+    const lines = await listAuthorizedGroupDisplayLines(chat)
+    if (lines.length === 0) {
       await reply.text('No authorized groups.')
       return
     }
-    const groupLabelCache = new Map<string, Promise<string | null>>()
-    const userLabelCache = new Map<string, Promise<string | null>>()
-    const limit = pLimit(MAX_CONCURRENT_LABEL_LOOKUPS)
-    const lines = await Promise.all(
-      groups.map(async (group) => {
-        const [resolvedGroupLabel, resolvedUserLabel] = await Promise.all([
-          resolveGroupLabelCached(chat, group.group_id, groupLabelCache, limit),
-          resolveUserLabelCached(
-            { chat, contextId: group.group_id, contextType: 'group' },
-            group.added_by,
-            userLabelCache,
-            limit,
-          ),
-        ])
-
-        const groupLabel = makeDisplayLabel(resolvedGroupLabel, group.group_id)
-        const userLabel = makeDisplayLabel(resolvedUserLabel, group.added_by)
-        return `${groupLabel} (added by ${userLabel})`
-      }),
-    )
     await reply.text(`Authorized groups:\n${lines.join('\n')}`)
   })
 }
 
-async function handleGroupMemberCommand(chat: ChatProvider, msg: IncomingMessage, reply: ReplyFn): Promise<void> {
+async function handleGroupMemberCommand(
+  chat: ChatProvider,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+): Promise<void> {
   const match = typeof msg.commandMatch === 'string' ? msg.commandMatch.trim() : ''
   if (!match) {
     await reply.text(GROUP_CHAT_USAGE)
@@ -141,13 +120,13 @@ async function handleGroupMemberCommand(chat: ChatProvider, msg: IncomingMessage
 
   switch (subcommand) {
     case 'adduser':
-      await handleGroupMemberUpdate(chat, msg, reply, targetUser, 'add')
+      await handleGroupMemberUpdate(chat, msg, reply, auth, targetUser, 'add')
       break
     case 'deluser':
-      await handleGroupMemberUpdate(chat, msg, reply, targetUser, 'remove')
+      await handleGroupMemberUpdate(chat, msg, reply, auth, targetUser, 'remove')
       break
     case 'users':
-      await handleListUsers(chat, msg, reply)
+      await handleListUsers(chat, msg, reply, auth)
       break
     case '':
     case undefined:
@@ -181,17 +160,22 @@ async function handleAuthorizedGroupCommand(
     return
   }
 
+  const storageGroupId = toStorageContextId(msg.platformInstanceId, groupId)
+
   if (subcommand === 'add') {
-    addAuthorizedGroup(groupId, msg.user.id)
+    addAuthorizedGroup(storageGroupId, msg.user.id)
     await reply.text(`Group ${groupId} authorized.`)
-    log.info({ groupId, userId: msg.user.id }, 'Authorized group added')
+    log.info({ groupId: storageGroupId, nativeGroupId: groupId, userId: msg.user.id }, 'Authorized group added')
     return
   }
 
   if (subcommand === 'remove') {
-    const removed = removeAuthorizedGroup(groupId)
+    const removed = removeAuthorizedGroup(storageGroupId)
     await reply.text(removed ? `Group ${groupId} removed.` : `Group ${groupId} was not authorized.`)
-    log.info({ groupId, userId: msg.user.id, removed }, 'Authorized group removal attempted')
+    log.info(
+      { groupId: storageGroupId, nativeGroupId: groupId, userId: msg.user.id, removed },
+      'Authorized group removal attempted',
+    )
     return
   }
 
@@ -202,6 +186,7 @@ async function handleGroupMemberUpdate(
   chat: ChatProvider,
   msg: IncomingMessage,
   reply: ReplyFn,
+  auth: AuthorizationResult,
   targetUser: string | undefined,
   action: 'add' | 'remove',
 ): Promise<void> {
@@ -217,9 +202,10 @@ async function handleGroupMemberUpdate(
     return
   }
 
-  const result = await extractUserId(chat, targetUser, {
+  const result = await extractGroupUserId(chat, targetUser, {
     contextId: msg.contextId,
     contextType: msg.contextType,
+    platformInstanceId: msg.platformInstanceId,
   })
   if (result.kind === 'error') {
     await reply.text(result.message)
@@ -227,20 +213,26 @@ async function handleGroupMemberUpdate(
   }
 
   const { userId } = result
+  const storageGroupId = getGroupStorageContextId(auth)
   if (action === 'add') {
-    addGroupMember(msg.contextId, userId, msg.user.id)
+    addGroupMember(storageGroupId, userId, msg.user.id)
     await reply.text(`User ${targetUser} added to this group.`)
-    log.info({ groupId: msg.contextId, userId }, 'Group member added')
+    log.info({ groupId: storageGroupId, nativeGroupId: msg.contextId, userId }, 'Group member added')
     return
   }
 
-  removeGroupMember(msg.contextId, userId)
+  removeGroupMember(storageGroupId, userId)
   await reply.text(`User ${targetUser} removed from this group.`)
-  log.info({ groupId: msg.contextId, userId }, 'Group member removed')
+  log.info({ groupId: storageGroupId, nativeGroupId: msg.contextId, userId }, 'Group member removed')
 }
 
-async function handleListUsers(chat: ChatProvider, msg: IncomingMessage, reply: ReplyFn): Promise<void> {
-  const members = listGroupMembers(msg.contextId)
+async function handleListUsers(
+  chat: ChatProvider,
+  msg: IncomingMessage,
+  reply: ReplyFn,
+  auth: AuthorizationResult,
+): Promise<void> {
+  const members = listGroupMembers(getGroupStorageContextId(auth))
 
   if (members.length === 0) {
     await reply.text('No members in this group yet.')
@@ -252,6 +244,7 @@ async function handleListUsers(chat: ChatProvider, msg: IncomingMessage, reply: 
     chat,
     contextId: msg.contextId,
     contextType: msg.contextType,
+    platformInstanceId: msg.platformInstanceId,
   }
   const lines = await Promise.all(
     members.map(async (member) => {
@@ -266,35 +259,4 @@ async function handleListUsers(chat: ChatProvider, msg: IncomingMessage, reply: 
     }),
   )
   await reply.text(`Group members:\n${lines.join('\n')}`)
-}
-
-async function extractUserId(
-  chat: ChatProvider,
-  input: string,
-  context: ResolveUserContext,
-): Promise<{ kind: 'resolved'; userId: string } | { kind: 'error'; message: string }> {
-  if (input.startsWith('@')) {
-    if (!supportsUserResolution(chat)) {
-      return {
-        kind: 'error',
-        message: 'This chat provider does not support username lookup. Use an explicit user ID.',
-      }
-    }
-    const resolveUserId = chat.resolveUserId
-    if (resolveUserId === undefined) {
-      return {
-        kind: 'error',
-        message: 'This chat provider does not support username lookup. Use an explicit user ID.',
-      }
-    }
-    const resolved = await resolveUserId(input, context)
-    if (resolved === null || resolved === undefined) {
-      return { kind: 'error', message: "Couldn't resolve that username. Use an explicit user ID." }
-    }
-    return { kind: 'resolved', userId: resolved }
-  }
-  if (/^\d+$/u.test(input) || /^[a-zA-Z0-9_-]+$/u.test(input)) {
-    return { kind: 'resolved', userId: input }
-  }
-  return { kind: 'error', message: 'Please provide a valid user mention or ID.' }
 }

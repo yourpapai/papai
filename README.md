@@ -38,7 +38,7 @@
 
 ## Overview
 
-Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, or Discord, connect it to Kaneo or YouTrack, and manage work through conversational task operations.
+Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, or Discord, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
 
 The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal settings remain user-scoped, while DM `/setup` and `/config` can also target shared group settings for groups the user manages. Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
 
@@ -108,9 +108,12 @@ Edit `.env`:
 
 ```bash
 # Required for all setups
+ADMIN_USER_ID=123456789         # Your platform user ID
+
+# First-run instance bootstrap. Used only when instance tables are empty.
 CHAT_PROVIDER=telegram          # or: mattermost, discord
 TASK_PROVIDER=kaneo             # or: youtrack
-ADMIN_USER_ID=123456789         # Your platform user ID
+# INSTANCE_CONFIG_KEY=64_hex_chars_for_production_config_encryption
 
 # Central LLM credentials (seeded once into system_config on first start)
 LLM_API_KEY=sk-...
@@ -142,16 +145,21 @@ For groups, run `/setup` or `/config` in DM and choose either personal settings 
 
 > LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
 
+> `CHAT_PROVIDER` and `TASK_PROVIDER` seed the first platform/task instances only when the instance tables are empty. After bootstrap, platform instances, task instances, and admins are managed from SQLite and the admin Instances surface (`/admin#instances`).
+
 ---
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    Runtime[src/index.ts] --> CP[ChatProvider]
+    Runtime[src/index.ts] --> Router[ChatRouter]
     Runtime --> Debug[Optional Debug Server + Debug/Admin UIs]
-    User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| CP
-    CP -->|IncomingMessage / IncomingInteraction| Bot[bot.ts]
+    Router --> CP1[Telegram Instance]
+    Router --> CP2[Mattermost Instance]
+    Router --> CP3[Discord Instance]
+    User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| Router
+    Router -->|IncomingMessage / IncomingInteraction + platformInstanceId| Bot[bot.ts]
     Bot -->|intercepts setup/config/group-selector flows| Intercept[Wizard + Config Editor + Group Settings]
     Bot -->|queued prompt + reply context + attachment ids| Queue[Message Queue + Attachment Workspace]
     Queue --> LLM[LLM Orchestrator]
@@ -159,8 +167,8 @@ flowchart TD
     Tools --> Providers[Task Providers]
     Providers --> APIs[Task Tracker APIs]
     Tools --> Web[Web Fetch / Extraction]
-    LLM --> CP
-    CP --> User
+    LLM --> Router
+    Router --> User
 ```
 
 ### Component Overview
@@ -169,10 +177,11 @@ flowchart TD
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring           |
 | `src/bot.ts`                                       | Platform-agnostic message handling, interception, queueing, and interaction routing        |
-| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata                        |
+| `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`   |
 | `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                             |
 | `src/tools/`                                       | Context-aware, capability-gated tool assembly                                              |
 | `src/providers/`                                   | Kaneo and YouTrack provider adapters                                                       |
+| `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap         |
 | `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                      |
 | `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
 | `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                |
@@ -188,13 +197,14 @@ flowchart TD
 ### Environment Variables
 
 <details>
-<summary><b>Required Variables</b> (click to expand)</summary>
+<summary><b>Startup And Bootstrap Variables</b> (click to expand)</summary>
 
-| Variable        | Description                       | Example                                            |
-| --------------- | --------------------------------- | -------------------------------------------------- |
-| `CHAT_PROVIDER` | Chat platform                     | `telegram`, `mattermost`, or `discord`             |
-| `ADMIN_USER_ID` | Initial authorized admin identity | Platform user ID string seen by the active adapter |
-| `TASK_PROVIDER` | Task tracker backend              | `kaneo` or `youtrack`                              |
+| Variable              | When required                    | Description                                                                                     | Example                                            |
+| --------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `ADMIN_USER_ID`       | Always                           | Initial authorized admin identity                                                               | Platform user ID string seen by the active adapter |
+| `CHAT_PROVIDER`       | First run with empty instance DB | Platform bootstrap source                                                                       | `telegram`, `mattermost`, or `discord`             |
+| `TASK_PROVIDER`       | First run with empty instance DB | Task-provider bootstrap source                                                                  | `kaneo` or `youtrack`                              |
+| `INSTANCE_CONFIG_KEY` | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset | 64 hex chars                                       |
 
 </details>
 
@@ -293,6 +303,7 @@ Admin sections include:
 - **System** at `/admin#system` — environment summary plus the credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
 - **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows) and drill-down by request.
 - **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
+- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest.
 
 When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer token. When it is unset, read-only debug/admin routes remain available without a token. `POST /admin/llm` is the special case: it returns 401 when `DEBUG_TOKEN` is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
 
@@ -336,6 +347,8 @@ Runtime keys shown by `/setup` and `/config` include:
 | `timezone`       | User timezone for local date/time interpretation |
 
 LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
+
+Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates `<provider>-default` instance rows from `CHAT_PROVIDER`, `TASK_PROVIDER`, and provider-specific env vars only when the instance tables are empty. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences remain in `/setup` and `/config`.
 
 ---
 
@@ -545,6 +558,7 @@ services:
       ADMIN_USER_ID: '123456789'
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       KANEO_CLIENT_URL: https://kaneo.example.com
+      INSTANCE_CONFIG_KEY: ${INSTANCE_CONFIG_KEY}
 ```
 
 For a real deployment, prefer the checked-in `docker-compose.yml` and `.env.example` together, because the full stack is Kaneo-specific and also needs Kaneo database/auth settings. For YouTrack deployments, you typically run `papai` against an external YouTrack instance instead of this full bundled stack.

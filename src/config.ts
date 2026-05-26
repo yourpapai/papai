@@ -4,8 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { getCachedConfig, setCachedConfig } from './cache.js'
+import { getConfigKeysForContext } from './config-keys.js'
 import { logger } from './logger.js'
-import { ALL_CONFIG_KEYS, CONFIG_KEYS, type ConfigKey } from './types/config.js'
+import { ALL_CONFIG_KEYS, type ConfigKey } from './types/config.js'
 import { normalizeTimezoneValue } from './utils/timezone.js'
 
 const log = logger.child({ scope: 'config' })
@@ -45,7 +46,7 @@ export function isConfigKey(key: string): key is ConfigKey {
 export function getAllConfig(userId: string): Partial<Record<ConfigKey, string>> {
   log.debug({ userId }, 'getAllConfig called')
   const result: Partial<Record<ConfigKey, string>> = {}
-  for (const key of CONFIG_KEYS) {
+  for (const key of getConfigKeysForContext(userId)) {
     const value = readConfigValue(key, getCachedConfig(userId, key))
     if (value !== null) {
       result[key] = value

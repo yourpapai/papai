@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { userCachesForTesting } from '../../src/cache.js'
 import {
@@ -78,14 +78,9 @@ describe('context-tool-resolution', () => {
     expect(result).toBeNull()
   })
 
-  test('safeBuildProvider returns null when factory throws', () => {
-    void mock.module('../../src/providers/factory.js', () => ({
-      buildProviderForUser: (): never => {
-        throw new Error('factory failed')
-      },
-    }))
-
+  test('safeBuildProvider returns null when resolver has no provider', () => {
     const result = safeBuildProvider('user-1')
+
     expect(result).toBeNull()
   })
 })

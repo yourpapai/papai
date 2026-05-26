@@ -24,7 +24,7 @@ describe('getSubjectStats', () => {
   test('returns populated SubjectStats with userBlock for a DM subject', () => {
     getDrizzleDb()
       .insert(users)
-      .values([{ platformUserId: 'u1', addedBy: 'admin', username: 'alice' }])
+      .values([{ platformUserId: 'u1', platformInstanceId: 'legacy-single', addedBy: 'admin', username: 'alice' }])
       .run()
     getDrizzleDb()
       .insert(llmUsageEvents)

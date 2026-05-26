@@ -3,9 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigKeysForContext } from '../config-keys.js'
 import { getAllConfig, isSensitiveKey, maskValue } from '../config.js'
 import { logger } from '../logger.js'
-import { CONFIG_KEYS, type ConfigKey } from '../types/config.js'
+import type { ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'wizard:engine' })
 import { buildPendingWizardResponse } from './responses.js'
@@ -170,7 +171,7 @@ export function createWizard(userId: string, storageContextId: string, taskProvi
   const existingConfig = getAllConfig(storageContextId)
   const initialData: Partial<Record<ConfigKey, string>> = {}
 
-  for (const key of CONFIG_KEYS) {
+  for (const key of getConfigKeysForContext(storageContextId)) {
     const value = existingConfig[key]
     if (value !== undefined) {
       initialData[key] = value

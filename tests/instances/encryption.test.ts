@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+
+import {
+  decryptInstanceConfig,
+  encryptInstanceConfig,
+  maskConfig,
+  resolveInstanceConfigKey,
+} from '../../src/instances/encryption.js'
+
+const originalEnv = process.env['INSTANCE_CONFIG_KEY']
+
+describe('encryption', () => {
+  beforeEach(() => {
+    // 32-byte hex key
+    process.env['INSTANCE_CONFIG_KEY'] = '0'.repeat(64)
+  })
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env['INSTANCE_CONFIG_KEY']
+    else process.env['INSTANCE_CONFIG_KEY'] = originalEnv
+  })
+
+  test('round-trips a config object', () => {
+    const plain = { token: 'abc123', url: 'https://example.invalid' }
+    const cipher = encryptInstanceConfig(plain)
+    const back = decryptInstanceConfig(cipher)
+    expect(back).toEqual(plain)
+  })
+
+  test('produces different ciphertexts for the same plaintext (IV non-determinism)', () => {
+    const plain = { token: 'abc' }
+    const a = encryptInstanceConfig(plain)
+    const b = encryptInstanceConfig(plain)
+    expect(a).not.toEqual(b)
+  })
+
+  test('tampered ciphertext throws on decrypt', () => {
+    const plain = { token: 'abc' }
+    const cipher = encryptInstanceConfig(plain)
+    // Decode, XOR the last byte of the ciphertext, re-encode — guarantees a change.
+    const buf = Buffer.from(cipher, 'base64')
+    expect(buf.length).toBeGreaterThan(0)
+    buf.writeUInt8(buf.readUInt8(buf.length - 1) ^ 0xff, buf.length - 1)
+    const tampered = buf.toString('base64')
+    expect(() => decryptInstanceConfig(tampered)).toThrow()
+  })
+
+  test('payload too short throws clear error', () => {
+    expect(() => decryptInstanceConfig('AAAA')).toThrow(/too short/iu)
+  })
+
+  test('resolveInstanceConfigKey uses 64-hex env value verbatim', () => {
+    process.env['INSTANCE_CONFIG_KEY'] = 'a'.repeat(64)
+    const key = resolveInstanceConfigKey()
+    expect(key.length).toBe(32)
+    expect(key[0]).toBe(0xaa)
+  })
+
+  test('resolveInstanceConfigKey hashes non-hex strings with SHA-256', () => {
+    process.env['INSTANCE_CONFIG_KEY'] = 'not-a-hex-key'
+    const key = resolveInstanceConfigKey()
+    expect(key.length).toBe(32)
+  })
+
+  test('resolveInstanceConfigKey returns derived fallback when env missing', () => {
+    delete process.env['INSTANCE_CONFIG_KEY']
+    const key = resolveInstanceConfigKey()
+    expect(key.length).toBe(32)
+    // Same fallback should be deterministic
+    const again = resolveInstanceConfigKey()
+    expect(again.equals(key)).toBe(true)
+  })
+
+  test('maskConfig masks secret-like keys and preserves others', () => {
+    const masked = maskConfig({
+      token: 'xyz',
+      apiKey: 'kkk',
+      password: 'pw',
+      cookie: 'c',
+      secret: 's',
+      url: 'https://example.invalid',
+      name: 'plain',
+    })
+    expect(masked['token']).toBe('***')
+    expect(masked['apiKey']).toBe('***')
+    expect(masked['password']).toBe('***')
+    expect(masked['cookie']).toBe('***')
+    expect(masked['secret']).toBe('***')
+    expect(masked['url']).toBe('https://example.invalid')
+    expect(masked['name']).toBe('plain')
+  })
+})

@@ -11,7 +11,7 @@ import path from 'node:path'
 import { logBuffer, logBufferStream } from '../../src/debug/log-buffer.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel, logMultistream } from '../../src/logger.js'
-import { restoreFetch } from '../utils/test-helpers.js'
+import { restoreFetch, setupTestDb } from '../utils/test-helpers.js'
 
 const PINO_LEVEL_VALUES: Record<string, number> = {
   trace: 10,
@@ -43,8 +43,13 @@ function ensurePublicBuilt(): void {
 
 /** Narrow a parsed JSON body to an array, throwing if it is not one. */
 function assertArray(value: unknown): unknown[] {
-  assert(Array.isArray(value), 'expected array')
+  assert.ok(Array.isArray(value), 'expected array')
   return value
+}
+
+async function cancelBody(res: Response): Promise<void> {
+  if (res.body === null) return
+  await res.body.cancel()
 }
 
 /**
@@ -52,8 +57,8 @@ function assertArray(value: unknown): unknown[] {
  * that key so callers never need to use index-signature dot access.
  */
 function assertLogEntryKey(entry: unknown, key: string): unknown {
-  assert(typeof entry === 'object' && entry !== null, 'expected log entry to be an object')
-  assert(key in entry, `expected log entry to have key "${key}"`)
+  assert.ok(typeof entry === 'object' && entry !== null, 'expected log entry to be an object')
+  assert.ok(key in entry, `expected log entry to have key "${key}"`)
   return Reflect.get(entry, key)
 }
 
@@ -62,10 +67,10 @@ function assertLogEntryKey(entry: unknown, key: string): unknown {
  * Returns `undefined` if the stream is not present.
  */
 function findBufferStreamLevel(multistream: unknown, target: unknown): unknown {
-  assert(typeof multistream === 'object' && multistream !== null, 'expected multistream to be an object')
+  assert.ok(typeof multistream === 'object' && multistream !== null, 'expected multistream to be an object')
   const streams = assertArray(Reflect.get(multistream, 'streams'))
   for (const entry of streams) {
-    assert(typeof entry === 'object' && entry !== null, 'expected stream entry to be an object')
+    assert.ok(typeof entry === 'object' && entry !== null, 'expected stream entry to be an object')
     if (Reflect.get(entry, 'stream') === target) {
       return Reflect.get(entry, 'level')
     }
@@ -114,8 +119,9 @@ function mockDebugServerDependencies(): void {
 describe('debug-server', () => {
   let capturedLogLevel: string
 
-  beforeAll(() => {
+  beforeAll(async () => {
     mockDebugServerDependencies()
+    await setupTestDb()
     ensurePublicBuilt()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
@@ -180,25 +186,25 @@ describe('debug-server', () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`, { redirect: 'manual' })
     expect(res.status).toBe(301)
     expect(res.headers.get('location')).toBe('/debug')
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /dashboard-state.js returns 404 (legacy route removed)', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/dashboard-state.js`)
     expect(res.status).toBe(404)
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /dashboard-ui.js returns 404 (legacy route removed)', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/dashboard-ui.js`)
     expect(res.status).toBe(404)
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /dashboard.xyz returns 404', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.xyz`)
     expect(res.status).toBe(404)
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /events returns SSE headers', async () => {
@@ -207,13 +213,13 @@ describe('debug-server', () => {
     expect(res.headers.get('content-type')).toBe('text/event-stream')
     expect(res.headers.get('cache-control')).toBe('no-cache')
     // Abort the stream to clean up
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('unknown route returns 404', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/nonexistent`)
     expect(res.status).toBe(404)
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /logs returns JSON array', async () => {
@@ -327,7 +333,7 @@ describe('debug-server', () => {
   test('GET /turns/:id returns 404 for unknown turnId', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/turns/nonexistent`)
     expect(res.status).toBe(404)
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /recurring returns 400 when userId is missing', async () => {
@@ -393,7 +399,7 @@ describe('debug-server', () => {
   test('GET /identity returns 404 for unknown user', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/identity?userId=nonexistent-user`)
     expect(res.status).toBe(404)
-    await res.body?.cancel()
+    await cancelBody(res)
   })
 
   test('GET /auth/groups returns JSON array', async () => {
@@ -402,5 +408,26 @@ describe('debug-server', () => {
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries).toBeArray()
+  })
+
+  test('POST /api/platform-instances is dispatched by debug server write gate when DEBUG_TOKEN is unset', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' } }),
+    })
+
+    expect(res.status).toBe(401)
+    await cancelBody(res)
+  })
+
+  test('GET /api/platform-instances keeps server bearer gate when DEBUG_TOKEN is configured', async () => {
+    process.env['DEBUG_TOKEN'] = 'server-test-token'
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`)
+
+    expect(res.status).toBe(401)
+    await cancelBody(res)
+    delete process.env['DEBUG_TOKEN']
   })
 })

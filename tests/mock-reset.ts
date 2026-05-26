@@ -34,26 +34,35 @@ import * as _bot from '../src/bot.js'
 import * as _interactionRouter from '../src/chat/interaction-router.js'
 import * as _chatMattermost from '../src/chat/mattermost/index.js'
 import * as _chatRegistry from '../src/chat/registry.js'
+import * as _chatRouter from '../src/chat/router.js'
 import * as _chatStartup from '../src/chat/startup.js'
 import * as _chatTelegram from '../src/chat/telegram/index.js'
 import { resetDrizzleDbForTesting } from '../src/db/drizzle.js'
 import * as _dbDrizzle from '../src/db/drizzle.js'
 import * as _dbIndex from '../src/db/index.js'
+import * as _chatRouterRuntime from '../src/debug/chat-router-runtime.js'
 import * as _poller from '../src/deferred-prompts/poller.js'
 import * as _scheduledPrompts from '../src/deferred-prompts/scheduled.js'
 import * as _identityMapping from '../src/identity/mapping.js'
+import * as _instancesBootstrap from '../src/instances/bootstrap.js'
+import * as _platformStore from '../src/instances/platform-store.js'
+import * as _taskStore from '../src/instances/task-store.js'
 import * as _logger from '../src/logger.js'
 import * as _memos from '../src/memos.js'
 import * as _messageCache from '../src/message-cache/cache.js'
 import * as _messageCacheIndex from '../src/message-cache/index.js'
 import * as _messageQueueIndex from '../src/message-queue/index.js'
-import * as _providersFactory from '../src/providers/factory.js'
+import * as _pluginDiscovery from '../src/plugins/discovery.js'
+import * as _pluginLoader from '../src/plugins/loader.js'
+import * as _pluginRegistry from '../src/plugins/registry.js'
 import * as _provision from '../src/providers/kaneo/provision.js'
+import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
 import * as _scheduler from '../src/scheduler.js'
 import * as _systemConfig from '../src/system-config.js'
 import * as _toolsIndex from '../src/tools/index.js'
+import * as _usageIndex from '../src/usage/index.js'
 import * as _users from '../src/users.js'
 
 const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
@@ -70,22 +79,31 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/bot.js', { ..._bot }],
   ['../src/chat/mattermost/index.js', { ..._chatMattermost }],
   ['../src/chat/registry.js', { ..._chatRegistry }],
+  ['../src/chat/router.js', { ..._chatRouter }],
   ['../src/chat/startup.js', { ..._chatStartup }],
   ['../src/chat/telegram/index.js', { ..._chatTelegram }],
   ['../src/db/drizzle.js', { ..._dbDrizzle }],
   ['../src/db/index.js', { ..._dbIndex }],
+  ['../src/debug/chat-router-runtime.js', { ..._chatRouterRuntime }],
   ['../src/deferred-prompts/scheduled.js', { ..._scheduledPrompts }],
   ['../src/deferred-prompts/poller.js', { ..._poller }],
   ['../src/identity/mapping.js', { ..._identityMapping }],
+  ['../src/instances/bootstrap.js', { ..._instancesBootstrap }],
+  ['../src/instances/platform-store.js', { ..._platformStore }],
+  ['../src/instances/task-store.js', { ..._taskStore }],
   ['../src/memos.js', { ..._memos }],
   ['../src/message-cache/index.js', { ..._messageCacheIndex }],
   ['../src/message-queue/index.js', { ..._messageQueueIndex }],
-  ['../src/providers/factory.js', { ..._providersFactory }],
+  ['../src/plugins/discovery.js', { ..._pluginDiscovery }],
+  ['../src/plugins/loader.js', { ..._pluginLoader }],
+  ['../src/plugins/registry.js', { ..._pluginRegistry }],
+  ['../src/providers/resolver.js', { ..._taskProviderResolver }],
   ['../src/recurring.js', { ..._recurring }],
   ['../src/scheduler.js', { ..._scheduler }],
   ['../src/scheduler-instance.js', { ..._schedulerInstance }],
   ['../src/system-config.js', { ..._systemConfig }],
   ['../src/tools/index.js', { ..._toolsIndex }],
+  ['../src/usage/index.js', { ..._usageIndex }],
   ['../src/users.js', { ..._users }],
 ]
 

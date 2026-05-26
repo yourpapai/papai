@@ -6,11 +6,13 @@
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
+import { autoStartWizardIfNeeded } from './bot-auto-setup.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
 import { maybeInterceptWizard } from './bot-settings.js'
 import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
+import { resolveSourceChatProvider, resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
@@ -23,7 +25,6 @@ import {
   registerSetupCommand,
   registerStartCommand,
 } from './commands/index.js'
-import { getAllConfig } from './config.js'
 import { emitUser } from './debug/event-bus.js'
 import type { ProcessMessageFn } from './llm-orchestrator-process-args.js'
 import { defaultDeps, processMessage as defaultProcessMessage } from './llm-orchestrator.js'
@@ -32,26 +33,16 @@ import { enqueueMessage } from './message-queue/index.js'
 import type { CoalescedItem as QueuedCoalescedItem } from './message-queue/index.js'
 import { registerPluginCommands } from './plugins/command-contributions.js'
 import { buildPromptWithReplyContext } from './reply-context.js'
-import { isAuthorized, isDemoUser, resolveUserByUsername } from './users.js'
-import { createWizard, hasActiveWizard } from './wizard/index.js'
-import { getWizardSteps } from './wizard/steps.js'
 
 type EnqueueMessageFn = typeof enqueueMessage
 const initializedChats = new WeakSet<ChatProvider>()
-export interface BotDeps {
-  processMessage: ProcessMessageFn
-  stagedDownloadFn?: StagedFileDownloadFn
-  enqueueMessage?: EnqueueMessageFn
+export type BotDeps = Readonly<{ processMessage: ProcessMessageFn }> &
+  Readonly<Partial<Record<'stagedDownloadFn', StagedFileDownloadFn> & Record<'enqueueMessage', EnqueueMessageFn>>>
+const defaultBotDeps: BotDeps = {
+  processMessage: defaultProcessMessage,
+  enqueueMessage,
 }
-const defaultBotDeps: BotDeps = { processMessage: defaultProcessMessage, enqueueMessage }
 const log = logger.child({ scope: 'bot' })
-const checkAuthorization = (userId: string, username: string | null | undefined): boolean => {
-  log.debug({ userId }, 'Checking authorization')
-  if (isAuthorized(userId)) return true
-  if (username !== undefined && username !== null && resolveUserByUsername(userId, username)) return true
-  log.warn({ attemptedUserId: userId }, 'Unauthorized access attempt')
-  return false
-}
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
   if (auth.reason === 'group_not_allowed')
@@ -79,6 +70,7 @@ function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
     msg.contextType,
     msg.threadId,
     msg.user.isAdmin,
+    msg.platformInstanceId,
   )
 }
 function createObservedCommandHandler(
@@ -118,33 +110,14 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   const observedChat = createObservedChatProvider(chat)
   registerHelpCommand(observedChat)
   registerStartCommand(observedChat)
-  registerSetupCommand(observedChat, checkAuthorization)
-  registerConfigCommand(observedChat, checkAuthorization)
+  registerSetupCommand(observedChat)
+  registerConfigCommand(observedChat)
   registerContextCommand(observedChat)
-  registerClearCommand(observedChat, checkAuthorization, adminUserId)
+  registerClearCommand(observedChat, undefined, adminUserId)
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
   registerPluginCommand(observedChat, adminUserId)
   registerPluginCommands(observedChat)
-}
-function userNeedsSetup(storageContextId: string, taskProvider: 'kaneo' | 'youtrack'): boolean {
-  const config = getAllConfig(storageContextId)
-  return getWizardSteps(taskProvider).some((step) => {
-    if (step.isOptional === true) return false
-    const value = config[step.key]
-    if (value === undefined) return true
-    if (value === '') return true
-    return false
-  })
-}
-async function autoStartWizardIfNeeded(userId: string, storageContextId: string, reply: ReplyFn): Promise<boolean> {
-  if (hasActiveWizard(userId, storageContextId)) return false
-  if (process.env['DEMO_MODE'] === 'true' && isDemoUser(userId)) return false
-  const taskProvider = process.env['TASK_PROVIDER'] === 'youtrack' ? 'youtrack' : 'kaneo'
-  if (!userNeedsSetup(storageContextId, taskProvider)) return false
-  const result = createWizard(userId, storageContextId, taskProvider)
-  if (result.success) await reply.text(result.prompt)
-  return result.success
 }
 async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
   const start = Date.now()
@@ -184,7 +157,8 @@ async function handleMessage(
   }
   if (shouldIgnoreGroupMessage(msg)) return
   const { newAttachmentIds, activeAttachments } = await resolveMessageAttachments(chat, msg, auth.storageContextId)
-  const queueMessage = deps.enqueueMessage ?? enqueueMessage
+  let queueMessage = enqueueMessage
+  if (deps.enqueueMessage !== undefined) queueMessage = deps.enqueueMessage
   queueMessage(
     {
       text: buildPromptWithReplyContext(msg, activeAttachments, auth.storageContextId),
@@ -211,7 +185,7 @@ function tryStageGroupCandidates(chat: ChatProvider, msg: IncomingMessage, stora
     stageGroupFileCandidates({
       storageContextId,
       msg,
-      sourceProvider: toSourceProvider(chat.name),
+      sourceProvider: toSourceProvider(resolveSourceProviderName(chat, msg.platformInstanceId)),
     })
   } catch (error: unknown) {
     log.warn(
@@ -249,7 +223,16 @@ async function onIncomingMessage(
     storageContextId: auth.storageContextId,
   })
   if (auth.allowed) recordGroupObservation(chat, msg)
-  if (await maybeInterceptWizard(msg, tracked.reply, auth, supportsInteractiveButtons(chat), autoStartWizardIfNeeded)) {
+  const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
+  if (
+    await maybeInterceptWizard(
+      msg,
+      tracked.reply,
+      auth,
+      supportsInteractiveButtons(sourceChat),
+      autoStartWizardIfNeeded,
+    )
+  ) {
     emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
     return
   }
@@ -267,6 +250,7 @@ async function routeIncomingInteraction(interaction: IncomingInteraction, reply:
       interaction.contextType,
       interaction.threadId,
       interaction.user.isAdmin,
+      interaction.platformInstanceId,
     )
     if (!auth.allowed) {
       await replyToUnauthorized(reply, auth, interaction.contextId)

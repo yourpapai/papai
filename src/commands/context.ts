@@ -44,7 +44,7 @@ export interface ContextCommandDeps {
     contextType: 'dm' | 'group',
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
-    lastUserText?: string,
+    lastUserText: string | undefined,
   ) => ResolvedContextToolSurface
 }
 
@@ -159,6 +159,17 @@ async function sendContextResponse(
   }
 }
 
+function renderContextForMessage(
+  chat: ChatProvider,
+  msg: { readonly platformInstanceId: string },
+  snapshot: ContextSnapshot,
+): ContextRendered {
+  if (chat.renderContextForInstance !== undefined) {
+    return chat.renderContextForInstance(msg.platformInstanceId, snapshot)
+  }
+  return chat.renderContext(snapshot)
+}
+
 async function buildContextSnapshot(
   storageContextId: string,
   provider: TaskProvider | null,
@@ -218,7 +229,7 @@ async function handleContextCommand(
     return
   }
 
-  const rendered = chat.renderContext(snapshot)
+  const rendered = renderContextForMessage(chat, msg, snapshot)
   await sendContextResponse(reply, rendered)
   logContextExecuted(msg.user.id, auth.storageContextId, snapshot, rendered.method)
 }

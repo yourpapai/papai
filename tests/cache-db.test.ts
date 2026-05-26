@@ -26,8 +26,13 @@ import {
   userInstructions,
   users,
 } from '../src/db/schema.js'
-import { getKaneoWorkspace, setKaneoWorkspace } from '../src/users.js'
+import { addUser, getKaneoWorkspace, setKaneoWorkspace } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+function requireDefined<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error('expected value to be defined')
+  return value
+}
 
 describe('cache-db', () => {
   beforeEach(async () => {
@@ -51,7 +56,7 @@ describe('cache-db', () => {
       const result = db.select().from(conversationHistory).where(eq(conversationHistory.userId, userId)).get()
 
       expect(result).not.toBeUndefined()
-      expect(result?.messages).toBe(JSON.stringify(messages))
+      expect(requireDefined(result).messages).toBe(JSON.stringify(messages))
     })
 
     test('updates existing history', async () => {
@@ -72,7 +77,7 @@ describe('cache-db', () => {
       const db = getDrizzleDb()
       const result = db.select().from(conversationHistory).where(eq(conversationHistory.userId, userId)).get()
 
-      expect(result?.messages).toBe(JSON.stringify(updatedMessages))
+      expect(requireDefined(result).messages).toBe(JSON.stringify(updatedMessages))
     })
   })
 
@@ -91,7 +96,7 @@ describe('cache-db', () => {
       const result = db.select().from(memorySummary).where(eq(memorySummary.userId, userId)).get()
 
       expect(result).not.toBeUndefined()
-      expect(result?.summary).toBe(summary)
+      expect(requireDefined(result).summary).toBe(summary)
     })
   })
 
@@ -115,8 +120,9 @@ describe('cache-db', () => {
         .get()
 
       expect(result).not.toBeUndefined()
-      expect(result?.title).toBe('Test Fact')
-      expect(result?.url).toBe('https://example.com')
+      const definedResult = requireDefined(result)
+      expect(definedResult.title).toBe('Test Fact')
+      expect(definedResult.url).toBe('https://example.com')
     })
 
     test('updates lastSeen for existing fact', async () => {
@@ -142,7 +148,7 @@ describe('cache-db', () => {
         .where(and(eq(memoryFacts.userId, userId), eq(memoryFacts.identifier, 'fact-2')))
         .get()
 
-      expect(result?.lastSeen).toBe(updatedNow)
+      expect(requireDefined(result).lastSeen).toBe(updatedNow)
     })
   })
 
@@ -166,7 +172,7 @@ describe('cache-db', () => {
         .get()
 
       expect(result).not.toBeUndefined()
-      expect(result?.value).toBe(value)
+      expect(requireDefined(result).value).toBe(value)
     })
 
     test('updates existing config', async () => {
@@ -190,12 +196,12 @@ describe('cache-db', () => {
         .where(and(eq(userConfig.userId, userId), eq(userConfig.key, key)))
         .get()
 
-      expect(result?.value).toBe('updated_value')
+      expect(requireDefined(result).value).toBe('updated_value')
     })
   })
 
   describe('syncWorkspaceToDb', () => {
-    test('syncs workspace for new group that does not exist in users table', async () => {
+    test('does not create a users row when syncing workspace for an unknown context', async () => {
       const groupId = 'new-group-123'
       const workspaceId = 'workspace-abc'
 
@@ -210,12 +216,17 @@ describe('cache-db', () => {
 
       userCachesForTesting.delete(groupId)
       expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
+
+      const db = getDrizzleDb()
+      const result = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
+      expect(result).toBeUndefined()
     })
 
-    test('syncs workspace for existing user/group', async () => {
+    test('syncs workspace for an existing scoped user when the user id is unambiguous', async () => {
       const groupId = 'existing-group-456'
       const initialWorkspace = 'workspace-initial'
       const updatedWorkspace = 'workspace-updated'
+      addUser({ userId: groupId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
 
       setKaneoWorkspace(groupId, initialWorkspace)
       expect(getKaneoWorkspace(groupId)).toBe(initialWorkspace)
@@ -235,7 +246,22 @@ describe('cache-db', () => {
       expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
     })
 
-    test('directly calls syncWorkspaceToDb for new user', async () => {
+    test('does not update workspace when a user id exists on multiple platform instances', async () => {
+      const userId = 'ambiguous-workspace-user'
+      addUser({ userId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
+      addUser({ userId, platformInstanceId: 'discord-default', addedBy: 'admin' })
+
+      syncWorkspaceToDb(userId, 'workspace-ambiguous')
+
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 50)
+      })
+
+      const rows = getDrizzleDb().select().from(users).where(eq(users.platformUserId, userId)).all()
+      expect(rows.map((row) => row.kaneoWorkspaceId)).toEqual([null, null])
+    })
+
+    test('directly calls syncWorkspaceToDb for new user without manufacturing a users row', async () => {
       const userId = 'direct-user-123'
       const workspaceId = 'workspace-direct'
 
@@ -248,9 +274,7 @@ describe('cache-db', () => {
       const db = getDrizzleDb()
       const result = db.select().from(users).where(eq(users.platformUserId, userId)).get()
 
-      expect(result).not.toBeUndefined()
-      expect(result?.kaneoWorkspaceId).toBe(workspaceId)
-      expect(result?.addedBy).toBe('system')
+      expect(result).toBeUndefined()
     })
   })
 
@@ -273,8 +297,9 @@ describe('cache-db', () => {
       const result = db.select().from(userInstructions).where(eq(userInstructions.id, instruction.id)).get()
 
       expect(result).not.toBeUndefined()
-      expect(result?.text).toBe(instruction.text)
-      expect(result?.contextId).toBe(contextId)
+      const definedResult = requireDefined(result)
+      expect(definedResult.text).toBe(instruction.text)
+      expect(definedResult.contextId).toBe(contextId)
     })
   })
 

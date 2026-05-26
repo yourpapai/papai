@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
+import { setContextSettings } from '../../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { isKaneoSessionCookie } from '../../../src/providers/kaneo/client.js'
 import {
   maybeProvisionKaneo,
@@ -15,6 +17,32 @@ import {
 } from '../../../src/providers/kaneo/provision.js'
 import { createProvider } from '../../../src/providers/registry.js'
 import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../../utils/test-helpers.js'
+
+function assignKaneoContext(contextId: string): void {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
+}
+
+function assignYouTrackContext(contextId: string): void {
+  insertTaskInstance({
+    id: `${contextId}-yt`,
+    type: 'youtrack',
+    config: { url: 'https://yt.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
+}
+
+function extractSlugOrDefault(init: RequestInit | undefined): string {
+  const slug = extractSlug(init)
+  if (slug !== undefined) return slug
+  return 'test-slug'
+}
 
 function parseBody(body: unknown): unknown {
   if (typeof body === 'string') {
@@ -58,7 +86,7 @@ function routeProvisionFetch(
     )
   }
   if (url.includes('/organization/create')) {
-    const slug = extractSlug(init) ?? 'test-slug'
+    const slug = extractSlugOrDefault(init)
     capturedSlugs.push(slug)
     return Promise.resolve(new Response(JSON.stringify({ id: 'ws-123', slug }), { status: 200 }))
   }
@@ -295,7 +323,7 @@ describe('provisionKaneoUser - unique email generation', () => {
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     })
 
-    assert(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
+    assert.ok(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
 
     await provider.listProjects()
 
@@ -322,7 +350,7 @@ describe('provisionKaneoUser - unique email generation', () => {
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
     })
 
-    assert(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
+    assert.ok(provider.listProjects !== undefined, 'Expected Kaneo provider to support listProjects')
 
     await provider.listProjects()
 
@@ -343,7 +371,10 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     setMockFetch(routeSignUpDisabled)
 
-    const result = await provisionAndConfigure('user-disabled', 'testuser')
+    const result = await provisionAndConfigure('user-disabled', 'testuser', {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
 
     expect(result).toEqual({ status: 'registration_disabled' })
   })
@@ -353,7 +384,10 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     setMockFetch(routeSignUpServerError)
 
-    const result = await provisionAndConfigure('user-generic-failure', 'testuser')
+    const result = await provisionAndConfigure('user-generic-failure', 'testuser', {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
 
     expect(result).toEqual({
       status: 'failed',
@@ -371,13 +405,27 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     setMockFetch(routeStandardProvision)
 
-    const result = await provisionAndConfigure('group-1', null)
+    const result = await provisionAndConfigure('group-1', null, {
+      publicUrl: 'https://kaneo.test',
+      internalUrl: undefined,
+    })
 
     expect(result.status).toBe('provisioned')
     expect(getCachedTools('group-1')).toBeUndefined()
     expect(getCachedTools('group-1:user-a')).toBeUndefined()
     expect(getCachedTools('group-1:user-b')).toBeUndefined()
     expect(getCachedTools('group-2:user-c')).toEqual({ scope: 'other-group' })
+  })
+
+  test('provisionAndConfigure fails clearly when public URL is blank', async () => {
+    setMockFetch(() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 })))
+
+    const result = await provisionAndConfigure('user-missing-url', 'testuser', {
+      publicUrl: '   ',
+      internalUrl: undefined,
+    })
+
+    expect(result).toEqual({ status: 'failed', error: 'Kaneo task instance public URL is missing' })
   })
 })
 
@@ -395,8 +443,6 @@ describe('maybeProvisionKaneo', () => {
     buttons: (): Promise<void> => Promise.resolve(),
   }
 
-  const originalTaskProvider = process.env['TASK_PROVIDER']
-
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
@@ -407,15 +453,10 @@ describe('maybeProvisionKaneo', () => {
 
   afterEach(() => {
     restoreFetch()
-    if (originalTaskProvider === undefined) {
-      delete process.env['TASK_PROVIDER']
-    } else {
-      process.env['TASK_PROVIDER'] = originalTaskProvider
-    }
   })
 
-  test('skips auto-provisioning when TASK_PROVIDER is youtrack', async () => {
-    process.env['TASK_PROVIDER'] = 'youtrack'
+  test('skips auto-provisioning when context is assigned to YouTrack', async () => {
+    assignYouTrackContext('user-1')
 
     await maybeProvisionKaneo(mockReply, 'user-1', 'testuser')
 
@@ -423,10 +464,10 @@ describe('maybeProvisionKaneo', () => {
     expect(textCalls).toHaveLength(0)
   })
 
-  test('proceeds with auto-provisioning when TASK_PROVIDER is kaneo', async () => {
+  test('proceeds with auto-provisioning when context is assigned to Kaneo', async () => {
     // Ensure fresh user that doesn't have workspace configured
     const uniqueUserId = `kaneo-test-${Date.now()}`
-    process.env['TASK_PROVIDER'] = 'kaneo'
+    assignKaneoContext(uniqueUserId)
 
     setMockFetch(routeStandardProvision)
 
@@ -437,16 +478,64 @@ describe('maybeProvisionKaneo', () => {
     expect(textCalls[0]).toContain('Your Kaneo account has been created')
   })
 
-  test('proceeds with auto-provisioning when TASK_PROVIDER is not set (defaults to kaneo)', async () => {
-    const uniqueUserId = `kaneo-default-${Date.now()}`
-    delete process.env['TASK_PROVIDER']
+  test('auto-provisioning uses assigned task instance URL without KANEO_CLIENT_URL', async () => {
+    delete process.env['KANEO_CLIENT_URL']
+    insertTaskInstance({
+      id: 'kaneo-team-a',
+      type: 'kaneo',
+      status: 'active',
+      config: { url: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
+    })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-team-a', platformInstanceId: 'telegram-default' })
+    const requestedUrls: string[] = []
+    const origins: string[] = []
+    setMockFetch((url, init) => {
+      requestedUrls.push(url)
+      const headers = extractCapturedHeaders(url, init)
+      origins.push(String(headers['Origin']))
+      return routeStandardProvision(url)
+    })
 
-    setMockFetch(routeStandardProvision)
+    await maybeProvisionKaneo(mockReply, 'ctx-1', 'alice')
+
+    expect(textCalls.join('\n')).not.toContain('KANEO_CLIENT_URL not set')
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('https://kaneo.public.invalid')
+    expect(requestedUrls.every((url) => url.startsWith('https://kaneo.internal.invalid/'))).toBe(true)
+    expect(origins).toEqual(['undefined', 'https://kaneo.public.invalid', 'https://kaneo.public.invalid'])
+  })
+
+  test('reports missing assigned task instance URL during auto-provisioning', async () => {
+    insertTaskInstance({
+      id: 'kaneo-missing-url',
+      type: 'kaneo',
+      status: 'active',
+      config: { url: '   ' },
+    })
+    setContextSettings({
+      contextId: 'ctx-missing-url',
+      taskInstanceId: 'kaneo-missing-url',
+      platformInstanceId: 'telegram-default',
+    })
+    let fetchCalls = 0
+    setMockFetch(() => {
+      fetchCalls += 1
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+    })
+
+    await maybeProvisionKaneo(mockReply, 'ctx-missing-url', 'alice')
+
+    expect(fetchCalls).toBe(0)
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Kaneo account could not be created')
+    expect(textCalls[0]).toContain('public URL is missing')
+  })
+
+  test('skips auto-provisioning when context has no task assignment', async () => {
+    const uniqueUserId = `kaneo-default-${Date.now()}`
 
     await maybeProvisionKaneo(mockReply, uniqueUserId, 'testuser')
 
-    // Should send welcome message with account details
-    expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('Your Kaneo account has been created')
+    expect(textCalls).toHaveLength(0)
   })
 })

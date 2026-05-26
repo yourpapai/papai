@@ -3,10 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getThreadScopedStorageContextId } from '../../auth.js'
 import { logger } from '../../logger.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
-  AuthorizationResult,
   ChatProvider,
   CommandHandler,
   ContextRendered,
@@ -18,6 +17,7 @@ import type {
   ResolveUserContext,
 } from '../types.js'
 import { checkChannelAdmin } from './channel-helpers.js'
+import { resolveMattermostConfig, type MattermostConstructorConfig } from './config.js'
 import { fetchMattermostChannelInfo, fetchMattermostTeamInfo, type MattermostChannelInfo } from './context-metadata.js'
 import { renderMattermostContext } from './context-renderer.js'
 import {
@@ -36,8 +36,6 @@ import { createMattermostReplyFn } from './reply-helpers.js'
 import { ChannelSchema, extractReplyId, MattermostWsEventSchema, type MattermostPost, UserMeSchema } from './schema.js'
 
 const log = logger.child({ scope: 'chat:mattermost' })
-
-let mattermostFileFetcher: ((fileId: string) => Promise<Buffer | null>) | undefined
 
 type PostedMessageResult = {
   msg: IncomingMessage
@@ -58,6 +56,7 @@ export class MattermostChatProvider implements ChatProvider {
   readonly configRequirements = mattermostConfigRequirements
   private readonly baseUrl: string
   private readonly token: string
+  private readonly platformInstanceId: string
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null = null
   private ws: WebSocket | null = null
@@ -65,17 +64,18 @@ export class MattermostChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private wsSeq = 1
 
-  constructor() {
-    const url = process.env['MATTERMOST_URL']
-    const token = process.env['MATTERMOST_BOT_TOKEN']
-    if (url === undefined || url.trim() === '') {
-      throw new Error('MATTERMOST_URL environment variable is required')
+  constructor(...args: [] | [MattermostConstructorConfig]) {
+    let config: MattermostConstructorConfig
+    if (args[0] === undefined) {
+      config = {}
+    } else {
+      config = args[0]
     }
-    if (token === undefined || token.trim() === '') {
-      throw new Error('MATTERMOST_BOT_TOKEN environment variable is required')
-    }
-    this.baseUrl = url.replace(/\/+$/u, '')
-    this.token = token
+    const resolved = resolveMattermostConfig(config)
+    this.baseUrl = resolved.baseUrl
+    this.token = resolved.token
+    this.platformInstanceId = resolved.platformInstanceId
+    log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
 
   registerCommand(name: string, handler: CommandHandler): void {
@@ -86,7 +86,7 @@ export class MattermostChatProvider implements ChatProvider {
     this.messageHandler = handler
   }
 
-  async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     if (target.contextType === 'dm') {
       if (this.botUserId === null) throw new Error('Bot not started')
       const dmData = await this.apiFetch('POST', '/api/v4/channels/direct', [this.botUserId, target.contextId])
@@ -111,7 +111,6 @@ export class MattermostChatProvider implements ChatProvider {
     const user = UserMeSchema.parse(data)
     this.botUserId = user.id
     this.botUsername = typeof user.username === 'string' ? user.username : null
-    mattermostFileFetcher = (fileId): Promise<Buffer | null> => downloadMattermostFile(this.baseUrl, this.token, fileId)
     log.info({ botUserId: this.botUserId, botUsername: this.botUsername }, 'Mattermost bot started')
     this.connectWebSocket()
   }
@@ -171,12 +170,7 @@ export class MattermostChatProvider implements ChatProvider {
     cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
     if (command !== null) {
-      const auth: AuthorizationResult = {
-        allowed: true,
-        isBotAdmin: isAdmin,
-        isGroupAdmin: isAdmin,
-        storageContextId: getThreadScopedStorageContextId(msg.contextId, msg.contextType, msg.threadId),
-      }
+      const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await command.handler(msg, reply, auth)
     } else if (this.messageHandler !== null) {
       await this.messageHandler(msg, reply)
@@ -221,6 +215,7 @@ export class MattermostChatProvider implements ChatProvider {
       contextParentName,
       isMentioned,
       text: post.message,
+      platformInstanceId: this.platformInstanceId,
       commandMatch: command === null ? undefined : command.match,
       messageId: post.id,
       replyToMessageId,
@@ -275,11 +270,16 @@ export class MattermostChatProvider implements ChatProvider {
   resolveGroupLabel(groupId: string): Promise<string | null> {
     return resolveMattermostGroupLabel(this.apiFetch.bind(this), groupId)
   }
-  resolveUserLabel(userId: string, _context?: ResolveUserContext): Promise<string | null> {
+  downloadFile(fileId: string): Promise<Buffer | null> {
+    return downloadMattermostFile(this.baseUrl, this.token, fileId)
+  }
+  resolveUserLabel(userId: string): Promise<string | null>
+  resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null>
+  resolveUserLabel(userId: string, ..._rest: [] | [ResolveUserContext | undefined]): Promise<string | null> {
     return resolveMattermostUserLabel(this.apiFetch.bind(this), userId)
   }
   private wsSend(data: unknown): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data))
+    if (this.ws !== null && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(data))
   }
   private async apiFetch(method: string, path: string, body: unknown): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}${path}`, {
@@ -293,8 +293,4 @@ export class MattermostChatProvider implements ChatProvider {
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderMattermostContext(snapshot)
   }
-}
-
-export function getMattermostFileFetcher(): ((fileId: string) => Promise<Buffer | null>) | undefined {
-  return mattermostFileFetcher
 }

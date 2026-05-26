@@ -5,8 +5,10 @@
 
 import { buildAiOutputConfigSection } from '../ai-output-config-ui.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
+import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
+import { getConfigKeysForContext } from '../config-keys.js'
 import { getAllConfig, getPluginConfig, maskValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
@@ -14,7 +16,7 @@ import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry }
 import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
 import { getToolPrefs } from '../tools/tool-preferences.js'
-import { CONFIG_KEYS, type ConfigKey } from '../types/config.js'
+import type { ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'commands:config' })
 const GROUP_CONFIG_REDIRECT =
@@ -38,7 +40,9 @@ function getFieldEmoji(key: ConfigKey): string {
     youtrack_token: '🔐',
     timezone: '🌍',
   }
-  return emojiMap[key]
+  const emoji = emojiMap[key]
+  if (emoji === undefined) return '⚙️'
+  return emoji
 }
 
 function formatConfigLine(key: ConfigKey, value: string | undefined): string {
@@ -51,7 +55,7 @@ function formatConfigLine(key: ConfigKey, value: string | undefined): string {
 }
 
 function buildConfigButtons(config: Partial<Record<ConfigKey, string>>, targetContextId: string): ChatButton[] {
-  const buttons: ChatButton[] = CONFIG_KEYS.map((key) => ({
+  const buttons: ChatButton[] = getConfigKeysForContext(targetContextId).map((key) => ({
     text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
     callbackData: serializeCallbackData({ action: 'edit', key }, targetContextId),
     style: config[key] === undefined ? 'secondary' : 'primary',
@@ -88,6 +92,9 @@ function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string)
   const eligibility = getPluginContextEligibility(entry.discoveredPlugin.manifest.id, targetContextId)
   if (eligibility.eligible) return `enabled${source}`
   if (eligibility.reason === 'config_missing') return 'unavailable (missing config)'
+  if (eligibility.reason === 'capability_missing') {
+    return `unavailable (missing capability: ${eligibility.missingCapabilities.join(', ')})`
+  }
   return 'disabled'
 }
 
@@ -138,7 +145,7 @@ export async function renderConfigForTarget(
   const config = getAllConfig(targetContextId)
   const lines = ['⚙️ **Current Configuration**\n']
 
-  CONFIG_KEYS.forEach((key) => {
+  getConfigKeysForContext(targetContextId).forEach((key) => {
     lines.push(formatConfigLine(key, config[key]))
   })
   const aiOutputSection = buildAiOutputConfigSection(targetContextId)
@@ -170,8 +177,13 @@ export async function renderConfigForTarget(
   })
 }
 
-async function replyWithConfigSelection(reply: ReplyFn, userId: string, interactiveButtons: boolean): Promise<void> {
-  const selection = startGroupSettingsSelection(userId, 'config', interactiveButtons)
+async function replyWithConfigSelection(
+  reply: ReplyFn,
+  userId: string,
+  platformInstanceId: string,
+  interactiveButtons: boolean,
+): Promise<void> {
+  const selection = startGroupSettingsSelection(userId, 'config', interactiveButtons, platformInstanceId)
   if ('continueWith' in selection) {
     await renderConfigForTarget(reply, selection.continueWith.targetContextId, interactiveButtons)
     return
@@ -185,10 +197,7 @@ async function replyWithConfigSelection(reply: ReplyFn, userId: string, interact
   }
 }
 
-export function registerConfigCommand(
-  chat: ChatProvider,
-  _checkAuthorization: (userId: string, username: string | null | undefined) => boolean,
-): void {
+export function registerConfigCommand(chat: ChatProvider, ..._rest: [] | [_checkAuthorization: unknown]): void {
   const handler: CommandHandler = async (msg, reply, auth) => {
     if (!auth.allowed) return
 
@@ -198,13 +207,14 @@ export function registerConfigCommand(
     }
 
     log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command called')
-    const interactiveButtons = supportsInteractiveButtons(chat)
+    const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
+    const interactiveButtons = supportsInteractiveButtons(sourceChat)
 
     log.info({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command executed')
-    if (!supportsMessageDeletion(chat)) {
+    if (!supportsMessageDeletion(sourceChat)) {
       await reply.text(NO_DELETE_WARNING)
     }
-    await replyWithConfigSelection(reply, msg.user.id, interactiveButtons)
+    await replyWithConfigSelection(reply, msg.user.id, msg.platformInstanceId, interactiveButtons)
   }
 
   chat.registerCommand('config', handler)

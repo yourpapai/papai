@@ -5,12 +5,22 @@
 
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { mount, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 
 import AdminApp from '../../../client/admin/AdminApp.svelte'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
-const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'system'] as const
+const sectionIds = [
+  'overview',
+  'billing',
+  'stats',
+  'memos',
+  'reminders',
+  'identities',
+  'groups',
+  'instances',
+  'system',
+] as const
 
 function mountAdminApp(): ReturnType<typeof mount> {
   document.body.innerHTML = '<div id="root"></div>'
@@ -20,54 +30,78 @@ function mountAdminApp(): ReturnType<typeof mount> {
   return mount(AdminApp, { target })
 }
 
+const drain = async (): Promise<void> => {
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+  flushSync()
+}
+
+const installFetch = (): void => {
+  setMockFetch((url) => {
+    if (url === '/api/platform-instances' || url === '/api/task-instances' || url === '/api/admins') {
+      return Promise.resolve(Response.json([]))
+    }
+    return Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } }))
+  })
+}
+
 afterEach(() => {
   restoreFetch()
 })
 
 describe('AdminApp.svelte', () => {
-  test('renders all eight section anchor ids', () => {
-    setMockFetch(() =>
-      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
-    )
+  test('renders all nine section anchor ids', async () => {
+    installFetch()
     const component = mountAdminApp()
+    await drain()
 
     for (const id of sectionIds) {
-      expect(document.getElementById(id)).not.toBeNull()
+      expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
 
     void unmount(component)
   })
 
-  test('renders eight navigation items', () => {
-    setMockFetch(() =>
-      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
-    )
+  test('renders nine navigation items', async () => {
+    installFetch()
     const component = mountAdminApp()
+    await drain()
 
     const navLinks = Array.from(document.querySelectorAll('.admin-sidebar__link'))
-    expect(navLinks).toHaveLength(8)
+    expect(navLinks).toHaveLength(9)
 
     void unmount(component)
   })
 
-  test('renders overview section in the DOM', () => {
-    setMockFetch(() =>
-      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
-    )
+  test('renders overview section in the DOM', async () => {
+    installFetch()
     const component = mountAdminApp()
+    await drain()
 
-    expect(document.getElementById('overview')).not.toBeNull()
+    expect(document.querySelector('#overview')).not.toBeNull()
 
     void unmount(component)
   })
 
-  test('renders system section in the DOM', () => {
-    setMockFetch(() =>
-      Promise.resolve(new Response(JSON.stringify({}), { headers: { 'Content-Type': 'application/json' } })),
-    )
+  test('renders system section in the DOM', async () => {
+    installFetch()
     const component = mountAdminApp()
+    await drain()
 
-    expect(document.getElementById('system')).not.toBeNull()
+    expect(document.querySelector('#system')).not.toBeNull()
+
+    void unmount(component)
+  })
+
+  test('renders instances section before system in the DOM', async () => {
+    installFetch()
+    const component = mountAdminApp()
+    await drain()
+
+    const instances = document.querySelector('#instances')
+    const system = document.querySelector('#system')
+    expect(instances).not.toBeNull()
+    expect(system).not.toBeNull()
+    expect(instances!.compareDocumentPosition(system!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     void unmount(component)
   })

@@ -70,6 +70,16 @@ describe('handleAdminSystem', () => {
     expect(pick(body, 'taskProvider')).toBe('unknown')
   })
 
+  test('reports unknown task provider when TASK_PROVIDER is unset', async () => {
+    delete process.env['TASK_PROVIDER']
+
+    const res = handleAdminSystem()
+    const body = await readJson(res)
+
+    expect(res.status).toBe(200)
+    expect(pick(body, 'taskProvider')).toBe('unknown')
+  })
+
   test('adminUserSet is true when ADMIN_USER_ID is set', async () => {
     process.env['ADMIN_USER_ID'] = 'u1'
 

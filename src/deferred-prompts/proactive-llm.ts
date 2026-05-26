@@ -7,6 +7,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
 import { getCachedHistory } from '../cache.js'
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
 import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
@@ -15,9 +16,8 @@ import type { TaskProvider } from '../providers/types.js'
 import { getSystemConfig } from '../system-config.js'
 import { buildSystemPrompt } from '../system-prompt.js'
 import { makeGetCurrentTimeTool } from '../tools/get-current-time.js'
+import { buildFullMessages, buildFullToolSet } from './proactive-llm-full.js'
 import {
-  buildFullMessages,
-  buildFullToolSet,
   buildMetadataMessages,
   buildMinimalSystemPrompt,
   getStorageContextId,
@@ -56,7 +56,7 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   buildModel: (config, modelId) => createOpenAICompatible({ name: 'openai-compatible', ...config })(modelId),
 }
 
-export type BuildProviderFn = (userId: string) => TaskProvider | null
+export type BuildProviderFn = (contextId: string) => TaskProvider | null
 
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
@@ -169,6 +169,18 @@ async function invokeWithContext(
   return resultTextOrDone(result.text)
 }
 
+function resolveFullProvider(
+  buildProviderFn: BuildProviderFn,
+  userId: string,
+  storageContextId: string,
+  configContextId: string,
+): TaskProvider | string {
+  const provider = buildProviderFn(configContextId)
+  if (provider !== null) return provider
+  log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
+  return 'Deferred prompt skipped: task provider not configured.'
+}
+
 async function runFullGeneration(
   execCtx: DeferredExecutionContext,
   type: 'scheduled' | 'alert',
@@ -216,16 +228,15 @@ function invokeFull(
   matchedTasksSummary: string | undefined,
   deps: ProactiveLlmDeps,
 ): Promise<string> {
-  const { createdByUserId } = execCtx
+  const { createdByUserId, deliveryTarget } = execCtx
+  const storageContextId = getStorageContextId(deliveryTarget)
+  const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
   log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
   const config = getLlmConfigFromSystem()
   if (typeof config === 'string') return Promise.resolve(config)
 
-  const provider = buildProviderFn(createdByUserId)
-  if (provider === null) {
-    log.warn({ userId: createdByUserId }, 'Could not build task provider for deferred prompt')
-    return Promise.resolve('Deferred prompt skipped: task provider not configured.')
-  }
+  const provider = resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
+  if (typeof provider === 'string') return Promise.resolve(provider)
 
   return runFullGeneration(execCtx, type, prompt, metadata, matchedTasksSummary, config, provider, deps)
 }

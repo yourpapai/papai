@@ -5,10 +5,9 @@
 
 import { Bot, type Context } from 'grammy'
 
-import { getThreadScopedStorageContextId } from '../../auth.js'
 import { logger } from '../../logger.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
-  AuthorizationResult,
   ChatProvider,
   CommandHandler,
   ContextRendered,
@@ -23,7 +22,7 @@ import type {
 } from '../types.js'
 import { registerTelegramCommands } from './commands.js'
 import { renderTelegramContext } from './context-renderer.js'
-import { createTelegramFileFetcher, getTelegramFileFetcher } from './file-fetcher.js'
+import { createTelegramFileFetcher } from './file-fetcher.js'
 import { extractFileCandidatesFromContext, extractFilesFromContext } from './file-helpers.js'
 import { formatLlmOutput } from './format.js'
 import { buildTelegramInteraction } from './interaction-helpers.js'
@@ -52,10 +51,16 @@ import {
   telegramIsBotMentioned,
 } from './reply-helpers.js'
 export { extractReplyContext } from './message-extraction.js'
-export { getTelegramFileFetcher } from './file-fetcher.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
-
+const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
+  if (value === undefined) return fallback
+  return value
+}
+const resolvePlatformInstanceId = (value: string | undefined): string => {
+  if (value === undefined) return 'telegram-default'
+  return value
+}
 export class TelegramChatProvider implements ChatProvider {
   readonly name = 'telegram'
   readonly threadCapabilities = {
@@ -68,17 +73,20 @@ export class TelegramChatProvider implements ChatProvider {
   readonly configRequirements = telegramConfigRequirements
   private readonly bot: Bot
   private readonly token: string
+  private readonly platformInstanceId: string
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(tokenOverride?: string) {
-    const token = tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']
+  constructor(...args: [] | [string | undefined] | [string | undefined, string | undefined]) {
+    const token = resolveConfigValue(args[0], process.env['TELEGRAM_BOT_TOKEN'])
+    const platformInstanceId = resolvePlatformInstanceId(args[1])
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }
     this.token = token
+    this.platformInstanceId = platformInstanceId
     this.bot = new Bot(token)
-    createTelegramFileFetcher(this.bot.api, this.token, log)
+    log.debug({ platformInstanceId: this.platformInstanceId }, 'TelegramChatProvider constructed')
     this.bot.on('callback_query:data', (ctx) => this.dispatchCallbackQuery(ctx))
   }
   registerCommand(name: string, handler: CommandHandler): void {
@@ -88,12 +96,7 @@ export class TelegramChatProvider implements ChatProvider {
       if (msg === null) return
       msg.commandMatch = typeof ctx.match === 'string' ? ctx.match : ''
       const reply = this.buildReplyFn(ctx, msg.threadId, false)
-      const auth: AuthorizationResult = {
-        allowed: true,
-        isBotAdmin: isAdmin,
-        isGroupAdmin: isAdmin,
-        storageContextId: getThreadScopedStorageContextId(msg.contextId, msg.contextType, msg.threadId),
-      }
+      const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await handler(msg, reply, auth)
     })
   }
@@ -129,7 +132,7 @@ export class TelegramChatProvider implements ChatProvider {
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
   }
-  async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     const chatId = parseInt(target.contextId, 10)
     const mentionPrefix = buildTelegramMentionPrefix(target)
     const formatted = formatLlmOutput(markdown)
@@ -177,6 +180,9 @@ export class TelegramChatProvider implements ChatProvider {
   async setCommands(adminUserId: string): Promise<void> {
     await registerTelegramCommands(this.bot, adminUserId)
   }
+  downloadFile(fileId: string): Promise<Buffer | null> {
+    return createTelegramFileFetcher(this.bot.api, this.token, log)(fileId)
+  }
   renderContext(snapshot: ContextSnapshot): ContextRendered {
     return renderTelegramContext(snapshot)
   }
@@ -204,6 +210,7 @@ export class TelegramChatProvider implements ChatProvider {
       contextName,
       isMentioned,
       text,
+      platformInstanceId: this.platformInstanceId,
       messageId: messageIdStr,
       replyToMessageId: replyToMessageIdStr,
       replyContext,
@@ -265,6 +272,7 @@ export class TelegramChatProvider implements ChatProvider {
     const interaction = buildTelegramInteraction(
       ctx,
       await checkTelegramAdminStatus(ctx, (chatId) => this.bot.api.getChatAdministrators(chatId)),
+      this.platformInstanceId,
     )
     if (interaction === null) return
     const reply = this.buildReplyFn(ctx, interaction.threadId, true)
@@ -279,7 +287,6 @@ export class TelegramChatProvider implements ChatProvider {
     await this.interactionHandler(interaction, reply)
   }
   private fetchFilesFromContext(ctx: Context): Promise<IncomingFile[]> {
-    const fetcher = getTelegramFileFetcher() ?? createTelegramFileFetcher(this.bot.api, this.token, log)
-    return extractFilesFromContext(ctx, fetcher)
+    return extractFilesFromContext(ctx, (fileId) => this.downloadFile(fileId))
   }
 }

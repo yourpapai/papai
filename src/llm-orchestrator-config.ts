@@ -4,15 +4,9 @@
 // See LICENSE in the project root for details.
 
 import { getCachedConfig } from './cache.js'
+import { getConfigKeysForContext } from './config-keys.js'
 import { getConfig } from './config.js'
 import { getSystemConfig } from './system-config.js'
-
-export interface RequiredProviderConfigDeps {
-  getKaneoWorkspace: (contextId: string) => string | null
-}
-
-const taskProviderEnv = process.env['TASK_PROVIDER']
-const TASK_PROVIDER = taskProviderEnv ?? 'kaneo'
 
 export interface LlmConfig {
   llmApiKey: string
@@ -26,16 +20,11 @@ const readConfig = (contextId: string, key: 'kaneo_apikey' | 'youtrack_token' | 
   return getCachedConfig(contextId, key)
 }
 
-export const checkRequiredProviderConfig = (contextId: string, deps: RequiredProviderConfigDeps): string[] => {
-  if (TASK_PROVIDER === 'youtrack') {
-    const youtrackKeys = ['youtrack_token'] as const
-    return youtrackKeys.filter((key) => readConfig(contextId, key) === null)
-  }
-
-  const kaneoKeys = ['kaneo_apikey'] as const
-  const missingProviderKeys = kaneoKeys.filter((key) => readConfig(contextId, key) === null)
-  const missingWorkspace = deps.getKaneoWorkspace(contextId) === null ? ['workspaceId'] : []
-  return [...missingProviderKeys, ...missingWorkspace]
+export const checkRequiredProviderConfig = (contextId: string): string[] => {
+  const requiredKeys = getConfigKeysForContext(contextId).filter(
+    (key): key is 'kaneo_apikey' | 'youtrack_token' => key === 'kaneo_apikey' || key === 'youtrack_token',
+  )
+  return requiredKeys.filter((key) => readConfig(contextId, key) === null)
 }
 
 export const getLlmConfig = (): LlmConfig => {

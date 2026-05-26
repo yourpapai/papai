@@ -94,7 +94,10 @@ describe('debug-server stats routes', () => {
   })
 
   test('GET /stats/subject/<seeded> returns SubjectStats shape', async () => {
-    getTestDb().insert(users).values({ platformUserId: 'u1', username: 'alice', addedBy: 'admin' }).run()
+    getTestDb()
+      .insert(users)
+      .values({ platformUserId: 'u1', platformInstanceId: 'legacy-single', username: 'alice', addedBy: 'admin' })
+      .run()
 
     const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/u1`, {
       headers: authHeaders,

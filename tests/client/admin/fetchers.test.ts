@@ -6,22 +6,48 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
+  applyPlatformInstances,
+  createAdmin,
+  createPlatformInstance,
+  createTaskInstance,
+  deleteAdmin,
+  deletePlatformInstance,
+  deleteTaskInstance,
+  fetchAdmins,
   fetchAdminGroups,
   fetchAdminIdentity,
   fetchAdminLlm,
   fetchAdminSystem,
   fetchDeferredPrompts,
   fetchMemos,
+  fetchPlatformInstances,
   fetchRecentRequests,
   fetchRecurringTasks,
+  fetchTaskInstances,
+  setPlatformInstanceStatus,
   submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
+import type { AdminInstanceView } from '../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
+
+type Equal<Left, Right> = [Left] extends [Right] ? ([Right] extends [Left] ? true : false) : false
+type Expect<Actual extends true> = Actual
+type ExpectedAdminInstanceView = Readonly<
+  { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
+>
+type PlatformStatusInput = Parameters<typeof setPlatformInstanceStatus>[1]
+const adminInstanceViewContract: Expect<Equal<AdminInstanceView, ExpectedAdminInstanceView>> = true
+const platformStatusInputContract: Expect<Equal<PlatformStatusInput, 'active' | 'stopped'>> = true
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
 
 beforeEach(() => {
   captured.length = 0
+})
+
+test('compile-time instance client contracts are enforced', () => {
+  expect(adminInstanceViewContract).toBe(true)
+  expect(platformStatusInputContract).toBe(true)
 })
 
 afterEach(() => {
@@ -271,9 +297,10 @@ describe('fetchRecentRequests', () => {
       ],
     })
     const result = await fetchRecentRequests('user-A')
+    const firstRequest = expectDefined(result[0], 'missing recent request')
     expect(firstCaptured().url).toBe('/admin/subjects/user-A/recent-requests?limit=25')
     expect(result).toHaveLength(1)
-    expect(result[0]?.modelLabel).toBe('gpt-4o')
+    expect(firstRequest.modelLabel).toBe('gpt-4o')
   })
 
   test('returns empty array on non-ok response', async () => {
@@ -304,5 +331,152 @@ describe('fetchAdminGroups', () => {
     installFetch(200, [{ group_id: 'group-1' }])
 
     await expect(fetchAdminGroups()).rejects.toThrow()
+  })
+})
+
+describe('instance API fetchers', () => {
+  const platformInstance = {
+    id: 'telegram-main',
+    type: 'telegram',
+    config: { TELEGRAM_BOT_TOKEN: '***' },
+    status: 'active',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  } as const
+
+  const taskInstance = {
+    id: 'kaneo-main',
+    type: 'kaneo',
+    config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
+    status: 'active',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  } as const
+
+  test('fetchPlatformInstances GETs and validates /api/platform-instances', async () => {
+    installFetch(200, [platformInstance])
+
+    const result = await fetchPlatformInstances()
+
+    expect(firstCaptured().url).toBe('/api/platform-instances')
+    expect(result).toEqual([platformInstance])
+  })
+
+  test('createPlatformInstance POSTs JSON and returns the created instance', async () => {
+    installFetch(201, platformInstance)
+
+    const result = await createPlatformInstance({
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { TELEGRAM_BOT_TOKEN: 'secret' },
+    })
+    const call = firstCaptured()
+
+    expect(call.url).toBe('/api/platform-instances')
+    expect(call.init.method).toBe('POST')
+    expect(call.init.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(call.init.body).toBe(
+      JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'secret' } }),
+    )
+    expect(result).toEqual(platformInstance)
+  })
+
+  test('setPlatformInstanceStatus POSTs status to the encoded instance path', async () => {
+    installFetch(200, { ...platformInstance, status: 'stopped' })
+
+    const result = await setPlatformInstanceStatus('telegram/main', 'stopped')
+    const call = firstCaptured()
+
+    expect(call.url).toBe('/api/platform-instances/telegram%2Fmain/status')
+    expect(call.init.method).toBe('POST')
+    expect(call.init.body).toBe(JSON.stringify({ status: 'stopped' }))
+    expect(result.status).toBe('stopped')
+  })
+
+  test('deletePlatformInstance DELETEs the encoded instance path', async () => {
+    installFetch(204, null)
+
+    await deletePlatformInstance('telegram/main')
+
+    expect(firstCaptured()).toMatchObject({
+      url: '/api/platform-instances/telegram%2Fmain',
+      init: { method: 'DELETE' },
+    })
+  })
+
+  test('applyPlatformInstances POSTs apply and parses the applied count', async () => {
+    installFetch(200, { applied: 1 })
+
+    const result = await applyPlatformInstances()
+    const call = firstCaptured()
+
+    expect(call.url).toBe('/api/platform-instances/apply')
+    expect(call.init.method).toBe('POST')
+    expect(result.applied).toBe(1)
+  })
+
+  test('fetchTaskInstances GETs task instances', async () => {
+    installFetch(200, [taskInstance])
+
+    const result = await fetchTaskInstances()
+
+    expect(firstCaptured().url).toBe('/api/task-instances')
+    expect(result).toEqual([taskInstance])
+  })
+
+  test('createTaskInstance POSTs JSON to task instances', async () => {
+    installFetch(201, taskInstance)
+
+    const result = await createTaskInstance({
+      id: 'kaneo-main',
+      type: 'kaneo',
+      config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
+    })
+    const call = firstCaptured()
+
+    expect(call.url).toBe('/api/task-instances')
+    expect(call.init.method).toBe('POST')
+    expect(result).toEqual(taskInstance)
+  })
+
+  test('deleteTaskInstance DELETEs the encoded task instance path', async () => {
+    installFetch(204, null)
+
+    await deleteTaskInstance('kaneo/main')
+
+    expect(firstCaptured()).toMatchObject({ url: '/api/task-instances/kaneo%2Fmain', init: { method: 'DELETE' } })
+  })
+
+  test('fetchAdmins GETs admin records', async () => {
+    installFetch(200, [
+      { userId: 'user-1', platformInstanceId: 'telegram-main', createdAt: '2026-05-24T00:00:00.000Z' },
+    ])
+
+    const result = await fetchAdmins()
+    const firstAdmin = expectDefined(result[0], 'missing admin')
+
+    expect(firstCaptured().url).toBe('/api/admins')
+    expect(firstAdmin.userId).toBe('user-1')
+  })
+
+  test('createAdmin POSTs JSON and parses the admin record', async () => {
+    installFetch(201, { userId: 'user-1', platformInstanceId: 'telegram-main' })
+
+    const result = await createAdmin({ userId: 'user-1', platformInstanceId: 'telegram-main' })
+    const call = firstCaptured()
+
+    expect(call.url).toBe('/api/admins')
+    expect(call.init.method).toBe('POST')
+    expect(call.init.body).toBe(JSON.stringify({ userId: 'user-1', platformInstanceId: 'telegram-main' }))
+    expect(result.platformInstanceId).toBe('telegram-main')
+  })
+
+  test('deleteAdmin DELETEs URL-encoded user and platform segments', async () => {
+    installFetch(204, null)
+
+    await deleteAdmin('user/1', 'telegram/main')
+
+    expect(firstCaptured()).toMatchObject({
+      url: '/api/admins/user%2F1/telegram%2Fmain',
+      init: { method: 'DELETE' },
+    })
   })
 })

@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { listActiveAttachments, persistIncomingAttachments } from '../../src/attachments/index.js'
 import type { ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerClearCommand } from '../../src/commands/clear.js'
-import { addUser } from '../../src/users.js'
+import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
+import { addUser as addScopedUser } from '../../src/users.js'
 import {
   createAuth,
   createDmMessage,
@@ -17,6 +18,17 @@ import {
   mockLogger,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'legacy-single'
+
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args.length === 0 ? undefined : args[0]
+  addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+}
+
+const addUserOnPlatform = (userId: string, platformInstanceId: string, addedBy: string): void => {
+  addScopedUser({ userId, platformInstanceId, addedBy })
+}
 
 describe('/clear command — history and memory only', () => {
   let mockChat: ChatProvider
@@ -61,6 +73,7 @@ describe('/clear command — history and memory only', () => {
   })
 
   test('clears history for a target user but leaves attachments', async () => {
+    addAdmin(adminUserId, SUPER_ADMIN_PLATFORM_ID)
     addUser('victim-user', adminUserId)
     await persistIncomingAttachments({
       contextId: 'victim-user',
@@ -80,5 +93,85 @@ describe('/clear command — history and memory only', () => {
     // Attachments must remain in the workspace
     expect(listActiveAttachments('victim-user')).toHaveLength(1)
     expect(textCalls[0]).toContain('history')
+  })
+
+  test('allows bot admin from auth to clear a target even when user id differs from env admin id', async () => {
+    addAdmin('row-admin', SUPER_ADMIN_PLATFORM_ID)
+    addUser('victim-user', adminUserId)
+    await persistIncomingAttachments({
+      contextId: 'victim-user',
+      sourceProvider: 'telegram',
+      files: [{ fileId: 'tg-1', filename: 'a.txt', content: Buffer.from('a') }],
+    })
+    expect(listActiveAttachments('victim-user')).toHaveLength(1)
+
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage('row-admin', '/clear victim-user')
+    adminMsg.commandMatch = 'victim-user'
+    const auth = createAuth('row-admin', { isBotAdmin: true })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(listActiveAttachments('victim-user')).toHaveLength(1)
+    expect(textCalls[0]).toContain('history')
+  })
+
+  test('denies env admin id from clearing a target when auth is not bot admin', async () => {
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage(adminUserId, '/clear victim-user')
+    adminMsg.commandMatch = 'victim-user'
+    const auth = createAuth(adminUserId, { isBotAdmin: false })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(textCalls[0]).toContain("Only the admin can clear other users' history")
+  })
+
+  test('denies platform admin clearing a target user outside the source platform', async () => {
+    addAdmin('platform-admin', TEST_PLATFORM_ID)
+    addUserOnPlatform('other-user', 'other-platform', adminUserId)
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage('platform-admin', '/clear other-user')
+    adminMsg.platformInstanceId = TEST_PLATFORM_ID
+    adminMsg.commandMatch = 'other-user'
+    const auth = createAuth('platform-admin', { isBotAdmin: true })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(textCalls[0]).toContain('not authorized')
+  })
+
+  test('allows super-admin clearing a target user outside the source platform', async () => {
+    addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
+    addUserOnPlatform('other-user', 'other-platform', adminUserId)
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage('super-admin', '/clear other-user')
+    adminMsg.platformInstanceId = TEST_PLATFORM_ID
+    adminMsg.commandMatch = 'other-user'
+    const auth = createAuth('super-admin', { isBotAdmin: true })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(textCalls[0]).toContain('history')
+  })
+
+  test('platform admin clear all is scoped to source platform users', async () => {
+    addAdmin('platform-admin', TEST_PLATFORM_ID)
+    addUser('same-platform-user', adminUserId)
+    addUserOnPlatform('other-platform-user', 'other-platform', adminUserId)
+    const handler = commandHandlers.get('clear')
+    const adminMsg = createDmMessage('platform-admin', '/clear all')
+    adminMsg.platformInstanceId = TEST_PLATFORM_ID
+    adminMsg.commandMatch = 'all'
+    const auth = createAuth('platform-admin', { isBotAdmin: true })
+
+    const { reply, textCalls } = createMockReply()
+    await handler!(adminMsg, reply, auth)
+
+    expect(textCalls[0]).toContain('2 users')
   })
 })

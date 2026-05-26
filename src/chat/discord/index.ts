@@ -30,6 +30,7 @@ import {
   type DispatchableMessage,
   defaultClientFactory,
 } from './client-factory.js'
+import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
 import { handleDiscordGroupSettingsSelection } from './group-settings.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
@@ -43,6 +44,26 @@ export type { DiscordClientFactory, DiscordClientLike, DispatchableMessage }
 export { defaultClientFactory }
 const log = logger.child({ scope: 'chat:discord' })
 type OnMessageHandler = (msg: IncomingMessage, reply: ReplyFn) => Promise<void>
+type DiscordConstructorArgs =
+  | []
+  | [clientFactory: DiscordClientFactory | undefined]
+  | [clientFactory: DiscordClientFactory | undefined, tokenOverride: string | undefined]
+  | [
+      clientFactory: DiscordClientFactory | undefined,
+      tokenOverride: string | undefined,
+      platformInstanceId: string | undefined,
+    ]
+
+const resolveToken = (tokenOverride: string | undefined): string | undefined => {
+  if (tokenOverride === undefined) return process.env['DISCORD_BOT_TOKEN']
+  return tokenOverride
+}
+
+const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId === undefined) return 'discord-default'
+  return platformInstanceId
+}
+
 export class DiscordChatProvider implements ChatProvider {
   readonly name = 'discord'
   readonly threadCapabilities: ThreadCapabilities = {
@@ -54,19 +75,27 @@ export class DiscordChatProvider implements ChatProvider {
   readonly traits = discordTraits
   readonly configRequirements = discordConfigRequirements
   private readonly token: string
+  private readonly platformInstanceId: string
   private readonly clientFactory: DiscordClientFactory
   private readonly commands = new Map<string, CommandHandler>()
   private messageHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
-  constructor(clientFactory?: DiscordClientFactory, tokenOverride?: string) {
-    const token = tokenOverride ?? process.env['DISCORD_BOT_TOKEN']
+  constructor(...args: DiscordConstructorArgs) {
+    const clientFactory = args[0]
+    const tokenOverride = args.length >= 2 ? args[1] : undefined
+    const token = resolveToken(tokenOverride)
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
+    const platformInstanceId = resolvePlatformInstanceId(args.length >= 3 ? args[2] : undefined)
     this.token = token
+    this.platformInstanceId = platformInstanceId
     this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory
-    log.debug({ tokenLength: this.token.length }, 'DiscordChatProvider constructed')
+    log.debug(
+      { platformInstanceId: this.platformInstanceId, tokenLength: this.token.length },
+      'DiscordChatProvider constructed',
+    )
   }
 
   registerCommand(name: string, handler: CommandHandler): void {
@@ -80,7 +109,7 @@ export class DiscordChatProvider implements ChatProvider {
     this.interactionHandler = handler
   }
 
-  async sendMessage(target: DeferredDeliveryTarget, markdown: string): Promise<void> {
+  async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     await sendDiscordMessage(this.client, target, markdown)
   }
 
@@ -179,7 +208,7 @@ export class DiscordChatProvider implements ChatProvider {
   private async dispatchButtonInteraction(interaction: ButtonInteractionLike, adminUserId: string): Promise<void> {
     await tryDeferUpdate(interaction)
 
-    const result = buildInteraction(interaction, adminUserId)
+    const result = buildInteraction(interaction, adminUserId, this.platformInstanceId)
     if (result === null) {
       log.debug({ customId: interaction.customId }, 'Could not build incoming interaction, skipping')
       return
@@ -188,7 +217,15 @@ export class DiscordChatProvider implements ChatProvider {
     const { incoming, channel } = result
 
     // Handle group-settings selector callbacks before standard routing
-    if (await handleDiscordGroupSettingsSelection(interaction, incoming.user.id, result.reply)) return
+    if (
+      await handleDiscordGroupSettingsSelection(
+        interaction,
+        incoming.user.id,
+        incoming.platformInstanceId,
+        result.reply,
+      )
+    )
+      return
 
     if (this.interactionHandler === null) {
       const auth = checkAuthorizationExtended(
@@ -198,6 +235,7 @@ export class DiscordChatProvider implements ChatProvider {
         incoming.contextType,
         incoming.threadId,
         incoming.user.isAdmin,
+        incoming.platformInstanceId,
       )
       const handled = await routeInteraction(incoming, result.reply, auth)
       if (handled) return
@@ -209,6 +247,7 @@ export class DiscordChatProvider implements ChatProvider {
         adminUserId,
         this.commands,
         this.messageHandler,
+        this.platformInstanceId,
       )
       return
     }
@@ -216,7 +255,7 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   private async dispatchMessage(message: DispatchableMessage, botId: string, adminUserId: string): Promise<void> {
-    const mapped = mapDiscordMessage(message, botId, adminUserId)
+    const mapped = mapDiscordMessage(message, botId, adminUserId, this.platformInstanceId)
     if (mapped === null) return
     const reply = createDiscordReplyFn({
       channel: message.channel,
@@ -229,8 +268,9 @@ export class DiscordChatProvider implements ChatProvider {
       mapped.contextType,
       mapped.threadId,
       mapped.user.isAdmin,
+      mapped.platformInstanceId,
     )
-    const command = this.matchCommand(mapped.text)
+    const command = matchDiscordCommand(mapped.text, this.commands)
     if (command !== null) {
       mapped.commandMatch = command.match
       await command.handler(mapped, reply, auth)
@@ -249,18 +289,6 @@ export class DiscordChatProvider implements ChatProvider {
       }
       await this.messageHandler(mapped, reply)
     }
-  }
-
-  private matchCommand(text: string): { handler: CommandHandler; match: string } | null {
-    const trimmed = text.trim()
-    if (!trimmed.startsWith('/')) return null
-    for (const [name, handler] of this.commands) {
-      if (trimmed === `/${name}` || trimmed.startsWith(`/${name} `)) {
-        const match = trimmed.slice(name.length + 2).trim()
-        return { handler, match }
-      }
-    }
-    return null
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {

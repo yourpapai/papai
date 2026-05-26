@@ -9,7 +9,10 @@ import { eq } from 'drizzle-orm'
 
 import { getAiOutputSettings } from '../../src/ai-output-settings.js'
 import { addAuthorizedGroup, removeAuthorizedGroup } from '../../src/authorized-groups.js'
+import { buildDiscordInteraction } from '../../src/chat/discord/interaction-helpers.js'
 import { routeInteraction } from '../../src/chat/interaction-router.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { buildTelegramInteraction } from '../../src/chat/telegram/interaction-helpers.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
 import { handleEditorMessage } from '../../src/config-editor/handlers.js'
 import { createEditorSession, deleteEditorSession } from '../../src/config-editor/state.js'
@@ -20,7 +23,10 @@ import {
   deleteGroupSettingsSession,
   getActiveGroupSettingsTarget,
 } from '../../src/group-settings/state.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { setKaneoWorkspace } from '../../src/users.js'
+import { createWizardSession } from '../../src/wizard/state.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -29,6 +35,7 @@ const interaction: IncomingInteraction = {
   user: { id: 'user-1', username: 'alice', isAdmin: false },
   contextId: 'ctx-1',
   contextType: 'dm',
+  platformInstanceId: 'test-instance',
   storageContextId: 'ctx-1',
   callbackData: 'cfg:edit:timezone',
 }
@@ -57,26 +64,41 @@ const captureReplyText = (replies: string[]): ReplyFn['text'] => {
 }
 
 function setupAuthorizedGroupForUser(userId: string, command: 'config' | 'setup'): void {
+  const scopedGroupId = toScopedContextId({
+    platformInstanceId: interaction.platformInstanceId,
+    nativeContextId: 'group-9',
+  })
   upsertKnownGroupContext({
-    contextId: 'group-9',
+    contextId: scopedGroupId,
     provider: 'telegram',
     displayName: 'Operations',
     parentName: 'Platform',
   })
   upsertGroupAdminObservation({
     provider: 'telegram',
-    contextId: 'group-9',
+    contextId: scopedGroupId,
     userId,
     username: interaction.user.username,
     isAdmin: true,
   })
-  addAuthorizedGroup('group-9', 'admin-1')
+  addAuthorizedGroup(scopedGroupId, 'admin-1')
   createGroupSettingsSession({
     userId,
+    platformInstanceId: interaction.platformInstanceId,
     command,
     stage: 'active',
-    targetContextId: 'group-9',
+    targetContextId: scopedGroupId,
   })
+}
+
+function assignKaneoContext(contextId: string): void {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
 }
 
 describe('routeInteraction', () => {
@@ -85,8 +107,12 @@ describe('routeInteraction', () => {
     await setupTestDb()
     deleteWizardSession(interaction.user.id, interaction.contextId)
     deleteEditorSession(interaction.user.id, interaction.contextId)
-    deleteEditorSession(interaction.user.id, 'group-9')
+    deleteEditorSession(
+      interaction.user.id,
+      toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+    )
     deleteGroupSettingsSession(interaction.user.id)
+    deleteGroupSettingsSession(interaction.user.id, interaction.platformInstanceId)
   })
 
   test('routes gsel callbacks through the group settings interaction dependency', async () => {
@@ -126,6 +152,80 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(calls).toEqual(['cfg'])
+  })
+
+  test('routes telegram cfg fallback with scoped auth context instead of native interaction storage', async () => {
+    const telegramInteraction = buildTelegramInteraction(
+      {
+        from: { id: 42, username: 'alice' },
+        chat: { id: 100, type: 'supergroup' },
+        callbackQuery: { data: 'cfg:edit:timezone', message: { message_id: 7, message_thread_id: 5 } },
+      },
+      true,
+      'telegram-secondary',
+    )
+    expect(telegramInteraction).not.toBeNull()
+    const scopedThreadId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-secondary',
+      nativeContextId: '100',
+      threadId: '5',
+    })
+    const seenStorageIds: string[] = []
+
+    const handled = await routeInteraction(
+      telegramInteraction!,
+      reply,
+      { ...createMockAuth(true), storageContextId: scopedThreadId },
+      {
+        handleGroupSettingsInteraction: () => Promise.resolve(false),
+        handleConfigInteraction: (routedInteraction) => {
+          seenStorageIds.push(routedInteraction.storageContextId)
+          return Promise.resolve(true)
+        },
+        handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: () => Promise.resolve(false),
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(telegramInteraction!.storageContextId).toBe('100:5')
+    expect(seenStorageIds).toEqual([scopedThreadId])
+  })
+
+  test('routes discord plugin fallback with scoped auth context instead of native interaction storage', async () => {
+    const discordInteraction = buildDiscordInteraction(
+      {
+        user: { id: 'user-1', username: 'alice' },
+        customId: 'plg:toggle',
+        channelId: 'channel-1',
+        channel: { type: 0 },
+        message: { id: 'message-1' },
+      },
+      true,
+      'discord-secondary',
+    )
+    expect(discordInteraction).not.toBeNull()
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'discord-secondary', nativeContextId: 'channel-1' })
+    const seenStorageIds: string[] = []
+
+    const handled = await routeInteraction(
+      discordInteraction!,
+      reply,
+      { ...createMockAuth(true), storageContextId: scopedContextId },
+      {
+        handleGroupSettingsInteraction: () => Promise.resolve(false),
+        handleConfigInteraction: () => Promise.resolve(false),
+        handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: (routedInteraction) => {
+          seenStorageIds.push(routedInteraction.storageContextId)
+          return Promise.resolve(true)
+        },
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(discordInteraction!.storageContextId).toBe('channel-1')
+    expect(seenStorageIds).toEqual([scopedContextId])
   })
 
   test('routes wizard callbacks through the wizard interaction dependency', async () => {
@@ -218,7 +318,10 @@ describe('routeInteraction', () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
     createEditorSession({
       userId: interaction.user.id,
-      storageContextId: 'group-9',
+      storageContextId: toScopedContextId({
+        platformInstanceId: interaction.platformInstanceId,
+        nativeContextId: 'group-9',
+      }),
       editingKey: 'timezone',
     })
 
@@ -244,7 +347,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -266,7 +376,11 @@ describe('routeInteraction', () => {
   test('clears stale active DM-selected group target when cfg callback allowlist access is lost', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
-    expect(removeAuthorizedGroup('group-9')).toBe(true)
+    expect(
+      removeAuthorizedGroup(
+        toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+      ),
+    ).toBe(true)
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -290,7 +404,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -317,7 +438,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     createEditorSession({
       userId: interaction.user.id,
@@ -343,6 +471,33 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(buttonReplies[0]).toContain('Changes cancelled')
+  })
+
+  test('saves encoded legacy personal cfg callback with unscoped editor session', async () => {
+    createEditorSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      editingKey: 'timezone',
+    })
+    handleEditorMessage(interaction.user.id, interaction.user.id, 'Europe/Berlin')
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `cfg:save:timezone@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      reply,
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(getConfig(interaction.user.id, 'timezone')).toBe('Europe/Berlin')
+    expect(
+      getConfig(
+        toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: interaction.user.id }),
+        'timezone',
+      ),
+    ).toBeNull()
   })
 
   test('prefers replaceButtons for cfg callback responses with buttons when available', async () => {
@@ -372,21 +527,30 @@ describe('routeInteraction', () => {
 
   test('saves edited config into the selected group context instead of the DM user context', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
     createEditorSession({
       userId: interaction.user.id,
-      storageContextId: 'group-9',
+      storageContextId: scopedGroupId,
       editingKey: 'timezone',
     })
-    handleEditorMessage(interaction.user.id, 'group-9', 'Europe/Berlin')
+    handleEditorMessage(interaction.user.id, scopedGroupId, 'Europe/Berlin')
 
     await routeInteraction({ ...interaction, callbackData: 'cfg:save:timezone' }, reply, createMockAuth(true))
 
-    expect(getConfig('group-9', 'timezone')).toBe('Europe/Berlin')
+    expect(getConfig(scopedGroupId, 'timezone')).toBe('Europe/Berlin')
+    expect(getConfig('group-9', 'timezone')).toBeNull()
     expect(getConfig(interaction.user.id, 'timezone')).toBeNull()
   })
 
   test('updates AI output setting for encoded target context', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
     const buttonReplies: string[] = []
 
     const handled = await routeInteraction(
@@ -405,7 +569,8 @@ describe('routeInteraction', () => {
     )
 
     expect(handled).toBe(true)
-    expect(getAiOutputSettings('group-9').toolVisibility).toBe('on')
+    expect(getAiOutputSettings(scopedGroupId).toolVisibility).toBe('on')
+    expect(getAiOutputSettings('group-9').toolVisibility).toBe('off')
     expect(getAiOutputSettings(interaction.user.id).toolVisibility).toBe('off')
     expect(buttonReplies[0]).toContain('Tool calls: on')
   })
@@ -466,24 +631,30 @@ describe('routeInteraction', () => {
   })
 
   test('starts setup for the selected group target', async () => {
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
     upsertKnownGroupContext({
-      contextId: 'group-9',
+      contextId: scopedGroupId,
       provider: 'telegram',
       displayName: 'Operations',
       parentName: 'Platform',
     })
-    addAuthorizedGroup('group-9', 'admin-1')
-    setConfig('group-9', 'kaneo_apikey', 'test-kaneo-key')
-    setKaneoWorkspace('group-9', 'workspace-9')
+    addAuthorizedGroup(scopedGroupId, 'admin-1')
+    assignKaneoContext(scopedGroupId)
+    setConfig(scopedGroupId, 'kaneo_apikey', 'test-kaneo-key')
+    setKaneoWorkspace(scopedGroupId, 'workspace-9')
     upsertGroupAdminObservation({
       provider: 'telegram',
-      contextId: 'group-9',
+      contextId: scopedGroupId,
       userId: interaction.user.id,
       username: interaction.user.username,
       isAdmin: true,
     })
     createGroupSettingsSession({
       userId: interaction.user.id,
+      platformInstanceId: interaction.platformInstanceId,
       command: 'setup',
       stage: 'choose_group',
     })
@@ -507,7 +678,14 @@ describe('routeInteraction', () => {
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, 'group-9')).run()
+    db.delete(groupAdminObservations)
+      .where(
+        eq(
+          groupAdminObservations.contextId,
+          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
+        ),
+      )
+      .run()
 
     const replies: string[] = []
     const handled = await routeInteraction(
@@ -545,6 +723,111 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(replies).toEqual(['No active setup session. Type /setup to start.'])
+  })
+
+  test('confirms encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_confirm@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies[0]).toContain('Configuration saved successfully')
+    expect(getConfig(interaction.user.id, 'timezone')).toBe('Europe/Berlin')
+  })
+
+  test('edits encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_edit@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies[0]).toContain('Editing configuration from the beginning')
+  })
+
+  test('cancels encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_cancel@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['❌ Wizard cancelled. Type /setup to restart.'])
+  })
+
+  test('restarts encoded legacy personal wizard callback with unscoped wizard session', async () => {
+    createWizardSession({
+      userId: interaction.user.id,
+      storageContextId: interaction.user.id,
+      totalSteps: 1,
+      taskProvider: 'kaneo',
+      initialData: { timezone: 'Europe/Berlin' },
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `wizard_restart@${Buffer.from(interaction.user.id).toString('base64url')}`,
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['Restarting wizard... Type /setup to begin.'])
   })
 
   test('blocks unauthorized users with unauthorized message', async () => {

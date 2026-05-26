@@ -8,6 +8,7 @@
  * Button callback and message handlers for standalone config editing
  */
 
+import { getConfigKeysForContext } from '../config-keys.js'
 import { getConfig, isSensitiveKey, maskValue, setConfig } from '../config.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
@@ -37,6 +38,10 @@ function getFieldEmoji(key: ConfigKey): string {
   return emojiMap[key] ?? '⚙️'
 }
 
+function isKeyValidForContext(storageContextId: string, key: ConfigKey): boolean {
+  return getConfigKeysForContext(storageContextId).includes(key)
+}
+
 function formatConfigLine(key: ConfigKey, value: string | undefined): string {
   const displayName = FIELD_DISPLAY_NAMES[key]
   const emoji = getFieldEmoji(key)
@@ -53,13 +58,10 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
   const lines = ['⚙️ **Configuration**\n']
   const buttons: EditorButton[] = []
 
-  const configKeys: ConfigKey[] = ['kaneo_apikey', 'youtrack_token', 'timezone']
+  const configKeys = getConfigKeysForContext(storageContextId)
 
   for (const key of configKeys) {
     const value = getConfig(storageContextId, key)
-    // Skip provider-specific keys that don't apply
-    if (key === 'kaneo_apikey' && process.env['TASK_PROVIDER'] === 'youtrack') continue
-    if (key === 'youtrack_token' && process.env['TASK_PROVIDER'] === 'kaneo') continue
 
     lines.push(formatConfigLine(key, value ?? undefined))
     buttons.push({
@@ -79,6 +81,10 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
  * Start editing a specific config field
  */
 export function startEditor(userId: string, storageContextId: string, key: ConfigKey): EditorProcessResult {
+  if (!isKeyValidForContext(storageContextId, key)) {
+    return { handled: true, response: `Config key "${key}" is not valid for this context.` }
+  }
+
   createEditorSession({ userId, storageContextId, editingKey: key })
 
   const currentValue = getConfig(storageContextId, key)
@@ -118,6 +124,11 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
   const session = getEditorSession(userId, storageContextId)
   if (session === null || session.pendingValue === undefined) {
     return { handled: false }
+  }
+
+  if (!isKeyValidForContext(storageContextId, session.editingKey)) {
+    deleteEditorSession(userId, storageContextId)
+    return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
   }
 
   setConfig(storageContextId, session.editingKey, session.pendingValue)
@@ -193,6 +204,11 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
   const session = getEditorSession(userId, storageContextId)
   if (session === null) {
     return { handled: false }
+  }
+
+  if (!isKeyValidForContext(storageContextId, session.editingKey)) {
+    deleteEditorSession(userId, storageContextId)
+    return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
   }
 
   // Validate the input

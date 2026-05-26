@@ -3,20 +3,14 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ModelMessage, ToolSet } from 'ai'
+import type { ModelMessage } from 'ai'
 
-import { getCachedHistory } from '../cache.js'
 import type { DeferredDeliveryTarget } from '../chat/types.js'
-import { getConfig } from '../config.js'
-import { buildMessagesWithMemory, runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
+import { runTrimInBackground, shouldTriggerTrim } from '../conversation.js'
 import { appendHistory } from '../history.js'
 import { logger } from '../logger.js'
 import { extractFactToolCalls, extractFactToolResults } from '../memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from '../memory.js'
-import type { TaskProvider } from '../providers/types.js'
-import { makeTools } from '../tools/index.js'
-import { routeToolsForMessage } from '../tools/tool-router.js'
-import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
 
 const log = logger.child({ scope: 'deferred:proactive-llm-helpers' })
@@ -64,10 +58,11 @@ export const toolCallCount = (result: unknown): number | undefined => {
   return toolCalls.length
 }
 
-export const getStorageContextId = (target: DeferredDeliveryTarget): string =>
-  target.contextType === 'group' && target.threadId !== null
-    ? `${target.contextId}:${target.threadId}`
-    : target.contextId
+export const getStorageContextId = (target: DeferredDeliveryTarget): string => {
+  if (target.storageContextId !== undefined) return target.storageContextId
+  if (target.contextType === 'group' && target.threadId !== null) return `${target.contextId}:${target.threadId}`
+  return target.contextId
+}
 
 export function buildMinimalSystemPrompt(type: 'scheduled' | 'alert'): string {
   return [
@@ -89,7 +84,7 @@ export function buildMetadataMessages(m: ExecutionMetadata): ModelMessage[] {
 
 export const wrapPrompt = (prompt: string): string => `===DEFERRED_TASK===\n${prompt}\n===END_DEFERRED_TASK===`
 
-type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls?: unknown[] }
+type LlmResult = { response: { messages: ModelMessage[] }; text: string; toolCalls: unknown[] | undefined }
 
 export function persistProactiveResults(
   creatorId: string,
@@ -112,46 +107,4 @@ export function persistProactiveResults(
     if (shouldTriggerTrim(updated)) void runTrimInBackground(storageContextId, updated)
   }
   log.debug({ userId: creatorId, toolCalls: toolCallCount(result) }, 'Proactive LLM response received')
-}
-
-export function buildFullToolSet(
-  provider: TaskProvider,
-  createdByUserId: string,
-  storageContextId: string,
-  contextType: 'dm' | 'group',
-  prompt: string,
-): { tools: ToolSet; enabledToolNames: ReadonlySet<string> } {
-  const fullTools = makeTools(provider, {
-    storageContextId,
-    chatUserId: createdByUserId,
-    mode: 'proactive',
-    contextType,
-  })
-  return {
-    tools: routeToolsForMessage(prompt, fullTools).tools,
-    enabledToolNames: new Set(Object.keys(fullTools)),
-  }
-}
-
-export function buildFullMessages(
-  createdByUserId: string,
-  storageContextId: string,
-  type: 'scheduled' | 'alert',
-  prompt: string,
-  matchedTasksSummary: string | undefined,
-  metadata: ExecutionMetadata,
-): { messages: ModelMessage[]; systemPrompt: string } {
-  const timezone = timezoneOrUtc(getConfig(createdByUserId, 'timezone'))
-  const trigger = buildProactiveTrigger(type, prompt, timezone, matchedTasksSummary)
-  const history = getCachedHistory(storageContextId)
-  const { messages: messagesWithMemory } = buildMessagesWithMemory(storageContextId, history)
-  return {
-    messages: [
-      ...messagesWithMemory,
-      { role: 'system', content: trigger.systemContext },
-      ...buildMetadataMessages(metadata),
-      { role: 'user', content: trigger.userContent },
-    ],
-    systemPrompt: trigger.systemContext,
-  }
 }

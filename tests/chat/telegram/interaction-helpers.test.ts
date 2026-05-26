@@ -26,6 +26,7 @@ describe('buildTelegramInteraction', () => {
       user: { id: '42', username: 'alice', isAdmin: true },
       contextId: '99',
       contextType: 'dm',
+      platformInstanceId: 'telegram-default',
       storageContextId: '99',
       callbackData: 'cfg:edit:timezone',
       messageId: '7',
@@ -51,12 +52,30 @@ describe('buildTelegramInteraction', () => {
       user: { id: '42', username: 'alice', isAdmin: false },
       contextId: '100',
       contextType: 'group',
+      platformInstanceId: 'telegram-default',
       // storageContextId must include threadId for wizard session lookup
       storageContextId: '100:5',
       callbackData: 'wizard_confirm',
       messageId: '7',
       threadId: '5',
     })
+  })
+
+  test('uses the provided platform instance ID', () => {
+    const interaction = buildTelegramInteraction(
+      {
+        from: { id: 42, username: 'alice' },
+        chat: { id: 99, type: 'private' },
+        callbackQuery: {
+          data: 'cfg:edit:timezone',
+          message: { message_id: 7 },
+        },
+      },
+      true,
+      'telegram-secondary',
+    )
+
+    expect(interaction?.platformInstanceId).toBe('telegram-secondary')
   })
 
   test('returns null when callback data is missing', () => {

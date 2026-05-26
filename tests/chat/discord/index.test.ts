@@ -9,14 +9,44 @@ import assert from 'node:assert/strict'
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
 import type { ButtonInteractionLike } from '../../../src/chat/discord/buttons.js'
 import type { DiscordClientFactory } from '../../../src/chat/discord/index.js'
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { dmTarget } from '../../../src/chat/types.js'
 import { setConfig } from '../../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { startGroupSettingsSelection } from '../../../src/group-settings/selector.js'
-import { setKaneoWorkspace } from '../../../src/users.js'
-import { addUser } from '../../../src/users.js'
+import { setContextSettings } from '../../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../../src/instances/task-store.js'
+import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
+
+const TEST_PLATFORM_ID = 'discord-default'
+
+const scopedContextId = (nativeContextId: string): string =>
+  toScopedContextId({ platformInstanceId: TEST_PLATFORM_ID, nativeContextId })
+
+const addAuthorizedDiscordGroup = (nativeContextId: string, addedBy: string): void => {
+  addAuthorizedGroup(scopedContextId(nativeContextId), addedBy)
+}
+
+const addUser = (userId: string, addedBy: string, ...args: [] | [username: string]): void => {
+  const username = args[0]
+  if (username === undefined) {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy })
+  } else {
+    addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
+  }
+}
+
+const assignKaneoContext = (contextId: string): void => {
+  insertTaskInstance({
+    id: `${contextId}-kaneo`,
+    type: 'kaneo',
+    config: { url: 'https://kaneo.invalid' },
+    status: 'active',
+  })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'discord-default' })
+}
 
 type ReadyListener = (arg: { user: { id: string; username: string } }) => void
 type GenericListener = (...args: unknown[]) => void
@@ -150,6 +180,68 @@ describe('DiscordChatProvider', () => {
     expect(seen[0]!.text).toBe('what is the weather')
   })
 
+  test('onMessage receives constructor-provided platform instance ID', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider(undefined, 'fake-discord-token', 'discord-secondary')
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm2',
+      author: { id: 'u2', username: 'bob', bot: false },
+      content: '<@bot_id> what is the weather',
+      channel: {
+        id: 'c2',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+      },
+      mentions: { has: (id: string): boolean => id === 'bot_id' },
+      reference: null,
+      type: 0,
+    }
+    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.platformInstanceId).toBe('discord-secondary')
+  })
+
+  test('onMessage receives default Discord platform instance ID when constructor omits it', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    const provider = new DiscordChatProvider(undefined)
+
+    const seen: IncomingMessage[] = []
+    provider.onMessage((msg): Promise<void> => {
+      seen.push(msg)
+      return Promise.resolve()
+    })
+
+    const fakeMessage = {
+      id: 'm2-default',
+      author: { id: 'u2', username: 'bob', bot: false },
+      content: '<@bot_id> what is the weather',
+      channel: {
+        id: 'c2',
+        type: 0,
+        send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
+          Promise.resolve({ id: 'out2', edit: (): Promise<void> => Promise.resolve() }),
+        sendTyping: (): Promise<void> => Promise.resolve(),
+      },
+      mentions: { has: (id: string): boolean => id === 'bot_id' },
+      reference: null,
+      type: 0,
+    }
+    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.platformInstanceId).toBe('discord-default')
+  })
+
   test('bot-authored messages are ignored', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     const provider = new DiscordChatProvider(undefined)
@@ -217,7 +309,7 @@ describe('DiscordChatProvider', () => {
     }
     provider.testSetClient(fakeClient)
 
-    await provider.sendMessage(dmTarget('user-42'), 'hello discord')
+    await provider.sendMessage('discord-default', dmTarget('user-42'), 'hello discord')
     expect(sends).toHaveLength(1)
     expect(sends[0]!.content).toBe('hello discord')
   })
@@ -243,6 +335,7 @@ describe('DiscordChatProvider', () => {
 
     await expect(
       provider.sendMessage(
+        'discord-default',
         {
           contextId: 'chan-404',
           contextType: 'group',
@@ -274,7 +367,7 @@ describe('DiscordChatProvider', () => {
         cache: new Map<string, unknown>(),
         fetch: (_id: string): Promise<unknown> =>
           Promise.resolve({
-            send: (_arg: { content: string }): Promise<unknown> => Promise.resolve(undefined),
+            send: (_arg: { content: string }): Promise<unknown> => Promise.resolve(),
             isSendable: (): boolean => false,
           }),
       },
@@ -282,6 +375,7 @@ describe('DiscordChatProvider', () => {
 
     await expect(
       provider.sendMessage(
+        'discord-default',
         {
           contextId: 'chan-stage',
           contextType: 'group',
@@ -397,7 +491,7 @@ describe('DiscordChatProvider', () => {
 
       const result = provider.renderContext(snapshot)
 
-      assert(result.method === 'embed')
+      assert.ok(result.method === 'embed')
       expect(result.embed.title).toBe('Context · gpt-4o')
       expect(result.embed.description).toContain('🟦')
       expect(result.embed.footer).toContain('1,500')
@@ -698,8 +792,8 @@ describe('DiscordChatProvider', () => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
 
-        assert(reply.replaceText !== undefined)
-        assert(reply.replaceButtons !== undefined)
+        assert.ok(reply.replaceText !== undefined)
+        assert.ok(reply.replaceButtons !== undefined)
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -742,7 +836,7 @@ describe('DiscordChatProvider', () => {
       expect(edits[1]!.content).toBe('Choose next')
       expect(Array.isArray(edits[1]!.components)).toBe(true)
       const secondEditComponents = edits[1]!.components
-      assert(secondEditComponents !== undefined)
+      assert.ok(secondEditComponents !== undefined)
       expect(secondEditComponents.length).toBe(1)
     })
 
@@ -757,8 +851,8 @@ describe('DiscordChatProvider', () => {
         expect(typeof reply.replaceText).toBe('function')
         expect(typeof reply.replaceButtons).toBe('function')
 
-        assert(reply.replaceText !== undefined)
-        assert(reply.replaceButtons !== undefined)
+        assert.ok(reply.replaceText !== undefined)
+        assert.ok(reply.replaceButtons !== undefined)
 
         await reply.replaceText('Updated menu')
         await reply.replaceButtons('Choose next', {
@@ -801,7 +895,7 @@ describe('DiscordChatProvider', () => {
       expect(sends[1]!.content).toBe('Choose next')
       expect(Array.isArray(sends[1]!.components)).toBe(true)
       const secondSendComponents = sends[1]!.components
-      assert(secondSendComponents !== undefined)
+      assert.ok(secondSendComponents !== undefined)
       expect(secondSendComponents.length).toBe(1)
     })
 
@@ -878,7 +972,7 @@ describe('DiscordChatProvider', () => {
       const provider = new DiscordChatProvider(undefined)
 
       // Authorize the user
-      addAuthorizedGroup('guild-channel-99', 'admin-id')
+      addAuthorizedDiscordGroup('guild-channel-99', 'admin-id')
       addUser('user-88', 'admin-id', 'dave')
 
       const seen: IncomingMessage[] = []
@@ -996,20 +1090,20 @@ describe('DiscordChatProvider', () => {
       await setupTestDb()
 
       upsertKnownGroupContext({
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         provider: 'discord',
         displayName: 'Operations',
         parentName: 'Platform',
       })
-      addAuthorizedGroup('group-1', 'admin-id')
+      addAuthorizedDiscordGroup('group-1', 'admin-id')
       upsertGroupAdminObservation({
         provider: 'discord',
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         userId: 'user-1',
         username: 'alice',
         isAdmin: true,
       })
-      startGroupSettingsSelection('user-1', 'config', true)
+      startGroupSettingsSelection('user-1', 'config', true, 'discord-default')
 
       const sends: Array<Partial<{ content: string }>> = []
       const interaction: ButtonInteractionLike = {
@@ -1031,8 +1125,8 @@ describe('DiscordChatProvider', () => {
 
       await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
 
-      assert(sends[0] !== undefined)
-      assert(sends[0].content !== undefined)
+      assert.ok(sends[0] !== undefined)
+      assert.ok(sends[0].content !== undefined)
       expect(sends[0].content).toContain('Choose a group to configure.')
     })
 
@@ -1042,22 +1136,23 @@ describe('DiscordChatProvider', () => {
       await setupTestDb()
 
       upsertKnownGroupContext({
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         provider: 'discord',
         displayName: 'Operations',
         parentName: 'Platform',
       })
       upsertGroupAdminObservation({
         provider: 'discord',
-        contextId: 'group-1',
+        contextId: scopedContextId('group-1'),
         userId: 'user-1',
         username: 'alice',
         isAdmin: true,
       })
-      addAuthorizedGroup('group-1', 'admin-id')
-      setConfig('group-1', 'kaneo_apikey', 'existing-key')
-      setKaneoWorkspace('group-1', 'existing-workspace')
-      startGroupSettingsSelection('user-1', 'setup', true)
+      addAuthorizedDiscordGroup('group-1', 'admin-id')
+      assignKaneoContext(scopedContextId('group-1'))
+      setConfig(scopedContextId('group-1'), 'kaneo_apikey', 'existing-key')
+      setKaneoWorkspace(scopedContextId('group-1'), 'existing-workspace')
+      startGroupSettingsSelection('user-1', 'setup', true, 'discord-default')
 
       const groupSelectorInteraction: ButtonInteractionLike = {
         user: { id: 'user-1', username: 'alice' },
@@ -1095,8 +1190,8 @@ describe('DiscordChatProvider', () => {
 
       await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
 
-      assert(sends[0] !== undefined)
-      assert(sends[0].content !== undefined)
+      assert.ok(sends[0] !== undefined)
+      assert.ok(sends[0].content !== undefined)
       expect(sends[0].content).toContain('Welcome to papai configuration wizard!')
     })
 
@@ -1200,7 +1295,7 @@ describe('DiscordChatProvider', () => {
         },
       })
 
-      const label = await provider.resolveGroupLabel?.('chan-7')
+      const label = await provider.resolveGroupLabel('chan-7')
       expect(label).toBe('engineering-chat')
     })
 
@@ -1242,10 +1337,7 @@ describe('DiscordChatProvider', () => {
         },
       })
 
-      const label = await provider.resolveUserLabel?.('user-9', {
-        contextId: 'chan-7',
-        contextType: 'group',
-      })
+      const label = await provider.resolveUserLabel('user-9', { contextId: 'chan-7', contextType: 'group' })
       expect(label).toBe('John Johnson (@itsmike)')
     })
 
@@ -1275,10 +1367,7 @@ describe('DiscordChatProvider', () => {
         },
       })
 
-      const label = await provider.resolveUserLabel?.('user-12', {
-        contextId: 'dm-user',
-        contextType: 'dm',
-      })
+      const label = await provider.resolveUserLabel('user-12', { contextId: 'dm-user', contextType: 'dm' })
       expect(label).toBe('Jane Admin (@janeadmin)')
     })
 

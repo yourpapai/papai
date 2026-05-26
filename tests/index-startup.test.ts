@@ -3,85 +3,131 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 
-import { eq } from 'drizzle-orm'
+const restoreAdminUserId = (originalValue: string | undefined): void => {
+  if (originalValue === undefined) {
+    delete process.env['ADMIN_USER_ID']
+    return
+  }
+  process.env['ADMIN_USER_ID'] = originalValue
+}
 
-import * as schema from '../src/db/schema.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+describe('index.ts startup', () => {
+  test('does not auto-add ADMIN_USER_ID to authorized users', async () => {
+    const source = await Bun.file('src/index.ts').text()
 
-// Save original environment before any tests
-const ORIGINAL_ENV = { ...process.env }
-
-// Import the addUser function after mocking
-type AddUserFn = (userId: string, addedBy: string, username?: string) => void
-let addUser: AddUserFn
-
-describe('index.ts startup - admin auto-authorization', () => {
-  const ADMIN_USER_ID = '12345'
-
-  let testDb: Awaited<ReturnType<typeof setupTestDb>>
-
-  beforeEach(async () => {
-    // Reset environment
-    process.env = { ...ORIGINAL_ENV }
-
-    mockLogger()
-
-    // Reset test database
-    testDb = await setupTestDb()
-
-    // Import addUser fresh for each test
-    const usersModule = await import('../src/users.js')
-    addUser = usersModule.addUser
+    expect(source).not.toMatch(/import\s+\{[^}]*addUser/u)
+    expect(source).not.toMatch(/\baddUser\s*\(/u)
   })
 
-  test('addUser call from index.ts startup adds admin as self-referential', () => {
-    // This simulates what index.ts does on line 56:
-    // addUser(adminUserId, adminUserId)
-    addUser(ADMIN_USER_ID, ADMIN_USER_ID)
+  test('evaluates plugin compatibility across startup instances', async () => {
+    const originalAdminUserId = process.env['ADMIN_USER_ID']
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    let evaluatedCompatibilityInstances = 0
+    let resolverCalls = 0
 
-    // Verify admin user was added to database
-    const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, ADMIN_USER_ID)).get()
+    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
+    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
+    void mock.module('../src/attachments/staged-download.js', () => ({
+      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
+    }))
+    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
+    void mock.module('../src/chat/registry.js', () => ({
+      createChatProviderFromConfig: (): unknown => ({
+        name: 'mock',
+        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+        capabilities: new Set(['messages.buttons']),
+        traits: { observedGroupMessages: 'all' },
+        configRequirements: [],
+        registerCommand: (): void => {},
+        onMessage: (): void => {},
+        sendMessage: (): Promise<void> => Promise.resolve(),
+        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
+        start: (): Promise<void> => Promise.resolve(),
+        stop: (): Promise<void> => Promise.resolve(),
+      }),
+    }))
+    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
+    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
+    void mock.module('../src/chat/mattermost/index.js', () => ({
+      getMattermostFileFetcher: (): undefined => undefined,
+    }))
+    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
+    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
+    void mock.module('../src/debug/chat-router-runtime.js', () => ({
+      setRuntimeChatRouter: (): void => {},
+      clearRuntimeChatRouter: (): void => {},
+    }))
+    void mock.module('../src/deferred-prompts/poller.js', () => ({
+      startPollers: (): void => {},
+      stopPollers: (): void => {},
+    }))
+    void mock.module('../src/instances/bootstrap.js', () => ({
+      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
+    }))
+    void mock.module('../src/instances/platform-store.js', () => ({
+      listActivePlatformInstances: (): unknown[] => [
+        { id: 'telegram-a', type: 'telegram', config: { token: 'x' }, status: 'active', createdAt: 'now' },
+      ],
+    }))
+    void mock.module('../src/instances/task-store.js', () => ({
+      listTaskInstances: (): unknown[] => [
+        {
+          id: 'youtrack-a',
+          type: 'youtrack',
+          config: { baseUrl: 'https://youtrack.invalid' },
+          status: 'active',
+          createdAt: 'now',
+        },
+      ],
+    }))
+    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
+    void mock.module('../src/message-queue/index.js', () => ({
+      flushOnShutdown: (): Promise<void> => Promise.resolve(),
+    }))
+    void mock.module('../src/plugins/discovery.js', () => ({
+      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
+    }))
+    void mock.module('../src/plugins/loader.js', () => ({
+      activatePlugins: (): Promise<void> => Promise.resolve(),
+      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
+      getActivatedPluginIds: (): unknown[] => [],
+    }))
+    void mock.module('../src/plugins/registry.js', () => ({
+      syncRegistryFromDb: (): void => {},
+      pluginRegistry: {
+        evaluateCompatibilityAcrossInstances: (instances: readonly unknown[]): void => {
+          evaluatedCompatibilityInstances = instances.length
+        },
+        getApprovedCompatiblePlugins: (): unknown[] => [],
+      },
+    }))
+    void mock.module('../src/providers/resolver.js', () => ({
+      defaultTaskProviderResolver: {
+        resolve: (): null => {
+          resolverCalls += 1
+          return null
+        },
+      },
+    }))
+    void mock.module('../src/scheduler-instance.js', () => ({
+      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
+    }))
+    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
+    void mock.module('../src/system-config.js', () => ({
+      seedSystemConfigFromEnv: (): void => {},
+      missingSystemConfigKeys: (): string[] => [],
+    }))
+    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
 
-    expect(user).toBeDefined()
-    expect(user?.platformUserId).toBe(ADMIN_USER_ID)
-    expect(user?.addedBy).toBe(ADMIN_USER_ID)
-    expect(user?.username).toBeNull()
+    try {
+      await import(`../src/index.ts?startup-compatibility=${Date.now()}`)
+    } finally {
+      restoreAdminUserId(originalAdminUserId)
+    }
+
+    expect(evaluatedCompatibilityInstances).toBeGreaterThan(0)
+    expect(resolverCalls).toBe(0)
   })
-
-  test('admin can add other users', () => {
-    // First, add admin (simulating startup)
-    addUser(ADMIN_USER_ID, ADMIN_USER_ID)
-
-    // Then admin adds a regular user
-    const NEW_USER_ID = '67890'
-    addUser(NEW_USER_ID, ADMIN_USER_ID)
-
-    const user = testDb.select().from(schema.users).where(eq(schema.users.platformUserId, NEW_USER_ID)).get()
-
-    expect(user).toBeDefined()
-    expect(user?.platformUserId).toBe(NEW_USER_ID)
-    expect(user?.addedBy).toBe(ADMIN_USER_ID)
-  })
-
-  test('admin can add user with username placeholder', () => {
-    // First, add admin (simulating startup)
-    addUser(ADMIN_USER_ID, ADMIN_USER_ID)
-
-    // Then admin adds a user by username (creates placeholder)
-    const USERNAME = 'alice'
-    const PLACEHOLDER_ID = `placeholder-${crypto.randomUUID()}`
-    addUser(PLACEHOLDER_ID, ADMIN_USER_ID, USERNAME)
-
-    const user = testDb.select().from(schema.users).where(eq(schema.users.username, USERNAME)).get()
-
-    expect(user).toBeDefined()
-    expect(user?.username).toBe(USERNAME)
-    expect(user?.addedBy).toBe(ADMIN_USER_ID)
-  })
-})
-
-afterAll(() => {
-  process.env = ORIGINAL_ENV
 })

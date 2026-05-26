@@ -20,6 +20,7 @@ function dmInteraction(callbackData: string): IncomingInteraction {
     callbackData,
     contextId: USER,
     contextType: 'dm',
+    platformInstanceId: 'telegram-default',
     storageContextId: USER,
     user: { id: USER, username: null, isAdmin: false },
   }

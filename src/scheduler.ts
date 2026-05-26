@@ -4,26 +4,28 @@
 // See LICENSE in the project root for details.
 
 import type { ChatProvider } from './chat/types.js'
-import { getConfig } from './config.js'
 import { emitGlobal } from './debug/event-bus.js'
 import { logger } from './logger.js'
-import { isKaneoSessionCookie } from './providers/kaneo/client.js'
-import { createProvider as defaultCreateProvider } from './providers/registry.js'
+import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { recordOccurrence } from './recurring-occurrences.js'
 import { type RecurringTaskRecord, getDueRecurringTasks, getRecurringTask } from './recurring.js'
 import { scheduler } from './scheduler-instance.js'
-import { applyLabels, buildRecurringTaskInput, finalizeCreatedRecurringTask } from './scheduler-recurring.js'
-import { getKaneoWorkspace } from './users.js'
+import {
+  applyLabels,
+  buildRecurringTaskInput,
+  canRouteRecurringNotification,
+  finalizeCreatedRecurringTask,
+} from './scheduler-recurring.js'
 
 const log = logger.child({ scope: 'scheduler' })
 
 export interface SchedulerDeps {
-  createProvider: (name: string, config: Record<string, string>) => TaskProvider
+  resolve: (contextId: string) => TaskProvider | null
 }
 
 const defaultSchedulerDeps: SchedulerDeps = {
-  createProvider: (...args): TaskProvider => defaultCreateProvider(...args),
+  resolve: (contextId): TaskProvider | null => defaultTaskProviderResolver.resolve(contextId),
 }
 
 const TICK_INTERVAL_MS = 60 * 1000
@@ -34,67 +36,17 @@ let tickCount = 0
 
 const HEARTBEAT_INTERVAL = 60
 
-const getTaskProvider = (): string => {
-  const taskProvider = process.env['TASK_PROVIDER']
-  if (taskProvider === undefined || taskProvider === '') {
-    return 'kaneo'
-  }
-  return taskProvider
-}
-
-const TASK_PROVIDER = getTaskProvider()
-
-const buildProviderForUser = (userId: string, deps: SchedulerDeps): TaskProvider | null => {
-  log.debug({ userId, providerName: TASK_PROVIDER }, 'Building provider for scheduled task')
-
-  if (TASK_PROVIDER === 'kaneo') {
-    const kaneoKey = getConfig(userId, 'kaneo_apikey')
-    const kaneoBaseUrl = process.env['KANEO_CLIENT_URL']
-    const workspaceId = getKaneoWorkspace(userId)
-
-    if (kaneoKey === null || kaneoBaseUrl === undefined || kaneoBaseUrl === '' || workspaceId === null) {
-      log.warn(
-        {
-          userId,
-          hasApiKey: kaneoKey !== null,
-          hasBaseUrl: kaneoBaseUrl !== undefined && kaneoBaseUrl !== '',
-          hasWorkspaceId: workspaceId !== null,
-        },
-        'Missing Kaneo config for scheduled task',
-      )
-      return null
-    }
-
-    const isSessionCookie = isKaneoSessionCookie(kaneoKey)
-    const config: Record<string, string> = isSessionCookie
-      ? { baseUrl: kaneoBaseUrl, sessionCookie: kaneoKey, workspaceId }
-      : { apiKey: kaneoKey, baseUrl: kaneoBaseUrl, workspaceId }
-
-    return deps.createProvider('kaneo', config)
-  }
-
-  if (TASK_PROVIDER === 'youtrack') {
-    const baseUrl = process.env['YOUTRACK_URL']
-    const token = getConfig(userId, 'youtrack_token')
-
-    if (baseUrl === undefined || baseUrl === '' || token === null) {
-      log.warn({ userId }, 'Missing YouTrack config for scheduled task')
-      return null
-    }
-
-    return deps.createProvider('youtrack', { baseUrl, token })
-  }
-
-  log.warn({ userId, providerName: TASK_PROVIDER }, 'Unknown task provider')
-  return null
-}
-
 const executeRecurringTask = async (task: RecurringTaskRecord, deps: SchedulerDeps): Promise<void> => {
   log.debug({ taskId: task.id, title: task.title, userId: task.userId }, 'Executing recurring task')
 
-  const provider = buildProviderForUser(task.userId, deps)
+  if (!canRouteRecurringNotification(chatProviderRef, task.userId)) {
+    log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: notification route unavailable')
+    return
+  }
+
+  const provider = deps.resolve(task.userId)
   if (provider === null) {
-    log.error({ taskId: task.id, userId: task.userId }, 'Cannot build provider for recurring task')
+    log.warn({ taskId: task.id, contextId: task.userId }, 'Skipping recurring task: task provider unavailable')
     return
   }
 
@@ -124,9 +76,9 @@ export async function createMissedTasks(
   const task = getRecurringTask(recurringTaskId)
   if (task === null) return 0
 
-  const provider = buildProviderForUser(task.userId, resolvedDeps)
+  const provider = resolvedDeps.resolve(task.userId)
   if (provider === null) {
-    log.error({ recurringTaskId, userId: task.userId }, 'Cannot build provider for missed tasks')
+    log.warn({ recurringTaskId, contextId: task.userId }, 'Skipping missed tasks: task provider unavailable')
     return 0
   }
 
@@ -247,6 +199,6 @@ export function getSchedulerSnapshot(): SchedulerSnapshot {
     tickIntervalMs: TICK_INTERVAL_MS,
     heartbeatInterval: HEARTBEAT_INTERVAL,
     activeTickInProgress: activeTickPromise !== null,
-    taskProvider: TASK_PROVIDER,
+    taskProvider: 'context-assigned',
   }
 }

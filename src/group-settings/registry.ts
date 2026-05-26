@@ -23,6 +23,7 @@ export type {
   UpsertGroupUserObservationInput,
   UpsertKnownGroupContextInput,
 } from './registry-types.js'
+export { listAdminGroupContextsForUser } from './admin-group-list.js'
 
 const log = logger.child({ scope: 'group-settings:registry' })
 
@@ -240,34 +241,4 @@ export function findGroupUserObservation(
     .get()
 
   return row === undefined ? null : toGroupUserObservation(row)
-}
-
-export function listAdminGroupContextsForUser(userId: string): KnownGroupContext[] {
-  log.debug({ userId }, 'listAdminGroupContextsForUser called')
-
-  const groups = getDrizzleDb()
-    .select({
-      contextId: knownGroupContexts.contextId,
-      provider: knownGroupContexts.provider,
-      displayName: knownGroupContexts.displayName,
-      parentName: knownGroupContexts.parentName,
-      firstSeenAt: knownGroupContexts.firstSeenAt,
-      lastSeenAt: knownGroupContexts.lastSeenAt,
-    })
-    .from(knownGroupContexts)
-    .innerJoin(
-      groupAdminObservations,
-      and(
-        eq(knownGroupContexts.provider, groupAdminObservations.provider),
-        eq(knownGroupContexts.contextId, groupAdminObservations.contextId),
-        eq(groupAdminObservations.userId, userId),
-        eq(groupAdminObservations.isAdmin, true),
-      ),
-    )
-    .all()
-    .map((row) => toKnownGroupContext(row))
-    .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
-
-  log.debug({ userId, count: groups.length }, 'Listed admin group contexts for user')
-  return groups
 }

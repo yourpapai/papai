@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { eq } from 'drizzle-orm'
+
 import packageJson from '../package.json' with { type: 'json' }
 import { readChangelogFile as defaultReadChangelogFile } from './changelog-reader.js'
 import type { ChatProvider } from './chat/types.js'
@@ -23,6 +25,15 @@ const defaultAnnouncementsDeps: AnnouncementsDeps = {
 const log = logger.child({ scope: 'announcements' })
 
 const VERSION: string = packageJson.version
+type RouterInstanceLookup = { getInstance: (id: string) => unknown }
+
+const hasRouterInstanceLookup = (chat: ChatProvider): chat is ChatProvider & RouterInstanceLookup =>
+  typeof Reflect.get(chat, 'getInstance') === 'function'
+
+function isVersionAnnounced(version: string): boolean {
+  const row = getDrizzleDb().select().from(versionAnnouncements).where(eq(versionAnnouncements.version, version)).get()
+  return row !== undefined
+}
 
 function markVersionAnnounced(version: string): boolean {
   try {
@@ -35,9 +46,19 @@ function markVersionAnnounced(version: string): boolean {
   }
 }
 
-async function sendAnnouncementToAdmin(adminUserId: string, markdown: string, chat: ChatProvider): Promise<boolean> {
+async function sendAnnouncementToAdmin(
+  platformInstanceId: string,
+  adminUserId: string,
+  markdown: string,
+  chat: ChatProvider,
+): Promise<boolean> {
   try {
-    await chat.sendMessage(dmTarget(adminUserId), markdown)
+    if (hasRouterInstanceLookup(chat)) {
+      const instance = chat.getInstance(platformInstanceId)
+      if (instance === undefined || instance === null) return false
+    }
+    const result = await chat.sendMessage(platformInstanceId, dmTarget(adminUserId), markdown)
+    if (result === false) return false
     log.debug({ version: VERSION }, 'Announcement sent to admin')
     return true
   } catch (error) {
@@ -51,16 +72,17 @@ async function sendAnnouncementToAdmin(adminUserId: string, markdown: string, ch
 
 export async function announceNewVersion(
   chat: ChatProvider,
+  platformInstanceId: string,
   adminUserId: string,
-  deps: AnnouncementsDeps = defaultAnnouncementsDeps,
+  ...args: [] | [deps: AnnouncementsDeps]
 ): Promise<void> {
   log.debug({ version: VERSION }, 'Checking if version announcement is needed')
 
-  const changelogSection = await loadChangelogSection(deps)
+  const effectiveDeps = args.length === 0 ? defaultAnnouncementsDeps : args[0]
+  const changelogSection = await loadChangelogSection(effectiveDeps)
   if (changelogSection === null) return
 
-  const claimed = markVersionAnnounced(VERSION)
-  if (!claimed) {
+  if (isVersionAnnounced(VERSION)) {
     log.debug({ version: VERSION }, 'Version already announced, skipping')
     return
   }
@@ -68,7 +90,8 @@ export async function announceNewVersion(
   log.info({ version: VERSION }, 'Sending version announcement to admin')
 
   const message = `🆕 papai v${VERSION} has been released!\n\n${changelogSection}`
-  const success = await sendAnnouncementToAdmin(adminUserId, message, chat)
+  const success = await sendAnnouncementToAdmin(platformInstanceId, adminUserId, message, chat)
+  if (success) markVersionAnnounced(VERSION)
 
   log.info({ version: VERSION, success }, 'Version announcement complete')
 }
