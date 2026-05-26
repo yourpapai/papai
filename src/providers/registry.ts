@@ -5,7 +5,7 @@
 
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { KaneoProvider, type KaneoConfig } from './kaneo/index.js'
+import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigRequirement, TaskProvider } from './types.js'
 import { YouTrackProvider } from './youtrack/index.js'
@@ -24,13 +24,13 @@ const configValue = (config: Record<string, string>, key: string): string => {
 
 /** Register the built-in Kaneo provider. */
 const createKaneoProvider: ProviderFactory = (config) => {
-  const apiKey = configValue(config, 'apiKey')
   const baseUrl = configValue(config, 'baseUrl')
-  const sessionCookie = config['sessionCookie']
   const workspaceId = configValue(config, 'workspaceId')
+  const credential = configValue(config, 'credential')
 
-  const kaneoConfig: KaneoConfig =
-    sessionCookie === undefined ? { apiKey, baseUrl } : { apiKey: '', baseUrl, sessionCookie }
+  const kaneoConfig: KaneoConfig = isKaneoSessionCookie(credential)
+    ? { apiKey: '', baseUrl, sessionCookie: credential }
+    : { apiKey: credential, baseUrl }
 
   return new KaneoProvider(kaneoConfig, workspaceId)
 }
@@ -167,6 +167,11 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
     ],
   },
 ]
+
+/** Look up a single task-provider type descriptor (built-in or contributed). */
+export function getTaskProviderDescriptor(type: string): TaskProviderTypeDescriptor | undefined {
+  return listTaskProviderTypes().find((descriptor) => descriptor.type === type)
+}
 
 /** Merge built-in and plugin-contributed task provider types into a static catalog. */
 export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {

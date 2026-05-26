@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import type { TaskInstance } from '../../src/instances/types.js'
 import {
+  createProvider,
   getCapabilitiesForTaskInstance,
   getContributedTaskProviderType,
   listTaskProviderTypes,
@@ -148,5 +149,21 @@ describe('listTaskProviderTypes built-in scopes', () => {
     expect(yt?.configSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
     expect(yt?.configSchema.find((f) => f.key === 'token')?.scope).toBe('user')
     expect(yt?.configSchema.find((f) => f.key === 'token')?.sensitive).toBe(true)
+  })
+})
+
+describe('createProvider kaneo credential branching', () => {
+  test('treats a non-cookie credential as an API key', () => {
+    const provider = createProvider('kaneo', { baseUrl: 'https://k.invalid', credential: 'kn-key', workspaceId: 'w' })
+    expect(provider.name).toBe('kaneo')
+  })
+
+  test('treats a session-cookie credential as a cookie', () => {
+    const provider = createProvider('kaneo', {
+      baseUrl: 'https://k.invalid',
+      credential: 'better-auth.session_token=abc',
+      workspaceId: 'w',
+    })
+    expect(provider.name).toBe('kaneo')
   })
 })

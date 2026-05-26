@@ -277,3 +277,4 @@ export class KaneoProvider implements TaskProvider {
 
 /** Re-export KaneoConfig so the registry imports from the provider layer. */
 export type { KaneoConfig }
+export { isKaneoSessionCookie } from './client.js'

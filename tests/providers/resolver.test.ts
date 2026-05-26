@@ -82,7 +82,7 @@ describe('TaskProviderResolver', () => {
 
     expect(provider?.name).toBe('kaneo')
     expect(created).toEqual([
-      { name: 'kaneo', config: { apiKey: 'kn-key', baseUrl: 'https://kaneo.invalid', workspaceId: 'workspace-1' } },
+      { name: 'kaneo', config: { baseUrl: 'https://kaneo.invalid', credential: 'kn-key', workspaceId: 'workspace-1' } },
     ])
   })
 
@@ -106,7 +106,7 @@ describe('TaskProviderResolver', () => {
         name: 'kaneo',
         config: {
           baseUrl: 'https://kaneo.invalid',
-          sessionCookie: 'better-auth.session_token=abc',
+          credential: 'better-auth.session_token=abc',
           workspaceId: 'workspace-1',
         },
       },
