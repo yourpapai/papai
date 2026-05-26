@@ -101,8 +101,11 @@ export function registerContributedTaskProviderType(type: string, entry: Contrib
   }
   const existing = pluginContributedTaskProviderFactories.get(type)
   if (existing !== undefined) {
-    log.error({ type, existing: existing.pluginId, attempted: entry.pluginId }, 'Duplicate task provider type')
-    throw new Error(`Task provider type '${type}' already registered by plugin '${existing.pluginId}'`)
+    log.error(
+      { type, existing: existing.pluginId, attempted: entry.pluginId },
+      'Duplicate task provider type; keeping first registration',
+    )
+    return
   }
   pluginContributedTaskProviderFactories.set(type, entry)
   log.info({ type, pluginId: entry.pluginId }, 'Registered contributed task provider type')

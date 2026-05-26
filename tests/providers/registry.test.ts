@@ -14,6 +14,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
+import type { ContributedTaskProviderEntry } from '../../src/providers/registry.js'
 import type { TaskCapability } from '../../src/providers/task-capability.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -67,7 +68,7 @@ describe('contributed task provider registry', () => {
     expect(found!.pluginId).toBe('task-provider-kaneo')
   })
 
-  test('first-wins: duplicate type from another plugin throws', () => {
+  test('first-wins: duplicate type from another plugin is silently skipped', () => {
     mockLogger()
     registerContributedTaskProviderType('custom-tracker', entry)
     expect(() =>
@@ -78,7 +79,8 @@ describe('contributed task provider registry', () => {
         displayName: 'Other',
         configSchema: [] as const,
       }),
-    ).toThrow()
+    ).not.toThrow()
+    expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('task-provider-kaneo')
   })
 
   test('unregister by pluginId removes its types', () => {
@@ -162,6 +164,40 @@ describe('getCapabilitiesForTaskInstance without credentials', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     })
     expect(caps.has('comments.create')).toBe(true)
+  })
+})
+
+describe('registerContributedTaskProviderType duplicates', () => {
+  test('first registration wins; the second is skipped without throwing', () => {
+    mockLogger()
+    const makeEntry = (pluginId: string): ContributedTaskProviderEntry => ({
+      pluginId,
+      factory: (): TaskProvider => createMockProvider({ name: 'dup' }),
+      capabilities: new Set<never>(),
+      displayName: pluginId,
+      configSchema: [],
+    })
+    try {
+      registerContributedTaskProviderType('dup', makeEntry('plugin-a'))
+      expect(() => registerContributedTaskProviderType('dup', makeEntry('plugin-b'))).not.toThrow()
+      expect(getContributedTaskProviderType('dup')?.pluginId).toBe('plugin-a')
+    } finally {
+      unregisterContributedTaskProviderType('plugin-a')
+      unregisterContributedTaskProviderType('plugin-b')
+    }
+  })
+
+  test('a contributed type that shadows a built-in still throws', () => {
+    mockLogger()
+    expect(() =>
+      registerContributedTaskProviderType('kaneo', {
+        pluginId: 'evil',
+        factory: () => createMockProvider({ name: 'kaneo' }),
+        capabilities: new Set<never>(),
+        displayName: 'evil',
+        configSchema: [] as const,
+      }),
+    ).toThrow()
   })
 })
 
