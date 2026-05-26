@@ -102,6 +102,19 @@ describe('admin-store', () => {
     expect(rows).toEqual(['__super__:super-user', 'mm-default:other-platform'])
   })
 
+  test('deleteAdminsByPlatformInstance refuses to remove super-admin rows', () => {
+    addAdmin('super-user', SUPER_ADMIN_PLATFORM_ID)
+    addAdmin('other-super-user', SUPER_ADMIN_PLATFORM_ID)
+    addAdmin('platform-user', 'tg-default')
+
+    expect(deleteAdminsByPlatformInstance(SUPER_ADMIN_PLATFORM_ID)).toBe(0)
+
+    const rows = listAdmins()
+      .map((a) => `${a.platformInstanceId}:${a.userId}`)
+      .toSorted()
+    expect(rows).toEqual(['__super__:other-super-user', '__super__:super-user', 'tg-default:platform-user'])
+  })
+
   test('listAdmins returns all admin rows', () => {
     addAdmin('u1', 'tg-default')
     addAdmin('u2', SUPER_ADMIN_PLATFORM_ID)

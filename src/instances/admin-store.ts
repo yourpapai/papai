@@ -38,6 +38,10 @@ export const removeAdmin = (userId: string, platformInstanceId: string): void =>
 }
 
 export const deleteAdminsByPlatformInstance = (platformInstanceId: string): number => {
+  if (platformInstanceId === SUPER_ADMIN_PLATFORM_ID) {
+    log.warn({ platformInstanceId }, 'refusing to delete super-admin rows as platform cleanup')
+    return 0
+  }
   const deletedRows = getDrizzleDb()
     .delete(admins)
     .where(eq(admins.platformInstanceId, platformInstanceId))
