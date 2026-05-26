@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 
-import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
+import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ManagedChatInstance } from '../../src/chat/router.js'
 import type { ChatProvider, ContextSnapshot } from '../../src/chat/types.js'
@@ -106,6 +106,7 @@ describe('instance API routes', () => {
 
   afterEach(() => {
     clearRuntimeChatRouter()
+    userCachesForTesting.clear()
     delete process.env['DEBUG_TOKEN']
   })
 
@@ -313,6 +314,7 @@ describe('instance API routes', () => {
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setCachedTools('ctx-1', { old_tool: {} })
     setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
@@ -322,8 +324,9 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(204)
-    expect(getCachedTools('ctx-1')).toBeUndefined()
-    expect(getCachedTools('ctx-1:user-1:alice')).toBeUndefined()
+    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
   })
 
   test('lists task instances with referencing context IDs', async () => {
