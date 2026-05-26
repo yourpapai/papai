@@ -405,6 +405,8 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(400)
-    expect(pick(assertObject(await readJson(res)), 'error')).toBe('unknown_task_provider_type')
+    const body = assertObject(await readJson(res))
+    expect(pick(body, 'error')).toBe('unknown_task_provider_type')
+    expect(pick(body, 'type')).toBe('mystery')
   })
 })

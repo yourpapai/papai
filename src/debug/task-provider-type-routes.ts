@@ -4,16 +4,17 @@
 // See LICENSE in the project root for details.
 
 import { listTaskProviderTypes, type TaskProviderTypeDescriptor } from '../providers/registry.js'
+import { jsonResponse } from './json-response.js'
 
-const taskProviderTypeView = (
-  descriptor: TaskProviderTypeDescriptor,
-): {
+export type TaskProviderTypeView = {
   readonly type: string
   readonly displayName: string
   readonly configSchema: readonly { key: string; label: string; required: boolean; sensitive: boolean }[]
   readonly capabilities: readonly string[]
   readonly source: 'builtin' | { readonly plugin: string }
-} => ({
+}
+
+const taskProviderTypeView = (descriptor: TaskProviderTypeDescriptor): TaskProviderTypeView => ({
   type: descriptor.type,
   displayName: descriptor.displayName,
   configSchema: descriptor.configSchema.map((field) => ({
@@ -25,17 +26,6 @@ const taskProviderTypeView = (
   capabilities: [...descriptor.capabilities],
   source: descriptor.source,
 })
-
-const jsonResponse = (body: unknown, ...args: [] | [ResponseInit]): Response => {
-  if (args.length === 0) {
-    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
-  }
-  const init = args[0]
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
 
 export const handleTaskProviderTypes = (req: Request, url: URL): Response | null => {
   if (url.pathname === '/api/task-provider-types' && req.method === 'GET') {

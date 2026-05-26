@@ -53,6 +53,18 @@ describe('handleTaskProviderTypes', () => {
     expect(Array.isArray(pick(kaneo, 'capabilities'))).toBe(true)
   })
 
+  test('GET /api/task-provider-types kaneo entry has correct displayName, configSchema key and sensitive flag', async () => {
+    const res = expectResponse(route('/api/task-provider-types'))
+    const body = assertArray(await readJson(res))
+    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
+    const kaneo = assertObject(kaneoRaw)
+
+    expect(pick(kaneo, 'displayName')).toBe('Kaneo')
+    const firstField = assertObject(assertArray(pick(kaneo, 'configSchema'))[0])
+    expect(pick(firstField, 'key')).toBe('baseUrl')
+    expect(pick(firstField, 'sensitive')).toBe(false)
+  })
+
   test('returns null for non-matching paths', () => {
     expect(route('/api/task-instances')).toBeNull()
     expect(route('/api/task-provider-types/kaneo')).toBeNull()

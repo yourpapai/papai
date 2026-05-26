@@ -26,6 +26,7 @@ import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instance
 import { logger } from '../logger.js'
 import { listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
+import { jsonResponse } from './json-response.js'
 import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
@@ -56,17 +57,6 @@ const adminSchema = z.object({
   userId: z.string().min(1),
   platformInstanceId: z.string().min(1).optional(),
 })
-
-const jsonResponse = (body: unknown, ...args: [] | [ResponseInit]): Response => {
-  if (args.length === 0) {
-    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
-  }
-  const init = args[0]
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
 
 const textResponse = (body: string, status: number): Response => new Response(body, { status })
 
