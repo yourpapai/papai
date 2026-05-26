@@ -56,4 +56,16 @@ describe('TopBar.svelte', () => {
     expect(target.querySelector('.ui-topbar__secondary')).toBeNull()
     void unmount(component)
   })
+
+  test('omits the status row when not provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(TopBar, {
+      target,
+      props: { page: 'admin' },
+    })
+    expect(target.querySelector('.ui-topbar__status')).toBeNull()
+    expect(target.querySelector('.ui-topbar__brand')!.textContent).toContain('::admin')
+    void unmount(component)
+  })
 })
