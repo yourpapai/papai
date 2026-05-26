@@ -53,6 +53,18 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone'])
   })
 
+  test('returns preferences only for an active contributed (non-builtin) assignment', () => {
+    insertTaskInstance({
+      id: 'demo-prod',
+      type: 'demo-tracker',
+      config: { baseUrl: 'https://demo.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId: 'ctx-demo', taskInstanceId: 'demo-prod', platformInstanceId: 'telegram-default' })
+
+    expect(getConfigKeysForContext('ctx-demo')).toEqual(['timezone'])
+  })
+
   test('getAllConfig only includes keys valid for the context', () => {
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })

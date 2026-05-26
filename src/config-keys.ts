@@ -17,5 +17,6 @@ export function getConfigKeysForContext(contextId: string): readonly ConfigKey[]
   if (instance === null || instance.status !== 'active') return PREFERENCE_KEYS
 
   if (instance.type === 'youtrack') return ['youtrack_token', ...PREFERENCE_KEYS]
-  return ['kaneo_apikey', ...PREFERENCE_KEYS]
+  if (instance.type === 'kaneo') return ['kaneo_apikey', ...PREFERENCE_KEYS]
+  return PREFERENCE_KEYS
 }
