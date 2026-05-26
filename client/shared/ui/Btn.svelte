@@ -11,6 +11,7 @@
 
   interface Props {
     children: Snippet
+    icon?: Snippet
     variant?: Variant
     size?: Size
     onClick?: () => void
@@ -20,6 +21,7 @@
 
   let {
     children,
+    icon,
     variant = 'secondary',
     size = 'md',
     onClick,
@@ -34,6 +36,7 @@
   {disabled}
   onclick={onClick}
 >
+  {#if icon}<span class="ui-btn__icon">{@render icon()}</span>{/if}
   {@render children()}
 </button>
 
@@ -110,5 +113,10 @@
   }
   .ui-btn--danger:hover:not(:disabled) {
     background: var(--danger-soft);
+  }
+
+  .ui-btn__icon {
+    display: inline-flex;
+    align-items: center;
   }
 </style>
