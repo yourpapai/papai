@@ -32,7 +32,8 @@ export const setContextSettings = (input: ContextSettings): void => {
       },
     })
     .run()
-  clearToolCachesForContexts([input.contextId, existing?.contextId].filter((id): id is string => id !== undefined))
+  const contextIds = existing === null ? [input.contextId] : [input.contextId, existing.contextId]
+  clearToolCachesForContexts(contextIds)
   log.info(
     {
       contextId: input.contextId,

@@ -40,15 +40,15 @@ export type CreateAdminInput =
 
 export type PlatformInstanceStatusInput = 'active' | 'stopped'
 
-export type UpdatePlatformInstanceInput = {
-  readonly config?: InstanceConfigView
-  readonly status?: PlatformInstanceStatusInput | 'pending'
-}
+export type UpdatePlatformInstanceInput =
+  | { readonly config: InstanceConfigView }
+  | { readonly status: PlatformInstanceStatusInput | 'pending' }
+  | { readonly config: InstanceConfigView; readonly status: PlatformInstanceStatusInput | 'pending' }
 
-export type UpdateTaskInstanceInput = {
-  readonly config?: InstanceConfigView
-  readonly status?: TaskInstanceView['status']
-}
+export type UpdateTaskInstanceInput =
+  | { readonly config: InstanceConfigView }
+  | { readonly status: TaskInstanceView['status'] }
+  | { readonly config: InstanceConfigView; readonly status: TaskInstanceView['status'] }
 
 export const fetchPlatformInstances = async (): Promise<PlatformInstanceView[]> => {
   const res = await fetch('/api/platform-instances')

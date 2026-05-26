@@ -110,10 +110,13 @@
   }
 
   $effect(() => {
-    const schema = selectedTaskType?.configSchema ?? []
+    const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
     const prev = untrack(() => taskConfigFields)
     const next: Record<string, string> = {}
-    for (const field of schema) next[field.key] = prev[field.key] ?? ''
+    for (const field of schema) {
+      const value = prev[field.key]
+      next[field.key] = value === undefined ? '' : value
+    }
     taskConfigFields = next
   })
 
@@ -167,10 +170,11 @@
 
   async function createTask(): Promise<void> {
     try {
-      const schema = selectedTaskType?.configSchema ?? []
+      const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
       const config: Record<string, string> = {}
       for (const field of schema) {
-        const value = (taskConfigFields[field.key] ?? '').trim()
+        const rawValue = taskConfigFields[field.key]
+        const value = (rawValue === undefined ? '' : rawValue).trim()
         if (field.required && value === '') throw new Error(`${field.label} is required`)
         if (value !== '') config[field.key] = value
       }
