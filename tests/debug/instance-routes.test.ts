@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 
+import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ManagedChatInstance } from '../../src/chat/router.js'
 import type { ChatProvider, ContextSnapshot } from '../../src/chat/types.js'
@@ -97,6 +98,7 @@ const fakeProvider = (start: () => Promise<void>, stop: () => Promise<void>): Ch
 describe('instance API routes', () => {
   beforeEach(async () => {
     mockLogger()
+    userCachesForTesting.clear()
     await setupTestDb()
     clearRuntimeChatRouter()
     process.env['DEBUG_TOKEN'] = TOKEN
@@ -304,6 +306,24 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(204)
     expect(listContextsByTaskInstance('tasks-main')).toEqual([])
+  })
+
+  test('deleting task instance clears cached tools for referencing contexts', async () => {
+    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
+
+    const res = expectResponse(
+      await route('/api/task-instances/tasks-main', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(getCachedTools('ctx-1')).toBeUndefined()
+    expect(getCachedTools('ctx-1:user-1:alice')).toBeUndefined()
   })
 
   test('lists task instances with referencing context IDs', async () => {
