@@ -381,4 +381,30 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     expect(pick(assertObject(assertArray(await readJson(res))[0]), 'userId')).toBe('admin-1')
   })
+
+  test('GET /api/task-provider-types returns the built-in catalog', async () => {
+    const res = expectResponse(await route('/api/task-provider-types'))
+
+    expect(res.status).toBe(200)
+    const body = assertArray(await readJson(res))
+    const types = body.map((entry) => pick(assertObject(entry), 'type'))
+    expect(types).toContain('kaneo')
+    expect(types).toContain('youtrack')
+    const kaneoEntry = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo'))
+    expect(pick(kaneoEntry, 'source')).toBe('builtin')
+    expect(Array.isArray(pick(kaneoEntry, 'capabilities'))).toBe(true)
+  })
+
+  test('POST /api/task-instances rejects an unknown provider type', async () => {
+    const res = expectResponse(
+      await route('/api/task-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ id: 'mystery-1', type: 'mystery', config: { baseUrl: 'https://x.invalid' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(pick(assertObject(await readJson(res)), 'error')).toBe('unknown_task_provider_type')
+  })
 })

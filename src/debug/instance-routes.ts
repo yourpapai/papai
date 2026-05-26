@@ -24,7 +24,9 @@ import {
 import { deleteTaskInstance, getTaskInstance, insertTaskInstance, listTaskInstances } from '../instances/task-store.js'
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
+import { listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
+import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
@@ -46,7 +48,7 @@ const platformInstanceSchema = z.object({
 })
 const taskInstanceSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['kaneo', 'youtrack']),
+  type: z.string().min(1),
   config: instanceConfigSchema,
 })
 const statusSchema = z.object({ status: z.enum(['pending', 'active', 'stopped']) })
@@ -91,7 +93,12 @@ const taskInstanceView = (
   }
 }
 
-const INSTANCE_API_PREFIXES = ['/api/admins', '/api/platform-instances', '/api/task-instances'] as const
+const INSTANCE_API_PREFIXES = [
+  '/api/admins',
+  '/api/platform-instances',
+  '/api/task-instances',
+  '/api/task-provider-types',
+] as const
 
 const isInstanceApiPath = (pathname: string): boolean =>
   INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))
@@ -207,6 +214,9 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {
     const body = await parseBody(req, taskInstanceSchema)
     if (body instanceof Response) return body
+    if (!listTaskProviderTypes().some((descriptor) => descriptor.type === body.type)) {
+      return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
+    }
     insertTaskInstance({ ...body, status: 'active' })
     const instance = getTaskInstance(body.id)
     return jsonResponse(instance === null ? null : maskedTaskInstance(instance), { status: 201 })
@@ -232,7 +242,7 @@ const handleAdmins = async (req: Request, url: URL): Promise<Response | null> =>
   if (url.pathname === '/api/admins' && req.method === 'POST') {
     const body = await parseBody(req, adminSchema)
     if (body instanceof Response) return body
-    const platformInstanceId = resolvePlatformInstanceId(body.platformInstanceId)
+    const platformInstanceId = body.platformInstanceId ?? SUPER_ADMIN_PLATFORM_ID
     addAdmin(body.userId, platformInstanceId)
     return jsonResponse({ userId: body.userId, platformInstanceId }, { status: 201 })
   }
@@ -249,17 +259,13 @@ const handleAdmins = async (req: Request, url: URL): Promise<Response | null> =>
   return null
 }
 
-const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId !== undefined) return platformInstanceId
-  return SUPER_ADMIN_PLATFORM_ID
-}
-
 const routeInstanceApi = (
   req: Request,
   url: URL,
   deps: InstanceApiDeps,
 ): Response | Promise<Response | null> | null => {
   if (url.pathname.startsWith('/api/platform-instances')) return handlePlatformInstances(req, url, deps)
+  if (url.pathname.startsWith('/api/task-provider-types')) return handleTaskProviderTypes(req, url)
   if (url.pathname.startsWith('/api/task-instances')) return handleTaskInstances(req, url)
   if (url.pathname.startsWith('/api/admins')) return handleAdmins(req, url)
   return null
