@@ -501,3 +501,8 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
   expect(types[0]?.configSchema[0]?.key).toBe('baseUrl')
   restoreFetch()
 })
+
+test('fetchTaskProviderTypes throws on non-ok response', async () => {
+  installFetch(500, { error: 'internal server error' })
+  await expect(fetchTaskProviderTypes()).rejects.toThrow()
+})

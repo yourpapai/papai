@@ -262,6 +262,7 @@ export const deleteTaskInstance = async (id: string): Promise<void> => {
 export const fetchTaskProviderTypes = async (): Promise<TaskProviderTypeView[]> => {
   const res = await fetch('/api/task-provider-types')
   const body = await readBody(res)
+  requireOk(res, body)
   return z.array(TaskProviderTypeViewSchema).parse(body)
 }
 
