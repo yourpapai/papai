@@ -35,13 +35,6 @@
   color: var(--fg);
 }
 
-.panel {
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 0;
-  background: var(--surface);
-}
-
 .admin-section-header {
   display: flex;
   gap: 12px;
@@ -151,6 +144,7 @@
 }
 
 .admin-section {
+  padding: 20px;
   scroll-margin-top: 96px;
 }
 

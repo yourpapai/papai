@@ -61,7 +61,7 @@
   }
 </script>
 
-<section id="memos" class="panel admin-data-section admin-section" bind:this={rootEl}>
+<section id="memos" class="admin-data-section admin-section" bind:this={rootEl}>
   <header class="admin-section-header">
     <div>
       <p class="eyebrow">Records</p>
