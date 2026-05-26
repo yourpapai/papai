@@ -105,6 +105,10 @@ export function getCapabilitiesForTaskInstance(instance: TaskInstance): Readonly
 
 /** Register a plugin-contributed task provider type. First-wins on duplicate type. */
 export function registerContributedTaskProviderType(type: string, entry: ContributedTaskProviderEntry): void {
+  if (providers.has(type)) {
+    log.error({ type, attempted: entry.pluginId }, 'Contributed type shadows built-in provider')
+    throw new Error(`Task provider type '${type}' is a built-in and cannot be overridden by plugin '${entry.pluginId}'`)
+  }
   const existing = pluginContributedTaskProviderFactories.get(type)
   if (existing !== undefined) {
     log.error({ type, existing: existing.pluginId, attempted: entry.pluginId }, 'Duplicate task provider type')
