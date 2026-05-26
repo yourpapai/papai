@@ -85,3 +85,45 @@
   <span class="tree-{type}">{formatPrimitive(value)}</span>
 {/if}
 {/if}
+
+<style>
+  .tree-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 2px 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg);
+    line-height: 1.5;
+  }
+  .tree-key {
+    color: var(--fg2);
+  }
+  .tree-toggle {
+    display: inline-flex;
+    width: 12px;
+    color: var(--fg3);
+    cursor: pointer;
+    user-select: none;
+  }
+  .tree-bracket {
+    color: var(--fg3);
+  }
+  .tree-children {
+    border-left: 1px dashed var(--hair);
+  }
+  .tree-string {
+    color: var(--accent);
+  }
+  .tree-number {
+    color: var(--info);
+  }
+  .tree-boolean {
+    color: var(--warn);
+  }
+  .tree-null {
+    color: var(--fg4);
+    font-style: italic;
+  }
+</style>
