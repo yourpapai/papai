@@ -13,6 +13,21 @@ Severity legend: **HIGH** = visible breakage / missing feature, **MED** = wrong 
 
 ---
 
+## Status — Primitives Pass (2026-05-26)
+
+The plan at [docs/superpowers/plans/2026-05-26-dashboard-primitives-pass.md](../superpowers/plans/2026-05-26-dashboard-primitives-pass.md) closed the following audit items in 10 commits on branch `fix/dashboard-primitives-pass`:
+
+- §1.2 `.panel` collision — RESOLVED (commit `975dbcef`)
+- §1.3 Btn `:hover` styles — RESOLVED (commit `b8f88039`)
+- §1.4 Btn `icon` prop — RESOLVED (commit `b79c4de2`)
+- §1.5 `Panel.pad`, `KV.v`, `TopBar.statusRow` — RESOLVED (commits `8559a5ee`, `4d189488`, `7916b33b`)
+- §1.7 `TreeView` and `PropertiesTable` scoped styles — RESOLVED (commits `79bdf19c`, `cba79ca8`)
+- §1.8 `status-success`, `truncation-banner`, `masked-value`, `masked-hint` — RESOLVED (commits `106e451b`, `e8f9342a`)
+
+Out of scope and deferred to follow-up plans: §1.1 token/font parity polish, §1.5 `Input.prefix` and `Shell` composition, §1.5 `Seg.active`, §1.6 rgba border tokens, §1.7 `PanelShell`/`StatusDot`/`Confirm`/`Modal` footer, all of §2 (`/debug` page), all of §3 (`/admin` page), and all of §4 (Storybook coverage).
+
+---
+
 ## 1. Cross-cutting / Design System Issues
 
 ### 1.1 Token & primitive parity
@@ -29,17 +44,23 @@ Several admin sections (`BillingSection`, `IdentitiesSection`, `GroupsSection`, 
 
 Severity: **MED** (cross-cutting structural issue affecting six admin sections).
 
+**✅ RESOLVED** (Task 10, commit `975dbcef`): the `.panel` rule in `admin.css` has been removed and `panel` stripped from the outer `<section>` class of all six admin sections. Interior `<Panel>` components now provide the chrome; outer-section padding hoisted to `.admin-section { padding: 20px }`.
+
 ### 1.3 Btn primitive has no hover styles
 
 [client/shared/ui/Btn.svelte](client/shared/ui/Btn.svelte) defines all five variants (primary/secondary/ghost/danger/outline) and three sizes correctly, but no `:hover` rule exists. The prototype specifies hover colors for all variants ([client/assets/bs-tokens.jsx:108-114](client/assets/bs-tokens.jsx:108)).
 
 Severity: **HIGH** (every button in the app feels dead).
 
+**✅ RESOLVED** (Task 1, commit `b8f88039`): `:hover:not(:disabled)` rules added for all five variants.
+
 ### 1.4 Btn missing `icon` prop
 
 Prototype Btn accepts an `icon` slot rendered before children ([client/assets/bs-tokens.jsx:107](client/assets/bs-tokens.jsx:107)). Svelte implementation only accepts `children`. Several debug-panel headers want the icon-prefix style.
 
 Severity: **MED**.
+
+**✅ RESOLVED** (Task 2, commit `b79c4de2`): `icon?: Snippet` prop added; rendered before children inside `.ui-btn__icon`.
 
 ### 1.5 Input / KV / Shell / TopBar API drift
 
@@ -52,6 +73,13 @@ Severity: **MED**.
 | `TopBar.statusRow` | optional                                                                   | required Snippet, errors if not passed                | MED      |
 | `Panel.pad` prop   | numeric padding for body                                                   | missing                                               | MED      |
 | `Seg.active` prop  | `active`                                                                   | renamed to `value`                                    | LOW      |
+
+**Partial resolution** (primitives-pass plan, 2026-05-26):
+
+- `KV.v` — **✅ RESOLVED** (Task 4, commit `4d189488`): now `string | number | Snippet`.
+- `TopBar.statusRow` — **✅ RESOLVED** (Task 5, commit `7916b33b`): now optional; wrapper omitted when absent.
+- `Panel.pad` — **✅ RESOLVED** (Task 3, commit `8559a5ee`): `pad?: number` prop applies inline padding to the body.
+- `Input.prefix`, `Shell` composition / min-height, `Seg.active` — deferred to a follow-up plan.
 
 ### 1.6 Untokened rgba literals
 
@@ -73,6 +101,12 @@ The TreeView is the engine behind the entire `TurnDetail` rail (see § 2.7), so 
 
 Severity: **HIGH** for TreeView/PropertiesTable (used in user-facing detail rails). **MED** for the rest.
 
+**Partial resolution** (primitives-pass plan, 2026-05-26):
+
+- `TreeView.svelte` — **✅ RESOLVED** (Task 8, commit `79bdf19c`): scoped `<style>` block added covering all referenced `tree-*` classes.
+- `PropertiesTable.svelte` — **✅ RESOLVED** (Task 9, commit `cba79ca8`): scoped `<style>` block added covering `tree-empty`, `tree-container`, `tree-table`, `tree-key-cell`, `tree-value-cell`.
+- `PanelShell.svelte`, `StatusDot.svelte`, `Confirm`/`Modal` footer — deferred to a follow-up plan.
+
 ### 1.8 Undefined CSS classes referenced by components
 
 Found by scanning admin components — classes referenced with no matching CSS rule:
@@ -84,6 +118,11 @@ Found by scanning admin components — classes referenced with no matching CSS r
 | `masked-value`, `masked-hint` | [CredentialsForm.svelte:86–87](client/admin/components/CredentialsForm.svelte:86)                                      |
 
 Severity: **HIGH** for `status-success` (user-visible after every save). **MED** for the rest.
+
+**✅ RESOLVED** (primitives-pass plan, 2026-05-26):
+
+- `status-success` and `truncation-banner` — Task 6, commit `106e451b`: defined in `client/shared/base.css`.
+- `masked-value` and `masked-hint` — Task 7, commit `e8f9342a`: defined in `client/admin/admin.css`.
 
 ---
 
