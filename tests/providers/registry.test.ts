@@ -88,6 +88,7 @@ describe('contributed task provider registry', () => {
   })
 
   test('listTaskProviderTypes includes contributed descriptors with displayName and configSchema', () => {
+    mockLogger()
     registerContributedTaskProviderType('demo-tracker', {
       pluginId: 'task-provider-demo',
       factory: () => createMockProvider(),
@@ -101,6 +102,7 @@ describe('contributed task provider registry', () => {
     expect(descriptor?.displayName).toBe('Demo Tracker')
     expect(descriptor?.source).toEqual({ plugin: 'task-provider-demo' })
     expect(descriptor?.configSchema).toEqual([{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }])
+    expect(descriptor?.capabilities.has('comments.read')).toBe(true)
   })
 })
 
