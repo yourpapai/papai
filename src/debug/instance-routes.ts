@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatRouter } from '../chat/router.js'
-import { addAdmin, listAdmins, removeAdmin, SUPER_ADMIN_PLATFORM_ID } from '../instances/admin-store.js'
+import * as adminStore from '../instances/admin-store.js'
 import {
   deleteContextsByPlatformInstance,
   deleteContextsByTaskInstance,
@@ -154,8 +154,7 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const instanceId = parts[2]
     if (instanceId === undefined) return textResponse('Not found', 404)
-    const router = getRuntimeChatRouter()
-    if (router !== null) await router.removeInstance(instanceId)
+    adminStore.deleteAdminsByPlatformInstance(instanceId)
     deleteContextsByPlatformInstance(instanceId)
     deletePlatformInstance(instanceId)
     return new Response(null, { status: 204 })
@@ -237,13 +236,13 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
 const handleAdmins = async (req: Request, url: URL): Promise<Response | null> => {
   const parts = splitPath(url)
 
-  if (url.pathname === '/api/admins' && req.method === 'GET') return jsonResponse(listAdmins())
+  if (url.pathname === '/api/admins' && req.method === 'GET') return jsonResponse(adminStore.listAdmins())
 
   if (url.pathname === '/api/admins' && req.method === 'POST') {
     const body = await parseBody(req, adminSchema)
     if (body instanceof Response) return body
-    const platformInstanceId = body.platformInstanceId ?? SUPER_ADMIN_PLATFORM_ID
-    addAdmin(body.userId, platformInstanceId)
+    const platformInstanceId = body.platformInstanceId ?? adminStore.SUPER_ADMIN_PLATFORM_ID
+    adminStore.addAdmin(body.userId, platformInstanceId)
     return jsonResponse({ userId: body.userId, platformInstanceId }, { status: 201 })
   }
 
@@ -252,7 +251,7 @@ const handleAdmins = async (req: Request, url: URL): Promise<Response | null> =>
     const userId = parts[2]
     const platformInstanceId = parts[3]
     if (userId === undefined || platformInstanceId === undefined) return textResponse('Not found', 404)
-    removeAdmin(userId, platformInstanceId)
+    adminStore.removeAdmin(userId, platformInstanceId)
     return new Response(null, { status: 204 })
   }
 

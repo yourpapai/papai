@@ -319,6 +319,55 @@ describe('instance API routes', () => {
     expect(listContextsByPlatformInstance('telegram-main')).toEqual([])
   })
 
+  test('deleting platform instance does not remove runtime router instance until apply', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    setRuntimeChatRouter(router)
+
+    const deleted = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }),
+    )
+
+    expect(deleted.status).toBe(204)
+    expect(router.getInstance('telegram-main')).not.toBeNull()
+    expect(stop).not.toHaveBeenCalled()
+
+    const applied = expectResponse(
+      await route('/api/platform-instances/apply', {
+        method: 'POST',
+        headers: jsonHeaders,
+      }),
+    )
+
+    expect(applied.status).toBe(200)
+    expect(router.getInstance('telegram-main')).toBeNull()
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  test('deleting platform instance removes platform admin rows', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    addAdmin('platform-admin', 'telegram-main')
+    addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
+      '__super__:super-admin',
+    ])
+  })
+
   test('updates platform instance status', async () => {
     await route('/api/platform-instances', {
       method: 'POST',
