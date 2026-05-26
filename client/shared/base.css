@@ -147,3 +147,27 @@ body {
 .modal-footer button:hover {
   border-color: var(--fg3);
 }
+
+/* --- Status pills --- */
+
+.status-success {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* --- Truncation banner --- */
+
+.truncation-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
