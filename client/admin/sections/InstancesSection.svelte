@@ -4,11 +4,14 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { untrack } from 'svelte'
+
   import type {
     AdminInstanceView,
     InstanceConfigView,
     PlatformInstanceView,
     TaskInstanceView,
+    TaskProviderTypeView,
   } from '../../shared/api-types.js'
   import {
     applyPlatformInstances,
@@ -21,16 +24,17 @@
     fetchAdmins,
     fetchPlatformInstances,
     fetchTaskInstances,
+    fetchTaskProviderTypes,
     setPlatformInstanceStatus,
   } from '../fetchers.js'
 
   type FormStatus = { readonly kind: 'success' | 'error'; readonly message: string }
   type PlatformType = PlatformInstanceView['type']
-  type TaskType = TaskInstanceView['type']
 
   let platformInstances: PlatformInstanceView[] = $state([])
   let taskInstances: TaskInstanceView[] = $state([])
   let admins: AdminInstanceView[] = $state([])
+  let taskProviderTypes: TaskProviderTypeView[] = $state([])
   let loading = $state(false)
   let status: FormStatus | null = $state(null)
   let platformDirty = $state(false)
@@ -39,10 +43,12 @@
   let platformType: PlatformType = $state('telegram')
   let platformConfig = $state('{}')
   let taskId = $state('')
-  let taskType: TaskType = $state('kaneo')
-  let taskConfig = $state('{}')
+  let taskType = $state('')
+  let taskConfigFields: Record<string, string> = $state({})
   let adminUserId = $state('')
   let adminPlatformInstanceId = $state('')
+
+  const selectedTaskType = $derived(taskProviderTypes.find((descriptor) => descriptor.type === taskType))
 
   const configLabel = (config: InstanceConfigView): string => JSON.stringify(config)
   const setSuccess = (message: string): void => {
@@ -86,17 +92,30 @@
     admins = await fetchAdmins()
   }
 
+  async function loadTaskProviderTypes(): Promise<void> {
+    taskProviderTypes = await fetchTaskProviderTypes()
+    if (taskType === '' && taskProviderTypes.length > 0) taskType = taskProviderTypes[0]!.type
+  }
+
   async function refreshAll(): Promise<void> {
     loading = true
     status = null
     try {
-      await Promise.all([loadPlatformInstances(), loadTaskInstances(), loadAdmins()])
+      await Promise.all([loadPlatformInstances(), loadTaskInstances(), loadAdmins(), loadTaskProviderTypes()])
     } catch (err) {
       setError(err)
     } finally {
       loading = false
     }
   }
+
+  $effect(() => {
+    const schema = selectedTaskType?.configSchema ?? []
+    const prev = untrack(() => taskConfigFields)
+    const next: Record<string, string> = {}
+    for (const field of schema) next[field.key] = prev[field.key] ?? ''
+    taskConfigFields = next
+  })
 
   async function createPlatform(): Promise<void> {
     try {
@@ -148,9 +167,16 @@
 
   async function createTask(): Promise<void> {
     try {
-      await createTaskInstance({ id: taskId.trim(), type: taskType, config: requireConfig(taskConfig) })
+      const schema = selectedTaskType?.configSchema ?? []
+      const config: Record<string, string> = {}
+      for (const field of schema) {
+        const value = (taskConfigFields[field.key] ?? '').trim()
+        if (field.required && value === '') throw new Error(`${field.label} is required`)
+        if (value !== '') config[field.key] = value
+      }
+      await createTaskInstance({ id: taskId.trim(), type: taskType, config })
       taskId = ''
-      taskConfig = '{}'
+      taskConfigFields = {}
       await loadTaskInstances()
       setSuccess('Task instance created.')
     } catch (err) {
@@ -271,11 +297,21 @@
         <label>
           <span>Type</span>
           <select data-testid="task-type-input" bind:value={taskType}>
-            <option value="kaneo">Kaneo</option>
-            <option value="youtrack">YouTrack</option>
+            {#each taskProviderTypes as descriptor (descriptor.type)}
+              <option value={descriptor.type}>{descriptor.displayName}</option>
+            {/each}
           </select>
         </label>
-        <label><span>Config JSON</span><input data-testid="task-config-input" bind:value={taskConfig} /></label>
+        {#each selectedTaskType?.configSchema ?? [] as field (field.key)}
+          <label>
+            <span>{field.label}{field.required ? ' *' : ''}</span>
+            {#if field.sensitive}
+              <input data-testid={`task-config-${field.key}`} type="password" bind:value={taskConfigFields[field.key]} />
+            {:else}
+              <input data-testid={`task-config-${field.key}`} bind:value={taskConfigFields[field.key]} />
+            {/if}
+          </label>
+        {/each}
         <button type="submit" data-testid="task-create-button">Create</button>
       </form>
       <div class="admin-table-wrap">

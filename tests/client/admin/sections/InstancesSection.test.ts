@@ -73,6 +73,23 @@ const responseFor = (method: string, url: string): Response => {
   if (method === 'GET' && url === '/api/platform-instances') return jsonResponse([platformInstance])
   if (method === 'GET' && url === '/api/task-instances') return jsonResponse([taskInstance])
   if (method === 'GET' && url === '/api/admins') return jsonResponse([admin])
+  if (method === 'GET' && url === '/api/task-provider-types')
+    return jsonResponse([
+      {
+        type: 'kaneo',
+        displayName: 'Kaneo',
+        configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+        capabilities: ['comments.read'],
+        source: 'builtin',
+      },
+      {
+        type: 'youtrack',
+        displayName: 'YouTrack',
+        configSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+        capabilities: ['comments.read'],
+        source: 'builtin',
+      },
+    ])
   if (method === 'POST' && url === '/api/platform-instances') return jsonResponse(platformInstance)
   if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse({ applied: 1 })
   if (method === 'POST' && url === '/api/platform-instances/telegram-main/status')
@@ -180,7 +197,8 @@ describe('InstancesSection', () => {
     click(target, 'platform-create-button')
     await drain()
 
-    expect(expectCall(calls[3], 3).body).toBe(
+    expect(callNames(calls)).toContain('POST /api/platform-instances')
+    expect(expectCall(calls[4], 4).body).toBe(
       JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'token' } }),
     )
     expect(target.querySelector('[data-testid="platform-unapplied-indicator"]')).not.toBeNull()
@@ -223,7 +241,12 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(target.textContent).toContain('Config must be a JSON object with string values')
-    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+    expect(callNames(calls)).toEqual([
+      'GET /api/platform-instances',
+      'GET /api/task-instances',
+      'GET /api/admins',
+      'GET /api/task-provider-types',
+    ])
 
     void unmount(component)
   })
@@ -240,7 +263,8 @@ describe('InstancesSection', () => {
     click(target, 'admin-create-button')
     await drain()
 
-    expect(expectCall(calls[3], 3).body).toBe(JSON.stringify({ userId: 'super-admin' }))
+    expect(callNames(calls)).toContain('POST /api/admins')
+    expect(expectCall(calls[4], 4).body).toBe(JSON.stringify({ userId: 'super-admin' }))
 
     void unmount(component)
   })
@@ -275,7 +299,12 @@ describe('InstancesSection', () => {
     click(target, 'platform-delete-telegram-main')
     await drain()
 
-    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+    expect(callNames(calls)).toEqual([
+      'GET /api/platform-instances',
+      'GET /api/task-instances',
+      'GET /api/admins',
+      'GET /api/task-provider-types',
+    ])
 
     void unmount(component)
   })
@@ -289,14 +318,15 @@ describe('InstancesSection', () => {
     await drain()
 
     enterValue(input(target, 'task-id-input'), 'kaneo-main')
-    enterValue(input(target, 'task-config-input'), '{"KANEO_INTERNAL_URL":"http://kaneo:1337"}')
+    enterValue(input(target, 'task-config-baseUrl'), 'https://kaneo.invalid')
     click(target, 'task-create-button')
     await drain()
     click(target, 'task-delete-kaneo-main')
     await drain()
 
-    expect(expectCall(calls[3], 3).body).toBe(
-      JSON.stringify({ id: 'kaneo-main', type: 'kaneo', config: { KANEO_INTERNAL_URL: 'http://kaneo:1337' } }),
+    expect(callNames(calls)).toContain('POST /api/task-instances')
+    expect(expectCall(calls[4], 4).body).toBe(
+      JSON.stringify({ id: 'kaneo-main', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' } }),
     )
     expect(callNames(calls)).toContain('DELETE /api/task-instances/kaneo-main')
 
@@ -315,7 +345,12 @@ describe('InstancesSection', () => {
     click(target, 'task-delete-kaneo-main')
     await drain()
 
-    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+    expect(callNames(calls)).toEqual([
+      'GET /api/platform-instances',
+      'GET /api/task-instances',
+      'GET /api/admins',
+      'GET /api/task-provider-types',
+    ])
     expect(confirmMessages).toEqual([
       'Delete task instance kaneo-main? This will delete 2 context settings: ctx-1, ctx-2.',
     ])
@@ -338,7 +373,8 @@ describe('InstancesSection', () => {
     click(target, 'admin-remove-admin-user')
     await drain()
 
-    expect(expectCall(calls[3], 3).body).toBe(
+    expect(callNames(calls)).toContain('POST /api/admins')
+    expect(expectCall(calls[4], 4).body).toBe(
       JSON.stringify({ userId: 'admin-user', platformInstanceId: 'telegram-main' }),
     )
     expect(callNames(calls)).toContain('DELETE /api/admins/admin-user/telegram-main')
@@ -357,7 +393,12 @@ describe('InstancesSection', () => {
     click(target, 'admin-remove-admin-user')
     await drain()
 
-    expect(callNames(calls)).toEqual(['GET /api/platform-instances', 'GET /api/task-instances', 'GET /api/admins'])
+    expect(callNames(calls)).toEqual([
+      'GET /api/platform-instances',
+      'GET /api/task-instances',
+      'GET /api/admins',
+      'GET /api/task-provider-types',
+    ])
 
     void unmount(component)
   })
