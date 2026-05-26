@@ -152,6 +152,19 @@ describe('listTaskProviderTypes built-in scopes', () => {
   })
 })
 
+describe('getCapabilitiesForTaskInstance without credentials', () => {
+  test('returns kaneo capabilities for an instance with no credentials in config', () => {
+    const caps = getCapabilitiesForTaskInstance({
+      id: 'k',
+      type: 'kaneo',
+      config: { baseUrl: 'https://k.invalid' },
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    expect(caps.has('comments.create')).toBe(true)
+  })
+})
+
 describe('createProvider kaneo credential branching', () => {
   test('treats a non-cookie credential as an API key', () => {
     const provider = createProvider('kaneo', { baseUrl: 'https://k.invalid', credential: 'kn-key', workspaceId: 'w' })

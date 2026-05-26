@@ -5,9 +5,11 @@
 
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
+import { ALL_CAPABILITIES } from './kaneo/constants.js'
 import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigRequirement, TaskProvider } from './types.js'
+import { YOUTRACK_CAPABILITIES } from './youtrack/constants.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
@@ -85,22 +87,10 @@ export function createProvider(name: string, config: Record<string, string>): Ta
   return contributed.factory(config)
 }
 
-const capabilityConfigForTaskInstance = (instance: TaskInstance): Record<string, string> => {
-  const configuredBaseUrl = instance.config['baseUrl']
-  if (configuredBaseUrl !== undefined) {
-    if (instance.type === 'kaneo') return { apiKey: '', baseUrl: configuredBaseUrl, workspaceId: '' }
-    return { baseUrl: configuredBaseUrl, token: '' }
-  }
-
-  const baseUrl = configValue(instance.config, 'url')
-  if (instance.type === 'kaneo') return { apiKey: '', baseUrl, workspaceId: '' }
-  return { baseUrl, token: '' }
-}
-
 export function getCapabilitiesForTaskInstance(instance: TaskInstance): ReadonlySet<TaskCapability> {
-  const contributed = pluginContributedTaskProviderFactories.get(instance.type)
-  if (contributed !== undefined) return contributed.capabilities
-  return createProvider(instance.type, capabilityConfigForTaskInstance(instance)).capabilities
+  const descriptor = getTaskProviderDescriptor(instance.type)
+  if (descriptor !== undefined) return descriptor.capabilities
+  throw new Error(`Unknown provider: ${instance.type}`)
 }
 
 /** Register a plugin-contributed task provider type. First-wins on duplicate type. */
@@ -144,6 +134,7 @@ export type TaskProviderTypeDescriptor = {
 type BuiltinDescriptorSeed = {
   type: string
   displayName: string
+  capabilities: ReadonlySet<TaskCapability>
   configSchema: readonly ProviderConfigRequirement[]
 }
 
@@ -151,6 +142,7 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
   {
     type: 'kaneo',
     displayName: 'Kaneo',
+    capabilities: ALL_CAPABILITIES,
     configSchema: [
       { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
       { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
@@ -161,6 +153,7 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
   {
     type: 'youtrack',
     displayName: 'YouTrack',
+    capabilities: YOUTRACK_CAPABILITIES,
     configSchema: [
       { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
       { key: 'token', label: 'YouTrack Permanent Token', required: true, sensitive: true, scope: 'user' },
@@ -179,7 +172,7 @@ export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
     type: seed.type,
     displayName: seed.displayName,
     configSchema: seed.configSchema,
-    capabilities: createProvider(seed.type, {}).capabilities,
+    capabilities: seed.capabilities,
     source: 'builtin',
   }))
   const contributed: TaskProviderTypeDescriptor[] = [...pluginContributedTaskProviderFactories.entries()].map(
