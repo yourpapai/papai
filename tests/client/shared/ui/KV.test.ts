@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { mount, unmount } from 'svelte'
+import { createRawSnippet, mount, unmount } from 'svelte'
+import type { Snippet } from 'svelte'
 
 import KV from '../../../../client/shared/ui/KV.svelte'
 
@@ -50,6 +51,18 @@ describe('KV.svelte', () => {
     const target = document.body.querySelector<HTMLElement>('#root')!
     const component = mount(KV, { target, props: { k: 'subjects', v: 32 } })
     expect(target.querySelector('.ui-kv__sub')).toBeNull()
+    void unmount(component)
+  })
+
+  test('renders v as a Snippet when a Snippet is provided', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const vSnippet: Snippet = createRawSnippet((): { render: () => string } => ({
+      render: (): string => '<em data-testid="rich-v">rich</em>',
+    }))
+    const component = mount(KV, { target, props: { k: 'mode', v: vSnippet } })
+    const vCell = target.querySelector<HTMLElement>('.ui-kv__v')!
+    expect(vCell.querySelector('[data-testid="rich-v"]')).not.toBeNull()
     void unmount(component)
   })
 })
