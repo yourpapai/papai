@@ -57,4 +57,12 @@ describe('Btn.svelte', () => {
     expect(clicked).toBe(true)
     void unmount(component)
   })
+
+  test('Btn.svelte source contains :hover rules for every variant', async () => {
+    const url = new URL('../../../../client/shared/ui/Btn.svelte', import.meta.url)
+    const source = await Bun.file(url).text()
+    for (const variant of ['primary', 'secondary', 'outline', 'ghost', 'danger'] as const) {
+      expect(source).toContain(`.ui-btn--${variant}:hover`)
+    }
+  })
 })

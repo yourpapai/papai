@@ -94,4 +94,21 @@
     font-size: 13px;
     height: 34px;
   }
+
+  .ui-btn--primary:hover:not(:disabled) {
+    background: #7be595;
+    border-color: #7be595;
+  }
+  .ui-btn--secondary:hover:not(:disabled) {
+    background: var(--strong);
+  }
+  .ui-btn--outline:hover:not(:disabled) {
+    background: var(--raised);
+  }
+  .ui-btn--ghost:hover:not(:disabled) {
+    background: var(--raised);
+  }
+  .ui-btn--danger:hover:not(:disabled) {
+    background: var(--danger-soft);
+  }
 </style>
