@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   getAllPluginAdminStates,
   getEnabledPluginsForContext,
+  getPluginAdminConfig,
   getPluginAdminState,
   getPluginContextState,
   getRecentRuntimeEvents,
@@ -17,6 +18,7 @@ import {
   kvList,
   kvSet,
   recordRuntimeEvent,
+  setPluginAdminConfig,
   setPluginContextEnabled,
   updatePluginAdminStateField,
   upsertPluginAdminState,
@@ -152,6 +154,30 @@ describe('plugin store', () => {
       kvSet('plug', 'ctx-2', 'k', 'v2')
       expect(kvGet('plug', 'ctx-1', 'k')).toBe('v1')
       expect(kvGet('plug', 'ctx-2', 'k')).toBe('v2')
+    })
+  })
+
+  describe('plugin admin config', () => {
+    test('returns undefined when key does not exist', () => {
+      expect(getPluginAdminConfig('my-plugin', 'api_key')).toBeUndefined()
+    })
+
+    test('stores and retrieves a value', () => {
+      setPluginAdminConfig('my-plugin', 'api_key', 'sk-test-123', 'admin-1')
+      expect(getPluginAdminConfig('my-plugin', 'api_key')).toBe('sk-test-123')
+    })
+
+    test('overwrites an existing value', () => {
+      setPluginAdminConfig('my-plugin', 'api_key', 'sk-old', 'admin-1')
+      setPluginAdminConfig('my-plugin', 'api_key', 'sk-new', 'admin-1')
+      expect(getPluginAdminConfig('my-plugin', 'api_key')).toBe('sk-new')
+    })
+
+    test('isolates keys by plugin id', () => {
+      setPluginAdminConfig('plugin-a', 'api_key', 'key-a', 'admin-1')
+      setPluginAdminConfig('plugin-b', 'api_key', 'key-b', 'admin-1')
+      expect(getPluginAdminConfig('plugin-a', 'api_key')).toBe('key-a')
+      expect(getPluginAdminConfig('plugin-b', 'api_key')).toBe('key-b')
     })
   })
 

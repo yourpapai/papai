@@ -88,22 +88,6 @@ export function findTurnById(turnId: string): Turn | undefined {
   return recentTurns.find((t) => t.turnId === turnId)
 }
 
-export function getRecentTurns(): readonly Turn[] {
-  return recentTurns
-}
-
-export function getRecentNotifications(): readonly Notification[] {
-  return recentNotifications
-}
-
-export function getRecentToolFailures(): readonly ToolFailure[] {
-  return recentToolFailures
-}
-
-export function getInFlightTurns(): ReadonlyMap<string, Turn> {
-  return inFlightTurns
-}
-
 function handleTurnStart(event: DebugEvent): void {
   const turnId = str(event.data['turnId'])
   if (turnId === '') return

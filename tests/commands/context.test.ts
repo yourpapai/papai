@@ -51,7 +51,12 @@ function snapshotDeps(overrides: Partial<ContextCommandDeps> | null): ContextCom
       approximate: false,
     }),
     buildProvider: safeBuildProvider,
-    buildLiveToolSet: (storageContextId, actorUserId, contextType, provider): ToolSet | null => {
+    buildLiveToolSet: (
+      storageContextId,
+      actorUserId,
+      contextType,
+      provider,
+    ): Promise<ToolSet | null> | ToolSet | null => {
       if (provider === null) return null
       return makeTools(provider, {
         storageContextId,
@@ -281,7 +286,7 @@ describe('registerContextCommand', () => {
 
   test('keeps summary and follow-up aligned when live tool resolution is transient across calls', async () => {
     const provider = createIdentityCapableProvider()
-    const firstLiveTools = makeTools(provider, {
+    const firstLiveTools = await makeTools(provider, {
       storageContextId: 'group-1',
       chatUserId: 'actor-user',
       mode: 'normal',

@@ -34,21 +34,21 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('returns preferences only for an unassigned context', () => {
-    expect(getConfigKeysForContext('ctx-unassigned')).toEqual(['timezone'])
+    expect(getConfigKeysForContext('ctx-unassigned')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('returns Kaneo visible keys for an active Kaneo assignment', () => {
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['kaneo_apikey', 'timezone'])
+    expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['kaneo_apikey', 'timezone', 'mcp_endpoints'])
   })
 
   test('returns YouTrack visible keys for an active YouTrack assignment', () => {
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-yt')).toEqual(['youtrack_token', 'timezone'])
+    expect(getConfigKeysForContext('ctx-yt')).toEqual(['youtrack_token', 'timezone', 'mcp_endpoints'])
   })
 
   test('returns preferences only when deleted task instance cascades assignment removal', () => {
@@ -56,7 +56,7 @@ describe('getConfigKeysForContext', () => {
     setContextSettings({ contextId: 'ctx-missing', taskInstanceId: 'missing', platformInstanceId: 'telegram-default' })
     getTestDb().delete(taskInstances).where(eq(taskInstances.id, 'missing')).run()
 
-    expect(getConfigKeysForContext('ctx-missing')).toEqual(['timezone'])
+    expect(getConfigKeysForContext('ctx-missing')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('returns preferences only when assigned instance is inactive', () => {
@@ -67,7 +67,7 @@ describe('getConfigKeysForContext', () => {
       platformInstanceId: 'telegram-default',
     })
 
-    expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone'])
+    expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('returns preferences only for an active contributed (non-builtin) assignment', () => {
@@ -79,7 +79,7 @@ describe('getConfigKeysForContext', () => {
     })
     setContextSettings({ contextId: 'ctx-demo', taskInstanceId: 'demo-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-demo')).toEqual(['timezone'])
+    expect(getConfigKeysForContext('ctx-demo')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('getAllConfig only includes keys valid for the context', () => {

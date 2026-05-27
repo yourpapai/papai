@@ -15,9 +15,12 @@ export const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id' satisfies TaskPro
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
 
+// MCP endpoint config keys
+export type McpConfigKey = 'mcp_endpoints'
+
 // All per-user config keys. LLM credentials live in `system_config` (see
 // `src/system-config.ts`) and are owned by the bot admin, not per-user.
-export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
+export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey | McpConfigKey
 
 export type ConfigField = {
   readonly key: string
@@ -35,6 +38,7 @@ export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   KANEO_WORKSPACE_CONFIG_KEY,
   'youtrack_token',
   'timezone',
+  'mcp_endpoints',
 ]
 
 /**

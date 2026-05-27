@@ -14,7 +14,6 @@ import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembl
 
 export { recentTurns, recentNotifications, recentToolFailures } from './turn-assembly.js'
 export { inFlightTurns, resetTurnBuffers, findTurnById } from './turn-assembly.js'
-export { getRecentTurns, getRecentNotifications, getRecentToolFailures, getInFlightTurns } from './turn-assembly.js'
 export { recentLlm, pendingTraces } from './llm-trace-collector.js'
 export type { LlmTrace } from './llm-trace-collector.js'
 
@@ -47,10 +46,6 @@ export function isVisibleToAdmin(scope: Scope | null | undefined, vis: AdminVisi
   if (scope.kind === 'user') return scope.userId === vis.adminUserId
   if (scope.kind === 'group') return vis.groupIds.has(scope.groupId)
   return false
-}
-
-export function applyVisibility<T>(entries: T[], getScope: (entry: T) => Scope, vis: AdminVisibility): T[] {
-  return entries.filter((entry) => isVisibleToAdmin(getScope(entry), vis))
 }
 
 export function addClient(controller: ReadableStreamDefaultController): void {

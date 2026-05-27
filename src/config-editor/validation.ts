@@ -41,6 +41,9 @@ export function validateConfigValue(key: ConfigKey, value: string): ValidationRe
     case 'timezone':
       return validateTimezone(value)
 
+    case 'mcp_endpoints':
+      return { valid: true }
+
     default:
       return { valid: true }
   }

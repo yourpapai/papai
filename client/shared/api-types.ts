@@ -225,3 +225,27 @@ export type AdminInstanceView = Readonly<
 >
 
 export type ApplyInstancesResult = { readonly applied: number }
+
+export type AdminPluginConfigKeyState = {
+  key: string
+  label: string
+  value: string | null
+  sensitive: boolean
+  required: boolean
+}
+
+export type AdminPluginConfigEntry = {
+  pluginId: string
+  keys: AdminPluginConfigKeyState[]
+}
+
+export type AdminPluginConfigSnapshot = {
+  plugins: AdminPluginConfigEntry[]
+}
+
+export type SubmitAdminPluginConfigResponse = {
+  ok: true
+  pluginId: string
+  key: string
+  updatedAt: number
+}

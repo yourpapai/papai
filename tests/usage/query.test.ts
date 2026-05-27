@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { getSubjectDetail, listSubjects } from '../../src/usage/query.js'
+import { listSubjects } from '../../src/usage/query.js'
 import { recordUsage, type UsageEvent } from '../../src/usage/recorder.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -107,90 +107,5 @@ describe('listSubjects', () => {
 
     const result = listSubjects({ windowMs: null })
     expect(result[0]?.totals.main).toEqual({ inputTokens: 5, outputTokens: 7, calls: 2 })
-  })
-})
-
-describe('getSubjectDetail', () => {
-  beforeEach(async () => {
-    mockLogger()
-    await setupTestDb()
-  })
-
-  test('returns empty when no rows match the subject', () => {
-    seed({ storageContextId: 'other' })
-    expect(getSubjectDetail('missing', { windowMs: null })).toEqual([])
-  })
-
-  test('returns rows for the given storage_context_id, ordered by occurred_at desc', () => {
-    seed({
-      storageContextId: 'ctx',
-      occurredAt: 1000,
-      turnId: 'turn-a',
-      model: 'm',
-      modelRole: 'main',
-    })
-    seed({
-      storageContextId: 'ctx',
-      occurredAt: 3000,
-      turnId: 'turn-c',
-      model: 'm',
-      modelRole: 'small',
-    })
-    seed({
-      storageContextId: 'ctx',
-      occurredAt: 2000,
-      turnId: 'turn-b',
-      model: 'm',
-      modelRole: 'main',
-    })
-    seed({ storageContextId: 'other', occurredAt: 4000, turnId: 'turn-other' })
-
-    const rows = getSubjectDetail('ctx', { windowMs: null })
-    expect(rows.map((r) => r.turnId)).toEqual(['turn-c', 'turn-b', 'turn-a'])
-  })
-
-  test('shape matches RequestRow', () => {
-    seed({
-      storageContextId: 'ctx',
-      occurredAt: 1_700_000_000_000,
-      turnId: 'turn',
-      chatUserId: 'user',
-      model: 'main-model',
-      modelRole: 'main',
-      inputTokens: 100,
-      outputTokens: 200,
-      stepCount: 1,
-      toolCallCount: 0,
-      messageCount: 3,
-      durationMs: 1234,
-      finishReason: 'stop',
-      error: null,
-    })
-
-    const row = getSubjectDetail('ctx', { windowMs: null })[0]
-    expect(row).toBeDefined()
-    expect(row?.eventId).toMatch(/^[0-9a-f]{64}$/u)
-    expect(row?.occurredAt).toBe(1_700_000_000_000)
-    expect(row?.turnId).toBe('turn')
-    expect(row?.chatUserId).toBe('user')
-    expect(row?.model).toBe('main-model')
-    expect(row?.modelRole).toBe('main')
-    expect(row?.inputTokens).toBe(100)
-    expect(row?.outputTokens).toBe(200)
-    expect(row?.stepCount).toBe(1)
-    expect(row?.toolCallCount).toBe(0)
-    expect(row?.messageCount).toBe(3)
-    expect(row?.durationMs).toBe(1234)
-    expect(row?.finishReason).toBe('stop')
-    expect(row?.error).toBeNull()
-  })
-
-  test('filters by windowMs', () => {
-    const now = Date.now()
-    seed({ storageContextId: 'ctx', occurredAt: now - 10 * 24 * 3600 * 1000, turnId: 'old' })
-    seed({ storageContextId: 'ctx', occurredAt: now - 1000, turnId: 'recent' })
-
-    const rows = getSubjectDetail('ctx', { windowMs: 24 * 3600 * 1000 })
-    expect(rows.map((r) => r.turnId)).toEqual(['recent'])
   })
 })

@@ -105,9 +105,9 @@ describe('YouTrack provider tools integration', () => {
     await setupTestDb()
   })
 
-  test('makeTools exposes the expected YouTrack tool surface', () => {
+  test('makeTools exposes the expected YouTrack tool surface', async () => {
     const provider = new YouTrackProvider(createConfig())
-    const tools = makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
+    const tools = await makeTools(provider, { storageContextId: 'user-1', chatUserId: 'user-1' })
     const toolNames = Object.keys(tools).toSorted()
 
     for (const expected of EXPECTED_TOOLS) {

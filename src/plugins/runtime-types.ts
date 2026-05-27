@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import type { ToolExecutionOptions } from 'ai'
+import type { z } from 'zod'
+
+import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/types.js'
+import type { TaskProvider } from '../providers/types.js'
+import type { PluginContext } from './context.js'
+
+export type PluginTaskProviderFacade = Pick<
+  TaskProvider,
+  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
+>
+
+export type PluginToolRuntimeContext = {
+  pluginId: string
+  storageContextId: string
+  chatUserId: string
+  taskProvider: PluginTaskProviderFacade
+  kv: PluginContext['kv']
+  rateLimit: {
+    check(actorId: string): { allowed: boolean; retryAfterSec?: number }
+  }
+}
+
+export type PluginTool = {
+  /** Raw tool name as declared in the manifest (snake_case). */
+  name: string
+  description: string
+  inputSchema?: z.ZodType
+  execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
+}
+
+/** A prompt fragment contributed by a plugin. */
+export type PluginPromptFragment = {
+  /** Fragment key matching a name in contributes.promptFragments. */
+  name: string
+  /** The fragment text or a synchronous function returning it. */
+  content: string | (() => string)
+}
+
+export type PluginCommand = {
+  name: string
+  description: string
+  execute: (message: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void> | void
+}
+
+export type PluginScheduledJob = {
+  name: string
+  intervalMs: number
+  execute: (contextId: string) => Promise<void> | void
+}
+
+/** Registration result from a plugin's activate() call. */
+export type PluginContributions = {
+  tools: PluginTool[]
+  promptFragments: PluginPromptFragment[]
+  commands?: PluginCommand[]
+  jobs?: PluginScheduledJob[]
+}
+
+/** Runtime plugin instance returned by a plugin factory. */
+export type PluginInstance = {
+  activate(ctx: PluginContext): Promise<void> | void
+  deactivate?(ctx: PluginContext): Promise<void> | void
+}
+
+/** Interface that a plugin module's default export must satisfy. */
+export type PluginFactory = () => PluginInstance

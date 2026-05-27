@@ -23,6 +23,7 @@ const log = logger.child({ scope: 'config-editor:handlers' })
 
 function getFieldEmoji(field: ConfigField): string {
   if (field.storageKey === 'timezone') return '🌍'
+  if (field.storageKey === 'mcp_endpoints') return '🔌'
   return field.sensitive ? '🔐' : '⚙️'
 }
 

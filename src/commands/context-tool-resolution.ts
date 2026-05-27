@@ -19,7 +19,7 @@ export type BuildLiveToolSet = (
   actorUserId: string,
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
-) => ToolSet | null
+) => Promise<ToolSet | null> | ToolSet | null
 
 export interface ResolvedToolSurfaceRouting {
   intent: ToolRoutingIntent
@@ -53,7 +53,7 @@ export function buildInvocationToolSet(
   actorUserId: string,
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
-): ToolSet | null {
+): Promise<ToolSet | null> | ToolSet | null {
   if (provider === null) return null
 
   return makeTools(provider, {
@@ -64,16 +64,16 @@ export function buildInvocationToolSet(
   })
 }
 
-export function resolveContextToolSurface(
+export async function resolveContextToolSurface(
   storageContextId: string,
   actorUserId: string,
   contextType: 'dm' | 'group',
   provider: TaskProvider | null,
   buildLiveToolSet: BuildLiveToolSet,
   lastUserText?: string,
-): ResolvedContextToolSurface {
+): Promise<ResolvedContextToolSurface> {
   try {
-    const liveTools = buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
+    const liveTools = await buildLiveToolSet(storageContextId, actorUserId, contextType, provider)
     if (liveTools !== null) {
       return applyRoutingIfApplicable(liveTools, lastUserText)
     }

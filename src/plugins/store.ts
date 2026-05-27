@@ -12,7 +12,7 @@ import type {
   PluginKvRow,
   PluginRuntimeEventRow,
 } from '../db/plugin-schema.js'
-import { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from '../db/schema.js'
+import { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents, systemConfig } from '../db/schema.js'
 import { logger } from '../logger.js'
 import type { PluginState } from './types.js'
 
@@ -214,4 +214,37 @@ export function getRecentRuntimeEvents(pluginId: string, limit = 20): PluginRunt
     .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC`)
     .limit(limit)
     .all()
+}
+
+// ---- Admin config ----
+
+function pluginAdminConfigKey(pluginId: string, key: string): string {
+  return `plg:${pluginId}:${key}`
+}
+
+export function getPluginAdminConfig(pluginId: string, key: string): string | undefined {
+  const row = getDrizzleDb()
+    .select({ value: systemConfig.value })
+    .from(systemConfig)
+    .where(eq(systemConfig.key, pluginAdminConfigKey(pluginId, key)))
+    .get()
+  return row?.value
+}
+
+export function setPluginAdminConfig(pluginId: string, key: string, value: string, updatedBy: string): void {
+  const dbKey = pluginAdminConfigKey(pluginId, key)
+  const updatedAt = Date.now()
+  getDrizzleDb()
+    .insert(systemConfig)
+    .values({ key: dbKey, value, updatedAt, updatedBy })
+    .onConflictDoUpdate({
+      target: systemConfig.key,
+      set: {
+        value: sql`excluded.value`,
+        updatedAt: sql`excluded.updated_at`,
+        updatedBy: sql`excluded.updated_by`,
+      },
+    })
+    .run()
+  log.debug({ pluginId, key, updatedBy }, 'Plugin admin config set')
 }

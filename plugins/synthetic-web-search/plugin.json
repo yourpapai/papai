@@ -1,0 +1,25 @@
+{
+  "id": "synthetic-web-search",
+  "name": "Synthetic Web Search",
+  "version": "1.0.0",
+  "description": "Web search via Synthetic Search API",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "contributes": {
+    "tools": ["search"],
+    "promptFragments": ["web-search-hint"]
+  },
+  "permissions": ["http"],
+  "providerAllowedHosts": ["api.synthetic.new"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    {
+      "key": "api_key",
+      "label": "Synthetic API Key",
+      "required": true,
+      "sensitive": true,
+      "scope": "admin"
+    }
+  ],
+  "activationTimeoutMs": 3000
+}

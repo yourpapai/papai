@@ -127,12 +127,12 @@ describe('plugin lifecycle integration', () => {
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
     setPluginEnabledForContext(plugin.manifest.id, 'ctx-enabled', true)
 
-    const disabledTools = makeTools(provider, {
+    const disabledTools = await makeTools(provider, {
       storageContextId: 'ctx-disabled',
       chatUserId: 'user-1',
       contextType: 'dm',
     })
-    const enabledTools = makeTools(provider, {
+    const enabledTools = await makeTools(provider, {
       storageContextId: 'ctx-enabled',
       chatUserId: 'user-1',
       contextType: 'dm',
@@ -152,7 +152,7 @@ describe('plugin lifecycle integration', () => {
 
     await deactivateAllPlugins()
 
-    const toolsAfterDeactivate = makeTools(provider, {
+    const toolsAfterDeactivate = await makeTools(provider, {
       storageContextId: 'ctx-enabled',
       chatUserId: 'user-1',
       contextType: 'dm',
@@ -208,13 +208,13 @@ describe('plugin lifecycle integration', () => {
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
-    const toolsWithoutConfig = makeTools(provider, {
+    const toolsWithoutConfig = await makeTools(provider, {
       storageContextId: 'ctx-config',
       chatUserId: 'user-1',
       contextType: 'dm',
     })
     setPluginConfig('ctx-config', plugin.manifest.id, 'api_token', 'secret')
-    const toolsWithConfig = makeTools(provider, {
+    const toolsWithConfig = await makeTools(provider, {
       storageContextId: 'ctx-config',
       chatUserId: 'user-1',
       contextType: 'dm',
@@ -242,7 +242,7 @@ describe('plugin lifecycle integration', () => {
 
     expect(pluginRegistry.getEntry(plugin.manifest.id)!.state).toBe('error')
     expect(
-      makeTools(createMockProvider(), {
+      await makeTools(createMockProvider(), {
         storageContextId: 'ctx-enabled',
         chatUserId: 'user-1',
         contextType: 'dm',
@@ -263,7 +263,7 @@ describe('plugin lifecycle integration', () => {
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
     setPluginEnabledForContext(plugin.manifest.id, 'ctx-opt-out', false)
 
-    const tools = makeTools(provider, {
+    const tools = await makeTools(provider, {
       storageContextId: 'ctx-opt-out',
       chatUserId: 'user-1',
       contextType: 'dm',
@@ -306,12 +306,12 @@ describe('plugin lifecycle integration', () => {
     expect(kaneoProvider).not.toBeNull()
     expect(youtrackProvider).not.toBeNull()
 
-    const kaneoTools = makeTools(kaneoProvider!, {
+    const kaneoTools = await makeTools(kaneoProvider!, {
       storageContextId: 'ctx-kaneo',
       chatUserId: 'user-1',
       contextType: 'dm',
     })
-    const youtrackTools = makeTools(youtrackProvider!, {
+    const youtrackTools = await makeTools(youtrackProvider!, {
       storageContextId: 'ctx-youtrack',
       chatUserId: 'user-1',
       contextType: 'dm',

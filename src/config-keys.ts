@@ -8,13 +8,21 @@ import { getTaskInstance } from './instances/task-store.js'
 import { getTaskProviderDescriptor } from './providers/registry.js'
 import { isConfigKey, KANEO_WORKSPACE_CONFIG_KEY, type ConfigField, type ConfigKey } from './types/config.js'
 
-const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone']
+const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
 const PREFERENCE_FIELDS: readonly ConfigField[] = [
   {
     key: 'timezone',
     storageKey: 'timezone',
     label: 'Timezone',
     required: true,
+    sensitive: false,
+    kind: 'preference',
+  },
+  {
+    key: 'mcp_endpoints',
+    storageKey: 'mcp_endpoints',
+    label: 'MCP Endpoints',
+    required: false,
     sensitive: false,
     kind: 'preference',
   },

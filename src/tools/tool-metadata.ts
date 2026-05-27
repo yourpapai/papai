@@ -22,6 +22,7 @@ export type ToolDomain =
   | 'web'
   | 'identity'
   | 'time'
+  | 'mcp'
 
 export type ToolOperation = 'read' | 'create' | 'update' | 'delete' | 'manage'
 
@@ -157,5 +158,13 @@ export const TOOL_METADATA: Readonly<Record<string, ToolClassification>> = {
 }
 
 export function getToolMetadata(toolName: string): ToolClassification | undefined {
-  return TOOL_METADATA[toolName]
+  const staticMeta = TOOL_METADATA[toolName]
+  if (staticMeta !== undefined) return staticMeta
+
+  // MCP tools: mcp_<server-id>__<tool_name>
+  if (toolName.startsWith('mcp_')) {
+    return { domain: 'mcp', operation: 'read', risk: 'open-world' }
+  }
+
+  return undefined
 }

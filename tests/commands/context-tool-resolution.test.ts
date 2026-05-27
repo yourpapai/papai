@@ -21,26 +21,26 @@ describe('context-tool-resolution', () => {
     await setupTestDb()
   })
 
-  test('resolveContextToolSurface returns definitions without catalogPages', () => {
+  test('resolveContextToolSurface returns definitions without catalogPages', async () => {
     const provider = createMockProvider()
-    const surface = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
 
     expect(surface).toHaveProperty('definitions')
     expect(surface).not.toHaveProperty('catalogPages')
     expect(Object.keys(surface.definitions).length).toBeGreaterThan(0)
   })
 
-  test('resolveContextToolSurface returns the full set when no lastUserText is provided', () => {
+  test('resolveContextToolSurface returns the full set when no lastUserText is provided', async () => {
     const provider = createMockProvider()
-    const surface = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    const surface = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
 
     expect(surface.routing).toBeUndefined()
   })
 
-  test('resolveContextToolSurface applies routing when lastUserText is provided', () => {
+  test('resolveContextToolSurface applies routing when lastUserText is provided', async () => {
     const provider = createMockProvider()
-    const full = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
-    const routed = resolveContextToolSurface(
+    const full = await resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    const routed = await resolveContextToolSurface(
       'user-1',
       'user-1',
       'dm',
@@ -58,9 +58,9 @@ describe('context-tool-resolution', () => {
     expect(routed.definitions).not.toHaveProperty('create_task')
   })
 
-  test('resolveContextToolSurface returns full set when routing falls back to full intent', () => {
+  test('resolveContextToolSurface returns full set when routing falls back to full intent', async () => {
     const provider = createMockProvider()
-    const routed = resolveContextToolSurface(
+    const routed = await resolveContextToolSurface(
       'user-1',
       'user-1',
       'dm',
@@ -73,9 +73,21 @@ describe('context-tool-resolution', () => {
     expect(routed.routing?.exposedToolCount).toBe(routed.routing?.fullToolCount)
   })
 
-  test('buildInvocationToolSet returns null when provider is null', () => {
-    const result = buildInvocationToolSet('user-1', 'user-1', 'dm', null)
+  test('buildInvocationToolSet returns null when provider is null', async () => {
+    const result = await buildInvocationToolSet('user-1', 'user-1', 'dm', null)
     expect(result).toBeNull()
+  })
+
+  test('buildInvocationToolSet returns a Promise when provider is not null', () => {
+    const provider = createMockProvider()
+    const result = buildInvocationToolSet('user-1', 'user-1', 'dm', provider)
+    expect(result).toBeInstanceOf(Promise)
+  })
+
+  test('resolveContextToolSurface returns a Promise', () => {
+    const provider = createMockProvider()
+    const result = resolveContextToolSurface('user-1', 'user-1', 'dm', provider, buildInvocationToolSet)
+    expect(result).toBeInstanceOf(Promise)
   })
 
   test('safeBuildProvider returns null when resolver has no provider', () => {

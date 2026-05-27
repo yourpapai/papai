@@ -501,10 +501,10 @@ describe('makeTools direct integration', () => {
     await setupTestDb()
   })
 
-  it('exposes direct tools by default', () => {
+  it('exposes direct tools by default', async () => {
     const provider = createMockProvider()
 
-    const tools = makeTools(provider, {
+    const tools = await makeTools(provider, {
       storageContextId: 'user-123',
       chatUserId: 'user-123',
       contextType: 'dm',
@@ -514,19 +514,19 @@ describe('makeTools direct integration', () => {
     expect(tools).not.toHaveProperty('papai_tool')
   })
 
-  it('keeps internal context gating available through direct tool exposure', () => {
+  it('keeps internal context gating available through direct tool exposure', async () => {
     const provider = createMockProvider({
       identityResolver: {
         searchUsers: () => Promise.resolve([]),
       },
     })
 
-    const dmTools = makeTools(provider, {
+    const dmTools = await makeTools(provider, {
       storageContextId: 'user-123',
       chatUserId: 'user-123',
       contextType: 'dm',
     })
-    const groupTools = makeTools(provider, {
+    const groupTools = await makeTools(provider, {
       storageContextId: 'group-123',
       chatUserId: 'user-123',
       contextType: 'group',
@@ -595,7 +595,7 @@ describe('makeTools direct integration', () => {
       plugin.manifest,
     )
 
-    const tools = makeTools(createMockProvider(), {
+    const tools = await makeTools(createMockProvider(), {
       storageContextId,
       chatUserId: 'chat-user-task-five',
       contextType: 'dm',
@@ -668,7 +668,7 @@ describe('makeTools direct integration', () => {
       plugin.manifest,
     )
 
-    const tools = makeTools(createMockProvider(), {
+    const tools = await makeTools(createMockProvider(), {
       storageContextId,
       chatUserId: 'chat-user-task-five',
       contextType: 'dm',
@@ -706,7 +706,7 @@ describe('makeTools direct integration', () => {
         requiredTaskCapabilities: [],
         requiredChatCapabilities: [],
         configRequirements: [
-          { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'instance' },
+          { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
         ],
         providerCapabilities: [],
         providerConfigSchema: [],
@@ -740,7 +740,7 @@ describe('makeTools direct integration', () => {
       plugin.manifest,
     )
 
-    const tools = makeTools(createMockProvider(), {
+    const tools = await makeTools(createMockProvider(), {
       storageContextId,
       chatUserId: 'chat-user-task-six',
       contextType: 'dm',

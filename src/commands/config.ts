@@ -33,6 +33,7 @@ function isSafeCallbackData(callbackData: string): boolean {
 
 function getFieldEmoji(field: ConfigField): string {
   if (field.storageKey === 'timezone') return '🌍'
+  if (field.storageKey === 'mcp_endpoints') return '🔌'
   return field.sensitive ? '🔐' : '⚙️'
 }
 

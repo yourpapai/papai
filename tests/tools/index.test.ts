@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 describe('makeTools', () => {
-  test('exposes lookup_group_history only for scoped thread context ids', () => {
+  test('exposes lookup_group_history only for scoped thread context ids', async () => {
     const provider = createMockProvider()
     const scopedMainContextId = toScopedContextId({
       platformInstanceId: 'telegram-default',
@@ -36,19 +36,19 @@ describe('makeTools', () => {
       threadId: 'thread-1',
     })
 
-    expect(makeTools(provider, { storageContextId: scopedThreadContextId, chatUserId: 'user-1' })).toHaveProperty(
+    expect(await makeTools(provider, { storageContextId: scopedThreadContextId, chatUserId: 'user-1' })).toHaveProperty(
       'lookup_group_history',
     )
-    expect(makeTools(provider, { storageContextId: scopedMainContextId, chatUserId: 'user-1' })).not.toHaveProperty(
-      'lookup_group_history',
-    )
+    expect(
+      await makeTools(provider, { storageContextId: scopedMainContextId, chatUserId: 'user-1' }),
+    ).not.toHaveProperty('lookup_group_history')
   })
 })
 
 describe('makeTools preference filtering', () => {
-  test('returns the full set when no prefs are configured', () => {
+  test('returns the full set when no prefs are configured', async () => {
     const provider = createMockProvider()
-    const tools = makeTools(provider, {
+    const tools = await makeTools(provider, {
       storageContextId: CONTEXT,
       chatUserId: CONTEXT,
       contextType: 'dm',
@@ -57,10 +57,10 @@ describe('makeTools preference filtering', () => {
     expect(Object.keys(tools)).toContain('save_memo')
   })
 
-  test('removes a tool whose domain is disabled', () => {
+  test('removes a tool whose domain is disabled', async () => {
     const provider = createMockProvider()
     setToolPrefs(CONTEXT, { disabledDomains: ['memo'], toolOverrides: {} })
-    const tools = makeTools(provider, {
+    const tools = await makeTools(provider, {
       storageContextId: CONTEXT,
       chatUserId: CONTEXT,
       contextType: 'dm',
@@ -69,10 +69,10 @@ describe('makeTools preference filtering', () => {
     expect(Object.keys(tools)).toContain('create_task')
   })
 
-  test('honors a per-tool override that disables one tool in an enabled domain', () => {
+  test('honors a per-tool override that disables one tool in an enabled domain', async () => {
     const provider = createMockProvider()
     setToolPrefs(CONTEXT, { disabledDomains: [], toolOverrides: { create_task: false } })
-    const tools = makeTools(provider, {
+    const tools = await makeTools(provider, {
       storageContextId: CONTEXT,
       chatUserId: CONTEXT,
       contextType: 'dm',
