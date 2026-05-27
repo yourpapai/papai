@@ -218,6 +218,10 @@ describe('index.ts - graceful shutdown', () => {
           return Promise.resolve(Buffer.from(`${sourceProvider}:${platformInstanceId}:${fileId}`))
         }
 
+        getPlatformInstanceCapabilities(): ReadonlySet<never> {
+          return new Set()
+        }
+
         renderContext(
           snapshot: Parameters<ChatProvider['renderContext']>[0],
         ): ReturnType<ChatProvider['renderContext']> {
@@ -263,6 +267,9 @@ describe('index.ts - graceful shutdown', () => {
     void mock.module('../src/instances/platform-store.js', () => ({
       listActivePlatformInstances: (): readonly PlatformInstance[] => activePlatformInstances,
     }))
+    void mock.module('../src/instances/task-store.js', () => ({
+      listTaskInstances: (): readonly [] => [],
+    }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (_chat: ChatProvider, resolveProvider: (contextId: string) => TaskProvider | null): void => {
         void resolveProvider('poller-context-1')
@@ -293,6 +300,21 @@ describe('index.ts - graceful shutdown', () => {
     }))
     void mock.module('../src/message-queue/index.js', () => ({
       flushOnShutdown: (): Promise<void> => Promise.resolve(),
+    }))
+    void mock.module('../src/plugins/discovery.js', () => ({
+      discoverPlugins: (): { plugins: []; errors: [] } => ({ plugins: [], errors: [] }),
+    }))
+    void mock.module('../src/plugins/loader.js', () => ({
+      activatePlugins: (): Promise<void> => Promise.resolve(),
+      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
+      getActivatedPluginIds: (): readonly [] => [],
+    }))
+    void mock.module('../src/plugins/registry.js', () => ({
+      syncRegistryFromDb: (): void => undefined,
+      pluginRegistry: {
+        evaluateCompatibilityAcrossInstances: (): void => undefined,
+        getApprovedCompatiblePlugins: (): readonly [] => [],
+      },
     }))
     void mock.module('../src/providers/resolver.js', () => ({
       defaultTaskProviderResolver: {

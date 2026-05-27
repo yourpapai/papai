@@ -24,6 +24,7 @@ export const PLUGIN_PERMISSIONS = [
   'tasks.write',
   'provider.task',
   'identity',
+  'http',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
@@ -150,6 +151,14 @@ const pluginConfigRequirementSchema = z.object({
   label: z.string().min(1),
   required: z.boolean(),
   sensitive: z.boolean().optional().default(false),
+  scope: z.enum(['context', 'admin']).optional().default('context'),
+})
+
+const providerConfigRequirementSchema = z.object({
+  key: configKeySchema,
+  label: z.string().min(1),
+  required: z.boolean(),
+  sensitive: z.boolean().optional().default(false),
   scope: z.enum(['instance', 'user']).optional().default('instance'),
 })
 
@@ -195,7 +204,7 @@ export const pluginManifestSchema = z
     requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
-    providerConfigSchema: z.array(pluginConfigRequirementSchema).optional().default([]),
+    providerConfigSchema: z.array(providerConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
     providerConfigValidator: z
       .string()
@@ -235,6 +244,9 @@ export type PluginToolRuntimeContext = {
   chatUserId: string
   taskProvider: PluginTaskProviderFacade
   kv: PluginContext['kv']
+  rateLimit: {
+    check(actorId: string): { allowed: boolean; retryAfterSec?: number }
+  }
 }
 
 export type PluginTool = {

@@ -700,7 +700,7 @@ describe('makeTools direct integration', () => {
         requiredTaskCapabilities: [],
         requiredChatCapabilities: [],
         configRequirements: [
-          { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'instance' },
+          { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
         ],
         providerCapabilities: [],
         providerConfigSchema: [],

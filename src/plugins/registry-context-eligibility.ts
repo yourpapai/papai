@@ -11,7 +11,7 @@ import { getTaskInstance } from '../instances/task-store.js'
 import { getCapabilitiesForTaskInstance } from '../providers/registry.js'
 import type { TaskCapability } from '../providers/types.js'
 import type { PluginRegistryEntry } from './registry.js'
-import { getPluginContextState, isPluginEnabledForContext } from './store.js'
+import { getPluginAdminConfig, getPluginContextState, isPluginEnabledForContext } from './store.js'
 import type { DiscoveredPlugin } from './types.js'
 
 export type PluginContextEligibility =
@@ -24,6 +24,11 @@ function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: strin
   return plugin.manifest.configRequirements
     .filter((requirement) => requirement.required)
     .filter((requirement) => {
+      if (requirement.scope === 'admin') {
+        const value = getPluginAdminConfig(plugin.manifest.id, requirement.key)
+        if (value === undefined) return true
+        return value.trim() === ''
+      }
       const value = getPluginConfig(contextId, plugin.manifest.id, requirement.key)
       if (value === null) return true
       return value.trim() === ''
