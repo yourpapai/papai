@@ -18,6 +18,7 @@ export type ChatUser = {
 export type ContextType = 'dm' | 'group'
 
 import type { DeferredDeliveryTarget } from './deferred-target.js'
+import type { ChatProviderConfigRequirement } from './provider-descriptor.js'
 export type { DeferredAudience, DeferredDeliveryTarget } from './deferred-target.js'
 export { dmTarget } from './deferred-target.js'
 /** Context passed to resolveUserId so adapters can scope searches. */
@@ -64,12 +65,11 @@ export type ChatProviderTraits = {
   callbackDataMaxLength: number
 }>
 
-/** A config key required by this chat provider. */
-export type ChatProviderConfigRequirement = {
-  key: string
-  label: string
-  required: boolean
-}
+export type {
+  ChatProviderConfigField,
+  ChatProviderConfigRequirement,
+  ChatProviderDescriptor,
+} from './provider-descriptor.js'
 
 /** A file to send to the user. */
 export type ChatFile = {

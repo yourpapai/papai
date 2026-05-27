@@ -40,6 +40,7 @@ import {
   textResponse,
 } from './instance-route-support.js'
 import { jsonResponse } from './json-response.js'
+import { handlePlatformProviderTypes } from './platform-provider-type-routes.js'
 import { handleTaskProviderTypes, validateTaskInstanceConfig } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
@@ -87,6 +88,7 @@ const taskInstanceView = (
 
 const INSTANCE_API_PREFIXES = [
   '/api/admins',
+  '/api/platform-provider-types',
   '/api/platform-instances',
   '/api/task-instances',
   '/api/task-provider-types',
@@ -253,6 +255,7 @@ const routeInstanceApi = (
   url: URL,
   deps: InstanceApiDeps,
 ): Response | Promise<Response | null> | null => {
+  if (url.pathname.startsWith('/api/platform-provider-types')) return handlePlatformProviderTypes(req, url)
   if (url.pathname.startsWith('/api/platform-instances')) return handlePlatformInstances(req, url, deps)
   if (url.pathname.startsWith('/api/task-provider-types')) return handleTaskProviderTypes(req, url)
   if (url.pathname.startsWith('/api/task-instances')) return handleTaskInstances(req, url)

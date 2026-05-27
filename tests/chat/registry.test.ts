@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { createChatProvider } from '../../src/chat/registry.js'
+import { createChatProvider, listPlatformProviderTypes } from '../../src/chat/registry.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 describe('chat registry', () => {
@@ -95,5 +95,15 @@ describe('chat registry', () => {
     expect(() =>
       createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' }),
     ).toThrow('Missing mattermost instance config')
+  })
+
+  test('listPlatformProviderTypes exposes built-in descriptor metadata', () => {
+    const descriptors = listPlatformProviderTypes()
+    const mattermost = descriptors.find((descriptor) => descriptor.type === 'mattermost')
+
+    expect(descriptors.map((descriptor) => descriptor.type)).toEqual(['telegram', 'mattermost', 'discord'])
+    expect(mattermost?.instanceConfigSchema.map((field) => field.key)).toEqual(['baseUrl', 'token'])
+    expect(mattermost?.capabilities.has('users.resolve')).toBe(true)
+    expect(mattermost?.traits.observedGroupMessages).toBe('all')
   })
 })
