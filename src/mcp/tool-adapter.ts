@@ -5,7 +5,7 @@
 
 import { jsonSchema, tool, type ToolSet } from 'ai'
 
-import type { McpToolFilter } from './types.js'
+import { type McpToolFilter, sanitizeServerId } from './types.js'
 
 export type McpToolDef = {
   name: string
@@ -33,7 +33,7 @@ export function convertMcpToolsToToolSet(
   const result: ToolSet = {}
 
   for (const mcpTool of filtered) {
-    const namespacedName = `mcp_${serverId}__${mcpTool.name}`
+    const namespacedName = `mcp_${sanitizeServerId(serverId)}__${mcpTool.name}`
     const schema = mcpTool.inputSchema ?? { type: 'object' as const, properties: {} }
     const inputSchema = jsonSchema(schema)
 
