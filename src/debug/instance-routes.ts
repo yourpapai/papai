@@ -3,9 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { listPlatformProviderTypes } from '../chat/registry.js'
 import * as adminStore from '../instances/admin-store.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
-import { isSecretKeyName, maskConfig } from '../instances/encryption.js'
+import { maskConfig, providerSensitiveKeys } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
@@ -24,7 +25,7 @@ import {
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { listTaskProviderTypes } from '../providers/registry.js'
+import { getTaskProviderDescriptor, listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import {
   adminSchema,
@@ -50,27 +51,34 @@ const defaultDeps: InstanceApiDeps = {
   listActivePlatformInstances,
 }
 
+const INSTANCE_ROUTE_MASK = '********'
+
+const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> =>
+  providerSensitiveKeys(
+    config,
+    listPlatformProviderTypes().find((descriptor) => descriptor.type === type)?.instanceConfigSchema,
+  )
+
 const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance => ({
   ...instance,
-  config: maskConfig(instance.config),
+  config: maskConfig(
+    instance.config,
+    platformInstanceSensitiveKeys(instance.type, instance.config),
+    INSTANCE_ROUTE_MASK,
+  ),
 })
 
 // Defense-in-depth: mask a task-instance config key if its provider descriptor declares it
 // instance-scoped sensitive, OR its name looks secret-bearing. The pattern arm covers arbitrary
 // keys operators can now write in-place via PATCH, which the descriptor schema does not constrain.
 const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
-  const descriptor = listTaskProviderTypes().find((d) => d.type === type)
-  const declared =
-    descriptor === undefined
-      ? []
-      : descriptor.instanceConfigSchema.filter((field) => field.sensitive).map((field) => field.key)
-  const secretLike = Object.keys(config).filter((key) => isSecretKeyName(key))
-  return new Set([...declared, ...secretLike])
+  const descriptor = getTaskProviderDescriptor(type)
+  return providerSensitiveKeys(config, descriptor?.instanceConfigSchema)
 }
 
 const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
   ...instance,
-  config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config)),
+  config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config), INSTANCE_ROUTE_MASK),
 })
 
 const taskInstanceView = (
