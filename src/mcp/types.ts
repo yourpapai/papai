@@ -58,6 +58,7 @@ export type McpServerInfo = {
   toolCount: number
   lastError: string | null
   lastConnectedAt: number | null
+  url: string | null
 }
 
 export function sanitizeServerId(input: string): string {

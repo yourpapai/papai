@@ -144,6 +144,7 @@ export class McpConnectionPool {
         toolCount: entry.toolCount,
         lastError: entry.lastError,
         lastConnectedAt: entry.lastConnectedAt,
+        url: entry.url,
       })
     }
     return infos
