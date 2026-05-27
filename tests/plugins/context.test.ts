@@ -140,6 +140,7 @@ describe('buildPluginContext', () => {
     expect(Object.isFrozen(ctx.registration)).toBe(true)
     expect(Object.isFrozen(ctx.kv)).toBe(true)
     expect(Object.isFrozen(ctx.log)).toBe(true)
+    expect(Object.isFrozen(ctx.adminConfig)).toBe(true)
   })
 
   test('denies kv operations when storage permission is missing', () => {
