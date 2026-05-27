@@ -9,7 +9,7 @@ import { handleEditorCallback, startEditor } from '../../src/config-editor/handl
 import { getEditorSession } from '../../src/config-editor/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'config-editor-test-user'
 
@@ -17,6 +17,7 @@ describe('config-editor back action', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('back removes the active session for the current user and target context', () => {

@@ -25,7 +25,7 @@
     fetchPlatformInstances,
     fetchTaskInstances,
     fetchTaskProviderTypes,
-    setPlatformInstanceStatus,
+    updatePlatformInstance,
   } from '../fetchers.js'
 
   type FormStatus = { readonly kind: 'success' | 'error'; readonly message: string }
@@ -110,10 +110,13 @@
   }
 
   $effect(() => {
-    const schema = selectedTaskType?.configSchema ?? []
+    const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
     const prev = untrack(() => taskConfigFields)
     const next: Record<string, string> = {}
-    for (const field of schema) next[field.key] = prev[field.key] ?? ''
+    for (const field of schema) {
+      const value = prev[field.key]
+      next[field.key] = value === undefined ? '' : value
+    }
     taskConfigFields = next
   })
 
@@ -133,7 +136,7 @@
   async function updatePlatformStatus(instance: PlatformInstanceView): Promise<void> {
     try {
       const nextStatus = instance.status === 'active' ? 'stopped' : 'active'
-      await setPlatformInstanceStatus(instance.id, nextStatus)
+      await updatePlatformInstance(instance.id, { status: nextStatus })
       platformDirty = true
       await loadPlatformInstances()
       setSuccess(`Platform instance ${nextStatus}. Platform changes are unapplied.`)
@@ -167,10 +170,11 @@
 
   async function createTask(): Promise<void> {
     try {
-      const schema = selectedTaskType?.configSchema ?? []
+      const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
       const config: Record<string, string> = {}
       for (const field of schema) {
-        const value = (taskConfigFields[field.key] ?? '').trim()
+        const rawValue = taskConfigFields[field.key]
+        const value = (rawValue === undefined ? '' : rawValue).trim()
         if (field.required && value === '') throw new Error(`${field.label} is required`)
         if (value !== '') config[field.key] = value
       }

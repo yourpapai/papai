@@ -11,7 +11,7 @@ import { toScopedContextId } from '../src/chat/scoped-context.js'
 import type { AuthorizationResult } from '../src/chat/types.js'
 import { addGroupMember } from '../src/groups.js'
 import { addUser as addScopedUser } from '../src/users.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
 
@@ -57,6 +57,7 @@ describe('group context isolation', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('two groups have independent storage contexts', () => {

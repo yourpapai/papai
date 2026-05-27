@@ -10,6 +10,7 @@
 // Task-tracker specific config keys.
 // Note: kaneo_workspace_id is auto-provisioned and not user-visible.
 export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
+export const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id' satisfies TaskProviderConfigKey
 
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
@@ -22,7 +23,7 @@ export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey
 // Note: kaneo_workspace_id is auto-provisioned and stored separately
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
   'kaneo_apikey',
-  'kaneo_workspace_id',
+  KANEO_WORKSPACE_CONFIG_KEY,
   'youtrack_token',
   'timezone',
 ]

@@ -18,7 +18,7 @@ import { startGroupSettingsSelection } from '../../../src/group-settings/selecto
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
-import { mockLogger, mockMessageCache, setupTestDb } from '../../utils/test-helpers.js'
+import { mockLogger, mockMessageCache, seedCommonTestPlatformInstances, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
 
@@ -86,6 +86,7 @@ describe('DiscordChatProvider', () => {
     mockLogger()
     mockMessageCache()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     process.env['DISCORD_BOT_TOKEN'] = 'fake-token-123'
     process.env['ADMIN_USER_ID'] = 'admin-id'
   })
@@ -1028,6 +1029,7 @@ describe('DiscordChatProvider', () => {
 
     test('handles cfg: callback when no active editor (no-op)', async () => {
       await setupTestDb()
+      seedCommonTestPlatformInstances()
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
       const provider = new DiscordChatProvider(undefined)
 
@@ -1057,6 +1059,7 @@ describe('DiscordChatProvider', () => {
 
     test('handles wizard_ callback when no active wizard (no-op)', async () => {
       await setupTestDb()
+      seedCommonTestPlatformInstances()
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
       const provider = new DiscordChatProvider(undefined)
 
@@ -1088,6 +1091,7 @@ describe('DiscordChatProvider', () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
       const provider = new DiscordChatProvider(undefined)
       await setupTestDb()
+      seedCommonTestPlatformInstances()
 
       upsertKnownGroupContext({
         contextId: scopedContextId('group-1'),
@@ -1134,6 +1138,7 @@ describe('DiscordChatProvider', () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
       const provider = new DiscordChatProvider(undefined)
       await setupTestDb()
+      seedCommonTestPlatformInstances()
 
       upsertKnownGroupContext({
         contextId: scopedContextId('group-1'),

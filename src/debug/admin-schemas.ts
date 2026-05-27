@@ -19,6 +19,3 @@ export const RecentRequestsResponseSchema = z.object({
   limit: z.number().int().nonnegative(),
   requests: z.array(RecentRequestSchema),
 })
-
-export type RecentRequest = z.infer<typeof RecentRequestSchema>
-export type RecentRequestsResponse = z.infer<typeof RecentRequestsResponseSchema>

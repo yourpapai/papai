@@ -16,7 +16,13 @@ import { defaultDeps, processMessage } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
-import { createMockReply, mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
+import {
+  createMockReply,
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from './utils/test-helpers.js'
 
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
@@ -248,6 +254,7 @@ describe('processMessage', () => {
     }))
 
     await setupTestDb()
+    seedCommonTestPlatformInstances()
 
     // Clear caches to ensure clean state
     userCachesForTesting.clear()

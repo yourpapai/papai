@@ -25,7 +25,12 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": true
+    "noPropertyAccessFromIndexSignature": true,
+
+    // Path alias for the stable plugin-types surface
+    "paths": {
+      "papai/plugin-types": ["./src/providers/public-types.ts"]
+    }
   },
   "exclude": [".pi", "docs/superpowers/extensions", "public", "storybook-static"]
 }

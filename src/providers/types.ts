@@ -15,6 +15,7 @@ import type {
   Label,
   ListTasksParams,
   Project,
+  ProviderConfigRequirement,
   RelationType,
   SavedQuery,
   SetTaskVisibilityParams,
@@ -42,6 +43,7 @@ export type {
   Label,
   ListTasksParams,
   Project,
+  ProviderConfigRequirement,
   RelationType,
   SavedQuery,
   Sprint,
@@ -73,8 +75,6 @@ export interface UserIdentityResolver {
   searchUsers(query: string, limit?: number): Promise<IdentityUser[]>
 }
 
-/** Configuration keys that a provider requires to function. */
-export type ProviderConfigRequirement = { key: string; label: string; required: boolean; sensitive?: boolean }
 /** Core task tracker interface: required task CRUD plus optional capability-gated methods. */
 export interface TaskProvider {
   /** Provider identifier, e.g. "kaneo", "linear", "jira". */

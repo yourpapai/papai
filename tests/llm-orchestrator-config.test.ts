@@ -15,7 +15,12 @@ import {
   resolveTimezone,
 } from '../src/llm-orchestrator-config.js'
 import { setSystemConfig } from '../src/system-config.js'
-import { mockLogger, resetSystemConfigCacheForTesting, setupTestDb } from './utils/test-helpers.js'
+import {
+  mockLogger,
+  resetSystemConfigCacheForTesting,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from './utils/test-helpers.js'
 
 const assignKaneoContext = (contextId: string): void => {
   insertTaskInstance({
@@ -31,6 +36,7 @@ describe('llm-orchestrator-config', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     resetSystemConfigCacheForTesting()
   })
 

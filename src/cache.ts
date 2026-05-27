@@ -14,12 +14,12 @@ import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memoryFacts, memorySummary, userConfig } from './db/schema.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from './types/config.js'
 
 export { addCachedInstruction, deleteCachedInstruction, getCachedInstructions } from './cache-instructions.js'
 export { cleanupExpiredCaches, evictUser } from './cache-eviction.js'
 
 const log = logger.child({ scope: 'cache' })
-const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
 
 // --- User Session Cache ---
 

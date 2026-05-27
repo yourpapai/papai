@@ -153,6 +153,14 @@ const pluginConfigRequirementSchema = z.object({
   scope: z.enum(['context', 'admin']).optional().default('context'),
 })
 
+const providerConfigRequirementSchema = z.object({
+  key: configKeySchema,
+  label: z.string().min(1),
+  required: z.boolean(),
+  sensitive: z.boolean().optional().default(false),
+  scope: z.enum(['instance', 'user']).optional().default('instance'),
+})
+
 const mainPathSchema = z.string().refine(
   (v) => {
     if (v.startsWith('/')) return false
@@ -195,7 +203,7 @@ export const pluginManifestSchema = z
     requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
-    providerConfigSchema: z.array(pluginConfigRequirementSchema).optional().default([]),
+    providerConfigSchema: z.array(providerConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
     providerConfigValidator: z
       .string()

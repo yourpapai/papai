@@ -18,6 +18,7 @@ import {
   createMockReply,
   getTestDb,
   mockLogger,
+  seedCommonTestPlatformInstances,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
@@ -50,6 +51,7 @@ describe('Admin Commands', () => {
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
 
     await setupTestDb()
+    seedCommonTestPlatformInstances()
 
     // Add admin user to DB
     addUser(ADMIN_ID, ADMIN_ID)

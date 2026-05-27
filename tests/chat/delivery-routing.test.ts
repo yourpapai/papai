@@ -10,12 +10,24 @@ import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scope
 import { dmTarget, type ChatProvider, type DeferredDeliveryTarget } from '../../src/chat/types.js'
 import { sendProactiveMessage } from '../../src/deferred-prompts/proactive-delivery.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestTaskInstance,
+  setupTestDb,
+} from '../utils/test-helpers.js'
+
+const seedDeliveryParents = (): void => {
+  seedCommonTestPlatformInstances()
+  seedTestTaskInstance({ id: 'kaneo-default' })
+  seedTestTaskInstance({ id: 'kaneo-secondary' })
+}
 
 describe('resolveDeliveryPlatformInstanceId', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedDeliveryParents()
   })
 
   test('returns context_settings platform instance for the delivery context', () => {
@@ -87,6 +99,7 @@ describe('sendProactiveMessage', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedDeliveryParents()
   })
 
   test('returns false without sending when the routed instance is inactive', async () => {

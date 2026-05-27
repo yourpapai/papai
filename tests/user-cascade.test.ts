@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import * as schema from '../src/db/schema.js'
 import { addUser as addScopedUser, removeUser as removeScopedUser } from '../src/users.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
 
@@ -48,6 +48,7 @@ describe('user removal cascade integration', () => {
   beforeEach(async () => {
     mockLogger()
     testDb = await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('removes recurring templates and occurrences when an authorized user is deleted', () => {

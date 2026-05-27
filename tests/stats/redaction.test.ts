@@ -25,7 +25,7 @@ import {
   webCache,
 } from '../../src/db/schema.js'
 import { clearStatsCacheForTesting, getGlobalStats, getSubjectStats } from '../../src/stats/index.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const FORBIDDEN_MARKERS = [
   'FORBIDDEN_MEMO_BODY_XYZ',
@@ -214,6 +214,7 @@ describe('stats redaction contract (release-blocking)', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     clearStatsCacheForTesting()
     seedForbiddenRows()
   })
