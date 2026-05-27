@@ -7,12 +7,17 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { setConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
-import { insertTaskInstance } from '../../src/instances/task-store.js'
+import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import { TaskProviderResolver } from '../../src/providers/resolver.js'
 import type { TaskProviderResolverDeps } from '../../src/providers/resolver.js'
 import { setKaneoWorkspace } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestTaskInstance,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 describe('TaskProviderResolver', () => {
   const created: Array<{ name: string; config: Record<string, string> }> = []
@@ -30,6 +35,7 @@ describe('TaskProviderResolver', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     process.env['INSTANCE_CONFIG_KEY'] = '4'.repeat(64)
     created.length = 0
   })
@@ -42,7 +48,9 @@ describe('TaskProviderResolver', () => {
   })
 
   test('returns null when assigned task instance was removed', () => {
+    seedTestTaskInstance({ id: 'deleted-task' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'deleted-task', platformInstanceId: 'telegram-default' })
+    deleteTaskInstance('deleted-task')
     const resolver = makeResolver()
 
     expect(resolver.resolve('ctx-1')).toBeNull()

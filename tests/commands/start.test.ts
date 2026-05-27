@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerStartCommand } from '../../src/commands/start.js'
 import { addUser as addScopedUser, isAuthorized as isAuthorizedScoped } from '../../src/users.js'
-import { createMockChatWithCommandHandlers, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  createMockChatWithCommandHandlers,
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'test-instance'
 
@@ -38,6 +43,7 @@ describe('start command — demo mode auto-add', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     capturedFormatted = null
     lastHandler = null
     registerStartCommand(mockChat)

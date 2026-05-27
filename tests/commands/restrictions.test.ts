@@ -19,6 +19,7 @@ import {
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
+  seedCommonTestPlatformInstances,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
@@ -47,6 +48,7 @@ describe('command context restrictions', () => {
     mockLogger()
     // Setup test database with migrations
     await setupTestDb()
+    seedCommonTestPlatformInstances()
 
     // Add admin user
     addUser(adminUserId, adminUserId)

@@ -14,13 +14,23 @@ import {
   listContextsByTaskInstance,
   setContextSettings,
 } from '../../src/instances/context-store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestTaskInstance,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 describe('context-store', () => {
   beforeEach(async () => {
     mockLogger()
     userCachesForTesting.clear()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+    seedTestTaskInstance({ id: 'kaneo-default' })
+    seedTestTaskInstance({ id: 'yt-default', type: 'youtrack' })
+    seedTestTaskInstance({ id: 'tasks-main' })
+    seedTestTaskInstance({ id: 'tasks-other', type: 'youtrack' })
   })
 
   test('set + get round-trips assignments', () => {

@@ -12,12 +12,13 @@ import {
   resolveGroupDisplayNames,
   resolveSubjectDisplayNames,
 } from '../../src/debug/subject-display-name.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 describe('resolveDmDisplayNames', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns empty map when no DM subjects are passed', () => {
@@ -83,6 +84,7 @@ describe('resolveGroupDisplayNames', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns empty map when no group subjects are passed', () => {
@@ -133,6 +135,7 @@ describe('resolveSubjectDisplayNames', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns DM and group names in one map', () => {

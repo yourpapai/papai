@@ -16,7 +16,13 @@ import {
   provisionKaneoUser,
 } from '../../../src/providers/kaneo/provision.js'
 import { createProvider } from '../../../src/providers/registry.js'
-import { mockLogger, restoreFetch, setMockFetch, setupTestDb } from '../../utils/test-helpers.js'
+import {
+  mockLogger,
+  restoreFetch,
+  seedCommonTestPlatformInstances,
+  setMockFetch,
+  setupTestDb,
+} from '../../utils/test-helpers.js'
 
 function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
@@ -446,6 +452,7 @@ describe('maybeProvisionKaneo', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     userCachesForTesting.clear()
     textCalls = []
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'

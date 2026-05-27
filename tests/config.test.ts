@@ -11,7 +11,7 @@ import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
 import type { ConfigKey } from '../src/types/config.js'
 import { clearUserCache } from './utils/test-cache.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const USER_A = '111'
 const USER_B = '222'
@@ -37,6 +37,7 @@ beforeEach(() => {
 describe('setConfig', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     clearUserCache(USER_A)
     clearUserCache(USER_B)
   })
@@ -78,6 +79,7 @@ describe('setConfig', () => {
 describe('getConfig', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     clearUserCache(USER_A)
     clearUserCache(USER_B)
   })
@@ -130,6 +132,7 @@ describe('isConfigKey', () => {
 describe('getAllConfig', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     clearUserCache(USER_A)
     clearUserCache(USER_B)
   })

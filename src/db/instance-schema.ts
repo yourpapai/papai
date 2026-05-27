@@ -63,9 +63,3 @@ export const platformAdmins = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.platformInstanceId] })],
 )
-
-export type PlatformInstanceRow = typeof platformInstances.$inferSelect
-export type TaskInstanceRow = typeof taskInstances.$inferSelect
-export type ContextSettingsRow = typeof contextSettings.$inferSelect
-export type SuperAdminRow = typeof superAdmins.$inferSelect
-export type PlatformAdminRow = typeof platformAdmins.$inferSelect

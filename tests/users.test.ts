@@ -21,7 +21,7 @@ import {
   getKaneoWorkspace,
   setKaneoWorkspace,
 } from '../src/users.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'telegram-default'
 
@@ -39,6 +39,7 @@ describe('addUser', () => {
 
   beforeEach(async () => {
     testDb = await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('adds a user by ID', () => {
@@ -140,6 +141,7 @@ describe('removeUser', () => {
 
   beforeEach(async () => {
     testDb = await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('removes a user by ID', () => {
@@ -212,6 +214,7 @@ describe('removeUser', () => {
 describe('isAuthorized', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns true for authorized user', () => {
@@ -227,6 +230,7 @@ describe('isAuthorized', () => {
 describe('isDemoUser', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('classifies demo users within the platform instance only', () => {
@@ -243,6 +247,7 @@ describe('resolveUserByUsername', () => {
 
   beforeEach(async () => {
     testDb = await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('resolves placeholder ID to real platform user ID', () => {
@@ -289,6 +294,7 @@ describe('resolveUserByUsername', () => {
 describe('listUsers', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns all users', () => {
@@ -313,6 +319,7 @@ describe('listUsers', () => {
 describe('platform-scoped authorization', () => {
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('authorizes only on the platform instance where the user was added', () => {

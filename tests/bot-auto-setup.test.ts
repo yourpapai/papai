@@ -8,12 +8,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { autoStartWizardIfNeeded } from '../src/bot-auto-setup.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
-import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { createMockReply, mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 describe('bot-auto-setup', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
   })
 

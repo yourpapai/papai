@@ -21,6 +21,7 @@ import {
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
+  seedCommonTestPlatformInstances,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
@@ -101,6 +102,7 @@ describe('/config Command', () => {
     beforeEach(async () => {
       mockLogger()
       await setupTestDb()
+      seedCommonTestPlatformInstances()
       clearUserCache(USER_ID)
 
       const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
@@ -285,6 +287,7 @@ describe('/config Command', () => {
     beforeEach(async () => {
       mockLogger()
       await setupTestDb()
+      seedCommonTestPlatformInstances()
       clearUserCache(USER_ID)
 
       const capabilities = new Set<ChatCapability>([

@@ -14,7 +14,7 @@ import type { ReplyFn } from '../../src/chat/types.js'
 import { deleteEditorSession, startEditor } from '../../src/config-editor/index.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { createMockReply, mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 describe('config-editor chat integration', () => {
   const userId = 'user123'
@@ -37,6 +37,7 @@ describe('config-editor chat integration', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     deleteEditorSession(userId, storageContextId)
   })
 

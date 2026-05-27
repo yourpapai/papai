@@ -24,6 +24,9 @@ import {
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestPlatformInstance,
+  seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
@@ -108,6 +111,10 @@ describe('registerPluginCommand', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+    seedTestPlatformInstance({ id: 'other-platform' })
+    seedTestPlatformInstance({ id: 'source-platform' })
+    seedTestTaskInstance({ id: 'tasks-1' })
   })
 
   afterEach(() => {

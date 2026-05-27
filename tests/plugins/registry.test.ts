@@ -27,7 +27,7 @@ import {
 } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginState } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { createMockChat, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { createMockChat, mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 
 function makePlugin(...overrides: readonly Partial<DiscoveredPlugin>[]): DiscoveredPlugin {
   const pluginOverrides = overrides[0]
@@ -452,6 +452,7 @@ describe('singleton registry helpers', () => {
       manifestHash: 'hash-task-capability',
     })
     insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-a' })
 
     pluginRegistry.registerDiscovered(plugin)
@@ -480,6 +481,7 @@ describe('singleton registry helpers', () => {
       manifestHash: 'hash-chat-capability',
     })
     insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set() }))
     router.addInstance('telegram-a', 'telegram', { token: 'x' })
@@ -510,6 +512,7 @@ describe('singleton registry helpers', () => {
       manifestHash: 'hash-stopped-chat-capability',
     })
     insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set(['messages.buttons']) }))
     router.addInstance('telegram-a', 'telegram', { token: 'x' })

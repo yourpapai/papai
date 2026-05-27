@@ -19,10 +19,13 @@ const createdTask = {
 
 describe('scheduler-recurring notifyUser', () => {
   test('handles refused recurring notifications without throwing', async () => {
-    const { setupTestDb } = await import('./utils/test-helpers.js')
+    const { seedCommonTestPlatformInstances, seedTestTaskInstance, setupTestDb } =
+      await import('./utils/test-helpers.js')
     const { setContextSettings } = await import('../src/instances/context-store.js')
     const { notifyUser } = await import('../src/scheduler-recurring.js')
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+    seedTestTaskInstance({ id: 'kaneo-default' })
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'kaneo-default', platformInstanceId: 'telegram-default' })
     const sentTo: string[] = []
     const chat = {

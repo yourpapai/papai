@@ -23,7 +23,12 @@ import type {
 } from '../../src/chat/types.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../../src/instances/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestTaskInstance,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 type FakeProvider = ChatProvider & {
   deliverMessage: (msg: IncomingMessage) => Promise<void>
@@ -231,6 +236,8 @@ describe('ChatRouter', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+    seedTestTaskInstance({ id: 'tasks-1' })
     providers = {}
     factory = (id: string, type: PlatformInstanceType, _config: InstanceConfig): ChatProvider => {
       const fakeProvider = makeProvider(type, {})
