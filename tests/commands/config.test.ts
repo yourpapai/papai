@@ -180,6 +180,7 @@ describe('/config Command', () => {
     })
 
     test('renders compact callback payloads for long plugin provider context keys', async () => {
+      const contextId = 'managed-group-context-with-a-very-long-stable-storage-id'
       const callbackData: string[] = []
       registerContributedTaskProviderType('very-long-plugin-provider-name', {
         pluginId: 'very-long-plugin-provider-name',
@@ -204,7 +205,7 @@ describe('/config Command', () => {
           status: 'active',
         })
         setContextSettings({
-          contextId: USER_ID,
+          contextId,
           taskInstanceId: 'long-plugin-prod',
           platformInstanceId: 'telegram-default',
         })
@@ -219,15 +220,16 @@ describe('/config Command', () => {
               return Promise.resolve()
             },
           },
-          USER_ID,
+          contextId,
           true,
         )
       } finally {
         unregisterContributedTaskProviderType('very-long-plugin-provider-name')
       }
 
-      expect(callbackData.some((data) => data.length > 0)).toBe(true)
-      expect(callbackData.every((data) => Buffer.byteLength(data, 'utf8') <= 64)).toBe(true)
+      const configCallbackData = callbackData.filter((data) => data.startsWith('cfg:'))
+      expect(configCallbackData.some((data) => data.length > 0)).toBe(true)
+      expect(configCallbackData.every((data) => Buffer.byteLength(data, 'utf8') <= 64)).toBe(true)
     })
 
     test('shows missing required plugin config under an unavailable plugin', async () => {

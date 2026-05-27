@@ -3,7 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { handleEditorCallback, parseCallbackData, serializeCallbackData } from '../config-editor/index.js'
+import {
+  handleEditorCallback,
+  parseCallbackData,
+  resolveCallbackKey,
+  serializeCallbackData,
+} from '../config-editor/index.js'
 import { getActiveGroupSettingsTarget } from '../group-settings/state.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
@@ -21,9 +26,9 @@ const log = logger.child({ scope: 'chat:interaction-router-config' })
 
 function getEditorCallbackKey(
   key: ReturnType<typeof parseCallbackData>['key'],
+  targetContextId: string,
 ): Parameters<typeof handleEditorCallback>[3] {
-  if (key === null) return undefined
-  return key
+  return resolveCallbackKey(key, targetContextId) ?? undefined
 }
 
 async function replyConfigEditorResult(
@@ -127,7 +132,7 @@ export async function defaultHandleConfigInteraction(
     'Handling config editor callback',
   )
 
-  const key = getEditorCallbackKey(parsed.key)
+  const key = getEditorCallbackKey(parsed.key, targetContextId)
   const result = handleEditorCallback(user.id, targetContextId, parsed.action, key)
 
   if (!result.handled) {

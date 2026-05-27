@@ -40,7 +40,9 @@ function decodeContextId(encoded: string): string | null {
 }
 
 function appendContext(data: string, targetContextId: string | undefined): string {
-  return targetContextId === undefined ? data : `${data}@${encodeContextId(targetContextId)}`
+  if (targetContextId === undefined) return data
+  const withContext = `${data}@${encodeContextId(targetContextId)}`
+  return Buffer.byteLength(withContext, 'utf8') <= 64 ? withContext : data
 }
 
 function parseCoreCallbackData(core: string): Omit<ParsedAiOutputCallbackData, 'targetContextId'> | null {

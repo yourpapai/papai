@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigFieldsForContext } from '../config-keys.js'
 import { isAllowedDynamicConfigKey } from '../types/config.js'
 import type { EditorButton } from './types.js'
 
@@ -11,21 +12,26 @@ const MAX_CALLBACK_DATA_BYTES = 64
 const encodeContextId = (id: string): string => Buffer.from(id).toString('base64url')
 const decodeContextId = (encoded: string): string => Buffer.from(encoded, 'base64url').toString('utf8')
 
-const callbackTokens = new Map<string, string>()
-const callbacksByToken = new Map<string, ReturnType<typeof parseRawCallbackData>>()
-let nextCallbackToken = 0
+const INVALID_CALLBACK_DATA = 'cfg:invalid'
 
-function compactCallbackData(raw: string): string {
+function compactCallbackData(
+  raw: string,
+  button: Pick<EditorButton, 'action' | 'key'>,
+  targetContextId: string | undefined,
+): string {
   if (Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES) return raw
 
-  const existing = callbackTokens.get(raw)
-  if (existing !== undefined) return existing
+  if (
+    (button.action === 'edit' || button.action === 'save') &&
+    button.key !== undefined &&
+    targetContextId !== undefined
+  ) {
+    const fieldIndex = getConfigFieldsForContext(targetContextId).findIndex((field) => field.storageKey === button.key)
+    if (fieldIndex !== -1) return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}`
+  }
 
-  const token = `cfg:t:${nextCallbackToken.toString(36)}`
-  nextCallbackToken++
-  callbackTokens.set(raw, token)
-  callbacksByToken.set(token, parseRawCallbackData(raw))
-  return token
+  const fallback = button.action === 'setup' ? 'cfg:setup' : button.action === 'cancel' ? 'cfg:cancel' : 'cfg:back'
+  return Buffer.byteLength(fallback, 'utf8') <= MAX_CALLBACK_DATA_BYTES ? fallback : INVALID_CALLBACK_DATA
 }
 
 function appendContext(base: string, targetContextId: string | undefined): string {
@@ -37,19 +43,23 @@ export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key
     case 'edit':
       return compactCallbackData(
         appendContext(button.key === undefined ? 'cfg:back' : `cfg:edit:${button.key}`, targetContextId),
+        button,
+        targetContextId,
       )
     case 'save':
       return compactCallbackData(
         appendContext(button.key === undefined ? 'cfg:back' : `cfg:save:${button.key}`, targetContextId),
+        button,
+        targetContextId,
       )
     case 'cancel':
-      return appendContext('cfg:cancel', targetContextId)
+      return compactCallbackData(appendContext('cfg:cancel', targetContextId), button, targetContextId)
     case 'back':
-      return appendContext('cfg:back', targetContextId)
+      return compactCallbackData(appendContext('cfg:back', targetContextId), button, targetContextId)
     case 'setup':
-      return appendContext('cfg:setup', targetContextId)
+      return compactCallbackData(appendContext('cfg:setup', targetContextId), button, targetContextId)
     default:
-      return appendContext('cfg:back', targetContextId)
+      return compactCallbackData(appendContext('cfg:back', targetContextId), { action: 'back' }, targetContextId)
   }
 }
 
@@ -74,6 +84,20 @@ function parseRawCallbackData(data: string): {
   if (core === 'cfg:back') return { action: 'back', key: null, targetContextId }
   if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
 
+  if (core.startsWith('cfg:e:')) {
+    const index = core.replace('cfg:e:', '')
+    return /^[0-9a-z]+$/u.test(index)
+      ? { action: 'edit', key: `#${index}`, targetContextId }
+      : { action: null, key: null }
+  }
+
+  if (core.startsWith('cfg:s:')) {
+    const index = core.replace('cfg:s:', '')
+    return /^[0-9a-z]+$/u.test(index)
+      ? { action: 'save', key: `#${index}`, targetContextId }
+      : { action: null, key: null }
+  }
+
   if (core.startsWith('cfg:edit:')) {
     const key = core.replace('cfg:edit:', '')
     return isAllowedDynamicConfigKey(key) ? { action: 'edit', key, targetContextId } : { action: null, key: null }
@@ -88,5 +112,13 @@ function parseRawCallbackData(data: string): {
 }
 
 export function parseCallbackData(data: string): ReturnType<typeof parseRawCallbackData> {
-  return callbacksByToken.get(data) ?? parseRawCallbackData(data)
+  return parseRawCallbackData(data)
+}
+
+export function resolveCallbackKey(key: string | null, targetContextId: string): string | null {
+  if (key === null) return null
+  if (!key.startsWith('#')) return key
+  const index = Number.parseInt(key.slice(1), 36)
+  if (!Number.isSafeInteger(index)) return null
+  return getConfigFieldsForContext(targetContextId)[index]?.storageKey ?? null
 }
