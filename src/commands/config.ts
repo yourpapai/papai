@@ -25,6 +25,11 @@ const GROUP_CONFIG_ADMIN_ONLY =
   'Only group admins can configure group settings, and group settings are configured in direct messages with the bot.'
 const NO_DELETE_WARNING =
   '⚠️ This platform does not support automatic deletion of messages containing secrets. Please manually delete your messages after entering API keys and tokens.\n\n'
+const MAX_CALLBACK_DATA_BYTES = 64
+
+function isSafeCallbackData(callbackData: string): boolean {
+  return Buffer.byteLength(callbackData, 'utf8') <= MAX_CALLBACK_DATA_BYTES
+}
 
 function getFieldEmoji(field: ConfigField): string {
   if (field.storageKey === 'timezone') return '🌍'
@@ -117,9 +122,19 @@ function buildPluginButtons(targetContextId: string): ChatButton[] {
       return {
         text: `${enabled ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
         callbackData: `plg:${enabled ? 'disable' : 'enable'}:${pluginId}:${encodedContextId}`,
-        style: enabled ? 'danger' : 'primary',
+        style: enabled ? ('danger' as const) : ('primary' as const),
       }
     })
+    .filter((button) => isSafeCallbackData(button.callbackData))
+}
+
+function buildToolsButton(targetContextId: string): ChatButton | null {
+  const button = {
+    text: '🧰 Tools',
+    callbackData: `tgl:menu:${encodePluginContextId(targetContextId)}`,
+    style: 'secondary' as const,
+  }
+  return isSafeCallbackData(button.callbackData) ? button : null
 }
 
 export async function renderConfigForTarget(
@@ -148,16 +163,13 @@ export async function renderConfigForTarget(
   }
 
   lines.push('\n💡 Click a field below to edit it, or use `/setup` to configure everything.')
+  const toolsButton = buildToolsButton(targetContextId)
   await reply.buttons(lines.join('\n'), {
     buttons: [
       ...buildConfigButtons(fields, targetContextId),
       ...aiOutputSection.buttons,
       ...buildPluginButtons(targetContextId),
-      {
-        text: '🧰 Tools',
-        callbackData: `tgl:menu:${encodePluginContextId(targetContextId)}`,
-        style: 'secondary',
-      },
+      ...(toolsButton === null ? [] : [toolsButton]),
     ],
   })
 }

@@ -148,12 +148,28 @@ describe('config-editor public API', () => {
   })
 
   test('compact callbacks parse without module-local token state', () => {
-    expect(parseCallbackData('cfg:e:0')).toEqual({ action: 'edit', key: '#0' })
-    expect(parseCallbackData('cfg:s:z')).toEqual({ action: 'save', key: '#z' })
+    expect(parseCallbackData('cfg:e:0:abc123')).toEqual({ action: 'edit', key: '#0:abc123' })
+    expect(parseCallbackData('cfg:s:z:def456')).toEqual({ action: 'save', key: '#z:def456' })
   })
 
   test('resolveCallbackKey resolves compact field indexes for a context', () => {
-    expect(resolveCallbackKey('#0', 'ctx456')).toBe('timezone')
+    const data = serializeCallbackData(
+      { action: 'edit', key: 'timezone' },
+      'ctx456-with-long-suffix-that-forces-compact',
+    )
+    const parsed = parseCallbackData(data)
+
+    expect(resolveCallbackKey(parsed.key, 'ctx456-with-long-suffix-that-forces-compact')).toBe('timezone')
+  })
+
+  test('resolveCallbackKey rejects compact field indexes for the wrong context', () => {
+    const data = serializeCallbackData(
+      { action: 'edit', key: 'timezone' },
+      'ctx456-with-long-suffix-that-forces-compact',
+    )
+    const parsed = parseCallbackData(data)
+
+    expect(resolveCallbackKey(parsed.key, 'different-context')).toBeNull()
   })
 
   test('parseCallbackData returns targetContextId from encoded callback', () => {

@@ -133,6 +133,9 @@ export async function defaultHandleConfigInteraction(
   )
 
   const key = getEditorCallbackKey(parsed.key, targetContextId)
+  if (parsed.key?.startsWith('#') === true && key === undefined) {
+    return replyUnknownConfigAction(reply, callbackData)
+  }
   const result = handleEditorCallback(user.id, targetContextId, parsed.action, key)
 
   if (!result.handled) {

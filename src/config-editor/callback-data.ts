@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import { getConfigFieldsForContext } from '../config-keys.js'
 import { isAllowedDynamicConfigKey } from '../types/config.js'
 import type { EditorButton } from './types.js'
@@ -13,6 +15,10 @@ const encodeContextId = (id: string): string => Buffer.from(id).toString('base64
 const decodeContextId = (encoded: string): string => Buffer.from(encoded, 'base64url').toString('utf8')
 
 const INVALID_CALLBACK_DATA = 'cfg:invalid'
+
+function targetTag(targetContextId: string): string {
+  return createHash('sha256').update(targetContextId).digest('base64url').slice(0, 8)
+}
 
 function compactCallbackData(
   raw: string,
@@ -27,7 +33,8 @@ function compactCallbackData(
     targetContextId !== undefined
   ) {
     const fieldIndex = getConfigFieldsForContext(targetContextId).findIndex((field) => field.storageKey === button.key)
-    if (fieldIndex !== -1) return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}`
+    if (fieldIndex !== -1)
+      return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}:${targetTag(targetContextId)}`
   }
 
   const fallback = button.action === 'setup' ? 'cfg:setup' : button.action === 'cancel' ? 'cfg:cancel' : 'cfg:back'
@@ -85,16 +92,16 @@ function parseRawCallbackData(data: string): {
   if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
 
   if (core.startsWith('cfg:e:')) {
-    const index = core.replace('cfg:e:', '')
-    return /^[0-9a-z]+$/u.test(index)
-      ? { action: 'edit', key: `#${index}`, targetContextId }
+    const [index, tag] = core.replace('cfg:e:', '').split(':')
+    return index !== undefined && tag !== undefined && /^[0-9a-z]+$/u.test(index) && /^[A-Za-z0-9_-]+$/u.test(tag)
+      ? { action: 'edit', key: `#${index}:${tag}`, targetContextId }
       : { action: null, key: null }
   }
 
   if (core.startsWith('cfg:s:')) {
-    const index = core.replace('cfg:s:', '')
-    return /^[0-9a-z]+$/u.test(index)
-      ? { action: 'save', key: `#${index}`, targetContextId }
+    const [index, tag] = core.replace('cfg:s:', '').split(':')
+    return index !== undefined && tag !== undefined && /^[0-9a-z]+$/u.test(index) && /^[A-Za-z0-9_-]+$/u.test(tag)
+      ? { action: 'save', key: `#${index}:${tag}`, targetContextId }
       : { action: null, key: null }
   }
 
@@ -118,7 +125,9 @@ export function parseCallbackData(data: string): ReturnType<typeof parseRawCallb
 export function resolveCallbackKey(key: string | null, targetContextId: string): string | null {
   if (key === null) return null
   if (!key.startsWith('#')) return key
-  const index = Number.parseInt(key.slice(1), 36)
+  const [indexText, tag] = key.slice(1).split(':')
+  if (indexText === undefined || tag === undefined || tag !== targetTag(targetContextId)) return null
+  const index = Number.parseInt(indexText, 36)
   if (!Number.isSafeInteger(index)) return null
   return getConfigFieldsForContext(targetContextId)[index]?.storageKey ?? null
 }

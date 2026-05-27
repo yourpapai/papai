@@ -182,6 +182,7 @@ describe('/config Command', () => {
     test('renders compact callback payloads for long plugin provider context keys', async () => {
       const contextId = 'managed-group-context-with-a-very-long-stable-storage-id'
       const callbackData: string[] = []
+      registerActivePlugin(makePlugin('config-long-callback-plugin', { name: 'Long Callback Plugin' }))
       registerContributedTaskProviderType('very-long-plugin-provider-name', {
         pluginId: 'very-long-plugin-provider-name',
         factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
@@ -227,9 +228,10 @@ describe('/config Command', () => {
         unregisterContributedTaskProviderType('very-long-plugin-provider-name')
       }
 
-      const configCallbackData = callbackData.filter((data) => data.startsWith('cfg:'))
-      expect(configCallbackData.some((data) => data.length > 0)).toBe(true)
-      expect(configCallbackData.every((data) => Buffer.byteLength(data, 'utf8') <= 64)).toBe(true)
+      expect(callbackData.some((data) => data.length > 0)).toBe(true)
+      expect(callbackData.every((data) => Buffer.byteLength(data, 'utf8') <= 64)).toBe(true)
+      expect(callbackData.some((data) => data.startsWith('tgl:'))).toBe(false)
+      expect(callbackData.some((data) => data.startsWith('plg:'))).toBe(false)
     })
 
     test('shows missing required plugin config under an unavailable plugin', async () => {
