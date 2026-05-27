@@ -43,6 +43,7 @@ export type {
   Label,
   ListTasksParams,
   Project,
+  ProviderConfigField,
   ProviderConfigRequirement,
   RelationType,
   SavedQuery,

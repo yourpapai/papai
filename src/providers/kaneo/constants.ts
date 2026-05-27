@@ -34,5 +34,5 @@ export const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapabil
 ])
 
 export const CONFIG_REQUIREMENTS: readonly ProviderConfigRequirement[] = [
-  { key: 'kaneo_apikey', label: 'Kaneo API Key', required: true },
+  { key: 'kaneo_apikey', label: 'Kaneo API Key', required: true, sensitive: true, scope: 'context' },
 ]

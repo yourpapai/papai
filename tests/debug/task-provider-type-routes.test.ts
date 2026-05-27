@@ -76,7 +76,7 @@ describe('handleTaskProviderTypes', () => {
 })
 
 describe('handleTaskProviderTypes scope filtering', () => {
-  test('omits user-scoped fields from the catalog response', async () => {
+  test('omits context-scoped fields from the catalog response', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
     const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')

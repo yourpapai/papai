@@ -136,6 +136,6 @@ export const YOUTRACK_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCa
 ])
 
 export const CONFIG_REQUIREMENTS: readonly ProviderConfigRequirement[] = [
-  { key: 'youtrack_url', label: 'YouTrack Base URL', required: true },
-  { key: 'youtrack_token', label: 'YouTrack Permanent Token', required: true },
+  { key: 'youtrack_url', label: 'YouTrack Base URL', required: true, sensitive: false, scope: 'instance' },
+  { key: 'youtrack_token', label: 'YouTrack Permanent Token', required: true, sensitive: true, scope: 'context' },
 ]

@@ -166,11 +166,18 @@ describe('TaskProviderResolver', () => {
       getTaskProviderDescriptor: (_type: string) => ({
         type: 'custom-tracker',
         displayName: 'Custom Tracker',
-        capabilities: new Set(),
         source: { plugin: 'test-plugin' } as const,
+        instanceConfigSchema: [
+          { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
+        ],
+        contextConfigSchema: [
+          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'context' as const },
+        ],
+        capabilities: new Set(),
+        traits: new Set(),
         configSchema: [
           { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
-          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'user' as const },
+          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'context' as const },
         ],
       }),
       getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
