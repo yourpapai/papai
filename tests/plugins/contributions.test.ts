@@ -345,7 +345,9 @@ describe('PluginContributionRegistry', () => {
     const seenContexts: string[] = []
     const manifest = makeManifest({
       contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
-      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+      configRequirements: [
+        { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'instance' },
+      ],
     })
     markPluginActive(manifest)
     contributionRegistry.register(

@@ -179,7 +179,9 @@ describe('/config Command', () => {
       registerActivePlugin(
         makePlugin(pluginId, {
           name: 'Missing Config Plugin',
-          configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+          configRequirements: [
+            { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'instance' },
+          ],
         }),
       )
 
@@ -226,7 +228,9 @@ describe('/config Command', () => {
       registerActivePlugin(
         makePlugin(pluginId, {
           name: 'Sensitive Config Plugin',
-          configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+          configRequirements: [
+            { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'instance' },
+          ],
         }),
       )
       setPluginConfig(USER_ID, pluginId, 'api_token', 'secret-token-1234')

@@ -22,7 +22,12 @@ import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
 import { addUser, listUsers } from '../../src/users.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const TOKEN = 'instance-api-token'
@@ -477,7 +482,11 @@ describe('instance API routes', () => {
     expect(pick(row, 'referencingContextCount')).toBe(2)
   })
 
-  test('creates and lists masked task instances', async () => {
+  test('creates and lists task instances with descriptor-driven masking', async () => {
+    // Kaneo has no instance-scoped sensitive fields (credentials are user-scoped and never stored in
+    // task_instances.config), so its descriptor contributes no masked keys here. Non-secret keys like
+    // baseUrl pass through unmasked; secret-looking keys would still be masked by the name-pattern arm
+    // of the defense-in-depth union (covered by the PATCH test below).
     const created = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
@@ -485,15 +494,14 @@ describe('instance API routes', () => {
         body: JSON.stringify({
           id: 'tasks-main',
           type: 'kaneo',
-          config: { api_key: 'secret', url: 'https://kaneo.invalid' },
+          config: { baseUrl: 'https://kaneo.invalid' },
         }),
       }),
     )
 
     expect(created.status).toBe(201)
     expect(pick(assertObject(await readJson(created)), 'config')).toEqual({
-      api_key: '***',
-      url: 'https://kaneo.invalid',
+      baseUrl: 'https://kaneo.invalid',
     })
     expect(expectTaskInstance('tasks-main').status).toBe('active')
 
@@ -502,8 +510,7 @@ describe('instance API routes', () => {
     expect(listed.status).toBe(200)
     expect(listTaskInstances()).toHaveLength(1)
     expect(pick(assertObject(assertArray(await readJson(listed))[0]), 'config')).toEqual({
-      api_key: '***',
-      url: 'https://kaneo.invalid',
+      baseUrl: 'https://kaneo.invalid',
     })
   })
 
@@ -618,5 +625,113 @@ describe('instance API routes', () => {
     const body = assertObject(await readJson(res))
     expect(pick(body, 'error')).toBe('unknown_task_provider_type')
     expect(pick(body, 'type')).toBe('mystery')
+  })
+
+  test('rejects a task-instance create when the provider validator fails', async () => {
+    registerContributedTaskProviderType('validated', {
+      pluginId: 'val',
+      factory: () => createMockProvider({ name: 'validated' }),
+      validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
+      capabilities: new Set<never>(),
+      displayName: 'Validated',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = await routeWithDeps(
+        '/api/task-instances',
+        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+        {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'bad' } }),
+        },
+      )
+      expect(res?.status).toBe(400)
+      const body = assertObject(await readJson(res!))
+      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
+      expect(pick(body, 'reason')).toBe('bad url')
+    } finally {
+      unregisterContributedTaskProviderType('val')
+    }
+  })
+
+  test('allows a task-instance create when the provider validator passes', async () => {
+    registerContributedTaskProviderType('validated-ok', {
+      pluginId: 'val-ok',
+      factory: () => createMockProvider({ name: 'validated-ok' }),
+      validateConfig: () => Promise.resolve({ ok: true as const }),
+      capabilities: new Set<never>(),
+      displayName: 'Validated OK',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = await routeWithDeps(
+        '/api/task-instances',
+        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+        {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
+        },
+      )
+      expect(res?.status).toBe(201)
+      const instance = getTaskInstance('v-ok-1')
+      expect(instance).not.toBeNull()
+    } finally {
+      unregisterContributedTaskProviderType('val-ok')
+    }
+  })
+
+  test('masks instance-scoped sensitive fields declared by a contributed task provider type', async () => {
+    mockLogger()
+    registerContributedTaskProviderType('masktest', {
+      pluginId: 'mask-plugin',
+      factory: () => createMockProvider({ name: 'masktest' }),
+      capabilities: new Set<never>(),
+      displayName: 'Mask Test',
+      configSchema: [
+        { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' },
+        { key: 'apiSecret', label: 'Secret', required: true, sensitive: true, scope: 'instance' },
+      ],
+    })
+
+    try {
+      const created = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders,
+            body: JSON.stringify({
+              id: 'masktest-1',
+              type: 'masktest',
+              config: { baseUrl: 'https://masktest.invalid', apiSecret: 'super-secret-value' },
+            }),
+          },
+        ),
+      )
+
+      expect(created.status).toBe(201)
+      const createdConfig = assertObject(pick(assertObject(await readJson(created)), 'config'))
+      expect(pick(createdConfig, 'baseUrl')).toBe('https://masktest.invalid')
+      expect(pick(createdConfig, 'apiSecret')).toBe('***')
+
+      const listed = expectResponse(
+        await routeWithDeps('/api/task-instances', {
+          getRuntimeChatRouter: () => null,
+          listActivePlatformInstances: () => [],
+        }),
+      )
+
+      expect(listed.status).toBe(200)
+      const rows = assertArray(await readJson(listed))
+      const masktestRow = rows.find((row) => pick(assertObject(row), 'type') === 'masktest')
+      const listedConfig = assertObject(pick(assertObject(masktestRow), 'config'))
+      expect(pick(listedConfig, 'baseUrl')).toBe('https://masktest.invalid')
+      expect(pick(listedConfig, 'apiSecret')).toBe('***')
+    } finally {
+      unregisterContributedTaskProviderType('mask-plugin')
+    }
   })
 })

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { setConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
@@ -90,7 +90,7 @@ describe('TaskProviderResolver', () => {
 
     expect(provider?.name).toBe('kaneo')
     expect(created).toEqual([
-      { name: 'kaneo', config: { apiKey: 'kn-key', baseUrl: 'https://kaneo.invalid', workspaceId: 'workspace-1' } },
+      { name: 'kaneo', config: { baseUrl: 'https://kaneo.invalid', credential: 'kn-key', workspaceId: 'workspace-1' } },
     ])
   })
 
@@ -114,7 +114,7 @@ describe('TaskProviderResolver', () => {
         name: 'kaneo',
         config: {
           baseUrl: 'https://kaneo.invalid',
-          sessionCookie: 'better-auth.session_token=abc',
+          credential: 'better-auth.session_token=abc',
           workspaceId: 'workspace-1',
         },
       },
@@ -150,5 +150,43 @@ describe('TaskProviderResolver', () => {
 
     expect(provider).not.toBeNull()
     expect(created).toEqual([{ name: 'demo-tracker', config: { baseUrl: 'https://demo.invalid', region: 'eu' } }])
+  })
+
+  test('sources a contributed type user-scoped field via generic getConfig(contextId, fieldKey)', () => {
+    insertTaskInstance({
+      id: 'custom-1',
+      type: 'custom-tracker',
+      config: { baseUrl: 'https://custom.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'custom-1', platformInstanceId: 'telegram-default' })
+
+    const getConfig = mock((_ctx: string, _key: string) => 'tok-123')
+    const deps: Partial<TaskProviderResolverDeps> = {
+      getTaskProviderDescriptor: (_type: string) => ({
+        type: 'custom-tracker',
+        displayName: 'Custom Tracker',
+        capabilities: new Set(),
+        source: { plugin: 'test-plugin' } as const,
+        configSchema: [
+          { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
+          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'user' as const },
+        ],
+      }),
+      getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
+      createProvider: (name, config) => {
+        created.push({ name, config })
+        return createMockProvider({ name })
+      },
+    }
+    const resolver = new TaskProviderResolver(deps)
+
+    const provider = resolver.resolve('ctx-1')
+
+    expect(provider).not.toBeNull()
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'apiToken')
+    expect(created).toEqual([
+      { name: 'custom-tracker', config: { baseUrl: 'https://custom.invalid', apiToken: 'tok-123' } },
+    ])
   })
 })

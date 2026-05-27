@@ -9,6 +9,10 @@
   ],
   "type": "module",
   "module": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin-types": "./src/providers/public-types.ts"
+  },
   "scripts": {
     "inventory:architecture": "bun scripts/architecture-inventory.ts",
     "benchmark:tool-surface": "bun scripts/tool-surface-benchmark.ts",

@@ -320,7 +320,7 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     const provider = createProvider('kaneo', {
       baseUrl: 'https://kaneo.test',
-      sessionCookie: result.kaneoKey,
+      credential: result.kaneoKey,
       workspaceId: result.workspaceId,
     })
     let capturedHeaders: Record<string, string> = {}
@@ -347,7 +347,7 @@ describe('provisionKaneoUser - unique email generation', () => {
 
     const provider = createProvider('kaneo', {
       baseUrl: 'https://kaneo.test',
-      sessionCookie: result.kaneoKey,
+      credential: result.kaneoKey,
       workspaceId: result.workspaceId,
     })
     let capturedHeaders: Record<string, string> = {}

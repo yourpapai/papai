@@ -5,7 +5,7 @@
 
 import * as adminStore from '../instances/admin-store.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
-import { maskConfig } from '../instances/encryption.js'
+import { isSecretKeyName, maskConfig } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
@@ -22,7 +22,7 @@ import {
   updateTaskInstance,
 } from '../instances/task-store.js'
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
-import type { PlatformInstance, TaskInstance } from '../instances/types.js'
+import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
@@ -40,7 +40,7 @@ import {
   textResponse,
 } from './instance-route-support.js'
 import { jsonResponse } from './json-response.js'
-import { handleTaskProviderTypes } from './task-provider-type-routes.js'
+import { handleTaskProviderTypes, validateTaskInstanceConfig } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
@@ -54,9 +54,24 @@ const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance =>
   config: maskConfig(instance.config),
 })
 
+// Defense-in-depth: mask a task-instance config key if its provider descriptor declares it
+// instance-scoped sensitive, OR its name looks secret-bearing. The pattern arm covers arbitrary
+// keys operators can now write in-place via PATCH, which the descriptor schema does not constrain.
+const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
+  const descriptor = listTaskProviderTypes().find((d) => d.type === type)
+  const declared =
+    descriptor === undefined
+      ? []
+      : descriptor.configSchema
+          .filter((field) => (field.scope ?? 'instance') === 'instance' && field.sensitive === true)
+          .map((field) => field.key)
+  const secretLike = Object.keys(config).filter((key) => isSecretKeyName(key))
+  return new Set([...declared, ...secretLike])
+}
+
 const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
   ...instance,
-  config: maskConfig(instance.config),
+  config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config)),
 })
 
 const taskInstanceView = (
@@ -174,6 +189,8 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
       return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
     }
     if (getTaskInstance(body.id) !== null) return instanceExistsError(body.id)
+    const configError = await validateTaskInstanceConfig(body.type, body.config)
+    if (configError !== null) return configError
     insertTaskInstance({ ...body, status: 'active' })
     const instance = getTaskInstance(body.id)
     return jsonResponse(instance === null ? null : maskedTaskInstance(instance), { status: 201 })
