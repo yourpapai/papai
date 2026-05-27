@@ -50,7 +50,7 @@ export type PluginConfigDescriptor = {
 }
 
 function maskSensitive(value: string): string {
-  return `****${value.slice(-4)}`
+  return value.length <= 4 ? '****' : `****${value.slice(-4)}`
 }
 
 export const getAdminPluginConfigSnapshot = (descriptors: PluginConfigDescriptor[]): AdminPluginConfigSnapshot => {
