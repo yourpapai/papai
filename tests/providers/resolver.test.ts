@@ -25,6 +25,8 @@ import {
 
 describe('TaskProviderResolver', () => {
   const created: Array<{ name: string; config: Record<string, string> }> = []
+  const resolverPluginId = 'resolver-provider-plugin'
+  const resolverProviderType = 'resolver-plugin-tracker'
 
   const makeResolver = (): TaskProviderResolver => {
     const deps: Partial<TaskProviderResolverDeps> = {
@@ -42,7 +44,7 @@ describe('TaskProviderResolver', () => {
     seedCommonTestPlatformInstances()
     process.env['INSTANCE_CONFIG_KEY'] = '4'.repeat(64)
     created.length = 0
-    unregisterContributedTaskProviderType('provider-plugin')
+    unregisterContributedTaskProviderType(resolverPluginId)
   })
 
   test('returns null when context has no assignment', () => {
@@ -203,9 +205,9 @@ describe('TaskProviderResolver', () => {
   })
 
   test('requires plugin provider context credentials before invoking factory', () => {
-    const factory = mock(() => createMockProvider({ name: 'plugin-tracker' }))
-    registerContributedTaskProviderType('plugin-tracker', {
-      pluginId: 'provider-plugin',
+    const factory = mock(() => createMockProvider({ name: resolverProviderType }))
+    registerContributedTaskProviderType(resolverProviderType, {
+      pluginId: resolverPluginId,
       factory,
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
@@ -215,24 +217,32 @@ describe('TaskProviderResolver', () => {
       contextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
       traits: new Set(),
     })
-    insertTaskInstance({
-      id: 'plugin-1',
-      type: 'plugin-tracker',
-      config: { baseUrl: 'https://tracker.invalid' },
-      status: 'active',
-    })
-    setContextSettings({ contextId: 'ctx-plugin', taskInstanceId: 'plugin-1', platformInstanceId: 'telegram-default' })
-    const resolver = new TaskProviderResolver()
+    try {
+      insertTaskInstance({
+        id: 'resolver-plugin-1',
+        type: resolverProviderType,
+        config: { baseUrl: 'https://tracker.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: 'ctx-resolver-plugin',
+        taskInstanceId: 'resolver-plugin-1',
+        platformInstanceId: 'telegram-default',
+      })
+      const resolver = new TaskProviderResolver()
 
-    let provider = resolver.resolve('ctx-plugin')
+      let provider = resolver.resolve('ctx-resolver-plugin')
 
-    expect(factory).not.toHaveBeenCalled()
-    expect(provider).toBeNull()
+      expect(factory).not.toHaveBeenCalled()
+      expect(provider).toBeNull()
 
-    setConfigValue('ctx-plugin', 'plugin:provider-plugin:provider:token', 'secret-token')
-    provider = resolver.resolve('ctx-plugin')
+      setConfigValue('ctx-resolver-plugin', `plugin:${resolverPluginId}:provider:token`, 'secret-token')
+      provider = resolver.resolve('ctx-resolver-plugin')
 
-    expect(provider?.name).toBe('plugin-tracker')
-    expect(factory).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid', token: 'secret-token' })
+      expect(provider?.name).toBe(resolverProviderType)
+      expect(factory).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid', token: 'secret-token' })
+    } finally {
+      unregisterContributedTaskProviderType(resolverPluginId)
+    }
   })
 })
