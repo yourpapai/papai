@@ -22,6 +22,7 @@ import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import { addUser, listUsers } from '../../src/users.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const TOKEN = 'instance-api-token'
@@ -76,6 +77,14 @@ const expectTaskInstance = (id: string): TaskInstance => {
   const instance = getTaskInstance(id)
   if (instance === null) throw new Error(`expected task instance ${id}`)
   return instance
+}
+
+const seedPlatformInstance = (id: string): void => {
+  insertPlatformInstance({ id, type: 'telegram', config: { token: 'secret' }, status: 'active' })
+}
+
+const seedTaskInstance = (id: string): void => {
+  insertTaskInstance({ id, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
 }
 
 const fakeProvider = (start: () => Promise<void>, stop: () => Promise<void>): ChatProvider => ({
@@ -337,9 +346,16 @@ describe('instance API routes', () => {
     expect(expectInstance(router, instanceId).status).toBe('active')
   })
 
-  test('deletes platform instance context settings before deleting the platform instance', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+  test('deleting platform instance cascades owned rows, preserves super-admins, and clears context tool caches', async () => {
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    addUser({ userId: 'user-1', platformInstanceId: 'telegram-main', username: 'alice', addedBy: 'test' })
+    addAdmin('platform-admin', 'telegram-main')
+    addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
@@ -350,10 +366,17 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(204)
     expect(listContextsByPlatformInstance('telegram-main')).toEqual([])
+    expect(listUsers('telegram-main')).toEqual([])
+    expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
+      '__super__:super-admin',
+    ])
+    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
   })
 
   test('deleting platform instance does not remove runtime router instance until apply', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    seedPlatformInstance('telegram-main')
     const start = mock(async () => {})
     const stop = mock(async () => {})
     const router = new ChatRouter(() => fakeProvider(start, stop))
@@ -383,24 +406,6 @@ describe('instance API routes', () => {
     expect(stop).toHaveBeenCalledTimes(1)
   })
 
-  test('deleting platform instance removes platform admin rows', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
-    addAdmin('platform-admin', 'telegram-main')
-    addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
-
-    const res = expectResponse(
-      await route('/api/platform-instances/telegram-main', {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
-      }),
-    )
-
-    expect(res.status).toBe(204)
-    expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
-      '__super__:super-admin',
-    ])
-  })
-
   test('updates platform instance status', async () => {
     await route('/api/platform-instances', {
       method: 'POST',
@@ -421,7 +426,8 @@ describe('instance API routes', () => {
   })
 
   test('deletes task instance context settings before deleting the task instance', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
 
     const res = expectResponse(
@@ -436,7 +442,8 @@ describe('instance API routes', () => {
   })
 
   test('deleting task instance clears cached tools for referencing contexts', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setCachedTools('ctx-1', { old_tool: {} })
     setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
@@ -456,7 +463,9 @@ describe('instance API routes', () => {
   })
 
   test('lists task instances with referencing context IDs', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    seedPlatformInstance('telegram-main')
+    seedPlatformInstance('discord-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-main', platformInstanceId: 'discord-main' })
 
@@ -514,6 +523,7 @@ describe('instance API routes', () => {
   })
 
   test('PATCH /api/task-instances/:id updates config and status and clears referencing context tool cache', async () => {
+    seedPlatformInstance('telegram-main')
     insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { api_key: 'secret' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setCachedTools('ctx-1', { old_tool: {} })
@@ -556,6 +566,20 @@ describe('instance API routes', () => {
     )
 
     expect(deleted.status).toBe(204)
+    expect(listAdmins()).toEqual([])
+  })
+
+  test('POST /api/admins rejects missing concrete platform instance', async () => {
+    const res = expectResponse(
+      await route('/api/admins', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ userId: 'admin-1', platformInstanceId: 'missing-platform' }),
+      }),
+    )
+
+    expect(res.status).toBe(404)
+    expect(await readJson(res)).toEqual({ error: 'platform_instance_not_found', id: 'missing-platform' })
     expect(listAdmins()).toEqual([])
   })
 

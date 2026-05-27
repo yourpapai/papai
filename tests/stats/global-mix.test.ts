@@ -10,14 +10,24 @@ import {
   attachments,
   authorizedGroups,
   memos,
+  platformInstances,
   recurringTasks,
   scheduledPrompts,
+  userConfig,
   userIdentityMappings,
   userInstructions,
   users,
 } from '../../src/db/schema.js'
 import { identityMixGlobal, storageGlobal, surfaceMixGlobal } from '../../src/stats/global-mix.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+const seedPlatform = (id: string): void => {
+  getDrizzleDb()
+    .insert(platformInstances)
+    .values({ id, type: 'telegram', config: '{}', status: 'active' })
+    .onConflictDoNothing()
+    .run()
+}
 
 describe('storageGlobal', () => {
   beforeEach(async () => {
@@ -90,13 +100,25 @@ describe('identityMixGlobal', () => {
   })
 
   test('counts identity mappings per provider and kaneo workspace presence', () => {
+    seedPlatform('legacy-single')
+
     getDrizzleDb()
       .insert(users)
       .values([
-        { platformUserId: 'u1', platformInstanceId: 'legacy-single', addedBy: 'admin', kaneoWorkspaceId: 'w1' },
-        { platformUserId: 'u2', platformInstanceId: 'legacy-single', addedBy: 'admin', kaneoWorkspaceId: 'w2' },
+        { platformUserId: 'u1', platformInstanceId: 'legacy-single', addedBy: 'admin' },
+        { platformUserId: 'u2', platformInstanceId: 'legacy-single', addedBy: 'admin' },
         { platformUserId: 'u3', platformInstanceId: 'legacy-single', addedBy: 'admin' },
-        { platformUserId: 'u4', platformInstanceId: 'legacy-single', addedBy: 'admin', kaneoWorkspaceId: '' },
+        { platformUserId: 'u4', platformInstanceId: 'legacy-single', addedBy: 'admin' },
+      ])
+      .run()
+
+    getDrizzleDb()
+      .insert(userConfig)
+      .values([
+        { userId: 'u1', key: 'kaneo_workspace_id', value: 'w1' },
+        { userId: 'u2', key: 'kaneo_workspace_id', value: 'w2' },
+        { userId: 'u3', key: 'timezone', value: 'UTC' },
+        { userId: 'u4', key: 'kaneo_workspace_id', value: '' },
       ])
       .run()
 
@@ -131,6 +153,8 @@ describe('surfaceMixGlobal', () => {
   })
 
   test('counts distinct subjects in each surface table', () => {
+    seedPlatform('legacy-single')
+
     getDrizzleDb()
       .insert(users)
       .values([

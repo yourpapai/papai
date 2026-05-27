@@ -4,11 +4,7 @@
 // See LICENSE in the project root for details.
 
 import * as adminStore from '../instances/admin-store.js'
-import {
-  deleteContextsByPlatformInstance,
-  deleteContextsByTaskInstance,
-  listContextsByTaskInstance,
-} from '../instances/context-store.js'
+import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
 import { maskConfig } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
@@ -155,9 +151,9 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const instanceId = parts[2]
     if (instanceId === undefined) return textResponse('Not found', 404)
-    adminStore.deleteAdminsByPlatformInstance(instanceId)
-    deleteContextsByPlatformInstance(instanceId)
+    const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
     deletePlatformInstance(instanceId)
+    clearToolCachesForContexts(referencingContextIds)
     return new Response(null, { status: 204 })
   }
 
@@ -200,8 +196,9 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const taskInstanceId = parts[2]
     if (taskInstanceId === undefined) return textResponse('Not found', 404)
-    deleteContextsByTaskInstance(taskInstanceId)
+    const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
     deleteTaskInstance(taskInstanceId)
+    clearToolCachesForContexts(referencingContextIds)
     return new Response(null, { status: 204 })
   }
 
@@ -217,6 +214,9 @@ const handleAdmins = async (req: Request, url: URL): Promise<Response | null> =>
     const body = await parseBody(req, adminSchema)
     if (body instanceof Response) return body
     const platformInstanceId = resolveAdminPlatformInstanceId(body.platformInstanceId)
+    if (platformInstanceId !== adminStore.SUPER_ADMIN_PLATFORM_ID && getPlatformInstance(platformInstanceId) === null) {
+      return jsonResponse({ error: 'platform_instance_not_found', id: platformInstanceId }, { status: 404 })
+    }
     adminStore.addAdmin(body.userId, platformInstanceId)
     return jsonResponse({ userId: body.userId, platformInstanceId }, { status: 201 })
   }

@@ -22,6 +22,7 @@ import {
   conversationHistory,
   memoryFacts,
   memorySummary,
+  platformInstances,
   userConfig,
   userInstructions,
   users,
@@ -32,6 +33,14 @@ import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 function requireDefined<T>(value: T | undefined): T {
   if (value === undefined) throw new Error('expected value to be defined')
   return value
+}
+
+const seedPlatform = (id: string): void => {
+  getDrizzleDb()
+    .insert(platformInstances)
+    .values({ id, type: id.startsWith('discord') ? 'discord' : 'telegram', config: '{}', status: 'active' })
+    .onConflictDoNothing()
+    .run()
 }
 
 describe('cache-db', () => {
@@ -226,6 +235,7 @@ describe('cache-db', () => {
       const groupId = 'existing-group-456'
       const initialWorkspace = 'workspace-initial'
       const updatedWorkspace = 'workspace-updated'
+      seedPlatform('telegram-default')
       addUser({ userId: groupId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
 
       setKaneoWorkspace(groupId, initialWorkspace)
@@ -244,10 +254,23 @@ describe('cache-db', () => {
 
       userCachesForTesting.delete(groupId)
       expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
+
+      const db = getDrizzleDb()
+      const userRow = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
+      const configRow = db
+        .select()
+        .from(userConfig)
+        .where(and(eq(userConfig.userId, groupId), eq(userConfig.key, 'kaneo_workspace_id')))
+        .get()
+
+      expect(requireDefined(userRow).kaneoWorkspaceId).toBeNull()
+      expect(requireDefined(configRow).value).toBe(updatedWorkspace)
     })
 
     test('does not update workspace when a user id exists on multiple platform instances', async () => {
       const userId = 'ambiguous-workspace-user'
+      seedPlatform('telegram-default')
+      seedPlatform('discord-default')
       addUser({ userId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
       addUser({ userId, platformInstanceId: 'discord-default', addedBy: 'admin' })
 

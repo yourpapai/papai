@@ -6,8 +6,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import { getTableName } from 'drizzle-orm'
+import { getTableConfig } from 'drizzle-orm/sqlite-core'
 
-import { admins, contextSettings, platformInstances, taskInstances } from '../../src/db/schema.js'
+import { contextSettings, platformAdmins, platformInstances, superAdmins, taskInstances } from '../../src/db/schema.js'
 
 describe('instance-schema re-exports', () => {
   test('platformInstances table name', () => {
@@ -22,7 +23,23 @@ describe('instance-schema re-exports', () => {
     expect(getTableName(contextSettings)).toBe('context_settings')
   })
 
-  test('admins table name', () => {
-    expect(getTableName(admins)).toBe('admins')
+  test('superAdmins table name', () => {
+    expect(getTableName(superAdmins)).toBe('super_admins')
+  })
+
+  test('platformAdmins table name', () => {
+    expect(getTableName(platformAdmins)).toBe('platform_admins')
+  })
+
+  test('contextSettings has task and platform foreign keys', () => {
+    expect(getTableConfig(contextSettings).foreignKeys).toHaveLength(2)
+  })
+
+  test('platformAdmins references platform instances', () => {
+    expect(getTableConfig(platformAdmins).foreignKeys).toHaveLength(1)
+  })
+
+  test('superAdmins has no platform foreign key', () => {
+    expect(getTableConfig(superAdmins).foreignKeys).toHaveLength(0)
   })
 })

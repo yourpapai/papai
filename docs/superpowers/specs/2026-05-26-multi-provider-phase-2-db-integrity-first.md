@@ -19,6 +19,12 @@ Move multi-provider ownership rules from route-handler convention into durable d
 
 Phase 1 makes current behavior safe. Phase 2 makes invalid states harder to create through any code path, test helper, script, or manual DB edit.
 
+Current branch reality after Phase 1:
+
+- Platform and task deletion routes now perform procedural dependent-row cleanup and clear affected tool caches before deleting the parent instance.
+- Phase 2 should keep the cache invalidation behavior but stop depending on those route-handler deletes for referential integrity; deleting a parent row directly in SQLite must cascade to DB dependents.
+- Migrations `040` through `043` are still branch-local relative to `master` in this worktree, so the preferred implementation is to repair `043_scoped_context_ids.ts` directly before release. If an implementation session knows that `043` has already shipped to a production DB, it must add the deterministic behavior as the next migration instead of rewriting migration history.
+
 ## Goals
 
 - Add DB-enforced referential integrity for `context_settings`, `users`, and platform-scoped admins.
@@ -138,7 +144,7 @@ Update `src/db/instance-schema.ts` and `src/db/schema.ts` exports to match the c
 
 ### 4. Deterministic Scoped Context Migration
 
-Replace the env-dependent fallback in `043_scoped_context_ids.ts` for future runs or add a follow-up corrective migration if 043 is already applied in production.
+Replace the env-dependent fallback in `043_scoped_context_ids.ts` for future runs. Only use a follow-up corrective migration if 043 is already applied in production.
 
 Required rule:
 
@@ -147,6 +153,17 @@ Required rule:
 - Never derive a platform ID from `CHAT_PROVIDER` inside a migration.
 
 If a deployment may already have applied 043 with env-derived IDs, the follow-up migration must not attempt to guess. It should only detect impossible references and report counts through logs/tests.
+
+### 4.5 Route Cleanup Alignment
+
+After DB cascades exist, admin routes should no longer rely on manual child-row deletes to make platform/task deletion safe. They should still collect affected context IDs before deleting the parent instance and clear tool caches after the delete completes.
+
+Required route behavior:
+
+- `DELETE /api/platform-instances/:id` deletes the platform instance row and lets SQLite cascade `context_settings`, `users`, and `platform_admins`.
+- `DELETE /api/task-instances/:id` deletes the task instance row and lets SQLite cascade `context_settings`.
+- Both routes preserve Phase 1 cache invalidation by clearing cached tools for context IDs that referenced the deleted instance.
+- Super-admin rows are not part of any platform cascade and must survive platform deletion.
 
 ### 5. Workspace Source of Truth
 

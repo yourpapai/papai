@@ -30,8 +30,12 @@ export const contextSettings = sqliteTable(
   'context_settings',
   {
     contextId: text('context_id').primaryKey(),
-    taskInstanceId: text('task_instance_id').notNull(),
-    platformInstanceId: text('platform_instance_id').notNull(),
+    taskInstanceId: text('task_instance_id')
+      .notNull()
+      .references(() => taskInstances.id, { onDelete: 'cascade' }),
+    platformInstanceId: text('platform_instance_id')
+      .notNull()
+      .references(() => platformInstances.id, { onDelete: 'cascade' }),
   },
   (table) => [
     index('idx_context_settings_task_instance').on(table.taskInstanceId),
@@ -39,11 +43,20 @@ export const contextSettings = sqliteTable(
   ],
 )
 
-export const admins = sqliteTable(
-  'admins',
+export const superAdmins = sqliteTable('super_admins', {
+  userId: text('user_id').primaryKey(),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(datetime('now'))`),
+})
+
+export const platformAdmins = sqliteTable(
+  'platform_admins',
   {
     userId: text('user_id').notNull(),
-    platformInstanceId: text('platform_instance_id').notNull(),
+    platformInstanceId: text('platform_instance_id')
+      .notNull()
+      .references(() => platformInstances.id, { onDelete: 'cascade' }),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -54,4 +67,5 @@ export const admins = sqliteTable(
 export type PlatformInstanceRow = typeof platformInstances.$inferSelect
 export type TaskInstanceRow = typeof taskInstances.$inferSelect
 export type ContextSettingsRow = typeof contextSettings.$inferSelect
-export type AdminRow = typeof admins.$inferSelect
+export type SuperAdminRow = typeof superAdmins.$inferSelect
+export type PlatformAdminRow = typeof platformAdmins.$inferSelect

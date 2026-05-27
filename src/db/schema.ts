@@ -6,11 +6,15 @@
 import { sql } from 'drizzle-orm'
 import { blob, sqliteTable, text, integer, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
+import { platformInstances } from './instance-schema.js'
+
 export const users = sqliteTable(
   'users',
   {
     platformUserId: text('platform_user_id').notNull(),
-    platformInstanceId: text('platform_instance_id').notNull(),
+    platformInstanceId: text('platform_instance_id')
+      .notNull()
+      .references(() => platformInstances.id, { onDelete: 'cascade' }),
     username: text('username'),
     addedAt: text('added_at')
       .notNull()
@@ -270,31 +274,7 @@ export const groupUserObservations = sqliteTable(
   ],
 )
 export { webCache, webRateLimit } from './web-schema.js'
-export const attachments = sqliteTable(
-  'attachments',
-  {
-    attachmentId: text('attachment_id').primaryKey(),
-    contextId: text('context_id').notNull(),
-    sourceProvider: text('source_provider').notNull(),
-    sourceMessageId: text('source_message_id'),
-    sourceFileId: text('source_file_id'),
-    filename: text('filename').notNull(),
-    mimeType: text('mime_type'),
-    size: integer('size'),
-    checksum: text('checksum').notNull(),
-    blobKey: text('blob_key').notNull(),
-    status: text('status').notNull(),
-    isActive: integer('is_active').notNull().default(1),
-    createdAt: text('created_at').notNull(),
-    clearedAt: text('cleared_at'),
-    lastUsedAt: text('last_used_at'),
-  },
-  (table) => [
-    index('idx_attachments_context_active').on(table.contextId, table.isActive, table.createdAt),
-    index('idx_attachments_context_checksum').on(table.contextId, table.checksum),
-  ],
-)
+export { attachments } from './attachments-schema.js'
 export { stagedFiles, type StagedFileRow } from './staged-schema.js'
 export { pluginAdminState, pluginContextState, pluginKv, pluginRuntimeEvents } from './plugin-schema.js'
-export { admins, contextSettings, platformInstances, taskInstances } from './instance-schema.js'
-export type { AdminRow, ContextSettingsRow, PlatformInstanceRow, TaskInstanceRow } from './instance-schema.js'
+export { contextSettings, platformAdmins, platformInstances, superAdmins, taskInstances } from './instance-schema.js'
