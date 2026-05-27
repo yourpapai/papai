@@ -88,6 +88,12 @@ function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string)
   return 'disabled'
 }
 
+function pluginButtonCallback(entry: PluginRegistryEntry, targetContextId: string): string {
+  const pluginId = entry.discoveredPlugin.manifest.id
+  const enabled = isPluginActiveForContext(pluginId, targetContextId)
+  return `plg:${enabled ? 'disable' : 'enable'}:${pluginId}:${encodePluginContextId(targetContextId)}`
+}
+
 function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntry, targetContextId: string): void {
   for (const requirement of entry.discoveredPlugin.manifest.configRequirements) {
     const value = getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
@@ -107,12 +113,14 @@ function appendPluginConfigLines(lines: string[], targetContextId: string): void
     const selected = isPluginSelectedForContext(entry, targetContextId)
     const marker = eligible ? '🟢' : selected ? '🟠' : '⭕'
     lines.push(`${marker} ${entry.discoveredPlugin.manifest.name}: ${formatPluginStatus(entry, targetContextId)}`)
+    if (!isSafeCallbackData(pluginButtonCallback(entry, targetContextId))) {
+      lines.push('  - controls unavailable in this chat; use /plugin in DM for this target')
+    }
     appendPluginRequirementLines(lines, entry, targetContextId)
   }
 }
 
 function buildPluginButtons(targetContextId: string): ChatButton[] {
-  const encodedContextId = encodePluginContextId(targetContextId)
   return pluginRegistry
     .getAllEntries()
     .filter((entry) => entry.state === 'active')
@@ -121,7 +129,7 @@ function buildPluginButtons(targetContextId: string): ChatButton[] {
       const enabled = isPluginActiveForContext(pluginId, targetContextId)
       return {
         text: `${enabled ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
-        callbackData: `plg:${enabled ? 'disable' : 'enable'}:${pluginId}:${encodedContextId}`,
+        callbackData: pluginButtonCallback(entry, targetContextId),
         style: enabled ? ('danger' as const) : ('primary' as const),
       }
     })

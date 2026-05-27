@@ -234,6 +234,18 @@ describe('/config Command', () => {
       expect(callbackData.some((data) => data.startsWith('plg:'))).toBe(false)
     })
 
+    test('shows a fallback notice when plugin controls exceed callback limits', async () => {
+      const contextId = 'managed-group-context-with-a-very-long-stable-storage-id'
+      registerActivePlugin(makePlugin('config-long-callback-plugin', { name: 'Long Callback Plugin' }))
+      const { reply, buttonCalls } = createMockReply()
+
+      await renderConfigForTarget(reply, contextId, true)
+
+      assert.ok(buttonCalls[0] !== undefined, 'expected button output')
+      expect(buttonCalls[0]).toContain('Long Callback Plugin')
+      expect(buttonCalls[0]).toContain('controls unavailable')
+    })
+
     test('shows missing required plugin config under an unavailable plugin', async () => {
       const pluginId = 'config-render-missing-plugin'
       registerActivePlugin(

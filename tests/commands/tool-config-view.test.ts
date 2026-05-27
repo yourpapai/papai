@@ -17,6 +17,26 @@ describe('buildDomainListView', () => {
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:open:task:'))).toBe(true)
   })
 
+  it('keeps domain callbacks within Telegram callback limits for long contexts', () => {
+    const view = buildDomainListView('managed-group-context-with-realistic-long-id-12345', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
+
+    expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
+  it('compacts oversized domain callbacks when the context still fits', () => {
+    const view = buildDomainListView('managed-group-context-long-id-123456789012', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
+
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:d:'))).toBe(true)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:o:'))).toBe(true)
+    expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
   it('marks a partially-disabled domain', () => {
     const view = buildDomainListView('ctx', AVAILABLE, {
       disabledDomains: [],
@@ -36,5 +56,25 @@ describe('buildDomainDrillView', () => {
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:delete_task:'))).toBe(true)
     expect(view.text).toContain('⚠️')
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:back:'))).toBe(true)
+  })
+
+  it('keeps tool callbacks within Telegram callback limits for long contexts', () => {
+    const view = buildDomainDrillView('managed-group-context-with-realistic-long-id-12345', 'task', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
+
+    expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
+  it('compacts oversized tool callbacks when the context still fits', () => {
+    const view = buildDomainDrillView('managed-group-context-long-id-123456789012', 'task', AVAILABLE, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
+
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:t:'))).toBe(true)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:b:'))).toBe(true)
+    expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
   })
 })
