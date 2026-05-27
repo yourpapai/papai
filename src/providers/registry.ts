@@ -5,11 +5,11 @@
 
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { ALL_CAPABILITIES } from './kaneo/constants.js'
+import { ALL_CAPABILITIES, KANEO_TRAITS } from './kaneo/constants.js'
 import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
-import { YOUTRACK_CAPABILITIES } from './youtrack/constants.js'
+import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './youtrack/constants.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
@@ -72,6 +72,14 @@ export type ContributedTaskProviderEntry = {
 
 const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
 
+const normalizeContributedProviderTraits = (
+  provider: TaskProvider,
+  traits: ReadonlySet<TaskProviderTrait>,
+): TaskProvider => {
+  Object.defineProperty(provider, 'traits', { value: traits, configurable: true, enumerable: true })
+  return provider
+}
+
 /**
  * Create a TaskProvider instance by name.
  *
@@ -97,7 +105,10 @@ export function createProvider(name: string, config: Record<string, string>): Ta
     )
   }
   log.debug({ name, pluginId: contributed.pluginId }, 'Creating contributed provider instance')
-  return contributed.factory(config)
+  return normalizeContributedProviderTraits(
+    contributed.factory(config),
+    contributed.traits ?? new Set<TaskProviderTrait>(),
+  )
 }
 
 export function getCapabilitiesForTaskInstance(instance: TaskInstance): ReadonlySet<TaskCapability> {
@@ -197,7 +208,7 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
     type: 'kaneo',
     displayName: 'Kaneo',
     capabilities: ALL_CAPABILITIES,
-    traits: new Set<TaskProviderTrait>(['workspace-scoped', 'task-label-read-requires-provider-specific-api']),
+    traits: KANEO_TRAITS,
     instanceConfigSchema: [
       { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
       { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
@@ -225,7 +236,7 @@ const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
     type: 'youtrack',
     displayName: 'YouTrack',
     capabilities: YOUTRACK_CAPABILITIES,
-    traits: new Set<TaskProviderTrait>(['supports-command-language', 'command-language:youtrack', 'custom-fields']),
+    traits: YOUTRACK_TRAITS,
     instanceConfigSchema: [
       { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
     ],

@@ -9,6 +9,7 @@ import type { TaskInstance } from '../../src/instances/types.js'
 import {
   createProvider,
   getCapabilitiesForTaskInstance,
+  getTaskProviderDescriptor,
   getContributedTaskProviderType,
   getTaskProviderConfigValidator,
   listTaskProviderTypes,
@@ -116,6 +117,26 @@ describe('contributed task provider registry', () => {
     ])
     expect(descriptor?.capabilities.has('comments.read')).toBe(true)
   })
+
+  test('createProvider normalizes contributed runtime traits from descriptor traits', () => {
+    mockLogger()
+    const traits = new Set(['command-language:youtrack'] as const)
+    registerContributedTaskProviderType('traited-tracker', {
+      pluginId: 'task-provider-demo',
+      factory: () => createMockProvider({ name: 'traited-tracker', traits: new Set() }),
+      capabilities: new Set<TaskCapability>(['tasks.commands']),
+      displayName: 'Traited Tracker',
+      traits,
+      configSchema: [] as const,
+    })
+
+    const descriptor = getTaskProviderDescriptor('traited-tracker')
+    const provider = createProvider('traited-tracker', {})
+
+    expect(descriptor).toBeDefined()
+    expect(provider.traits).toEqual(descriptor!.traits)
+    expect(provider.traits).toEqual(traits)
+  })
 })
 
 describe('listTaskProviderTypes (built-in catalog)', () => {
@@ -151,6 +172,26 @@ describe('listTaskProviderTypes (built-in catalog)', () => {
     expect(youtrack?.source).toBe('builtin')
     expect(youtrack?.displayName).toBe('YouTrack')
     expect(youtrack?.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
+  })
+
+  test('built-in provider runtime traits equal descriptor traits', () => {
+    const kaneoDescriptor = getTaskProviderDescriptor('kaneo')
+    const youtrackDescriptor = getTaskProviderDescriptor('youtrack')
+
+    const kaneoProvider = createProvider('kaneo', {
+      baseUrl: 'https://kaneo.invalid',
+      credential: 'kaneo-token',
+      workspaceId: 'workspace-1',
+    })
+    const youtrackProvider = createProvider('youtrack', {
+      baseUrl: 'https://youtrack.invalid',
+      token: 'perm-token',
+    })
+
+    expect(kaneoDescriptor).toBeDefined()
+    expect(youtrackDescriptor).toBeDefined()
+    expect(kaneoProvider.traits).toEqual(kaneoDescriptor!.traits)
+    expect(youtrackProvider.traits).toEqual(youtrackDescriptor!.traits)
   })
 })
 

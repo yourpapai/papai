@@ -21,7 +21,7 @@ import type {
 } from '../types.js'
 import { classifyKaneoError } from './classify-error.js'
 import type { KaneoConfig } from './client.js'
-import { ALL_CAPABILITIES, CONFIG_REQUIREMENTS } from './constants.js'
+import { ALL_CAPABILITIES, CONFIG_REQUIREMENTS, KANEO_TRAITS } from './constants.js'
 import { createKaneoIdentityResolver } from './identity-resolver.js'
 import { kaneoAddComment, kaneoGetComments, kaneoRemoveComment, kaneoUpdateComment } from './operations/comments.js'
 import {
@@ -58,7 +58,7 @@ const log = logger.child({ scope: 'provider:kaneo' })
 export class KaneoProvider implements TaskProvider {
   readonly name = 'kaneo'
   readonly capabilities = ALL_CAPABILITIES
-  readonly traits = new Set(['workspace-scoped', 'task-label-read-requires-provider-specific-api'] as const)
+  readonly traits = KANEO_TRAITS
   readonly configRequirements = CONFIG_REQUIREMENTS
   readonly preferredUserIdentifier = 'id' as const
   readonly identityResolver

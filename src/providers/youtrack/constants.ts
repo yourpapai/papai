@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { TaskCapability, ProviderConfigRequirement } from '../types.js'
+import type { ProviderConfigRequirement, TaskCapability, TaskProviderTrait } from '../types.js'
 
 /** Fields parameter for issue requests returning full detail. */
 export const REACTION_FIELDS = 'id,reaction,author(id,login,fullName,email)'
@@ -133,6 +133,12 @@ export const YOUTRACK_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCa
   'sprints.assign',
   'activities.read',
   'queries.saved',
+])
+
+export const YOUTRACK_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>([
+  'supports-command-language',
+  'command-language:youtrack',
+  'custom-fields',
 ])
 
 export const CONFIG_REQUIREMENTS: readonly ProviderConfigRequirement[] = [
