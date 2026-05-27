@@ -7,7 +7,7 @@ import { logger } from '../logger.js'
 import { registerContributedTaskProviderType, type TaskProviderFactory } from '../providers/registry.js'
 import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
-import { kvDelete, kvGet, kvList, kvSet } from './store.js'
+import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
   PluginContributions,
   PluginManifest,
@@ -32,6 +32,11 @@ export type PluginLogger = {
   info(data: Record<string, unknown>, msg: string): void
   warn(data: Record<string, unknown>, msg: string): void
   error(data: Record<string, unknown>, msg: string): void
+}
+
+/** Admin-scoped config facade exposed to plugins. */
+export type PluginAdminConfig = {
+  get(key: string): string | undefined
 }
 
 /** Registration API given to a plugin's activate() function. */
@@ -60,6 +65,17 @@ export type PluginContext = {
   readonly providerRuntime?: PluginProviderRuntime
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
   readonly identity?: PluginIdentityFacade
+  readonly adminConfig: PluginAdminConfig
+}
+
+function buildAdminConfig(manifest: PluginManifest): PluginAdminConfig {
+  const adminKeys = new Set(manifest.configRequirements.filter((req) => req.scope === 'admin').map((req) => req.key))
+  return Object.freeze({
+    get(key: string): string | undefined {
+      if (!adminKeys.has(key)) return undefined
+      return getPluginAdminConfig(manifest.id, key)
+    },
+  })
 }
 
 function buildKvStore(pluginId: string, contextId: string): PluginKvStore {
@@ -191,6 +207,7 @@ export function buildPluginContext(
     registration: buildRegistration(manifest, collected),
     providerRuntime,
     identity,
+    adminConfig: buildAdminConfig(manifest),
   })
 
   return { ctx, collected }

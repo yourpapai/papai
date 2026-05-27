@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { buildPluginContext } from '../../src/plugins/context.js'
+import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { getContributedTaskProviderType, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
@@ -263,6 +264,43 @@ describe('buildPluginContext', () => {
     test('absent when identity is held but no task provider type is declared', () => {
       const { ctx } = buildPluginContext(makeManifest({ permissions: ['identity'] }), 'ctx-1')
       expect(ctx.identity).toBeUndefined()
+    })
+  })
+
+  describe('adminConfig', () => {
+    test('provides adminConfig when plugin declares admin-scoped config requirements', () => {
+      setPluginAdminConfig('test-plugin', 'api_key', 'sk-test-123', 'admin')
+      const { ctx } = buildPluginContext(
+        makeManifest({
+          configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+        }),
+        'ctx-1',
+      )
+      expect(ctx.adminConfig).toBeDefined()
+      expect(ctx.adminConfig.get('api_key')).toBe('sk-test-123')
+    })
+
+    test('returns undefined for undeclared admin config keys', () => {
+      const { ctx } = buildPluginContext(
+        makeManifest({
+          configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+        }),
+        'ctx-1',
+      )
+      expect(ctx.adminConfig.get('other_key')).toBeUndefined()
+    })
+
+    test('does not expose context-scoped keys via adminConfig', () => {
+      const { ctx } = buildPluginContext(
+        makeManifest({
+          configRequirements: [
+            { key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' },
+            { key: 'timezone', label: 'Timezone', required: false, sensitive: false, scope: 'context' },
+          ],
+        }),
+        'ctx-1',
+      )
+      expect(ctx.adminConfig.get('timezone')).toBeUndefined()
     })
   })
 })
