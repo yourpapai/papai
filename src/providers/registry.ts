@@ -8,7 +8,7 @@ import { logger } from '../logger.js'
 import { ALL_CAPABILITIES } from './kaneo/constants.js'
 import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
-import type { ProviderConfigField, TaskProvider } from './types.js'
+import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
 import { YOUTRACK_CAPABILITIES } from './youtrack/constants.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
@@ -143,13 +143,6 @@ export function getContributedTaskProviderType(type: string): ContributedTaskPro
 export function getTaskProviderConfigValidator(type: string): TaskProviderConfigValidator | undefined {
   return pluginContributedTaskProviderFactories.get(type)?.validateConfig
 }
-
-export type TaskProviderTrait =
-  | 'workspace-scoped'
-  | 'task-label-read-requires-provider-specific-api'
-  | 'supports-command-language'
-  | 'command-language:youtrack'
-  | 'custom-fields'
 
 export type TaskProviderTypeDescriptor = {
   type: string

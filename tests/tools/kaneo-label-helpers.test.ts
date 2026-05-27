@@ -5,13 +5,21 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
-import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from '../../src/tools/kaneo-label-helpers.js'
+import {
+  listTaskLabels,
+  listVisibleWorkspaceLabels,
+  usesSeparateLabelReadApi,
+} from '../../src/tools/kaneo-label-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 describe('kaneo-label-helpers', () => {
-  test('isKaneoProvider returns true only for Kaneo providers', () => {
-    expect(isKaneoProvider(createMockProvider({ name: 'kaneo' }))).toBe(true)
-    expect(isKaneoProvider(createMockProvider({ name: 'youtrack' }))).toBe(false)
+  test('usesSeparateLabelReadApi returns true only for providers with the label-read trait', () => {
+    expect(
+      usesSeparateLabelReadApi(
+        createMockProvider({ name: 'custom', traits: new Set(['task-label-read-requires-provider-specific-api']) }),
+      ),
+    ).toBe(true)
+    expect(usesSeparateLabelReadApi(createMockProvider({ name: 'kaneo', traits: new Set() }))).toBe(false)
   })
 
   test('listVisibleWorkspaceLabels prefers getLabelByName when available', async () => {
@@ -27,16 +35,21 @@ describe('kaneo-label-helpers', () => {
     expect(getLabelByName).toHaveBeenCalledWith('Feature')
   })
 
-  test('listTaskLabels only delegates for Kaneo providers with task label support', async () => {
+  test('listTaskLabels only delegates for providers with separate label-read support', async () => {
     const kaneoProvider = createMockProvider({
       name: 'kaneo',
+      traits: new Set(['task-label-read-requires-provider-specific-api']),
       listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
     })
-    const otherProvider = createMockProvider({ name: 'youtrack' })
+    const spoofedProvider = createMockProvider({
+      name: 'kaneo',
+      traits: new Set(),
+      listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-2', name: 'Bug', color: '#0000ff' }])),
+    })
 
     await expect(listTaskLabels(kaneoProvider, 'task-1')).resolves.toEqual([
       { id: 'task-label-1', name: 'Feature', color: '#ff0000' },
     ])
-    await expect(listTaskLabels(otherProvider, 'task-1')).resolves.toEqual([])
+    await expect(listTaskLabels(spoofedProvider, 'task-1')).resolves.toEqual([])
   })
 })

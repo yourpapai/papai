@@ -84,6 +84,7 @@ export class YouTrackProvider extends YouTrackPhaseFiveProvider implements TaskP
   readonly name = 'youtrack'
   readonly supportsCustomFields = true
   readonly capabilities = YOUTRACK_CAPABILITIES
+  readonly traits = new Set(['supports-command-language', 'command-language:youtrack', 'custom-fields'] as const)
   readonly configRequirements = CONFIG_REQUIREMENTS
   readonly preferredUserIdentifier = 'login' as const
   readonly identityResolver

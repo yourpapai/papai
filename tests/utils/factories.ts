@@ -10,6 +10,7 @@ export function createMinimalTaskProviderStub(overrides?: Partial<TaskProvider>)
   return {
     name: 'mock',
     capabilities: new Set(),
+    traits: new Set(),
     configRequirements: [],
     preferredUserIdentifier: 'id',
     buildTaskUrl: () => '',
