@@ -45,7 +45,7 @@ export interface ContextCommandDeps {
     provider: TaskProvider | null,
     buildLiveToolSet: BuildLiveToolSet,
     lastUserText: string | undefined,
-  ) => ResolvedContextToolSurface
+  ) => Promise<ResolvedContextToolSurface> | ResolvedContextToolSurface
 }
 
 const defaultDeps: ContextCommandDeps = {
@@ -205,7 +205,7 @@ async function handleContextCommand(
 
   const provider = deps.buildProvider(auth.storageContextId)
   const lastUserText = getLastUserText(loadHistory(auth.storageContextId))
-  const resolvedToolSurface = deps.resolveToolSurface(
+  const resolvedToolSurface = await deps.resolveToolSurface(
     auth.storageContextId,
     msg.user.id,
     msg.contextType,

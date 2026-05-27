@@ -143,7 +143,7 @@ export const resetBotMisconfiguredNotifiedForTesting = (): void => {
 }
 
 const buildToolRoutingTelemetry = (
-  routingResult: ReturnType<typeof prepareLlmInvocation>['routingResult'],
+  routingResult: Awaited<ReturnType<typeof prepareLlmInvocation>>['routingResult'],
 ): InvokeModelArgs['toolRouting'] => ({
   intent: routingResult.decision.intent,
   confidence: routingResult.decision.confidence,
@@ -181,7 +181,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     return { response: { messages: [] } }
   }
   await maybeAutoLinkIdentity(chatUserId, username, provider)
-  const { routingResult, validatedMessages, enabledToolNames } = prepareLlmInvocation(
+  const { routingResult, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
     contextId,
     configId,
     chatUserId,

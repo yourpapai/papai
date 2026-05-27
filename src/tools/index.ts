@@ -5,6 +5,10 @@
 
 import type { ToolSet } from 'ai'
 
+import { getPluginConfig } from '../config.js'
+import { buildMcpToolSet, buildPluginMcpToolSet, mcpPool } from '../mcp/index.js'
+import type { PluginMcpDescriptor } from '../mcp/plugin-endpoints.js'
+import type { McpPluginConfig } from '../mcp/types.js'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
@@ -32,17 +36,117 @@ function wrapToolSet(tools: ToolSet): ToolSet {
   )
 }
 
+function buildPluginMcpDescriptors(pluginIds: readonly string[], contextId: string): Map<string, PluginMcpDescriptor> {
+  const result = new Map<string, PluginMcpDescriptor>()
+  const activePlugins = getPluginsForContext(contextId)
+  for (const pluginId of pluginIds) {
+    const plugin = activePlugins.find((p) => p.manifest.id === pluginId)
+    if (plugin === undefined || plugin.manifest.mcp === undefined) continue
+    const requirements = plugin.manifest.configRequirements
+    const configValues: Record<string, string> = {}
+    for (const req of requirements) {
+      const value = getPluginConfig(contextId, pluginId, req.key)
+      if (value !== null) configValues[req.key] = value
+    }
+    result.set(pluginId, {
+      mcp: plugin.manifest.mcp,
+      configRequirements: requirements,
+      configValues,
+    })
+  }
+  return result
+}
+
+type PluginPoolAdapter = {
+  getOrCreateFromPlugin: (
+    pluginId: string,
+    mcp: McpPluginConfig,
+  ) => Promise<{
+    hash: string
+    client: {
+      listTools: () => Promise<{
+        tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>
+      }>
+      callTool: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<{
+        content: Array<{ type: string; text?: string }>
+        isError?: boolean
+      }>
+    }
+  }>
+}
+
+function adaptMcpPool(): PluginPoolAdapter {
+  return {
+    async getOrCreateFromPlugin(pluginId, mcp) {
+      const { hash, client } = await mcpPool.getOrCreateFromPlugin(pluginId, mcp)
+      return {
+        hash,
+        client: {
+          listTools: () => client.listTools(),
+          callTool: async (params) => {
+            const result = await client.callTool(params)
+            const content = Array.isArray(result.content)
+              ? result.content.filter(
+                  (c: { type: unknown; text?: unknown }): c is { type: string; text?: string } =>
+                    typeof c === 'object' && c !== null && typeof c.type === 'string',
+                )
+              : []
+            const isError = typeof result.isError === 'boolean' ? result.isError : undefined
+            return { content, isError }
+          },
+        },
+      }
+    },
+  }
+}
+
+async function buildPluginAndMcpTools(
+  provider: TaskProvider,
+  contextId: string,
+  chatUserId: string,
+  wrappedBuiltins: ToolSet,
+): Promise<{ pluginTools: ToolSet; extraMcpTools: ToolSet }> {
+  const activePlugins = getPluginsForContext(contextId)
+  if (activePlugins.length === 0) return { pluginTools: {}, extraMcpTools: {} }
+
+  const activePluginIds = activePlugins
+    .map((p) => p.manifest.id)
+    .filter((id) => contributionRegistry.getContributions(id) !== undefined)
+  const pluginTools = buildPluginToolSet(activePluginIds, new Set(Object.keys(wrappedBuiltins)), {
+    provider,
+    storageContextId: contextId,
+    chatUserId,
+  })
+
+  const extraMcpTools: ToolSet = {}
+  const mcpPluginIds = activePlugins.filter((p) => p.manifest.mcp !== undefined).map((p) => p.manifest.id)
+  if (mcpPluginIds.length > 0) {
+    const descriptors = buildPluginMcpDescriptors(mcpPluginIds, contextId)
+    try {
+      const pluginMcpTools = await buildPluginMcpToolSet(mcpPluginIds, descriptors, adaptMcpPool())
+      Object.assign(extraMcpTools, pluginMcpTools)
+    } catch {
+      // MCP failures don't break the tool pipeline
+    }
+  }
+
+  return { pluginTools, extraMcpTools }
+}
+
 /**
  * Build a tool set for the given provider and context.
  *
  * Usage:
  * ```ts
- * makeTools(provider, { storageContextId: 'user-1:group-1', chatUserId: 'user-1', mode: 'normal' })
+ * await makeTools(provider, { storageContextId: 'user-1:group-1', chatUserId: 'user-1', mode: 'normal' })
  * ```
  */
-export function makeTools(provider: TaskProvider): ToolSet
-export function makeTools(provider: TaskProvider, options: MakeToolsOptions): ToolSet
-export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOptions] | readonly []): ToolSet {
+export function makeTools(provider: TaskProvider): Promise<ToolSet>
+export function makeTools(provider: TaskProvider, options: MakeToolsOptions): Promise<ToolSet>
+export async function makeTools(
+  provider: TaskProvider,
+  ...args: readonly [MakeToolsOptions] | readonly []
+): Promise<ToolSet> {
   const options = args[0]
   const storageContextId = options === undefined ? undefined : options.storageContextId
   const chatUserId = options === undefined ? undefined : options.chatUserId
@@ -55,20 +159,21 @@ export function makeTools(provider: TaskProvider, ...args: readonly [MakeToolsOp
   const tools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
   const wrappedBuiltins = wrapToolSet(tools)
 
-  if (contextId !== undefined && chatUserId !== undefined) {
-    const activePlugins = getPluginsForContext(contextId)
-    if (activePlugins.length > 0) {
-      const activePluginIds = activePlugins
-        .map((p) => p.manifest.id)
-        .filter((id) => contributionRegistry.getContributions(id) !== undefined)
-      const pluginTools = buildPluginToolSet(activePluginIds, new Set(Object.keys(wrappedBuiltins)), {
-        provider,
-        storageContextId: contextId,
-        chatUserId,
-      })
-      return applyToolPreferences({ ...wrappedBuiltins, ...pluginTools }, contextId)
+  let mcpTools: ToolSet = {}
+  if (contextId !== undefined) {
+    try {
+      mcpTools = await buildMcpToolSet(contextId)
+    } catch {
+      // MCP failures don't break the tool pipeline
     }
   }
 
-  return applyToolPreferences(wrappedBuiltins, contextId)
+  let pluginTools: ToolSet = {}
+  if (contextId !== undefined && chatUserId !== undefined) {
+    const result = await buildPluginAndMcpTools(provider, contextId, chatUserId, wrappedBuiltins)
+    pluginTools = result.pluginTools
+    Object.assign(mcpTools, result.extraMcpTools)
+  }
+
+  return applyToolPreferences({ ...wrappedBuiltins, ...mcpTools, ...pluginTools }, contextId)
 }

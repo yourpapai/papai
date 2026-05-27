@@ -53,7 +53,7 @@ describe('llm-orchestrator-events', () => {
 
       try {
         const provider = createMockProvider()
-        const tools = makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
+        const tools = await makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
         emitLlmStart('ctx-1', 'gpt-4', [{ role: 'user', content: 'hi' }], tools)
 
         const capturedEvent = capture()
@@ -104,7 +104,7 @@ describe('llm-orchestrator-events', () => {
           finishReason: 'stop',
         }
         const provider = createMockProvider()
-        const tools = makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
+        const tools = await makeTools(provider, { storageContextId: 'ctx-1', chatUserId: 'user-1' })
         const startTime = Date.now() - 1000
 
         emitLlmEnd(
@@ -161,7 +161,7 @@ describe('llm-orchestrator-events', () => {
           finishReason: 'stop',
         }
         const provider = createMockProvider()
-        const tools = makeTools(provider, { storageContextId: 'ctx-grp', chatUserId: 'user-2' })
+        const tools = await makeTools(provider, { storageContextId: 'ctx-grp', chatUserId: 'user-2' })
         emitLlmEnd(
           'ctx-grp',
           'user-2',

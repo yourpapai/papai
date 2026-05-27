@@ -20,14 +20,14 @@ const log = logger.child({ scope: 'llm-orchestrator:tools' })
 const isToolSet = (value: unknown): value is ToolSet =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const getOrCreateTools = (
+const getOrCreateTools = async (
   contextId: string,
   chatUserId: string,
   username: string | null,
   provider: TaskProvider,
   contextType: 'dm' | 'group' | undefined,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
-): ToolSet => {
+): Promise<ToolSet> => {
   let cacheKey = contextId
   if (contextType === 'group') {
     let usernameSuffix = ''
@@ -49,12 +49,12 @@ const getOrCreateTools = (
     contextType,
     stagedDownloadFn,
   }
-  const tools = makeTools(provider, toolOptions)
+  const tools = await makeTools(provider, toolOptions)
   setCachedTools(cacheKey, tools)
   return tools
 }
 
-export const prepareLlmInvocation = (
+export const prepareLlmInvocation = async (
   contextId: string,
   configId: string,
   chatUserId: string,
@@ -64,12 +64,12 @@ export const prepareLlmInvocation = (
   history: readonly ModelMessage[],
   userText: string,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
-): {
+): Promise<{
   routingResult: ReturnType<typeof routeToolsForMessage>
   validatedMessages: ModelMessage[]
   enabledToolNames: ReadonlySet<string>
-} => {
-  const fullTools = getOrCreateTools(contextId, chatUserId, username, provider, contextType, stagedDownloadFn)
+}> => {
+  const fullTools = await getOrCreateTools(contextId, chatUserId, username, provider, contextType, stagedDownloadFn)
   const enabledToolNames = new Set(Object.keys(fullTools))
   const routingResult = routeToolsForMessage(userText, fullTools)
   log.debug(
