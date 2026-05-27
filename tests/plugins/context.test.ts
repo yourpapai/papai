@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { buildPluginContext } from '../../src/plugins/context.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
@@ -165,6 +165,10 @@ describe('buildPluginContext', () => {
 
   describe('registerTaskProviderType', () => {
     beforeEach(() => {
+      unregisterContributedTaskProviderType('test-plugin')
+    })
+
+    afterEach(() => {
       unregisterContributedTaskProviderType('test-plugin')
     })
 
