@@ -156,7 +156,7 @@ describe('buildPluginContext', () => {
       expect(ctx.providerRuntime).toBeDefined()
     })
 
-    test('absent without provider.task', () => {
+    test('absent without provider.task or http', () => {
       const { ctx } = buildPluginContext(makeManifest({ permissions: ['storage'] }), 'ctx-1')
       expect(ctx.providerRuntime).toBeUndefined()
     })
