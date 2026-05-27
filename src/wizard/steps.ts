@@ -3,45 +3,76 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { maskValue } from '../config.js'
-import type { ConfigKey } from '../types/config.js'
+import { maskSensitiveValue, maskValue } from '../config.js'
+import { getTaskProviderDescriptor } from '../providers/registry.js'
+import { KANEO_WORKSPACE_CONFIG_KEY, type ConfigField } from '../types/config.js'
 import { normalizeTimezone } from '../utils/timezone.js'
 import type { WizardStep } from './types.js'
 
-type TaskProvider = 'kaneo' | 'youtrack'
-
-const PROVIDER_SPECIFIC_STEP: Record<TaskProvider, { key: 'kaneo_apikey' | 'youtrack_token'; prompt: string }> = {
-  kaneo: {
-    key: 'kaneo_apikey',
-    prompt: '🔑 Enter your Kaneo API key:',
-  },
-  youtrack: {
-    key: 'youtrack_token',
-    prompt: '🔑 Enter your YouTrack token:',
-  },
+const TIMEZONE_FIELD: ConfigField = {
+  key: 'timezone',
+  storageKey: 'timezone',
+  label: 'Timezone',
+  required: true,
+  sensitive: false,
+  kind: 'preference',
 }
 
-function createStep(id: string, key: WizardStep['key'], prompt: string, isOptional?: boolean): WizardStep {
+const BUILTIN_PROMPTS: Record<string, string> = {
+  kaneo_apikey: '🔑 Enter your Kaneo API key:',
+  youtrack_token: '🔑 Enter your YouTrack token:',
+  timezone:
+    '🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5). UTC offsets are accepted and saved as a standard timezone:',
+}
+
+function promptForField(field: ConfigField): string {
+  return BUILTIN_PROMPTS[field.storageKey] ?? `🔑 Enter your ${field.label}:`
+}
+
+function displayLabelForKey(key: string, fallback: string): string {
+  if (key === 'youtrack_token') return 'YouTrack Token'
+  return fallback
+}
+
+function storageKeyForField(
+  descriptor: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>,
+  field: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>['contextConfigSchema'][number],
+): string {
+  if (field.storageKey !== undefined) return field.storageKey
+  return descriptor.source === 'builtin' ? field.key : `plugin:${descriptor.source.plugin}:provider:${field.key}`
+}
+
+function providerFields(taskProvider: string): ConfigField[] {
+  const descriptor = getTaskProviderDescriptor(taskProvider)
+  if (descriptor === undefined) return []
+
+  return descriptor.contextConfigSchema
+    .map(
+      (field): ConfigField => ({
+        key: field.key,
+        storageKey: storageKeyForField(descriptor, field),
+        label: displayLabelForKey(storageKeyForField(descriptor, field), field.label),
+        required: field.required,
+        sensitive: field.sensitive,
+        kind: 'provider-context',
+      }),
+    )
+    .filter((field) => field.storageKey !== KANEO_WORKSPACE_CONFIG_KEY)
+}
+
+function createStep(field: ConfigField, isOptional?: boolean): WizardStep {
   return {
-    id,
-    key,
-    prompt,
-    validate: (value: string) => Promise.resolve(validateStep(key, value)),
+    id: field.storageKey,
+    key: field.storageKey,
+    field,
+    prompt: promptForField(field),
+    validate: (value: string) => Promise.resolve(validateField(field, value)),
     isOptional,
   }
 }
 
-export function getWizardSteps(taskProvider: TaskProvider): WizardStep[] {
-  const providerStep = PROVIDER_SPECIFIC_STEP[taskProvider]
-
-  return [
-    createStep(providerStep.key, providerStep.key, providerStep.prompt),
-    createStep(
-      'timezone',
-      'timezone',
-      '🌍 Enter your timezone (e.g., America/New_York, UTC, UTC+5). UTC offsets are accepted and saved as a standard timezone:',
-    ),
-  ]
+export function getWizardSteps(taskProvider: string): WizardStep[] {
+  return [...providerFields(taskProvider).map((field) => createStep(field)), createStep(TIMEZONE_FIELD)]
 }
 
 function validateApiKey(value: string): string | null {
@@ -76,32 +107,36 @@ export function validateStep(stepId: string, value: string): Promise<string | nu
   return Promise.resolve(result)
 }
 
-export function getStepByIndex(taskProvider: TaskProvider, index: number): WizardStep | undefined {
+function validateField(field: ConfigField, value: string): string | null {
+  if (field.storageKey === 'kaneo_apikey' || field.storageKey === 'kaneo_workspace_id') return validateApiKey(value)
+  if (field.storageKey === 'youtrack_token') return validateToken(value)
+  if (field.storageKey === 'timezone') return validateTimezone(value)
+  return field.required && value.trim().length === 0 ? `${field.label} cannot be empty` : null
+}
+
+export function getStepByIndex(taskProvider: string, index: number): WizardStep | undefined {
   const steps = getWizardSteps(taskProvider)
   return steps[index]
 }
 
-function getDisplayValue(key: ConfigKey, value: string | undefined): string {
+function getDisplayValue(field: ConfigField, value: string | undefined): string {
   if (value === undefined || value === '') {
     return 'Not set'
   }
-  return maskValue(key, value)
+  return field.sensitive ? maskSensitiveValue(value) : maskValue(field.storageKey, value)
 }
 
-export function formatSummary(data: Record<string, string | undefined>, taskProvider: TaskProvider): string {
+export function formatSummary(data: Record<string, string | undefined>, taskProvider: string): string {
   const lines = ['Configuration Summary', '===================', '']
 
-  // Provider-specific
-  if (taskProvider === 'kaneo') {
-    lines.push(`Kaneo API Key: ${getDisplayValue('kaneo_apikey', data['kaneo_apikey'])}`)
-  } else if (taskProvider === 'youtrack') {
-    lines.push(`YouTrack Token: ${getDisplayValue('youtrack_token', data['youtrack_token'])}`)
+  for (const field of providerFields(taskProvider)) {
+    lines.push(`${field.label}: ${getDisplayValue(field, data[field.storageKey])}`)
   }
 
   lines.push('')
 
   // Preferences
-  lines.push(`Timezone: ${getDisplayValue('timezone', data['timezone'])}`)
+  lines.push(`Timezone: ${getDisplayValue(TIMEZONE_FIELD, data['timezone'])}`)
 
   return lines.join('\n')
 }

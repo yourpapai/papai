@@ -8,8 +8,6 @@
  * Separate from wizard - no singleStep hack
  */
 
-import type { ConfigKey } from '../types/config.js'
-
 /**
  * User session tracking for editing a single config field
  */
@@ -17,7 +15,7 @@ export interface ConfigEditorSession {
   userId: string
   storageContextId: string
   startedAt: Date
-  editingKey: ConfigKey
+  editingKey: string
   pendingValue?: string
   originalMessageId?: string
 }
@@ -28,7 +26,7 @@ export interface ConfigEditorSession {
 export interface CreateEditorSessionParams {
   readonly userId: string
   readonly storageContextId: string
-  readonly editingKey: ConfigKey
+  readonly editingKey: string
   readonly originalMessageId?: string
 }
 
@@ -38,7 +36,7 @@ export interface CreateEditorSessionParams {
 export interface EditorButton {
   text: string
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup'
-  key?: ConfigKey
+  key?: string
   style?: 'primary' | 'secondary' | 'danger'
 }
 

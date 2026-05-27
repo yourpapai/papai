@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isConfigKey, type ConfigKey } from '../types/config.js'
+import { isAllowedDynamicConfigKey } from '../types/config.js'
 import type { EditorButton } from './types.js'
 
 const encodeContextId = (id: string): string => Buffer.from(id).toString('base64url')
@@ -32,7 +32,7 @@ export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key
 
 export function parseCallbackData(data: string): {
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup' | null
-  key: ConfigKey | null
+  key: string | null
   targetContextId?: string
 } {
   let targetContextId: string | undefined
@@ -53,12 +53,12 @@ export function parseCallbackData(data: string): {
 
   if (core.startsWith('cfg:edit:')) {
     const key = core.replace('cfg:edit:', '')
-    return isConfigKey(key) ? { action: 'edit', key, targetContextId } : { action: null, key: null }
+    return isAllowedDynamicConfigKey(key) ? { action: 'edit', key, targetContextId } : { action: null, key: null }
   }
 
   if (core.startsWith('cfg:save:')) {
     const key = core.replace('cfg:save:', '')
-    return isConfigKey(key) ? { action: 'save', key, targetContextId } : { action: null, key: null }
+    return isAllowedDynamicConfigKey(key) ? { action: 'save', key, targetContextId } : { action: null, key: null }
   }
 
   return { action: null, key: null }

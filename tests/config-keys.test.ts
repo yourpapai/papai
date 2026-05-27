@@ -3,15 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { getConfigKeysForContext } from '../src/config-keys.js'
+import { getConfigFieldsForContext, getConfigKeysForContext } from '../src/config-keys.js'
 import { setConfig, getAllConfig } from '../src/config.js'
 import { taskInstances } from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../src/providers/registry.js'
+import { createMockProvider } from './tools/mock-provider.js'
 import {
   getTestDb,
   mockLogger,
@@ -85,5 +90,43 @@ describe('getConfigKeysForContext', () => {
     setConfig('ctx-yt', 'timezone', 'UTC')
 
     expect(getAllConfig('ctx-yt')).toEqual({ youtrack_token: 'perm:abc', timezone: 'UTC' })
+  })
+})
+
+describe('getConfigFieldsForContext', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
+  test('includes plugin provider context credentials for the assigned context', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+    })
+    insertTaskInstance({
+      id: 'plugin-prod',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-plugin',
+      taskInstanceId: 'plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const fields = getConfigFieldsForContext('ctx-plugin')
+
+    expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
   })
 })

@@ -7,7 +7,7 @@
  * Wizard state types for interactive configuration setup
  */
 
-import type { ConfigKey } from '../types/config.js'
+import type { ConfigField } from '../types/config.js'
 
 /**
  * User session tracking for the configuration wizard
@@ -20,20 +20,21 @@ export interface WizardSession {
   totalSteps: number
   data: WizardData
   skippedSteps: number[]
-  taskProvider: 'kaneo' | 'youtrack'
+  taskProvider: string
 }
 
 /**
- * Data collected during wizard execution, keyed by ConfigKey
+ * Data collected during wizard execution, keyed by config storage key.
  */
-export type WizardData = Partial<Record<ConfigKey, string>>
+export type WizardData = Partial<Record<string, string>>
 
 /**
  * Individual step definition in the wizard
  */
 export interface WizardStep {
   id: string
-  key: ConfigKey
+  key: string
+  field: ConfigField
   prompt: string
   validate: (value: string) => Promise<string | null>
   isOptional?: boolean

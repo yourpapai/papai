@@ -8,7 +8,7 @@
  * Validates user input for configuration fields
  */
 
-import type { ConfigKey } from '../types/config.js'
+import type { ConfigField, ConfigKey } from '../types/config.js'
 import { normalizeTimezone } from '../utils/timezone.js'
 import type { ValidationResult } from './types.js'
 
@@ -44,4 +44,12 @@ export function validateConfigValue(key: ConfigKey, value: string): ValidationRe
     default:
       return { valid: true }
   }
+}
+
+export function validateConfigField(field: ConfigField, value: string): ValidationResult {
+  if (field.required && value.trim().length === 0) {
+    return { valid: false, error: `${field.label} cannot be empty` }
+  }
+  if (field.storageKey === 'timezone') return validateTimezone(value)
+  return { valid: true }
 }

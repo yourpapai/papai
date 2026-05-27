@@ -8,47 +8,34 @@
  * Button callback and message handlers for standalone config editing
  */
 
-import { getConfigKeysForContext } from '../config-keys.js'
-import { getConfig, isSensitiveKey, maskValue, setConfig } from '../config.js'
+import { getConfigFieldsForContext } from '../config-keys.js'
+import { getConfigValue, isSensitiveKey, maskSensitiveValue, maskValue, setConfigValue } from '../config.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
-import type { ConfigKey } from '../types/config.js'
+import type { ConfigField } from '../types/config.js'
 import { createEditorSession, deleteEditorSession, getEditorSession, updateEditorSession } from './state.js'
 import type { EditorButton, EditorProcessResult } from './types.js'
-import { validateConfigValue } from './validation.js'
+import { validateConfigField } from './validation.js'
 
 export { parseCallbackData, serializeCallbackData } from './callback-data.js'
 
 const log = logger.child({ scope: 'config-editor:handlers' })
 
-const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
-  kaneo_apikey: 'Kaneo API Key',
-  kaneo_workspace_id: 'Kaneo Workspace ID',
-  youtrack_token: 'YouTrack Token',
-  timezone: 'Timezone',
+function getFieldEmoji(field: ConfigField): string {
+  if (field.storageKey === 'timezone') return '🌍'
+  return field.sensitive ? '🔐' : '⚙️'
 }
 
-function getFieldEmoji(key: ConfigKey): string {
-  const emojiMap: Record<ConfigKey, string> = {
-    kaneo_apikey: '🔐',
-    kaneo_workspace_id: '📁',
-    youtrack_token: '🔐',
-    timezone: '🌍',
-  }
-  return emojiMap[key] ?? '⚙️'
+function getFieldForContext(storageContextId: string, key: string): ConfigField | undefined {
+  return getConfigFieldsForContext(storageContextId).find((field) => field.storageKey === key)
 }
 
-function isKeyValidForContext(storageContextId: string, key: ConfigKey): boolean {
-  return getConfigKeysForContext(storageContextId).includes(key)
-}
-
-function formatConfigLine(key: ConfigKey, value: string | undefined): string {
-  const displayName = FIELD_DISPLAY_NAMES[key]
-  const emoji = getFieldEmoji(key)
+function formatConfigLine(field: ConfigField, value: string | undefined): string {
+  const emoji = getFieldEmoji(field)
   if (value === undefined) {
-    return `${emoji} ${displayName}: *(not set)*`
+    return `${emoji} ${field.label}: *(not set)*`
   }
-  return `${emoji} ${displayName}: ${maskValue(key, value)}`
+  return `${emoji} ${field.label}: ${field.sensitive ? maskSensitiveValue(value) : value}`
 }
 
 /**
@@ -58,16 +45,16 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
   const lines = ['⚙️ **Configuration**\n']
   const buttons: EditorButton[] = []
 
-  const configKeys = getConfigKeysForContext(storageContextId)
+  const configFields = getConfigFieldsForContext(storageContextId)
 
-  for (const key of configKeys) {
-    const value = getConfig(storageContextId, key)
+  for (const field of configFields) {
+    const value = getConfigValue(storageContextId, field.storageKey)
 
-    lines.push(formatConfigLine(key, value ?? undefined))
+    lines.push(formatConfigLine(field, value ?? undefined))
     buttons.push({
-      text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
+      text: `${getFieldEmoji(field)} ${field.label}`,
       action: 'edit',
-      key,
+      key: field.storageKey,
       style: value === null ? 'secondary' : 'primary',
     })
   }
@@ -80,30 +67,30 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
 /**
  * Start editing a specific config field
  */
-export function startEditor(userId: string, storageContextId: string, key: ConfigKey): EditorProcessResult {
-  if (!isKeyValidForContext(storageContextId, key)) {
+export function startEditor(userId: string, storageContextId: string, key: string): EditorProcessResult {
+  const field = getFieldForContext(storageContextId, key)
+  if (field === undefined) {
     return { handled: true, response: `Config key "${key}" is not valid for this context.` }
   }
 
   createEditorSession({ userId, storageContextId, editingKey: key })
 
-  const currentValue = getConfig(storageContextId, key)
-  const displayName = FIELD_DISPLAY_NAMES[key]
-  const emoji = getFieldEmoji(key)
+  const currentValue = getConfigValue(storageContextId, key)
+  const emoji = getFieldEmoji(field)
 
   let valueDisplay: string
   if (currentValue === null) {
     valueDisplay = '(not set)'
   } else {
-    valueDisplay = maskValue(key, currentValue)
+    valueDisplay = field.sensitive ? maskSensitiveValue(currentValue) : maskValue(key, currentValue)
   }
 
   const lines = [
-    `✏️ Edit ${displayName}`,
+    `✏️ Edit ${field.label}`,
     '',
     `Current value: ${valueDisplay}`,
     '',
-    `Enter new value for ${emoji} ${displayName}:`,
+    `Enter new value for ${emoji} ${field.label}:`,
   ]
 
   log.info({ userId, storageContextId, key }, 'Started config editor')
@@ -126,22 +113,22 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
     return { handled: false }
   }
 
-  if (!isKeyValidForContext(storageContextId, session.editingKey)) {
+  const field = getFieldForContext(storageContextId, session.editingKey)
+  if (field === undefined) {
     deleteEditorSession(userId, storageContextId)
     return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
   }
 
-  setConfig(storageContextId, session.editingKey, session.pendingValue)
+  setConfigValue(storageContextId, session.editingKey, session.pendingValue)
   deleteEditorSession(userId, storageContextId)
 
-  const displayName = FIELD_DISPLAY_NAMES[session.editingKey]
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value saved')
 
   emitUser('config_editor:closed', userId, { userId })
 
   return {
     handled: true,
-    response: `✅ **${displayName}** saved successfully.`,
+    response: `✅ **${field.label}** saved successfully.`,
     buttons: [{ text: '⬅️ Back to Config', action: 'back', style: 'primary' }],
   }
 }
@@ -179,7 +166,7 @@ export function handleEditorCallback(
   userId: string,
   storageContextId: string,
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup',
-  key?: ConfigKey,
+  key?: string,
 ): EditorProcessResult {
   switch (action) {
     case 'edit':
@@ -206,18 +193,18 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
     return { handled: false }
   }
 
-  if (!isKeyValidForContext(storageContextId, session.editingKey)) {
+  const field = getFieldForContext(storageContextId, session.editingKey)
+  if (field === undefined) {
     deleteEditorSession(userId, storageContextId)
     return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
   }
 
   // Validate the input
-  const validation = validateConfigValue(session.editingKey, text)
+  const validation = validateConfigField(field, text)
   if (!validation.valid) {
-    const displayName = FIELD_DISPLAY_NAMES[session.editingKey]
     return {
       handled: true,
-      response: `❌ **${validation.error}**\n\nPlease enter a valid value for ${displayName}:`,
+      response: `❌ **${validation.error}**\n\nPlease enter a valid value for ${field.label}:`,
       buttons: [
         { text: '❌ Cancel', action: 'cancel', style: 'danger' },
         { text: '⬅️ Back', action: 'back', style: 'secondary' },
@@ -228,11 +215,10 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
   // Store pending value
   updateEditorSession(userId, storageContextId, { pendingValue: text.trim() })
 
-  const displayName = FIELD_DISPLAY_NAMES[session.editingKey]
-  const emoji = getFieldEmoji(session.editingKey)
-  const sensitiveKey = isSensitiveKey(session.editingKey)
+  const emoji = getFieldEmoji(field)
+  const sensitiveKey = field.sensitive || isSensitiveKey(session.editingKey)
   const trimmedText = text.trim()
-  const maskedOrRaw = sensitiveKey ? maskValue(session.editingKey, trimmedText) : trimmedText
+  const maskedOrRaw = sensitiveKey ? maskSensitiveValue(trimmedText) : trimmedText
 
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value entered, awaiting confirmation')
 
@@ -240,7 +226,7 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
 
   return {
     handled: true,
-    response: `✏️ **${displayName}**\n\nNew value: \`${maskedOrRaw}\`\n\nSave this value?`,
+    response: `✏️ **${field.label}**\n\nNew value: \`${maskedOrRaw}\`\n\nSave this value?`,
     buttons: [
       { text: '❌ Cancel', action: 'cancel', style: 'danger' },
       { text: '⬅️ Back', action: 'back', style: 'secondary' },

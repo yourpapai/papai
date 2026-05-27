@@ -5,18 +5,63 @@
 
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
-import type { ConfigKey } from './types/config.js'
+import { getTaskProviderDescriptor } from './providers/registry.js'
+import { isConfigKey, KANEO_WORKSPACE_CONFIG_KEY, type ConfigField, type ConfigKey } from './types/config.js'
 
 const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone']
+const PREFERENCE_FIELDS: readonly ConfigField[] = [
+  {
+    key: 'timezone',
+    storageKey: 'timezone',
+    label: 'Timezone',
+    required: true,
+    sensitive: false,
+    kind: 'preference',
+  },
+]
 
-export function getConfigKeysForContext(contextId: string): readonly ConfigKey[] {
+const storageKeyForProviderField = (
+  descriptor: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>,
+  field: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>['contextConfigSchema'][number],
+): string => {
+  if (field.storageKey !== undefined) return field.storageKey
+  return descriptor.source === 'builtin' ? field.key : `plugin:${descriptor.source.plugin}:provider:${field.key}`
+}
+
+function labelForStorageKey(storageKey: string, fallback: string): string {
+  if (storageKey === 'youtrack_token') return 'YouTrack Token'
+  return fallback
+}
+
+export function getConfigFieldsForContext(contextId: string): readonly ConfigField[] {
   const settings = getContextSettings(contextId)
-  if (settings === null) return PREFERENCE_KEYS
+  if (settings === null) return PREFERENCE_FIELDS
 
   const instance = getTaskInstance(settings.taskInstanceId)
-  if (instance === null || instance.status !== 'active') return PREFERENCE_KEYS
+  if (instance === null || instance.status !== 'active') return PREFERENCE_FIELDS
 
-  if (instance.type === 'youtrack') return ['youtrack_token', ...PREFERENCE_KEYS]
-  if (instance.type === 'kaneo') return ['kaneo_apikey', ...PREFERENCE_KEYS]
-  return PREFERENCE_KEYS
+  const descriptor = getTaskProviderDescriptor(instance.type)
+  if (descriptor === undefined) return PREFERENCE_FIELDS
+
+  const providerFields = descriptor.contextConfigSchema
+    .map(
+      (field): ConfigField => ({
+        key: field.key,
+        storageKey: storageKeyForProviderField(descriptor, field),
+        label: labelForStorageKey(storageKeyForProviderField(descriptor, field), field.label),
+        required: field.required,
+        sensitive: field.sensitive,
+        kind: 'provider-context',
+      }),
+    )
+    .filter((field) => field.storageKey !== KANEO_WORKSPACE_CONFIG_KEY)
+
+  return [...providerFields, ...PREFERENCE_FIELDS]
+}
+
+export function getConfigKeysForContext(contextId: string): readonly ConfigKey[] {
+  const keys = getConfigFieldsForContext(contextId)
+    .map((field) => field.storageKey)
+    .filter((key): key is ConfigKey => isConfigKey(key))
+  return keys.length === 0 ? PREFERENCE_KEYS : keys
 }

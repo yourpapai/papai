@@ -9,8 +9,9 @@
  * not per-user — so no live LLM validation runs here.
  */
 
-import { isConfigKey, setConfig } from '../config.js'
+import { setConfigValue } from '../config.js'
 import { logger } from '../logger.js'
+import { isAllowedDynamicConfigKey } from '../types/config.js'
 import { deleteWizardSession, getWizardSession } from './state.js'
 
 const log = logger.child({ scope: 'wizard:save' })
@@ -28,8 +29,8 @@ function saveValidatedConfig(
 ): SaveWizardResult {
   let savedCount = 0
   for (const [key, value] of Object.entries(session.data)) {
-    if (value !== undefined && value !== '' && isConfigKey(key)) {
-      setConfig(session.storageContextId, key, value)
+    if (value !== undefined && value !== '' && isAllowedDynamicConfigKey(key)) {
+      setConfigValue(session.storageContextId, key, value)
       savedCount++
     }
   }

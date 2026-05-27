@@ -3,11 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
 import { getWizardSteps, validateStep, getStepByIndex, formatSummary } from '../../src/wizard/steps.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 
 describe('getWizardSteps', () => {
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
   test('returns the two-step provider+timezone wizard for kaneo', () => {
     const steps = getWizardSteps('kaneo')
 
@@ -61,6 +70,21 @@ describe('getWizardSteps', () => {
     for (const step of steps) {
       expect(typeof step.validate).toBe('function')
     }
+  })
+
+  test('returns plugin provider context credential steps', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+    })
+
+    const steps = getWizardSteps('plugin-tracker')
+
+    expect(steps.map((step) => step.key)).toEqual(['plugin:plugin-tracker:provider:token', 'timezone'])
+    expect(steps[0]?.field.label).toBe('Plugin Token')
   })
 })
 

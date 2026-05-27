@@ -21,7 +21,7 @@ export interface CreateWizardSessionParams {
   readonly userId: string
   readonly storageContextId: string
   readonly totalSteps: number
-  readonly taskProvider: 'kaneo' | 'youtrack'
+  readonly taskProvider: string
   readonly initialData?: WizardData
 }
 
@@ -206,7 +206,7 @@ export type WizardSnapshot = {
   startedAt: string
   currentStep: number
   totalSteps: number
-  taskProvider: 'kaneo' | 'youtrack'
+  taskProvider: string
   skippedSteps: number[]
   dataKeys: string[]
 }

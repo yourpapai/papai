@@ -8,15 +8,15 @@ import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/cap
 import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { ChatButton, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
 import { serializeCallbackData } from '../config-editor/index.js'
-import { getConfigKeysForContext } from '../config-keys.js'
-import { getAllConfig, getPluginConfig, maskValue } from '../config.js'
+import { getConfigFieldsForContext } from '../config-keys.js'
+import { getConfigValue, getPluginConfig, maskSensitiveValue, maskValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
 import { getToolPrefs } from '../tools/tool-preferences.js'
-import type { ConfigKey } from '../types/config.js'
+import type { ConfigField } from '../types/config.js'
 
 const log = logger.child({ scope: 'commands:config' })
 const GROUP_CONFIG_REDIRECT =
@@ -26,39 +26,24 @@ const GROUP_CONFIG_ADMIN_ONLY =
 const NO_DELETE_WARNING =
   '⚠️ This platform does not support automatic deletion of messages containing secrets. Please manually delete your messages after entering API keys and tokens.\n\n'
 
-const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
-  kaneo_apikey: 'Kaneo API Key',
-  kaneo_workspace_id: 'Kaneo Workspace ID',
-  youtrack_token: 'YouTrack Token',
-  timezone: 'Timezone',
+function getFieldEmoji(field: ConfigField): string {
+  if (field.storageKey === 'timezone') return '🌍'
+  return field.sensitive ? '🔐' : '⚙️'
 }
 
-function getFieldEmoji(key: ConfigKey): string {
-  const emojiMap: Record<ConfigKey, string> = {
-    kaneo_apikey: '🔐',
-    kaneo_workspace_id: '📁',
-    youtrack_token: '🔐',
-    timezone: '🌍',
-  }
-  const emoji = emojiMap[key]
-  if (emoji === undefined) return '⚙️'
-  return emoji
-}
-
-function formatConfigLine(key: ConfigKey, value: string | undefined): string {
-  const displayName = FIELD_DISPLAY_NAMES[key]
-  const emoji = getFieldEmoji(key)
+function formatConfigLine(field: ConfigField, value: string | undefined): string {
+  const emoji = getFieldEmoji(field)
   if (value === undefined) {
-    return `${emoji} ${displayName}: *(not set)*`
+    return `${emoji} ${field.label}: *(not set)*`
   }
-  return `${emoji} ${displayName}: ${maskValue(key, value)}`
+  return `${emoji} ${field.label}: ${field.sensitive ? maskSensitiveValue(value) : maskValue(field.storageKey, value)}`
 }
 
-function buildConfigButtons(config: Partial<Record<ConfigKey, string>>, targetContextId: string): ChatButton[] {
-  const buttons: ChatButton[] = getConfigKeysForContext(targetContextId).map((key) => ({
-    text: `${getFieldEmoji(key)} ${FIELD_DISPLAY_NAMES[key]}`,
-    callbackData: serializeCallbackData({ action: 'edit', key }, targetContextId),
-    style: config[key] === undefined ? 'secondary' : 'primary',
+function buildConfigButtons(fields: readonly ConfigField[], targetContextId: string): ChatButton[] {
+  const buttons: ChatButton[] = fields.map((field) => ({
+    text: `${getFieldEmoji(field)} ${field.label}`,
+    callbackData: serializeCallbackData({ action: 'edit', key: field.storageKey }, targetContextId),
+    style: getConfigValue(targetContextId, field.storageKey) === null ? 'secondary' : 'primary',
   }))
   buttons.push({
     text: '🔄 Full Setup',
@@ -142,11 +127,11 @@ export async function renderConfigForTarget(
   targetContextId: string,
   interactiveButtons: boolean,
 ): Promise<void> {
-  const config = getAllConfig(targetContextId)
+  const fields = getConfigFieldsForContext(targetContextId)
   const lines = ['⚙️ **Current Configuration**\n']
 
-  getConfigKeysForContext(targetContextId).forEach((key) => {
-    lines.push(formatConfigLine(key, config[key]))
+  fields.forEach((field) => {
+    lines.push(formatConfigLine(field, getConfigValue(targetContextId, field.storageKey) ?? undefined))
   })
   const aiOutputSection = buildAiOutputConfigSection(targetContextId)
   lines.push(...aiOutputSection.lines)
@@ -165,7 +150,7 @@ export async function renderConfigForTarget(
   lines.push('\n💡 Click a field below to edit it, or use `/setup` to configure everything.')
   await reply.buttons(lines.join('\n'), {
     buttons: [
-      ...buildConfigButtons(config, targetContextId),
+      ...buildConfigButtons(fields, targetContextId),
       ...aiOutputSection.buttons,
       ...buildPluginButtons(targetContextId),
       {
