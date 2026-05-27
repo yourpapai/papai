@@ -79,7 +79,8 @@ describe('bootstrapInstancesFromEnv', () => {
     const tasks = listTaskInstances()
     expect(tasks).toHaveLength(1)
     expect(tasks[0]?.type).toBe('kaneo')
-    expect(tasks[0]?.config['url']).toBe('https://kaneo.invalid')
+    expect(tasks[0]?.config).toMatchObject({ baseUrl: 'https://kaneo.invalid' })
+    expect(tasks[0]?.config).not.toHaveProperty('url')
 
     expect(isAdmin('admin-1', SUPER_ADMIN_PLATFORM_ID)).toBe(true)
     expect(isAdmin('admin-1', 'telegram-default')).toBe(true)
@@ -155,6 +156,28 @@ describe('bootstrapInstancesFromEnv', () => {
       taskInstanceId: 'kaneo-default',
     })
     expect(listPlatformInstances()[0]?.config['token']).toBe('dc-token')
+  })
+
+  test('empty DB + complete mattermost + youtrack env writes descriptor-shaped baseUrl configs', () => {
+    process.env['CHAT_PROVIDER'] = 'mattermost'
+    process.env['TASK_PROVIDER'] = 'youtrack'
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    process.env['MATTERMOST_URL'] = 'https://mattermost.invalid'
+    process.env['MATTERMOST_BOT_TOKEN'] = 'mm-token'
+    process.env['YOUTRACK_URL'] = 'https://youtrack.invalid'
+
+    const result = bootstrapInstancesFromEnv()
+
+    expect(result).toEqual({
+      bootstrapped: true,
+      platformInstanceId: 'mattermost-default',
+      taskInstanceId: 'youtrack-default',
+    })
+
+    expect(listPlatformInstances()[0]?.config).toMatchObject({ baseUrl: 'https://mattermost.invalid' })
+    expect(listPlatformInstances()[0]?.config).not.toHaveProperty('url')
+    expect(listTaskInstances()[0]?.config).toMatchObject({ baseUrl: 'https://youtrack.invalid' })
+    expect(listTaskInstances()[0]?.config).not.toHaveProperty('url')
   })
 
   test('bootstrap is atomic: a failure mid-seed leaves the DB clean', () => {
