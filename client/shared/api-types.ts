@@ -199,6 +199,16 @@ export type ProviderConfigRequirementView = {
   readonly storageKey?: string
 }
 
+export type PlatformProviderTypeView = Readonly<{
+  type: PlatformInstanceView['type']
+  displayName: string
+  instanceConfigSchema: readonly ProviderConfigRequirementView[]
+  contextConfigSchema: readonly ProviderConfigRequirementView[]
+  capabilities: readonly string[]
+  traits: readonly string[]
+  source: 'builtin'
+}>
+
 export type TaskProviderTypeView = Readonly<{
   type: string
   displayName: string

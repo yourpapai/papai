@@ -44,6 +44,16 @@ export const TaskProviderTypeViewSchema = z.object({
   source: z.union([z.literal('builtin'), z.object({ plugin: z.string().min(1) })]),
 })
 
+export const PlatformProviderTypeViewSchema = z.object({
+  type: z.enum(['telegram', 'mattermost', 'discord']),
+  displayName: z.string(),
+  instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  capabilities: z.array(z.string()),
+  traits: z.array(z.string()),
+  source: z.literal('builtin'),
+})
+
 export const AdminInstanceViewSchema = z.object({
   userId: z.string(),
   platformInstanceId: z.string(),
