@@ -81,6 +81,19 @@ describe('config-editor public API', () => {
     expect(parsed.targetContextId).toBe('group-9')
   })
 
+  test('serializeCallbackData uses compact callback ids for long dynamic keys', () => {
+    const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
+    const data = serializeCallbackData({ action: 'edit', key }, 'managed-group-context-with-long-id')
+
+    expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+    expect(data).not.toContain(key)
+    expect(parseCallbackData(data)).toEqual({
+      action: 'edit',
+      key,
+      targetContextId: 'managed-group-context-with-long-id',
+    })
+  })
+
   test('parseCallbackData returns targetContextId from encoded callback', () => {
     const encoded = serializeCallbackData({ action: 'cancel' }, 'group-42')
     const parsed = parseCallbackData(encoded)

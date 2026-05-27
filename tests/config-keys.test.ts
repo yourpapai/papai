@@ -129,4 +129,39 @@ describe('getConfigFieldsForContext', () => {
 
     expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
   })
+
+  test('ignores plugin provider context storageKey and uses namespaced dynamic key', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      configSchema: [
+        {
+          key: 'token',
+          storageKey: 'custom_token',
+          label: 'Plugin Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+    insertTaskInstance({
+      id: 'plugin-prod',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-plugin',
+      taskInstanceId: 'plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const fields = getConfigFieldsForContext('ctx-plugin')
+
+    expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
+    expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
+  })
 })

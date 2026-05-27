@@ -14,6 +14,11 @@ import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { clearUserCache } from '../utils/test-cache.js'
 import {
   createAuth,
@@ -172,6 +177,57 @@ describe('/config Command', () => {
       expect(buttonCalls[0]).toContain('YouTrack Token')
       expect(buttonCalls[0]).toContain('Timezone')
       expect(buttonCalls[0]).not.toContain('Kaneo API Key')
+    })
+
+    test('renders compact callback payloads for long plugin provider context keys', async () => {
+      const callbackData: string[] = []
+      registerContributedTaskProviderType('very-long-plugin-provider-name', {
+        pluginId: 'very-long-plugin-provider-name',
+        factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
+        capabilities: new Set(),
+        displayName: 'Long Plugin Provider',
+        configSchema: [
+          {
+            key: 'very-long-context-token-field',
+            label: 'Plugin Token',
+            required: true,
+            sensitive: true,
+            scope: 'context',
+          },
+        ],
+      })
+      try {
+        insertTaskInstance({
+          id: 'long-plugin-prod',
+          type: 'very-long-plugin-provider-name',
+          config: { baseUrl: 'https://plugin.invalid' },
+          status: 'active',
+        })
+        setContextSettings({
+          contextId: USER_ID,
+          taskInstanceId: 'long-plugin-prod',
+          platformInstanceId: 'telegram-default',
+        })
+        const { reply } = createMockReply()
+
+        await renderConfigForTarget(
+          {
+            ...reply,
+            buttons: (_content, options): Promise<void> => {
+              assert.ok(options.buttons !== undefined, 'expected options.buttons to be defined')
+              callbackData.push(...options.buttons.map((button) => button.callbackData))
+              return Promise.resolve()
+            },
+          },
+          USER_ID,
+          true,
+        )
+      } finally {
+        unregisterContributedTaskProviderType('very-long-plugin-provider-name')
+      }
+
+      expect(callbackData.some((data) => data.length > 0)).toBe(true)
+      expect(callbackData.every((data) => Buffer.byteLength(data, 'utf8') <= 64)).toBe(true)
     })
 
     test('shows missing required plugin config under an unavailable plugin', async () => {
