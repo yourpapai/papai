@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { TaskProvider } from '../providers/types.js'
+import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
 
@@ -78,6 +79,16 @@ function buildTaskProviderFacade(
   }) satisfies PluginTaskProviderFacade
 }
 
+function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
+  return Object.freeze({
+    check(actorId: string): { allowed: boolean; retryAfterSec?: number } {
+      const result = consumeWebFetchQuota(actorId)
+      if (result.allowed) return { allowed: true }
+      return { allowed: false, retryAfterSec: result.retryAfterSec }
+    },
+  })
+}
+
 export function buildPluginToolRuntimeContext(
   pluginId: string,
   manifest: PluginManifest,
@@ -95,5 +106,6 @@ export function buildPluginToolRuntimeContext(
       permissions.has('tasks.write'),
     ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
+    rateLimit: buildRateLimit(),
   })
 }

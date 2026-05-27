@@ -234,6 +234,9 @@ export type PluginToolRuntimeContext = {
   chatUserId: string
   taskProvider: PluginTaskProviderFacade
   kv: PluginContext['kv']
+  rateLimit: {
+    check(actorId: string): { allowed: boolean; retryAfterSec?: number }
+  }
 }
 
 export type PluginTool = {
