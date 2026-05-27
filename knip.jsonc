@@ -114,6 +114,8 @@
     "client/admin/global-stats.svelte.ts": ["types"],
     "client/admin/fetcher-schemas.ts": ["files", "exports"],
     "client/admin/fetchers.ts": ["files", "exports", "types"],
+    "client/admin/plugin-config-fetcher-schemas.ts": ["files", "exports"],
+    "client/admin/plugin-config-fetchers.ts": ["files", "exports"],
     "client/admin/index.ts": ["files", "exports"],
     "client/admin/scrollspy.ts": ["exports"],
     "client/shared/fetcher-helpers.ts": ["files", "exports"],
