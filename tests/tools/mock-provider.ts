@@ -258,6 +258,14 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
   }
 }
 
+export function createMockKaneoProvider(overrides: Partial<TaskProvider> = {}): TaskProvider {
+  return createMockProvider({
+    name: 'kaneo',
+    traits: new Set<TaskProviderTrait>(['task-label-read-requires-provider-specific-api']),
+    ...overrides,
+  })
+}
+
 export function createMockYouTrackProvider(overrides: Partial<TaskProvider> = {}): TaskProvider {
   return createMockProvider({
     name: 'youtrack',
