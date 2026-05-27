@@ -34,7 +34,7 @@ export const mcpPluginConfigSchema = z
     args: z.array(z.string()).optional(),
     env: z.record(z.string(), z.string()).optional(),
     toolFilter: toolFilterSchema.optional(),
-    idleTimeoutMs: z.number().int().positive().optional(),
+    idleTimeoutMs: z.number().int().positive().min(1000).max(3_600_000).optional(),
   })
   .refine(
     (data) => {
@@ -49,15 +49,15 @@ export const mcpPluginConfigSchema = z
 
 export type McpPluginConfig = z.output<typeof mcpPluginConfigSchema>
 
-export type McpServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
+export type McpServerStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'idle'
 
 export type McpServerInfo = {
   id: string
-  label: string | undefined
+  label: string | null
   status: McpServerStatus
   toolCount: number
-  lastError: string | undefined
-  lastConnectedAt: number | undefined
+  lastError: string | null
+  lastConnectedAt: number | null
 }
 
 export function sanitizeServerId(input: string): string {
