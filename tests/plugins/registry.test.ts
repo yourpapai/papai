@@ -375,7 +375,9 @@ describe('singleton registry helpers', () => {
         id: pluginId,
         name: 'Required Config Plugin',
         defaultEnabled: true,
-        configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+        configRequirements: [
+          { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
+        ],
       },
       manifestHash: 'hash-required-config',
     })
@@ -401,7 +403,9 @@ describe('singleton registry helpers', () => {
         id: pluginId,
         name: 'Optional Config Plugin',
         defaultEnabled: true,
-        configRequirements: [{ key: 'project_hint', label: 'Project Hint', required: false, sensitive: false }],
+        configRequirements: [
+          { key: 'project_hint', label: 'Project Hint', required: false, sensitive: false, scope: 'context' },
+        ],
       },
       manifestHash: 'hash-optional-config',
     })
@@ -423,7 +427,9 @@ describe('singleton registry helpers', () => {
         id: pluginId,
         name: 'Configured Plugin',
         defaultEnabled: false,
-        configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+        configRequirements: [
+          { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
+        ],
       },
       manifestHash: 'hash-configured-plugin',
     })

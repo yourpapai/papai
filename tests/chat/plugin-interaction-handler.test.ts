@@ -40,7 +40,7 @@ function makePlugin(pluginId: string): DiscoveredPlugin {
       activationTimeoutMs: 5000,
       requiredTaskCapabilities: [],
       requiredChatCapabilities: [],
-      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true }],
+      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' }],
       providerCapabilities: [],
       providerConfigSchema: [],
       providerAllowedHosts: [],

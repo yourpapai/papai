@@ -213,6 +213,32 @@ describe('pluginManifestSchema', () => {
     })
   })
 
+  describe('configRequirements scope', () => {
+    test('defaults scope to context when not specified', () => {
+      const data = pluginManifestSchema.parse({
+        ...baseManifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true }],
+      })
+      expect(data.configRequirements[0]!.scope).toBe('context')
+    })
+
+    test('accepts scope admin', () => {
+      const data = pluginManifestSchema.parse({
+        ...baseManifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+      })
+      expect(data.configRequirements[0]!.scope).toBe('admin')
+    })
+
+    test('rejects invalid scope values', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'invalid' }],
+      })
+      expect(result.success).toBe(false)
+    })
+  })
+
   test('accepts a full featured manifest', () => {
     const result = pluginManifestSchema.safeParse({
       ...baseManifest,
