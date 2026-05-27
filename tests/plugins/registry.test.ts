@@ -23,6 +23,7 @@ import {
 import {
   getPluginAdminState,
   isPluginEnabledForContext as storeIsEnabled,
+  setPluginAdminConfig,
   updatePluginAdminStateField,
 } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginState } from '../../src/plugins/types.js'
@@ -550,5 +551,52 @@ describe('singleton registry helpers', () => {
     pluginRegistry.markActive(pluginId)
 
     expect(getPluginContextEligibility(pluginId, 'ctx-without-settings')).toEqual({ eligible: true })
+  })
+
+  test('returns config_missing when required admin config is not set', () => {
+    const pluginId = 'admin-config-missing-plugin'
+    const contextId = 'ctx-admin-config-missing'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Admin Config Missing Plugin',
+        defaultEnabled: true,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+      },
+      manifestHash: 'hash-admin-config-missing',
+    })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-admin-config-missing')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({
+      eligible: false,
+      reason: 'config_missing',
+      missingKeys: ['api_key'],
+    })
+  })
+
+  test('returns eligible when required admin config is set', () => {
+    const pluginId = 'admin-config-set-plugin'
+    const contextId = 'ctx-admin-config-set'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Admin Config Set Plugin',
+        defaultEnabled: true,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+      },
+      manifestHash: 'hash-admin-config-set',
+    })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-admin-config-set')
+    pluginRegistry.markActive(pluginId)
+    setPluginAdminConfig(pluginId, 'api_key', 'sk-test-123', 'admin')
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({ eligible: true })
   })
 })
