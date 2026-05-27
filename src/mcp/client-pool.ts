@@ -25,6 +25,19 @@ type PoolEntry = {
   lastConnectedAt: number | null
   idleTimer: ReturnType<typeof setTimeout> | null
   idleTimeoutMs: number
+  url: string
+  headers?: Record<string, string>
+}
+
+function buildClientAndTransport(
+  url: string,
+  headers?: Record<string, string>,
+): { client: Client; transport: StreamableHTTPClientTransport } {
+  const client = new Client({ name: 'papai-mcp-client', version: '1.0.0' })
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: headers ? { headers } : undefined,
+  })
+  return { client, transport }
 }
 
 function computeHash(parts: Record<string, unknown>): string {
@@ -57,10 +70,21 @@ function pluginHash(pluginId: string, mcp: McpPluginConfig): string {
 export class McpConnectionPool {
   private entries = new Map<string, PoolEntry>()
 
+  /**
+   * Returns a connection handle for the given user endpoint config.
+   * Connection is eager: the MCP client connects immediately on first call
+   * or when the previous idle connection needs to be re-established.
+   *
+   * Throws if the connection fails after retry — callers should catch and
+   * skip the server for that invocation.
+   */
   async getOrCreateFromUser(endpoint: McpEndpointConfig): Promise<{ hash: string; client: Client }> {
     const hash = endpointHash(endpoint)
     const existing = this.entries.get(hash)
     if (existing) {
+      if (existing.status === 'idle' || existing.status === 'error') {
+        await this.reconnectEntry(existing)
+      }
       return { hash, client: existing.client }
     }
 
@@ -72,10 +96,21 @@ export class McpConnectionPool {
     return { hash, client: entry.client }
   }
 
+  /**
+   * Returns a connection handle for the given plugin MCP config.
+   * Connection is eager: the MCP client connects immediately on first call
+   * or when the previous idle connection needs to be re-established.
+   *
+   * Throws if the connection fails after retry — callers should catch and
+   * skip the server for that invocation.
+   */
   async getOrCreateFromPlugin(pluginId: string, mcp: McpPluginConfig): Promise<{ hash: string; client: Client }> {
     const hash = pluginHash(pluginId, mcp)
     const existing = this.entries.get(hash)
     if (existing) {
+      if (existing.status === 'idle' || existing.status === 'error') {
+        await this.reconnectEntry(existing)
+      }
       return { hash, client: existing.client }
     }
 
@@ -128,7 +163,13 @@ export class McpConnectionPool {
         clearTimeout(entry.idleTimer)
         entry.idleTimer = null
       }
-      closePromises.push(entry.client.close())
+      if (entry.status === 'connected' || entry.status === 'connecting') {
+        closePromises.push(
+          entry.client.close().catch(() => {
+            // ignore close errors during shutdown
+          }),
+        )
+      }
     }
     await Promise.all(closePromises)
     this.entries.clear()
@@ -139,10 +180,7 @@ export class McpConnectionPool {
     label: string,
     opts: { url: string; headers?: Record<string, string>; idleTimeoutMs?: number },
   ): Promise<PoolEntry> {
-    const client = new Client({ name: 'papai-mcp-client', version: '1.0.0' })
-    const transport = new StreamableHTTPClientTransport(new URL(opts.url), {
-      requestInit: opts.headers ? { headers: opts.headers } : undefined,
-    })
+    const { client, transport } = buildClientAndTransport(opts.url, opts.headers)
 
     const entry: PoolEntry = {
       hash,
@@ -155,34 +193,59 @@ export class McpConnectionPool {
       lastConnectedAt: null,
       idleTimer: null,
       idleTimeoutMs: opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+      url: opts.url,
+      headers: opts.headers,
     }
 
     this.entries.set(hash, entry)
-
     try {
-      await client.connect(transport)
-      entry.status = 'connected'
-      entry.lastConnectedAt = Date.now()
-      entry.lastError = null
-      this.resetIdleTimer(entry)
+      await this.connectWithRetry(entry)
+    } catch (err) {
+      this.entries.delete(hash)
+      throw err
+    }
+    return entry
+  }
+
+  private async reconnectEntry(entry: PoolEntry): Promise<void> {
+    const { client, transport } = buildClientAndTransport(entry.url, entry.headers)
+
+    entry.client = client
+    entry.transport = transport
+    entry.status = 'connecting'
+    try {
+      await this.connectWithRetry(entry)
+    } catch (err) {
+      this.entries.delete(entry.hash)
+      throw err
+    }
+  }
+
+  private async connectWithRetry(entry: PoolEntry): Promise<void> {
+    try {
+      await entry.client.connect(entry.transport)
+      this.markConnected(entry)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      logger.warn({ hash, error: msg }, 'MCP connection failed, retrying once')
+      logger.warn({ hash: entry.hash, error: msg }, 'MCP connection failed, retrying once')
       try {
-        await client.connect(transport)
-        entry.status = 'connected'
-        entry.lastConnectedAt = Date.now()
-        entry.lastError = null
-        this.resetIdleTimer(entry)
+        await entry.client.connect(entry.transport)
+        this.markConnected(entry)
       } catch (retryErr) {
         const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
         entry.status = 'error'
         entry.lastError = retryMsg
-        logger.error({ hash, error: retryMsg }, 'MCP connection failed after retry')
+        logger.error({ hash: entry.hash, error: retryMsg }, 'MCP connection failed after retry')
+        throw new Error(`MCP connection failed for "${entry.label}": ${retryMsg}`, { cause: retryErr })
       }
     }
+  }
 
-    return entry
+  private markConnected(entry: PoolEntry): void {
+    entry.status = 'connected'
+    entry.lastConnectedAt = Date.now()
+    entry.lastError = null
+    this.resetIdleTimer(entry)
   }
 
   private resetIdleTimer(entry: PoolEntry): void {
@@ -190,8 +253,20 @@ export class McpConnectionPool {
       clearTimeout(entry.idleTimer)
     }
     entry.idleTimer = setTimeout(() => {
-      entry.status = 'idle'
+      void this.disconnectIdle(entry)
     }, entry.idleTimeoutMs)
+  }
+
+  private async disconnectIdle(entry: PoolEntry): Promise<void> {
+    if (entry.status !== 'connected') return
+    try {
+      await entry.client.close()
+    } catch {
+      // ignore close errors during idle disconnect
+    }
+    entry.status = 'idle'
+    entry.idleTimer = null
+    logger.info({ hash: entry.hash, label: entry.label }, 'MCP connection closed (idle timeout)')
   }
 }
 

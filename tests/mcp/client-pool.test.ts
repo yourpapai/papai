@@ -20,7 +20,7 @@ const mockClientInstance = {
   getServerVersion: mockGetServerVersion,
 }
 
-const MockClient = mock(() => mockClientInstance)
+const MockClient = mock(() => ({ ...mockClientInstance }))
 const MockStreamableHTTPClientTransport = mock(() => ({}))
 
 void mock.module('@modelcontextprotocol/sdk/client/index.js', () => ({
@@ -116,6 +116,25 @@ describe('McpConnectionPool', () => {
       const conn2 = await pool.getOrCreateFromUser(endpoint2)
       expect(conn1.hash).not.toBe(conn2.hash)
     })
+
+    test('throws when connection fails after retry', async () => {
+      const failConnect = mock(() => Promise.reject(new Error('connection refused')))
+      MockClient.mockImplementation(() => ({
+        ...mockClientInstance,
+        connect: failConnect,
+        close: mock(() => Promise.resolve()),
+      }))
+
+      const endpoint: McpEndpointConfig = {
+        id: 'bad-server',
+        url: 'https://bad.example.com/mcp',
+        enabled: true,
+      }
+
+      // initial + retry = 2 calls
+      await expect(pool.getOrCreateFromUser(endpoint)).rejects.toThrow('MCP connection failed')
+      expect(failConnect).toHaveBeenCalledTimes(2)
+    })
   })
 
   describe('getOrCreateFromPlugin', () => {
@@ -157,6 +176,18 @@ describe('McpConnectionPool', () => {
       const conn2 = await pool.getOrCreateFromPlugin('my-plugin', mcp2)
       expect(conn1.hash).not.toBe(conn2.hash)
     })
+
+    test('throws on unsupported transport', async () => {
+      // Build a config with stdio transport (unsupported by pool) to verify rejection
+      // The cast widers the literal to the union — intentional for this negative test
+      const mcp = {
+        transport: 'stdio',
+        command: 'echo',
+        url: 'https://placeholder.example.com/mcp',
+      } as McpPluginConfig
+
+      await expect(pool.getOrCreateFromPlugin('my-plugin', mcp)).rejects.toThrow('Unsupported MCP transport')
+    })
   })
 
   describe('getServerInfos', () => {
@@ -194,6 +225,23 @@ describe('McpConnectionPool', () => {
       // Should not throw
       pool.recordToolCall(conn.hash)
     })
+
+    test('recordToolCall resets the idle timer so connection stays connected', async () => {
+      const endpoint: McpEndpointConfig = {
+        id: 'test-server',
+        url: 'https://example.com/mcp',
+        enabled: true,
+      }
+
+      const conn = await pool.getOrCreateFromUser(endpoint)
+      expect(pool.getServerInfos()[0]!.status).toBe('connected')
+
+      // Record a tool call — should reset the idle timer
+      pool.recordToolCall(conn.hash)
+
+      // Status should still be connected (timer was reset)
+      expect(pool.getServerInfos()[0]!.status).toBe('connected')
+    })
   })
 
   describe('updateToolCount', () => {
@@ -208,6 +256,147 @@ describe('McpConnectionPool', () => {
       pool.updateToolCount(conn.hash, 5)
       const infos = pool.getServerInfos()
       expect(infos[0]!.toolCount).toBe(5)
+    })
+  })
+
+  describe('idle timeout', () => {
+    test('connection becomes idle after timeout fires', async () => {
+      // Use a very short idle timeout by creating a plugin config with idleTimeoutMs
+      const mcp: McpPluginConfig = {
+        transport: 'streamable-http',
+        url: 'https://example.com/mcp',
+        idleTimeoutMs: 50,
+      }
+
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+      expect(pool.getServerInfos()[0]!.status).toBe('connected')
+
+      // Wait for the idle timer to fire
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 100)
+      })
+
+      const infos = pool.getServerInfos()
+      expect(infos[0]!.status).toBe('idle')
+    })
+
+    test('idle timeout closes the client connection', async () => {
+      const closeMock = mock(() => Promise.resolve())
+      MockClient.mockImplementation(() => ({
+        ...mockClientInstance,
+        close: closeMock,
+      }))
+
+      const mcp: McpPluginConfig = {
+        transport: 'streamable-http',
+        url: 'https://example.com/mcp',
+        idleTimeoutMs: 50,
+      }
+
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+
+      // Wait for the idle timer to fire
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 100)
+      })
+
+      expect(closeMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('reconnects on next access after idle', async () => {
+      let connectCount = 0
+      MockClient.mockImplementation(() => ({
+        ...mockClientInstance,
+        connect: mock(() => {
+          connectCount++
+          return Promise.resolve()
+        }),
+        close: mock(() => Promise.resolve()),
+      }))
+
+      const mcp: McpPluginConfig = {
+        transport: 'streamable-http',
+        url: 'https://example.com/mcp',
+        idleTimeoutMs: 50,
+      }
+
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+      expect(connectCount).toBe(1)
+
+      // Wait for idle timeout
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 100)
+      })
+      expect(pool.getServerInfos()[0]!.status).toBe('idle')
+
+      // Next access should reconnect
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+      expect(connectCount).toBe(2)
+      expect(pool.getServerInfos()[0]!.status).toBe('connected')
+    })
+  })
+
+  describe('reconnect retry', () => {
+    test('reconnect retries once on failure then succeeds', async () => {
+      const connectMock = mock(() => Promise.resolve())
+
+      MockClient.mockImplementation(() => ({
+        ...mockClientInstance,
+        connect: connectMock,
+        close: mock(() => Promise.resolve()),
+      }))
+
+      const mcp: McpPluginConfig = {
+        transport: 'streamable-http',
+        url: 'https://example.com/mcp',
+        idleTimeoutMs: 50,
+      }
+
+      // First connection succeeds
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+      expect(connectMock).toHaveBeenCalledTimes(1)
+
+      // Wait for idle
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 100)
+      })
+
+      // Queue: reconnect fails, then retry succeeds
+      connectMock.mockImplementationOnce(() => Promise.reject(new Error('transient failure')))
+      connectMock.mockImplementationOnce(() => Promise.resolve())
+
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+      // 1 initial + 1 failed reconnect + 1 retry = 3 total
+      expect(connectMock).toHaveBeenCalledTimes(3)
+      expect(pool.getServerInfos()[0]!.status).toBe('connected')
+    })
+
+    test('reconnect throws after both attempts fail', async () => {
+      const connectMock = mock(() => Promise.resolve())
+
+      MockClient.mockImplementation(() => ({
+        ...mockClientInstance,
+        connect: connectMock,
+        close: mock(() => Promise.resolve()),
+      }))
+
+      const mcp: McpPluginConfig = {
+        transport: 'streamable-http',
+        url: 'https://example.com/mcp',
+        idleTimeoutMs: 50,
+      }
+
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+
+      // Wait for idle
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 100)
+      })
+
+      // Both reconnect attempts fail
+      connectMock.mockImplementation(() => Promise.reject(new Error('connection refused')))
+
+      await expect(pool.getOrCreateFromPlugin('my-plugin', mcp)).rejects.toThrow('MCP connection failed')
     })
   })
 
@@ -234,6 +423,20 @@ describe('McpConnectionPool', () => {
     test('handles empty pool gracefully', async () => {
       await pool.shutdown()
       expect(mockClose).not.toHaveBeenCalled()
+    })
+
+    test('clears idle timers on shutdown', async () => {
+      const mcp: McpPluginConfig = {
+        transport: 'streamable-http',
+        url: 'https://example.com/mcp',
+        idleTimeoutMs: 10_000,
+      }
+
+      await pool.getOrCreateFromPlugin('my-plugin', mcp)
+      await pool.shutdown()
+
+      // After shutdown, the pool should be empty
+      expect(pool.getServerInfos()).toEqual([])
     })
   })
 })
