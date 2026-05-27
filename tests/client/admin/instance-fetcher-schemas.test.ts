@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { TaskInstanceViewSchema, TaskProviderTypeViewSchema } from '../../../client/admin/instance-fetcher-schemas.js'
+import {
+  PlatformProviderTypeViewSchema,
+  TaskInstanceViewSchema,
+  TaskProviderTypeViewSchema,
+} from '../../../client/admin/instance-fetcher-schemas.js'
 
 describe('TaskInstanceViewSchema', () => {
   test('accepts any string type after the enum was opened', () => {
@@ -98,6 +102,37 @@ describe('TaskProviderTypeViewSchema', () => {
       traits: [],
       source: { plugin: '' },
     })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('PlatformProviderTypeViewSchema', () => {
+  test('parses structured chat provider traits', () => {
+    const parsed = PlatformProviderTypeViewSchema.parse({
+      type: 'mattermost',
+      displayName: 'Mattermost',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false }],
+      contextConfigSchema: [],
+      capabilities: ['commands'],
+      traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
+      source: 'builtin',
+    })
+
+    expect(parsed.traits.observedGroupMessages).toBe('all')
+    expect(parsed.traits.maxMessageLength).toBe(16383)
+  })
+
+  test('rejects legacy array traits', () => {
+    const result = PlatformProviderTypeViewSchema.safeParse({
+      type: 'mattermost',
+      displayName: 'Mattermost',
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
+      capabilities: [],
+      traits: [],
+      source: 'builtin',
+    })
+
     expect(result.success).toBe(false)
   })
 })

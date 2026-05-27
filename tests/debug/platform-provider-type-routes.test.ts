@@ -5,6 +5,9 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { z } from 'zod'
+
+import { PlatformProviderTypeViewSchema } from '../../client/admin/instance-fetcher-schemas.js'
 import { handlePlatformProviderTypes } from '../../src/debug/platform-provider-type-routes.js'
 
 const route = (path: string, method = 'GET'): Response | null =>
@@ -40,5 +43,14 @@ describe('handlePlatformProviderTypes', () => {
       'baseUrl',
       'token',
     ])
+  })
+
+  test('GET /api/platform-provider-types matches the admin client schema', async () => {
+    const res = route('/api/platform-provider-types')
+    expect(res?.status).toBe(200)
+
+    const parsed = z.array(PlatformProviderTypeViewSchema).parse(await res?.json())
+
+    expect(parsed.find((entry) => entry.type === 'mattermost')?.traits.observedGroupMessages).toBe('all')
   })
 })

@@ -523,7 +523,7 @@ test('fetchPlatformProviderTypes parses the catalog', async () => {
           ],
           contextConfigSchema: [],
           capabilities: ['commands'],
-          traits: [],
+          traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
           source: 'builtin',
         },
       ]),
@@ -532,6 +532,7 @@ test('fetchPlatformProviderTypes parses the catalog', async () => {
   const types = await fetchPlatformProviderTypes()
   expect(types[0]?.type).toBe('mattermost')
   expect(types[0]?.instanceConfigSchema[1]?.sensitive).toBe(true)
+  expect(types[0]?.traits.observedGroupMessages).toBe('all')
   restoreFetch()
 })
 

@@ -79,7 +79,7 @@ const responseFor = (method: string, url: string): Response => {
         instanceConfigSchema: [{ key: 'token', label: 'Telegram Bot Token', required: true, sensitive: true }],
         contextConfigSchema: [],
         capabilities: ['commands'],
-        traits: [],
+        traits: { observedGroupMessages: 'all', callbackDataMaxLength: 64 },
         source: 'builtin',
       },
       {
@@ -91,7 +91,7 @@ const responseFor = (method: string, url: string): Response => {
         ],
         contextConfigSchema: [],
         capabilities: ['commands'],
-        traits: [],
+        traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
         source: 'builtin',
       },
       {
@@ -100,7 +100,7 @@ const responseFor = (method: string, url: string): Response => {
         instanceConfigSchema: [{ key: 'token', label: 'Discord Bot Token', required: true, sensitive: true }],
         contextConfigSchema: [],
         capabilities: ['commands'],
-        traits: [],
+        traits: { observedGroupMessages: 'mentions_only', maxMessageLength: 2000 },
         source: 'builtin',
       },
     ])

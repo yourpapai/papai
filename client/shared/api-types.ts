@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ChatProviderTraits } from '../../src/chat/types.js'
 import type {
   Fact,
   Instruction,
@@ -205,7 +206,7 @@ export type PlatformProviderTypeView = Readonly<{
   instanceConfigSchema: readonly ProviderConfigRequirementView[]
   contextConfigSchema: readonly ProviderConfigRequirementView[]
   capabilities: readonly string[]
-  traits: readonly string[]
+  traits: ChatProviderTraits
   source: 'builtin'
 }>
 

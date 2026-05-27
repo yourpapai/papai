@@ -34,6 +34,12 @@ const ProviderConfigRequirementViewSchema = z.object({
   storageKey: z.string().optional(),
 })
 
+const ChatProviderTraitsSchema = z.object({
+  observedGroupMessages: z.enum(['all', 'mentions_only']),
+  maxMessageLength: z.number().optional(),
+  callbackDataMaxLength: z.number().optional(),
+})
+
 export const TaskProviderTypeViewSchema = z.object({
   type: z.string(),
   displayName: z.string(),
@@ -50,7 +56,7 @@ export const PlatformProviderTypeViewSchema = z.object({
   instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
   contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
   capabilities: z.array(z.string()),
-  traits: z.array(z.string()),
+  traits: ChatProviderTraitsSchema,
   source: z.literal('builtin'),
 })
 
