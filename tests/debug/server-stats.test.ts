@@ -10,7 +10,13 @@ import { users } from '../../src/db/schema.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
 import { clearStatsCacheForTesting } from '../../src/stats/index.js'
-import { getTestDb, mockLogger, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
+import {
+  getTestDb,
+  mockLogger,
+  restoreFetch,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 const TEST_PORT = 19112
 const TOKEN = 'stats-route-token'
@@ -30,6 +36,7 @@ describe('debug-server stats routes', () => {
     await setupTestDb()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
+    process.env['DEBUG_HOSTNAME'] = 'localhost'
     process.env['DEBUG_TOKEN'] = TOKEN
     process.env['ADMIN_USER_ID'] = 'admin-1'
     startDebugServer('test-admin', getLogLevel())
@@ -37,12 +44,14 @@ describe('debug-server stats routes', () => {
 
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     clearStatsCacheForTesting()
   })
 
   afterAll(() => {
     stopDebugServer()
     delete process.env['DEBUG_PORT']
+    delete process.env['DEBUG_HOSTNAME']
     delete process.env['DEBUG_TOKEN']
     delete process.env['ADMIN_USER_ID']
   })

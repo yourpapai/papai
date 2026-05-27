@@ -39,6 +39,8 @@ import {
   createMockChatWithCommandHandlers,
   getToolExecutor,
   mockLogger,
+  seedTestPlatformInstance,
+  seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
@@ -486,6 +488,10 @@ describe('PluginContributionRegistry', () => {
       manifest,
     )
     setRuntimeChatRouter(new ThrowingCapabilityRouter())
+    seedTestPlatformInstance({ id: 'platform-a' })
+    seedTestPlatformInstance({ id: 'platform-b' })
+    seedTestTaskInstance({ id: 'task-a' })
+    seedTestTaskInstance({ id: 'task-b' })
     setContextSettings({ contextId: 'ctx-a', taskInstanceId: 'task-a', platformInstanceId: 'platform-a' })
     setContextSettings({ contextId: 'ctx-b', taskInstanceId: 'task-b', platformInstanceId: 'platform-b' })
     setPluginEnabledForContext('test-plugin', 'ctx-a', true)

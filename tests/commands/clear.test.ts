@@ -16,6 +16,8 @@ import {
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestPlatformInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
@@ -40,6 +42,8 @@ describe('/clear command — history and memory only', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+    seedTestPlatformInstance({ id: 'other-platform' })
     addUser(adminUserId, adminUserId)
 
     const { provider, commandHandlers: handlers } = createMockChatWithCommandHandlers()

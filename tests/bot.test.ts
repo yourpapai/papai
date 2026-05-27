@@ -37,7 +37,6 @@ import { createGroupSettingsSession, getActiveGroupSettingsTarget } from '../src
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin } from '../src/instances/admin-store.js'
 import { getContextSettings, setContextSettings } from '../src/instances/context-store.js'
-import { insertPlatformInstance } from '../src/instances/platform-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
@@ -57,6 +56,8 @@ import {
   createMockChatWithCommandHandlers,
   createMockReply,
   mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestPlatformInstance,
   setupTestDb,
 } from './utils/test-helpers.js'
 
@@ -184,6 +185,7 @@ describe('Authorization Logic', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   describe('Bot Admin Authorization', () => {
@@ -354,6 +356,7 @@ describe('Demo Mode Auto-Provision', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   afterEach(() => {
@@ -514,6 +517,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     // Setup test database with migrations
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+    seedTestPlatformInstance({ id: 'mattermost-source', type: 'mattermost' })
 
     const botDeps = withSynchronousQueue({
       processMessage: (
@@ -895,8 +900,8 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     test('auto-started task assignment uses the source message platform instance', async () => {
       addUserOnPlatform('dm-source-platform', 'telegram-secondary', ADMIN_ID)
-      insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
-      insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
+      seedTestPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' } })
+      seedTestPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' } })
       insertTaskInstance({
         id: 'dm-source-task',
         type: 'youtrack',
@@ -1899,6 +1904,7 @@ describe('Demo Mode — wizard bypass (setupBot)', () => {
     mockLogger()
 
     await setupTestDb()
+    seedCommonTestPlatformInstances()
 
     const botDeps = withSynchronousQueue({
       processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {
@@ -1944,6 +1950,7 @@ describe('Attachment workspace integration (setupBot)', () => {
     attachmentIdsAtProcessingTime = []
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
 
     const botDeps = withSynchronousQueue({
       processMessage: (_reply: ReplyFn, storageContextId: string, _chatUserId: string): Promise<void> => {

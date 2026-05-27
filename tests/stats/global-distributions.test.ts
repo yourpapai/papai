@@ -8,12 +8,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { attachments, memos, messageMetadata, recurringTasks, users } from '../../src/db/schema.js'
 import { distributionsGlobal } from '../../src/stats/global-distributions.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 describe('distributionsGlobal', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns zeroed percentiles when no rows exist', () => {

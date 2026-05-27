@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { authorizedGroups, llmUsageEvents, messageMetadata, users } from '../../src/db/schema.js'
 import { activeSubjectCounts, subjectsGlobal } from '../../src/stats/global-subjects.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const ONE_DAY = 24 * 60 * 60 * 1000
 
@@ -16,6 +16,7 @@ describe('subjectsGlobal', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns zero counts and empty growth array when no subjects', () => {

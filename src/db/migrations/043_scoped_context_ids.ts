@@ -8,7 +8,7 @@ import type { Database } from 'bun:sqlite'
 import { isScopedContextId, toScopedContextId, toScopedThreadContextId } from '../../chat/scoped-context.js'
 import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
-import { CONTEXT_OWNED_COLUMNS, type ContextOwnedColumn } from './043_scoped_context_ids_columns.js'
+import { CONTEXT_OWNED_COLUMNS, type ContextOwnedColumn } from './scoped-context-owned-columns.js'
 
 const log = logger.child({ scope: 'migration:043' })
 
@@ -44,22 +44,11 @@ const columnExists = (db: Database, table: string, column: string): boolean =>
     .all()
     .some((row) => row.name === column)
 
-const parseBootstrapChatProvider = (value: string | undefined): string | null => {
-  if (value === undefined) return null
-  const trimmed = value.trim()
-  if (trimmed === 'telegram' || trimmed === 'mattermost' || trimmed === 'discord') return trimmed
-  return null
-}
-
 const getPlatformInstanceId = (db: Database): string | null => {
   if (!tableExists(db, 'platform_instances')) return null
   const rows = db.query<{ id: string }, []>(`SELECT id FROM platform_instances ORDER BY id`).all()
   if (rows.length === 1) return rows[0]!.id
-  if (rows.length > 1) return null
-
-  const chatProvider = parseBootstrapChatProvider(process.env['CHAT_PROVIDER'])
-  if (chatProvider === null) return null
-  return `${chatProvider}-default`
+  return null
 }
 
 const parseLegacyThreadKey = (value: string): { nativeContextId: string; threadId: string } | null => {

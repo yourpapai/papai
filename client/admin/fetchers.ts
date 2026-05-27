@@ -8,28 +8,20 @@ import { z } from 'zod'
 import type { GlobalStats, StatsWindow, SubjectStats } from '../../src/stats/types.js'
 import type {
   AdminLlmSnapshot,
-  AdminInstanceView,
   AdminSystemSummary,
-  ApplyInstancesResult,
   AuthorizedGroupEntry,
   BillingDetail,
   BillingSubject,
   BillingWindow,
   DeferredPrompt,
   IdentityMappingEntry,
-  InstanceConfigView,
   Memo,
-  PlatformInstanceView,
   RecurringTask,
-  TaskInstanceView,
-  TaskProviderTypeView,
 } from '../shared/api-types.js'
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
-  AdminInstanceViewSchema,
   AdminLlmSnapshotSchema,
   AdminSystemSummarySchema,
-  ApplyInstancesResultSchema,
   AuthorizedGroupEntrySchema,
   BillingDetailResponseSchema,
   BillingSubjectsResponseSchema,
@@ -37,16 +29,15 @@ import {
   GlobalStatsSchema,
   IdentityMappingEntrySchema,
   MemoSchema,
-  PlatformInstanceViewSchema,
   RecentRequestsResponseSchema,
   RecurringTaskSchema,
   SubjectStatsSchema,
   SubmitAdminLlmResponseSchema,
-  TaskInstanceViewSchema,
-  TaskProviderTypeViewSchema,
   type RecentRequestRow,
   type SubmitAdminLlmKey,
 } from './fetcher-schemas.js'
+
+export * from './instance-fetchers.js'
 
 export type SubmitAdminLlmInput = {
   readonly key: SubmitAdminLlmKey
@@ -61,24 +52,6 @@ export type FetchBillingSubjectsResult = {
 }
 
 export type FetchBillingDetailResult = BillingDetail & { readonly window: BillingWindow }
-
-export type CreatePlatformInstanceInput = {
-  readonly id: string
-  readonly type: PlatformInstanceView['type']
-  readonly config: InstanceConfigView
-}
-
-export type CreateTaskInstanceInput = {
-  readonly id: string
-  readonly type: TaskInstanceView['type']
-  readonly config: InstanceConfigView
-}
-
-export type CreateAdminInput =
-  | { readonly userId: string; readonly platformInstanceId: string }
-  | { readonly userId: string }
-
-export type PlatformInstanceStatusInput = 'active' | 'stopped'
 
 export const fetchStatsGlobal = async (window: StatsWindow | undefined): Promise<GlobalStats> => {
   const path = window === undefined ? '/stats/global' : `/stats/global?window=${encodeURIComponent(window)}`
@@ -188,106 +161,4 @@ export const fetchAdminGroups = async (): Promise<AuthorizedGroupEntry[]> => {
   const body = await readBody(res)
   requireOk(res, body)
   return z.array(AuthorizedGroupEntrySchema).parse(body) as AuthorizedGroupEntry[]
-}
-
-export const fetchPlatformInstances = async (): Promise<PlatformInstanceView[]> => {
-  const res = await fetch('/api/platform-instances')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return z.array(PlatformInstanceViewSchema).parse(body)
-}
-
-export const createPlatformInstance = async (input: CreatePlatformInstanceInput): Promise<PlatformInstanceView> => {
-  const res = await fetch('/api/platform-instances', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return PlatformInstanceViewSchema.parse(body)
-}
-
-export const setPlatformInstanceStatus = async (
-  id: string,
-  status: PlatformInstanceStatusInput,
-): Promise<PlatformInstanceView> => {
-  const res = await fetch(`/api/platform-instances/${encodeURIComponent(id)}/status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return PlatformInstanceViewSchema.parse(body)
-}
-
-export const deletePlatformInstance = async (id: string): Promise<void> => {
-  const res = await fetch(`/api/platform-instances/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  const body = await readBody(res)
-  requireOk(res, body)
-}
-
-export const applyPlatformInstances = async (): Promise<ApplyInstancesResult> => {
-  const res = await fetch('/api/platform-instances/apply', { method: 'POST' })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return ApplyInstancesResultSchema.parse(body)
-}
-
-export const fetchTaskInstances = async (): Promise<TaskInstanceView[]> => {
-  const res = await fetch('/api/task-instances')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return z.array(TaskInstanceViewSchema).parse(body)
-}
-
-export const createTaskInstance = async (input: CreateTaskInstanceInput): Promise<TaskInstanceView> => {
-  const res = await fetch('/api/task-instances', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return TaskInstanceViewSchema.parse(body)
-}
-
-export const deleteTaskInstance = async (id: string): Promise<void> => {
-  const res = await fetch(`/api/task-instances/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  const body = await readBody(res)
-  requireOk(res, body)
-}
-
-export const fetchTaskProviderTypes = async (): Promise<TaskProviderTypeView[]> => {
-  const res = await fetch('/api/task-provider-types')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return z.array(TaskProviderTypeViewSchema).parse(body)
-}
-
-export const fetchAdmins = async (): Promise<AdminInstanceView[]> => {
-  const res = await fetch('/api/admins')
-  const body = await readBody(res)
-  requireOk(res, body)
-  return z.array(AdminInstanceViewSchema).parse(body)
-}
-
-export const createAdmin = async (input: CreateAdminInput): Promise<AdminInstanceView> => {
-  const res = await fetch('/api/admins', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
-  return AdminInstanceViewSchema.parse(body)
-}
-
-export const deleteAdmin = async (userId: string, platformInstanceId: string): Promise<void> => {
-  const res = await fetch(`/api/admins/${encodeURIComponent(userId)}/${encodeURIComponent(platformInstanceId)}`, {
-    method: 'DELETE',
-  })
-  const body = await readBody(res)
-  requireOk(res, body)
 }

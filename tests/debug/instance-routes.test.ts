@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 
+import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ManagedChatInstance } from '../../src/chat/router.js'
 import type { ChatProvider, ContextSnapshot } from '../../src/chat/types.js'
@@ -25,6 +26,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
+import { addUser, listUsers } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
@@ -82,6 +84,14 @@ const expectTaskInstance = (id: string): TaskInstance => {
   return instance
 }
 
+const seedPlatformInstance = (id: string): void => {
+  insertPlatformInstance({ id, type: 'telegram', config: { token: 'secret' }, status: 'active' })
+}
+
+const seedTaskInstance = (id: string): void => {
+  insertTaskInstance({ id, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+}
+
 const fakeProvider = (start: () => Promise<void>, stop: () => Promise<void>): ChatProvider => ({
   name: 'fake-chat',
   threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
@@ -102,6 +112,7 @@ const fakeProvider = (start: () => Promise<void>, stop: () => Promise<void>): Ch
 describe('instance API routes', () => {
   beforeEach(async () => {
     mockLogger()
+    userCachesForTesting.clear()
     await setupTestDb()
     clearRuntimeChatRouter()
     process.env['DEBUG_TOKEN'] = TOKEN
@@ -109,6 +120,7 @@ describe('instance API routes', () => {
 
   afterEach(() => {
     clearRuntimeChatRouter()
+    userCachesForTesting.clear()
     delete process.env['DEBUG_TOKEN']
   })
 
@@ -131,6 +143,50 @@ describe('instance API routes', () => {
     const rows = assertArray(await readJson(listed))
     expect(rows).toHaveLength(1)
     expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '***', label: 'main' })
+  })
+
+  test('duplicate platform create returns instance_exists conflict', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'other-secret' } }),
+      }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await readJson(res)).toEqual({ error: 'instance_exists', id: 'telegram-main' })
+  })
+
+  test('PATCH /api/platform-instances/:id updates config and status with masked config', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ config: { bot_token: 'new-secret', label: 'main' }, status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = assertObject(await readJson(res))
+    expect(pick(body, 'status')).toBe('stopped')
+    expect(pick(body, 'config')).toEqual({ bot_token: '***', label: 'main' })
+  })
+
+  test('platform PATCH missing instance returns 404', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances/missing-platform', {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(404)
   })
 
   test('returns null for unrelated API paths', async () => {
@@ -232,6 +288,39 @@ describe('instance API routes', () => {
     expect(expectInstance(router, instanceId).status).toBe('active')
   })
 
+  test('apply bounds concurrent platform starts', async () => {
+    let activeStarts = 0
+    let maxActiveStarts = 0
+    const start = mock(async () => {
+      activeStarts += 1
+      maxActiveStarts = Math.max(maxActiveStarts, activeStarts)
+      await Bun.sleep(5)
+      activeStarts -= 1
+    })
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    const instances: PlatformInstance[] = Array.from({ length: 6 }, (_, index) => ({
+      id: `telegram-apply-${index}`,
+      type: 'telegram',
+      config: { token: `secret-${index}` },
+      status: 'active',
+      createdAt: '2026-05-24 00:00:00',
+    }))
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => instances },
+        { method: 'POST', headers: jsonHeaders },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(start).toHaveBeenCalledTimes(instances.length)
+    expect(maxActiveStarts).toBeLessThanOrEqual(4)
+    expect(await readJson(res)).toEqual({ applied: instances.length })
+  })
+
   test('apply starts stopped runtime instances whose DB rows are active', async () => {
     const start = mock(async () => {})
     const stop = mock(async () => {})
@@ -262,9 +351,16 @@ describe('instance API routes', () => {
     expect(expectInstance(router, instanceId).status).toBe('active')
   })
 
-  test('deletes platform instance context settings before deleting the platform instance', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+  test('deleting platform instance cascades owned rows, preserves super-admins, and clears context tool caches', async () => {
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    addUser({ userId: 'user-1', platformInstanceId: 'telegram-main', username: 'alice', addedBy: 'test' })
+    addAdmin('platform-admin', 'telegram-main')
+    addAdmin('super-admin', SUPER_ADMIN_PLATFORM_ID)
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
@@ -275,6 +371,44 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(204)
     expect(listContextsByPlatformInstance('telegram-main')).toEqual([])
+    expect(listUsers('telegram-main')).toEqual([])
+    expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
+      '__super__:super-admin',
+    ])
+    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+  })
+
+  test('deleting platform instance does not remove runtime router instance until apply', async () => {
+    seedPlatformInstance('telegram-main')
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    setRuntimeChatRouter(router)
+
+    const deleted = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }),
+    )
+
+    expect(deleted.status).toBe(204)
+    expect(router.getInstance('telegram-main')).not.toBeNull()
+    expect(stop).not.toHaveBeenCalled()
+
+    const applied = expectResponse(
+      await route('/api/platform-instances/apply', {
+        method: 'POST',
+        headers: jsonHeaders,
+      }),
+    )
+
+    expect(applied.status).toBe(200)
+    expect(router.getInstance('telegram-main')).toBeNull()
+    expect(stop).toHaveBeenCalledTimes(1)
   })
 
   test('updates platform instance status', async () => {
@@ -297,7 +431,8 @@ describe('instance API routes', () => {
   })
 
   test('deletes task instance context settings before deleting the task instance', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
 
     const res = expectResponse(
@@ -311,8 +446,31 @@ describe('instance API routes', () => {
     expect(listContextsByTaskInstance('tasks-main')).toEqual([])
   })
 
+  test('deleting task instance clears cached tools for referencing contexts', async () => {
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-1:user-1:alice', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
+
+    const res = expectResponse(
+      await route('/api/task-instances/tasks-main', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }),
+    )
+
+    expect(res.status).toBe(204)
+    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+  })
+
   test('lists task instances with referencing context IDs', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    seedPlatformInstance('telegram-main')
+    seedPlatformInstance('discord-main')
+    seedTaskInstance('tasks-main')
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-main', platformInstanceId: 'discord-main' })
 
@@ -326,9 +484,9 @@ describe('instance API routes', () => {
 
   test('creates and lists task instances with descriptor-driven masking', async () => {
     // Kaneo has no instance-scoped sensitive fields (credentials are user-scoped and never stored in
-    // task_instances.config). The descriptor-driven masking therefore returns an empty sensitive-key
-    // set, so no task-instance config fields are masked — even keys that would have matched the old
-    // name pattern (e.g. "api_key").
+    // task_instances.config), so its descriptor contributes no masked keys here. Non-secret keys like
+    // baseUrl pass through unmasked; secret-looking keys would still be masked by the name-pattern arm
+    // of the defense-in-depth union (covered by the PATCH test below).
     const created = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
@@ -356,6 +514,44 @@ describe('instance API routes', () => {
     })
   })
 
+  test('duplicate task create returns instance_exists conflict', async () => {
+    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/task-instances', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://other.invalid' } }),
+      }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await readJson(res)).toEqual({ error: 'instance_exists', id: 'tasks-main' })
+  })
+
+  test('PATCH /api/task-instances/:id updates config and status and clears referencing context tool cache', async () => {
+    seedPlatformInstance('telegram-main')
+    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { api_key: 'secret' }, status: 'active' })
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
+
+    const res = expectResponse(
+      await route('/api/task-instances/tasks-main', {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ config: { api_key: 'new-secret' }, status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = assertObject(await readJson(res))
+    expect(pick(body, 'status')).toBe('stopped')
+    expect(pick(body, 'config')).toEqual({ api_key: '***' })
+    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
+    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+  })
+
   test('creates and deletes super-admin rows', async () => {
     const created = expectResponse(
       await route('/api/admins', {
@@ -377,6 +573,20 @@ describe('instance API routes', () => {
     )
 
     expect(deleted.status).toBe(204)
+    expect(listAdmins()).toEqual([])
+  })
+
+  test('POST /api/admins rejects missing concrete platform instance', async () => {
+    const res = expectResponse(
+      await route('/api/admins', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ userId: 'admin-1', platformInstanceId: 'missing-platform' }),
+      }),
+    )
+
+    expect(res.status).toBe(404)
+    expect(await readJson(res)).toEqual({ error: 'platform_instance_not_found', id: 'missing-platform' })
     expect(listAdmins()).toEqual([])
   })
 

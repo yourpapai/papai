@@ -9,7 +9,7 @@ import { startEditor, handleEditorCallback, handleEditorMessage } from '../../sr
 import { deleteEditorSession } from '../../src/config-editor/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 describe('config_editor events', () => {
   const userId = 'user-1'
@@ -27,6 +27,7 @@ describe('config_editor events', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     deleteEditorSession(userId, storageContextId)
   })
 

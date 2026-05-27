@@ -28,7 +28,7 @@ import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { setKaneoWorkspace } from '../../src/users.js'
 import { createWizardSession } from '../../src/wizard/state.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const interaction: IncomingInteraction = {
   kind: 'button',
@@ -105,6 +105,7 @@ describe('routeInteraction', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     deleteWizardSession(interaction.user.id, interaction.contextId)
     deleteEditorSession(interaction.user.id, interaction.contextId)
     deleteEditorSession(

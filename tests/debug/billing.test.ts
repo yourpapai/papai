@@ -15,7 +15,7 @@ import {
   windowToMs,
 } from '../../src/debug/billing.js'
 import { recordUsage, type UsageEvent } from '../../src/usage/recorder.js'
-import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getTestDb, mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const NOW = 1_700_000_000_000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -90,6 +90,7 @@ describe('listBillingSubjects', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns an empty array when no usage rows exist', () => {
@@ -180,6 +181,7 @@ describe('getBillingDetail', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   test('returns null when no rows exist for the subject', () => {

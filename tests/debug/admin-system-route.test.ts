@@ -35,6 +35,7 @@ describe('debug-server admin/system route', () => {
     await setupTestDb()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
+    process.env['DEBUG_HOSTNAME'] = 'localhost'
     process.env['DEBUG_TOKEN'] = TOKEN
     startDebugServer('test-admin', getLogLevel())
   })
@@ -52,6 +53,7 @@ describe('debug-server admin/system route', () => {
   afterAll(() => {
     stopDebugServer()
     delete process.env['DEBUG_PORT']
+    delete process.env['DEBUG_HOSTNAME']
     delete process.env['DEBUG_TOKEN']
     delete process.env['CHAT_PROVIDER']
     delete process.env['TASK_PROVIDER']
