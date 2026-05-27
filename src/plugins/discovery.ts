@@ -104,7 +104,7 @@ function resolveAndReadEntryPoint(
   pluginDir: string,
   main: string,
   isMcpOnly: boolean,
-): { entryPoint: string; entryPointContent: string } | DiscoveryError | null {
+): { entryPoint: string; entryPointContent: string } | DiscoveryError {
   const entryPoint = resolveEntryPoint(pluginDir, main)
   if (entryPoint === null && !isMcpOnly) {
     return {
@@ -154,8 +154,8 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
     return { ...ep, directoryName: dirName }
   }
 
-  const entryPoint = ep === null ? resolve(join(pluginDir, manifest.main)) : ep.entryPoint
-  const entryPointContent = ep === null ? '' : ep.entryPointContent
+  const entryPoint = ep.entryPoint
+  const entryPointContent = ep.entryPointContent
 
   return {
     manifest,
