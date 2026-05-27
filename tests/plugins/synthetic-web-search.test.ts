@@ -60,7 +60,8 @@ function createMockContext(
       logger: createMockLogger(),
     },
     adminConfig: {
-      get: (key: string) => (key === 'api_key' ? (overrides.apiKey ?? 'test-api-key') : undefined),
+      get: (key: string) =>
+        key === 'api_key' ? ('apiKey' in overrides ? overrides.apiKey : 'test-api-key') : undefined,
     },
   }
 
@@ -224,7 +225,7 @@ describe('synthetic-web-search plugin', () => {
 
     expect(result).toEqual({
       error: 'index_out_of_range',
-      message: 'Index 5 is out of range (only 1 results available)',
+      message: 'Index 5 is out of range (only 1 result available)',
     })
   })
 
@@ -258,5 +259,80 @@ describe('synthetic-web-search plugin', () => {
     const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
 
     expect(result).toEqual({ results: [] })
+  })
+
+  test('search tool returns not_configured error when API key is missing', async () => {
+    const { ctx, registeredTool } = createMockContext({ apiKey: undefined })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'not_configured', message: 'Synthetic API key is not configured' })
+  })
+
+  test('search tool truncates result text when max_length is specified', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            { url: 'https://example.com/1', title: 'Result 1', text: 'A'.repeat(100) },
+            { url: 'https://example.com/2', title: 'Result 2', text: 'B'.repeat(100) },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'test query', max_length: 20 }, runtimeCtx, options)
+
+    expect(result).toEqual({
+      results: [
+        { title: 'Result 1', url: 'https://example.com/1', text: 'AAAAAAAAAA...', published: undefined },
+        { title: 'Result 2', url: 'https://example.com/2', text: 'BBBBBBBBBB...', published: undefined },
+      ],
+    })
+  })
+
+  test('search tool returns timeout error on AbortError', async () => {
+    const abortError = new Error('The operation was aborted')
+    abortError.name = 'AbortError'
+    const mockHttpFetch = mock().mockRejectedValue(abortError)
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'timeout', message: 'The operation was aborted' })
+  })
+
+  test('search tool returns network_error on fetch failure', async () => {
+    const mockHttpFetch = mock().mockRejectedValue(new Error('Connection refused'))
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(result).toEqual({ error: 'network_error', message: 'Connection refused' })
   })
 })

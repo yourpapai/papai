@@ -46,14 +46,10 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
     if (parsed.index >= results.length) {
       return {
         error: 'index_out_of_range',
-        message: `Index ${parsed.index} is out of range (only ${results.length} results available)`,
+        message: `Index ${parsed.index} is out of range (only ${results.length} result${results.length === 1 ? '' : 's'} available)`,
       }
     }
-    const selected = results[parsed.index]
-    if (selected === undefined) {
-      return { error: 'index_out_of_range', message: `Index ${parsed.index} is out of range` }
-    }
-    selectedResults = [selected]
+    selectedResults = [results[parsed.index]!]
   }
 
   let charsPerResult = Infinity
@@ -108,6 +104,9 @@ async function executeSearch(
 
     return processSearchResults(validated.results, parsed)
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return { error: 'validation_error', message: err.message }
+    }
     const message = err instanceof Error ? err.message : String(err)
     if (err instanceof Error && err.name === 'AbortError') {
       return { error: 'timeout', message }
