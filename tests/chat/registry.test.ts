@@ -89,6 +89,17 @@ describe('chat registry', () => {
     expect(provider.name).toBe('mattermost')
   })
 
+  test('createChatProviderFromConfig creates mattermost from descriptor-shaped baseUrl and token', async () => {
+    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
+
+    const provider = createChatProviderFromConfig('mattermost-default', 'mattermost', {
+      baseUrl: 'https://mattermost.example.test',
+      token: 'mattermost-token',
+    })
+
+    expect(provider.name).toBe('mattermost')
+  })
+
   test('createChatProviderFromConfig rejects missing config values before adapter construction', async () => {
     const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
 

@@ -101,7 +101,9 @@ export function createChatProvider(name: string, deps: RegistryDeps = defaultDep
 
 const configToEnv = (type: PlatformInstanceType, config: InstanceConfig): Record<string, string | undefined> => {
   if (type === 'telegram') return { TELEGRAM_BOT_TOKEN: config['token'] }
-  if (type === 'mattermost') return { MATTERMOST_URL: config['url'], MATTERMOST_BOT_TOKEN: config['token'] }
+  if (type === 'mattermost') {
+    return { MATTERMOST_URL: config['baseUrl'] ?? config['url'], MATTERMOST_BOT_TOKEN: config['token'] }
+  }
   return { DISCORD_BOT_TOKEN: config['token'] }
 }
 
