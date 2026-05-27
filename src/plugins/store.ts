@@ -246,4 +246,5 @@ export function setPluginAdminConfig(pluginId: string, key: string, value: strin
       },
     })
     .run()
+  log.debug({ pluginId, key, updatedBy }, 'Plugin admin config set')
 }
