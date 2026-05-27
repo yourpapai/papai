@@ -79,6 +79,8 @@ function buildTaskProviderFacade(
   }) satisfies PluginTaskProviderFacade
 }
 
+// Intentionally shares the web_fetch rate-limit bucket (20 req / 5 min per actor).
+// Ungated: rate limiting is a safety mechanism, not a capability — any plugin may self-throttle.
 function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
   return Object.freeze({
     check(actorId: string): { allowed: boolean; retryAfterSec?: number } {
