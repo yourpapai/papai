@@ -3,11 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 
-import { getWizardSteps, validateStep, getStepByIndex, formatSummary } from '../../src/wizard/steps.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { getWizardSteps, getStepByIndex, formatSummary } from '../../src/wizard/steps.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 
 describe('getWizardSteps', () => {
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
   test('returns the two-step provider+timezone wizard for kaneo', () => {
     const steps = getWizardSteps('kaneo')
 
@@ -62,54 +71,64 @@ describe('getWizardSteps', () => {
       expect(typeof step.validate).toBe('function')
     }
   })
+
+  test('returns plugin provider context credential steps', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+    })
+
+    const steps = getWizardSteps('plugin-tracker')
+
+    expect(steps.map((step) => step.key)).toEqual(['plugin:plugin-tracker:provider:token', 'timezone'])
+    expect(steps[0]?.field.label).toBe('Plugin Token')
+  })
 })
 
-describe('validateStep', () => {
+describe('step validation', () => {
   test('validates kaneo_apikey - accepts non-empty string', async () => {
-    const result = await validateStep('kaneo_apikey', 'my-api-key')
+    const result = await getWizardSteps('kaneo')[0]!.validate('my-api-key')
     expect(result).toBeNull()
   })
 
   test('validates kaneo_apikey - rejects empty string', async () => {
-    const result = await validateStep('kaneo_apikey', '')
+    const result = await getWizardSteps('kaneo')[0]!.validate('')
     expect(result).toBe('API key cannot be empty')
   })
 
   test('validates youtrack_token - accepts non-empty string', async () => {
-    const result = await validateStep('youtrack_token', 'perm:my-token')
+    const result = await getWizardSteps('youtrack')[0]!.validate('perm:my-token')
     expect(result).toBeNull()
   })
 
   test('validates youtrack_token - rejects empty string', async () => {
-    const result = await validateStep('youtrack_token', '')
+    const result = await getWizardSteps('youtrack')[0]!.validate('')
     expect(result).toBe('Token cannot be empty')
   })
 
   test('validates timezone - accepts valid IANA timezone', async () => {
-    const result = await validateStep('timezone', 'America/New_York')
+    const result = await getWizardSteps('kaneo')[1]!.validate('America/New_York')
     expect(result).toBeNull()
   })
 
   test('validates timezone - accepts UTC', async () => {
-    const result = await validateStep('timezone', 'UTC')
+    const result = await getWizardSteps('kaneo')[1]!.validate('UTC')
     expect(result).toBeNull()
   })
 
   test('validates timezone - accepts UTC offset', async () => {
-    const result = await validateStep('timezone', 'UTC+5')
+    const result = await getWizardSteps('kaneo')[1]!.validate('UTC+5')
     expect(result).toBeNull()
   })
 
   test('validates timezone - rejects invalid timezone', async () => {
-    const result = await validateStep('timezone', 'Invalid/Timezone')
+    const result = await getWizardSteps('kaneo')[1]!.validate('Invalid/Timezone')
     expect(result).toBe(
       'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
     )
-  })
-
-  test('validates unknown step - returns null', async () => {
-    const result = await validateStep('unknown_step', 'value')
-    expect(result).toBeNull()
   })
 })
 

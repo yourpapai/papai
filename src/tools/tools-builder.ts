@@ -170,7 +170,7 @@ function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider, mod
     tools['run_saved_query'] = makeRunSavedQueryTool(provider)
   if (
     mode === 'normal' &&
-    provider.name === 'youtrack' &&
+    provider.traits.has('command-language:youtrack') &&
     provider.capabilities.has('tasks.commands') &&
     provider.applyCommand !== undefined
   )

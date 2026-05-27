@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskLabel, TaskProvider } from '../providers/types.js'
-import { isKaneoProvider, listTaskLabels, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
+import { listTaskLabels, listVisibleWorkspaceLabels, usesSeparateLabelReadApi } from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:remove-task-label' })
 
@@ -143,7 +143,7 @@ const resolveTaskLabelId = (
   labelId: string | undefined,
   labelName: string | undefined,
 ): Promise<string | AlreadyAbsentResult> => {
-  if (isKaneoProvider(provider)) {
+  if (usesSeparateLabelReadApi(provider)) {
     return resolveKaneoTaskLabelId(provider, taskId, labelId, labelName)
   }
 

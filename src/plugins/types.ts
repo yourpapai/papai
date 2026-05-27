@@ -3,13 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ToolExecutionOptions } from 'ai'
 import { z } from 'zod'
 
-import type { AuthorizationResult, ChatCapability, IncomingMessage, ReplyFn } from '../chat/types.js'
+import type { ChatCapability } from '../chat/types.js'
 import { mcpPluginConfigSchema } from '../mcp/types.js'
-import type { TaskCapability, TaskProvider } from '../providers/types.js'
-import type { PluginContext } from './context.js'
+import type { TaskCapability } from '../providers/types.js'
+
+export type {
+  PluginCommand,
+  PluginContributions,
+  PluginFactory,
+  PluginInstance,
+  PluginPromptFragment,
+  PluginScheduledJob,
+  PluginTaskProviderFacade,
+  PluginTool,
+  PluginToolRuntimeContext,
+} from './runtime-types.js'
 
 /** Current plugin API version. Plugins declaring a different apiVersion will be rejected as incompatible. */
 export const PLUGIN_API_VERSION = 1
@@ -146,20 +156,23 @@ const pluginContributesSchema = z.object({
   taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
 })
 
-const pluginConfigRequirementSchema = z.object({
+const configRequirementBaseSchema = z.object({
   key: configKeySchema,
   label: z.string().min(1),
   required: z.boolean(),
   sensitive: z.boolean().optional().default(false),
+})
+
+const pluginConfigRequirementSchema = configRequirementBaseSchema.extend({
   scope: z.enum(['context', 'admin']).optional().default('context'),
 })
 
-const providerConfigRequirementSchema = z.object({
-  key: configKeySchema,
-  label: z.string().min(1),
-  required: z.boolean(),
-  sensitive: z.boolean().optional().default(false),
-  scope: z.enum(['instance', 'user']).optional().default('instance'),
+const providerInstanceConfigRequirementSchema = configRequirementBaseSchema.extend({
+  scope: z.literal('instance').optional().default('instance'),
+})
+
+const providerContextConfigRequirementSchema = configRequirementBaseSchema.extend({
+  scope: z.literal('context').optional().default('context'),
 })
 
 const mainPathSchema = z.string().refine(
@@ -204,7 +217,8 @@ export const pluginManifestSchema = z
     requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
-    providerConfigSchema: z.array(providerConfigRequirementSchema).optional().default([]),
+    providerConfigSchema: z.array(providerInstanceConfigRequirementSchema).optional().default([]),
+    providerContextConfigSchema: z.array(providerContextConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
     providerConfigValidator: z
       .string()
@@ -220,7 +234,10 @@ export const pluginManifestSchema = z
     path: ['permissions'],
   })
 
-export type PluginManifest = z.output<typeof pluginManifestSchema>
+type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
+export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema'> & {
+  providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
+}
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {
   manifest: PluginManifest
@@ -231,65 +248,3 @@ export type DiscoveredPlugin = {
   /** SHA-256 hex hash of the manifest + entry point content. */
   manifestHash: string
 }
-
-/** A tool contributed by a plugin. */
-export type PluginTaskProviderFacade = Pick<
-  TaskProvider,
-  'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
->
-
-export type PluginToolRuntimeContext = {
-  pluginId: string
-  storageContextId: string
-  chatUserId: string
-  taskProvider: PluginTaskProviderFacade
-  kv: PluginContext['kv']
-  rateLimit: {
-    check(actorId: string): { allowed: boolean; retryAfterSec?: number }
-  }
-}
-
-export type PluginTool = {
-  /** Raw tool name as declared in the manifest (snake_case). */
-  name: string
-  description: string
-  inputSchema?: z.ZodType
-  execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options: ToolExecutionOptions) => Promise<unknown>
-}
-
-/** A prompt fragment contributed by a plugin. */
-export type PluginPromptFragment = {
-  /** Fragment key matching a name in contributes.promptFragments. */
-  name: string
-  /** The fragment text or a synchronous function returning it. */
-  content: string | (() => string)
-}
-
-export type PluginCommand = {
-  name: string
-  description: string
-  execute: (message: IncomingMessage, reply: ReplyFn, auth: AuthorizationResult) => Promise<void> | void
-}
-
-export type PluginScheduledJob = {
-  name: string
-  intervalMs: number
-  execute: (contextId: string) => Promise<void> | void
-}
-
-/** Registration result from a plugin's activate() call. */
-export type PluginContributions = {
-  tools: PluginTool[]
-  promptFragments: PluginPromptFragment[]
-  commands?: PluginCommand[]
-  jobs?: PluginScheduledJob[]
-}
-
-/** Runtime plugin instance returned by a plugin factory. */
-export type PluginInstance = {
-  activate(ctx: PluginContext): Promise<void> | void
-  deactivate?(ctx: PluginContext): Promise<void> | void
-}
-
-/** Interface that a plugin module's default export must satisfy. */
-export type PluginFactory = () => PluginInstance

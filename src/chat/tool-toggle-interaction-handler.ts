@@ -4,7 +4,13 @@
 // See LICENSE in the project root for details.
 
 import { safeBuildProvider } from '../commands/context-tool-resolution.js'
-import { buildDomainDrillView, buildDomainListView, type ToolMenuView } from '../commands/tool-config-view.js'
+import {
+  buildDomainDrillView,
+  buildDomainListView,
+  resolveToolDomainCode,
+  resolveToolNameCode,
+  type ToolMenuView,
+} from '../commands/tool-config-view.js'
 import { listManageableGroups } from '../group-settings/access.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
@@ -54,6 +60,20 @@ function filterByDomain(names: string[], domain: string): string[] {
   })
 }
 
+function resolveCompactAction(action: string): string {
+  if (action === 'b') return 'back'
+  if (action === 'd') return 'dom'
+  if (action === 'o') return 'open'
+  if (action === 't') return 'tool'
+  return action
+}
+
+function resolveCompactMiddle(action: string, middle: string, names: readonly string[]): string {
+  if (action === 'd' || action === 'o') return resolveToolDomainCode(middle) ?? middle
+  if (action === 't') return resolveToolNameCode(middle, names) ?? middle
+  return middle
+}
+
 async function handleDomainAction(
   action: string,
   middle: string,
@@ -62,38 +82,40 @@ async function handleDomainAction(
   userId: string,
   reply: ReplyFn,
 ): Promise<boolean> {
-  if (action === 'menu' || action === 'back') {
+  const resolvedAction = resolveCompactAction(action)
+  const resolvedMiddle = resolveCompactMiddle(action, middle, names)
+  if (resolvedAction === 'menu' || resolvedAction === 'back') {
     await renderView(reply, buildDomainListView(contextId, names, getToolPrefs(contextId)))
     return true
   }
-  if (action === 'open') {
-    if (!isToolDomain(middle)) {
+  if (resolvedAction === 'open') {
+    if (!isToolDomain(resolvedMiddle)) {
       await replyTextPreferReplace(reply, 'Unknown tool domain.')
       return true
     }
-    await renderView(reply, buildDomainDrillView(contextId, middle, names, getToolPrefs(contextId)))
+    await renderView(reply, buildDomainDrillView(contextId, resolvedMiddle, names, getToolPrefs(contextId)))
     return true
   }
-  if (action === 'dom') {
-    if (!isToolDomain(middle)) {
+  if (resolvedAction === 'dom') {
+    if (!isToolDomain(resolvedMiddle)) {
       await replyTextPreferReplace(reply, 'Unknown tool domain.')
       return true
     }
-    const domainNames = filterByDomain(names, middle)
-    setToolPrefs(contextId, toggleDomain(getToolPrefs(contextId), middle, domainNames))
-    log.info({ contextId, domain: middle, userId }, 'Tool domain toggled')
+    const domainNames = filterByDomain(names, resolvedMiddle)
+    setToolPrefs(contextId, toggleDomain(getToolPrefs(contextId), resolvedMiddle, domainNames))
+    log.info({ contextId, domain: resolvedMiddle, userId }, 'Tool domain toggled')
     await renderView(reply, buildDomainListView(contextId, names, getToolPrefs(contextId)))
     return true
   }
-  if (action === 'tool') {
-    const meta = getToolMetadata(middle)
+  if (resolvedAction === 'tool') {
+    const meta = getToolMetadata(resolvedMiddle)
     if (meta === undefined) {
       await replyTextPreferReplace(reply, 'Unknown tool.')
       return true
     }
     const domainNames = filterByDomain(names, meta.domain)
-    setToolPrefs(contextId, toggleTool(getToolPrefs(contextId), middle, domainNames))
-    log.info({ contextId, tool: middle, userId }, 'Tool toggled')
+    setToolPrefs(contextId, toggleTool(getToolPrefs(contextId), resolvedMiddle, domainNames))
+    log.info({ contextId, tool: resolvedMiddle, userId }, 'Tool toggled')
     await renderView(reply, buildDomainDrillView(contextId, meta.domain, names, getToolPrefs(contextId)))
     return true
   }

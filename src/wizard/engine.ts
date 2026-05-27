@@ -3,10 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfigKeysForContext } from '../config-keys.js'
-import { getAllConfig, isSensitiveKey, maskValue } from '../config.js'
+import { getConfigFieldsForContext } from '../config-keys.js'
+import { getConfigValue, isSensitiveKey, maskSensitiveValue, maskValue } from '../config.js'
 import { logger } from '../logger.js'
-import type { ConfigKey } from '../types/config.js'
 
 const log = logger.child({ scope: 'wizard:engine' })
 import { buildPendingWizardResponse } from './responses.js'
@@ -14,8 +13,6 @@ import { validateAndSaveWizardConfig } from './save.js'
 import { createWizardSession, getWizardSession, updateWizardSession, deleteWizardSession } from './state.js'
 import { getWizardSteps, getStepByIndex, formatSummary } from './steps.js'
 import type { WizardButton, WizardProcessResult } from './types.js'
-
-type TaskProvider = 'kaneo' | 'youtrack'
 
 interface CreateWizardResult {
   readonly success: boolean
@@ -37,7 +34,7 @@ You can type "cancel" at any time to exit, or "skip" for optional steps.
 Let's begin!`
 
 function normalizeValue(
-  _key: ConfigKey,
+  _key: string,
   value: string,
   _data: Readonly<Record<string, string | undefined>>,
   existingValue?: string,
@@ -56,7 +53,7 @@ export function getNextPrompt(userId: string, storageContextId: string): string 
 
   const existingValue = session.data[step.key]
   if (existingValue !== undefined && existingValue !== '') {
-    const maskedValue = maskValue(step.key, existingValue)
+    const maskedValue = step.field.sensitive ? maskSensitiveValue(existingValue) : maskValue(step.key, existingValue)
     return `${step.prompt}\n\n💡 Current value: ${maskedValue} (type new value to change, or "skip" to keep)`
   }
 
@@ -78,7 +75,7 @@ function getCompletedStepSensitivity(userId: string, storageContextId: string): 
   }
 
   const completedStep = getStepByIndex(session.taskProvider, session.currentStep - 1)
-  return completedStep !== undefined && isSensitiveKey(completedStep.key)
+  return completedStep !== undefined && (completedStep.field.sensitive || isSensitiveKey(completedStep.key))
 }
 
 function handleSkipCommand(
@@ -143,7 +140,7 @@ function completeStep(
 ): AdvanceStepResult {
   const existingValue = session.data[currentStep.key]
   const normalizedValue = normalizeValue(currentStep.key, value, session.data, existingValue)
-  const dataUpdate: Partial<Record<ConfigKey, string>> = {}
+  const dataUpdate: Partial<Record<string, string>> = {}
   if (normalizedValue !== '') {
     dataUpdate[currentStep.key] = normalizedValue
   }
@@ -165,16 +162,15 @@ function completeStep(
   return { success: true, prompt: getNextPrompt(userId, storageContextId) }
 }
 
-export function createWizard(userId: string, storageContextId: string, taskProvider: TaskProvider): CreateWizardResult {
+export function createWizard(userId: string, storageContextId: string, taskProvider: string): CreateWizardResult {
   const steps = getWizardSteps(taskProvider)
 
-  const existingConfig = getAllConfig(storageContextId)
-  const initialData: Partial<Record<ConfigKey, string>> = {}
+  const initialData: Partial<Record<string, string>> = {}
 
-  for (const key of getConfigKeysForContext(storageContextId)) {
-    const value = existingConfig[key]
-    if (value !== undefined) {
-      initialData[key] = value
+  for (const field of getConfigFieldsForContext(storageContextId)) {
+    const value = getConfigValue(storageContextId, field.storageKey)
+    if (value !== null) {
+      initialData[field.storageKey] = value
     }
   }
 
@@ -194,7 +190,9 @@ export function createWizard(userId: string, storageContextId: string, taskProvi
   const existingValue = initialData[firstStep.key]
   let prompt = firstStep.prompt
   if (existingValue !== undefined && existingValue !== '') {
-    const maskedValue = maskValue(firstStep.key, existingValue)
+    const maskedValue = firstStep.field.sensitive
+      ? maskSensitiveValue(existingValue)
+      : maskValue(firstStep.key, existingValue)
     prompt = `${firstStep.prompt}\n\n💡 Current value: ${maskedValue} (type new value to change, or "skip" to keep)`
   }
 

@@ -3,12 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, mock, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { McpToolDef } from '../../src/mcp/tool-adapter.js'
-import { convertMcpToolsToToolSet } from '../../src/mcp/tool-adapter.js'
 import type { McpToolFilter } from '../../src/mcp/types.js'
 import { getToolExecutor } from '../utils/test-helpers.js'
+
+let convertMcpToolsToToolSet: typeof import('../../src/mcp/tool-adapter.js').convertMcpToolsToToolSet
+
+beforeEach(async () => {
+  ;({ convertMcpToolsToToolSet } = await import('../../src/mcp/tool-adapter.js'))
+})
 
 type MockClient = {
   callTool: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<{

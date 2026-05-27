@@ -4,11 +4,10 @@
 // See LICENSE in the project root for details.
 
 import type { ReplyFn } from './chat/types.js'
-import { getConfigKeysForContext } from './config-keys.js'
-import { getAllConfig } from './config.js'
+import { getConfigFieldsForContext } from './config-keys.js'
+import { getConfigValue } from './config.js'
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
-import { isBuiltinTaskType } from './instances/types.js'
 import { startTaskInstanceSelection } from './setup/task-instance-selection.js'
 import { isDemoUser } from './users.js'
 import { createWizard, hasActiveWizard } from './wizard/index.js'
@@ -20,16 +19,12 @@ function userNeedsSetup(storageContextId: string): boolean {
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') return true
 
-  // Contributed provider types have no wizard-managed credentials
-  if (!isBuiltinTaskType(taskInstance.type)) return false
-
-  const config = getAllConfig(storageContextId)
-  const contextKeys = getConfigKeysForContext(storageContextId)
+  const contextKeys = new Set(getConfigFieldsForContext(storageContextId).map((field) => field.storageKey))
   return getWizardSteps(taskInstance.type).some((step) => {
     if (step.isOptional === true) return false
-    if (!contextKeys.includes(step.key)) return false
-    const value = config[step.key]
-    if (value === undefined) return true
+    if (!contextKeys.has(step.key)) return false
+    const value = getConfigValue(storageContextId, step.key)
+    if (value === null) return true
     if (value === '') return true
     return false
   })
@@ -49,8 +44,6 @@ export async function autoStartWizardIfNeeded(
   if (settings === null) {
     const selection = startTaskInstanceSelection(userId, storageContextId, platformInstanceId)
     if (selection.status === 'assigned') {
-      // Contributed provider types have no wizard-managed credentials
-      if (!isBuiltinTaskType(selection.taskProvider)) return false
       const result = createWizard(userId, storageContextId, selection.taskProvider)
       if (result.success) await reply.text(result.prompt)
       return result.success
@@ -64,8 +57,6 @@ export async function autoStartWizardIfNeeded(
 
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active') return false
-  // Contributed provider types have no wizard-managed credentials
-  if (!isBuiltinTaskType(taskInstance.type)) return false
   const result = createWizard(userId, storageContextId, taskInstance.type)
   if (result.success) await reply.text(result.prompt)
   return result.success

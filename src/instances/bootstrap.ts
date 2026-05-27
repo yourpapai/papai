@@ -53,7 +53,7 @@ const buildPlatformConfig = (type: PlatformInstanceType): InstanceConfig => {
       return { token: getTrimmedEnv('TELEGRAM_BOT_TOKEN') ?? '' }
     case 'mattermost':
       return {
-        url: getTrimmedEnv('MATTERMOST_URL') ?? '',
+        baseUrl: getTrimmedEnv('MATTERMOST_URL') ?? '',
         token: getTrimmedEnv('MATTERMOST_BOT_TOKEN') ?? '',
       }
     case 'discord':
@@ -66,9 +66,9 @@ const buildPlatformConfig = (type: PlatformInstanceType): InstanceConfig => {
 const buildTaskConfig = (type: BuiltinTaskType): InstanceConfig => {
   switch (type) {
     case 'kaneo':
-      return { url: getTrimmedEnv('KANEO_CLIENT_URL') ?? '' }
+      return { baseUrl: getTrimmedEnv('KANEO_CLIENT_URL') ?? '' }
     case 'youtrack':
-      return { url: getTrimmedEnv('YOUTRACK_URL') ?? '' }
+      return { baseUrl: getTrimmedEnv('YOUTRACK_URL') ?? '' }
     default:
       return unreachable(type)
   }

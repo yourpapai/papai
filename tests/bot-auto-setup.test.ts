@@ -18,7 +18,7 @@ describe('bot-auto-setup', () => {
     process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
   })
 
-  test('autoStartWizardIfNeeded returns false (no wizard) for a contributed provider type', async () => {
+  test('autoStartWizardIfNeeded starts timezone wizard for a contributed provider type', async () => {
     insertTaskInstance({
       id: 'demo-1',
       type: 'demo-tracker',
@@ -30,8 +30,9 @@ describe('bot-auto-setup', () => {
     const { reply, textCalls } = createMockReply()
     const result = await autoStartWizardIfNeeded('user-1', 'ctx-1', 'telegram-default', reply)
 
-    // Contributed providers have no wizard steps — nothing to prompt
-    expect(result).toBe(false)
-    expect(textCalls).toHaveLength(0)
+    // Contributed providers without credential fields still prompt for general preferences.
+    expect(result).toBe(true)
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('Enter your timezone')
   })
 })

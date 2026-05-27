@@ -8,16 +8,9 @@
  * Validates user input for configuration fields
  */
 
-import type { ConfigKey } from '../types/config.js'
+import type { ConfigField } from '../types/config.js'
 import { normalizeTimezone } from '../utils/timezone.js'
 import type { ValidationResult } from './types.js'
-
-function validateRequired(value: string): ValidationResult {
-  if (value.trim().length === 0) {
-    return { valid: false, error: 'This field cannot be empty' }
-  }
-  return { valid: true }
-}
 
 function validateTimezone(value: string): ValidationResult {
   const normalized = normalizeTimezone(value.trim())
@@ -31,20 +24,10 @@ function validateTimezone(value: string): ValidationResult {
   return { valid: true }
 }
 
-export function validateConfigValue(key: ConfigKey, value: string): ValidationResult {
-  switch (key) {
-    case 'kaneo_apikey':
-    case 'kaneo_workspace_id':
-    case 'youtrack_token':
-      return validateRequired(value)
-
-    case 'timezone':
-      return validateTimezone(value)
-
-    case 'mcp_endpoints':
-      return { valid: true }
-
-    default:
-      return { valid: true }
+export function validateConfigField(field: ConfigField, value: string): ValidationResult {
+  if (field.required && value.trim().length === 0) {
+    return { valid: false, error: `${field.label} cannot be empty` }
   }
+  if (field.storageKey === 'timezone') return validateTimezone(value)
+  return { valid: true }
 }

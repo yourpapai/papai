@@ -135,14 +135,23 @@ describe('instance API routes', () => {
 
     expect(created.status).toBe(201)
     const createdBody = assertObject(await readJson(created))
-    expect(pick(createdBody, 'config')).toEqual({ bot_token: '***', label: 'main' })
+    expect(pick(createdBody, 'config')).toEqual({ bot_token: '********', label: 'main' })
 
     const listed = expectResponse(await route('/api/platform-instances'))
 
     expect(listed.status).toBe(200)
     const rows = assertArray(await readJson(listed))
     expect(rows).toHaveLength(1)
-    expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '***', label: 'main' })
+    expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '********', label: 'main' })
+  })
+
+  test('GET /api/platform-instances masks descriptor-sensitive fields', async () => {
+    insertPlatformInstance({ id: 'tg', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(await route('/api/platform-instances'))
+
+    const body = assertArray(await readJson(res))
+    expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'token')).toBe('********')
   })
 
   test('duplicate platform create returns instance_exists conflict', async () => {
@@ -174,7 +183,7 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
-    expect(pick(body, 'config')).toEqual({ bot_token: '***', label: 'main' })
+    expect(pick(body, 'config')).toEqual({ bot_token: '********', label: 'main' })
   })
 
   test('platform PATCH missing instance returns 404', async () => {
@@ -547,7 +556,7 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
-    expect(pick(body, 'config')).toEqual({ api_key: '***' })
+    expect(pick(body, 'config')).toEqual({ api_key: '********' })
     expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
     expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
   })
@@ -625,6 +634,15 @@ describe('instance API routes', () => {
     const body = assertObject(await readJson(res))
     expect(pick(body, 'error')).toBe('unknown_task_provider_type')
     expect(pick(body, 'type')).toBe('mystery')
+  })
+
+  test('unknown task provider masks every config field', async () => {
+    insertTaskInstance({ id: 'unknown', type: 'missing', config: { publicish: 'value' }, status: 'active' })
+
+    const res = expectResponse(await route('/api/task-instances'))
+
+    const body = assertArray(await readJson(res))
+    expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'publicish')).toBe('********')
   })
 
   test('rejects a task-instance create when the provider validator fails', async () => {
@@ -715,7 +733,7 @@ describe('instance API routes', () => {
       expect(created.status).toBe(201)
       const createdConfig = assertObject(pick(assertObject(await readJson(created)), 'config'))
       expect(pick(createdConfig, 'baseUrl')).toBe('https://masktest.invalid')
-      expect(pick(createdConfig, 'apiSecret')).toBe('***')
+      expect(pick(createdConfig, 'apiSecret')).toBe('********')
 
       const listed = expectResponse(
         await routeWithDeps('/api/task-instances', {
@@ -729,7 +747,7 @@ describe('instance API routes', () => {
       const masktestRow = rows.find((row) => pick(assertObject(row), 'type') === 'masktest')
       const listedConfig = assertObject(pick(assertObject(masktestRow), 'config'))
       expect(pick(listedConfig, 'baseUrl')).toBe('https://masktest.invalid')
-      expect(pick(listedConfig, 'apiSecret')).toBe('***')
+      expect(pick(listedConfig, 'apiSecret')).toBe('********')
     } finally {
       unregisterContributedTaskProviderType('mask-plugin')
     }

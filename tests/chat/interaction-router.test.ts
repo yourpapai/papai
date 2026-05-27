@@ -14,6 +14,7 @@ import { routeInteraction } from '../../src/chat/interaction-router.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { buildTelegramInteraction } from '../../src/chat/telegram/interaction-helpers.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
+import { serializeCallbackData } from '../../src/config-editor/callback-data.js'
 import { handleEditorMessage } from '../../src/config-editor/handlers.js'
 import { createEditorSession, deleteEditorSession } from '../../src/config-editor/state.js'
 import { getConfig, setConfig } from '../../src/config.js'
@@ -153,6 +154,26 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(calls).toEqual(['cfg'])
+  })
+
+  test('compact config callbacks fail closed when routed through the wrong inferred context', async () => {
+    const callbackData = serializeCallbackData(
+      { action: 'edit', key: 'timezone' },
+      'managed-group-context-with-a-very-long-stable-storage-id',
+    )
+    const replies: string[] = []
+
+    const handled = await routeInteraction(
+      { ...interaction, callbackData },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
   })
 
   test('routes telegram cfg fallback with scoped auth context instead of native interaction storage', async () => {

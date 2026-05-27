@@ -6,12 +6,12 @@
 import { getCachedConfig, setCachedConfig } from './cache.js'
 import { getConfigKeysForContext } from './config-keys.js'
 import { logger } from './logger.js'
-import { ALL_CONFIG_KEYS, type ConfigKey } from './types/config.js'
+import { isAllowedDynamicConfigKey, isConfigKey as isKnownConfigKey, type ConfigKey } from './types/config.js'
 import { normalizeTimezoneValue } from './utils/timezone.js'
 
 const log = logger.child({ scope: 'config' })
 
-const SENSITIVE_KEYS: ReadonlySet<ConfigKey> = new Set(['kaneo_apikey', 'youtrack_token'])
+const SENSITIVE_KEYS: ReadonlySet<string> = new Set(['kaneo_apikey', 'youtrack_token'])
 
 function normalizeConfigValue(key: ConfigKey, value: string): string {
   if (key !== 'timezone') return value
@@ -23,7 +23,17 @@ function readConfigValue(key: ConfigKey, value: string | null): string | null {
   return normalizeTimezoneValue(value) ?? value.trim()
 }
 
-export function isSensitiveKey(key: ConfigKey): boolean {
+function normalizeDynamicConfigValue(key: string, value: string): string {
+  if (key !== 'timezone') return value
+  return normalizeTimezoneValue(value) ?? value.trim()
+}
+
+function readDynamicConfigValue(key: string, value: string | null): string | null {
+  if (value === null || key !== 'timezone') return value
+  return normalizeTimezoneValue(value) ?? value.trim()
+}
+
+export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEYS.has(key)
 }
 
@@ -38,9 +48,22 @@ export function getConfig(userId: string, key: ConfigKey): string | null {
   return readConfigValue(key, getCachedConfig(userId, key))
 }
 
+export function setConfigValue(contextId: string, key: string, value: string): void {
+  if (!isAllowedDynamicConfigKey(key)) throw new Error(`Invalid config key: ${key}`)
+  log.debug({ contextId, key }, 'setConfigValue called')
+  setCachedConfig(contextId, key, normalizeDynamicConfigValue(key, value))
+  log.info({ contextId, key }, 'Config value set (DB sync in background)')
+}
+
+export function getConfigValue(contextId: string, key: string): string | null {
+  if (!isAllowedDynamicConfigKey(key)) return null
+  log.debug({ contextId, key }, 'getConfigValue called')
+  return readDynamicConfigValue(key, getCachedConfig(contextId, key))
+}
+
 export function isConfigKey(key: string): key is ConfigKey {
   // Use the canonical list from types/config.ts via ALL_CONFIG_KEYS
-  return (ALL_CONFIG_KEYS as readonly string[]).includes(key)
+  return isKnownConfigKey(key)
 }
 
 export function getAllConfig(userId: string): Partial<Record<ConfigKey, string>> {
@@ -67,10 +90,13 @@ export function setPluginConfig(contextId: string, pluginId: string, key: string
   setCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key), value)
 }
 
-export function maskValue(key: ConfigKey, value: string): string {
+export function maskValue(key: string, value: string): string {
   if (SENSITIVE_KEYS.has(key)) {
-    const last4 = value.slice(-4)
-    return `****${last4}`
+    return maskSensitiveValue(value)
   }
   return value
+}
+
+export function maskSensitiveValue(value: string): string {
+  return `****${value.slice(-4)}`
 }

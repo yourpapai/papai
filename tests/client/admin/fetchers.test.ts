@@ -21,6 +21,7 @@ import {
   fetchDeferredPrompts,
   fetchMemos,
   fetchPlatformInstances,
+  fetchPlatformProviderTypes,
   fetchRecentRequests,
   fetchRecurringTasks,
   fetchTaskInstances,
@@ -489,8 +490,10 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
         {
           type: 'kaneo',
           displayName: 'Kaneo',
-          configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          contextConfigSchema: [],
           capabilities: ['comments.read'],
+          traits: [],
           source: 'builtin',
         },
       ]),
@@ -498,11 +501,42 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
   )
   const types = await fetchTaskProviderTypes()
   expect(types[0]?.type).toBe('kaneo')
-  expect(types[0]?.configSchema[0]?.key).toBe('baseUrl')
+  expect(types[0]?.instanceConfigSchema[0]?.key).toBe('baseUrl')
   restoreFetch()
 })
 
 test('fetchTaskProviderTypes throws on non-ok response', async () => {
   installFetch(500, { error: 'internal server error' })
   await expect(fetchTaskProviderTypes()).rejects.toThrow()
+})
+
+test('fetchPlatformProviderTypes parses the catalog', async () => {
+  setMockFetch(() =>
+    Promise.resolve(
+      Response.json([
+        {
+          type: 'mattermost',
+          displayName: 'Mattermost',
+          instanceConfigSchema: [
+            { key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false },
+            { key: 'token', label: 'Mattermost Bot Token', required: true, sensitive: true },
+          ],
+          contextConfigSchema: [],
+          capabilities: ['commands'],
+          traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
+          source: 'builtin',
+        },
+      ]),
+    ),
+  )
+  const types = await fetchPlatformProviderTypes()
+  expect(types[0]?.type).toBe('mattermost')
+  expect(types[0]?.instanceConfigSchema[1]?.sensitive).toBe(true)
+  expect(types[0]?.traits.observedGroupMessages).toBe('all')
+  restoreFetch()
+})
+
+test('fetchPlatformProviderTypes throws on non-ok response', async () => {
+  installFetch(500, { error: 'internal server error' })
+  await expect(fetchPlatformProviderTypes()).rejects.toThrow()
 })

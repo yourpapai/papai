@@ -45,6 +45,53 @@ const RISK_EMOJI: Record<ToolRisk, string> = {
   'open-world': '🌐',
 }
 
+const MAX_CALLBACK_DATA_BYTES = 64
+const DOMAIN_CODES: readonly ToolDomain[] = [
+  'task',
+  'project',
+  'comment',
+  'label',
+  'status',
+  'attachment',
+  'work',
+  'sprint',
+  'query',
+  'collaboration',
+  'memo',
+  'recurring',
+  'deferred',
+  'instruction',
+  'history',
+  'web',
+  'identity',
+  'time',
+]
+
+function callbackData(raw: string, compact: string): string | null {
+  if (Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES) return raw
+  return Buffer.byteLength(compact, 'utf8') <= MAX_CALLBACK_DATA_BYTES ? compact : null
+}
+
+function sortedToolNames(availableToolNames: readonly string[]): string[] {
+  return [...availableToolNames].filter((name) => getToolMetadata(name) !== undefined).toSorted()
+}
+
+function domainCode(domain: ToolDomain): string {
+  return DOMAIN_CODES.indexOf(domain).toString(36)
+}
+
+export function resolveToolDomainCode(code: string): ToolDomain | null {
+  const index = Number.parseInt(code, 36)
+  if (!Number.isSafeInteger(index)) return null
+  return DOMAIN_CODES[index] ?? null
+}
+
+export function resolveToolNameCode(code: string, availableToolNames: readonly string[]): string | null {
+  const index = Number.parseInt(code, 36)
+  if (!Number.isSafeInteger(index)) return null
+  return sortedToolNames(availableToolNames)[index] ?? null
+}
+
 function groupByDomain(availableToolNames: readonly string[]): Map<ToolDomain, string[]> {
   const map = new Map<ToolDomain, string[]>()
   for (const name of availableToolNames) {
@@ -86,16 +133,22 @@ export function buildDomainListView(
     }
     const status = getDomainStatus(prefs, domain, names)
     lines.push(`${statusMarker(status)} ${DOMAIN_LABELS[domain]}`)
-    buttons.push({
-      text: `${statusMarker(status)} ${DOMAIN_LABELS[domain]}`,
-      callbackData: `tgl:dom:${domain}:${ctx}`,
-      style: status === 'off' ? 'secondary' : 'primary',
-    })
-    buttons.push({
-      text: `✏️ Edit ${DOMAIN_LABELS[domain]}`,
-      callbackData: `tgl:open:${domain}:${ctx}`,
-      style: 'secondary',
-    })
+    const toggleCallback = callbackData(`tgl:dom:${domain}:${ctx}`, `tgl:d:${domainCode(domain)}:${ctx}`)
+    if (toggleCallback !== null) {
+      buttons.push({
+        text: `${statusMarker(status)} ${DOMAIN_LABELS[domain]}`,
+        callbackData: toggleCallback,
+        style: status === 'off' ? 'secondary' : 'primary',
+      })
+    }
+    const openCallback = callbackData(`tgl:open:${domain}:${ctx}`, `tgl:o:${domainCode(domain)}:${ctx}`)
+    if (openCallback !== null) {
+      buttons.push({
+        text: `✏️ Edit ${DOMAIN_LABELS[domain]}`,
+        callbackData: openCallback,
+        style: 'secondary',
+      })
+    }
   }
   return { text: lines.join('\n'), buttons }
 }
@@ -115,6 +168,7 @@ export function buildDomainDrillView(
     names = domainTools
   }
   const sorted = [...names].toSorted()
+  const allSorted = sortedToolNames(availableToolNames)
   const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to toggle it.\n`]
   const buttons: ChatButton[] = []
   for (const name of sorted) {
@@ -122,12 +176,16 @@ export function buildDomainDrillView(
     const risk = meta === undefined ? '' : RISK_EMOJI[meta.risk]
     const enabled = isToolEnabled(prefs, name)
     lines.push(`${enabled ? '🟢' : '⭕'} ${risk} ${name}`)
-    buttons.push({
-      text: `${enabled ? '🟢' : '⭕'} ${risk} ${name}`,
-      callbackData: `tgl:tool:${name}:${ctx}`,
-      style: enabled ? 'primary' : 'secondary',
-    })
+    const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${allSorted.indexOf(name).toString(36)}:${ctx}`)
+    if (toolCallback !== null) {
+      buttons.push({
+        text: `${enabled ? '🟢' : '⭕'} ${risk} ${name}`,
+        callbackData: toolCallback,
+        style: enabled ? 'primary' : 'secondary',
+      })
+    }
   }
-  buttons.push({ text: '⬅️ Back', callbackData: `tgl:back:${ctx}`, style: 'secondary' })
+  const backCallback = callbackData(`tgl:back:${ctx}`, `tgl:b:${ctx}`)
+  if (backCallback !== null) buttons.push({ text: '⬅️ Back', callbackData: backCallback, style: 'secondary' })
   return { text: lines.join('\n'), buttons }
 }

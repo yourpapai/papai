@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { TaskCapability, ProviderConfigRequirement } from '../types.js'
+import type { ProviderConfigRequirement, TaskCapability, TaskProviderTrait } from '../types.js'
 
 export const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapability>([
   // Tasks
@@ -33,6 +33,11 @@ export const ALL_CAPABILITIES: ReadonlySet<TaskCapability> = new Set<TaskCapabil
   'statuses.reorder',
 ])
 
+export const KANEO_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProviderTrait>([
+  'workspace-scoped',
+  'task-label-read-requires-provider-specific-api',
+])
+
 export const CONFIG_REQUIREMENTS: readonly ProviderConfigRequirement[] = [
-  { key: 'kaneo_apikey', label: 'Kaneo API Key', required: true },
+  { key: 'kaneo_apikey', label: 'Kaneo API Key', required: true, sensitive: true, scope: 'context' },
 ]

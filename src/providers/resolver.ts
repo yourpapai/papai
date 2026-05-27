@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getConfig, isConfigKey } from '../config.js'
+import { getConfigValue } from '../config.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
 import type { TaskInstance } from '../instances/types.js'
@@ -11,7 +11,7 @@ import { logger } from '../logger.js'
 import { getKaneoWorkspace } from '../users.js'
 import { createProvider, getTaskProviderDescriptor } from './registry.js'
 import type { TaskProviderTypeDescriptor } from './registry.js'
-import type { TaskProvider } from './types.js'
+import type { ProviderConfigField, TaskProvider } from './types.js'
 
 const log = logger.child({ scope: 'provider:resolver' })
 
@@ -28,27 +28,25 @@ export interface TaskProviderResolverDeps {
 const defaultDeps: TaskProviderResolverDeps = {
   getContextSettings,
   getTaskInstance,
-  getConfig: (contextId, key) => (isConfigKey(key) ? getConfig(contextId, key) : null),
+  getConfig: getConfigValue,
   getKaneoWorkspace,
   getTaskProviderDescriptor,
   createProvider,
 }
 
-/**
- * Source a user-scoped config field from per-context storage. Built-in types use
- * dedicated storage-key/special-store mappings; all other (plugin-contributed) types
- * fall back to the generic per-context store keyed by the field name (spec §2.3).
- */
-const readUserScopedField = (
-  type: string,
-  fieldKey: string,
+const storageKeyForField = (descriptor: TaskProviderTypeDescriptor, field: ProviderConfigField): string => {
+  if (descriptor.source !== 'builtin') return `plugin:${descriptor.source.plugin}:provider:${field.key}`
+  return field.storageKey ?? field.key
+}
+
+const readContextScopedField = (
+  descriptor: TaskProviderTypeDescriptor,
+  field: ProviderConfigField,
   contextId: string,
   deps: TaskProviderResolverDeps,
 ): string | null => {
-  if (type === 'kaneo' && fieldKey === 'credential') return deps.getConfig(contextId, 'kaneo_apikey')
-  if (type === 'kaneo' && fieldKey === 'workspaceId') return deps.getKaneoWorkspace(contextId)
-  if (type === 'youtrack' && fieldKey === 'token') return deps.getConfig(contextId, 'youtrack_token')
-  return deps.getConfig(contextId, fieldKey)
+  if (descriptor.type === 'kaneo' && field.key === 'workspaceId') return deps.getKaneoWorkspace(contextId)
+  return deps.getConfig(contextId, storageKeyForField(descriptor, field))
 }
 
 const readInstanceScopedField = (instance: TaskInstance, fieldKey: string): string | undefined => {
@@ -67,12 +65,16 @@ const buildConfigFromDescriptor = (
 ): Record<string, string> | null => {
   const merged: Record<string, string> = {}
   const missing: string[] = []
-  for (const field of descriptor.configSchema) {
-    const scope = field.scope ?? 'instance'
-    const raw =
-      scope === 'instance'
-        ? readInstanceScopedField(instance, field.key)
-        : (readUserScopedField(instance.type, field.key, contextId, deps) ?? undefined)
+  for (const field of descriptor.instanceConfigSchema) {
+    const raw = readInstanceScopedField(instance, field.key)
+    if (raw !== undefined && raw !== '') {
+      merged[field.key] = raw
+    } else if (field.required) {
+      missing.push(field.key)
+    }
+  }
+  for (const field of descriptor.contextConfigSchema) {
+    const raw = readContextScopedField(descriptor, field, contextId, deps) ?? undefined
     if (raw !== undefined && raw !== '') {
       merged[field.key] = raw
     } else if (field.required) {

@@ -7,9 +7,12 @@ import { validateChatProviderEnv } from '../env-validation.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { DiscordChatProvider } from './discord/index.js'
+import { discordCapabilities, discordTraits } from './discord/metadata.js'
 import { MattermostChatProvider } from './mattermost/index.js'
+import { mattermostCapabilities, mattermostTraits } from './mattermost/metadata.js'
 import { TelegramChatProvider } from './telegram/index.js'
-import type { ChatProvider } from './types.js'
+import { telegramCapabilities, telegramTraits } from './telegram/metadata.js'
+import type { ChatProvider, ChatProviderDescriptor } from './types.js'
 
 const log = logger.child({ scope: 'chat:registry' })
 
@@ -23,6 +26,43 @@ export interface RegistryDeps {
 const defaultDeps: RegistryDeps = { env: process.env }
 
 const providers = new Map<string, ChatProviderFactory>()
+
+const platformDescriptors = [
+  {
+    type: 'telegram',
+    displayName: 'Telegram',
+    source: 'builtin',
+    instanceConfigSchema: [
+      { key: 'token', label: 'Telegram Bot Token', required: true, sensitive: true, scope: 'instance' },
+    ],
+    contextConfigSchema: [],
+    capabilities: telegramCapabilities,
+    traits: telegramTraits,
+  },
+  {
+    type: 'mattermost',
+    displayName: 'Mattermost',
+    source: 'builtin',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'token', label: 'Mattermost Bot Token', required: true, sensitive: true, scope: 'instance' },
+    ],
+    contextConfigSchema: [],
+    capabilities: mattermostCapabilities,
+    traits: mattermostTraits,
+  },
+  {
+    type: 'discord',
+    displayName: 'Discord',
+    source: 'builtin',
+    instanceConfigSchema: [
+      { key: 'token', label: 'Discord Bot Token', required: true, sensitive: true, scope: 'instance' },
+    ],
+    contextConfigSchema: [],
+    capabilities: discordCapabilities,
+    traits: discordTraits,
+  },
+] as const satisfies readonly ChatProviderDescriptor[]
 
 registerChatProvider(
   'telegram',
@@ -46,6 +86,8 @@ function registerChatProvider(name: string, factory: ChatProviderFactory): void 
   providers.set(name, factory)
 }
 
+export const listPlatformProviderTypes = (): readonly ChatProviderDescriptor[] => platformDescriptors
+
 export function createChatProvider(name: string, deps: RegistryDeps = defaultDeps): ChatProvider {
   const validation = validateChatProviderEnv(name, deps.env)
   if (!validation.ok) {
@@ -59,7 +101,9 @@ export function createChatProvider(name: string, deps: RegistryDeps = defaultDep
 
 const configToEnv = (type: PlatformInstanceType, config: InstanceConfig): Record<string, string | undefined> => {
   if (type === 'telegram') return { TELEGRAM_BOT_TOKEN: config['token'] }
-  if (type === 'mattermost') return { MATTERMOST_URL: config['url'], MATTERMOST_BOT_TOKEN: config['token'] }
+  if (type === 'mattermost') {
+    return { MATTERMOST_URL: config['baseUrl'] ?? config['url'], MATTERMOST_BOT_TOKEN: config['token'] }
+  }
   return { DISCORD_BOT_TOKEN: config['token'] }
 }
 

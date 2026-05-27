@@ -8,27 +8,41 @@ See LICENSE in the project root for details.
 # Multi-Provider Review Remediation - Phase 3: Full Provider Catalog Refactor
 
 **Date:** 2026-05-26
-**Status:** Proposed
+**Status:** Proposed, aligned 2026-05-27
 **Parent:** [`2026-05-26-multi-provider-phase-2-db-integrity-first.md`](./2026-05-26-multi-provider-phase-2-db-integrity-first.md)
 **Depends on:** Phase 1 hardening and Phase 2 integrity cleanup
 **Ships independently:** No; this is a coordinated provider architecture refactor
 
 ## Summary
 
-Finish the multi-provider abstraction by making chat and task provider metadata catalog-driven, schema-driven, and trait-driven. This phase removes hard-coded provider dropdowns, closes the plugin task-provider credential gap, removes provider-name checks from tool assembly, standardizes instance config keys, and prepares provider construction for future non-stateless providers.
+Finish the multi-provider abstraction by making chat and task provider metadata catalog-driven, schema-driven, and trait-driven. Recent Phase 2 work already made task provider type listing static and introduced plugin-contributed task provider type registration with instance-scoped config. This phase builds on that baseline: it adds the missing platform catalog, splits task schemas into instance and context schemas, closes the plugin task-provider credential gap, removes provider-name checks from tool assembly, standardizes instance config keys, and prepares provider construction for future non-stateless providers.
 
 The goal is not to add a new provider. The goal is to make adding the next provider boring.
 
 ## Goals
 
 - Add a platform provider catalog and `/api/platform-provider-types` endpoint.
-- Make task provider descriptors static and stop instantiating providers just to read capabilities.
+- Preserve static task provider descriptors and expand them to expose separate instance/context schemas plus traits.
 - Replace provider-name checks in tools with explicit capabilities or provider traits.
 - Standardize provider instance config around `baseUrl` and migrate legacy `url` values.
 - Define and implement a complete credential model for plugin-contributed task providers.
 - Make `/setup`, `/config`, and the wizard consume provider descriptors instead of hard-coded Kaneo/YouTrack unions.
 - Make masking schema-driven for both platform and task instance configs.
 - Introduce provider lifecycle expectations and optional resolver caching/pooling for providers that are not cheap stateless HTTP wrappers.
+
+## Current Implementation Baseline
+
+As of 2026-05-27, the branch already contains these relevant changes:
+
+- `src/providers/registry.ts` has static built-in task descriptors and plugin-contributed task provider type registration; `listTaskProviderTypes()` no longer constructs Kaneo or YouTrack just to expose capabilities.
+- `src/debug/task-provider-type-routes.ts` already serves `GET /api/task-provider-types`, but the response is still the legacy `configSchema` shape and only exposes instance-scoped fields to the admin UI.
+- `client/admin/sections/InstancesSection.svelte` already renders the task-instance create form from `/api/task-provider-types`, but platform instance creation still hard-codes `telegram`, `mattermost`, and `discord` and still accepts raw config JSON.
+- `src/providers/resolver.ts` already merges built-in instance config with per-context Kaneo/YouTrack credentials, but plugin-contributed provider context credentials are not persisted or read by the default resolver path.
+- `src/instances/bootstrap.ts` still writes legacy `url` keys for Mattermost, Kaneo, and YouTrack, while `src/providers/resolver.ts` reads `baseUrl` with a compatibility fallback to `url`.
+- Tool assembly still has provider-name feature flags in `src/tools/tools-builder.ts` and `src/tools/kaneo-label-helpers.ts`.
+- Task instance masking is partially descriptor-aware; platform instance masking still relies on key-name heuristics.
+
+Phase 3 should not re-implement completed static task catalog work. It should migrate the current legacy shapes to the final descriptor model in small compatibility-preserving steps.
 
 ## Non-Goals
 
@@ -51,6 +65,7 @@ type ProviderConfigField = {
   required: boolean
   sensitive: boolean
   scope: 'instance' | 'context'
+  storageKey?: string
 }
 
 type ProviderDescriptor<Capability extends string, Trait extends string> = {
@@ -66,20 +81,20 @@ type ProviderDescriptor<Capability extends string, Trait extends string> = {
 
 Task providers use task capabilities and task traits. Platform providers use chat capabilities and chat traits.
 
-The split between `instanceConfigSchema` and `contextConfigSchema` is required because base URLs and bot tokens belong to the instance, while user tokens or workspace IDs may belong to a context.
+The split between `instanceConfigSchema` and `contextConfigSchema` is required because base URLs and bot tokens belong to the instance, while user tokens or workspace IDs may belong to a context. `storageKey` is optional and exists for built-in compatibility where the runtime provider input key differs from the persisted per-context key; for example, Kaneo may expose a context field with `key: 'credential'` and `storageKey: 'kaneo_apikey'` so the provider factory still receives `credential` while `/config` writes the existing `user_config` row.
 
 ### Builtin Task Provider Descriptors
 
 Kaneo:
 
 - Instance config: `baseUrl` required, `internalUrl` optional.
-- Context config: `kaneo_apikey` required, `kaneo_workspace_id` required or auto-provisioned.
+- Context config: Kaneo credential required and workspace ID required or auto-provisioned. Preserve existing persisted keys via `storageKey: 'kaneo_apikey'` and `storageKey: 'kaneo_workspace_id'` if the provider factory continues to receive `credential` and `workspaceId`.
 - Traits: `workspace-scoped`, `task-label-read-requires-provider-specific-api` if still needed after trait review.
 
 YouTrack:
 
 - Instance config: `baseUrl` required.
-- Context config: `youtrack_token` required.
+- Context config: YouTrack token required. Preserve the existing persisted key via `storageKey: 'youtrack_token'` if the provider factory continues to receive `token`.
 - Traits: `supports-command-language`, `custom-fields`.
 
 The existing `CONFIG_REQUIREMENTS` exported by provider classes should either become descriptor input or be removed to avoid duplicate sources of truth.
@@ -109,6 +124,8 @@ Plugin task providers may declare both instance-level config and context-level c
 
 - `providerConfigSchema` becomes or maps to `instanceConfigSchema`.
 - A new manifest field, for example `providerContextConfigSchema`, declares per-context credentials required to resolve the provider for a user/group.
+
+Current manifests only have `providerConfigSchema`, so Phase 3 must add `providerContextConfigSchema` without changing the approval model or trusted-plugin boundary.
 
 If backward compatibility is needed for existing plugins, keep `providerConfigSchema` as the instance schema and default `providerContextConfigSchema` to empty.
 
@@ -152,9 +169,9 @@ Replacement options:
 
 Provider names remain identifiers for logging and registry lookup. They must not be used as behavioral feature flags.
 
-## Static Capabilities
+## Static Capabilities And Traits
 
-`listTaskProviderTypes()` must not instantiate built-in providers with empty config to read `.capabilities`.
+`listTaskProviderTypes()` must continue not instantiating built-in providers with empty config to read `.capabilities`.
 
 Refactor provider registry to store metadata next to factories:
 
@@ -162,10 +179,11 @@ Refactor provider registry to store metadata next to factories:
 type TaskProviderRegistration = {
   factory: TaskProviderFactory
   descriptor: TaskProviderTypeDescriptor
+  validateConfig?: TaskProviderConfigValidator
 }
 ```
 
-`createProvider(type, config)` uses the factory. Catalog endpoints use descriptors only.
+`createProvider(type, config)` uses the factory. Catalog endpoints use descriptors only. The current registry already separates factory construction from descriptor listing for task providers; Phase 3 should complete the registration shape, add traits, and remove the legacy single `configSchema` response after clients have moved to `instanceConfigSchema` and `contextConfigSchema`.
 
 This makes catalog GET safe for providers that perform validation, allocate clients, open sockets, or read config during construction.
 
@@ -234,7 +252,7 @@ GET /api/platform-provider-types
 GET /api/task-provider-types
 ```
 
-Update existing task provider type response to include separate instance/context schemas and traits. Existing clients should be migrated with the admin UI in the same phase.
+`GET /api/task-provider-types` already exists. Update its response to include separate instance/context schemas and traits, and migrate existing clients with the admin UI in the same phase. `GET /api/platform-provider-types` is new.
 
 Potential response shape:
 

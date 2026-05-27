@@ -10,7 +10,26 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ConfigKey } from '../../src/types/config.js'
+import type { ConfigField } from '../../src/types/config.js'
 import type { WizardSession, WizardData, WizardStep, WizardProcessResult } from '../../src/wizard/types.js'
+
+const kaneoApiKeyField: ConfigField = {
+  key: 'credential',
+  storageKey: 'kaneo_apikey',
+  label: 'Kaneo API Key',
+  required: true,
+  sensitive: true,
+  kind: 'provider-context',
+}
+
+const timezoneField: ConfigField = {
+  key: 'timezone',
+  storageKey: 'timezone',
+  label: 'Timezone',
+  required: true,
+  sensitive: false,
+  kind: 'preference',
+}
 
 function validateApiKey(value: string): Promise<string | null> {
   if (value.startsWith('sk-')) return Promise.resolve(null)
@@ -35,7 +54,7 @@ describe('Wizard Types', () => {
 
     expect(session.userId).toBe('user123')
     expect(session.currentStep).toBe(1)
-    expect(session.data.kaneo_apikey).toBe('sk-test')
+    expect(session.data['kaneo_apikey']).toBe('sk-test')
     expect(session.skippedSteps).toEqual([2])
   })
 
@@ -53,6 +72,7 @@ describe('Wizard Types', () => {
     const step: WizardStep = {
       id: 'step-1',
       key: 'kaneo_apikey',
+      field: kaneoApiKeyField,
       prompt: 'Please enter your Kaneo API key:',
       validate: validateApiKey,
       isOptional: false,
@@ -73,6 +93,7 @@ describe('Wizard Types', () => {
     const step: WizardStep = {
       id: 'step-2',
       key: 'timezone',
+      field: timezoneField,
       prompt: 'Enter timezone:',
       validate: () => Promise.resolve(null),
     }
@@ -99,8 +120,7 @@ describe('Wizard Types', () => {
     expect(result2.isSensitiveKey).toBe(true)
   })
 
-  test('WizardData restricts keys to ConfigKey', () => {
-    // This test verifies at compile time that WizardData uses ConfigKey
+  test('WizardData accepts core config keys', () => {
     const configKey: ConfigKey = 'kaneo_apikey'
     const data: WizardData = {
       [configKey]: 'test-value',

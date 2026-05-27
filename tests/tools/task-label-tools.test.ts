@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { makeAddTaskLabelTool } from '../../src/tools/add-task-label.js'
 import { makeRemoveTaskLabelTool } from '../../src/tools/remove-task-label.js'
 import { getToolExecutor, mockLogger, schemaValidates } from '../utils/test-helpers.js'
-import { createMockProvider } from './mock-provider.js'
+import { createMockKaneoProvider, createMockProvider } from './mock-provider.js'
 
 function isTaskLabel(val: unknown): val is { taskId: string; labelId: string } {
   return (
@@ -125,8 +125,7 @@ describe('Task Label Tools', () => {
 
     test('returns already_present for Kaneo when task already has label by visible name', async () => {
       const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
         listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
         addTaskLabel,
@@ -150,8 +149,7 @@ describe('Task Label Tools', () => {
 
     test('returns already_present for Kaneo when reusable workspace labelId matches a task label by visible name', async () => {
       const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
         listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
         addTaskLabel,
@@ -175,8 +173,7 @@ describe('Task Label Tools', () => {
 
     test('Kaneo still adds reusable workspace label by labelId when task does not already have it', async () => {
       const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-2', name: 'Other', color: '#00ff00' }])),
         listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
         addTaskLabel,
@@ -196,8 +193,7 @@ describe('Task Label Tools', () => {
 
     test('Kaneo still resolves reusable workspace label when task does not already have it', async () => {
       const addTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'workspace-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([])),
         listLabels: mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }])),
         addTaskLabel,
@@ -372,8 +368,7 @@ describe('Task Label Tools', () => {
 
     test('returns already_absent for Kaneo when task does not currently have label by visible name', async () => {
       const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([])),
         removeTaskLabel,
       })
@@ -395,8 +390,7 @@ describe('Task Label Tools', () => {
 
     test('returns already_absent for Kaneo when task does not currently have label by id', async () => {
       const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([])),
         removeTaskLabel,
       })
@@ -420,8 +414,7 @@ describe('Task Label Tools', () => {
       const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
       const listLabels = mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }]))
       const listTaskLabels = mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }]))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listLabels,
         listTaskLabels,
         removeTaskLabel,
@@ -445,8 +438,7 @@ describe('Task Label Tools', () => {
       const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
       const listLabels = mock(() => Promise.resolve([{ id: 'workspace-label-1', name: 'Feature', color: '#ff0000' }]))
       const listTaskLabels = mock(() => Promise.resolve([{ id: 'task-label-2', name: 'Bug', color: '#00ff00' }]))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listLabels,
         listTaskLabels,
         removeTaskLabel,
@@ -471,8 +463,7 @@ describe('Task Label Tools', () => {
 
     test('Kaneo removes task label by task-scoped label id resolved from task labels', async () => {
       const removeTaskLabel = mock(() => Promise.resolve({ taskId: 'task-1', labelId: 'task-label-1' }))
-      const provider = createMockProvider({
-        name: 'kaneo',
+      const provider = createMockKaneoProvider({
         listTaskLabels: mock(() => Promise.resolve([{ id: 'task-label-1', name: 'Feature', color: '#ff0000' }])),
         removeTaskLabel,
       })

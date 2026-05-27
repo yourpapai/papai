@@ -14,6 +14,11 @@ import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { clearUserCache } from '../utils/test-cache.js'
 import {
   createAuth,
@@ -172,6 +177,73 @@ describe('/config Command', () => {
       expect(buttonCalls[0]).toContain('YouTrack Token')
       expect(buttonCalls[0]).toContain('Timezone')
       expect(buttonCalls[0]).not.toContain('Kaneo API Key')
+    })
+
+    test('renders compact callback payloads for long plugin provider context keys', async () => {
+      const contextId = 'managed-group-context-with-a-very-long-stable-storage-id'
+      const callbackData: string[] = []
+      registerActivePlugin(makePlugin('config-long-callback-plugin', { name: 'Long Callback Plugin' }))
+      registerContributedTaskProviderType('very-long-plugin-provider-name', {
+        pluginId: 'very-long-plugin-provider-name',
+        factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
+        capabilities: new Set(),
+        displayName: 'Long Plugin Provider',
+        configSchema: [
+          {
+            key: 'very-long-context-token-field',
+            label: 'Plugin Token',
+            required: true,
+            sensitive: true,
+            scope: 'context',
+          },
+        ],
+      })
+      try {
+        insertTaskInstance({
+          id: 'long-plugin-prod',
+          type: 'very-long-plugin-provider-name',
+          config: { baseUrl: 'https://plugin.invalid' },
+          status: 'active',
+        })
+        setContextSettings({
+          contextId,
+          taskInstanceId: 'long-plugin-prod',
+          platformInstanceId: 'telegram-default',
+        })
+        const { reply } = createMockReply()
+
+        await renderConfigForTarget(
+          {
+            ...reply,
+            buttons: (_content, options): Promise<void> => {
+              assert.ok(options.buttons !== undefined, 'expected options.buttons to be defined')
+              callbackData.push(...options.buttons.map((button) => button.callbackData))
+              return Promise.resolve()
+            },
+          },
+          contextId,
+          true,
+        )
+      } finally {
+        unregisterContributedTaskProviderType('very-long-plugin-provider-name')
+      }
+
+      expect(callbackData.some((data) => data.length > 0)).toBe(true)
+      expect(callbackData.every((data) => Buffer.byteLength(data, 'utf8') <= 64)).toBe(true)
+      expect(callbackData.some((data) => data.startsWith('tgl:'))).toBe(false)
+      expect(callbackData.some((data) => data.startsWith('plg:'))).toBe(false)
+    })
+
+    test('shows a fallback notice when plugin controls exceed callback limits', async () => {
+      const contextId = 'managed-group-context-with-a-very-long-stable-storage-id'
+      registerActivePlugin(makePlugin('config-long-callback-plugin', { name: 'Long Callback Plugin' }))
+      const { reply, buttonCalls } = createMockReply()
+
+      await renderConfigForTarget(reply, contextId, true)
+
+      assert.ok(buttonCalls[0] !== undefined, 'expected button output')
+      expect(buttonCalls[0]).toContain('Long Callback Plugin')
+      expect(buttonCalls[0]).toContain('controls unavailable')
     })
 
     test('shows missing required plugin config under an unavailable plugin', async () => {

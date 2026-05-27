@@ -7,7 +7,13 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { McpEndpointConfig } from '../../src/mcp/types.js'
 import type { McpClientHandle, UserEndpointDeps } from '../../src/mcp/user-endpoints.js'
-import { parseMcpEndpoints, buildMcpToolSet } from '../../src/mcp/user-endpoints.js'
+
+let parseMcpEndpoints: typeof import('../../src/mcp/user-endpoints.js').parseMcpEndpoints
+let buildMcpToolSet: typeof import('../../src/mcp/user-endpoints.js').buildMcpToolSet
+
+beforeEach(async () => {
+  ;({ parseMcpEndpoints, buildMcpToolSet } = await import('../../src/mcp/user-endpoints.js'))
+})
 
 type GetOrCreateFn = UserEndpointDeps['getOrCreate']
 

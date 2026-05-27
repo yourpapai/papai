@@ -10,6 +10,7 @@
     AdminInstanceView,
     InstanceConfigView,
     PlatformInstanceView,
+    PlatformProviderTypeView,
     TaskInstanceView,
     TaskProviderTypeView,
   } from '../../shared/api-types.js'
@@ -23,6 +24,7 @@
     deleteTaskInstance,
     fetchAdmins,
     fetchPlatformInstances,
+    fetchPlatformProviderTypes,
     fetchTaskInstances,
     fetchTaskProviderTypes,
     updatePlatformInstance,
@@ -34,6 +36,7 @@
   let platformInstances: PlatformInstanceView[] = $state([])
   let taskInstances: TaskInstanceView[] = $state([])
   let admins: AdminInstanceView[] = $state([])
+  let platformProviderTypes: PlatformProviderTypeView[] = $state([])
   let taskProviderTypes: TaskProviderTypeView[] = $state([])
   let loading = $state(false)
   let status: FormStatus | null = $state(null)
@@ -41,13 +44,14 @@
 
   let platformId = $state('')
   let platformType: PlatformType = $state('telegram')
-  let platformConfig = $state('{}')
+  let platformConfigFields: Record<string, string> = $state({})
   let taskId = $state('')
   let taskType = $state('')
   let taskConfigFields: Record<string, string> = $state({})
   let adminUserId = $state('')
   let adminPlatformInstanceId = $state('')
 
+  const selectedPlatformType = $derived(platformProviderTypes.find((descriptor) => descriptor.type === platformType))
   const selectedTaskType = $derived(taskProviderTypes.find((descriptor) => descriptor.type === taskType))
 
   const configLabel = (config: InstanceConfigView): string => JSON.stringify(config)
@@ -56,24 +60,6 @@
   }
   const setError = (err: unknown): void => {
     status = { kind: 'error', message: err instanceof Error ? err.message : String(err) }
-  }
-
-  function parseConfig(raw: string): InstanceConfigView | null {
-    try {
-      const parsed: unknown = JSON.parse(raw)
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-      const entries = Object.entries(parsed)
-      if (entries.some(([, value]) => typeof value !== 'string')) return null
-      return Object.fromEntries(entries) as InstanceConfigView
-    } catch {
-      return null
-    }
-  }
-
-  function requireConfig(raw: string): InstanceConfigView {
-    const parsed = parseConfig(raw)
-    if (parsed === null) throw new Error('Config must be a JSON object with string values')
-    return parsed
   }
 
   function confirmDestructive(message: string): boolean {
@@ -86,6 +72,13 @@
 
   async function loadTaskInstances(): Promise<void> {
     taskInstances = await fetchTaskInstances()
+  }
+
+  async function loadPlatformProviderTypes(): Promise<void> {
+    platformProviderTypes = await fetchPlatformProviderTypes()
+    if (!platformProviderTypes.some((descriptor) => descriptor.type === platformType) && platformProviderTypes.length > 0) {
+      platformType = platformProviderTypes[0]!.type
+    }
   }
 
   async function loadAdmins(): Promise<void> {
@@ -101,7 +94,13 @@
     loading = true
     status = null
     try {
-      await Promise.all([loadPlatformInstances(), loadTaskInstances(), loadAdmins(), loadTaskProviderTypes()])
+      await Promise.all([
+        loadPlatformInstances(),
+        loadTaskInstances(),
+        loadAdmins(),
+        loadTaskProviderTypes(),
+        loadPlatformProviderTypes(),
+      ])
     } catch (err) {
       setError(err)
     } finally {
@@ -110,7 +109,18 @@
   }
 
   $effect(() => {
-    const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
+    const schema = selectedPlatformType === undefined ? [] : selectedPlatformType.instanceConfigSchema
+    const prev = untrack(() => platformConfigFields)
+    const next: Record<string, string> = {}
+    for (const field of schema) {
+      const value = prev[field.key]
+      next[field.key] = value === undefined ? '' : value
+    }
+    platformConfigFields = next
+  })
+
+  $effect(() => {
+    const schema = selectedTaskType === undefined ? [] : selectedTaskType.instanceConfigSchema
     const prev = untrack(() => taskConfigFields)
     const next: Record<string, string> = {}
     for (const field of schema) {
@@ -122,9 +132,17 @@
 
   async function createPlatform(): Promise<void> {
     try {
-      await createPlatformInstance({ id: platformId.trim(), type: platformType, config: requireConfig(platformConfig) })
+      const schema = selectedPlatformType === undefined ? [] : selectedPlatformType.instanceConfigSchema
+      const config: Record<string, string> = {}
+      for (const field of schema) {
+        const rawValue = platformConfigFields[field.key]
+        const value = (rawValue === undefined ? '' : rawValue).trim()
+        if (field.required && value === '') throw new Error(`${field.label} is required`)
+        if (value !== '') config[field.key] = value
+      }
+      await createPlatformInstance({ id: platformId.trim(), type: platformType, config })
       platformId = ''
-      platformConfig = '{}'
+      platformConfigFields = {}
       platformDirty = true
       await loadPlatformInstances()
       setSuccess('Platform instance created. Platform changes are unapplied.')
@@ -170,7 +188,7 @@
 
   async function createTask(): Promise<void> {
     try {
-      const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
+      const schema = selectedTaskType === undefined ? [] : selectedTaskType.instanceConfigSchema
       const config: Record<string, string> = {}
       for (const field of schema) {
         const rawValue = taskConfigFields[field.key]
@@ -268,12 +286,21 @@
         <label>
           <span>Type</span>
           <select data-testid="platform-type-input" bind:value={platformType}>
-            <option value="telegram">Telegram</option>
-            <option value="mattermost">Mattermost</option>
-            <option value="discord">Discord</option>
+            {#each platformProviderTypes as descriptor (descriptor.type)}
+              <option value={descriptor.type}>{descriptor.displayName}</option>
+            {/each}
           </select>
         </label>
-        <label><span>Config JSON</span><input data-testid="platform-config-input" bind:value={platformConfig} /></label>
+        {#each selectedPlatformType?.instanceConfigSchema ?? [] as field (field.key)}
+          <label>
+            <span>{field.label}{field.required ? ' *' : ''}</span>
+            <input
+              data-testid={`platform-config-${field.key}`}
+              type={field.sensitive ? 'password' : 'text'}
+              bind:value={platformConfigFields[field.key]}
+            />
+          </label>
+        {/each}
         <button type="submit" data-testid="platform-create-button">Create</button>
       </form>
       <div class="admin-table-wrap">
@@ -306,7 +333,7 @@
             {/each}
           </select>
         </label>
-        {#each selectedTaskType?.configSchema ?? [] as field (field.key)}
+        {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
           <label>
             <span>{field.label}{field.required ? ' *' : ''}</span>
             {#if field.sensitive}

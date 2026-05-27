@@ -7,7 +7,7 @@
  * Tests for config-editor public API
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   createEditorSession,
@@ -17,15 +17,28 @@ import {
   handleEditorMessage,
   hasActiveEditor,
   parseCallbackData,
+  resolveCallbackKey,
   serializeCallbackData,
   startEditor,
 } from '../../src/config-editor/index.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 describe('config-editor public API', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('very-long-plugin-provider-name')
   })
 
   const userId = 'user123'
@@ -79,6 +92,84 @@ describe('config-editor public API', () => {
     expect(parsed.action).toBe('edit')
     expect(parsed.key).toBe('timezone')
     expect(parsed.targetContextId).toBe('group-9')
+  })
+
+  test('serializeCallbackData uses compact callback ids for long dynamic keys', () => {
+    registerContributedTaskProviderType('very-long-plugin-provider-name', {
+      pluginId: 'very-long-plugin-provider-name',
+      factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
+      capabilities: new Set(),
+      displayName: 'Long Plugin Provider',
+      configSchema: [
+        {
+          key: 'very-long-context-token-field',
+          label: 'Plugin Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+    insertTaskInstance({
+      id: 'long-plugin-prod',
+      type: 'very-long-plugin-provider-name',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'managed-group-context-with-long-id',
+      taskInstanceId: 'long-plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+    const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
+    const data = serializeCallbackData({ action: 'edit', key }, 'managed-group-context-with-long-id')
+
+    expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+    expect(data).not.toContain(key)
+    const parsed = parseCallbackData(data)
+    expect(parsed.action).toBe('edit')
+    expect(resolveCallbackKey(parsed.key, 'managed-group-context-with-long-id')).toBe(key)
+  })
+
+  test('serializeCallbackData keeps all actions within callback size limit for long contexts', () => {
+    const targetContextId = 'managed-group-context-with-a-very-long-stable-storage-id'
+    const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
+    const actions = [
+      { action: 'edit' as const, key },
+      { action: 'save' as const, key },
+      { action: 'cancel' as const },
+      { action: 'back' as const },
+      { action: 'setup' as const },
+    ]
+
+    const data = actions.map((button) => serializeCallbackData(button, targetContextId))
+
+    expect(data.every((callbackData) => Buffer.byteLength(callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
+  test('compact callbacks parse without module-local token state', () => {
+    expect(parseCallbackData('cfg:e:0:abc123')).toEqual({ action: 'edit', key: '#0:abc123' })
+    expect(parseCallbackData('cfg:s:z:def456')).toEqual({ action: 'save', key: '#z:def456' })
+  })
+
+  test('resolveCallbackKey resolves compact field indexes for a context', () => {
+    const data = serializeCallbackData(
+      { action: 'edit', key: 'timezone' },
+      'ctx456-with-long-suffix-that-forces-compact',
+    )
+    const parsed = parseCallbackData(data)
+
+    expect(resolveCallbackKey(parsed.key, 'ctx456-with-long-suffix-that-forces-compact')).toBe('timezone')
+  })
+
+  test('resolveCallbackKey rejects compact field indexes for the wrong context', () => {
+    const data = serializeCallbackData(
+      { action: 'edit', key: 'timezone' },
+      'ctx456-with-long-suffix-that-forces-compact',
+    )
+    const parsed = parseCallbackData(data)
+
+    expect(resolveCallbackKey(parsed.key, 'different-context')).toBeNull()
   })
 
   test('parseCallbackData returns targetContextId from encoded callback', () => {

@@ -55,6 +55,7 @@ import { migration041UsersPlatformInstanceIndex } from './migrations/041_users_p
 import { migration042UserWorkspaceConfigBackfill } from './migrations/042_user_workspace_config_backfill.js'
 import { migration043ScopedContextIds } from './migrations/043_scoped_context_ids.js'
 import { migration044InstanceIntegrity } from './migrations/044_instance_integrity.js'
+import { migration045ProviderBaseUrl } from './migrations/045_provider_base_url.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -134,6 +135,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration042UserWorkspaceConfigBackfill,
   migration043ScopedContextIds,
   migration044InstanceIntegrity,
+  migration045ProviderBaseUrl,
 ]
 
 export const initDb = (): void => {

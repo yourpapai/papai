@@ -48,6 +48,10 @@ import * as _instancesBootstrap from '../src/instances/bootstrap.js'
 import * as _platformStore from '../src/instances/platform-store.js'
 import * as _taskStore from '../src/instances/task-store.js'
 import * as _logger from '../src/logger.js'
+import * as _mcpIndex from '../src/mcp/index.js'
+import * as _mcpPluginEndpoints from '../src/mcp/plugin-endpoints.js'
+import * as _mcpToolAdapter from '../src/mcp/tool-adapter.js'
+import * as _mcpUserEndpoints from '../src/mcp/user-endpoints.js'
 import * as _memos from '../src/memos.js'
 import * as _messageCache from '../src/message-cache/cache.js'
 import * as _messageCacheIndex from '../src/message-cache/index.js'
@@ -94,6 +98,10 @@ const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/memos.js', { ..._memos }],
   ['../src/message-cache/index.js', { ..._messageCacheIndex }],
   ['../src/message-queue/index.js', { ..._messageQueueIndex }],
+  ['../src/mcp/index.js', { ..._mcpIndex }],
+  ['../src/mcp/plugin-endpoints.js', { ..._mcpPluginEndpoints }],
+  ['../src/mcp/tool-adapter.js', { ..._mcpToolAdapter }],
+  ['../src/mcp/user-endpoints.js', { ..._mcpUserEndpoints }],
   ['../src/plugins/discovery.js', { ..._pluginDiscovery }],
   ['../src/plugins/loader.js', { ..._pluginLoader }],
   ['../src/plugins/registry.js', { ..._pluginRegistry }],

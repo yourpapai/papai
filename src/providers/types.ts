@@ -30,7 +30,7 @@ import type {
   UserRef,
   WorkItem,
 } from './domain-types.js'
-import type { TaskCapability } from './task-capability.js'
+import type { TaskCapability, TaskProviderTrait } from './task-capability.js'
 
 export type {
   Activity,
@@ -43,6 +43,7 @@ export type {
   Label,
   ListTasksParams,
   Project,
+  ProviderConfigField,
   ProviderConfigRequirement,
   RelationType,
   SavedQuery,
@@ -62,7 +63,7 @@ export type {
   WorkItem,
 } from './domain-types.js'
 
-export type { TaskCapability } from './task-capability.js'
+export type { TaskCapability, TaskProviderTrait } from './task-capability.js'
 
 export type ToolDueDateInput = Readonly<{ date: string; time?: string }>
 
@@ -82,6 +83,8 @@ export interface TaskProvider {
   readonly supportsCustomFields?: boolean
   /** Capabilities this provider supports beyond core task CRUD. */
   readonly capabilities: ReadonlySet<TaskCapability>
+  /** Behavioral traits this provider supports beyond generic capabilities. */
+  readonly traits: ReadonlySet<TaskProviderTrait>
   /** Config keys this provider needs (shown in /config, validated by /setup). */
   readonly configRequirements: readonly ProviderConfigRequirement[]
   /** Which user identifier this provider prefers for assignee/watcher operations. */

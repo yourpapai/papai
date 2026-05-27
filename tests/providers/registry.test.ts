@@ -9,6 +9,7 @@ import type { TaskInstance } from '../../src/instances/types.js'
 import {
   createProvider,
   getCapabilitiesForTaskInstance,
+  getTaskProviderDescriptor,
   getContributedTaskProviderType,
   getTaskProviderConfigValidator,
   listTaskProviderTypes,
@@ -111,12 +112,48 @@ describe('contributed task provider registry', () => {
     expect(descriptor).toBeDefined()
     expect(descriptor?.displayName).toBe('Demo Tracker')
     expect(descriptor?.source).toEqual({ plugin: 'task-provider-demo' })
-    expect(descriptor?.configSchema).toEqual([{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }])
+    expect(descriptor?.configSchema).toEqual([
+      { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
+    ])
     expect(descriptor?.capabilities.has('comments.read')).toBe(true)
+  })
+
+  test('createProvider normalizes contributed runtime traits from descriptor traits', () => {
+    mockLogger()
+    const traits = new Set(['command-language:youtrack'] as const)
+    registerContributedTaskProviderType('traited-tracker', {
+      pluginId: 'task-provider-demo',
+      factory: () => createMockProvider({ name: 'traited-tracker', traits: new Set() }),
+      capabilities: new Set<TaskCapability>(['tasks.commands']),
+      displayName: 'Traited Tracker',
+      traits,
+      configSchema: [] as const,
+    })
+
+    const descriptor = getTaskProviderDescriptor('traited-tracker')
+    const provider = createProvider('traited-tracker', {})
+
+    expect(descriptor).toBeDefined()
+    expect(provider.traits).toEqual(descriptor!.traits)
+    expect(provider.traits).toEqual(traits)
   })
 })
 
 describe('listTaskProviderTypes (built-in catalog)', () => {
+  test('built-in descriptors expose split instance and context schemas plus traits', () => {
+    const kaneo = listTaskProviderTypes().find((d) => d.type === 'kaneo')
+    const youtrack = listTaskProviderTypes().find((d) => d.type === 'youtrack')
+
+    expect(kaneo?.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl', 'internalUrl'])
+    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'credential')?.storageKey).toBe('kaneo_apikey')
+    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'workspaceId')?.storageKey).toBe('kaneo_workspace_id')
+    expect(kaneo?.traits.has('workspace-scoped')).toBe(true)
+
+    expect(youtrack?.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl'])
+    expect(youtrack?.contextConfigSchema.find((f) => f.key === 'token')?.storageKey).toBe('youtrack_token')
+    expect(youtrack?.traits.has('command-language:youtrack')).toBe(true)
+  })
+
   test('includes kaneo and youtrack as built-in descriptors', () => {
     const types = listTaskProviderTypes()
 
@@ -136,22 +173,42 @@ describe('listTaskProviderTypes (built-in catalog)', () => {
     expect(youtrack?.displayName).toBe('YouTrack')
     expect(youtrack?.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
   })
+
+  test('built-in provider runtime traits equal descriptor traits', () => {
+    const kaneoDescriptor = getTaskProviderDescriptor('kaneo')
+    const youtrackDescriptor = getTaskProviderDescriptor('youtrack')
+
+    const kaneoProvider = createProvider('kaneo', {
+      baseUrl: 'https://kaneo.invalid',
+      credential: 'kaneo-token',
+      workspaceId: 'workspace-1',
+    })
+    const youtrackProvider = createProvider('youtrack', {
+      baseUrl: 'https://youtrack.invalid',
+      token: 'perm-token',
+    })
+
+    expect(kaneoDescriptor).toBeDefined()
+    expect(youtrackDescriptor).toBeDefined()
+    expect(kaneoProvider.traits).toEqual(kaneoDescriptor!.traits)
+    expect(youtrackProvider.traits).toEqual(youtrackDescriptor!.traits)
+  })
 })
 
 describe('listTaskProviderTypes built-in scopes', () => {
-  test('kaneo declares instance baseUrl and user credential + workspaceId', () => {
+  test('kaneo declares instance baseUrl and context credential + workspaceId', () => {
     const kaneo = listTaskProviderTypes().find((d) => d.type === 'kaneo')
     expect(kaneo?.configSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
-    expect(kaneo?.configSchema.find((f) => f.key === 'credential')?.scope).toBe('user')
-    expect(kaneo?.configSchema.find((f) => f.key === 'credential')?.sensitive).toBe(true)
-    expect(kaneo?.configSchema.find((f) => f.key === 'workspaceId')?.scope).toBe('user')
+    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'credential')?.scope).toBe('context')
+    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'credential')?.sensitive).toBe(true)
+    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'workspaceId')?.scope).toBe('context')
   })
 
-  test('youtrack declares instance baseUrl and user token', () => {
+  test('youtrack declares instance baseUrl and context token', () => {
     const yt = listTaskProviderTypes().find((d) => d.type === 'youtrack')
     expect(yt?.configSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
-    expect(yt?.configSchema.find((f) => f.key === 'token')?.scope).toBe('user')
-    expect(yt?.configSchema.find((f) => f.key === 'token')?.sensitive).toBe(true)
+    expect(yt?.contextConfigSchema.find((f) => f.key === 'token')?.scope).toBe('context')
+    expect(yt?.contextConfigSchema.find((f) => f.key === 'token')?.sensitive).toBe(true)
   })
 })
 

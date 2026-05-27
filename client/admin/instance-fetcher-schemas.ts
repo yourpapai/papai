@@ -26,14 +26,38 @@ export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
   referencingContextCount: z.number().optional(),
 })
 
+const ProviderConfigRequirementViewSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  required: z.boolean(),
+  sensitive: z.boolean(),
+  storageKey: z.string().optional(),
+})
+
+const ChatProviderTraitsSchema = z.object({
+  observedGroupMessages: z.enum(['all', 'mentions_only']),
+  maxMessageLength: z.number().optional(),
+  callbackDataMaxLength: z.number().optional(),
+})
+
 export const TaskProviderTypeViewSchema = z.object({
   type: z.string(),
   displayName: z.string(),
-  configSchema: z.array(
-    z.object({ key: z.string(), label: z.string(), required: z.boolean(), sensitive: z.boolean() }),
-  ),
+  instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
   capabilities: z.array(z.string()),
+  traits: z.array(z.string()),
   source: z.union([z.literal('builtin'), z.object({ plugin: z.string().min(1) })]),
+})
+
+export const PlatformProviderTypeViewSchema = z.object({
+  type: z.enum(['telegram', 'mattermost', 'discord']),
+  displayName: z.string(),
+  instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
+  capabilities: z.array(z.string()),
+  traits: ChatProviderTraitsSchema,
+  source: z.literal('builtin'),
 })
 
 export const AdminInstanceViewSchema = z.object({

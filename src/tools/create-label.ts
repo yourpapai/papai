@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProvider } from '../providers/types.js'
-import { isKaneoProvider, listVisibleWorkspaceLabels } from './kaneo-label-helpers.js'
+import { listVisibleWorkspaceLabels, usesSeparateLabelReadApi } from './kaneo-label-helpers.js'
 
 const log = logger.child({ scope: 'tool:create-label' })
 
@@ -23,7 +23,7 @@ export function makeCreateLabelTool(provider: TaskProvider): ToolSet[string] {
     }),
     execute: async ({ name, color }) => {
       try {
-        if (isKaneoProvider(provider)) {
+        if (usesSeparateLabelReadApi(provider)) {
           const existing = (await listVisibleWorkspaceLabels(provider, name)).filter((label) => label.name === name)
           if (existing.length > 0) {
             return {

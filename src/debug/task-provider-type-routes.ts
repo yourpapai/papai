@@ -8,28 +8,42 @@ import {
   listTaskProviderTypes,
   type TaskProviderTypeDescriptor,
 } from '../providers/registry.js'
+import type { ProviderConfigField } from '../providers/types.js'
 import { jsonResponse } from './json-response.js'
+
+export type ProviderConfigFieldView = {
+  readonly key: string
+  readonly label: string
+  readonly required: boolean
+  readonly sensitive: boolean
+  readonly storageKey?: string
+}
 
 export type TaskProviderTypeView = {
   readonly type: string
   readonly displayName: string
-  readonly configSchema: readonly { key: string; label: string; required: boolean; sensitive: boolean }[]
+  readonly instanceConfigSchema: readonly ProviderConfigFieldView[]
+  readonly contextConfigSchema: readonly ProviderConfigFieldView[]
   readonly capabilities: readonly string[]
+  readonly traits: readonly string[]
   readonly source: 'builtin' | { readonly plugin: string }
 }
+
+const fieldView = (field: ProviderConfigField): ProviderConfigFieldView => ({
+  key: field.key,
+  label: field.label,
+  required: field.required,
+  sensitive: field.sensitive,
+  ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
+})
 
 const taskProviderTypeView = (descriptor: TaskProviderTypeDescriptor): TaskProviderTypeView => ({
   type: descriptor.type,
   displayName: descriptor.displayName,
-  configSchema: descriptor.configSchema
-    .filter((field) => (field.scope ?? 'instance') === 'instance')
-    .map((field) => ({
-      key: field.key,
-      label: field.label,
-      required: field.required,
-      sensitive: field.sensitive ?? false,
-    })),
+  instanceConfigSchema: descriptor.instanceConfigSchema.map((field) => fieldView(field)),
+  contextConfigSchema: descriptor.contextConfigSchema.map((field) => fieldView(field)),
   capabilities: [...descriptor.capabilities],
+  traits: [...descriptor.traits],
   source: descriptor.source,
 })
 

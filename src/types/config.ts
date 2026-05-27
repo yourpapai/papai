@@ -22,6 +22,15 @@ export type McpConfigKey = 'mcp_endpoints'
 // `src/system-config.ts`) and are owned by the bot admin, not per-user.
 export type ConfigKey = TaskProviderConfigKey | PreferenceConfigKey | McpConfigKey
 
+export type ConfigField = {
+  readonly key: string
+  readonly storageKey: string
+  readonly label: string
+  readonly required: boolean
+  readonly sensitive: boolean
+  readonly kind: 'preference' | 'provider-context'
+}
+
 // All valid config keys (not filtered by provider)
 // Note: kaneo_workspace_id is auto-provisioned and stored separately
 export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
@@ -37,4 +46,10 @@ export const ALL_CONFIG_KEYS: readonly ConfigKey[] = [
  */
 export function isConfigKey(key: string): key is ConfigKey {
   return (ALL_CONFIG_KEYS as readonly string[]).includes(key)
+}
+
+const PLUGIN_PROVIDER_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:provider:[A-Za-z0-9][A-Za-z0-9_.-]*$/u
+
+export function isAllowedDynamicConfigKey(key: string): boolean {
+  return isConfigKey(key) || PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key)
 }

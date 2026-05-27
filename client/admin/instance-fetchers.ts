@@ -10,6 +10,7 @@ import type {
   ApplyInstancesResult,
   InstanceConfigView,
   PlatformInstanceView,
+  PlatformProviderTypeView,
   TaskInstanceView,
   TaskProviderTypeView,
 } from '../shared/api-types.js'
@@ -18,6 +19,7 @@ import {
   AdminInstanceViewSchema,
   ApplyInstancesResultSchema,
   PlatformInstanceViewSchema,
+  PlatformProviderTypeViewSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from './fetcher-schemas.js'
@@ -55,6 +57,13 @@ export const fetchPlatformInstances = async (): Promise<PlatformInstanceView[]> 
   const body = await readBody(res)
   requireOk(res, body)
   return z.array(PlatformInstanceViewSchema).parse(body)
+}
+
+export const fetchPlatformProviderTypes = async (): Promise<PlatformProviderTypeView[]> => {
+  const res = await fetch('/api/platform-provider-types')
+  const body = await readBody(res)
+  requireOk(res, body)
+  return z.array(PlatformProviderTypeViewSchema).parse(body)
 }
 
 export const createPlatformInstance = async (input: CreatePlatformInstanceInput): Promise<PlatformInstanceView> => {

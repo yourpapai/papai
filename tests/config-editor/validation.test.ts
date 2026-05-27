@@ -9,50 +9,60 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import { validateConfigValue } from '../../src/config-editor/validation.js'
+import { validateConfigField } from '../../src/config-editor/validation.js'
+import type { ConfigField } from '../../src/types/config.js'
 import { mockLogger } from '../utils/test-helpers.js'
+
+const field = (storageKey: string, overrides?: Partial<ConfigField>): ConfigField => ({
+  key: storageKey,
+  storageKey,
+  label: overrides?.label ?? storageKey,
+  required: overrides?.required ?? true,
+  sensitive: overrides?.sensitive ?? false,
+  kind: overrides?.kind ?? 'provider-context',
+})
 
 describe('config-editor validation', () => {
   beforeEach(() => {
     mockLogger()
   })
 
-  describe('validateConfigValue', () => {
+  describe('validateConfigField', () => {
     test('validates kaneo_apikey - required and non-empty', () => {
-      const result = validateConfigValue('kaneo_apikey', '')
+      const result = validateConfigField(field('kaneo_apikey'), '')
       expect(result.valid).toBe(false)
       expect(result.error).toContain('cannot be empty')
 
-      const result2 = validateConfigValue('kaneo_apikey', 'valid-key')
+      const result2 = validateConfigField(field('kaneo_apikey'), 'valid-key')
       expect(result2.valid).toBe(true)
     })
 
     test('validates youtrack_token - required and non-empty', () => {
-      const result = validateConfigValue('youtrack_token', '')
+      const result = validateConfigField(field('youtrack_token'), '')
       expect(result.valid).toBe(false)
       expect(result.error).toContain('cannot be empty')
 
-      const result2 = validateConfigValue('youtrack_token', 'valid-token')
+      const result2 = validateConfigField(field('youtrack_token'), 'valid-token')
       expect(result2.valid).toBe(true)
     })
 
     test('validates timezone - must be valid IANA or UTC offset', () => {
-      const result = validateConfigValue('timezone', 'invalid')
+      const result = validateConfigField(field('timezone'), 'invalid')
       expect(result.valid).toBe(false)
       expect(result.error).toBe(
         'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
       )
 
-      const result2 = validateConfigValue('timezone', 'America/New_York')
+      const result2 = validateConfigField(field('timezone'), 'America/New_York')
       expect(result2.valid).toBe(true)
 
-      const result3 = validateConfigValue('timezone', 'UTC')
+      const result3 = validateConfigField(field('timezone'), 'UTC')
       expect(result3.valid).toBe(true)
 
-      const result4 = validateConfigValue('timezone', 'UTC+5')
+      const result4 = validateConfigField(field('timezone'), 'UTC+5')
       expect(result4.valid).toBe(true)
 
-      const result5 = validateConfigValue('timezone', 'Europe/London')
+      const result5 = validateConfigField(field('timezone'), 'Europe/London')
       expect(result5.valid).toBe(true)
     })
   })

@@ -71,6 +71,39 @@ const callNames = (calls: readonly RecordedCall[]): readonly string[] =>
 
 const responseFor = (method: string, url: string): Response => {
   if (method === 'GET' && url === '/api/platform-instances') return jsonResponse([platformInstance])
+  if (method === 'GET' && url === '/api/platform-provider-types')
+    return jsonResponse([
+      {
+        type: 'telegram',
+        displayName: 'Telegram',
+        instanceConfigSchema: [{ key: 'token', label: 'Telegram Bot Token', required: true, sensitive: true }],
+        contextConfigSchema: [],
+        capabilities: ['commands'],
+        traits: { observedGroupMessages: 'all', callbackDataMaxLength: 64 },
+        source: 'builtin',
+      },
+      {
+        type: 'mattermost',
+        displayName: 'Mattermost',
+        instanceConfigSchema: [
+          { key: 'baseUrl', label: 'Mattermost URL', required: true, sensitive: false },
+          { key: 'token', label: 'Mattermost Bot Token', required: true, sensitive: true },
+        ],
+        contextConfigSchema: [],
+        capabilities: ['commands'],
+        traits: { observedGroupMessages: 'all', maxMessageLength: 16383 },
+        source: 'builtin',
+      },
+      {
+        type: 'discord',
+        displayName: 'Discord',
+        instanceConfigSchema: [{ key: 'token', label: 'Discord Bot Token', required: true, sensitive: true }],
+        contextConfigSchema: [],
+        capabilities: ['commands'],
+        traits: { observedGroupMessages: 'mentions_only', maxMessageLength: 2000 },
+        source: 'builtin',
+      },
+    ])
   if (method === 'GET' && url === '/api/task-instances') return jsonResponse([taskInstance])
   if (method === 'GET' && url === '/api/admins') return jsonResponse([admin])
   if (method === 'GET' && url === '/api/task-provider-types')
@@ -78,25 +111,31 @@ const responseFor = (method: string, url: string): Response => {
       {
         type: 'kaneo',
         displayName: 'Kaneo',
-        configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+        instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+        contextConfigSchema: [],
         capabilities: ['comments.read'],
+        traits: [],
         source: 'builtin',
       },
       {
         type: 'youtrack',
         displayName: 'YouTrack',
-        configSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+        instanceConfigSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+        contextConfigSchema: [],
         capabilities: ['comments.read'],
+        traits: [],
         source: 'builtin',
       },
       {
         type: 'linear',
         displayName: 'Linear',
-        configSchema: [
+        instanceConfigSchema: [
           { key: 'baseUrl', label: 'Linear URL', required: true, sensitive: false },
           { key: 'apiKey', label: 'API Key', required: true, sensitive: true },
         ],
+        contextConfigSchema: [],
         capabilities: ['comments.read'],
+        traits: [],
         source: { plugin: 'linear-plugin' },
       },
     ])
@@ -163,6 +202,16 @@ const selectTaskType = (target: HTMLElement, formTestId: string, value: string):
   form.dispatchEvent(new Event('reset', { bubbles: true }))
 }
 
+const selectPlatformType = (target: HTMLElement, value: string): void => {
+  const el = select(target, 'platform-type-input')
+  const option = el.querySelector<HTMLOptionElement>(`option[value="${value}"]`)
+  if (option === null) throw new Error(`option ${value} missing`)
+  option.setAttribute('selected', '')
+  const form = target.querySelector<HTMLFormElement>('[data-testid="platform-create-form"]')
+  if (form === null) throw new Error('platform-create-form missing')
+  form.dispatchEvent(new Event('reset', { bubbles: true }))
+}
+
 const setConfirm = (value: boolean): void => {
   Object.defineProperty(window, 'confirm', {
     configurable: true,
@@ -197,8 +246,14 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(target.textContent).toContain('Platform Instances')
+    expect(callNames(calls)).toContain('GET /api/platform-provider-types')
     expect(target.textContent).toContain('telegram-main')
     expect(target.textContent).toContain('****1234')
+    expect(select(target, 'platform-type-input').textContent).toContain('Mattermost')
+    selectPlatformType(target, 'mattermost')
+    await drain()
+    expect(input(target, 'platform-config-baseUrl')).toBeTruthy()
+    expect(input(target, 'platform-config-token').type).toBe('password')
     expect(target.textContent).toContain('Task Instances')
     expect(target.textContent).toContain('kaneo-main')
     expect(target.textContent).toContain('Admins')
@@ -216,13 +271,13 @@ describe('InstancesSection', () => {
 
     enterValue(input(target, 'platform-id-input'), 'telegram-main')
     enterValue(select(target, 'platform-type-input'), 'telegram')
-    enterValue(input(target, 'platform-config-input'), '{"TELEGRAM_BOT_TOKEN":"token"}')
+    enterValue(input(target, 'platform-config-token'), 'token')
     click(target, 'platform-create-button')
     await drain()
 
     expect(callNames(calls)).toContain('POST /api/platform-instances')
-    expect(expectCall(calls[4], 4).body).toBe(
-      JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { TELEGRAM_BOT_TOKEN: 'token' } }),
+    expect(expectCall(calls[5], 5).body).toBe(
+      JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'token' } }),
     )
     expect(target.querySelector('[data-testid="platform-unapplied-indicator"]')).not.toBeNull()
     expect(target.textContent).toContain('Platform changes are unapplied')
@@ -238,7 +293,7 @@ describe('InstancesSection', () => {
     await drain()
 
     enterValue(input(target, 'platform-id-input'), 'telegram-main')
-    enterValue(input(target, 'platform-config-input'), '{"TELEGRAM_BOT_TOKEN":"token"}')
+    enterValue(input(target, 'platform-config-token'), 'token')
     click(target, 'platform-create-button')
     await drain()
     click(target, 'platform-apply-button')
@@ -251,7 +306,7 @@ describe('InstancesSection', () => {
     void unmount(component)
   })
 
-  test('shows invalid config status instead of submitting', async () => {
+  test('shows required platform config status instead of submitting', async () => {
     const calls: RecordedCall[] = []
     installFetch(calls)
 
@@ -259,16 +314,16 @@ describe('InstancesSection', () => {
     await drain()
 
     enterValue(input(target, 'platform-id-input'), 'bad-platform')
-    enterValue(input(target, 'platform-config-input'), '{"token":123}')
     click(target, 'platform-create-button')
     await drain()
 
-    expect(target.textContent).toContain('Config must be a JSON object with string values')
+    expect(target.textContent).toContain('Telegram Bot Token is required')
     expect(callNames(calls)).toEqual([
       'GET /api/platform-instances',
       'GET /api/task-instances',
       'GET /api/admins',
       'GET /api/task-provider-types',
+      'GET /api/platform-provider-types',
     ])
 
     void unmount(component)
@@ -287,7 +342,7 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(callNames(calls)).toContain('POST /api/admins')
-    expect(expectCall(calls[4], 4).body).toBe(JSON.stringify({ userId: 'super-admin' }))
+    expect(expectCall(calls[5], 5).body).toBe(JSON.stringify({ userId: 'super-admin' }))
 
     void unmount(component)
   })
@@ -306,7 +361,7 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(callNames(calls)).toContain('PATCH /api/platform-instances/telegram-main')
-    expect(expectCall(calls[4], 4).body).toBe(JSON.stringify({ status: 'stopped' }))
+    expect(expectCall(calls[5], 5).body).toBe(JSON.stringify({ status: 'stopped' }))
     expect(callNames(calls)).toContain('DELETE /api/platform-instances/telegram-main')
 
     void unmount(component)
@@ -328,6 +383,7 @@ describe('InstancesSection', () => {
       'GET /api/task-instances',
       'GET /api/admins',
       'GET /api/task-provider-types',
+      'GET /api/platform-provider-types',
     ])
 
     void unmount(component)
@@ -349,7 +405,7 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(callNames(calls)).toContain('POST /api/task-instances')
-    expect(expectCall(calls[4], 4).body).toBe(
+    expect(expectCall(calls[5], 5).body).toBe(
       JSON.stringify({ id: 'kaneo-main', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' } }),
     )
     expect(callNames(calls)).toContain('DELETE /api/task-instances/kaneo-main')
@@ -374,6 +430,7 @@ describe('InstancesSection', () => {
       'GET /api/task-instances',
       'GET /api/admins',
       'GET /api/task-provider-types',
+      'GET /api/platform-provider-types',
     ])
     expect(confirmMessages).toEqual([
       'Delete task instance kaneo-main? This will delete 2 context settings: ctx-1, ctx-2.',
@@ -398,7 +455,7 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(callNames(calls)).toContain('POST /api/admins')
-    expect(expectCall(calls[4], 4).body).toBe(
+    expect(expectCall(calls[5], 5).body).toBe(
       JSON.stringify({ userId: 'admin-user', platformInstanceId: 'telegram-main' }),
     )
     expect(callNames(calls)).toContain('DELETE /api/admins/admin-user/telegram-main')
@@ -422,6 +479,7 @@ describe('InstancesSection', () => {
       'GET /api/task-instances',
       'GET /api/admins',
       'GET /api/task-provider-types',
+      'GET /api/platform-provider-types',
     ])
 
     void unmount(component)

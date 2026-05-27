@@ -26,11 +26,19 @@ describe('pluginManifestSchema providerConfigSchema scope', () => {
     expect(parsed.providerConfigSchema[0]?.scope).toBe('instance')
   })
 
-  test('accepts an explicit user scope', () => {
-    const parsed = pluginManifestSchema.parse({
+  test('rejects legacy user scope', () => {
+    const result = pluginManifestSchema.safeParse({
       ...base,
       providerConfigSchema: [{ key: 'api_key', label: 'Key', required: true, sensitive: true, scope: 'user' }],
     })
-    expect(parsed.providerConfigSchema[0]?.scope).toBe('user')
+    expect(result.success).toBe(false)
+  })
+
+  test('defaults provider context config field scope to context', () => {
+    const parsed = pluginManifestSchema.parse({
+      ...base,
+      providerContextConfigSchema: [{ key: 'api_key', label: 'Key', required: true, sensitive: true }],
+    })
+    expect(parsed.providerContextConfigSchema?.[0]?.scope).toBe('context')
   })
 })

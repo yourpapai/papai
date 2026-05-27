@@ -3,11 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, mock, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import type { PluginMcpDescriptor } from '../../src/mcp/plugin-endpoints.js'
-import { buildPluginMcpToolSet } from '../../src/mcp/plugin-endpoints.js'
 import type { McpPluginConfig } from '../../src/mcp/types.js'
+
+let buildPluginMcpToolSet: typeof import('../../src/mcp/plugin-endpoints.js').buildPluginMcpToolSet
+
+beforeEach(async () => {
+  ;({ buildPluginMcpToolSet } = await import('../../src/mcp/plugin-endpoints.js'))
+})
 
 type MockClient = {
   listTools: ReturnType<typeof mock>

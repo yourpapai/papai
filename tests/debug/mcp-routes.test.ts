@@ -35,7 +35,7 @@ void mock.module('../../src/mcp/client-pool.js', () => ({
   },
 }))
 
-const { handleMcpStatus } = await import('../../src/debug/mcp-routes.js')
+let handleMcpStatus: typeof import('../../src/debug/mcp-routes.js').handleMcpStatus
 
 const readJson = async (res: Response): Promise<object> => {
   const parsed: unknown = JSON.parse(await res.text())
@@ -57,7 +57,13 @@ const asObject = (value: unknown): object => {
 }
 
 describe('handleMcpStatus', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    void mock.module('../../src/mcp/client-pool.js', () => ({
+      mcpPool: {
+        getServerInfos: getServerInfosMock,
+      },
+    }))
+    ;({ handleMcpStatus } = await import('../../src/debug/mcp-routes.js'))
     getServerInfosMock.mockClear()
   })
 

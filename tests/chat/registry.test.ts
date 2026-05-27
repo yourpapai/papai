@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { createChatProvider } from '../../src/chat/registry.js'
+import { createChatProvider, listPlatformProviderTypes } from '../../src/chat/registry.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 describe('chat registry', () => {
@@ -89,11 +89,32 @@ describe('chat registry', () => {
     expect(provider.name).toBe('mattermost')
   })
 
+  test('createChatProviderFromConfig creates mattermost from descriptor-shaped baseUrl and token', async () => {
+    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
+
+    const provider = createChatProviderFromConfig('mattermost-default', 'mattermost', {
+      baseUrl: 'https://mattermost.example.test',
+      token: 'mattermost-token',
+    })
+
+    expect(provider.name).toBe('mattermost')
+  })
+
   test('createChatProviderFromConfig rejects missing config values before adapter construction', async () => {
     const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
 
     expect(() =>
       createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' }),
     ).toThrow('Missing mattermost instance config')
+  })
+
+  test('listPlatformProviderTypes exposes built-in descriptor metadata', () => {
+    const descriptors = listPlatformProviderTypes()
+    const mattermost = descriptors.find((descriptor) => descriptor.type === 'mattermost')
+
+    expect(descriptors.map((descriptor) => descriptor.type)).toEqual(['telegram', 'mattermost', 'discord'])
+    expect(mattermost?.instanceConfigSchema.map((field) => field.key)).toEqual(['baseUrl', 'token'])
+    expect(mattermost?.capabilities.has('users.resolve')).toBe(true)
+    expect(mattermost?.traits.observedGroupMessages).toBe('all')
   })
 })
