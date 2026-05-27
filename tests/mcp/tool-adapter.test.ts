@@ -5,12 +5,17 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
-import type { McpCallToolFn, McpToolDef } from '../../src/mcp/tool-adapter.js'
+import type { McpToolDef } from '../../src/mcp/tool-adapter.js'
 import { convertMcpToolsToToolSet } from '../../src/mcp/tool-adapter.js'
 import type { McpToolFilter } from '../../src/mcp/types.js'
 import { getToolExecutor } from '../utils/test-helpers.js'
 
-type MockClient = { callTool: McpCallToolFn }
+type MockClient = {
+  callTool: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<{
+    content: Array<{ type: string; text?: string }>
+    isError?: boolean
+  }>
+}
 
 function makeMockClient(overrides?: { callTool?: ReturnType<typeof mock> }): MockClient {
   return {

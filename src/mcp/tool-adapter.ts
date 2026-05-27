@@ -13,11 +13,6 @@ export type McpToolDef = {
   inputSchema?: Record<string, unknown>
 }
 
-export type McpCallToolFn = (params: { name: string; arguments?: unknown }) => Promise<{
-  content: Array<{ type: string; text?: string }>
-  isError?: boolean
-}>
-
 export function convertMcpToolsToToolSet(
   serverId: string,
   mcpTools: McpToolDef[],
@@ -25,7 +20,7 @@ export function convertMcpToolsToToolSet(
     callTool: (params: {
       name: string
       arguments?: Record<string, unknown>
-    }) => Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean }>
+    }) => Promise<{ content: unknown; isError?: boolean }>
   },
   toolFilter?: McpToolFilter,
 ): ToolSet {
@@ -44,7 +39,7 @@ export function convertMcpToolsToToolSet(
         try {
           const response = await client.callTool({
             name: mcpTool.name,
-            arguments: args as Record<string, unknown>,
+            arguments: toRecord(args),
           })
 
           if (response.isError === true) {
@@ -64,10 +59,27 @@ export function convertMcpToolsToToolSet(
   return result
 }
 
-function extractText(content: Array<{ type: string; text?: string }>): string[] {
-  return content
-    .filter((c): c is { type: string; text: string } => c.type === 'text' && c.text !== undefined)
-    .map((c) => c.text)
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return Object.fromEntries(Object.entries(value))
+  }
+  return {}
+}
+
+function extractText(content: unknown): string[] {
+  if (!Array.isArray(content)) return []
+  const results: string[] = []
+  for (const item of content) {
+    if (isTextContent(item)) results.push(item.text)
+  }
+  return results
+}
+
+function isTextContent(item: unknown): item is { type: string; text: string } {
+  if (typeof item !== 'object' || item === null) return false
+  if (!('type' in item) || !('text' in item)) return false
+  const { type, text } = item as { type: unknown; text: unknown }
+  return type === 'text' && typeof text === 'string'
 }
 
 function applyToolFilter(tools: McpToolDef[], filter?: McpToolFilter): McpToolDef[] {

@@ -16,7 +16,7 @@ export type McpClientHandle = {
     tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>
   }>
   callTool: (params: { name: string; arguments?: Record<string, unknown> }) => Promise<{
-    content: Array<{ type: string; text?: string }>
+    content: unknown
     isError?: boolean
   }>
 }
@@ -28,7 +28,16 @@ export type UserEndpointDeps = {
 
 async function poolGetOrCreate(endpoint: McpEndpointConfig): Promise<{ hash: string; client: McpClientHandle }> {
   const { hash, client } = await mcpPool.getOrCreateFromUser(endpoint)
-  return { hash, client: client as McpClientHandle }
+  return {
+    hash,
+    client: {
+      listTools: () => client.listTools(),
+      callTool: async (params) => {
+        const result = await client.callTool(params)
+        return { content: result.content, isError: typeof result.isError === 'boolean' ? result.isError : undefined }
+      },
+    },
+  }
 }
 
 export function parseMcpEndpoints(raw: string | null): McpEndpointConfig[] {
