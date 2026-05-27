@@ -90,24 +90,6 @@ function validateTimezone(value: string): string | null {
     : null
 }
 
-export function validateStep(stepId: string, value: string): Promise<string | null> {
-  const result = ((): string | null => {
-    switch (stepId) {
-      case 'kaneo_apikey':
-      case 'kaneo_workspace_id':
-        return validateApiKey(value)
-      case 'youtrack_token':
-        return validateToken(value)
-      case 'timezone':
-        return validateTimezone(value)
-      default:
-        return null
-    }
-  })()
-
-  return Promise.resolve(result)
-}
-
 function validateField(field: ConfigField, value: string): string | null {
   if (field.storageKey === 'kaneo_apikey' || field.storageKey === 'kaneo_workspace_id') return validateApiKey(value)
   if (field.storageKey === 'youtrack_token') return validateToken(value)

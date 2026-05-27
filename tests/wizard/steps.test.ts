@@ -9,7 +9,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
-import { getWizardSteps, validateStep, getStepByIndex, formatSummary } from '../../src/wizard/steps.js'
+import { getWizardSteps, getStepByIndex, formatSummary } from '../../src/wizard/steps.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 
 describe('getWizardSteps', () => {
@@ -88,52 +88,47 @@ describe('getWizardSteps', () => {
   })
 })
 
-describe('validateStep', () => {
+describe('step validation', () => {
   test('validates kaneo_apikey - accepts non-empty string', async () => {
-    const result = await validateStep('kaneo_apikey', 'my-api-key')
+    const result = await getWizardSteps('kaneo')[0]!.validate('my-api-key')
     expect(result).toBeNull()
   })
 
   test('validates kaneo_apikey - rejects empty string', async () => {
-    const result = await validateStep('kaneo_apikey', '')
+    const result = await getWizardSteps('kaneo')[0]!.validate('')
     expect(result).toBe('API key cannot be empty')
   })
 
   test('validates youtrack_token - accepts non-empty string', async () => {
-    const result = await validateStep('youtrack_token', 'perm:my-token')
+    const result = await getWizardSteps('youtrack')[0]!.validate('perm:my-token')
     expect(result).toBeNull()
   })
 
   test('validates youtrack_token - rejects empty string', async () => {
-    const result = await validateStep('youtrack_token', '')
+    const result = await getWizardSteps('youtrack')[0]!.validate('')
     expect(result).toBe('Token cannot be empty')
   })
 
   test('validates timezone - accepts valid IANA timezone', async () => {
-    const result = await validateStep('timezone', 'America/New_York')
+    const result = await getWizardSteps('kaneo')[1]!.validate('America/New_York')
     expect(result).toBeNull()
   })
 
   test('validates timezone - accepts UTC', async () => {
-    const result = await validateStep('timezone', 'UTC')
+    const result = await getWizardSteps('kaneo')[1]!.validate('UTC')
     expect(result).toBeNull()
   })
 
   test('validates timezone - accepts UTC offset', async () => {
-    const result = await validateStep('timezone', 'UTC+5')
+    const result = await getWizardSteps('kaneo')[1]!.validate('UTC+5')
     expect(result).toBeNull()
   })
 
   test('validates timezone - rejects invalid timezone', async () => {
-    const result = await validateStep('timezone', 'Invalid/Timezone')
+    const result = await getWizardSteps('kaneo')[1]!.validate('Invalid/Timezone')
     expect(result).toBe(
       'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
     )
-  })
-
-  test('validates unknown step - returns null', async () => {
-    const result = await validateStep('unknown_step', 'value')
-    expect(result).toBeNull()
   })
 })
 
