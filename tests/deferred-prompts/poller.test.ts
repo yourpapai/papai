@@ -23,10 +23,17 @@ import {
   createMockChatWithSentMessages,
   mockLogger,
   resetSystemConfigCacheForTesting,
+  seedCommonTestPlatformInstances,
+  seedTestPlatformInstance,
+  seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
 
 function setupUserConfig(userId: string): void {
+  seedCommonTestPlatformInstances()
+  seedTestPlatformInstance({ id: 'mock-default' })
+  seedTestPlatformInstance({ id: 'stale-platform' })
+  seedTestTaskInstance({ id: 'kaneo-default' })
   setConfig(userId, 'timezone', 'UTC')
   setContextSettings({ contextId: userId, taskInstanceId: 'kaneo-default', platformInstanceId: 'mock-default' })
   resetSystemConfigCacheForTesting()

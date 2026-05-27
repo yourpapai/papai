@@ -13,7 +13,7 @@ import type { CommandHandler } from '../../../src/chat/types.js'
 import { addGroupMember } from '../../../src/groups.js'
 import { addAdmin } from '../../../src/instances/admin-store.js'
 import { addUser as addScopedUser } from '../../../src/users.js'
-import { createMockReply, mockLogger, setupTestDb } from '../../utils/test-helpers.js'
+import { createMockReply, mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
 
@@ -137,6 +137,7 @@ describe('routeButtonFallback', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
 
     // Set admin user
     process.env['ADMIN_USER_ID'] = 'admin-123'

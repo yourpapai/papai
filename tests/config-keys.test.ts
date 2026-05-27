@@ -5,16 +5,26 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq } from 'drizzle-orm'
+
 import { getConfigKeysForContext } from '../src/config-keys.js'
 import { setConfig, getAllConfig } from '../src/config.js'
+import { taskInstances } from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import {
+  getTestDb,
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  seedTestTaskInstance,
+  setupTestDb,
+} from './utils/test-helpers.js'
 
 describe('getConfigKeysForContext', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
   })
 
@@ -36,8 +46,10 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-yt')).toEqual(['youtrack_token', 'timezone'])
   })
 
-  test('returns preferences only when assigned instance is missing', () => {
+  test('returns preferences only when deleted task instance cascades assignment removal', () => {
+    seedTestTaskInstance({ id: 'missing' })
     setContextSettings({ contextId: 'ctx-missing', taskInstanceId: 'missing', platformInstanceId: 'telegram-default' })
+    getTestDb().delete(taskInstances).where(eq(taskInstances.id, 'missing')).run()
 
     expect(getConfigKeysForContext('ctx-missing')).toEqual(['timezone'])
   })

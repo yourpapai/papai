@@ -22,7 +22,13 @@ import { buildSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
 import { setKaneoWorkspace } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { createMockChat, getToolExecutor, mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import {
+  createMockChat,
+  getToolExecutor,
+  mockLogger,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 type TempPluginOptions = {
   readonly pluginId: string
@@ -100,6 +106,7 @@ describe('plugin lifecycle integration', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     await deactivateAllPlugins()
   })
 

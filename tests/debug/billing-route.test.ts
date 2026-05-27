@@ -10,7 +10,13 @@ import { users } from '../../src/db/schema.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
 import { recordUsage, type UsageEvent } from '../../src/usage/recorder.js'
-import { getTestDb, mockLogger, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
+import {
+  getTestDb,
+  mockLogger,
+  restoreFetch,
+  seedCommonTestPlatformInstances,
+  setupTestDb,
+} from '../utils/test-helpers.js'
 
 const readJson = async (res: Response): Promise<object> => {
   const parsed: unknown = JSON.parse(await res.text())
@@ -84,6 +90,7 @@ describe('debug-server billing routes', () => {
     await setupTestDb()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
+    process.env['DEBUG_HOSTNAME'] = 'localhost'
     process.env['DEBUG_TOKEN'] = TOKEN
     process.env['ADMIN_USER_ID'] = 'admin-1'
     startDebugServer('test-admin', getLogLevel())
@@ -91,11 +98,13 @@ describe('debug-server billing routes', () => {
 
   beforeEach(async () => {
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   afterAll(() => {
     stopDebugServer()
     delete process.env['DEBUG_PORT']
+    delete process.env['DEBUG_HOSTNAME']
     delete process.env['DEBUG_TOKEN']
     delete process.env['ADMIN_USER_ID']
   })

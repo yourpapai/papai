@@ -15,16 +15,14 @@ import {
   memos,
   recurringTasks,
   userInstructions,
-  users,
+  userConfig,
 } from '../db/schema.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from '../types/config.js'
 import type { IdentityMixStats, StorageFootprint, SurfaceMixStats } from './types.js'
 
-interface StorageGlobalOptions {
-  dbFileSize?: () => number
-}
+type StorageGlobalOptions = Readonly<{ dbFileSize: () => number }>
 
-function defaultDbFileSize(): number {
-  const dbPath = process.env['DB_PATH'] ?? 'papai.db'
+function dbFileSize(dbPath: string): number {
   try {
     return statSync(dbPath).size
   } catch {
@@ -32,15 +30,27 @@ function defaultDbFileSize(): number {
   }
 }
 
-export function storageGlobal(opts: StorageGlobalOptions = {}): StorageFootprint {
+function defaultDbFileSize(): number {
+  const configuredDbPath = process.env['DB_PATH']
+  if (configuredDbPath === undefined) return dbFileSize('papai.db')
+  return dbFileSize(configuredDbPath)
+}
+
+export function storageGlobal(): StorageFootprint
+export function storageGlobal(opts: StorageGlobalOptions): StorageFootprint
+export function storageGlobal(...args: readonly [] | readonly [StorageGlobalOptions]): StorageFootprint {
   const row = getDrizzleDb()
     .select({ total: sql<number>`coalesce(sum(${attachments.size}), 0)`.as('total') })
     .from(attachments)
     .where(eq(attachments.isActive, 1))
     .all()
+  const firstRow = row[0]
+  const opts = args[0]
+  const sqliteBytes = opts === undefined ? defaultDbFileSize() : opts.dbFileSize()
+
   return {
-    s3AttachmentBytes: row[0]?.total ?? 0,
-    sqliteBytes: opts.dbFileSize?.() ?? defaultDbFileSize(),
+    s3AttachmentBytes: firstRow === undefined ? 0 : firstRow.total,
+    sqliteBytes,
   }
 }
 
@@ -59,11 +69,12 @@ export function identityMixGlobal(): IdentityMixStats {
 
   const kaneoRow = getDrizzleDb()
     .select({ c: sql<number>`count(*)`.as('c') })
-    .from(users)
-    .where(sql`${users.kaneoWorkspaceId} is not null and ${users.kaneoWorkspaceId} != ''`)
+    .from(userConfig)
+    .where(sql`${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY} and ${userConfig.value} != ''`)
     .all()
 
-  return { byProvider, kaneoWorkspaces: kaneoRow[0]?.c ?? 0 }
+  const firstKaneoRow = kaneoRow[0]
+  return { byProvider, kaneoWorkspaces: firstKaneoRow === undefined ? 0 : firstKaneoRow.c }
 }
 
 export function surfaceMixGlobal(): SurfaceMixStats {
@@ -84,10 +95,15 @@ export function surfaceMixGlobal(): SurfaceMixStats {
     .from(userInstructions)
     .all()
 
+  const firstMemoRow = memoRow[0]
+  const firstRecurringRow = recurringRow[0]
+  const firstDeferredRow = deferredRow[0]
+  const firstInstructionsRow = instructionsRow[0]
+
   return {
-    subjectsWithMemos: memoRow[0]?.c ?? 0,
-    subjectsWithRecurring: recurringRow[0]?.c ?? 0,
-    subjectsWithDeferred: deferredRow[0]?.c ?? 0,
-    subjectsWithInstructions: instructionsRow[0]?.c ?? 0,
+    subjectsWithMemos: firstMemoRow === undefined ? 0 : firstMemoRow.c,
+    subjectsWithRecurring: firstRecurringRow === undefined ? 0 : firstRecurringRow.c,
+    subjectsWithDeferred: firstDeferredRow === undefined ? 0 : firstDeferredRow.c,
+    subjectsWithInstructions: firstInstructionsRow === undefined ? 0 : firstInstructionsRow.c,
   }
 }

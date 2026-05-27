@@ -8,12 +8,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { recurringTasks, users } from '../../src/db/schema.js'
 import { recurringForSubject } from '../../src/stats/per-table.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 describe('recurringForSubject', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
     getDrizzleDb()
       .insert(users)
       .values([

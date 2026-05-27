@@ -30,6 +30,13 @@ import { MIGRATIONS } from '../../src/db/index.js'
 import * as schema from '../../src/db/schema.js'
 import type { AppError } from '../../src/errors.js'
 import { getUserMessage, isAppError } from '../../src/errors.js'
+import { encryptInstanceConfig } from '../../src/instances/encryption.js'
+import type {
+  InstanceConfig,
+  InstanceStatus,
+  PlatformInstanceType,
+  TaskInstanceType,
+} from '../../src/instances/types.js'
 // ============================================================================
 // MESSAGE CACHE TEST HELPERS
 // ============================================================================
@@ -158,6 +165,60 @@ export function restoreDrizzle(): void {
  */
 export function resetSystemConfigCacheForTesting(): void {
   systemConfigCacheForTesting.clear()
+}
+
+export interface SeedTestPlatformInstanceInput {
+  id: string
+  type?: PlatformInstanceType
+  config?: InstanceConfig
+  status?: InstanceStatus
+}
+
+export interface SeedTestTaskInstanceInput {
+  id: string
+  type?: TaskInstanceType
+  config?: InstanceConfig
+  status?: InstanceStatus
+}
+
+export function seedTestPlatformInstance(input: SeedTestPlatformInstanceInput): void {
+  getTestDb()
+    .insert(schema.platformInstances)
+    .values({
+      id: input.id,
+      type: input.type ?? 'telegram',
+      config: encryptInstanceConfig(input.config ?? {}),
+      status: input.status ?? 'active',
+    })
+    .onConflictDoNothing({ target: schema.platformInstances.id })
+    .run()
+}
+
+export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
+  getTestDb()
+    .insert(schema.taskInstances)
+    .values({
+      id: input.id,
+      type: input.type ?? 'kaneo',
+      config: encryptInstanceConfig(input.config ?? { url: 'https://tasks.invalid' }),
+      status: input.status ?? 'active',
+    })
+    .onConflictDoNothing({ target: schema.taskInstances.id })
+    .run()
+}
+
+export function seedCommonTestPlatformInstances(): void {
+  seedTestPlatformInstance({ id: 'legacy-single' })
+  seedTestPlatformInstance({ id: 'telegram-default' })
+  seedTestPlatformInstance({ id: 'telegram-main' })
+  seedTestPlatformInstance({ id: 'telegram-secondary' })
+  seedTestPlatformInstance({ id: 'discord-default', type: 'discord' })
+  seedTestPlatformInstance({ id: 'discord-main', type: 'discord' })
+  seedTestPlatformInstance({ id: 'mattermost-default', type: 'mattermost' })
+  seedTestPlatformInstance({ id: 'tg-default' })
+  seedTestPlatformInstance({ id: 'mm-default', type: 'mattermost' })
+  seedTestPlatformInstance({ id: 'test-instance' })
+  seedTestPlatformInstance({ id: 'test-platform' })
 }
 
 // Re-export logger mocks from dedicated file (no src/ imports to avoid mock timing issues)

@@ -14,7 +14,7 @@ import type { AuthorizationResult } from '../src/chat/types.js'
 import { addGroupMember } from '../src/groups.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.js'
 import { addUser as addScopedUser } from '../src/users.js'
-import { mockLogger, setupTestDb } from './utils/test-helpers.js'
+import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'legacy-single'
 const SCOPED_GROUP1 = 'pi:bGVnYWN5LXNpbmdsZQ:ctx:Z3JvdXAx'
@@ -54,6 +54,7 @@ describe('auth', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedCommonTestPlatformInstances()
   })
 
   describe('getThreadScopedStorageContextId', () => {
@@ -226,6 +227,7 @@ describe('auth', () => {
     describe('DM user', () => {
       test('super-admin row authorizes DM without ADMIN_USER_ID match', async () => {
         await setupTestDb()
+        seedCommonTestPlatformInstances()
         addAdmin('root-user', SUPER_ADMIN_PLATFORM_ID)
 
         const auth = checkAuthorizationExtendedScoped(
@@ -244,6 +246,7 @@ describe('auth', () => {
 
       test('regular users must be authorized on the source platform instance', async () => {
         await setupTestDb()
+        seedCommonTestPlatformInstances()
         addScopedUser({ userId: 'u1', platformInstanceId: 'telegram-default', addedBy: 'root-user' })
 
         const auth = checkAuthorizationExtendedScoped('u1', null, 'u1', 'dm', undefined, false, 'discord-default')

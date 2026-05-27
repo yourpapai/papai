@@ -34,6 +34,7 @@ describe('debug-smoke', () => {
     ensurePublicBuilt()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
+    process.env['DEBUG_HOSTNAME'] = 'localhost'
     startDebugServer('test-admin')
   })
 
@@ -41,6 +42,7 @@ describe('debug-smoke', () => {
     stopDebugServer()
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
+    delete process.env['DEBUG_HOSTNAME']
   })
 
   describe('debug.js', () => {

@@ -125,6 +125,7 @@ describe('debug-server', () => {
     ensurePublicBuilt()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
+    process.env['DEBUG_HOSTNAME'] = 'localhost'
     // Capture the log level and pass it explicitly to avoid mock-binding interference
     capturedLogLevel = getLogLevel()
     startDebugServer('test-admin', capturedLogLevel)
@@ -140,6 +141,7 @@ describe('debug-server', () => {
     stopDebugServer()
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
+    delete process.env['DEBUG_HOSTNAME']
   })
 
   test('GET /debug returns debug HTML', async () => {

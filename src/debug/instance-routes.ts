@@ -3,15 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
-import type { ChatRouter } from '../chat/router.js'
-import { addAdmin, listAdmins, removeAdmin, SUPER_ADMIN_PLATFORM_ID } from '../instances/admin-store.js'
-import {
-  deleteContextsByPlatformInstance,
-  deleteContextsByTaskInstance,
-  listContextsByTaskInstance,
-} from '../instances/context-store.js'
+import * as adminStore from '../instances/admin-store.js'
+import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
 import { maskConfig } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
@@ -21,44 +14,40 @@ import {
   listPlatformInstances,
   updatePlatformInstance,
 } from '../instances/platform-store.js'
-import { deleteTaskInstance, getTaskInstance, insertTaskInstance, listTaskInstances } from '../instances/task-store.js'
-import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
+import {
+  deleteTaskInstance,
+  getTaskInstance,
+  insertTaskInstance,
+  listTaskInstances,
+  updateTaskInstance,
+} from '../instances/task-store.js'
+import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
+import type { PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
+import {
+  adminSchema,
+  applyPlatformInstances,
+  type InstanceApiDeps,
+  instanceExistsError,
+  instancePatchSchema,
+  parseBody,
+  platformInstanceSchema,
+  splitPath,
+  statusSchema,
+  taskInstanceSchema,
+  textResponse,
+} from './instance-route-support.js'
 import { jsonResponse } from './json-response.js'
 import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
-type InstanceApiDeps = {
-  readonly getRuntimeChatRouter: () => ChatRouter | null
-  readonly listActivePlatformInstances: () => PlatformInstance[]
-}
-
 const defaultDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
   listActivePlatformInstances,
 }
-
-const instanceConfigSchema: z.ZodType<InstanceConfig> = z.record(z.string(), z.string())
-const platformInstanceSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum(['telegram', 'mattermost', 'discord']),
-  config: instanceConfigSchema,
-})
-const taskInstanceSchema = z.object({
-  id: z.string().min(1),
-  type: z.string().min(1),
-  config: instanceConfigSchema,
-})
-const statusSchema = z.object({ status: z.enum(['pending', 'active', 'stopped']) })
-const adminSchema = z.object({
-  userId: z.string().min(1),
-  platformInstanceId: z.string().min(1).optional(),
-})
-
-const textResponse = (body: string, status: number): Response => new Response(body, { status })
 
 const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance => ({
   ...instance,
@@ -102,27 +91,28 @@ const authorizeWrite = (req: Request): boolean => {
   return headerToken === token
 }
 
-const parseJson = async (req: Request): Promise<unknown> => {
-  try {
-    return await req.json()
-  } catch {
-    return undefined
-  }
+const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Promise<Response> => {
+  if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
+  const body = await parseBody(req, statusSchema)
+  if (body instanceof Response) return body
+  updatePlatformInstance(instanceId, { config: undefined, status: body.status })
+  const instance = getPlatformInstance(instanceId)
+  return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
-const validationError = (error: z.ZodError): Response =>
-  jsonResponse({ error: 'invalid_request', issues: error.issues }, { status: 400 })
-
-const parseBody = async <T>(req: Request, schema: z.ZodType<T>): Promise<T | Response> => {
-  const result = schema.safeParse(await parseJson(req))
-  return result.success ? result.data : validationError(result.error)
+const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Response> => {
+  if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
+  const body = await parseBody(req, instancePatchSchema)
+  if (body instanceof Response) return body
+  updatePlatformInstance(instanceId, { config: body.config, status: body.status })
+  const instance = getPlatformInstance(instanceId)
+  return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
-const splitPath = (url: URL): readonly string[] =>
-  url.pathname
-    .split('/')
-    .filter((part) => part !== '')
-    .map((part) => decodeURIComponent(part))
+const resolveAdminPlatformInstanceId = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId !== undefined) return platformInstanceId
+  return adminStore.SUPER_ADMIN_PLATFORM_ID
+}
 
 const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApiDeps): Promise<Response | null> => {
   const parts = splitPath(url)
@@ -134,6 +124,7 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
   if (url.pathname === '/api/platform-instances' && req.method === 'POST') {
     const body = await parseBody(req, platformInstanceSchema)
     if (body instanceof Response) return body
+    if (getPlatformInstance(body.id) !== null) return instanceExistsError(body.id)
     insertPlatformInstance({ ...body, status: 'active' })
     const instance = getPlatformInstance(body.id)
     return jsonResponse(instance === null ? null : maskedPlatformInstance(instance), { status: 201 })
@@ -145,53 +136,28 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
 
   if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'platform-instances' && parts[3] === 'status') {
     if (req.method !== 'POST') return textResponse('Method not allowed', 405)
-    const body = await parseBody(req, statusSchema)
-    if (body instanceof Response) return body
     const instanceId = parts[2]
     if (instanceId === undefined) return textResponse('Not found', 404)
-    updatePlatformInstance(instanceId, { config: undefined, status: body.status })
-    const instance = getPlatformInstance(instanceId)
-    return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
+    return handlePlatformStatusUpdate(req, instanceId)
+  }
+
+  if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'platform-instances' && req.method === 'PATCH') {
+    const instanceId = parts[2]
+    if (instanceId === undefined) return textResponse('Not found', 404)
+    return handlePlatformPatch(req, instanceId)
   }
 
   if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'platform-instances') {
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const instanceId = parts[2]
     if (instanceId === undefined) return textResponse('Not found', 404)
-    const router = getRuntimeChatRouter()
-    if (router !== null) await router.removeInstance(instanceId)
-    deleteContextsByPlatformInstance(instanceId)
+    const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
     deletePlatformInstance(instanceId)
+    clearToolCachesForContexts(referencingContextIds)
     return new Response(null, { status: 204 })
   }
 
   return null
-}
-
-const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Response> => {
-  const router = deps.getRuntimeChatRouter()
-  if (router === null) return jsonResponse({ error: 'router not initialised' }, { status: 503 })
-
-  const activeInstances = deps.listActivePlatformInstances()
-  const activeIds = new Set(activeInstances.map((instance) => instance.id))
-  const runtimeIds = router.listInstances().map((instance) => instance.id)
-  const removed = runtimeIds.filter((id) => !activeIds.has(id))
-  const missing = activeInstances.filter((instance) => router.getInstance(instance.id) === null)
-  const stopped = activeInstances.filter((instance) => {
-    const runtimeInstance = router.getInstance(instance.id)
-    return runtimeInstance !== null && runtimeInstance.status === 'stopped'
-  })
-
-  await Promise.all(removed.map((id) => router.removeInstance(id)))
-  await Promise.all(
-    missing.map((instance) => {
-      router.addInstance(instance.id, instance.type, instance.config)
-      return router.startInstance(instance.id)
-    }),
-  )
-  await Promise.all(stopped.map((instance) => router.startInstance(instance.id)))
-
-  return jsonResponse({ applied: activeInstances.length })
 }
 
 const handleTaskInstances = async (req: Request, url: URL): Promise<Response | null> => {
@@ -207,17 +173,32 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
     if (!listTaskProviderTypes().some((descriptor) => descriptor.type === body.type)) {
       return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
     }
+    if (getTaskInstance(body.id) !== null) return instanceExistsError(body.id)
     insertTaskInstance({ ...body, status: 'active' })
     const instance = getTaskInstance(body.id)
     return jsonResponse(instance === null ? null : maskedTaskInstance(instance), { status: 201 })
+  }
+
+  if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'task-instances' && req.method === 'PATCH') {
+    const taskInstanceId = parts[2]
+    if (taskInstanceId === undefined) return textResponse('Not found', 404)
+    if (getTaskInstance(taskInstanceId) === null) return textResponse('Not found', 404)
+    const body = await parseBody(req, instancePatchSchema)
+    if (body instanceof Response) return body
+    const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
+    updateTaskInstance(taskInstanceId, { config: body.config, status: body.status })
+    clearToolCachesForContexts(referencingContextIds)
+    const instance = getTaskInstance(taskInstanceId)
+    return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedTaskInstance(instance))
   }
 
   if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'task-instances') {
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const taskInstanceId = parts[2]
     if (taskInstanceId === undefined) return textResponse('Not found', 404)
-    deleteContextsByTaskInstance(taskInstanceId)
+    const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
     deleteTaskInstance(taskInstanceId)
+    clearToolCachesForContexts(referencingContextIds)
     return new Response(null, { status: 204 })
   }
 
@@ -227,13 +208,16 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
 const handleAdmins = async (req: Request, url: URL): Promise<Response | null> => {
   const parts = splitPath(url)
 
-  if (url.pathname === '/api/admins' && req.method === 'GET') return jsonResponse(listAdmins())
+  if (url.pathname === '/api/admins' && req.method === 'GET') return jsonResponse(adminStore.listAdmins())
 
   if (url.pathname === '/api/admins' && req.method === 'POST') {
     const body = await parseBody(req, adminSchema)
     if (body instanceof Response) return body
-    const platformInstanceId = body.platformInstanceId ?? SUPER_ADMIN_PLATFORM_ID
-    addAdmin(body.userId, platformInstanceId)
+    const platformInstanceId = resolveAdminPlatformInstanceId(body.platformInstanceId)
+    if (platformInstanceId !== adminStore.SUPER_ADMIN_PLATFORM_ID && getPlatformInstance(platformInstanceId) === null) {
+      return jsonResponse({ error: 'platform_instance_not_found', id: platformInstanceId }, { status: 404 })
+    }
+    adminStore.addAdmin(body.userId, platformInstanceId)
     return jsonResponse({ userId: body.userId, platformInstanceId }, { status: 201 })
   }
 
@@ -242,7 +226,7 @@ const handleAdmins = async (req: Request, url: URL): Promise<Response | null> =>
     const userId = parts[2]
     const platformInstanceId = parts[3]
     if (userId === undefined || platformInstanceId === undefined) return textResponse('Not found', 404)
-    removeAdmin(userId, platformInstanceId)
+    adminStore.removeAdmin(userId, platformInstanceId)
     return new Response(null, { status: 204 })
   }
 
@@ -267,7 +251,7 @@ export const handleInstanceApiRouteWithDeps = async (
   deps: InstanceApiDeps,
 ): Promise<Response | null> => {
   if (!isInstanceApiPath(url.pathname)) return null
-  if ((req.method === 'POST' || req.method === 'DELETE') && !authorizeWrite(req)) {
+  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && !authorizeWrite(req)) {
     return textResponse('Unauthorized', 401)
   }
 

@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
+import { parseScopedContextId } from '../chat/scoped-context.js'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { authorizedGroups, llmUsageEvents, users } from '../db/schema.js'
 import { distributionsGlobal } from './global-distributions.js'
@@ -41,12 +42,26 @@ function resolveContextType(storageContextId: string): {
   contextType: StatsContextType
   chatUserId: string | null
 } {
-  const userRow = getDrizzleDb()
-    .select({ id: users.platformUserId })
-    .from(users)
-    .where(eq(users.platformUserId, storageContextId))
-    .all()
-  if (userRow[0] !== undefined) return { contextType: 'dm', chatUserId: storageContextId }
+  const scoped = parseScopedContextId(storageContextId)
+  if (scoped !== null && scoped.threadId === undefined) {
+    const scopedUserRow = getDrizzleDb()
+      .select({ id: users.platformUserId })
+      .from(users)
+      .where(
+        and(eq(users.platformInstanceId, scoped.platformInstanceId), eq(users.platformUserId, scoped.nativeContextId)),
+      )
+      .all()
+    if (scopedUserRow[0] !== undefined) return { contextType: 'dm', chatUserId: scoped.nativeContextId }
+  }
+
+  if (scoped === null) {
+    const userRow = getDrizzleDb()
+      .select({ id: users.platformUserId })
+      .from(users)
+      .where(eq(users.platformUserId, storageContextId))
+      .all()
+    if (userRow[0] !== undefined) return { contextType: 'dm', chatUserId: storageContextId }
+  }
 
   const groupRow = getDrizzleDb()
     .select({ id: authorizedGroups.groupId })
@@ -113,9 +128,11 @@ function computeGlobalStats(window: StatsWindow): GlobalStats {
   }
 }
 
-export function getGlobalStats(opts: GlobalStatsOptions = {}): GlobalStats {
-  const window: StatsWindow = opts.window ?? '30d'
-  if (opts.noCache === true) return computeGlobalStats(window)
+export function getGlobalStats(...args: [] | [GlobalStatsOptions]): GlobalStats {
+  const opts = args[0]
+  let window: StatsWindow = '30d'
+  if (opts !== undefined && opts.window !== undefined) window = opts.window
+  if (opts !== undefined && opts.noCache === true) return computeGlobalStats(window)
 
   const now = Date.now()
   const cached = globalCache.get(window)

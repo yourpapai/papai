@@ -6,11 +6,11 @@
 import { and, eq, sql } from 'drizzle-orm'
 
 import { getDrizzleDb } from './db/drizzle.js'
-import { conversationHistory, memorySummary, memoryFacts, userConfig, userInstructions, users } from './db/schema.js'
+import { conversationHistory, memorySummary, memoryFacts, userConfig, userInstructions } from './db/schema.js'
 import { logger } from './logger.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from './types/config.js'
 
 const log = logger.child({ scope: 'cache-db' })
-const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id'
 
 export function syncHistoryToDb(userId: string, messages: unknown[]): void {
   queueMicrotask(() => {
@@ -133,24 +133,7 @@ export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
           set: { value: workspaceId },
         })
         .run()
-      const matchingUsers = db
-        .select({ platformUserId: users.platformUserId, platformInstanceId: users.platformInstanceId })
-        .from(users)
-        .where(eq(users.platformUserId, userId))
-        .all()
-      if (matchingUsers.length !== 1) {
-        log.debug({ userId, matchCount: matchingUsers.length }, 'Workspace synced to config without exact user mirror')
-        return
-      }
-      const user = matchingUsers[0]
-      if (user === undefined) return
-      db.update(users)
-        .set({ kaneoWorkspaceId: workspaceId })
-        .where(
-          and(eq(users.platformUserId, user.platformUserId), eq(users.platformInstanceId, user.platformInstanceId)),
-        )
-        .run()
-      log.debug({ userId, platformInstanceId: user.platformInstanceId }, 'Workspace synced to DB (updated)')
+      log.debug({ userId }, 'Workspace synced to config')
     } catch (error) {
       log.error(
         { userId, error: error instanceof Error ? error.message : String(error) },
