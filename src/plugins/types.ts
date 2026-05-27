@@ -195,6 +195,7 @@ export const pluginManifestSchema = z
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
     providerConfigSchema: z.array(pluginConfigRequirementSchema).optional().default([]),
+    providerContextConfigSchema: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
     providerConfigValidator: z
       .string()
@@ -209,7 +210,10 @@ export const pluginManifestSchema = z
     path: ['permissions'],
   })
 
-export type PluginManifest = z.output<typeof pluginManifestSchema>
+type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
+export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema'> & {
+  providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
+}
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {
   manifest: PluginManifest

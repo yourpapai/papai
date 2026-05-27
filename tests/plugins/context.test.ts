@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { buildPluginContext } from '../../src/plugins/context.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
-import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
 import { getContributedTaskProviderType, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -39,6 +39,7 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     configRequirements: [],
     providerCapabilities: [],
     providerConfigSchema: [],
+    providerContextConfigSchema: [],
     providerAllowedHosts: [],
     ...overrides,
   }
@@ -183,6 +184,27 @@ describe('buildPluginContext', () => {
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
       ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
       expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('test-plugin')
+    })
+
+    test('registers provider context config schema from manifest', () => {
+      const manifest = pluginManifestSchema.parse({
+        id: 'test-plugin',
+        name: 'Test Plugin',
+        version: '1.0.0',
+        description: 'A test plugin',
+        apiVersion: PLUGIN_API_VERSION,
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['custom-tracker'] },
+        providerConfigSchema: [{ key: 'base_url', label: 'Base URL', required: true }],
+        providerContextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true }],
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+
+      ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
+
+      const contributed = getContributedTaskProviderType('custom-tracker')
+      expect(contributed?.instanceConfigSchema?.map((field) => field.key)).toEqual(['base_url'])
+      expect(contributed?.contextConfigSchema?.map((field) => field.key)).toEqual(['token'])
     })
 
     test('throws without provider.task permission', () => {

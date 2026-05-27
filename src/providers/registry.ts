@@ -64,7 +64,10 @@ export type ContributedTaskProviderEntry = {
   validateConfig?: TaskProviderConfigValidator
   capabilities: ReadonlySet<TaskCapability>
   displayName: string
-  configSchema: readonly LegacyProviderConfigField[]
+  instanceConfigSchema?: readonly LegacyProviderConfigField[]
+  contextConfigSchema?: readonly LegacyProviderConfigField[]
+  traits?: ReadonlySet<TaskProviderTrait>
+  configSchema?: readonly LegacyProviderConfigField[]
 }
 
 const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
@@ -183,6 +186,19 @@ const normalizeConfigField = (field: LegacyProviderConfigField): ProviderConfigF
   ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
 })
 
+const normalizeContributedFields = (fields: readonly LegacyProviderConfigField[] | undefined): ProviderConfigField[] =>
+  (fields ?? []).map((field) => normalizeConfigField(field))
+
+const contributedInstanceFields = (entry: ContributedTaskProviderEntry): readonly ProviderConfigField[] => {
+  if (entry.instanceConfigSchema !== undefined) return normalizeContributedFields(entry.instanceConfigSchema)
+  return normalizeContributedFields(entry.configSchema).filter((field) => field.scope === 'instance')
+}
+
+const contributedContextFields = (entry: ContributedTaskProviderEntry): readonly ProviderConfigField[] => {
+  if (entry.contextConfigSchema !== undefined) return normalizeContributedFields(entry.contextConfigSchema)
+  return normalizeContributedFields(entry.configSchema).filter((field) => field.scope === 'context')
+}
+
 const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
   {
     type: 'kaneo',
@@ -255,15 +271,16 @@ export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
   })
   const contributed: TaskProviderTypeDescriptor[] = [...pluginContributedTaskProviderFactories.entries()].map(
     ([type, entry]) => {
-      const fields = entry.configSchema.map((field) => normalizeConfigField(field))
+      const instanceConfigSchema = contributedInstanceFields(entry)
+      const contextConfigSchema = contributedContextFields(entry)
       const descriptor: TaskProviderTypeDescriptor = {
         type,
         displayName: entry.displayName,
         source: { plugin: entry.pluginId },
-        instanceConfigSchema: fields.filter((field) => field.scope === 'instance'),
-        contextConfigSchema: fields.filter((field) => field.scope === 'context'),
+        instanceConfigSchema,
+        contextConfigSchema,
         capabilities: entry.capabilities,
-        traits: new Set<TaskProviderTrait>(),
+        traits: entry.traits ?? new Set<TaskProviderTrait>(),
         configSchema: [],
       }
       return { ...descriptor, configSchema: legacyConfigSchema(descriptor) }

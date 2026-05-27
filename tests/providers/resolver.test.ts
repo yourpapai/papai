@@ -5,9 +5,13 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { setConfig } from '../../src/config.js'
+import { setConfig, setConfigValue } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
 import { TaskProviderResolver } from '../../src/providers/resolver.js'
 import type { TaskProviderResolverDeps } from '../../src/providers/resolver.js'
 import { setKaneoWorkspace } from '../../src/users.js'
@@ -38,6 +42,7 @@ describe('TaskProviderResolver', () => {
     seedCommonTestPlatformInstances()
     process.env['INSTANCE_CONFIG_KEY'] = '4'.repeat(64)
     created.length = 0
+    unregisterContributedTaskProviderType('provider-plugin')
   })
 
   test('returns null when context has no assignment', () => {
@@ -152,7 +157,7 @@ describe('TaskProviderResolver', () => {
     expect(created).toEqual([{ name: 'demo-tracker', config: { baseUrl: 'https://demo.invalid', region: 'eu' } }])
   })
 
-  test('sources a contributed type user-scoped field via generic getConfig(contextId, fieldKey)', () => {
+  test('sources a contributed type context field via plugin provider storage key', () => {
     insertTaskInstance({
       id: 'custom-1',
       type: 'custom-tracker',
@@ -191,9 +196,43 @@ describe('TaskProviderResolver', () => {
     const provider = resolver.resolve('ctx-1')
 
     expect(provider).not.toBeNull()
-    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'apiToken')
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:test-plugin:provider:apiToken')
     expect(created).toEqual([
       { name: 'custom-tracker', config: { baseUrl: 'https://custom.invalid', apiToken: 'tok-123' } },
     ])
+  })
+
+  test('requires plugin provider context credentials before invoking factory', () => {
+    const factory = mock(() => createMockProvider({ name: 'plugin-tracker' }))
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'provider-plugin',
+      factory,
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Base URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
+      traits: new Set(),
+    })
+    insertTaskInstance({
+      id: 'plugin-1',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://tracker.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId: 'ctx-plugin', taskInstanceId: 'plugin-1', platformInstanceId: 'telegram-default' })
+    const resolver = new TaskProviderResolver()
+
+    let provider = resolver.resolve('ctx-plugin')
+
+    expect(factory).not.toHaveBeenCalled()
+    expect(provider).toBeNull()
+
+    setConfigValue('ctx-plugin', 'plugin:provider-plugin:provider:token', 'secret-token')
+    provider = resolver.resolve('ctx-plugin')
+
+    expect(provider?.name).toBe('plugin-tracker')
+    expect(factory).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid', token: 'secret-token' })
   })
 })

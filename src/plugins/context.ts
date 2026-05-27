@@ -9,6 +9,7 @@ import {
   type TaskProviderFactory,
   type TaskProviderConfigValidator,
 } from '../providers/registry.js'
+import type { ProviderConfigField } from '../providers/types.js'
 import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
@@ -104,6 +105,17 @@ function buildPluginLogger(pluginId: string): PluginLogger {
   })
 }
 
+const toProviderConfigField = (
+  field: PluginManifest['providerConfigSchema'][number],
+  scope: ProviderConfigField['scope'],
+): ProviderConfigField => ({
+  key: field.key,
+  label: field.label,
+  required: field.required,
+  sensitive: field.sensitive,
+  scope,
+})
+
 function buildRegisterTaskProviderType(
   manifest: PluginManifest,
 ): (type: string, descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator }) => void {
@@ -126,7 +138,11 @@ function buildRegisterTaskProviderType(
       validateConfig: descriptor.validateConfig,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
-      configSchema: manifest.providerConfigSchema,
+      instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
+      contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
+        toProviderConfigField(field, 'context'),
+      ),
+      traits: new Set(),
     })
   }
 }
