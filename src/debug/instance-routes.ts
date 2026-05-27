@@ -62,9 +62,7 @@ const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): Readon
   const declared =
     descriptor === undefined
       ? []
-      : descriptor.configSchema
-          .filter((field) => (field.scope ?? 'instance') === 'instance' && field.sensitive === true)
-          .map((field) => field.key)
+      : descriptor.instanceConfigSchema.filter((field) => field.sensitive).map((field) => field.key)
   const secretLike = Object.keys(config).filter((key) => isSecretKeyName(key))
   return new Set([...declared, ...secretLike])
 }

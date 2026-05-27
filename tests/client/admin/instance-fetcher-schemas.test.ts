@@ -36,12 +36,24 @@ describe('TaskProviderTypeViewSchema', () => {
     const parsed = TaskProviderTypeViewSchema.parse({
       type: 'kaneo',
       displayName: 'Kaneo',
-      configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+      contextConfigSchema: [
+        {
+          key: 'credential',
+          label: 'Kaneo API key',
+          required: true,
+          sensitive: true,
+          storageKey: 'kaneo_apikey',
+        },
+      ],
       capabilities: ['comments.read'],
+      traits: ['workspace-scoped'],
       source: 'builtin',
     })
     expect(parsed.type).toBe('kaneo')
-    expect(parsed.configSchema[0]?.key).toBe('baseUrl')
+    expect(parsed.instanceConfigSchema[0]?.key).toBe('baseUrl')
+    expect(parsed.contextConfigSchema[0]?.storageKey).toBe('kaneo_apikey')
+    expect(parsed.traits).toContain('workspace-scoped')
     expect(parsed.source).toBe('builtin')
   })
 
@@ -49,8 +61,10 @@ describe('TaskProviderTypeViewSchema', () => {
     const parsed = TaskProviderTypeViewSchema.parse({
       type: 'custom-tracker',
       displayName: 'Custom Tracker',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
       capabilities: [],
+      traits: [],
       source: { plugin: 'my-plugin' },
     })
     expect(parsed.source).toEqual({ plugin: 'my-plugin' })
@@ -65,8 +79,10 @@ describe('TaskProviderTypeViewSchema', () => {
     const result = TaskProviderTypeViewSchema.safeParse({
       type: 'kaneo',
       displayName: 'Kaneo',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
       capabilities: [],
+      traits: [],
       source: 42,
     })
     expect(result.success).toBe(false)
@@ -76,8 +92,10 @@ describe('TaskProviderTypeViewSchema', () => {
     const result = TaskProviderTypeViewSchema.safeParse({
       type: 'custom-tracker',
       displayName: 'Custom Tracker',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
       capabilities: [],
+      traits: [],
       source: { plugin: '' },
     })
     expect(result.success).toBe(false)

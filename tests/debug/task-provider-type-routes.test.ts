@@ -53,16 +53,31 @@ describe('handleTaskProviderTypes', () => {
     expect(Array.isArray(pick(kaneo, 'capabilities'))).toBe(true)
   })
 
-  test('GET /api/task-provider-types kaneo entry has correct displayName, configSchema key and sensitive flag', async () => {
+  test('GET /api/task-provider-types kaneo entry has correct displayName, instance field key and sensitive flag', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
     const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
     const kaneo = assertObject(kaneoRaw)
 
     expect(pick(kaneo, 'displayName')).toBe('Kaneo')
-    const firstField = assertObject(assertArray(pick(kaneo, 'configSchema'))[0])
+    const firstField = assertObject(assertArray(pick(kaneo, 'instanceConfigSchema'))[0])
     expect(pick(firstField, 'key')).toBe('baseUrl')
     expect(pick(firstField, 'sensitive')).toBe(false)
+    expect(pick(firstField, 'scope')).toBeUndefined()
+  })
+
+  test('GET /api/task-provider-types returns split schemas and traits', async () => {
+    const res = expectResponse(route('/api/task-provider-types'))
+    const body = assertArray(await readJson(res))
+    const youtrack = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack'))
+
+    expect(assertArray(pick(youtrack, 'instanceConfigSchema')).map((f) => pick(assertObject(f), 'key'))).toEqual([
+      'baseUrl',
+    ])
+    expect(
+      assertArray(pick(youtrack, 'contextConfigSchema')).map((f) => pick(assertObject(f), 'storageKey')),
+    ).toContain('youtrack_token')
+    expect(assertArray(pick(youtrack, 'traits'))).toContain('command-language:youtrack')
   })
 
   test('returns null for non-matching paths', () => {
@@ -76,15 +91,18 @@ describe('handleTaskProviderTypes', () => {
 })
 
 describe('handleTaskProviderTypes scope filtering', () => {
-  test('omits context-scoped fields from the catalog response', async () => {
+  test('separates instance-scoped and context-scoped fields in the catalog response', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
     const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
     const kaneo = assertObject(kaneoRaw)
-    const keys = assertArray(pick(kaneo, 'configSchema')).map((f) => pick(assertObject(f), 'key'))
+    const instanceKeys = assertArray(pick(kaneo, 'instanceConfigSchema')).map((f) => pick(assertObject(f), 'key'))
+    const contextKeys = assertArray(pick(kaneo, 'contextConfigSchema')).map((f) => pick(assertObject(f), 'key'))
 
-    expect(keys).toContain('baseUrl')
-    expect(keys).not.toContain('credential')
-    expect(keys).not.toContain('workspaceId')
+    expect(instanceKeys).toContain('baseUrl')
+    expect(instanceKeys).not.toContain('credential')
+    expect(instanceKeys).not.toContain('workspaceId')
+    expect(contextKeys).toContain('credential')
+    expect(contextKeys).toContain('workspaceId')
   })
 })

@@ -196,13 +196,16 @@ export type ProviderConfigRequirementView = {
   readonly label: string
   readonly required: boolean
   readonly sensitive: boolean
+  readonly storageKey?: string
 }
 
 export type TaskProviderTypeView = Readonly<{
   type: string
   displayName: string
-  configSchema: readonly ProviderConfigRequirementView[]
+  instanceConfigSchema: readonly ProviderConfigRequirementView[]
+  contextConfigSchema: readonly ProviderConfigRequirementView[]
   capabilities: readonly string[]
+  traits: readonly string[]
   source: 'builtin' | { readonly plugin: string }
 }>
 

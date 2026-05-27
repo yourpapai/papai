@@ -110,7 +110,7 @@
   }
 
   $effect(() => {
-    const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
+    const schema = selectedTaskType === undefined ? [] : selectedTaskType.instanceConfigSchema
     const prev = untrack(() => taskConfigFields)
     const next: Record<string, string> = {}
     for (const field of schema) {
@@ -170,7 +170,7 @@
 
   async function createTask(): Promise<void> {
     try {
-      const schema = selectedTaskType === undefined ? [] : selectedTaskType.configSchema
+      const schema = selectedTaskType === undefined ? [] : selectedTaskType.instanceConfigSchema
       const config: Record<string, string> = {}
       for (const field of schema) {
         const rawValue = taskConfigFields[field.key]
@@ -306,7 +306,7 @@
             {/each}
           </select>
         </label>
-        {#each selectedTaskType?.configSchema ?? [] as field (field.key)}
+        {#each selectedTaskType?.instanceConfigSchema ?? [] as field (field.key)}
           <label>
             <span>{field.label}{field.required ? ' *' : ''}</span>
             {#if field.sensitive}

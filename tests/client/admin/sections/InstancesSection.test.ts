@@ -78,25 +78,31 @@ const responseFor = (method: string, url: string): Response => {
       {
         type: 'kaneo',
         displayName: 'Kaneo',
-        configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+        instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+        contextConfigSchema: [],
         capabilities: ['comments.read'],
+        traits: [],
         source: 'builtin',
       },
       {
         type: 'youtrack',
         displayName: 'YouTrack',
-        configSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+        instanceConfigSchema: [{ key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false }],
+        contextConfigSchema: [],
         capabilities: ['comments.read'],
+        traits: [],
         source: 'builtin',
       },
       {
         type: 'linear',
         displayName: 'Linear',
-        configSchema: [
+        instanceConfigSchema: [
           { key: 'baseUrl', label: 'Linear URL', required: true, sensitive: false },
           { key: 'apiKey', label: 'API Key', required: true, sensitive: true },
         ],
+        contextConfigSchema: [],
         capabilities: ['comments.read'],
+        traits: [],
         source: { plugin: 'linear-plugin' },
       },
     ])

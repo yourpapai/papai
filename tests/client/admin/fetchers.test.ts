@@ -489,8 +489,10 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
         {
           type: 'kaneo',
           displayName: 'Kaneo',
-          configSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false }],
+          contextConfigSchema: [],
           capabilities: ['comments.read'],
+          traits: [],
           source: 'builtin',
         },
       ]),
@@ -498,7 +500,7 @@ test('fetchTaskProviderTypes parses the catalog', async () => {
   )
   const types = await fetchTaskProviderTypes()
   expect(types[0]?.type).toBe('kaneo')
-  expect(types[0]?.configSchema[0]?.key).toBe('baseUrl')
+  expect(types[0]?.instanceConfigSchema[0]?.key).toBe('baseUrl')
   restoreFetch()
 })
 
