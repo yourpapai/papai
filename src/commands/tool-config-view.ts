@@ -35,6 +35,7 @@ const DOMAIN_LABELS: Record<ToolDomain, string> = {
   web: 'Web fetch',
   identity: 'Identity',
   time: 'Time',
+  mcp: 'MCP tools',
 }
 
 const RISK_EMOJI: Record<ToolRisk, string> = {
