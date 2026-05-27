@@ -1,26 +1,16 @@
 {
   "$schema": "./node_modules/knip/schema.json",
 
-  // Standalone scripts not auto-detected from package.json
+  // Entry points not auto-detected from package.json scripts
   "entry": [
-    "src/scripts/*.ts!",
-    "scripts/build-client.ts!",
     "client/admin/index.ts!",
     "client/debug/index.ts!",
-    "tests/commands/context-tool-catalog.test.ts!",
-    "tests/debug/admin-visibility.test.ts!",
-    "tests/debug/turn-assembly.test.ts!",
-    "tests/providers/youtrack/test-helpers.ts!",
-    "review-loop/src/cli.ts!",
     "tests/review-loop/**/*.test.ts!",
     "scripts/behavior-audit/index.ts!",
     "scripts/behavior-audit/profile-clustering.ts!",
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
-    "tests/scripts/behavior-audit*.ts!",
-    "tests/scripts/behavior-audit/**/*.ts!",
-    "tests/instances/**/*.test.ts!",
   ],
 
   // All source files (production only)
@@ -44,80 +34,56 @@
     "catalog": "error",
   },
 
-  // Ignore Stryker plugin (loaded at runtime, not imported) and codeindex (linked via `bun link`).
-  // svelte is imported by client/debug/index.ts but knip can't follow .svelte file imports.
+  // Ignore Stryker plugin (loaded at runtime, not imported).
+  // svelte is imported by client entry points but knip can't follow .svelte component imports.
   // msw is the dev-only mock layer dependency consumed exclusively by the
   // Storybook story harness under client/stories/** (ignored below); it never
   // ships in a production bundle.
-  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "codeindex", "svelte", "msw"],
+  "ignoreDependencies": ["@stryker-mutator/typescript-checker", "svelte", "msw"],
 
   "ignoreIssues": {
-    "scripts/behavior-audit/consolidate-keywords-clustering.ts": ["exports"],
-    "scripts/behavior-audit/phase-stats.ts": ["exports"],
-    "src/attachments/workspace.ts": ["exports"],
-    "src/debug/admin-schemas.ts": ["types"],
+    // applyVisibility is unused; turn-assembly re-exports are consumed only by .svelte files.
     "src/debug/state-collector.ts": ["exports"],
+    // resetTurnBuffers is a test-only seam.
     "src/debug/turn-assembly.ts": ["exports"],
-    // src/usage/query.ts and src/usage/types.ts ship the public query surface
-    // that the Phase 3 billing dashboard will consume; nothing in src/ imports
-    // them yet, but the recorder tests in tests/usage/ exercise the queries.
-    "src/usage/query.ts": ["files", "exports"],
-    "src/usage/types.ts": ["types"],
-    "src/usage/index.ts": ["exports"],
-    // src/stats/* lands incrementally for Phase 5; the per-table helpers and
-    // orchestrator wire into the dashboard later in the plan. Until those
-    // consumers ship, knip can't trace the type-only and pure helper modules.
-    "src/stats/index.ts": ["files", "exports"],
-    "src/stats/types.ts": ["files", "types"],
-    "src/stats/aggregate.ts": ["files", "exports"],
-    "src/stats/hashing.ts": ["files", "exports"],
-    "src/stats/per-table.ts": ["files", "exports"],
-    "src/stats/per-table-content.ts": ["files", "exports"],
-    "src/stats/per-table-subject.ts": ["files", "exports"],
-    "src/stats/per-table-usage.ts": ["files", "exports"],
-    "src/stats/global-subjects.ts": ["files", "exports"],
-    "src/stats/global-distributions.ts": ["files", "exports"],
-    "src/stats/global-mix.ts": ["files", "exports"],
-    "src/stats/global-web-tools.ts": ["files", "exports"],
-    "src/stats/internal/util.ts": ["files", "exports"],
-    // systemConfigCacheForTesting is the cache-reset escape hatch for tests
-    // (consumed by tests/utils/test-helpers.ts). Mirrors the userCachesForTesting
-    // pattern in src/cache.ts, but unlike that one no production code currently
-    // consumes it, so knip can't trace it through to a project entry.
-    "src/system-config.ts": ["exports"],
-    // Plugin config setter and registry reset are test/reset seams consumed by
-    // plugin and config tests; they are intentionally outside production flows.
+    // setPluginConfig is a test-only seam.
     "src/config.ts": ["exports"],
+    // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
-    // src/providers/registry.ts ships the plugin-contributed task-provider
-    // registry ahead of its consumers: registerContributedTaskProviderType is
-    // wired from src/plugins/context.ts and unregisterContributedTaskProviderType
-    // from src/plugins/loader.ts within Phase 1; getContributedTaskProviderType is
-    // consumed by registry tests now and by createProvider in Phase 2. Under
-    // knip --strict (test files excluded) these read as unused until the src
-    // callers land.
+    // getContributedTaskProviderType is a test-only seam.
     "src/providers/registry.ts": ["exports"],
-    "tests/scripts/behavior-audit-integration.helpers.ts": ["exports", "types"],
-    "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports", "types"],
+    // systemConfigCacheForTesting is a test-only seam.
+    "src/system-config.ts": ["exports"],
+    // resetStatsSaltCacheForTesting is a test-only seam.
+    "src/stats/hashing.ts": ["exports"],
+    // clearStatsCacheForTesting is a test-only seam.
+    "src/stats/index.ts": ["exports"],
+    // resetUsageRecorderForTesting is a test-only seam.
+    "src/usage/index.ts": ["exports"],
+    // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
+    "src/instances/admin-store.ts": ["exports"],
+    // deleteContextsByTaskInstance, deleteContextsByPlatformInstance are test-only seams.
+    "src/instances/context-store.ts": ["exports"],
+    // knip --strict cannot trace test-to-test cross-references.
+    "tests/scripts/behavior-audit-integration.helpers.ts": ["exports"],
+    "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
-    "tests/scripts/behavior-audit/test-fixtures.ts": ["exports", "types"],
-    // The dashboard client uses Svelte components that knip can't parse, so most of these
+    "tests/scripts/behavior-audit/test-fixtures.ts": ["exports"],
+    // The client uses Svelte components that knip can't parse, so most of these
     // exports look orphaned even though .svelte files consume them.
-    "client/debug/dashboard.svelte.ts": ["exports"],
     "client/debug/handlers.ts": ["exports"],
-    "client/debug/helpers.ts": ["exports"],
     "client/debug/log-bootstrap.ts": ["exports"],
     "client/debug/log-filter.ts": ["exports"],
     "client/debug/sse.ts": ["exports"],
     "client/debug/types.ts": ["types"],
-    "client/admin/admin.svelte.ts": ["files", "exports", "types"],
+    "client/admin/admin.svelte.ts": ["exports", "types"],
     "client/admin/global-stats.svelte.ts": ["types"],
-    "client/admin/fetcher-schemas.ts": ["files", "exports"],
-    "client/admin/fetchers.ts": ["files", "exports", "types"],
+    "client/admin/fetcher-schemas.ts": ["exports"],
+    "client/admin/fetchers.ts": ["exports", "types"],
     "client/admin/instance-fetchers.ts": ["exports"],
-    "client/admin/index.ts": ["files", "exports"],
+    "client/admin/index.ts": ["exports"],
     "client/admin/scrollspy.ts": ["exports"],
-    "client/shared/fetcher-helpers.ts": ["files", "exports"],
+    "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
   },
