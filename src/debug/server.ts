@@ -15,6 +15,7 @@ import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
+import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 
@@ -109,33 +110,17 @@ function handleLogs(url: URL): Response {
 
 let server: ReturnType<typeof Bun.serve> | null = null
 
-function handleDebugFile(pathname: string): Response {
-  if (pathname === '/debug') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.html')))
+function handleClientFile(prefix: 'debug' | 'admin', pathname: string): Response {
+  if (pathname === `/${prefix}`) {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, `${prefix}.html`)))
   }
-  if (pathname === '/debug.js') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.js')), {
+  if (pathname === `/${prefix}.js`) {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, `${prefix}.js`)), {
       headers: { 'Content-Type': 'text/javascript' },
     })
   }
-  if (pathname === '/debug.css') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'debug.css')))
-  }
-  return new Response('Not found', { status: 404 })
-}
-
-function handleAdminFile(pathname: string): Response {
-  if (pathname === '/admin') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.html')))
-  }
-
-  if (pathname === '/admin.js') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.js')), {
-      headers: { 'Content-Type': 'text/javascript' },
-    })
-  }
-  if (pathname === '/admin.css') {
-    return new Response(Bun.file(path.join(PUBLIC_DIR, 'admin.css')))
+  if (pathname === `/${prefix}.css`) {
+    return new Response(Bun.file(path.join(PUBLIC_DIR, `${prefix}.css`)))
   }
   return new Response('Not found', { status: 404 })
 }
@@ -215,8 +200,13 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
   if (url.pathname.startsWith('/admin/subjects/') && url.pathname.endsWith('/recent-requests')) {
     return handleAdminRecentRequests(url)
   }
+  if (url.pathname === '/admin/plugin-config') {
+    if (req.method === 'GET') return handleAdminPluginConfigGet()
+    if (req.method === 'POST') return handleAdminPluginConfigPost(req)
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/admin.css') {
-    return handleAdminFile(url.pathname)
+    return handleClientFile('admin', url.pathname)
   }
   return null
 }
@@ -251,7 +241,7 @@ async function routeRequest(req: Request): Promise<Response> {
   if (adminResponse !== null) return adminResponse
 
   if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname === '/debug.css') {
-    return handleDebugFile(url.pathname)
+    return handleClientFile('debug', url.pathname)
   }
   if (url.pathname === '/dashboard') {
     return new Response(null, { status: 301, headers: { Location: '/debug' } })

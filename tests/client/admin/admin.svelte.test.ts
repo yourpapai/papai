@@ -41,12 +41,13 @@ describe('admin.svelte', () => {
     expect(adminState.currentSection).toBe('billing')
   })
 
-  test('registers instances before system', () => {
+  test('registers plugin-config between instances and system', () => {
     const ids = adminSections.map((section) => section.id)
-    expect(ids).toContain('instances')
-    expect(ids.indexOf('instances')).toBe(ids.indexOf('system') - 1)
-    expect(sectionFromHash('#instances')).toBe('instances')
-    expect(sectionLabel('instances')).toBe('Instances')
+    expect(ids).toContain('plugin-config')
+    expect(ids.indexOf('instances')).toBeLessThan(ids.indexOf('plugin-config'))
+    expect(ids.indexOf('plugin-config')).toBe(ids.indexOf('system') - 1)
+    expect(sectionFromHash('#plugin-config')).toBe('plugin-config')
+    expect(sectionLabel('plugin-config')).toBe('Plugin Config')
   })
 
   test('setWindow writes to adminGlobals.window', () => {
@@ -92,6 +93,7 @@ describe('admin.svelte', () => {
       'identities',
       'groups',
       'instances',
+      'plugin-config',
       'system',
     ]
     expect(validIds).toContain(adminState.currentSection)

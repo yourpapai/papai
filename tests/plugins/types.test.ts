@@ -139,6 +139,16 @@ describe('pluginManifestSchema', () => {
     })
   })
 
+  describe('http permission', () => {
+    test('accepts http as a valid permission', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['http'],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('task provider type contribution', () => {
     test('accepts a single task provider type with provider.task permission', () => {
       const result = pluginManifestSchema.safeParse({
@@ -200,6 +210,32 @@ describe('pluginManifestSchema', () => {
     test('rejects values outside range', () => {
       expect(pluginManifestSchema.safeParse({ ...baseManifest, activationTimeoutMs: 99 }).success).toBe(false)
       expect(pluginManifestSchema.safeParse({ ...baseManifest, activationTimeoutMs: 10001 }).success).toBe(false)
+    })
+  })
+
+  describe('configRequirements scope', () => {
+    test('defaults scope to context when not specified', () => {
+      const data = pluginManifestSchema.parse({
+        ...baseManifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true }],
+      })
+      expect(data.configRequirements[0]!.scope).toBe('context')
+    })
+
+    test('accepts scope admin', () => {
+      const data = pluginManifestSchema.parse({
+        ...baseManifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+      })
+      expect(data.configRequirements[0]!.scope).toBe('admin')
+    })
+
+    test('rejects invalid scope values', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'invalid' }],
+      })
+      expect(result.success).toBe(false)
     })
   })
 
