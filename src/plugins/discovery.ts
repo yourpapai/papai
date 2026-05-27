@@ -61,11 +61,12 @@ function resolveEntryPoint(pluginDir: string, main: string): string | null {
 function parseAndValidateManifest(
   manifestPath: string,
   dirName: string,
-): { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string } | DiscoveryError {
+):
+  | { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string; rawManifest: unknown }
+  | DiscoveryError {
   let manifestContent: string
   try {
     manifestContent = readFileSync(manifestPath, 'utf-8')
-    JSON.parse(manifestContent)
   } catch (error) {
     return {
       directoryName: dirName,
@@ -73,7 +74,17 @@ function parseAndValidateManifest(
     }
   }
 
-  const parseResult = pluginManifestSchema.safeParse(JSON.parse(manifestContent) as unknown)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(manifestContent) as unknown
+  } catch (error) {
+    return {
+      directoryName: dirName,
+      reason: `Invalid JSON in plugin.json: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
+
+  const parseResult = pluginManifestSchema.safeParse(parsed)
   if (!parseResult.success) {
     const issues = parseResult.error.issues.map((i) => i.message).join('; ')
     return { directoryName: dirName, reason: `Manifest validation failed: ${issues}` }
@@ -86,7 +97,34 @@ function parseAndValidateManifest(
     }
   }
 
-  return { manifest: parseResult.data, manifestContent }
+  return { manifest: parseResult.data, manifestContent, rawManifest: parsed }
+}
+
+function resolveAndReadEntryPoint(
+  pluginDir: string,
+  main: string,
+  isMcpOnly: boolean,
+): { entryPoint: string; entryPointContent: string } | DiscoveryError {
+  const entryPoint = resolveEntryPoint(pluginDir, main)
+  if (entryPoint === null && !isMcpOnly) {
+    return {
+      directoryName: '',
+      reason: `Entry point "${main}" resolves outside the plugin directory`,
+    }
+  }
+
+  if (entryPoint === null) {
+    return { entryPoint: resolve(join(pluginDir, main)), entryPointContent: '' }
+  }
+
+  try {
+    return { entryPoint, entryPointContent: readFileSync(entryPoint, 'utf-8') }
+  } catch (error) {
+    return {
+      directoryName: '',
+      reason: `Entry point file not readable: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
 }
 
 function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin | DiscoveryError {
@@ -107,24 +145,17 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const parsed = parseAndValidateManifest(manifestPath, dirName)
   if ('reason' in parsed) return parsed
 
-  const { manifest, manifestContent } = parsed
-  const entryPoint = resolveEntryPoint(pluginDir, manifest.main)
-  if (entryPoint === null) {
-    return {
-      directoryName: dirName,
-      reason: `Entry point "${manifest.main}" resolves outside the plugin directory`,
-    }
+  const { manifest, manifestContent, rawManifest } = parsed
+  const rawObj = typeof rawManifest === 'object' && rawManifest !== null ? rawManifest : undefined
+  const isMcpOnly = rawObj !== undefined && 'mcp' in rawObj && !('main' in rawObj)
+
+  const ep = resolveAndReadEntryPoint(pluginDir, manifest.main, isMcpOnly)
+  if (ep !== null && 'reason' in ep) {
+    return { ...ep, directoryName: dirName }
   }
 
-  let entryPointContent: string
-  try {
-    entryPointContent = readFileSync(entryPoint, 'utf-8')
-  } catch (error) {
-    return {
-      directoryName: dirName,
-      reason: `Entry point file not readable: ${error instanceof Error ? error.message : String(error)}`,
-    }
-  }
+  const entryPoint = ep.entryPoint
+  const entryPointContent = ep.entryPointContent
 
   return {
     manifest,

@@ -194,7 +194,7 @@ async function runFullGeneration(
   const { createdByUserId, deliveryTarget } = execCtx
   const storageContextId = getStorageContextId(deliveryTarget)
   const model = deps.buildModel(config, config.mainModel)
-  const { tools, enabledToolNames } = buildFullToolSet(
+  const { tools, enabledToolNames } = await buildFullToolSet(
     provider,
     createdByUserId,
     storageContextId,

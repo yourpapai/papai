@@ -30,7 +30,7 @@ const NO_STAGED_DOWNLOAD: StagedFileDownloadFn | undefined = undefined as Staged
 // mock. Bun's mock.module() is synchronous; the delayed `await import(…)` below
 // picks up the registered mock.
 // ---------------------------------------------------------------------------
-const makeToolsSpy = mock((_provider: TaskProvider): ToolSet => ({}))
+const makeToolsSpy = mock((_provider: TaskProvider): Promise<ToolSet> => Promise.resolve({}))
 
 void mock.module('../src/tools/index.js', () => ({
   makeTools: makeToolsSpy,
@@ -59,25 +59,65 @@ describe('llm-orchestrator-tools / getOrCreateTools cache behaviour', () => {
     provider = createMockProvider()
   })
 
-  test('makeTools is called on the first invocation', () => {
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
+  test('makeTools is called on the first invocation', async () => {
+    await prepareLlmInvocation(
+      CTX_ID,
+      CONFIG_ID,
+      CHAT_USER_ID,
+      USERNAME,
+      'dm',
+      provider,
+      [],
+      'hello',
+      NO_STAGED_DOWNLOAD,
+    )
 
     expect(makeToolsSpy).toHaveBeenCalledTimes(1)
   })
 
-  test('makeTools result is reused on the second invocation when tools is an empty set', () => {
+  test('makeTools result is reused on the second invocation when tools is an empty set', async () => {
     // First call — populates the cache with {}.
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
+    await prepareLlmInvocation(
+      CTX_ID,
+      CONFIG_ID,
+      CHAT_USER_ID,
+      USERNAME,
+      'dm',
+      provider,
+      [],
+      'hello',
+      NO_STAGED_DOWNLOAD,
+    )
 
     // Second call — must reuse the cached empty ToolSet.
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'world', NO_STAGED_DOWNLOAD)
+    await prepareLlmInvocation(
+      CTX_ID,
+      CONFIG_ID,
+      CHAT_USER_ID,
+      USERNAME,
+      'dm',
+      provider,
+      [],
+      'world',
+      NO_STAGED_DOWNLOAD,
+    )
 
     expect(makeToolsSpy).toHaveBeenCalledTimes(1)
   })
 
-  test('makeTools is called again for a different context even when tools is empty', () => {
-    prepareLlmInvocation(CTX_ID, CONFIG_ID, CHAT_USER_ID, USERNAME, 'dm', provider, [], 'hello', NO_STAGED_DOWNLOAD)
-    prepareLlmInvocation(
+  test('makeTools is called again for a different context even when tools is empty', async () => {
+    await prepareLlmInvocation(
+      CTX_ID,
+      CONFIG_ID,
+      CHAT_USER_ID,
+      USERNAME,
+      'dm',
+      provider,
+      [],
+      'hello',
+      NO_STAGED_DOWNLOAD,
+    )
+    await prepareLlmInvocation(
       'ctx-other',
       'ctx-other',
       CHAT_USER_ID,
@@ -108,7 +148,7 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     provider = createMockProvider()
   })
 
-  test('returns enabledToolNames derived from makeTools result before routing', () => {
+  test('returns enabledToolNames derived from makeTools result before routing', async () => {
     // Use a memo-intent message: 'remember this note' matches MEMO_RE → intent='memo',
     // confidence=0.85 > HIGH_CONFIDENCE=0.65 → routing narrows to MEMO_DOMAINS
     // (memo/time/web). create_task (domain: task) is dropped; save_memo (domain: memo)
@@ -116,14 +156,14 @@ describe('llm-orchestrator-tools / prepareLlmInvocation enabledToolNames', () =>
     //
     // Tool factory values are placeholders — only the KEYS matter for enabledToolNames;
     // a real factory is used to satisfy the no-unsafe-type-assertion lint rule.
-    makeToolsSpy.mockReturnValueOnce({
+    makeToolsSpy.mockResolvedValueOnce({
       // domain: task — dropped by memo routing
       create_task: makeGetCurrentTimeTool('u'),
       // domain: memo — kept by memo routing
       save_memo: makeGetCurrentTimeTool('u'),
     })
 
-    const result = prepareLlmInvocation(
+    const result = await prepareLlmInvocation(
       'ctx-prerouting',
       'ctx-prerouting',
       'user-pr',

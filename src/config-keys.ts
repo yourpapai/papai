@@ -7,7 +7,7 @@ import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
 import type { ConfigKey } from './types/config.js'
 
-const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone']
+const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
 
 export function getConfigKeysForContext(contextId: string): readonly ConfigKey[] {
   const settings = getContextSettings(contextId)

@@ -15,6 +15,7 @@ import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
+import { handleMcpStatus } from './mcp-routes.js'
 import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
@@ -232,6 +233,10 @@ async function routeRequest(req: Request): Promise<Response> {
   if (url.pathname === '/memos') return handleMemos(url)
   if (url.pathname === '/identity') return handleIdentity(url)
   if (url.pathname === '/auth/groups') return handleAuthGroups()
+  if (url.pathname === '/mcp/status') {
+    if (req.method === 'GET') return handleMcpStatus()
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/billing/subjects') return handleBillingSubjects(url)
   if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
   if (url.pathname === '/stats/global') return handleStatsGlobal(url)

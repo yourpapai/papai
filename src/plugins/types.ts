@@ -7,6 +7,7 @@ import type { ToolExecutionOptions } from 'ai'
 import { z } from 'zod'
 
 import type { AuthorizationResult, ChatCapability, IncomingMessage, ReplyFn } from '../chat/types.js'
+import { mcpPluginConfigSchema } from '../mcp/types.js'
 import type { TaskCapability, TaskProvider } from '../providers/types.js'
 import type { PluginContext } from './context.js'
 
@@ -212,6 +213,7 @@ export const pluginManifestSchema = z
       .regex(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/u, 'Provider config validator must be a valid identifier')
       .optional(),
     activationTimeoutMs: z.number().int().min(100).max(10000).optional().default(5000),
+    mcp: mcpPluginConfigSchema.optional(),
   })
   .refine((m) => m.contributes.taskProviderTypes.length === 0 || m.permissions.includes('provider.task'), {
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",

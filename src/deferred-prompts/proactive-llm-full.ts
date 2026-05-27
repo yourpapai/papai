@@ -15,14 +15,14 @@ import { buildMetadataMessages, timezoneOrUtc } from './proactive-llm-helpers.js
 import { buildProactiveTrigger } from './proactive-trigger.js'
 import type { ExecutionMetadata } from './types.js'
 
-export function buildFullToolSet(
+export async function buildFullToolSet(
   provider: TaskProvider,
   createdByUserId: string,
   storageContextId: string,
   contextType: 'dm' | 'group',
   prompt: string,
-): { tools: ToolSet; enabledToolNames: ReadonlySet<string> } {
-  const fullTools = makeTools(provider, {
+): Promise<{ tools: ToolSet; enabledToolNames: ReadonlySet<string> }> {
+  const fullTools = await makeTools(provider, {
     storageContextId,
     chatUserId: createdByUserId,
     mode: 'proactive',

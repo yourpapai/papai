@@ -26,6 +26,7 @@ const FIELD_DISPLAY_NAMES: Record<ConfigKey, string> = {
   kaneo_workspace_id: 'Kaneo Workspace ID',
   youtrack_token: 'YouTrack Token',
   timezone: 'Timezone',
+  mcp_endpoints: 'MCP Endpoints',
 }
 
 function getFieldEmoji(key: ConfigKey): string {
@@ -34,6 +35,7 @@ function getFieldEmoji(key: ConfigKey): string {
     kaneo_workspace_id: '📁',
     youtrack_token: '🔐',
     timezone: '🌍',
+    mcp_endpoints: '🔌',
   }
   return emojiMap[key] ?? '⚙️'
 }

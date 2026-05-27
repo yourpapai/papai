@@ -66,6 +66,7 @@
     "@ai-sdk/openai-compatible": "^2.0.47",
     "@ai-sdk/provider": "^3.0.10",
     "@gramio/format": "^0.8.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.184",
     "ai-tokenizer": "^1.0.6",
     "date-fns-tz": "^3.2.0",
