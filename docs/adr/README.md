@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 This directory contains Architecture Decision Records (ADRs) for the **papai** (Personal Adroit Proactive AI) project.
 
-ADRs capture the context, options considered, and rationale behind significant architectural decisions. Each ADR is derived from an implementation plan in `docs/plans/done/` and verified against the current codebase.
+ADRs capture the context, options considered, and rationale behind significant architectural decisions. Each ADR is derived from an implementation plan (active plans live in `docs/superpowers/plans/`; completed design/implementation docs are kept in `docs/archive/`) and verified against the current codebase.
 
 ## Index
 
