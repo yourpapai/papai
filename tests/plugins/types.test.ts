@@ -139,6 +139,16 @@ describe('pluginManifestSchema', () => {
     })
   })
 
+  describe('http permission', () => {
+    test('accepts http as a valid permission', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['http'],
+      })
+      expect(result.success).toBe(true)
+    })
+  })
+
   describe('task provider type contribution', () => {
     test('accepts a single task provider type with provider.task permission', () => {
       const result = pluginManifestSchema.safeParse({

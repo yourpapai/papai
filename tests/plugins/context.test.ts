@@ -162,6 +162,22 @@ describe('buildPluginContext', () => {
     })
   })
 
+  describe('http permission', () => {
+    test('provides providerRuntime when http permission is declared', () => {
+      const { ctx } = buildPluginContext(
+        makeManifest({ permissions: ['http'], providerAllowedHosts: ['api.example.com'] }),
+        'ctx-1',
+      )
+      expect(ctx.providerRuntime).toBeDefined()
+      expect(ctx.providerRuntime!.allowedHosts.has('api.example.com')).toBe(true)
+    })
+
+    test('does not provide providerRuntime without http or provider.task permission', () => {
+      const { ctx } = buildPluginContext(makeManifest({ permissions: [] }), 'ctx-1')
+      expect(ctx.providerRuntime).toBeUndefined()
+    })
+  })
+
   describe('registerTaskProviderType', () => {
     beforeEach(() => {
       unregisterContributedTaskProviderType('test-plugin')

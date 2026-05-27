@@ -23,6 +23,7 @@ export const PLUGIN_PERMISSIONS = [
   'tasks.write',
   'provider.task',
   'identity',
+  'http',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]

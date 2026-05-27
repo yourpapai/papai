@@ -56,7 +56,7 @@ export type PluginContext = {
   readonly kv: PluginKvStore
   readonly log: PluginLogger
   readonly registration: PluginRegistration
-  /** Present only when the 'provider.task' permission is held. */
+  /** Present only when the 'provider.task' or 'http' permission is held. */
   readonly providerRuntime?: PluginProviderRuntime
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
   readonly identity?: PluginIdentityFacade
@@ -170,9 +170,10 @@ export function buildPluginContext(
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)
   const log = buildPluginLogger(manifest.id)
-  const providerRuntime = permissions.has('provider.task')
-    ? buildProviderRuntime(manifest.providerAllowedHosts, log)
-    : undefined
+  const providerRuntime =
+    permissions.has('provider.task') || permissions.has('http')
+      ? buildProviderRuntime(manifest.providerAllowedHosts, log)
+      : undefined
 
   const declaredTypes = manifest.contributes.taskProviderTypes
   const [declaredProviderType] = declaredTypes
