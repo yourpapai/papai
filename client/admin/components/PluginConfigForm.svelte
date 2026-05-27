@@ -89,8 +89,7 @@
                       bind:value={inputValue}
                       placeholder="new value" />
                   {:else if keyState.sensitive && keyState.value !== null}
-                    <code class="masked-value" data-testid={`masked-value-${plugin.pluginId}-${keyState.key}`}>••••••••</code>
-                    <span class="masked-hint">(hidden)</span>
+                    <code class="masked-value" data-testid={`masked-value-${plugin.pluginId}-${keyState.key}`}>{keyState.value}</code>
                   {:else}
                     <span>{display(keyState)}</span>
                   {/if}

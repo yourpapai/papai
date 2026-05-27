@@ -41,9 +41,10 @@ describe('admin.svelte', () => {
     expect(adminState.currentSection).toBe('billing')
   })
 
-  test('registers plugin-config before system', () => {
+  test('registers plugin-config between instances and system', () => {
     const ids = adminSections.map((section) => section.id)
     expect(ids).toContain('plugin-config')
+    expect(ids.indexOf('instances')).toBeLessThan(ids.indexOf('plugin-config'))
     expect(ids.indexOf('plugin-config')).toBe(ids.indexOf('system') - 1)
     expect(sectionFromHash('#plugin-config')).toBe('plugin-config')
     expect(sectionLabel('plugin-config')).toBe('Plugin Config')
