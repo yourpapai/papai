@@ -283,3 +283,5 @@ export const RecentRequestsResponseSchema = z.object({
 })
 
 export type RecentRequestRow = z.infer<typeof RecentRequestRowSchema>
+
+export * from './plugin-config-fetcher-schemas.js'

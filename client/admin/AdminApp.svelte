@@ -18,11 +18,12 @@
   import InstancesSection from './sections/InstancesSection.svelte'
   import MemosSection from './sections/MemosSection.svelte'
   import OverviewSection from './sections/OverviewSection.svelte'
+  import PluginConfigSection from './sections/PluginConfigSection.svelte'
   import RemindersSection from './sections/RemindersSection.svelte'
   import StatsSection from './sections/StatsSection.svelte'
   import SystemSection from './sections/SystemSection.svelte'
 
-  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances', 'system']
+  const sectionIds = ['overview', 'billing', 'stats', 'memos', 'reminders', 'identities', 'groups', 'instances', 'plugin-config', 'system']
 
   onMount(() => {
     void refreshAll()
@@ -58,6 +59,7 @@
         <IdentitiesSection />
         <GroupsSection />
         <InstancesSection />
+        <PluginConfigSection />
         <SystemSection />
       </main>
     </div>
