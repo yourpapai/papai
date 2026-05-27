@@ -21,7 +21,12 @@ export type McpCallToolFn = (params: { name: string; arguments?: unknown }) => P
 export function convertMcpToolsToToolSet(
   serverId: string,
   mcpTools: McpToolDef[],
-  client: { callTool: McpCallToolFn },
+  client: {
+    callTool: (params: {
+      name: string
+      arguments?: Record<string, unknown>
+    }) => Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean }>
+  },
   toolFilter?: McpToolFilter,
 ): ToolSet {
   const filtered = applyToolFilter(mcpTools, toolFilter)
@@ -39,7 +44,7 @@ export function convertMcpToolsToToolSet(
         try {
           const response = await client.callTool({
             name: mcpTool.name,
-            arguments: args,
+            arguments: args as Record<string, unknown>,
           })
 
           if (response.isError === true) {
