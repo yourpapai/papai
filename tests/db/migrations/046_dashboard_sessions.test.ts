@@ -40,6 +40,10 @@ describe('migration046DashboardSessions', () => {
       'platform_instance_id',
     ])
     expect(cols.find((c) => c.name === 'nonce_hash')?.pk).toBe(1)
+    expect(cols.find((c) => c.name === 'admin_user_id')?.notnull).toBe(1)
+    expect(cols.find((c) => c.name === 'platform_instance_id')?.notnull).toBe(1)
+    expect(cols.find((c) => c.name === 'created_at')?.notnull).toBe(1)
+    expect(cols.find((c) => c.name === 'expires_at')?.notnull).toBe(1)
   })
 
   test('creates dashboard_sessions with expected columns', () => {
@@ -57,6 +61,9 @@ describe('migration046DashboardSessions', () => {
       'user_agent',
     ])
     expect(cols.find((c) => c.name === 'id')?.pk).toBe(1)
+    expect(cols.find((c) => c.name === 'admin_user_id')?.notnull).toBe(1)
+    expect(cols.find((c) => c.name === 'issued_at')?.notnull).toBe(1)
+    expect(cols.find((c) => c.name === 'expires_at')?.notnull).toBe(1)
   })
 
   test('creates dashboard_sessions admin lookup index', () => {
@@ -72,5 +79,9 @@ describe('migration046DashboardSessions', () => {
   test('is idempotent', () => {
     migration046DashboardSessions.up(db)
     expect(() => migration046DashboardSessions.up(db)).not.toThrow()
+  })
+
+  test('exports the expected migration id', () => {
+    expect(migration046DashboardSessions.id).toBe('046_dashboard_sessions')
   })
 })
