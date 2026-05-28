@@ -7,7 +7,7 @@ import { listPlatformProviderTypes } from '../chat/registry.js'
 import { authenticate } from '../dashboard-auth/index.js'
 import * as adminStore from '../instances/admin-store.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
-import { maskConfig, providerSensitiveKeys } from '../instances/encryption.js'
+import { maskConfig, providerSensitiveKeys, unknownProviderSensitiveKeys } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
@@ -28,6 +28,7 @@ import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instance
 import { logger } from '../logger.js'
 import { getTaskProviderDescriptor, listTaskProviderTypes } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
+import { validatePlatformInstanceConfig } from './instance-config-validation.js'
 import {
   adminSchema,
   applyPlatformInstances,
@@ -54,11 +55,11 @@ const defaultDeps: InstanceApiDeps = {
 
 const INSTANCE_ROUTE_MASK = '********'
 
-const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> =>
-  providerSensitiveKeys(
-    config,
-    listPlatformProviderTypes().find((descriptor) => descriptor.type === type)?.instanceConfigSchema,
-  )
+const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
+  const descriptor = listPlatformProviderTypes().find((candidate) => candidate.type === type)
+  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
+  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
+}
 
 const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance => ({
   ...instance,
@@ -74,7 +75,8 @@ const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance =>
 // keys operators can now write in-place via PATCH, which the descriptor schema does not constrain.
 const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
   const descriptor = getTaskProviderDescriptor(type)
-  return providerSensitiveKeys(config, descriptor?.instanceConfigSchema)
+  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
+  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
 }
 
 const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
@@ -140,6 +142,8 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
     const body = await parseBody(req, platformInstanceSchema)
     if (body instanceof Response) return body
     if (getPlatformInstance(body.id) !== null) return instanceExistsError(body.id)
+    const configError = validatePlatformInstanceConfig(body.type, body.config)
+    if (configError !== null) return configError
     insertPlatformInstance({ ...body, status: 'active' })
     const instance = getPlatformInstance(body.id)
     return jsonResponse(instance === null ? null : maskedPlatformInstance(instance), { status: 201 })

@@ -21,7 +21,7 @@ import {
   listContextsByTaskInstance,
   setContextSettings,
 } from '../../src/instances/context-store.js'
-import { insertPlatformInstance } from '../../src/instances/platform-store.js'
+import { getPlatformInstance, insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
@@ -74,6 +74,12 @@ const assertArray = (value: unknown): readonly unknown[] => {
 }
 
 const pick = (value: object, key: string): unknown => Reflect.get(value, key)
+
+const cachedToolsFor = (key: string): unknown => {
+  const entry = userCachesForTesting.get(key)
+  if (entry === undefined) return undefined
+  return entry.tools
+}
 
 const expectInstance = (router: ChatRouter, id: string): ManagedChatInstance => {
   const instance = router.getInstance(id)
@@ -133,20 +139,20 @@ describe('instance API routes', () => {
       await route('/api/platform-instances', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret', label: 'main' } }),
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret', label: 'main' } }),
       }),
     )
 
     expect(created.status).toBe(201)
     const createdBody = assertObject(await readJson(created))
-    expect(pick(createdBody, 'config')).toEqual({ bot_token: '********', label: 'main' })
+    expect(pick(createdBody, 'config')).toEqual({ token: '********', label: 'main' })
 
     const listed = expectResponse(await route('/api/platform-instances'))
 
     expect(listed.status).toBe(200)
     const rows = assertArray(await readJson(listed))
     expect(rows).toHaveLength(1)
-    expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '********', label: 'main' })
+    expect(pick(assertObject(rows[0]), 'config')).toEqual({ token: '********', label: 'main' })
   })
 
   test('GET /api/platform-instances masks descriptor-sensitive fields', async () => {
@@ -159,13 +165,13 @@ describe('instance API routes', () => {
   })
 
   test('duplicate platform create returns instance_exists conflict', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
     const res = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'other-secret' } }),
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'other-secret' } }),
       }),
     )
 
@@ -174,20 +180,20 @@ describe('instance API routes', () => {
   })
 
   test('PATCH /api/platform-instances/:id updates config and status with masked config', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'PATCH',
         headers: jsonHeaders(),
-        body: JSON.stringify({ config: { bot_token: 'new-secret', label: 'main' }, status: 'stopped' }),
+        body: JSON.stringify({ config: { token: 'new-secret', label: 'main' }, status: 'stopped' }),
       }),
     )
 
     expect(res.status).toBe(200)
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
-    expect(pick(body, 'config')).toEqual({ bot_token: '********', label: 'main' })
+    expect(pick(body, 'config')).toEqual({ token: '********', label: 'main' })
   })
 
   test('platform PATCH missing instance returns 404', async () => {
@@ -218,6 +224,46 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(400)
+  })
+
+  test('POST /api/platform-instances rejects missing descriptor-required config', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { label: 'main' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_platform_instance_config',
+      type: 'telegram',
+      missing: ['token'],
+    })
+    expect(getPlatformInstance('telegram-main')).toBeNull()
+  })
+
+  test('POST /api/platform-instances rejects malformed descriptor URL config', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          id: 'mattermost-main',
+          type: 'mattermost',
+          config: { baseUrl: 'not a url', token: 'secret' },
+        }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_platform_instance_config',
+      type: 'mattermost',
+      invalidUrls: ['baseUrl'],
+    })
+    expect(getPlatformInstance('mattermost-main')).toBeNull()
   })
 
   test('rejects writes when DEBUG_TOKEN is unset', async () => {
@@ -388,9 +434,9 @@ describe('instance API routes', () => {
     expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
       '__super__:super-admin',
     ])
-    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-1:user-1:alice')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('deleting platform instance does not remove runtime router instance until apply', async () => {
@@ -475,9 +521,9 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(204)
-    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-1:user-1:alice')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('lists task instances with referencing context IDs', async () => {
@@ -561,8 +607,8 @@ describe('instance API routes', () => {
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
     expect(pick(body, 'config')).toEqual({ api_key: '********' })
-    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('creates and deletes super-admin rows', async () => {
@@ -668,8 +714,8 @@ describe('instance API routes', () => {
           body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'bad' } }),
         },
       )
-      expect(res?.status).toBe(400)
-      const body = assertObject(await readJson(res!))
+      expect(res.status).toBe(400)
+      const body = assertObject(await readJson(res))
       expect(pick(body, 'error')).toBe('invalid_task_instance_config')
       expect(pick(body, 'reason')).toBe('bad url')
     } finally {
@@ -696,7 +742,7 @@ describe('instance API routes', () => {
           body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
         },
       )
-      expect(res?.status).toBe(201)
+      expect(res.status).toBe(201)
       const instance = getTaskInstance('v-ok-1')
       expect(instance).not.toBeNull()
     } finally {
