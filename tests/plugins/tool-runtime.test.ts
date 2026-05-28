@@ -71,4 +71,47 @@ describe('buildPluginToolRuntimeContext', () => {
       expect(lastResult.retryAfterSec!).toBeGreaterThan(0)
     })
   })
+
+  test('tool runtime exposes identity facade for identity provider plugins', () => {
+    const runtime = buildPluginToolRuntimeContext(
+      'identity-plugin',
+      {
+        ...makeManifest(),
+        permissions: ['identity'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['identity-provider'],
+        },
+      },
+      { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
+    )
+
+    expect(runtime.identity).toBeDefined()
+    expect(runtime.identity?.lookupForChatUser('chat-user-1')).toBeNull()
+  })
+
+  test('tool runtime omits identity facade when plugin lacks identity permission', () => {
+    const runtime = buildPluginToolRuntimeContext(
+      'no-identity-plugin',
+      {
+        ...makeManifest(),
+        permissions: [],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['identity-provider'],
+        },
+      },
+      { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
+    )
+
+    expect(runtime.identity).toBeUndefined()
+  })
 })

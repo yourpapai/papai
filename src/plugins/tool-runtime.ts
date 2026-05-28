@@ -5,6 +5,7 @@
 
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
+import { buildIdentityFacade } from './identity-facade.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
 
@@ -91,6 +92,13 @@ function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
   })
 }
 
+const buildRuntimeIdentity = (manifest: PluginManifest): PluginToolRuntimeContext['identity'] => {
+  const [providerType] = manifest.contributes.taskProviderTypes
+  if (!manifest.permissions.includes('identity')) return undefined
+  if (manifest.contributes.taskProviderTypes.length !== 1 || providerType === undefined) return undefined
+  return buildIdentityFacade(providerType)
+}
+
 export function buildPluginToolRuntimeContext(
   pluginId: string,
   manifest: PluginManifest,
@@ -108,6 +116,7 @@ export function buildPluginToolRuntimeContext(
       permissions.has('tasks.write'),
     ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
+    identity: buildRuntimeIdentity(manifest),
     rateLimit: buildRateLimit(),
   })
 }

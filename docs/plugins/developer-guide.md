@@ -125,6 +125,8 @@ For example, `hello-world` plus `greet` becomes `plugin_hello_world__greet`.
 
 Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, and plugin/context KV. The raw task provider is not exposed.
 
+When a plugin declares `permissions: ["identity"]` and exactly one `contributes.taskProviderTypes` value, tool executions receive `runtimeContext.identity`. The facade supports `lookupForChatUser(chatUserId)` and `recordClaim(chatUserId, providerUserId, providerLogin, displayName?)`. Claims are recorded as `manual_nl` mappings and are not treated as auto-verified.
+
 ## Prompt Fragments
 
 Prompt fragments are synchronous strings or synchronous functions returning strings. Async prompt fragments are not supported. Fragments are delimited in the system prompt and budgeted at 2,000 characters per fragment and 8,000 characters total across active plugins.
