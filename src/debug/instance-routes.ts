@@ -26,9 +26,9 @@ import {
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { getTaskProviderDescriptor, listTaskProviderTypes } from '../providers/registry.js'
+import { getTaskProviderDescriptor } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
-import { validatePlatformInstanceConfig } from './instance-config-validation.js'
+import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from './instance-config-validation.js'
 import {
   adminSchema,
   applyPlatformInstances,
@@ -45,7 +45,7 @@ import {
 } from './instance-route-support.js'
 import { jsonResponse } from './json-response.js'
 import { handlePlatformProviderTypes } from './platform-provider-type-routes.js'
-import { handleTaskProviderTypes, validateTaskInstanceConfig } from './task-provider-type-routes.js'
+import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
@@ -184,11 +184,8 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {
     const body = await parseBody(req, taskInstanceSchema)
     if (body instanceof Response) return body
-    if (!listTaskProviderTypes().some((descriptor) => descriptor.type === body.type)) {
-      return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
-    }
     if (getTaskInstance(body.id) !== null) return instanceExistsError(body.id)
-    const configError = await validateTaskInstanceConfig(body.type, body.config)
+    const configError = await validateTaskInstanceRouteConfig(body.type, body.config)
     if (configError !== null) return configError
     insertTaskInstance({ ...body, status: 'active' })
     const instance = getTaskInstance(body.id)
@@ -198,9 +195,14 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'task-instances' && req.method === 'PATCH') {
     const taskInstanceId = parts[2]
     if (taskInstanceId === undefined) return textResponse('Not found', 404)
-    if (getTaskInstance(taskInstanceId) === null) return textResponse('Not found', 404)
+    const existing = getTaskInstance(taskInstanceId)
+    if (existing === null) return textResponse('Not found', 404)
     const body = await parseBody(req, instancePatchSchema)
     if (body instanceof Response) return body
+    if (body.config !== undefined) {
+      const configError = await validateTaskInstanceRouteConfig(existing.type, body.config)
+      if (configError !== null) return configError
+    }
     const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
     updateTaskInstance(taskInstanceId, { config: body.config, status: body.status })
     clearToolCachesForContexts(referencingContextIds)

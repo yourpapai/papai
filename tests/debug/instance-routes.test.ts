@@ -616,7 +616,12 @@ describe('instance API routes', () => {
 
   test('PATCH /api/task-instances/:id updates config and status and clears referencing context tool cache', async () => {
     seedPlatformInstance('telegram-main')
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { api_key: 'secret' }, status: 'active' })
+    insertTaskInstance({
+      id: 'tasks-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setCachedTools('ctx-1', { old_tool: {} })
     setCachedTools('ctx-other', { old_tool: {} })
@@ -625,16 +630,47 @@ describe('instance API routes', () => {
       await route('/api/task-instances/tasks-main', {
         method: 'PATCH',
         headers: jsonHeaders(),
-        body: JSON.stringify({ config: { api_key: 'new-secret' }, status: 'stopped' }),
+        body: JSON.stringify({
+          config: { baseUrl: 'https://new-kaneo.invalid', internalUrl: 'https://internal.kaneo.invalid' },
+          status: 'stopped',
+        }),
       }),
     )
 
     expect(res.status).toBe(200)
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
-    expect(pick(body, 'config')).toEqual({ api_key: '********' })
+    expect(pick(body, 'config')).toEqual({
+      baseUrl: 'https://new-kaneo.invalid',
+      internalUrl: 'https://internal.kaneo.invalid',
+    })
     expect(cachedToolsFor('ctx-1')).toBeNull()
     expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+  })
+
+  test('PATCH /api/task-instances/:id rejects missing descriptor-required config and preserves the previous config', async () => {
+    insertTaskInstance({
+      id: 'tasks-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+
+    const res = expectResponse(
+      await route('/api/task-instances/tasks-main', {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ config: { internalUrl: 'https://internal.kaneo.invalid' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_task_instance_config',
+      type: 'kaneo',
+      missing: ['baseUrl'],
+    })
+    expect(expectTaskInstance('tasks-main').config).toEqual({ baseUrl: 'https://kaneo.invalid' })
   })
 
   test('creates and deletes super-admin rows', async () => {
@@ -712,6 +748,24 @@ describe('instance API routes', () => {
     expect(pick(body, 'type')).toBe('mystery')
   })
 
+  test('POST /api/task-instances rejects malformed descriptor URL config', async () => {
+    const res = expectResponse(
+      await route('/api/task-instances', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { baseUrl: 'not a url' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_task_instance_config',
+      type: 'kaneo',
+      invalidUrls: ['baseUrl'],
+    })
+    expect(getTaskInstance('tasks-main')).toBeNull()
+  })
+
   test('unknown task provider masks every config field', async () => {
     insertTaskInstance({ id: 'unknown', type: 'missing', config: { publicish: 'value' }, status: 'active' })
 
@@ -731,14 +785,16 @@ describe('instance API routes', () => {
       configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     try {
-      const res = await routeWithDeps(
-        '/api/task-instances',
-        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
-        {
-          method: 'POST',
-          headers: jsonHeaders(),
-          body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'bad' } }),
-        },
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'https://bad.invalid' } }),
+          },
+        ),
       )
       expect(res.status).toBe(400)
       const body = assertObject(await readJson(res))
@@ -746,6 +802,44 @@ describe('instance API routes', () => {
       expect(pick(body, 'reason')).toBe('bad url')
     } finally {
       unregisterContributedTaskProviderType('val')
+    }
+  })
+
+  test('PATCH /api/task-instances/:id rejects config when the contributed provider validator fails', async () => {
+    registerContributedTaskProviderType('validated-patch', {
+      pluginId: 'val-patch',
+      factory: () => createMockProvider({ name: 'validated-patch' }),
+      validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
+      capabilities: new Set<never>(),
+      displayName: 'Validated Patch',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    insertTaskInstance({
+      id: 'validated-patch-1',
+      type: 'validated-patch',
+      config: { baseUrl: 'https://old.invalid' },
+      status: 'active',
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances/validated-patch-1',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'PATCH',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ config: { baseUrl: 'https://new.invalid' } }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      const body = assertObject(await readJson(res))
+      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
+      expect(pick(body, 'reason')).toBe('bad url')
+      expect(expectTaskInstance('validated-patch-1').config).toEqual({ baseUrl: 'https://old.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('val-patch')
     }
   })
 

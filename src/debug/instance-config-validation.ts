@@ -7,6 +7,7 @@ import { listPlatformProviderTypes } from '../chat/registry.js'
 import type { InstanceConfig } from '../instances/types.js'
 import { getTaskProviderDescriptor } from '../providers/registry.js'
 import { jsonResponse } from './json-response.js'
+import { validateTaskInstanceConfig } from './task-provider-type-routes.js'
 
 type InstanceConfigField = {
   readonly key: string
@@ -88,4 +89,13 @@ export const validateTaskDescriptorInstanceConfig = (type: string, config: Insta
     type,
     validateDescriptorConfig(descriptor.instanceConfigSchema, config),
   )
+}
+
+export const validateTaskInstanceRouteConfig = (
+  type: string,
+  config: InstanceConfig,
+): Response | Promise<Response | null> => {
+  const descriptorConfigError = validateTaskDescriptorInstanceConfig(type, config)
+  if (descriptorConfigError !== null) return descriptorConfigError
+  return validateTaskInstanceConfig(type, config)
 }
