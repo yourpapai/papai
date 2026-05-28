@@ -52,6 +52,40 @@ describe('auth route handlers', () => {
       expect(setCookie).not.toBeNull()
       expect(setCookie).toContain(`${SESSION_COOKIE_NAME}=`)
     })
+
+    test('GET /auth/claim sets Cache-Control: no-store on the redirect', () => {
+      const { nonce } = issueClaim('u1', 'p1')
+      const res = handleAuthClaim(
+        new Request(`http://localhost/auth/claim?n=${nonce}`),
+        new URL(`http://localhost/auth/claim?n=${nonce}`),
+      )
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
+    })
+
+    test('GET /auth/claim returns 503 when mintSession fails', () => {
+      // Use a claims-only DB: dashboard_claims exists but dashboard_sessions does not,
+      // so consumeClaim succeeds while insertSession (inside mintSession) throws.
+      const claimsOnlyDb = new Database(':memory:')
+      claimsOnlyDb.run(`
+        CREATE TABLE IF NOT EXISTS dashboard_claims (
+          nonce_hash TEXT PRIMARY KEY,
+          admin_user_id TEXT NOT NULL,
+          platform_instance_id TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          consumed_at INTEGER
+        )
+      `)
+      setStoreDb(claimsOnlyDb)
+      const { nonce } = issueClaim('u1', 'p1')
+      const res = handleAuthClaim(
+        new Request(`http://localhost/auth/claim?n=${nonce}`),
+        new URL(`http://localhost/auth/claim?n=${nonce}`),
+      )
+      claimsOnlyDb.close()
+      setStoreDb(db)
+      expect(res.status).toBe(503)
+    })
   })
 
   describe('handleAuthLogout', () => {

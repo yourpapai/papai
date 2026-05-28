@@ -12,6 +12,9 @@ import {
   recordActivity,
   revokeSession,
 } from '../dashboard-auth/index.js'
+import { logger } from '../logger.js'
+
+const log = logger.child({ scope: 'auth-routes' })
 
 const isSecureRequest = (req: Request): boolean => {
   const proto = req.headers.get('X-Forwarded-Proto')
@@ -27,10 +30,24 @@ export const handleAuthClaim = (req: Request, url: URL): Response => {
   if (nonce === null || nonce === '') return new Response('Unauthorized', { status: 401 })
   const result = consumeClaim(nonce)
   if (result === null) return new Response('Unauthorized', { status: 401 })
-  const { setCookie } = mintSession(result.adminUserId, { secure: isSecureRequest(req) })
+  let setCookie: string
+  try {
+    setCookie = mintSession(result.adminUserId, { secure: isSecureRequest(req) }).setCookie
+  } catch (error) {
+    log.error(
+      { error: error instanceof Error ? error.message : String(error), adminUserId: result.adminUserId },
+      'auth/claim: mintSession failed after claim was consumed',
+    )
+    return new Response('Service unavailable', { status: 503 })
+  }
   return new Response(null, {
     status: 302,
-    headers: { Location: '/admin', 'Set-Cookie': setCookie, 'Referrer-Policy': 'no-referrer' },
+    headers: {
+      Location: '/admin',
+      'Set-Cookie': setCookie,
+      'Referrer-Policy': 'no-referrer',
+      'Cache-Control': 'no-store',
+    },
   })
 }
 
