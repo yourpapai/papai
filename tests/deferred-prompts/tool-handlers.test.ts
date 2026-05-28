@@ -7,9 +7,13 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert'
 
 import { setCachedConfig } from '../../src/cache.js'
+import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfig } from '../../src/config.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../../src/debug/event-bus.js'
+import { getAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
+import { getScheduledPrompt, listScheduledPrompts } from '../../src/deferred-prompts/scheduled.js'
 import { executeCancel, executeCreate, executeList, executeUpdate } from '../../src/deferred-prompts/tool-handlers.js'
+import type { CreateResult } from '../../src/deferred-prompts/types.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => void } {
@@ -19,6 +23,12 @@ function collectEvents(type: string): { events: DebugEvent[]; cleanup: () => voi
   }
   subscribe(handler)
   return { events, cleanup: () => unsubscribe(handler) }
+}
+
+function expectCreatedPromptId(result: CreateResult): string {
+  if ('id' in result) return result.id
+  expect(result).toHaveProperty('id')
+  return ''
 }
 
 const USER_ID = 'user-tz-test'
@@ -38,9 +48,9 @@ describe('executeCreate — rrule timezone', () => {
     })
 
     expect(result).not.toHaveProperty('error')
-    assert(typeof result === 'object')
-    assert(result !== null)
-    assert('fireAt' in result)
+    assert.ok(typeof result === 'object')
+    assert.ok(result !== null)
+    assert.ok('fireAt' in result)
     // Returned fireAt is converted back to local time; must be 09:xx
     expect(result.fireAt).toContain('09:')
   })
@@ -52,9 +62,9 @@ describe('executeCreate — rrule timezone', () => {
       schedule: { rrule: { freq: 'DAILY', byHour: [9], byMinute: [0] } },
     })
     expect(result).not.toHaveProperty('error')
-    assert(typeof result === 'object')
-    assert(result !== null)
-    assert('fireAt' in result)
+    assert.ok(typeof result === 'object')
+    assert.ok(result !== null)
+    assert.ok('fireAt' in result)
     expect(result.fireAt).toContain('09:')
   })
 
@@ -66,15 +76,85 @@ describe('executeCreate — rrule timezone', () => {
     })
 
     expect(result).not.toHaveProperty('error')
-    assert(typeof result === 'object')
-    assert(result !== null)
-    assert('fireAt' in result)
+    assert.ok(typeof result === 'object')
+    assert.ok(result !== null)
+    assert.ok('fireAt' in result)
     expect(result.fireAt).toBe('2030-01-10T09:00:00')
 
     const { prompts } = executeList(USER_ID, { type: 'scheduled' })
     const prompt = prompts[0]!
-    assert(prompt.type === 'scheduled')
+    assert.ok(prompt.type === 'scheduled')
     expect(prompt.fireAt).toBe('2030-01-10T04:00:00.000Z')
+  })
+})
+
+describe('executeCreate — group thread ownership', () => {
+  const parentContextId = toScopedContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-1',
+  })
+  const threadContextId = toScopedThreadContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-1',
+    threadId: '42',
+  })
+  const deliveryContext = {
+    userId: 'chat-user-1',
+    storageContextId: threadContextId,
+    contextType: 'group' as const,
+    username: 'alice',
+  }
+
+  test('thread-created scheduled prompt is owned by parent group and delivered to thread', () => {
+    setConfig(parentContextId, 'timezone', 'UTC')
+
+    const result = executeCreate(
+      parentContextId,
+      {
+        prompt: 'post status',
+        schedule: { fire_at: { date: '2099-01-01', time: '09:00' } },
+        execution: { mode: 'lightweight', delivery_brief: 'status' },
+      },
+      deliveryContext,
+    )
+
+    expect(result).toMatchObject({ status: 'created', type: 'scheduled' })
+    const createdId = expectCreatedPromptId(result)
+
+    const prompts = listScheduledPrompts(parentContextId)
+    expect(prompts).toHaveLength(1)
+    expect(listScheduledPrompts(threadContextId)).toHaveLength(0)
+    expect(prompts[0]!.createdByUserId).toBe(parentContextId)
+    expect(prompts[0]!.deliveryTarget.storageContextId).toBe(threadContextId)
+
+    const persisted = getScheduledPrompt(createdId, parentContextId)
+    expect(persisted).toBeDefined()
+    expect(persisted!.deliveryTarget.storageContextId).toBe(threadContextId)
+  })
+
+  test('thread-created alert prompt is owned by parent group and delivered to thread', () => {
+    const result = executeCreate(
+      parentContextId,
+      {
+        prompt: 'watch task status',
+        condition: { field: 'task.status', op: 'changed_to', value: 'done' },
+        execution: { mode: 'context', delivery_brief: 'status changed' },
+      },
+      deliveryContext,
+    )
+
+    expect(result).toMatchObject({ status: 'created', type: 'alert' })
+    const createdId = expectCreatedPromptId(result)
+
+    const prompts = listAlertPrompts(parentContextId)
+    expect(prompts).toHaveLength(1)
+    expect(listAlertPrompts(threadContextId)).toHaveLength(0)
+    expect(prompts[0]!.createdByUserId).toBe(parentContextId)
+    expect(prompts[0]!.deliveryTarget.storageContextId).toBe(threadContextId)
+
+    const persisted = getAlertPrompt(createdId, parentContextId)
+    expect(persisted).toBeDefined()
+    expect(persisted!.deliveryTarget.storageContextId).toBe(threadContextId)
   })
 })
 
@@ -95,9 +175,9 @@ describe('executeUpdate — rrule timezone', () => {
       schedule: { rrule: { freq: 'DAILY', byHour: [10], byMinute: [0] } },
     })
     expect(updated).not.toHaveProperty('error')
-    assert(typeof updated === 'object')
-    assert(updated !== null)
-    assert('rrule' in updated)
+    assert.ok(typeof updated === 'object')
+    assert.ok(updated !== null)
+    assert.ok('rrule' in updated)
     expect(String(updated.rrule)).toBe('FREQ=DAILY;BYHOUR=10;BYMINUTE=0')
   })
 
@@ -110,7 +190,7 @@ describe('executeUpdate — rrule timezone', () => {
     })
     const { prompts: before } = executeList(USER_ID, { type: 'scheduled' })
     const existing = before[0]!
-    assert(existing.type === 'scheduled')
+    assert.ok(existing.type === 'scheduled')
     const originalFireAt = existing.fireAt
 
     const updated = executeUpdate(USER_ID, {
@@ -118,9 +198,9 @@ describe('executeUpdate — rrule timezone', () => {
       schedule: { rrule: { freq: 'DAILY', byHour: [22], byMinute: [0] } },
     })
     expect(updated).not.toHaveProperty('error')
-    assert(typeof updated === 'object')
-    assert(updated !== null)
-    assert('fireAt' in updated)
+    assert.ok(typeof updated === 'object')
+    assert.ok(updated !== null)
+    assert.ok('fireAt' in updated)
     // fireAt must change to reflect the new rule immediately (not remain at the old 09:xx value)
     expect(updated.fireAt).not.toBe(originalFireAt)
     expect(updated.fireAt).toContain('T22:')
@@ -135,7 +215,7 @@ describe('executeUpdate — rrule timezone', () => {
     const { prompts } = executeList(USER_ID, { type: 'scheduled' })
     expect(prompts).toHaveLength(1)
     const prompt = prompts[0]!
-    assert(prompt.type === 'scheduled')
+    assert.ok(prompt.type === 'scheduled')
     expect(prompt.dtstartUtc).toMatch(/T00:00:00\.000Z$/u)
   })
 
@@ -148,7 +228,7 @@ describe('executeUpdate — rrule timezone', () => {
     })
     const { prompts: before } = executeList(USER_ID, { type: 'scheduled' })
     const existing = before[0]!
-    assert(existing.type === 'scheduled')
+    assert.ok(existing.type === 'scheduled')
     const originalDtstartUtc = existing.dtstartUtc
 
     executeUpdate(USER_ID, {
@@ -157,7 +237,7 @@ describe('executeUpdate — rrule timezone', () => {
     })
     const { prompts: after } = executeList(USER_ID, { type: 'scheduled' })
     const afterFirst = after[0]!
-    assert(afterFirst.type === 'scheduled')
+    assert.ok(afterFirst.type === 'scheduled')
     // dtstartUtc must equal the original series anchor, not the edit timestamp
     expect(afterFirst.dtstartUtc).toBe(originalDtstartUtc)
   })
