@@ -104,4 +104,4 @@ export const sweepExpired = (now: number = Date.now()): void => {
   deleteExpired(now)
 }
 
-export { buildClearCookie, sha256 }
+export { buildClearCookie }
