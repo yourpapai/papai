@@ -1,0 +1,39 @@
+{
+  "id": "audio-transcribe",
+  "name": "Audio Transcribe",
+  "version": "1.0.0",
+  "description": "Transcribe audio attachments via OpenAI-compatible /v1/audio/transcriptions API",
+  "apiVersion": 1,
+  "main": "index.ts",
+  "contributes": {
+    "tools": ["transcribe"],
+    "promptFragments": ["audio-transcribe-hint"]
+  },
+  "permissions": ["http", "attachments.read", "storage"],
+  "providerAllowedHosts": ["api.openai.com", "api.groq.com"],
+  "defaultEnabled": false,
+  "configRequirements": [
+    {
+      "key": "api_key",
+      "label": "Transcription API Key",
+      "required": true,
+      "sensitive": true,
+      "scope": "admin"
+    },
+    {
+      "key": "base_url",
+      "label": "Base URL",
+      "required": false,
+      "sensitive": false,
+      "scope": "admin"
+    },
+    {
+      "key": "model",
+      "label": "Model",
+      "required": false,
+      "sensitive": false,
+      "scope": "admin"
+    }
+  ],
+  "activationTimeoutMs": 3000
+}
