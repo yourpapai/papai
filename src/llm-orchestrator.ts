@@ -9,6 +9,7 @@ import { generateText, stepCountIs, type ModelMessage } from 'ai'
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import type { ReplyFn } from './chat/types.js'
 import { runTrimInBackground, shouldTriggerTrim } from './conversation.js'
 import { appendHistory } from './history.js'
@@ -37,6 +38,9 @@ import { getKaneoWorkspace } from './users.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
+
+export const resolveAiOutputSettingsContextId = (contextId: string): string =>
+  getConfigContextIdFromStorageContextId(contextId)
 
 const defaultDeps: LlmOrchestratorDeps = {
   generateText: (...args) => generateText(...args),
@@ -152,6 +156,9 @@ const buildToolRoutingTelemetry = (
   exposedToolCount: routingResult.exposedToolCount,
 })
 
+const createProgressReporterForContext = (reply: ReplyFn, contextId: string): AiProgressReporter =>
+  createAiProgressReporter(reply, getAiOutputSettings(resolveAiOutputSettingsContextId(contextId)))
+
 type CallLlmArgs = {
   reply: ReplyFn
   contextId: string
@@ -192,7 +199,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
     userText,
     deps.stagedDownloadFn,
   )
-  const progressReporter = createAiProgressReporter(reply, getAiOutputSettings(contextId))
+  const progressReporter = createProgressReporterForContext(reply, contextId)
   const result = await invokeModelWithTyping(reply, {
     contextId,
     chatUserId,
