@@ -576,7 +576,7 @@ describe('ChatRouter', () => {
     expect(groupLabel).toBe('discord:group-1')
   })
 
-  test('continues setting commands when one instance fails', async () => {
+  test('rejects setting commands when one instance fails', async () => {
     const setCommandsById: Record<string, (adminUserId: string, calls: string[]) => Promise<void>> = {
       bad: () => Promise.reject(new Error('command menu failed')),
       good: () => Promise.resolve(),
@@ -592,7 +592,7 @@ describe('ChatRouter', () => {
     router.addInstance('bad', 'telegram', {})
     router.addInstance('good', 'discord', {})
 
-    await expect(router.setCommands('admin-1')).resolves.toBeUndefined()
+    await expect(router.setCommands('admin-1')).rejects.toThrow('command menu failed')
 
     expect(getProvider('bad').setCommandsCalls).toEqual(['admin-1'])
     expect(getProvider('good').setCommandsCalls).toEqual(['admin-1'])
