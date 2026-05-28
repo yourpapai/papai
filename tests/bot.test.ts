@@ -561,11 +561,19 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 
   test('registered command handlers stay aligned with the command catalog', () => {
-    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+    const registeredCommands: string[] = []
+    const baseProvider = createMockChat()
+    const provider: ChatProvider = {
+      ...baseProvider,
+      registerCommand: (name, handler): void => {
+        registeredCommands.push(name)
+        baseProvider.registerCommand(name, handler)
+      },
+    }
 
     setupBot(provider, 'admin-1', { processMessage: async () => {} })
 
-    expect([...commandHandlers.keys()].toSorted()).toEqual(
+    expect(registeredCommands.toSorted()).toEqual(
       listCommandCatalogEntries()
         .map((entry) => entry.name)
         .toSorted(),
