@@ -231,6 +231,7 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 Common runtime config keys (per-user, set via `/setup` or `/config`):
 
 - `timezone`
+- `mcp_endpoints` — JSON array of external MCP server endpoints (`{ id, url (https only), label?, headers?, enabled, toolFilter? }`) whose tools are merged into the context's tool set. Registered as a preference key in `src/config-keys.ts`; editable as a free-text value through `/config`.
 
 LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`,
 `embedding_model`) are admin-owned and live in `system_config`, not in
@@ -251,9 +252,9 @@ User (Telegram/Mattermost/Discord)
      -> group-settings selector / config editor / setup wizard interception
      -> message queue + reply-context enrichment + file relay
      -> llm-orchestrator.ts
-        -> makeTools(provider, { storageContextId, chatUserId, mode, contextType })
+        -> await makeTools(provider, { storageContextId, chatUserId, mode, contextType })
         -> wrapped tool execution with structured failure results
-        -> provider adapters / web fetch / memo / recurring / deferred tools
+        -> provider adapters / web fetch / memo / recurring / deferred / MCP tools
      -> reply via ReplyFn
 Optional: debug server + debug/admin clients
 ```
@@ -281,6 +282,7 @@ Optional: debug server + debug/admin clients
 - `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 - `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
 - `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
+- `src/mcp/` — Model Context Protocol adapter. Connects to external MCP servers and exposes their tools to the LLM as Vercel AI SDK tools. Two sources: per-context user endpoints from the `mcp_endpoints` config key (`user-endpoints.ts`) and plugin-declared servers from a manifest's `mcp` field (`plugin-endpoints.ts`). `McpConnectionPool`/`mcpPool` (`client-pool.ts`) pools connections with retry and idle eviction; `convertMcpToolsToToolSet()` (`tool-adapter.ts`) wraps remote tools. `makeTools()` merges these tools and swallows all MCP failures so a dead server never breaks the pipeline. Only `streamable-http` is runtime-supported; `stdio` is schema-reserved. See `src/mcp/CLAUDE.md`.
 
 ## Plugin System
 
@@ -291,6 +293,7 @@ Trusted, repository-local first-party plugins only — no sandbox, no marketplac
 - Plugin packages live at `plugins/<plugin-id>/` (lowercase kebab-case ID; manifest `id` must match the directory name).
 - Each plugin has a `plugin.json` (validated by `pluginManifestSchema` in `src/plugins/types.ts`) and an entry point such as `index.ts` whose default export is a factory `() => { activate(ctx), deactivate?(ctx) }`.
 - Plugin API version is pinned by `PLUGIN_API_VERSION` (currently `1`); manifests declaring a different `apiVersion` are rejected as incompatible.
+- Beyond `contributes.{tools,promptFragments,commands,jobs}`, a manifest may also declare `contributes.configKeys`, a single `contributes.taskProviderTypes` entry (requires the `provider.task` permission, plus `providerCapabilities`/`providerConfigSchema`/`providerAllowedHosts`/`providerConfigValidator`), and an optional `mcp` block (`McpPluginConfig`) that points the plugin at an external MCP server whose tools are exposed under the `plugin_` namespace. See `src/mcp/CLAUDE.md`.
 
 ### Lifecycle
 
@@ -320,7 +323,7 @@ Activation receives a frozen `PluginContext` exposing only:
 - `ctx.pluginId`, `ctx.contextId` (activation runs against `__system__`), `ctx.permissions`
 - `ctx.log.{debug,info,warn,error}(data, msg)` — pino child logger scoped by `pluginId`. Never log secrets.
 - `ctx.kv.{get,set,delete,list}` — context-scoped string KV, **only** when the `storage` permission is declared. Without it, all KV calls throw. KV is not a secret store.
-- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob}` — registrations are rejected unless the contribution name was declared in `contributes.{tools,promptFragments,commands,jobs}`.
+- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless the contribution name was declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`. `registerTaskProviderType` additionally requires the `provider.task` permission.
 
 Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade (`getTask`, `listTasks`, `searchTasks`, `createTask`, `updateTask`), and the plugin/context KV.
 
@@ -331,9 +334,9 @@ Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `proce
 - Scheduled job owner: `plugin:<pluginId>:<jobName>`, executed only for contexts where the plugin is enabled and eligible.
 - Prompt fragments are synchronous strings or sync functions; appended to the system prompt with a 2,000-char-per-fragment / 8,000-char-total budget.
 
-### Permissions (MVP)
+### Permissions
 
-`storage`, `tasks.read`, `tasks.write`, `commands`, `scheduler`, `chat.send`. Only `storage`, `tasks.read`, and `tasks.write` have runtime gating today; the others are declared for future enforcement. Raw chat sending, raw provider access, raw DB access, and arbitrary network access are not exposed.
+`PLUGIN_PERMISSIONS` (`src/plugins/types.ts`): `storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, `http`. Runtime-gated today: `storage` (KV access), `tasks.read`/`tasks.write` (task-provider facade methods), `provider.task` (registering a task provider type and presence of the provider facade), `identity` (identity facade, when one task provider type is declared), and `http` (provider HTTP facade). `commands`, `scheduler`, and `chat.send` are declared but not yet separately enforced beyond the contribution-declaration check. Declaring `contributes.taskProviderTypes` requires the `provider.task` permission (manifest `.refine`). Raw chat sending, raw provider access, raw DB access, and arbitrary network access are not exposed.
 
 ### Admin Command
 
@@ -386,6 +389,14 @@ system prompt (`src/system-prompt.ts`) is composed from tool-gated fragments so 
 instructs the agent to use a disabled tool, and appends an "Unavailable tools" line for
 partially-disabled domains. Managed via the "🧰 Tools" section of `/config`.
 
+### MCP-Sourced Tools
+
+When a context configures `mcp_endpoints`, or an enabled plugin declares an `mcp` server,
+`makeTools()` also merges tools fetched from those external MCP servers. User-endpoint tools
+are named `mcp_<server>__<tool>`; plugin-sourced MCP tools use the `plugin_<server>__<tool>`
+namespace. These tools are subject to the same per-context denylist as builtins. See
+`src/mcp/CLAUDE.md`.
+
 ## Logging
 
 Logging is mandatory and uses pino with structured metadata-first calls.
@@ -431,6 +442,7 @@ Detailed conventions live in path-scoped `CLAUDE.md` files:
 | `src/tools/CLAUDE.md`     | tool assembly, execution wrapping, confirmations, context gating       |
 | `src/commands/CLAUDE.md`  | command handler rules and DM/group setup flow                          |
 | `src/chat/CLAUDE.md`      | chat provider interface, capabilities, context rendering, interactions |
+| `src/mcp/CLAUDE.md`       | external MCP server adapter, connection pooling, tool namespacing      |
 | `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |
 | `review-loop/CLAUDE.md`   | review-loop workspace structure, scripts, storage, and TDD rules       |
 
