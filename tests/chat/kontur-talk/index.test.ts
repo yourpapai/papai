@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { KonturTalkChatProvider } from '../../../src/chat/kontur-talk/index.js'
-import type { DeferredDeliveryTarget } from '../../../src/chat/types.js'
+import type { DeferredDeliveryTarget, IncomingMessage } from '../../../src/chat/types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 // JWT token with sub="bot123" (base64-encoded payload: {"sub":"bot123","owner":"admin1","iat":1757061777})
@@ -259,5 +259,152 @@ describe('KonturTalkChatProvider', () => {
     await provider.stop()
 
     expect(callCount).toBeGreaterThanOrEqual(1)
+  })
+
+  describe('message handling', () => {
+    function makeUpdate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        event_id: '$event',
+        user_id: '@alice:host',
+        room_id: '!room:host',
+        room_is_direct: false,
+        type: 'm.room.message',
+        timestamp: 1704067200000,
+        message_type: 'm.text',
+        body: 'test',
+        formatted_body: null,
+        thread_id: null,
+        reply_id: null,
+        forward_from: null,
+        mentions: ['bot123'],
+        ...overrides,
+      }
+    }
+
+    function mockFetchWithUpdates(updates: Record<string, unknown>[]): void {
+      let called = false
+      setMockFetch(() =>
+        delay(10).then(() => {
+          const result = called ? [] : updates
+          called = true
+          return new Response(JSON.stringify({ updates: result }), { status: 200 })
+        }),
+      )
+    }
+
+    test('handleUpdate dispatches text message to messageHandler', async () => {
+      const received: IncomingMessage[] = []
+      mockFetchWithUpdates([makeUpdate({ event_id: '$event1', body: 'Hello bot' })])
+      const provider = new KonturTalkChatProvider()
+      provider.onMessage((msg, _reply) => {
+        received.push(msg)
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(received.length).toBe(1)
+      expect(received[0]?.text).toBe('Hello bot')
+      expect(received[0]?.contextType).toBe('group')
+      expect(received[0]?.isMentioned).toBe(true)
+    })
+
+    test('handleUpdate passes non-mentioned group messages with isMentioned=false', async () => {
+      const received: IncomingMessage[] = []
+      mockFetchWithUpdates([makeUpdate({ event_id: '$event2', body: 'Not mentioning bot', mentions: null })])
+      const provider = new KonturTalkChatProvider()
+      provider.onMessage((msg, _reply) => {
+        received.push(msg)
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(received.length).toBe(1)
+      expect(received[0]?.isMentioned).toBe(false)
+    })
+
+    test('handleUpdate recognizes mentions="all"', async () => {
+      const received: IncomingMessage[] = []
+      mockFetchWithUpdates([makeUpdate({ event_id: '$event3', body: '@all check this', mentions: 'all' })])
+      const provider = new KonturTalkChatProvider()
+      provider.onMessage((msg, _reply) => {
+        received.push(msg)
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(received.length).toBe(1)
+      expect(received[0]?.isMentioned).toBe(true)
+    })
+
+    test('handleUpdate dispatches to command handler', async () => {
+      const commandCalls: string[] = []
+      mockFetchWithUpdates([makeUpdate({ event_id: '$event4', body: '/help' })])
+      const provider = new KonturTalkChatProvider()
+      provider.registerCommand('help', () => {
+        commandCalls.push('help')
+        return Promise.resolve()
+      })
+      provider.onMessage(() => {
+        commandCalls.push('message')
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(commandCalls).toEqual(['help'])
+    })
+
+    test('handleUpdate passes threadId to IncomingMessage', async () => {
+      let capturedThreadId: string | undefined
+      mockFetchWithUpdates([makeUpdate({ event_id: '$event5', body: 'In thread', thread_id: '$thread123' })])
+      const provider = new KonturTalkChatProvider()
+      provider.onMessage((msg, _reply) => {
+        capturedThreadId = msg.threadId
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(capturedThreadId).toBe('$thread123')
+    })
+
+    test('handleUpdate treats DM messages as contextType=dm', async () => {
+      const received: IncomingMessage[] = []
+      mockFetchWithUpdates([
+        makeUpdate({
+          event_id: '$event6',
+          room_id: '!dmroom:host',
+          room_is_direct: true,
+          body: 'Private message',
+          mentions: null,
+        }),
+      ])
+      const provider = new KonturTalkChatProvider()
+      provider.onMessage((msg, _reply) => {
+        received.push(msg)
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(received.length).toBe(1)
+      expect(received[0]?.contextType).toBe('dm')
+      expect(received[0]?.contextId).toBe('!dmroom:host')
+    })
   })
 })

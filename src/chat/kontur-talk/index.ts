@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../../logger.js'
+import { buildScopedCommandAuth } from '../command-auth.js'
 import type {
   ChatCapability,
   ChatProvider,
@@ -20,6 +21,7 @@ import type {
 import { resolveKonturTalkConfig, type KonturTalkConstructorConfig } from './config.js'
 import { renderKonturTalkContext } from './context-renderer.js'
 import { konturTalkCapabilities, konturTalkConfigRequirements, konturTalkTraits } from './metadata.js'
+import { createKonturTalkReplyFn } from './reply-helpers.js'
 import type { KonturTalkUpdate } from './schema.js'
 import { KonturTalkGetUpdatesResponseSchema } from './schema.js'
 
@@ -164,10 +166,55 @@ export class KonturTalkChatProvider implements ChatProvider {
     }, Promise.resolve())
   }
 
-  private handleUpdate(_update: KonturTalkUpdate): Promise<void> {
-    // Stub — implemented in Task 5
-    void _update
-    return Promise.resolve()
+  private isMentioned(mentions: unknown): boolean {
+    if (this.botUserId === null) return false
+    if (mentions === 'all') return true
+    if (Array.isArray(mentions)) {
+      return mentions.some((m) => typeof m === 'string' && m.includes(this.botUserId!))
+    }
+    return false
+  }
+
+  private async handleUpdate(update: KonturTalkUpdate): Promise<void> {
+    const text = update.body ?? ''
+    const mentioned = this.isMentioned(update.mentions)
+
+    const msg: IncomingMessage = {
+      user: {
+        id: update.user_id,
+        username: update.user_id,
+        isAdmin: false,
+      },
+      contextId: update.room_id,
+      contextType: update.room_is_direct ? 'dm' : 'group',
+      isMentioned: mentioned,
+      text,
+      messageId: update.event_id,
+      threadId: update.thread_id ?? undefined,
+      replyToMessageId: update.reply_id ?? undefined,
+      platformInstanceId: this.platformInstanceId,
+    }
+
+    const reply = createKonturTalkReplyFn({
+      roomId: update.room_id,
+      threadId: update.thread_id ?? undefined,
+      apiFetch: (method, path, body) => this.apiFetch(method, path, body),
+    })
+
+    if (text.startsWith('/')) {
+      const firstSpace = text.indexOf(' ')
+      const commandName = (firstSpace === -1 ? text.slice(1) : text.slice(1, firstSpace)).toLowerCase()
+      const handler = this.commands.get(commandName)
+      if (handler) {
+        const auth = buildScopedCommandAuth(msg, false, this.platformInstanceId)
+        await handler(msg, reply, auth)
+        return
+      }
+    }
+
+    if (this.messageHandler) {
+      await this.messageHandler(msg, reply)
+    }
   }
 
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
