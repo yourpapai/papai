@@ -24,6 +24,7 @@ type TelegramPublishedCommand = {
 type TelegramCommandBot = {
   readonly api: {
     setMyCommands: (commands: readonly TelegramPublishedCommand[], options: TelegramCommandOptions) => Promise<unknown>
+    deleteMyCommands: (options: TelegramCommandOptions) => Promise<unknown>
   }
 }
 
@@ -64,6 +65,8 @@ export async function registerTelegramCommands(bot: TelegramCommandBot, adminUse
   const groupAdminCommands = commandsForScope('group-admin')
   if (groupAdminCommands.length > 0) {
     await bot.api.setMyCommands(groupAdminCommands, { scope: { type: 'all_chat_administrators' } })
+  } else {
+    await bot.api.deleteMyCommands({ scope: { type: 'all_chat_administrators' } })
   }
 
   log.info({ adminUserId }, 'Telegram command menu registered')
