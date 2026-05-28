@@ -49,6 +49,8 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 1 week
  * @property {Map<string, SurfaceSnapshot>} surfaceSnapshots
  * @property {Map<string, MutationSnapshot>} mutationSnapshots
  * @property {Record<string, Array<{ mutator: string; replacement: string; line?: number; description: string }>> | null} sessionMutationBaseline
+ * @property {string[]} changedSourceFiles
+ * @property {boolean} docReviewSuggested
  */
 
 /**
@@ -100,6 +102,8 @@ export class SessionState {
       mutationSnapshots: new Map(),
       sessionMutationBaseline: null,
       needsRecheck: true,
+      changedSourceFiles: [],
+      docReviewSuggested: false,
     }
   }
 
@@ -172,6 +176,46 @@ export class SessionState {
   setNeedsRecheck(value) {
     this.#ensureLoaded()
     this.#state.needsRecheck = value
+    this.#persist()
+  }
+
+  // Changed source files and doc review
+
+  /**
+   * @returns {string[]}
+   */
+  getChangedSourceFiles() {
+    this.#ensureLoaded()
+    return this.#state.changedSourceFiles
+  }
+
+  /**
+   * @param {string} filePath
+   * @returns {void}
+   */
+  addChangedSourceFile(filePath) {
+    this.#ensureLoaded()
+    if (!this.#state.changedSourceFiles.includes(filePath)) {
+      this.#state.changedSourceFiles.push(filePath)
+      this.#persist()
+    }
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  getDocReviewSuggested() {
+    this.#ensureLoaded()
+    return this.#state.docReviewSuggested
+  }
+
+  /**
+   * @param {boolean} value
+   * @returns {void}
+   */
+  setDocReviewSuggested(value) {
+    this.#ensureLoaded()
+    this.#state.docReviewSuggested = value
     this.#persist()
   }
 
