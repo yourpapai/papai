@@ -41,7 +41,13 @@
     "eslint/no-empty": "error",
     "eslint/no-empty-function": "error",
     "eslint/no-param-reassign": "error",
-    "import/extensions": ["error", "always", { "ignorePackages": true }],
+    "import/extensions": [
+      "error",
+      "always",
+      {
+        "ignorePackages": true
+      }
+    ],
     "import/no-cycle": "error",
     "oxc/no-barrel-file": "error",
     "oxc/no-optional-chaining": "error",
@@ -53,7 +59,13 @@
     "papai-policy/no-optional-type-syntax": "off",
     "papai-policy/no-default-value-syntax": "off",
     "papai-policy/no-fallback-expressions": "off",
-    "typescript/prefer-readonly-parameter-types": "off"
+    "typescript/prefer-readonly-parameter-types": "off",
+    "eslint/no-underscore-dangle": [
+      "error",
+      {
+        "allow": ["__routeRequestForTest"]
+      }
+    ]
   },
   "overrides": [
     {

@@ -6,6 +6,7 @@
 import path from 'node:path'
 
 import { listAuthorizedGroups } from '../authorized-groups.js'
+import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listScheduledPrompts } from '../deferred-prompts/scheduled.js'
 import { getIdentityMapping } from '../identity/mapping.js'
 import { getLogLevel, logger, logMultistream } from '../logger.js'
@@ -42,21 +43,11 @@ function getHostname(): string {
   return DEFAULT_HOSTNAME
 }
 
-function getDebugToken(): string | null {
-  const token = process.env['DEBUG_TOKEN']
-  if (token !== undefined) return token
-  return null
-}
-
-function isAuthorizedRequest(req: Request): boolean {
-  const token = getDebugToken()
-  // No token required if not set
-  if (token === null) return true
-
-  const authorization = req.headers.get('Authorization')
-  if (authorization === null) return false
-  const headerToken = authorization.replace('Bearer ', '')
-  return headerToken === token
+function isAuthorizedRequest(req: Readonly<Request>): boolean {
+  const session = authenticate(req)
+  if (session === null) return false
+  recordActivity(session.sessionIdHash, req)
+  return true
 }
 
 function jsonResponse(body: unknown): Response {
@@ -265,17 +256,13 @@ export function startDebugServer(adminUserId: string, ...args: [] | [string]): v
 
   const port = getPort()
   const hostname = getHostname()
-  const token = getDebugToken()
 
-  server = Bun.serve({
-    port,
-    hostname,
-    idleTimeout: 0,
-    fetch: routeRequest,
-  })
+  server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: routeRequest })
 
-  log.info({ port, hostname, authEnabled: token !== null }, 'Debug server started')
+  log.info({ port, hostname }, 'Debug server started (session auth)')
 }
+
+export const __routeRequestForTest = (req: Request): Promise<Response> => routeRequest(req)
 
 export function stopDebugServer(): void {
   if (server !== null) {
