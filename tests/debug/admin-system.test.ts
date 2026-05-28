@@ -91,6 +91,56 @@ describe('handleAdminSystem', () => {
     expect(pick(body, 'taskProvider')).toBe('unknown')
   })
 
+  test('ignores stopped platform instances when reporting chat provider', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    insertPlatformInstance({ id: 'discord-main', type: 'discord', config: { token: 'secret' }, status: 'stopped' })
+
+    const res = handleAdminSystem()
+    const body = await readJson(res)
+
+    expect(pick(body, 'chatProvider')).toBe('telegram')
+  })
+
+  test('ignores stopped task instances when reporting task provider', async () => {
+    insertTaskInstance({
+      id: 'kaneo-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({
+      id: 'youtrack-main',
+      type: 'youtrack',
+      config: { baseUrl: 'https://youtrack.invalid' },
+      status: 'stopped',
+    })
+
+    const res = handleAdminSystem()
+    const body = await readJson(res)
+
+    expect(pick(body, 'taskProvider')).toBe('kaneo')
+  })
+
+  test('reports unknown task provider when active providers include a custom type', async () => {
+    insertTaskInstance({
+      id: 'kaneo-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({
+      id: 'linear-main',
+      type: 'linear',
+      config: { baseUrl: 'https://linear.invalid' },
+      status: 'active',
+    })
+
+    const res = handleAdminSystem()
+    const body = await readJson(res)
+
+    expect(pick(body, 'taskProvider')).toBe('unknown')
+  })
+
   test('adminUserSet is true when ADMIN_USER_ID is set', async () => {
     process.env['ADMIN_USER_ID'] = 'u1'
 

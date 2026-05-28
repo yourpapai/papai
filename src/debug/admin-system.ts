@@ -19,14 +19,22 @@ const singleKnownProvider = <T extends string>(values: readonly T[]): T | 'unkno
   return unique.length === 1 ? unique[0]! : 'unknown'
 }
 
+const isTaskProvider = (type: string): type is (typeof TASK_PROVIDERS)[number] =>
+  TASK_PROVIDERS.some((knownType) => knownType === type)
+
 const safeChatProvider = (): AdminChatProvider =>
-  singleKnownProvider(listPlatformInstances().map((instance) => instance.type))
+  singleKnownProvider(
+    listPlatformInstances()
+      .filter((instance) => instance.status === 'active')
+      .map((instance) => instance.type),
+  )
 
 const safeTaskProvider = (): AdminTaskProvider => {
-  const known = listTaskInstances()
+  const activeTypes = listTaskInstances()
+    .filter((instance) => instance.status === 'active')
     .map((instance) => instance.type)
-    .filter((type): type is (typeof TASK_PROVIDERS)[number] => TASK_PROVIDERS.some((knownType) => knownType === type))
-  return singleKnownProvider(known)
+  if (!activeTypes.every((type) => isTaskProvider(type))) return 'unknown'
+  return singleKnownProvider(activeTypes)
 }
 
 const adminUserSet = (): boolean => {
