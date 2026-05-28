@@ -24,6 +24,7 @@ export const PLUGIN_PERMISSIONS = [
   'provider.task',
   'identity',
   'http',
+  'attachments.read',
 ] as const
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number]
