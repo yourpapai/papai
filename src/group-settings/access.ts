@@ -105,7 +105,8 @@ export function validateGroupTargetAccess(
 ): GroupTargetAccessResult {
   const platformInstanceId = args[0]
   const adminGroups = listAdminGroupContextsForUser(userId, ...args)
-  const group = adminGroups.find((candidate) => {
+  const manageableGroups = appendAuthorizedFallbackGroups(adminGroups, userId, platformInstanceId)
+  const group = manageableGroups.find((candidate) => {
     if (candidate.contextId === groupId) return true
     return getAuthorizedGroupId(candidate, platformInstanceId) === groupId
   })
