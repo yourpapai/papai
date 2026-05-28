@@ -61,6 +61,18 @@ describe('startup plugin compatibility collection', () => {
     expect(entry.chatCapabilities.has('messages.buttons')).toBe(true)
   })
 
+  test('includes chat capabilities from configured platform instances before router startup', () => {
+    const router = new ChatRouter(
+      (): ChatProvider => createMockChat({ capabilities: new Set<ChatCapability>(['messages.buttons']) }),
+    )
+    router.addInstance('telegram-a', 'telegram', { token: 'x' })
+
+    const result = collectStartupCompatibilityInstances(router, [], [platformInstance('telegram-a', 'active')])
+
+    expect(result).toHaveLength(1)
+    expect(singleCompatibilityEntry(result).chatCapabilities.has('messages.buttons')).toBe(true)
+  })
+
   test('builds a Cartesian product of active task and chat capability sets', async () => {
     const chatCapabilities: Record<string, Set<ChatCapability>> = {
       'discord-a': new Set<ChatCapability>(['users.resolve']),
