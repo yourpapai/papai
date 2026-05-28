@@ -80,7 +80,25 @@ describe('/dashboard command', () => {
     const auth = createAuth('u1', { allowed: true, isBotAdmin: true })
     await lastHandler!(msg, reply, auth)
     const body = textCalls.join('\n')
-    expect(body).toMatch(/\/auth\/claim\?n=[0-9a-f]{32}/u)
+    expect(body).toMatch(/`http[^`]+\/auth\/claim\?n=[0-9a-f]{32}`/u)
     expect(body).toMatch(/5 min/iu)
+  })
+
+  test('replies with an identity error when user.id is empty', async () => {
+    const { reply, textCalls } = createMockReply()
+    const msg = { ...createDmMessage('u1'), user: { id: '', username: null, isAdmin: false } }
+    const auth = createAuth('u1', { allowed: true, isBotAdmin: true })
+    await lastHandler!(msg, reply, auth)
+    expect(textCalls.join('\n')).toMatch(/identify|user/iu)
+  })
+
+  test('replies with a fallback message when issueClaim fails', async () => {
+    db.close()
+    setStoreDb(null)
+    const { reply, textCalls } = createMockReply()
+    const msg = createDmMessage('u1')
+    const auth = createAuth('u1', { allowed: true, isBotAdmin: true })
+    await lastHandler!(msg, reply, auth)
+    expect(textCalls.join('\n')).toMatch(/could not issue|try again/iu)
   })
 })

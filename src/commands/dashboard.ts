@@ -43,10 +43,23 @@ export const registerDashboardCommand = (chat: Readonly<ChatProvider>): void => 
       return
     }
 
-    const { nonce } = issueClaim(adminUserId, msg.platformInstanceId)
-    const url = `${defaultBaseUrl()}/auth/claim?n=${nonce}`
+    let claim: { nonce: string }
+    try {
+      claim = issueClaim(adminUserId, msg.platformInstanceId)
+    } catch (error) {
+      log.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'dashboard command: issueClaim failed',
+      )
+      await reply.text('Could not issue a sign-in link. Please try again.')
+      return
+    }
+
+    const url = `${defaultBaseUrl()}/auth/claim?n=${claim.nonce}`
     const ttlMinutes = Math.round(getClaimTtlSeconds() / 60)
-    await reply.text(`Open this link to sign in:\n\n${url}\n\nLink expires in ${ttlMinutes} min and can be used once.`)
+    await reply.text(
+      `Open this link to sign in (copy-paste — clicking may consume it via link previews):\n\n\`${url}\`\n\nLink expires in ${ttlMinutes} min and can be used once.`,
+    )
   }
 
   chat.registerCommand('dashboard', handler)
