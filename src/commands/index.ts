@@ -5,6 +5,7 @@
 
 export { registerAdminCommands } from './admin.js'
 export { registerClearCommand } from './clear.js'
+export { registerDashboardCommand } from './dashboard.js'
 export { registerConfigCommand } from './config.js'
 export { registerContextCommand } from './context.js'
 export { registerGroupCommand } from './group.js'

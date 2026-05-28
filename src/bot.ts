@@ -19,6 +19,7 @@ import {
   registerClearCommand,
   registerConfigCommand,
   registerContextCommand,
+  registerDashboardCommand,
   registerGroupCommand,
   registerHelpCommand,
   registerPluginCommand,
@@ -117,6 +118,7 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
   registerPluginCommand(observedChat, adminUserId)
+  registerDashboardCommand(observedChat)
   registerPluginCommands(observedChat)
 }
 async function processCoalescedMessage(coalescedItem: QueuedCoalescedItem, deps: BotDeps): Promise<void> {
