@@ -5,13 +5,25 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { getCommandCatalogEntry, listCommandCatalogEntries } from '../../src/commands/catalog.js'
+import {
+  getCommandCatalogEntry,
+  listCommandCatalogEntries,
+  type CommandRegistration,
+} from '../../src/commands/catalog.js'
+import * as commandRegistrations from '../../src/commands/index.js'
+
+function getCommandRegistrationExport(
+  name: CommandRegistration,
+): (typeof commandRegistrations)[keyof typeof commandRegistrations] {
+  return commandRegistrations[name]
+}
 
 describe('command catalog', () => {
   test('contains the current papai command surface with Telegram publication metadata', () => {
     const entries = listCommandCatalogEntries()
     const names = entries.map((entry) => entry.name)
     const registrations = Object.fromEntries(entries.map((entry) => [entry.name, entry.registration]))
+    const telegramVisibility = Object.fromEntries(entries.map((entry) => [entry.name, entry.telegram]))
 
     expect(names).toEqual([
       'help',
@@ -28,20 +40,75 @@ describe('command catalog', () => {
       'plugin',
     ])
 
-    expect(getCommandCatalogEntry('help')).toMatchObject({
-      name: 'help',
-      telegram: {
+    expect(telegramVisibility).toEqual({
+      help: {
         publishInDmUser: true,
         publishInDmAdmin: true,
         publishInGroupUser: true,
         publishInGroupAdmin: true,
       },
-    })
-
-    expect(getCommandCatalogEntry('setup')).toMatchObject({
-      name: 'setup',
-      telegram: {
+      start: {
         publishInDmUser: true,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      setup: {
+        publishInDmUser: true,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      config: {
+        publishInDmUser: true,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      context: {
+        publishInDmUser: true,
+        publishInDmAdmin: true,
+        publishInGroupUser: true,
+        publishInGroupAdmin: true,
+      },
+      clear: {
+        publishInDmUser: true,
+        publishInDmAdmin: true,
+        publishInGroupUser: true,
+        publishInGroupAdmin: true,
+      },
+      group: {
+        publishInDmUser: false,
+        publishInDmAdmin: true,
+        publishInGroupUser: true,
+        publishInGroupAdmin: true,
+      },
+      groups: {
+        publishInDmUser: false,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      user: {
+        publishInDmUser: false,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      users: {
+        publishInDmUser: false,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      announce: {
+        publishInDmUser: false,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
+      plugin: {
+        publishInDmUser: false,
         publishInDmAdmin: true,
         publishInGroupUser: false,
         publishInGroupAdmin: false,
@@ -62,5 +129,12 @@ describe('command catalog', () => {
       announce: 'registerAdminCommands',
       plugin: 'registerPluginCommand',
     })
+
+    for (const entry of entries) {
+      expect(getCommandCatalogEntry(entry.name)).toBe(entry)
+      const registration = getCommandRegistrationExport(entry.registration)
+
+      expect(typeof registration).toBe('function')
+    }
   })
 })

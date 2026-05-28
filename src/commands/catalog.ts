@@ -10,10 +10,21 @@ export type TelegramCommandVisibility = {
   readonly publishInGroupAdmin: boolean
 }
 
+export type CommandRegistration =
+  | 'registerAdminCommands'
+  | 'registerClearCommand'
+  | 'registerConfigCommand'
+  | 'registerContextCommand'
+  | 'registerGroupCommand'
+  | 'registerHelpCommand'
+  | 'registerPluginCommand'
+  | 'registerSetupCommand'
+  | 'registerStartCommand'
+
 export type CommandCatalogEntry = {
   readonly name: string
   readonly description: string
-  readonly registration: string
+  readonly registration: CommandRegistration
   readonly telegram: TelegramCommandVisibility
 }
 
