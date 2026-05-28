@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { getTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../../src/plugins/loader.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
@@ -301,5 +302,65 @@ describe('activatePlugins', () => {
 
     await deactivateAllPlugins()
     expect(getContributedTaskProviderType('demo')).toBeUndefined()
+  })
+
+  test('keeps active task instances when plugin runtime shuts down normally', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('demo-stop', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('provider-stop-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['demo-stop'],
+      },
+    })
+    approvePlugin(plugin)
+    insertTaskInstance({ id: 'demo-stop-instance', type: 'demo-stop', config: {}, status: 'active' })
+
+    await activatePlugins([plugin])
+    await deactivateAllPlugins()
+
+    expect(getTaskInstance('demo-stop-instance')?.status).toBe('active')
+  })
+
+  test('stops active task instances when contributed provider type is retired', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('demo-retire', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('provider-retire-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['demo-retire'],
+      },
+    })
+    approvePlugin(plugin)
+    insertTaskInstance({ id: 'demo-retire-instance', type: 'demo-retire', config: {}, status: 'active' })
+
+    await activatePlugins([plugin])
+    await deactivateAllPlugins({ retireContributedProviders: true })
+
+    expect(getTaskInstance('demo-retire-instance')?.status).toBe('stopped')
   })
 })

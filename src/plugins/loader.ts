@@ -6,11 +6,14 @@
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
-import { unregisterContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
+import {
+  deactivateContributedTaskProviderTypes,
+  unregisterContributedTaskProviderTypes,
+} from './task-provider-lifecycle.js'
 import type { DiscoveredPlugin, PluginFactory, PluginInstance } from './types.js'
 
 function isPluginFactory(value: unknown): value is PluginFactory {
@@ -99,7 +102,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
     log.error({ pluginId: manifest.id, error: msg }, 'Plugin activation failed')
     activeInstances.delete(manifest.id)
     contributionRegistry.deregister(manifest.id)
-    unregisterContributedTaskProviderType(manifest.id)
+    deactivateContributedTaskProviderTypes(manifest.id)
     pluginRegistry.markError(manifest.id, `Activation failed: ${msg}`)
     recordRuntimeEvent(manifest.id, 'error', `Activation failed: ${msg}`)
     return false
@@ -123,7 +126,19 @@ export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
 }
 
-async function deactivateOne(pluginId: string): Promise<void> {
+export type DeactivateAllPluginsOptions = Readonly<{
+  retireContributedProviders?: boolean
+}>
+
+const cleanupContributedTaskProviderTypes = (pluginId: string, options: DeactivateAllPluginsOptions): void => {
+  if (options.retireContributedProviders === true) {
+    deactivateContributedTaskProviderTypes(pluginId)
+    return
+  }
+  unregisterContributedTaskProviderTypes(pluginId)
+}
+
+async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOptions): Promise<void> {
   const entry = pluginRegistry.getEntry(pluginId)
   if (entry === undefined || entry.state !== 'active') return
 
@@ -136,7 +151,7 @@ async function deactivateOne(pluginId: string): Promise<void> {
     }
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
-    unregisterContributedTaskProviderType(pluginId)
+    cleanupContributedTaskProviderTypes(pluginId, options)
     pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'deactivated')
     log.info({ pluginId }, 'Plugin deactivated')
@@ -145,19 +160,19 @@ async function deactivateOne(pluginId: string): Promise<void> {
     log.error({ pluginId, error: msg }, 'Plugin deactivation error (continuing)')
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
-    unregisterContributedTaskProviderType(pluginId)
+    cleanupContributedTaskProviderTypes(pluginId, options)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
   }
 }
 
 /** Deactivate all active plugins in reverse activation order. */
-export async function deactivateAllPlugins(): Promise<void> {
+export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
   const toDeactivate = [...activationOrder].reverse()
   if (toDeactivate.length === 0) return
 
   log.info({ count: toDeactivate.length }, 'Deactivating plugins')
 
-  await toDeactivate.reduce((chain, id) => chain.then(() => deactivateOne(id)), Promise.resolve())
+  await toDeactivate.reduce((chain, id) => chain.then(() => deactivateOne(id, options)), Promise.resolve())
 
   activeInstances.clear()
   activationOrder.length = 0

@@ -14,7 +14,7 @@ import { scheduler } from '../scheduler-instance.js'
 import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import { namespacedJobName, namespacedToolName } from './contribution-names.js'
 import { getPluginContextEligibility } from './registry.js'
-import { getEnabledContextsForPlugin } from './store.js'
+import { getScheduledJobContextIds } from './scheduled-contexts.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from './tool-runtime.js'
 import type {
   PluginCommand,
@@ -216,7 +216,7 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
 
   const deps = getScheduledJobDeps(args)
 
-  await getEnabledContextsForPlugin(pluginId).reduce(async (chain, contextId) => {
+  await getScheduledJobContextIds(pluginId, contributions.manifest).reduce(async (chain, contextId) => {
     await chain
     try {
       const eligibility = getPluginContextEligibility(pluginId, contextId)

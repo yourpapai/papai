@@ -9,6 +9,7 @@ import type { z } from 'zod'
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/types.js'
 import type { TaskProvider } from '../providers/types.js'
 import type { PluginContext } from './context.js'
+import type { PluginIdentityFacade } from './identity-facade.js'
 
 export type PluginTaskProviderFacade = Pick<
   TaskProvider,
@@ -21,6 +22,7 @@ export type PluginToolRuntimeContext = {
   chatUserId: string
   taskProvider: PluginTaskProviderFacade
   kv: PluginContext['kv']
+  identity?: PluginIdentityFacade
   rateLimit: {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
