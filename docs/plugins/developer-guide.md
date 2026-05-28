@@ -68,6 +68,8 @@ Supported optional fields:
 | `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                  |
 | `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                        |
 | `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`.                                                                                         |
+| `providerConfigValidator`       | Optional exported validator function name for provider instance and context config.                                                               |
+| `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                        |
 | `permissions`                   | Permission claims checked by framework facades.                                                                                                   |
 | `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
 | `requiredTaskCapabilities`      | Task provider capabilities required before activation and per-context eligibility.                                                                |
@@ -111,10 +113,14 @@ The `ctx` object is frozen and exposes only framework-owned facades:
 | `ctx.permissions`                                   | Readonly set of requested permissions.                                                                                     |
 | `ctx.log.debug/info/warn/error(data, msg)`          | Structured plugin logger. Never log secrets.                                                                               |
 | `ctx.kv.get/set/delete/list`                        | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                               |
+| `ctx.adminConfig.get(key)`                          | Read-only admin-scoped plugin config for keys declared with `scope: "admin"`.                                              |
+| `ctx.providerRuntime`                               | Provider runtime helpers, present with `provider.task` or `http` permission.                                               |
+| `ctx.identity`                                      | Identity facade, present with `identity` permission when exactly one task provider type is declared.                       |
 | `ctx.registration.registerTool(tool)`               | Register a declared `PluginTool`.                                                                                          |
 | `ctx.registration.registerPromptFragment(fragment)` | Register a declared prompt fragment.                                                                                       |
 | `ctx.registration.registerCommand(command)`         | Register a declared command.                                                                                               |
 | `ctx.registration.registerScheduledJob(job)`        | Register a declared scheduled job.                                                                                         |
+| `ctx.registration.registerTaskProviderType(...)`    | Register the plugin's single declared task provider type. Requires `provider.task`.                                        |
 
 Undeclared registrations throw during activation. Activation failure cleans framework-owned contributions and records runtime diagnostics.
 
