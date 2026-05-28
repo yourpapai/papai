@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { userCachesForTesting } from '../../src/cache.js'
+import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
@@ -104,5 +104,28 @@ describe('makeTools preference filtering', () => {
     })
     expect(Object.keys(tools)).not.toContain('create_task')
     expect(Object.keys(tools)).toContain('search_tasks')
+  })
+
+  test('clears cached parent and thread toolsets when parent preferences change', () => {
+    const parentContextId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+    })
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-1',
+    })
+    const parentCacheKey = `${parentContextId}:user-1:alice`
+    const threadCacheKey = `${threadContextId}:user-1:alice`
+    setCachedTools(parentCacheKey, { save_memo: {} })
+    setCachedTools(threadCacheKey, { save_memo: {} })
+    setCachedTools('other-context:user-1:alice', { save_memo: {} })
+
+    setToolPrefs(parentContextId, { disabledDomains: ['memo'], toolOverrides: {} })
+
+    expect(getCachedTools(parentCacheKey)).toBeUndefined()
+    expect(getCachedTools(threadCacheKey)).toBeUndefined()
+    expect(getCachedTools('other-context:user-1:alice')).toEqual({ save_memo: {} })
   })
 })

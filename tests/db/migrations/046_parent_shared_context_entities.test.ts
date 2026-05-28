@@ -22,6 +22,9 @@ const createTables = (db: Database): void => {
     `CREATE TABLE alert_prompts (id TEXT PRIMARY KEY, created_by_user_id TEXT NOT NULL, delivery_context_id TEXT, prompt TEXT NOT NULL)`,
   )
   db.run(
+    `CREATE TABLE user_config (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key))`,
+  )
+  db.run(
     `CREATE TABLE plugin_context_state (plugin_id TEXT NOT NULL, context_id TEXT NOT NULL, enabled INTEGER NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (plugin_id, context_id))`,
   )
   db.run(
@@ -103,19 +106,50 @@ describe('migration046ParentSharedContextEntities', () => {
     ).toEqual([{ created_by_user_id: parentContextId, delivery_context_id: threadContextId }])
   })
 
+  test('promotes parent-shared user config rows and keeps parent on conflicts', () => {
+    db.run(`INSERT INTO user_config VALUES (?, 'tool_prefs', 'parent-tools')`, [parentContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'tool_prefs', 'thread-tools')`, [threadContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'mcp_endpoints', 'thread-mcp')`, [threadContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'ai_tool_visibility', 'thread-tool-visibility')`, [threadContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'ai_reasoning_visibility', 'thread-reasoning')`, [threadContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'ai_output_detail_level', 'thread-detail')`, [threadContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'plugin:hello-world:token', 'thread-plugin-config')`, [threadContextId])
+    db.run(`INSERT INTO user_config VALUES (?, 'timezone', 'thread-timezone')`, [threadContextId])
+
+    migration046ParentSharedContextEntities.up(db)
+
+    expect(
+      getRows<{ user_id: string; key: string; value: string }>(
+        db,
+        `SELECT user_id, key, value FROM user_config ORDER BY key`,
+      ),
+    ).toEqual([
+      { user_id: parentContextId, key: 'ai_output_detail_level', value: 'thread-detail' },
+      { user_id: parentContextId, key: 'ai_reasoning_visibility', value: 'thread-reasoning' },
+      { user_id: parentContextId, key: 'ai_tool_visibility', value: 'thread-tool-visibility' },
+      { user_id: parentContextId, key: 'mcp_endpoints', value: 'thread-mcp' },
+      { user_id: parentContextId, key: 'plugin:hello-world:token', value: 'thread-plugin-config' },
+      { user_id: threadContextId, key: 'timezone', value: 'thread-timezone' },
+      { user_id: parentContextId, key: 'tool_prefs', value: 'parent-tools' },
+    ])
+  })
+
   test('keeps parent plugin rows and deletes conflicting thread plugin rows', () => {
-    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 1, 'parent')`, [parentContextId])
-    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 0, 'thread')`, [threadContextId])
-    db.run(`INSERT INTO plugin_context_state VALUES ('other-plugin', ?, 1, 'thread')`, [threadContextId])
-    db.run(`INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'parent-value', 'parent', 'parent')`, [
-      parentContextId,
-    ])
-    db.run(`INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'thread-value', 'thread', 'thread')`, [
-      threadContextId,
-    ])
-    db.run(`INSERT INTO plugin_kv VALUES ('hello-world', ?, 'other', 'thread-other', 'thread', 'thread')`, [
-      threadContextId,
-    ])
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 1, '2026-05-02T00:00:00Z')`, [parentContextId])
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 0, '2026-05-01T00:00:00Z')`, [threadContextId])
+    db.run(`INSERT INTO plugin_context_state VALUES ('other-plugin', ?, 1, '2026-05-01T00:00:00Z')`, [threadContextId])
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'parent-value', 'parent', '2026-05-02T00:00:00Z')`,
+      [parentContextId],
+    )
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'thread-value', 'thread', '2026-05-01T00:00:00Z')`,
+      [threadContextId],
+    )
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'other', 'thread-other', 'thread', '2026-05-01T00:00:00Z')`,
+      [threadContextId],
+    )
 
     migration046ParentSharedContextEntities.up(db)
 
@@ -136,6 +170,81 @@ describe('migration046ParentSharedContextEntities', () => {
     ).toEqual([
       { plugin_id: 'hello-world', context_id: parentContextId, key: 'other', value: 'thread-other' },
       { plugin_id: 'hello-world', context_id: parentContextId, key: 'token', value: 'parent-value' },
+    ])
+  })
+
+  test('promotes newer thread plugin context row over stale parent row', () => {
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 1, '2026-05-01T00:00:00Z')`, [parentContextId])
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 0, '2026-05-02T00:00:00Z')`, [threadContextId])
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 1, '2026-05-01T12:00:00Z')`, [
+      secondThreadContextId,
+    ])
+
+    migration046ParentSharedContextEntities.up(db)
+
+    expect(
+      getRows<{ context_id: string; enabled: number; updated_at: string }>(
+        db,
+        `SELECT context_id, enabled, updated_at FROM plugin_context_state`,
+      ),
+    ).toEqual([{ context_id: parentContextId, enabled: 0, updated_at: '2026-05-02T00:00:00Z' }])
+  })
+
+  test('keeps parent plugin context row when timestamps tie', () => {
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 1, '2026-05-01T00:00:00Z')`, [parentContextId])
+    db.run(`INSERT INTO plugin_context_state VALUES ('hello-world', ?, 0, '2026-05-01T00:00:00Z')`, [threadContextId])
+
+    migration046ParentSharedContextEntities.up(db)
+
+    expect(
+      getRows<{ context_id: string; enabled: number; updated_at: string }>(
+        db,
+        `SELECT context_id, enabled, updated_at FROM plugin_context_state`,
+      ),
+    ).toEqual([{ context_id: parentContextId, enabled: 1, updated_at: '2026-05-01T00:00:00Z' }])
+  })
+
+  test('promotes newer thread plugin kv row over stale parent row', () => {
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'parent-value', 'created-parent', '2026-05-01T00:00:00Z')`,
+      [parentContextId],
+    )
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'thread-value', 'created-thread', '2026-05-02T00:00:00Z')`,
+      [threadContextId],
+    )
+
+    migration046ParentSharedContextEntities.up(db)
+
+    expect(
+      getRows<{ context_id: string; key: string; value: string; updated_at: string }>(
+        db,
+        `SELECT context_id, key, value, updated_at FROM plugin_kv`,
+      ),
+    ).toEqual([
+      { context_id: parentContextId, key: 'token', value: 'thread-value', updated_at: '2026-05-02T00:00:00Z' },
+    ])
+  })
+
+  test('keeps parent plugin kv row when timestamps tie', () => {
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'parent-value', 'created-parent', '2026-05-01T00:00:00Z')`,
+      [parentContextId],
+    )
+    db.run(
+      `INSERT INTO plugin_kv VALUES ('hello-world', ?, 'token', 'thread-value', 'created-thread', '2026-05-01T00:00:00Z')`,
+      [threadContextId],
+    )
+
+    migration046ParentSharedContextEntities.up(db)
+
+    expect(
+      getRows<{ context_id: string; key: string; value: string; updated_at: string }>(
+        db,
+        `SELECT context_id, key, value, updated_at FROM plugin_kv`,
+      ),
+    ).toEqual([
+      { context_id: parentContextId, key: 'token', value: 'parent-value', updated_at: '2026-05-01T00:00:00Z' },
     ])
   })
 
