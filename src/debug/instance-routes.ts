@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { listPlatformProviderTypes } from '../chat/registry.js'
+import { authenticate } from '../dashboard-auth/index.js'
 import * as adminStore from '../instances/admin-store.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
 import { maskConfig, providerSensitiveKeys } from '../instances/encryption.js'
@@ -104,15 +105,6 @@ const INSTANCE_API_PREFIXES = [
 
 const isInstanceApiPath = (pathname: string): boolean =>
   INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))
-
-const authorizeWrite = (req: Request): boolean => {
-  const token = process.env['DEBUG_TOKEN']
-  if (token === undefined || token === '') return false
-  const authorization = req.headers.get('Authorization')
-  if (authorization === null) return false
-  const headerToken = authorization.replace('Bearer ', '')
-  return headerToken === token
-}
 
 const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Promise<Response> => {
   if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
@@ -277,7 +269,7 @@ export const handleInstanceApiRouteWithDeps = async (
   deps: InstanceApiDeps,
 ): Promise<Response | null> => {
   if (!isInstanceApiPath(url.pathname)) return null
-  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && !authorizeWrite(req)) {
+  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && authenticate(req) === null) {
     return textResponse('Unauthorized', 401)
   }
 

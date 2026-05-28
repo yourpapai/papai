@@ -3,10 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
+import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
 import { logBuffer } from '../../src/debug/log-buffer.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { restoreFetch } from '../utils/test-helpers.js'
@@ -30,9 +35,16 @@ function ensurePublicBuilt(): void {
 }
 
 describe('debug-smoke', () => {
+  let db: Database
+  let cookieValue: string
+
   beforeAll(() => {
     ensurePublicBuilt()
     restoreFetch()
+    db = new Database(':memory:')
+    migration046DashboardSessions.up(db)
+    setStoreDb(db)
+    cookieValue = mintSession('test-admin', { secure: false }).cookieValue
     process.env['DEBUG_PORT'] = String(TEST_PORT)
     process.env['DEBUG_HOSTNAME'] = 'localhost'
     startDebugServer('test-admin')
@@ -40,14 +52,18 @@ describe('debug-smoke', () => {
 
   afterAll(() => {
     stopDebugServer()
+    setStoreDb(null)
+    db.close()
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
     delete process.env['DEBUG_HOSTNAME']
   })
 
+  const authHeaders = (): Record<string, string> => ({ Cookie: `${SESSION_COOKIE_NAME}=${cookieValue}` })
+
   describe('debug.js', () => {
     test('returns single IIFE bundle with JavaScript content type', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`, { headers: authHeaders() })
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toContain('javascript')
 
@@ -63,7 +79,7 @@ describe('debug-smoke', () => {
     })
 
     test('contains dashboard initialization code', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`, { headers: authHeaders() })
       const body = await res.text()
 
       // Should mount the Svelte app and render the top-level panels
@@ -75,7 +91,7 @@ describe('debug-smoke', () => {
     })
 
     test('contains state management and SSE setup', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`, { headers: authHeaders() })
       const body = await res.text()
 
       // Should have EventSource for SSE and handle state events
@@ -87,7 +103,7 @@ describe('debug-smoke', () => {
 
   describe('debug.html', () => {
     test('loads the debug page with a Svelte mount point and bundle reference', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug`, { headers: authHeaders() })
       expect(res.status).toBe(200)
 
       const body = await res.text()
@@ -102,7 +118,7 @@ describe('debug-smoke', () => {
     })
 
     test('includes Content-Security-Policy meta tag', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug`, { headers: authHeaders() })
       const body = await res.text()
 
       expect(body).toContain('http-equiv="Content-Security-Policy"')
@@ -112,7 +128,7 @@ describe('debug-smoke', () => {
 
   describe('debug.css', () => {
     test('returns CSS styling', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug.css`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.css`, { headers: authHeaders() })
       expect(res.status).toBe(200)
 
       const body = await res.text()
@@ -125,7 +141,7 @@ describe('debug-smoke', () => {
 
   describe('JavaScript syntax validation', () => {
     test('debug.js can be parsed without syntax errors', async () => {
-      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
+      const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`, { headers: authHeaders() })
       const body = await res.text()
 
       // Should be an IIFE (starts with `(` or `!`)

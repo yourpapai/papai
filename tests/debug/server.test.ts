@@ -8,10 +8,13 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { logBuffer, logBufferStream } from '../../src/debug/log-buffer.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel, logMultistream } from '../../src/logger.js'
-import { restoreFetch, setupTestDb } from '../utils/test-helpers.js'
+import { getTestDb, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
 
 const PINO_LEVEL_VALUES: Record<string, number> = {
   trace: 10,
@@ -118,10 +121,13 @@ function mockDebugServerDependencies(): void {
 
 describe('debug-server', () => {
   let capturedLogLevel: string
+  let cookieValue: string
 
   beforeAll(async () => {
     mockDebugServerDependencies()
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    cookieValue = mintSession('test-admin', { secure: false }).cookieValue
     ensurePublicBuilt()
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
@@ -139,13 +145,16 @@ describe('debug-server', () => {
   afterAll(() => {
     mock.restore()
     stopDebugServer()
+    setStoreDb(null)
     logBuffer.clear()
     delete process.env['DEBUG_PORT']
     delete process.env['DEBUG_HOSTNAME']
   })
 
+  const authHeaders = (): Record<string, string> => ({ Cookie: `${SESSION_COOKIE_NAME}=${cookieValue}` })
+
   test('GET /debug returns debug HTML', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/debug`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/debug`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('text/html')
@@ -155,7 +164,7 @@ describe('debug-server', () => {
   })
 
   test('GET /debug.css returns CSS', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/debug.css`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/debug.css`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('text/css')
@@ -164,7 +173,7 @@ describe('debug-server', () => {
   })
 
   test('GET /debug.js returns JavaScript bundle from public/', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/debug.js`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const ct = res.headers.get('content-type')
     expect(ct).toContain('javascript')
@@ -177,7 +186,7 @@ describe('debug-server', () => {
     ['/admin.js', 'javascript'],
     ['/admin.css', 'text/css'],
   ])('GET %s returns admin asset', async (assetPath, contentType) => {
-    const res = await fetch(`http://localhost:${TEST_PORT}${assetPath}`)
+    const res = await fetch(`http://localhost:${TEST_PORT}${assetPath}`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain(contentType)
     const body = await res.text()
@@ -185,32 +194,35 @@ describe('debug-server', () => {
   })
 
   test('GET /dashboard returns 301 redirect to /debug', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`, { redirect: 'manual' })
+    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard`, {
+      redirect: 'manual',
+      headers: authHeaders(),
+    })
     expect(res.status).toBe(301)
     expect(res.headers.get('location')).toBe('/debug')
     await cancelBody(res)
   })
 
   test('GET /dashboard-state.js returns 404 (legacy route removed)', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard-state.js`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard-state.js`, { headers: authHeaders() })
     expect(res.status).toBe(404)
     await cancelBody(res)
   })
 
   test('GET /dashboard-ui.js returns 404 (legacy route removed)', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard-ui.js`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard-ui.js`, { headers: authHeaders() })
     expect(res.status).toBe(404)
     await cancelBody(res)
   })
 
   test('GET /dashboard.xyz returns 404', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.xyz`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/dashboard.xyz`, { headers: authHeaders() })
     expect(res.status).toBe(404)
     await cancelBody(res)
   })
 
   test('GET /events returns SSE headers', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/events`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/events`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('text/event-stream')
     expect(res.headers.get('cache-control')).toBe('no-cache')
@@ -219,13 +231,13 @@ describe('debug-server', () => {
   })
 
   test('unknown route returns 404', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/nonexistent`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/nonexistent`, { headers: authHeaders() })
     expect(res.status).toBe(404)
     await cancelBody(res)
   })
 
   test('GET /logs returns JSON array', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
@@ -233,7 +245,7 @@ describe('debug-server', () => {
   })
 
   test('GET /logs supports level filter', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs?level=50`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?level=50`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
@@ -243,7 +255,7 @@ describe('debug-server', () => {
   })
 
   test('GET /logs supports scope filter', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs?scope=debug-server`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?scope=debug-server`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
@@ -253,7 +265,7 @@ describe('debug-server', () => {
   })
 
   test('GET /logs supports text search', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs?q=Debug%20server`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?q=Debug%20server`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
@@ -263,7 +275,7 @@ describe('debug-server', () => {
   })
 
   test('GET /logs supports limit', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs?limit=1`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?limit=1`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries).toHaveLength(1)
@@ -276,7 +288,7 @@ describe('debug-server', () => {
       msg: 'turn msg',
       turnId: 'turn-test-123',
     })
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs?turnId=turn-test-123`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs?turnId=turn-test-123`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries.length).toBeGreaterThan(0)
@@ -286,7 +298,7 @@ describe('debug-server', () => {
   })
 
   test('GET /logs/stats returns buffer metadata', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/logs/stats`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/logs/stats`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const body: unknown = JSON.parse(await res.text())
@@ -308,7 +320,10 @@ describe('debug-server', () => {
 
   test('SSE client receives state:init on connect', async () => {
     const controller = new AbortController()
-    const res = await fetch(`http://localhost:${TEST_PORT}/events`, { signal: controller.signal })
+    const res = await fetch(`http://localhost:${TEST_PORT}/events`, {
+      signal: controller.signal,
+      headers: authHeaders(),
+    })
     const body = res.body
     expect(body).not.toBeNull()
 
@@ -333,20 +348,20 @@ describe('debug-server', () => {
   })
 
   test('GET /turns/:id returns 404 for unknown turnId', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/turns/nonexistent`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/turns/nonexistent`, { headers: authHeaders() })
     expect(res.status).toBe(404)
     await cancelBody(res)
   })
 
   test('GET /recurring returns 400 when userId is missing', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/recurring`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/recurring`, { headers: authHeaders() })
     expect(res.status).toBe(400)
     const body = await res.text()
     expect(body).toContain('userId')
   })
 
   test('GET /recurring returns JSON array for valid userId', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/recurring?userId=test-user`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/recurring?userId=test-user`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
@@ -354,14 +369,14 @@ describe('debug-server', () => {
   })
 
   test('GET /deferred returns 400 when userId is missing', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/deferred`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/deferred`, { headers: authHeaders() })
     expect(res.status).toBe(400)
     const body = await res.text()
     expect(body).toContain('userId')
   })
 
   test('GET /deferred returns JSON array for valid userId', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/deferred?userId=test-user`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/deferred?userId=test-user`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
@@ -369,14 +384,14 @@ describe('debug-server', () => {
   })
 
   test('GET /memos returns 400 when userId is missing', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/memos`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/memos`, { headers: authHeaders() })
     expect(res.status).toBe(400)
     const body = await res.text()
     expect(body).toContain('userId')
   })
 
   test('GET /memos returns JSON array for valid userId', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
@@ -384,7 +399,9 @@ describe('debug-server', () => {
   })
 
   test('GET /memos supports state parameter', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user&state=archived`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/memos?userId=test-user&state=archived`, {
+      headers: authHeaders(),
+    })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
@@ -392,27 +409,29 @@ describe('debug-server', () => {
   })
 
   test('GET /identity returns 400 when userId is missing', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/identity`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/identity`, { headers: authHeaders() })
     expect(res.status).toBe(400)
     const body = await res.text()
     expect(body).toContain('userId')
   })
 
   test('GET /identity returns 404 for unknown user', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/identity?userId=nonexistent-user`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/identity?userId=nonexistent-user`, {
+      headers: authHeaders(),
+    })
     expect(res.status).toBe(404)
     await cancelBody(res)
   })
 
   test('GET /auth/groups returns JSON array', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/auth/groups`)
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth/groups`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/json')
     const entries = assertArray(JSON.parse(await res.text()))
     expect(entries).toBeArray()
   })
 
-  test('POST /api/platform-instances is dispatched by debug server write gate when DEBUG_TOKEN is unset', async () => {
+  test('POST /api/platform-instances without session cookie returns 401', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -421,15 +440,5 @@ describe('debug-server', () => {
 
     expect(res.status).toBe(401)
     await cancelBody(res)
-  })
-
-  test('GET /api/platform-instances keeps server bearer gate when DEBUG_TOKEN is configured', async () => {
-    process.env['DEBUG_TOKEN'] = 'server-test-token'
-
-    const res = await fetch(`http://localhost:${TEST_PORT}/api/platform-instances`)
-
-    expect(res.status).toBe(401)
-    await cancelBody(res)
-    delete process.env['DEBUG_TOKEN']
   })
 })

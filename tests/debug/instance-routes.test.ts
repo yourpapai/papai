@@ -10,6 +10,9 @@ import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ManagedChatInstance } from '../../src/chat/router.js'
 import type { ChatProvider, ContextSnapshot } from '../../src/chat/types.js'
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { handleInstanceApiRoute, handleInstanceApiRouteWithDeps } from '../../src/debug/instance-routes.js'
 import { addAdmin, listAdmins, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
@@ -28,13 +31,13 @@ import {
 } from '../../src/providers/registry.js'
 import { addUser, listUsers } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-const TOKEN = 'instance-api-token'
-const jsonHeaders = {
-  Authorization: `Bearer ${TOKEN}`,
+let authCookieValue: string
+const jsonHeaders = (): Record<string, string> => ({
+  Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}`,
   'Content-Type': 'application/json',
-} as const
+})
 
 const readJson = async (res: Response): Promise<unknown> => JSON.parse(await res.text())
 
@@ -114,21 +117,22 @@ describe('instance API routes', () => {
     mockLogger()
     userCachesForTesting.clear()
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
-    process.env['DEBUG_TOKEN'] = TOKEN
   })
 
   afterEach(() => {
     clearRuntimeChatRouter()
     userCachesForTesting.clear()
-    delete process.env['DEBUG_TOKEN']
+    setStoreDb(null)
   })
 
   test('creates and lists masked platform instances', async () => {
     const created = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret', label: 'main' } }),
       }),
     )
@@ -160,7 +164,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'other-secret' } }),
       }),
     )
@@ -175,7 +179,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'PATCH',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ config: { bot_token: 'new-secret', label: 'main' }, status: 'stopped' }),
       }),
     )
@@ -190,7 +194,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances/missing-platform', {
         method: 'PATCH',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ status: 'stopped' }),
       }),
     )
@@ -208,7 +212,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: '', type: 'telegram', config: { token: 'secret' } }),
       }),
     )
@@ -234,7 +238,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances/apply', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
       }),
     )
 
@@ -258,7 +262,7 @@ describe('instance API routes', () => {
             throw new Error('decrypt failed')
           },
         },
-        { method: 'POST', headers: jsonHeaders },
+        { method: 'POST', headers: jsonHeaders() },
       ),
     )
 
@@ -286,7 +290,7 @@ describe('instance API routes', () => {
         { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
         {
           method: 'POST',
-          headers: jsonHeaders,
+          headers: jsonHeaders(),
         },
       ),
     )
@@ -320,7 +324,7 @@ describe('instance API routes', () => {
       await routeWithDeps(
         '/api/platform-instances/apply',
         { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => instances },
-        { method: 'POST', headers: jsonHeaders },
+        { method: 'POST', headers: jsonHeaders() },
       ),
     )
 
@@ -351,7 +355,7 @@ describe('instance API routes', () => {
       await routeWithDeps(
         '/api/platform-instances/apply',
         { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
-        { method: 'POST', headers: jsonHeaders },
+        { method: 'POST', headers: jsonHeaders() },
       ),
     )
 
@@ -374,7 +378,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -400,7 +404,7 @@ describe('instance API routes', () => {
     const deleted = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -411,7 +415,7 @@ describe('instance API routes', () => {
     const applied = expectResponse(
       await route('/api/platform-instances/apply', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
       }),
     )
 
@@ -423,14 +427,14 @@ describe('instance API routes', () => {
   test('updates platform instance status', async () => {
     await route('/api/platform-instances', {
       method: 'POST',
-      headers: jsonHeaders,
+      headers: jsonHeaders(),
       body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' } }),
     })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main/status', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ status: 'stopped' }),
       }),
     )
@@ -447,7 +451,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -466,7 +470,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -499,7 +503,7 @@ describe('instance API routes', () => {
     const created = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({
           id: 'tasks-main',
           type: 'kaneo',
@@ -529,7 +533,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://other.invalid' } }),
       }),
     )
@@ -548,7 +552,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
         method: 'PATCH',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ config: { api_key: 'new-secret' }, status: 'stopped' }),
       }),
     )
@@ -565,7 +569,7 @@ describe('instance API routes', () => {
     const created = expectResponse(
       await route('/api/admins', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ userId: 'admin-1' }),
       }),
     )
@@ -577,7 +581,7 @@ describe('instance API routes', () => {
     const deleted = expectResponse(
       await route(`/api/admins/admin-1/${SUPER_ADMIN_PLATFORM_ID}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -589,7 +593,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/admins', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ userId: 'admin-1', platformInstanceId: 'missing-platform' }),
       }),
     )
@@ -625,7 +629,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: 'mystery-1', type: 'mystery', config: { baseUrl: 'https://x.invalid' } }),
       }),
     )
@@ -660,7 +664,7 @@ describe('instance API routes', () => {
         { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
         {
           method: 'POST',
-          headers: jsonHeaders,
+          headers: jsonHeaders(),
           body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'bad' } }),
         },
       )
@@ -688,7 +692,7 @@ describe('instance API routes', () => {
         { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
         {
           method: 'POST',
-          headers: jsonHeaders,
+          headers: jsonHeaders(),
           body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
         },
       )
@@ -720,7 +724,7 @@ describe('instance API routes', () => {
           { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
           {
             method: 'POST',
-            headers: jsonHeaders,
+            headers: jsonHeaders(),
             body: JSON.stringify({
               id: 'masktest-1',
               type: 'masktest',
