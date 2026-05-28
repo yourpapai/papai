@@ -9,7 +9,7 @@ import { handlePluginInteraction } from '../../src/chat/plugin-interaction-handl
 import type { IncomingInteraction } from '../../src/chat/types.js'
 import { setPluginConfig } from '../../src/config.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
-import { isPluginEnabledForContext } from '../../src/plugins/store.js'
+import { getPluginContextState, isPluginEnabledForContext } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -125,5 +125,22 @@ describe('handlePluginInteraction', () => {
     expect(handled).toBe(true)
     expect(isPluginEnabledForContext(pluginId, 'group-unknown')).toBe(false)
     expect(textCalls[0]).toContain('no longer recognized as an admin')
+  })
+
+  test('disable interaction refuses unknown plugin instead of writing a ghost row', async () => {
+    const { reply, textCalls } = createMockReply()
+    await handlePluginInteraction(
+      {
+        ...makeInteraction(
+          `plg:disable:no-such-plugin:${Buffer.from('admin-user').toString('base64url')}`,
+          'admin-user',
+        ),
+        storageContextId: 'admin-user',
+      },
+      reply,
+    )
+
+    expect(textCalls[0]).toContain('not available')
+    expect(getPluginContextState('no-such-plugin', 'admin-user')).toBeUndefined()
   })
 })
