@@ -125,7 +125,7 @@ For example, `hello-world` plus `greet` becomes `plugin_hello_world__greet`.
 
 Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, and plugin/context KV. The raw task provider is not exposed.
 
-When a plugin declares `permissions: ["identity"]` and exactly one `contributes.taskProviderTypes` value, tool executions receive `runtimeContext.identity`. The facade supports `lookupForChatUser(chatUserId)` and `recordClaim(chatUserId, providerUserId, providerLogin, displayName?)`. Claims are recorded as `manual_nl` mappings and are not treated as auto-verified.
+When a plugin declares `permissions: ["identity"]` and exactly one `contributes.taskProviderTypes` value, tool executions receive `runtimeContext.identity`. Declaring a task provider type also requires `provider.task`, so runtime identity provider plugins need `identity` plus the manifest/provider-task requirements. The facade supports `lookupForChatUser(chatUserId)` and `recordClaim(chatUserId, providerUserId, providerLogin, displayName?)`. Claims are recorded as `manual_nl` mappings and are not treated as auto-verified.
 
 ## Prompt Fragments
 

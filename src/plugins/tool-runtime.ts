@@ -105,6 +105,7 @@ export function buildPluginToolRuntimeContext(
   runtime: PluginToolSetRuntime,
 ): PluginToolRuntimeContext {
   const permissions = new Set(manifest.permissions)
+  const identity = buildRuntimeIdentity(manifest)
   return Object.freeze({
     pluginId,
     storageContextId: runtime.storageContextId,
@@ -116,7 +117,7 @@ export function buildPluginToolRuntimeContext(
       permissions.has('tasks.write'),
     ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
-    identity: buildRuntimeIdentity(manifest),
+    ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(),
   })
 }
