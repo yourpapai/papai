@@ -158,7 +158,7 @@ log.info(
 )
 
 warnIfLegacyDebugToken()
-startSweeper()
+const stopSweeper = startSweeper()
 
 let stopDebugServerFn: (() => void) | null = null
 
@@ -178,6 +178,7 @@ const shutdown = (signal: string): void => {
       stopScheduler()
       scheduler.stopAll()
       stopPollers()
+      stopSweeper()
       if (stopDebugServerFn !== null) stopDebugServerFn()
       return chatProvider.stop()
     })
