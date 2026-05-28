@@ -29,6 +29,7 @@ describe('dashboard-auth/store', () => {
   })
   afterEach(() => {
     db.close()
+    setStoreDb(null)
   })
 
   test('insertClaim then consumeClaimByHash returns admin + marks consumed', () => {
@@ -86,5 +87,23 @@ describe('dashboard-auth/store', () => {
     deleteExpired(100)
     expect(db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM dashboard_claims`).get()).toEqual({ n: 1 })
     expect(db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM dashboard_sessions`).get()).toEqual({ n: 1 })
+  })
+
+  test('touchSession is a no-op on a revoked session', () => {
+    insertSession({ idHash: 'sid5', adminUserId: 'u1', issuedAt: 100, expiresAt: 200 })
+    revokeSessionByHash('sid5', 120)
+    touchSession('sid5', 150, '127.0.0.1', 'agent/1')
+    const row = db
+      .query<{ last_seen_at: number | null }, []>(`SELECT last_seen_at FROM dashboard_sessions WHERE id='sid5'`)
+      .get()
+    expect(row?.last_seen_at).toBeNull()
+  })
+
+  test('deleteExpired removes revoked sessions even when not yet expired', () => {
+    insertSession({ idHash: 'srev', adminUserId: 'u1', issuedAt: 1, expiresAt: 10_000 })
+    revokeSessionByHash('srev', 50)
+    deleteExpired(100)
+    const row = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM dashboard_sessions WHERE id='srev'`).get()
+    expect(row?.n).toBe(0)
   })
 })

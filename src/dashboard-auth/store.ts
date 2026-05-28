@@ -81,8 +81,10 @@ export const revokeSessionByHash = (idHash: string, now: number): void => {
 
 export const touchSession = (idHash: string, now: number, ip: string | null, userAgent: string | null): void => {
   db()
-    .query(`UPDATE dashboard_sessions SET last_seen_at = ?, last_seen_ip = ?, user_agent = ? WHERE id = ?`)
-    .run(now, ip, userAgent, idHash)
+    .query(
+      `UPDATE dashboard_sessions SET last_seen_at = ?, last_seen_ip = ?, user_agent = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`,
+    )
+    .run(now, ip, userAgent, idHash, now)
 }
 
 export const deleteExpired = (now: number): void => {
