@@ -6,7 +6,7 @@
 import path from 'node:path'
 
 // Directories that have a CLAUDE.md file
-const DOCS_DIRS = ['src/tools', 'src/chat', 'src/providers', 'src/commands', 'src/instances']
+const DOCS_DIRS = ['src/tools', 'src/chat', 'src/providers', 'src/commands']
 
 /**
  * Map changed source file paths to their nearest relevant documentation files.
