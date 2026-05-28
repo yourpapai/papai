@@ -3,10 +3,16 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { loadAttachmentRecord } from '../attachments/store.js'
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { kvDelete, kvGet, kvList, kvSet } from './store.js'
-import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
+import type {
+  PluginAttachmentFacade,
+  PluginManifest,
+  PluginTaskProviderFacade,
+  PluginToolRuntimeContext,
+} from './types.js'
 
 export type PluginToolSetRuntime = {
   provider: TaskProvider
@@ -79,6 +85,32 @@ function buildTaskProviderFacade(
   }) satisfies PluginTaskProviderFacade
 }
 
+function buildAttachmentsFacade(
+  pluginId: string,
+  storageContextId: string,
+  hasPermission: boolean,
+): PluginAttachmentFacade {
+  return Object.freeze({
+    async read(attachmentId: string) {
+      if (!hasPermission) deny(pluginId, 'attachments.read')
+      const stored = await loadAttachmentRecord(storageContextId, attachmentId)
+      if (stored === null) {
+        throw new Error('attachment_not_found')
+      }
+      return {
+        record: {
+          attachmentId: stored.attachmentId,
+          filename: stored.filename,
+          mimeType: stored.mimeType,
+          size: stored.size,
+          createdAt: stored.createdAt,
+        },
+        bytes: stored.content,
+      }
+    },
+  })
+}
+
 // Intentionally shares the web_fetch rate-limit bucket (20 req / 5 min per actor).
 // Ungated: rate limiting is a safety mechanism, not a capability — any plugin may self-throttle.
 function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
@@ -109,5 +141,6 @@ export function buildPluginToolRuntimeContext(
     ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
     rateLimit: buildRateLimit(),
+    attachments: buildAttachmentsFacade(pluginId, runtime.storageContextId, permissions.has('attachments.read')),
   })
 }

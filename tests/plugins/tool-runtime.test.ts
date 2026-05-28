@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { saveAttachment } from '../../src/attachments/store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -69,6 +70,76 @@ describe('buildPluginToolRuntimeContext', () => {
       expect(lastResult.allowed).toBe(false)
       expect(lastResult.retryAfterSec).toBeDefined()
       expect(lastResult.retryAfterSec!).toBeGreaterThan(0)
+    })
+  })
+
+  describe('attachments facade', () => {
+    test('provides attachments on the runtime context', () => {
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['attachments.read'] }),
+        makeRuntime(),
+      )
+      expect(ctx.attachments).toBeDefined()
+      expect(typeof ctx.attachments.read).toBe('function')
+    })
+
+    test('throws when plugin lacks attachments.read permission', async () => {
+      const ctx = buildPluginToolRuntimeContext('test-plugin', makeManifest({ permissions: [] }), makeRuntime())
+      await expect(ctx.attachments.read('att_anything')).rejects.toThrow(/attachments\.read/)
+    })
+
+    test('returns record metadata and bytes for an attachment in the current context', async () => {
+      const saved = await saveAttachment({
+        contextId: 'ctx-1',
+        sourceProvider: 'telegram',
+        filename: 'voice.ogg',
+        status: 'available',
+        content: Buffer.from('audio-bytes'),
+        mimeType: 'audio/ogg',
+        size: 11,
+      })
+
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['attachments.read'] }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+
+      const result = await ctx.attachments.read(saved.attachmentId)
+      expect(result.record.filename).toBe('voice.ogg')
+      expect(result.record.mimeType).toBe('audio/ogg')
+      expect(result.record.size).toBe(11)
+      expect(result.bytes.toString()).toBe('audio-bytes')
+    })
+
+    test('throws attachment_not_found for unknown ids', async () => {
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['attachments.read'] }),
+        makeRuntime({ storageContextId: 'ctx-1' }),
+      )
+      await expect(ctx.attachments.read('att_does_not_exist')).rejects.toThrow(/attachment_not_found/)
+    })
+
+    test('cannot access an attachment from a different storage context', async () => {
+      const saved = await saveAttachment({
+        contextId: 'ctx-A',
+        sourceProvider: 'telegram',
+        filename: 'secret.ogg',
+        status: 'available',
+        content: Buffer.from('secret-bytes'),
+        mimeType: 'audio/ogg',
+        size: 12,
+      })
+
+      const ctx = buildPluginToolRuntimeContext(
+        'test-plugin',
+        makeManifest({ permissions: ['attachments.read'] }),
+        makeRuntime({ storageContextId: 'ctx-B' }),
+      )
+
+      await expect(ctx.attachments.read(saved.attachmentId)).rejects.toThrow(/attachment_not_found/)
     })
   })
 })

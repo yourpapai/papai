@@ -237,6 +237,21 @@ export type PluginTaskProviderFacade = Pick<
   'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
 >
 
+export type PluginAttachmentRecord = {
+  attachmentId: string
+  filename: string
+  mimeType: string | undefined
+  size: number | undefined
+  createdAt: string
+}
+
+export type PluginAttachmentFacade = {
+  read(attachmentId: string): Promise<{
+    record: PluginAttachmentRecord
+    bytes: Buffer
+  }>
+}
+
 export type PluginToolRuntimeContext = {
   pluginId: string
   storageContextId: string
@@ -246,6 +261,7 @@ export type PluginToolRuntimeContext = {
   rateLimit: {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }
   }
+  attachments: PluginAttachmentFacade
 }
 
 export type PluginTool = {
