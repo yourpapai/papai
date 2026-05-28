@@ -23,6 +23,20 @@ function isStandaloneMentionAt(text: string, mentionPrefix: string, startIndex: 
   return afterChar === '' || !isUsernameChar(afterChar)
 }
 
+function findStandaloneMentionIndex(text: string, mentionPrefix: string): number {
+  let searchIndex = text.indexOf(mentionPrefix)
+
+  while (searchIndex >= 0) {
+    if (isStandaloneMentionAt(text, mentionPrefix, searchIndex)) {
+      return searchIndex
+    }
+
+    searchIndex = text.indexOf(mentionPrefix, searchIndex + mentionPrefix.length)
+  }
+
+  return -1
+}
+
 export function normalizeMattermostMessageText(message: string, botUsername: string | null): NormalizedMattermostText {
   const trimmed = message.trim()
 
@@ -31,8 +45,8 @@ export function normalizeMattermostMessageText(message: string, botUsername: str
   }
 
   const mentionPrefix = `@${botUsername}`
-  const mentionIndex = trimmed.indexOf(mentionPrefix)
-  const isMentioned = mentionIndex >= 0 && isStandaloneMentionAt(trimmed, mentionPrefix, mentionIndex)
+  const mentionIndex = findStandaloneMentionIndex(trimmed, mentionPrefix)
+  const isMentioned = mentionIndex >= 0
 
   if (!isMentioned || mentionIndex !== 0) {
     return { text: trimmed, isMentioned, commandInput: null }
