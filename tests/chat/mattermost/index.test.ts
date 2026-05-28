@@ -751,7 +751,7 @@ describe('MattermostChatProvider', () => {
         }),
       })
 
-      expect(replies.getReplies()).toEqual(['Use `@papai /help` to see commands, or mention me with a question.'])
+      expect(replies.getReplies()).toEqual(['Use `@testbot /help` to see commands, or mention me with a question.'])
 
       restoreFetch()
     })

@@ -169,7 +169,9 @@ export class MattermostChatProvider implements ChatProvider {
     cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
     if (msg.isMentioned && msg.text === '') {
-      await reply.text('Use `@papai /help` to see commands, or mention me with a question.')
+      const mentionHelp =
+        this.botUsername === null ? 'Use `/help` to see commands' : `Use \`@${this.botUsername} /help\` to see commands`
+      await reply.text(`${mentionHelp}, or mention me with a question.`)
       return
     }
     if (command !== null) {
@@ -277,9 +279,7 @@ export class MattermostChatProvider implements ChatProvider {
   downloadFile(fileId: string): Promise<Buffer | null> {
     return downloadMattermostFile(this.baseUrl, this.token, fileId)
   }
-  resolveUserLabel(userId: string): Promise<string | null>
-  resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null>
-  resolveUserLabel(userId: string, ..._rest: [] | [ResolveUserContext | undefined]): Promise<string | null> {
+  resolveUserLabel(userId: string, _context?: ResolveUserContext): Promise<string | null> {
     return resolveMattermostUserLabel(this.apiFetch.bind(this), userId)
   }
   private wsSend(data: unknown): void {
