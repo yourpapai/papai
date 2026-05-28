@@ -97,6 +97,13 @@ export const TddEnforcement: Plugin = async ({ client, directory }) => {
       // [4] trackTestWrite - Record test files written this session
       trackTestWrite(ctx)
 
+      // Track source file changes for doc review
+      const { trackSourceWrite } = await import('../../.hooks/docs/track-source-write.mjs')
+      if (trackSourceWrite(filePath)) {
+        const state = new SessionState(input.sessionID, getSessionsDir(directory))
+        state.addChangedSourceFile(filePath)
+      }
+
       // [5] verifyTestImport - Verify test files import their implementation module
       const importResult = verifyTestImport(ctx)
       if (importResult) {
