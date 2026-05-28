@@ -107,7 +107,7 @@ describe('group settings selector', () => {
     expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBe(scopedGroup1)
   })
 
-  test('shows a newly authorized scoped group in DM selection before any observation exists', () => {
+  test('shows a newly authorized scoped group in DM selection before any observation exists and can continue with it', () => {
     const scopedGroupId = toScopedContextId({
       platformInstanceId: 'telegram-default',
       nativeContextId: '-10012345',
@@ -118,10 +118,16 @@ describe('group settings selector', () => {
     addAuthorizedGroup(scopedGroupId, 'admin-id')
 
     startGroupSettingsSelection('admin-id', 'config', false, 'telegram-default')
-    const result = handleGroupSettingsSelectorMessage('admin-id', 'group', false, 'telegram-default')
-    const response = getResponse(result)
+    const listResult = handleGroupSettingsSelectorMessage('admin-id', 'group', false, 'telegram-default')
+    const response = getResponse(listResult)
+    const selectionResult = handleGroupSettingsSelectorMessage('admin-id', '-10012345', false, 'telegram-default')
 
     expect(response.response).toContain('-10012345')
+    expect(selectionResult).toEqual({
+      handled: true,
+      continueWith: { command: 'config', targetContextId: scopedGroupId },
+    })
+    expect(getActiveGroupSettingsTarget('admin-id', 'telegram-default')).toBe(scopedGroupId)
   })
 
   test('does not double-scope an already-scoped manageable group context', () => {
