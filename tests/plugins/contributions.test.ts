@@ -260,6 +260,7 @@ describe('PluginContributionRegistry', () => {
         taskProviderTypes: [],
       },
     })
+    markPluginActive(manifest)
     contributionRegistry.register(
       'test-plugin',
       {
@@ -278,6 +279,7 @@ describe('PluginContributionRegistry', () => {
       },
       manifest,
     )
+    setPluginEnabledForContext('test-plugin', 'user-1', true)
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
 
     registerPluginCommands(provider)
@@ -296,6 +298,60 @@ describe('PluginContributionRegistry', () => {
 
     expect(commandHandlers.has('plugin_test_plugin_sync')).toBe(true)
     expect(executed).toBe(true)
+  })
+
+  test('plugin command handler refuses execution when plugin is disabled for the context', async () => {
+    let executed = false
+    const textCalls: string[] = []
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: ['sync'],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [
+          {
+            name: 'sync',
+            description: 'Sync plugin data',
+            execute: (): void => {
+              executed = true
+            },
+          },
+        ],
+        jobs: [],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'user-1', false)
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    registerPluginCommands(provider)
+    await commandHandlers.get('plugin_test_plugin_sync')!(
+      createDmMessage('user-1'),
+      {
+        text: (text) => {
+          textCalls.push(text)
+          return Promise.resolve()
+        },
+        formatted: () => Promise.resolve(),
+        typing: () => {},
+        buttons: () => Promise.resolve(),
+      },
+      createAuth('user-1'),
+    )
+
+    expect(executed).toBe(false)
+    expect(textCalls[0]).toContain('disabled')
   })
 
   test('runs scheduled jobs only for explicitly enabled plugin contexts', async () => {

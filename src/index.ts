@@ -109,29 +109,7 @@ const processMessage: BotDeps['processMessage'] = (...args) =>
 const stagedDownloadFn = createStagedDownloadFn()
 const botDeps: BotDeps = { processMessage, stagedDownloadFn }
 
-setupBot(chatProvider, adminUserId, botDeps)
-
-await chatProvider.start()
-
-void registerCommandMenuIfSupported(chatProvider, adminUserId)
-
-const [firstActivePlatformInstance] = activePlatformInstances
-const announcementPlatformInstanceId =
-  firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
-if (announcementPlatformInstanceId === undefined) {
-  log.warn('Skipping startup announcement: cannot determine current platform instance')
-} else {
-  void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)
-}
-
-startScheduler(chatProvider)
-
-startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
-
-// Start the central scheduler with all cleanup tasks
-scheduler.startAll()
-
-// Discover and activate plugins
+// Discover and activate plugins before command registration so contributed commands are registered.
 const pluginDir = 'plugins'
 const { plugins: discoveredPlugins, errors: pluginErrors } = discoverPlugins(pluginDir)
 if (pluginErrors.length > 0) {
@@ -154,6 +132,28 @@ log.info(
   { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
   'Plugin activation complete',
 )
+
+setupBot(chatProvider, adminUserId, botDeps)
+
+await chatProvider.start()
+
+void registerCommandMenuIfSupported(chatProvider, adminUserId)
+
+const [firstActivePlatformInstance] = activePlatformInstances
+const announcementPlatformInstanceId =
+  firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
+if (announcementPlatformInstanceId === undefined) {
+  log.warn('Skipping startup announcement: cannot determine current platform instance')
+} else {
+  void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)
+}
+
+startScheduler(chatProvider)
+
+startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
+
+// Start the central scheduler with all cleanup tasks
+scheduler.startAll()
 
 let stopDebugServerFn: (() => void) | null = null
 
