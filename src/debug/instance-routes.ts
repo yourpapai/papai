@@ -35,6 +35,7 @@ import {
   type InstanceApiDeps,
   instanceExistsError,
   instancePatchSchema,
+  isInstanceApiPath,
   parseBody,
   platformInstanceSchema,
   splitPath,
@@ -97,17 +98,6 @@ const taskInstanceView = (
   }
 }
 
-const INSTANCE_API_PREFIXES = [
-  '/api/admins',
-  '/api/platform-provider-types',
-  '/api/platform-instances',
-  '/api/task-instances',
-  '/api/task-provider-types',
-] as const
-
-const isInstanceApiPath = (pathname: string): boolean =>
-  INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))
-
 const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Promise<Response> => {
   if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
   const body = await parseBody(req, statusSchema)
@@ -118,9 +108,14 @@ const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Pro
 }
 
 const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Response> => {
-  if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
+  const existing = getPlatformInstance(instanceId)
+  if (existing === null) return textResponse('Not found', 404)
   const body = await parseBody(req, instancePatchSchema)
   if (body instanceof Response) return body
+  if (body.config !== undefined) {
+    const configError = validatePlatformInstanceConfig(existing.type, body.config)
+    if (configError !== null) return configError
+  }
   updatePlatformInstance(instanceId, { config: body.config, status: body.status })
   const instance = getPlatformInstance(instanceId)
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))

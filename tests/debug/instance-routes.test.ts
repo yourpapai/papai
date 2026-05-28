@@ -87,6 +87,12 @@ const expectInstance = (router: ChatRouter, id: string): ManagedChatInstance => 
   return instance
 }
 
+const expectPlatformInstance = (id: string): PlatformInstance => {
+  const instance = getPlatformInstance(id)
+  if (instance === null) throw new Error(`expected platform instance ${id}`)
+  return instance
+}
+
 const expectTaskInstance = (id: string): TaskInstance => {
   const instance = getTaskInstance(id)
   if (instance === null) throw new Error(`expected task instance ${id}`)
@@ -194,6 +200,26 @@ describe('instance API routes', () => {
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
     expect(pick(body, 'config')).toEqual({ token: '********', label: 'main' })
+  })
+
+  test('PATCH /api/platform-instances/:id rejects invalid config and preserves the previous config', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ config: { label: 'main' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_platform_instance_config',
+      type: 'telegram',
+      missing: ['token'],
+    })
+    expect(expectPlatformInstance('telegram-main').config).toEqual({ token: 'secret' })
   })
 
   test('platform PATCH missing instance returns 404', async () => {
