@@ -322,10 +322,13 @@ Activation receives a frozen `PluginContext` exposing only:
 
 - `ctx.pluginId`, `ctx.contextId` (activation runs against `__system__`), `ctx.permissions`
 - `ctx.log.{debug,info,warn,error}(data, msg)` — pino child logger scoped by `pluginId`. Never log secrets.
-- `ctx.kv.{get,set,delete,list}` — context-scoped string KV, **only** when the `storage` permission is declared. Without it, all KV calls throw. KV is not a secret store.
-- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless the contribution name was declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`. `registerTaskProviderType` additionally requires the `provider.task` permission.
+- `ctx.kv.{get,set,delete,list}` — context-scoped string KV, only when the `storage` permission is declared. Without it, all KV calls throw. KV is not a secret store.
+- `ctx.adminConfig.get(key)` — read-only admin-scoped plugin config declared in `configRequirements`.
+- `ctx.providerRuntime` — HTTP helper for provider plugins when `provider.task` or `http` is declared; every hop must match `providerAllowedHosts` and pass public URL checks.
+- `ctx.identity` — available when `identity` is declared and the plugin declares exactly one task provider type.
+- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`.
 
-Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade (`getTask`, `listTasks`, `searchTasks`, `createTask`, `updateTask`), and the plugin/context KV.
+Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated task-provider facade, optional `identity`, rate-limit helper, and plugin/context KV.
 
 ### Contribution Naming
 
@@ -334,9 +337,9 @@ Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `proce
 - Scheduled job owner: `plugin:<pluginId>:<jobName>`, executed only for contexts where the plugin is enabled and eligible.
 - Prompt fragments are synchronous strings or sync functions; appended to the system prompt with a 2,000-char-per-fragment / 8,000-char-total budget.
 
-### Permissions
+### Permissions (MVP)
 
-`PLUGIN_PERMISSIONS` (`src/plugins/types.ts`): `storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, `http`. Runtime-gated today: `storage` (KV access), `tasks.read`/`tasks.write` (task-provider facade methods), `provider.task` (registering a task provider type and presence of the provider facade), `identity` (identity facade, when one task provider type is declared), and `http` (provider HTTP facade). `commands`, `scheduler`, and `chat.send` are declared but not yet separately enforced beyond the contribution-declaration check. Declaring `contributes.taskProviderTypes` requires the `provider.task` permission (manifest `.refine`). Raw chat sending, raw provider access, raw DB access, and arbitrary network access are not exposed.
+`storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, and `http`. Runtime gating exists for storage, task reads/writes, provider HTTP runtime, contributed task-provider registration, and identity facade exposure. Raw chat sending, raw provider access, raw DB access, and arbitrary unallowlisted network access are not exposed.
 
 ### Admin Command
 

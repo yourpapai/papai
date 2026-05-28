@@ -3,9 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatCapability } from '../chat/types.js'
 import { logger } from '../logger.js'
-import type { TaskCapability } from '../providers/types.js'
 import { checkPluginCompatibility } from './compatibility.js'
 import {
   NO_ACTIVE_INSTANCE_COMPATIBILITY_REASON,
@@ -149,22 +147,6 @@ export class PluginRegistry {
     entry.state = 'rejected'
     log.info({ pluginId }, 'Plugin rejected')
     return true
-  }
-
-  evaluateCompatibility(
-    pluginId: string,
-    taskCapabilities: ReadonlySet<TaskCapability>,
-    chatCapabilities: ReadonlySet<ChatCapability>,
-  ): void {
-    const entry = this.entries.get(pluginId)
-    if (entry === undefined || entry.state !== 'approved') return
-
-    const result = checkPluginCompatibility(entry.discoveredPlugin.manifest, taskCapabilities, chatCapabilities)
-    if (!result.compatible) {
-      entry.state = 'incompatible'
-      entry.compatibilityReason = result.reason
-      log.warn({ pluginId, reason: result.reason }, 'Plugin marked incompatible')
-    }
   }
 
   evaluateCompatibilityAcrossInstances(instances: readonly PluginCompatibilityInstance[]): void {

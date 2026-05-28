@@ -56,19 +56,24 @@ Required fields: `id`, `name`, `version`, `description`, `apiVersion`, and `main
 
 Supported optional fields:
 
-| Field                         | Description                                                                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contributes.tools`           | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
-| `contributes.promptFragments` | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
-| `contributes.commands`        | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
-| `contributes.jobs`            | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
-| `contributes.configKeys`      | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
-| `permissions`                 | Permission claims checked by framework facades.                                                                                                   |
-| `defaultEnabled`              | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
-| `requiredTaskCapabilities`    | Task provider capabilities required before activation and per-context eligibility.                                                                |
-| `requiredChatCapabilities`    | Chat platform capabilities required before activation and per-context eligibility.                                                                |
-| `configRequirements`          | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
-| `activationTimeoutMs`         | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
+| Field                           | Description                                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
+| `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
+| `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
+| `contributes.jobs`              | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
+| `contributes.configKeys`        | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
+| `contributes.taskProviderTypes` | At most one plugin-owned task provider type. Requires `provider.task`.                                                                            |
+| `providerCapabilities`          | Task capabilities exposed by the contributed provider type.                                                                                       |
+| `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                  |
+| `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                        |
+| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`.                                                                                         |
+| `permissions`                   | Permission claims checked by framework facades.                                                                                                   |
+| `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
+| `requiredTaskCapabilities`      | Task provider capabilities required before activation and per-context eligibility.                                                                |
+| `requiredChatCapabilities`      | Chat platform capabilities required before activation and per-context eligibility.                                                                |
+| `configRequirements`            | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
+| `activationTimeoutMs`           | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
 
 The manifest `id` must match the directory name. The entry point must stay inside the plugin directory and must be a relative `.ts` or `.js` path without `..` components.
 
@@ -141,6 +146,8 @@ plugin_<sanitized-plugin-id>_<command-name>
 
 Command handlers receive the normal `IncomingMessage`, `ReplyFn`, and `AuthorizationResult` values. They run through the same chat command registration path as core commands.
 
+Plugin command handlers run only when the plugin is active and eligible for the current command context. Disabled plugins, missing config, or missing capabilities produce a denial message and the plugin handler is not invoked.
+
 ## Scheduled Jobs
 
 Plugin jobs are registered through `ctx.registration.registerScheduledJob()` with an `intervalMs` and an `execute(contextId)` function. Jobs are registered with owner names like `plugin:<pluginId>:<jobName>` and execute only for contexts where the plugin is enabled and eligible.
@@ -149,14 +156,17 @@ Plugin jobs are registered through `ctx.registration.registerScheduledJob()` wit
 
 Supported MVP permissions:
 
-| Permission    | Effect                                                                                  |
-| ------------- | --------------------------------------------------------------------------------------- |
-| `storage`     | Enables plugin KV access. Without it, KV calls fail closed.                             |
-| `tasks.read`  | Enables read methods on the task-provider facade.                                       |
-| `tasks.write` | Enables write methods on the task-provider facade.                                      |
-| `commands`    | Reserved declaration for command-capable plugins; registration is still manifest-gated. |
-| `scheduler`   | Reserved declaration for scheduled-job plugins; registration is still manifest-gated.   |
-| `chat.send`   | Declared in the permission list but no raw chat-send facade is exposed in the MVP.      |
+| Permission      | Effect                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `storage`       | Enables plugin KV access. Without it, KV calls fail closed.                              |
+| `tasks.read`    | Enables read methods on the task-provider facade.                                        |
+| `tasks.write`   | Enables write methods on the task-provider facade.                                       |
+| `provider.task` | Allows registering one declared task-provider type and exposes provider runtime helpers. |
+| `identity`      | Exposes identity facade when exactly one task-provider type is declared.                 |
+| `http`          | Exposes provider runtime HTTP helper without requiring a contributed task provider.      |
+| `commands`      | Reserved declaration for command-capable plugins; registration is still manifest-gated.  |
+| `scheduler`     | Reserved declaration for scheduled-job plugins; registration is still manifest-gated.    |
+| `chat.send`     | Declared in the permission list but no raw chat-send facade is exposed in the MVP.       |
 
 Unsupported in the MVP: raw chat provider access, raw task provider access, raw DB access, raw environment access, encrypted plugin secrets, arbitrary network access, and sandbox isolation.
 
