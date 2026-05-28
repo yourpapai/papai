@@ -397,6 +397,49 @@ describe('PluginContributionRegistry', () => {
     expect(taskState!.running).toBe(true)
   })
 
+  test('scheduled jobs run for configured contexts when plugin is default enabled', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      defaultEnabled: true,
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['daily'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    markPluginActive(manifest)
+    seedTestPlatformInstance({ id: 'telegram-a' })
+    seedTestTaskInstance({ id: 'task-a' })
+    setContextSettings({ contextId: 'ctx-default-a', taskInstanceId: 'task-a', platformInstanceId: 'telegram-a' })
+    setContextSettings({ contextId: 'ctx-default-b', taskInstanceId: 'task-a', platformInstanceId: 'telegram-a' })
+    setPluginEnabledForContext('test-plugin', 'ctx-default-b', false)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toEqual(['ctx-default-a'])
+  })
+
   test('scheduled jobs skip contexts that are not plugin eligible', async () => {
     const seenContexts: string[] = []
     const manifest = makeManifest({

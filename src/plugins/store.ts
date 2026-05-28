@@ -133,6 +133,15 @@ export function getEnabledContextsForPlugin(pluginId: string): string[] {
     .map((r) => r.contextId)
 }
 
+export function getContextStatesForPlugin(pluginId: string): Array<{ contextId: string; enabled: boolean }> {
+  const db = getDrizzleDb()
+  return db
+    .select({ contextId: pluginContextState.contextId, enabled: pluginContextState.enabled })
+    .from(pluginContextState)
+    .where(eq(pluginContextState.pluginId, pluginId))
+    .all()
+}
+
 // ---- KV store ----
 
 export function kvGet(pluginId: string, contextId: string, key: string): string | undefined {
