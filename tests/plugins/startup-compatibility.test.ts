@@ -108,4 +108,20 @@ describe('startup plugin compatibility collection', () => {
     expect(entry.taskCapabilities.size).toBe(0)
     expect(entry.chatCapabilities.size).toBe(0)
   })
+
+  test('skips unknown task provider types while collecting startup compatibility', () => {
+    const router = new ChatRouter(() => createMockChat())
+    router.addInstance('telegram-a', 'telegram', { token: 'x' })
+
+    const instances = collectStartupCompatibilityInstances(
+      router,
+      [
+        { id: 'ghost-task', type: 'ghost-provider', config: {}, status: 'active', createdAt: new Date().toISOString() },
+        { id: 'kaneo-a', type: 'kaneo', config: {}, status: 'active', createdAt: new Date().toISOString() },
+      ],
+      [{ id: 'telegram-a', type: 'telegram', config: {}, status: 'active', createdAt: new Date().toISOString() }],
+    )
+
+    expect(instances.length).toBeGreaterThan(0)
+  })
 })
