@@ -166,13 +166,3 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
 export function listCommandCatalogEntries(): readonly CommandCatalogEntry[] {
   return COMMAND_CATALOG
 }
-
-export function getCommandCatalogEntry(name: string): CommandCatalogEntry {
-  const entry = COMMAND_CATALOG.find((candidate) => candidate.name === name)
-
-  if (entry === undefined) {
-    throw new Error(`Unknown command catalog entry: ${name}`)
-  }
-
-  return entry
-}

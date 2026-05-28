@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 export { registerAdminCommands } from './admin.js'
-export { getCommandCatalogEntry, listCommandCatalogEntries } from './catalog.js'
+export { listCommandCatalogEntries } from './catalog.js'
 export { registerClearCommand } from './clear.js'
 export { registerConfigCommand } from './config.js'
 export { registerContextCommand } from './context.js'

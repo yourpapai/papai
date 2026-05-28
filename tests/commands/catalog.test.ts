@@ -5,11 +5,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  getCommandCatalogEntry,
-  listCommandCatalogEntries,
-  type CommandRegistration,
-} from '../../src/commands/catalog.js'
+import * as commandCatalog from '../../src/commands/catalog.js'
+import { listCommandCatalogEntries, type CommandRegistration } from '../../src/commands/catalog.js'
 import * as commandRegistrations from '../../src/commands/index.js'
 
 function getCommandRegistrationExport(
@@ -19,6 +16,10 @@ function getCommandRegistrationExport(
 }
 
 describe('command catalog', () => {
+  test('does not expose test-only entry lookup helpers', () => {
+    expect('getCommandCatalogEntry' in commandCatalog).toBe(false)
+  })
+
   test('contains the current papai command surface with Telegram publication metadata', () => {
     const entries = listCommandCatalogEntries()
     const names = entries.map((entry) => entry.name)
@@ -131,7 +132,6 @@ describe('command catalog', () => {
     })
 
     for (const entry of entries) {
-      expect(getCommandCatalogEntry(entry.name)).toBe(entry)
       const registration = getCommandRegistrationExport(entry.registration)
 
       expect(typeof registration).toBe('function')
