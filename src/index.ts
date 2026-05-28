@@ -10,6 +10,7 @@ import { setupBot, type BotDeps } from './bot.js'
 import { createChatProviderFromConfig } from './chat/registry.js'
 import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
+import { startSweeper } from './dashboard-auth/sweeper.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
@@ -27,6 +28,7 @@ import { collectStartupCompatibilityInstances } from './plugins/startup-compatib
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
+import { warnIfLegacyDebugToken } from './startup-helpers.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
 
@@ -154,6 +156,9 @@ log.info(
   { activeCount: getActivatedPluginIds().length, requestedCount: toActivate.length },
   'Plugin activation complete',
 )
+
+warnIfLegacyDebugToken()
+startSweeper()
 
 let stopDebugServerFn: (() => void) | null = null
 
