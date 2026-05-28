@@ -8,14 +8,21 @@ import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../src/authorized-groups.js'
 import { toScopedContextId } from '../../src/chat/scoped-context.js'
-import { listManageableGroups, matchManageableGroup } from '../../src/group-settings/access.js'
+import {
+  listManageableGroups,
+  matchManageableGroup,
+  validateGroupTargetAccess,
+} from '../../src/group-settings/access.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
+import { addAdmin } from '../../src/instances/admin-store.js'
+import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 describe('group settings access', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    process.env['INSTANCE_CONFIG_KEY'] = '1'.repeat(64)
   })
 
   test('lists only groups where the user is a known admin', () => {
@@ -131,6 +138,37 @@ describe('group settings access', () => {
 
     expect(listManageableGroups('same-native-user', 'telegram-main')).toEqual([])
     expect(listManageableGroups('same-native-user').map((group) => group.contextId)).toEqual(['legacy-group'])
+  })
+
+  test('lists authorized scoped groups for an admin even before group metadata is observed', () => {
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-10012345',
+    })
+
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
+    addAdmin('admin-1', 'telegram-default')
+    addAuthorizedGroup(scopedGroupId, 'admin-1')
+
+    const groups = listManageableGroups('admin-1', 'telegram-default')
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.contextId).toBe(scopedGroupId)
+    expect(groups[0]?.displayName).toBe('-10012345')
+    expect(groups[0]?.parentName).toBeNull()
+  })
+
+  test('accepts a fallback-only scoped group during target validation', () => {
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-10012345',
+    })
+
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
+    addAdmin('admin-1', 'telegram-default')
+    addAuthorizedGroup(scopedGroupId, 'admin-1')
+
+    expect(validateGroupTargetAccess('admin-1', scopedGroupId, 'telegram-default')).toEqual({ kind: 'ok' })
   })
 
   test('matches by context id and display name and reports ambiguity', () => {

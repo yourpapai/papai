@@ -10,6 +10,7 @@ export type KnownGroupContext = {
   readonly parentName: string | null
   readonly firstSeenAt: string
   readonly lastSeenAt: string
+  readonly source?: 'observed' | 'authorized-fallback'
 }
 
 export type GroupSettingsCommand = 'config' | 'setup'

@@ -30,6 +30,7 @@ import {
   uploadMattermostFile,
 } from './file-helpers.js'
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
+import { normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
 import { buildMattermostReplyContext } from './reply-context.js'
 import { createMattermostReplyFn } from './reply-helpers.js'
@@ -77,7 +78,6 @@ export class MattermostChatProvider implements ChatProvider {
     this.platformInstanceId = resolved.platformInstanceId
     log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
-
   registerCommand(name: string, handler: CommandHandler): void {
     this.commands.set(name, handler)
   }
@@ -85,7 +85,6 @@ export class MattermostChatProvider implements ChatProvider {
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
   }
-
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     if (target.contextType === 'dm') {
       if (this.botUserId === null) throw new Error('Bot not started')
@@ -169,12 +168,18 @@ export class MattermostChatProvider implements ChatProvider {
     const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
     cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
+    if (msg.isMentioned && msg.text === '') {
+      const mentionHelp =
+        this.botUsername === null ? 'Use `/help` to see commands' : `Use \`@${this.botUsername} /help\` to see commands`
+      await reply.text(`${mentionHelp}, or mention me with a question.`)
+      return
+    }
     if (command !== null) {
       const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await command.handler(msg, reply, auth)
-    } else if (this.messageHandler !== null) {
-      await this.messageHandler(msg, reply)
+      return
     }
+    if (this.messageHandler !== null) await this.messageHandler(msg, reply)
   }
 
   async buildPostedMessage(
@@ -190,10 +195,11 @@ export class MattermostChatProvider implements ChatProvider {
     const teamId = contextType === 'group' ? channelInfo.team_id : undefined
     const teamInfo = teamId === undefined ? null : await fetchMattermostTeamInfo(api, teamId)
     const isAdmin = await checkChannelAdmin(post.channel_id, post.user_id, api)
-    const isMentioned = this.botUsername !== null && post.message.includes(`@${this.botUsername}`)
+    const normalized = normalizeMattermostMessageText(post.message, this.botUsername)
+    const isMentioned = normalized.isMentioned
     const threadId = this.determineThreadId(post, isMentioned, contextType, replyToMessageId)
     const reply = this.buildReplyFn(post.channel_id, post.id, threadId)
-    const command = this.matchCommand(post.message)
+    const command = normalized.commandInput === null ? null : this.matchCommand(normalized.commandInput)
     const uname = post.user_name
     const username = typeof uname === 'string' ? uname : typeof senderName === 'string' ? senderName : null
     const dispName = typeof channelInfo.display_name === 'string' ? channelInfo.display_name : channelInfo.name
@@ -214,7 +220,7 @@ export class MattermostChatProvider implements ChatProvider {
       contextName,
       contextParentName,
       isMentioned,
-      text: post.message,
+      text: normalized.text,
       platformInstanceId: this.platformInstanceId,
       commandMatch: command === null ? undefined : command.match,
       messageId: post.id,
@@ -273,9 +279,7 @@ export class MattermostChatProvider implements ChatProvider {
   downloadFile(fileId: string): Promise<Buffer | null> {
     return downloadMattermostFile(this.baseUrl, this.token, fileId)
   }
-  resolveUserLabel(userId: string): Promise<string | null>
-  resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null>
-  resolveUserLabel(userId: string, ..._rest: [] | [ResolveUserContext | undefined]): Promise<string | null> {
+  resolveUserLabel(userId: string, _context?: ResolveUserContext): Promise<string | null> {
     return resolveMattermostUserLabel(this.apiFetch.bind(this), userId)
   }
   private wsSend(data: unknown): void {
