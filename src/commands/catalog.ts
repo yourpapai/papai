@@ -98,7 +98,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'groups',
     description: 'List authorized groups',
-    registration: 'registerAdminCommands',
+    registration: 'registerGroupCommand',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,

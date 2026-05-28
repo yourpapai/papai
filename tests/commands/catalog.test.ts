@@ -11,6 +11,7 @@ describe('command catalog', () => {
   test('contains the current papai command surface with Telegram publication metadata', () => {
     const entries = listCommandCatalogEntries()
     const names = entries.map((entry) => entry.name)
+    const registrations = Object.fromEntries(entries.map((entry) => [entry.name, entry.registration]))
 
     expect(names).toEqual([
       'help',
@@ -47,10 +48,19 @@ describe('command catalog', () => {
       },
     })
 
-    for (const entry of entries) {
-      expect(entry).toHaveProperty('registration')
-      expect(typeof entry.registration).toBe('string')
-      expect(entry.registration.length > 0).toBe(true)
-    }
+    expect(registrations).toEqual({
+      help: 'registerHelpCommand',
+      start: 'registerStartCommand',
+      setup: 'registerSetupCommand',
+      config: 'registerConfigCommand',
+      context: 'registerContextCommand',
+      clear: 'registerClearCommand',
+      group: 'registerGroupCommand',
+      groups: 'registerGroupCommand',
+      user: 'registerAdminCommands',
+      users: 'registerAdminCommands',
+      announce: 'registerAdminCommands',
+      plugin: 'registerPluginCommand',
+    })
   })
 })
