@@ -13,6 +13,7 @@ import { getLogLevel, logger, logMultistream } from '../logger.js'
 import { listMemos } from '../memos.js'
 import { listRecurringTasks } from '../recurring.js'
 import { handleAdminRecentRequests, handleAdminSystem } from './admin-system.js'
+import { handleAuthClaim, handleAuthLogout, handleAuthWhoami } from './auth-routes.js'
 import { handleAdminLlmGet, handleAdminLlmPost, handleBillingSubject, handleBillingSubjects } from './billing-routes.js'
 import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
@@ -204,11 +205,15 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
 }
 
 async function routeRequest(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+
+  if (url.pathname === '/auth/claim' && req.method === 'GET') return handleAuthClaim(req, url)
+  if (url.pathname === '/auth/logout' && req.method === 'POST') return handleAuthLogout(req)
+  if (url.pathname === '/auth/whoami' && req.method === 'GET') return handleAuthWhoami(req)
+
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
   }
-
-  const url = new URL(req.url)
 
   const instanceApiResponse = await handleInstanceApiRoute(req, url)
   if (instanceApiResponse !== null) return instanceApiResponse
