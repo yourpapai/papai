@@ -589,6 +589,70 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
+    test('routes @mention-prefixed slash text to the registered command handler in dm', async () => {
+      setMockFetch(makeFetchWithGroupChannel('D'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post124',
+          user_id: 'user456',
+          channel_id: 'dm-channel',
+          message: '@testbot /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(true)
+
+      restoreFetch()
+    })
+
+    test('preserves commandMatch after removing a mention-prefixed slash command mention', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandMatch: string | undefined
+      provider.registerCommand('config', (msg) => {
+        commandMatch = msg.commandMatch
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post125',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot /config foo',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandMatch).toBe('foo')
+
+      restoreFetch()
+    })
+
     test('does not route bare slash text to papai command handlers', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
