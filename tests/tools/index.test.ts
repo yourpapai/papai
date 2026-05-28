@@ -7,20 +7,63 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { setConfigValue, setPluginConfig } from '../../src/config.js'
+import { setPluginEnabledForContext } from '../../src/plugins/registry.js'
 import { makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
 
 const CONTEXT = 'test-tool-prefs-index-user'
+const OTHER_CACHE_KEY = 'other-context:user-1:alice'
+
+type CacheInvalidationFixtures = Readonly<{
+  parentContextId: string
+  threadContextId: string
+  parentCacheKey: string
+  threadCacheKey: string
+}>
+
+const getCacheInvalidationFixtures = (): CacheInvalidationFixtures => {
+  const parentContextId = toScopedContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-1',
+  })
+  const threadContextId = toScopedThreadContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-1',
+    threadId: 'thread-1',
+  })
+  return {
+    parentContextId,
+    threadContextId,
+    parentCacheKey: `${parentContextId}:user-1:alice`,
+    threadCacheKey: `${threadContextId}:user-1:alice`,
+  }
+}
+
+const seedParentThreadAndUnrelatedToolCaches = (): CacheInvalidationFixtures => {
+  const fixtures = getCacheInvalidationFixtures()
+  setCachedTools(fixtures.parentCacheKey, { save_memo: {} })
+  setCachedTools(fixtures.threadCacheKey, { save_memo: {} })
+  setCachedTools(OTHER_CACHE_KEY, { save_memo: {} })
+  return fixtures
+}
+
+const expectParentThreadCachesCleared = (parentCacheKey: string, threadCacheKey: string): void => {
+  expect(getCachedTools(parentCacheKey)).toBeUndefined()
+  expect(getCachedTools(threadCacheKey)).toBeUndefined()
+  expect(getCachedTools(OTHER_CACHE_KEY)).toEqual({ save_memo: {} })
+}
 
 beforeEach(async () => {
+  userCachesForTesting.clear()
   mockLogger()
   await setupTestDb()
 })
 
 afterEach(() => {
-  userCachesForTesting.delete(CONTEXT)
+  userCachesForTesting.clear()
 })
 
 describe('makeTools', () => {
@@ -107,25 +150,34 @@ describe('makeTools preference filtering', () => {
   })
 
   test('clears cached parent and thread toolsets when parent preferences change', () => {
-    const parentContextId = toScopedContextId({
-      platformInstanceId: 'telegram-default',
-      nativeContextId: 'group-1',
-    })
-    const threadContextId = toScopedThreadContextId({
-      platformInstanceId: 'telegram-default',
-      nativeContextId: 'group-1',
-      threadId: 'thread-1',
-    })
-    const parentCacheKey = `${parentContextId}:user-1:alice`
-    const threadCacheKey = `${threadContextId}:user-1:alice`
-    setCachedTools(parentCacheKey, { save_memo: {} })
-    setCachedTools(threadCacheKey, { save_memo: {} })
-    setCachedTools('other-context:user-1:alice', { save_memo: {} })
+    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
 
     setToolPrefs(parentContextId, { disabledDomains: ['memo'], toolOverrides: {} })
 
-    expect(getCachedTools(parentCacheKey)).toBeUndefined()
-    expect(getCachedTools(threadCacheKey)).toBeUndefined()
-    expect(getCachedTools('other-context:user-1:alice')).toEqual({ save_memo: {} })
+    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+  })
+
+  test('clears cached parent and thread toolsets when parent plugin enablement changes', () => {
+    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+
+    setPluginEnabledForContext('hello-world', parentContextId, true)
+
+    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+  })
+
+  test('clears cached parent and thread toolsets when parent plugin config changes', () => {
+    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+
+    setPluginConfig(parentContextId, 'hello-world', 'greeting', 'hi')
+
+    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+  })
+
+  test('clears cached parent and thread toolsets when parent MCP endpoints config changes', () => {
+    const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
+
+    setConfigValue(parentContextId, 'mcp_endpoints', '[]')
+
+    expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
   })
 })

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { clearCachedToolsByPrefix } from '../cache.js'
 import type { ChatCapability } from '../chat/types.js'
 import { logger } from '../logger.js'
 import type { TaskCapability } from '../providers/types.js'
@@ -246,6 +247,7 @@ export function resetPluginRegistryForTesting(): void {
 
 export function setPluginEnabledForContext(pluginId: string, contextId: string, enabled: boolean): void {
   setPluginContextEnabled(pluginId, contextId, enabled)
+  clearCachedToolsByPrefix(contextId)
 }
 
 export function isPluginActiveForContext(pluginId: string, contextId: string): boolean {
