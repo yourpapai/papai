@@ -10,6 +10,7 @@
   import TopBar from '../../shared/ui/TopBar.svelte'
 
   import { formatUptime } from '../../shared/helpers.js'
+  import { logout } from '../auth.js'
   import type { DashboardState, ScopeFilter } from '../dashboard-types.js'
 
   interface Props {
@@ -54,6 +55,9 @@
       <span class="debug-topbar__sep"></span>
       <Btn variant="ghost" size="sm" onClick={() => (window.location.href = '/admin')}>
         {#snippet children()}/admin →{/snippet}
+      </Btn>
+      <Btn variant="ghost" size="sm" onClick={() => void logout()}>
+        {#snippet children()}sign out{/snippet}
       </Btn>
     </div>
   {/snippet}

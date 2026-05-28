@@ -6,6 +6,7 @@
 /// <reference lib="dom" />
 import { mount } from 'svelte'
 
+import { ensureAuthenticated } from './auth.js'
 import { dashboard } from './debug.svelte.js'
 import DebugApp from './DebugApp.svelte'
 
@@ -16,5 +17,15 @@ export function mountApp(target: Element): ReturnType<typeof mount> {
 const appTarget = typeof document === 'undefined' ? null : document.querySelector('#app')
 
 if (appTarget !== null) {
-  mountApp(appTarget)
+  void ensureAuthenticated().then((state) => {
+    if (state.authenticated) {
+      mountApp(appTarget)
+    } else {
+      document.body.innerHTML = `
+    <main style="font-family: system-ui; max-width: 540px; margin: 4rem auto; padding: 1rem; line-height: 1.5;">
+      <h1>Sign in required</h1>
+      <p>DM <code>/dashboard</code> to the bot to receive a sign-in link.</p>
+    </main>`
+    }
+  })
 }
