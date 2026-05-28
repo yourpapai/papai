@@ -28,6 +28,7 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../src/chat/types.js'
+import { listCommandCatalogEntries } from '../src/commands/catalog.js'
 import { getConfig, setConfig } from '../src/config.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
@@ -557,6 +558,18 @@ describe('Bot Authorization Gate (setupBot)', () => {
     )
 
     expect(commandHandlers.has('plugin')).toBe(true)
+  })
+
+  test('registered command handlers stay aligned with the command catalog', () => {
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    setupBot(provider, 'admin-1', { processMessage: async () => {} })
+
+    expect([...commandHandlers.keys()].toSorted()).toEqual(
+      listCommandCatalogEntries()
+        .map((entry) => entry.name)
+        .toSorted(),
+    )
   })
 
   test('registers active plugin command contributions', () => {
