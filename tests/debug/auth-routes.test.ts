@@ -91,5 +91,40 @@ describe('auth route handlers', () => {
       const body = z.object({ adminUserId: z.string() }).parse(await res.json())
       expect(body.adminUserId).toBe('u1')
     })
+
+    test('GET /auth/whoami updates last_seen_at on the session row', async () => {
+      const { cookieValue } = mintSession('u1', { secure: false })
+      const before = db
+        .query<{ last_seen_at: number | null }, []>(`SELECT last_seen_at FROM dashboard_sessions LIMIT 1`)
+        .get()
+      expect(before?.last_seen_at).toBeNull()
+      await handleAuthWhoami(
+        new Request('http://localhost/auth/whoami', {
+          headers: { Cookie: `${SESSION_COOKIE_NAME}=${cookieValue}`, 'X-Forwarded-For': '10.0.0.7' },
+        }),
+      )
+      const after = db
+        .query<{ last_seen_at: number | null; last_seen_ip: string | null }, []>(
+          `SELECT last_seen_at, last_seen_ip FROM dashboard_sessions LIMIT 1`,
+        )
+        .get()
+      expect(after?.last_seen_at).not.toBeNull()
+      expect(after?.last_seen_ip).toBe('10.0.0.7')
+    })
+  })
+
+  describe('isSecureRequest (via handleAuthClaim)', () => {
+    test('detects https from multi-value X-Forwarded-Proto', () => {
+      const { nonce } = issueClaim('u1', 'p1')
+      const res = handleAuthClaim(
+        new Request(`http://localhost/auth/claim?n=${nonce}`, {
+          headers: { 'X-Forwarded-Proto': 'https, http' },
+        }),
+        new URL(`http://localhost/auth/claim?n=${nonce}`),
+      )
+      const setCookie = res.headers.get('Set-Cookie')
+      expect(setCookie).not.toBeNull()
+      expect(setCookie).toContain('Secure')
+    })
   })
 })

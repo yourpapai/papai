@@ -4,11 +4,21 @@
 // See LICENSE in the project root for details.
 
 import { readSessionCookie } from '../dashboard-auth/cookie.js'
-import { authenticate, buildClearCookie, consumeClaim, mintSession, revokeSession } from '../dashboard-auth/index.js'
+import {
+  authenticate,
+  buildClearCookie,
+  consumeClaim,
+  mintSession,
+  recordActivity,
+  revokeSession,
+} from '../dashboard-auth/index.js'
 
 const isSecureRequest = (req: Request): boolean => {
   const proto = req.headers.get('X-Forwarded-Proto')
-  if (proto !== null) return proto === 'https'
+  if (proto !== null) {
+    const first = proto.split(',')[0]?.trim()
+    return first === 'https'
+  }
   return new URL(req.url).protocol === 'https:'
 }
 
@@ -36,6 +46,7 @@ export const handleAuthLogout = (req: Request): Response => {
 export const handleAuthWhoami = (req: Request): Response => {
   const session = authenticate(req)
   if (session === null) return new Response('Unauthorized', { status: 401 })
+  recordActivity(session.sessionIdHash, req)
   return new Response(JSON.stringify({ adminUserId: session.adminUserId, expiresAt: session.expiresAt }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
