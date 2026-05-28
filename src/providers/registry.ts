@@ -134,7 +134,7 @@ export function registerContributedTaskProviderType(type: string, entry: Contrib
   log.info({ type, pluginId: entry.pluginId }, 'Registered contributed task provider type')
 }
 
-/** Remove all contributed types owned by a plugin (deactivation / failure cleanup). */
+/** List contributed types owned by a plugin. */
 export function listContributedTaskProviderTypesForPlugin(pluginId: string): string[] {
   return [...pluginContributedTaskProviderFactories.entries()]
     .filter(([, entry]) => entry.pluginId === pluginId)

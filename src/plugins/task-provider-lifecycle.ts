@@ -26,6 +26,17 @@ const defaultDeps: DeactivateContributedTaskProviderTypesDeps = {
   updateTaskInstance,
 }
 
+export function unregisterContributedTaskProviderTypes(
+  pluginId: string,
+  deps: Pick<DeactivateContributedTaskProviderTypesDeps, 'unregisterTypesForPlugin'> = defaultDeps,
+): string[] {
+  const removedTypes = deps.unregisterTypesForPlugin(pluginId)
+  if (removedTypes.length > 0) {
+    log.info({ pluginId, providerTypes: removedTypes }, 'Unregistered contributed task provider types')
+  }
+  return removedTypes
+}
+
 export function deactivateContributedTaskProviderTypes(
   pluginId: string,
   deps: DeactivateContributedTaskProviderTypesDeps = defaultDeps,
@@ -42,7 +53,7 @@ export function deactivateContributedTaskProviderTypes(
     deps.updateTaskInstance(instance.id, { config: undefined, status: 'stopped' })
   }
 
-  const removedTypes = deps.unregisterTypesForPlugin(pluginId)
+  const removedTypes = unregisterContributedTaskProviderTypes(pluginId, deps)
   log.warn(
     { pluginId, providerTypes: removedTypes, stoppedTaskInstanceIds: affectedInstances.map((instance) => instance.id) },
     'Deactivated contributed task provider types',
