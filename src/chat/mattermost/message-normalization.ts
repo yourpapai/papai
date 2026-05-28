@@ -9,6 +9,20 @@ export type NormalizedMattermostText = {
   readonly commandInput: string | null
 }
 
+function isUsernameChar(char: string): boolean {
+  return /[\w.-]/u.test(char)
+}
+
+function isStandaloneMentionAt(text: string, mentionPrefix: string, startIndex: number): boolean {
+  const beforeChar = startIndex === 0 ? '' : text.charAt(startIndex - 1)
+  if (beforeChar !== '' && isUsernameChar(beforeChar)) {
+    return false
+  }
+
+  const afterChar = text.charAt(startIndex + mentionPrefix.length)
+  return afterChar === '' || !isUsernameChar(afterChar)
+}
+
 export function normalizeMattermostMessageText(message: string, botUsername: string | null): NormalizedMattermostText {
   const trimmed = message.trim()
 
@@ -17,13 +31,11 @@ export function normalizeMattermostMessageText(message: string, botUsername: str
   }
 
   const mentionPrefix = `@${botUsername}`
-  if (!trimmed.startsWith(mentionPrefix)) {
-    return { text: trimmed, isMentioned: false, commandInput: null }
-  }
+  const mentionIndex = trimmed.indexOf(mentionPrefix)
+  const isMentioned = mentionIndex >= 0 && isStandaloneMentionAt(trimmed, mentionPrefix, mentionIndex)
 
-  const nextChar = trimmed.charAt(mentionPrefix.length)
-  if (nextChar !== '' && !/\s/u.test(nextChar)) {
-    return { text: trimmed, isMentioned: false, commandInput: null }
+  if (!isMentioned || mentionIndex !== 0) {
+    return { text: trimmed, isMentioned, commandInput: null }
   }
 
   const remainder = trimmed.slice(mentionPrefix.length).trim()

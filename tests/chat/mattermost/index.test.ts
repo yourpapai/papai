@@ -722,6 +722,92 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
+    test('keeps non-prefix mentions on the normal message flow while preserving isMentioned', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      let seen: unknown = null
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post126',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: 'hello @testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('hello @testbot')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('does not treat near-match prefixes as bot mentions or commands', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      let seen: unknown = null
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post127',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbotty /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(false)
+      expect(message.text).toBe('@testbotty /config')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
     test('IncomingMessage contains threadId from replyToMessageId when root_id empty', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
