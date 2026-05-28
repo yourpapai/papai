@@ -527,6 +527,8 @@ describe('MattermostChatProvider', () => {
     test('command auth uses scoped storage context for active platform instance', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
       provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
       let auth: AuthorizationResult | undefined
       provider.registerCommand('test', (_msg, _reply, commandAuth): Promise<void> => {
         auth = commandAuth
@@ -540,7 +542,7 @@ describe('MattermostChatProvider', () => {
           id: 'post123',
           user_id: 'user456',
           channel_id: 'channel789',
-          message: '/test',
+          message: '@testbot /test',
           root_id: 'threadRoot',
           parent_id: '',
         }),

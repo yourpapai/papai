@@ -30,6 +30,7 @@ import {
   uploadMattermostFile,
 } from './file-helpers.js'
 import { resolveMattermostGroupLabel, resolveMattermostUserLabel } from './label-helpers.js'
+import { normalizeMattermostMessageText } from './message-normalization.js'
 import { mattermostCapabilities, mattermostConfigRequirements, mattermostTraits } from './metadata.js'
 import { buildMattermostReplyContext } from './reply-context.js'
 import { createMattermostReplyFn } from './reply-helpers.js'
@@ -190,10 +191,11 @@ export class MattermostChatProvider implements ChatProvider {
     const teamId = contextType === 'group' ? channelInfo.team_id : undefined
     const teamInfo = teamId === undefined ? null : await fetchMattermostTeamInfo(api, teamId)
     const isAdmin = await checkChannelAdmin(post.channel_id, post.user_id, api)
-    const isMentioned = this.botUsername !== null && post.message.includes(`@${this.botUsername}`)
+    const normalized = normalizeMattermostMessageText(post.message, this.botUsername)
+    const isMentioned = normalized.isMentioned
     const threadId = this.determineThreadId(post, isMentioned, contextType, replyToMessageId)
     const reply = this.buildReplyFn(post.channel_id, post.id, threadId)
-    const command = this.matchCommand(post.message)
+    const command = normalized.commandInput === null ? null : this.matchCommand(normalized.commandInput)
     const uname = post.user_name
     const username = typeof uname === 'string' ? uname : typeof senderName === 'string' ? senderName : null
     const dispName = typeof channelInfo.display_name === 'string' ? channelInfo.display_name : channelInfo.name
@@ -214,7 +216,7 @@ export class MattermostChatProvider implements ChatProvider {
       contextName,
       contextParentName,
       isMentioned,
-      text: post.message,
+      text: normalized.text,
       platformInstanceId: this.platformInstanceId,
       commandMatch: command === null ? undefined : command.match,
       messageId: post.id,
