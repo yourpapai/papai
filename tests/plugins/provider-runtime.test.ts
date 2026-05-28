@@ -133,6 +133,17 @@ describe('buildProviderRuntime.httpFetch', () => {
     expect(runtime.allowedHosts.has('evil.example.com')).toBe(false)
   })
 
+  test('mutating exposed allowedHosts does not affect httpFetch enforcement', async () => {
+    const runtime = buildProviderRuntime(['allowed.example'], makeLogger(), {
+      fetch: () => Promise.resolve(new Response('ok')),
+      assertPublicUrl: () => Promise.resolve(),
+    })
+    const addToSet = Reflect.get(Set.prototype, 'add')
+    Reflect.apply(addToSet, runtime.allowedHosts, ['evil.example'])
+
+    await expect(runtime.httpFetch('https://evil.example/data')).rejects.toThrow('Host evil.example is not allowed')
+  })
+
   test('fetch receives an AbortSignal even when caller provides no init', async () => {
     mockLogger()
     const capturedSignals: Array<AbortSignal | null | undefined> = []

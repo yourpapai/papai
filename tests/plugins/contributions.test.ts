@@ -1002,6 +1002,39 @@ describe('buildPluginPromptSection', () => {
     expect(called).toBe(true)
   })
 
+  test('prompt section skips throwing fragment and keeps later fragments', () => {
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: ['bad', 'good'],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [
+          {
+            name: 'bad',
+            content: (): string => {
+              throw new Error('fragment boom')
+            },
+          },
+          { name: 'good', content: 'SAFE_FRAGMENT' },
+        ],
+        commands: [],
+        jobs: [],
+      },
+      manifest,
+    )
+
+    expect(buildPluginPromptSection(['test-plugin'])).toContain('SAFE_FRAGMENT')
+  })
+
   test('truncates fragment exceeding per-plugin limit', () => {
     const manifest = makeManifest()
     const longContent = 'x'.repeat(MAX_FRAGMENT_LENGTH_PER_PLUGIN + 100)
