@@ -66,7 +66,7 @@ The bot interprets natural-language requests, invokes capability-gated tools thr
 | **Deferred Prompts** | One-shot, delayed, cron                         | Scheduled proactive assistance                                       |
 | **Instructions**     | Context-specific guidance                       | Per-chat custom instructions                                         |
 | **Plugins**          | Trusted local extensions                        | Discover, approve, and enable first-party plugins per context        |
-| **MCP Servers**      | External tools via Model Context Protocol       | Merge tools from per-context or plugin-declared MCP servers           |
+| **MCP Servers**      | External tools via Model Context Protocol       | Merge tools from per-context or plugin-declared MCP servers          |
 
 ### Platform Support
 
@@ -342,11 +342,11 @@ Use the bot’s DM-based configuration flow:
 
 Runtime keys shown by `/setup` and `/config` include:
 
-| Key              | Description                                      |
-| ---------------- | ------------------------------------------------ |
-| `kaneo_apikey`   | Kaneo API key or session token                   |
-| `youtrack_token` | YouTrack permanent token                         |
-| `timezone`       | User timezone for local date/time interpretation |
+| Key              | Description                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| `kaneo_apikey`   | Kaneo API key or session token                                                                   |
+| `youtrack_token` | YouTrack permanent token                                                                         |
+| `timezone`       | User timezone for local date/time interpretation                                                 |
 | `mcp_endpoints`  | JSON array of external MCP server endpoints whose tools are merged into the context (HTTPS only) |
 
 LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
@@ -431,13 +431,13 @@ plugins/
 
 ### Contribution Surface
 
-| Surface          | Exposed as                                    | Notes                                                          |
-| ---------------- | --------------------------------------------- | -------------------------------------------------------------- |
-| LLM tools        | `plugin_<plugin_id>__<tool_name>`             | Sandwiched through the same execution wrapper as core tools.   |
-| Prompt fragments | Appended to system prompt (8,000-char budget) | Synchronous only; 2,000 chars per fragment.                    |
-| Commands         | `plugin_<plugin_id>_<command_name>`           | Registered through the normal chat command path.               |
-| Scheduled jobs   | Owner `plugin:<pluginId>:<jobName>`           | Runs only for contexts where the plugin is enabled & eligible. |
-| External MCP server | `plugin_<server>__<tool>`                  | Optional manifest `mcp` block; tools fetched from a Model Context Protocol server. |
+| Surface             | Exposed as                                    | Notes                                                                              |
+| ------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| LLM tools           | `plugin_<plugin_id>__<tool_name>`             | Sandwiched through the same execution wrapper as core tools.                       |
+| Prompt fragments    | Appended to system prompt (8,000-char budget) | Synchronous only; 2,000 chars per fragment.                                        |
+| Commands            | `plugin_<plugin_id>_<command_name>`           | Registered through the normal chat command path.                                   |
+| Scheduled jobs      | Owner `plugin:<pluginId>:<jobName>`           | Runs only for contexts where the plugin is enabled & eligible.                     |
+| External MCP server | `plugin_<server>__<tool>`                     | Optional manifest `mcp` block; tools fetched from a Model Context Protocol server. |
 
 ### Context API
 
