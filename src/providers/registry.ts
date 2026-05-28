@@ -5,11 +5,10 @@
 
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { ALL_CAPABILITIES, KANEO_TRAITS } from './kaneo/constants.js'
+import { builtinDescriptorSeeds } from './builtin-descriptors.js'
 import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
-import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './youtrack/constants.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
@@ -136,13 +135,23 @@ export function registerContributedTaskProviderType(type: string, entry: Contrib
 }
 
 /** Remove all contributed types owned by a plugin (deactivation / failure cleanup). */
-export function unregisterContributedTaskProviderType(pluginId: string): void {
+export function listContributedTaskProviderTypesForPlugin(pluginId: string): string[] {
+  return [...pluginContributedTaskProviderFactories.entries()]
+    .filter(([, entry]) => entry.pluginId === pluginId)
+    .map(([type]) => type)
+}
+
+/** Remove all contributed types owned by a plugin (deactivation / failure cleanup). */
+export function unregisterContributedTaskProviderType(pluginId: string): string[] {
+  const removedTypes: string[] = []
   for (const [type, entry] of pluginContributedTaskProviderFactories) {
     if (entry.pluginId === pluginId) {
       pluginContributedTaskProviderFactories.delete(type)
+      removedTypes.push(type)
       log.debug({ type, pluginId }, 'Unregistered contributed task provider type')
     }
   }
+  return removedTypes
 }
 
 /** Look up a contributed task provider entry by type. */
@@ -165,15 +174,6 @@ export type TaskProviderTypeDescriptor = {
   traits: ReadonlySet<TaskProviderTrait>
   /** Temporary compatibility surface for code that still reads the legacy combined configSchema. */
   configSchema: readonly ProviderConfigField[]
-}
-
-type BuiltinDescriptorSeed = {
-  type: string
-  displayName: string
-  capabilities: ReadonlySet<TaskCapability>
-  instanceConfigSchema: readonly ProviderConfigField[]
-  contextConfigSchema: readonly ProviderConfigField[]
-  traits: ReadonlySet<TaskProviderTrait>
 }
 
 const legacyConfigSchema = (descriptor: TaskProviderTypeDescriptor): readonly ProviderConfigField[] => [
@@ -202,56 +202,6 @@ const contributedContextFields = (entry: ContributedTaskProviderEntry): readonly
   if (entry.contextConfigSchema !== undefined) return normalizeContributedFields(entry.contextConfigSchema)
   return normalizeContributedFields(entry.configSchema).filter((field) => field.scope === 'context')
 }
-
-const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
-  {
-    type: 'kaneo',
-    displayName: 'Kaneo',
-    capabilities: ALL_CAPABILITIES,
-    traits: KANEO_TRAITS,
-    instanceConfigSchema: [
-      { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
-      { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
-    ],
-    contextConfigSchema: [
-      {
-        key: 'credential',
-        label: 'Kaneo API Key',
-        required: true,
-        sensitive: true,
-        scope: 'context',
-        storageKey: 'kaneo_apikey',
-      },
-      {
-        key: 'workspaceId',
-        label: 'Workspace ID',
-        required: true,
-        sensitive: false,
-        scope: 'context',
-        storageKey: 'kaneo_workspace_id',
-      },
-    ],
-  },
-  {
-    type: 'youtrack',
-    displayName: 'YouTrack',
-    capabilities: YOUTRACK_CAPABILITIES,
-    traits: YOUTRACK_TRAITS,
-    instanceConfigSchema: [
-      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
-    ],
-    contextConfigSchema: [
-      {
-        key: 'token',
-        label: 'YouTrack Permanent Token',
-        required: true,
-        sensitive: true,
-        scope: 'context',
-        storageKey: 'youtrack_token',
-      },
-    ],
-  },
-]
 
 /** Look up a single task-provider type descriptor (built-in or contributed). */
 export function getTaskProviderDescriptor(type: string): TaskProviderTypeDescriptor | undefined {
