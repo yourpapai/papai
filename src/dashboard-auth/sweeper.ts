@@ -18,7 +18,9 @@ export interface SweeperOptions {
 
 const defaultSchedule = (fn: () => void, ms: number): (() => void) => {
   const handle = setInterval(fn, ms)
-  handle.unref()
+  if (typeof (handle as { unref?: () => void }).unref === 'function') {
+    ;(handle as { unref: () => void }).unref()
+  }
   return (): void => {
     clearInterval(handle)
   }
@@ -37,7 +39,7 @@ export const startSweeper = (opts: SweeperOptions = {}): (() => void) => {
     try {
       sweep()
     } catch (err) {
-      log.error({ err: err instanceof Error ? err.message : String(err) }, 'dashboard-auth sweep failed')
+      log.error({ error: err instanceof Error ? err.message : String(err) }, 'dashboard-auth sweep failed')
     }
   }, intervalMs)
   return stop
