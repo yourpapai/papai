@@ -9,7 +9,8 @@ import { getCommandCatalogEntry, listCommandCatalogEntries } from '../../src/com
 
 describe('command catalog', () => {
   test('contains the current papai command surface with Telegram publication metadata', () => {
-    const names = listCommandCatalogEntries().map((entry) => entry.name)
+    const entries = listCommandCatalogEntries()
+    const names = entries.map((entry) => entry.name)
 
     expect(names).toEqual([
       'help',
@@ -45,5 +46,11 @@ describe('command catalog', () => {
         publishInGroupAdmin: false,
       },
     })
+
+    for (const entry of entries) {
+      expect(entry).toHaveProperty('registration')
+      expect(typeof entry.registration).toBe('string')
+      expect(entry.registration.length > 0).toBe(true)
+    }
   })
 })

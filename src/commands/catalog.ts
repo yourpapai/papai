@@ -13,6 +13,7 @@ export type TelegramCommandVisibility = {
 export type CommandCatalogEntry = {
   readonly name: string
   readonly description: string
+  readonly registration: string
   readonly telegram: TelegramCommandVisibility
 }
 
@@ -20,6 +21,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'help',
     description: 'Show available commands',
+    registration: 'registerHelpCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,
@@ -30,6 +32,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'start',
     description: 'Show welcome and getting-started guidance',
+    registration: 'registerStartCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,
@@ -40,6 +43,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'setup',
     description: 'Interactive configuration wizard',
+    registration: 'registerSetupCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,
@@ -50,6 +54,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'config',
     description: 'View or edit current configuration',
+    registration: 'registerConfigCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,
@@ -60,6 +65,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'context',
     description: 'Show current LLM context usage',
+    registration: 'registerContextCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,
@@ -70,6 +76,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'clear',
     description: 'Clear conversation history and memory',
+    registration: 'registerClearCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,
@@ -80,6 +87,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'group',
     description: 'Manage group authorization or membership',
+    registration: 'registerGroupCommand',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
@@ -90,6 +98,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'groups',
     description: 'List authorized groups',
+    registration: 'registerAdminCommands',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
@@ -100,6 +109,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'user',
     description: 'Manage users',
+    registration: 'registerAdminCommands',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
@@ -110,6 +120,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'users',
     description: 'List authorized users',
+    registration: 'registerAdminCommands',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
@@ -120,6 +131,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'announce',
     description: 'Send announcement to all authorized users',
+    registration: 'registerAdminCommands',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
@@ -130,6 +142,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   {
     name: 'plugin',
     description: 'Manage plugins',
+    registration: 'registerPluginCommand',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
