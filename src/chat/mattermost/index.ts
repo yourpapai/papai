@@ -66,13 +66,18 @@ export class MattermostChatProvider implements ChatProvider {
   private wsSeq = 1
 
   constructor(...args: [] | [MattermostConstructorConfig]) {
-    const resolved = resolveMattermostConfig(args[0] ?? {})
+    let config: MattermostConstructorConfig
+    if (args[0] === undefined) {
+      config = {}
+    } else {
+      config = args[0]
+    }
+    const resolved = resolveMattermostConfig(config)
     this.baseUrl = resolved.baseUrl
     this.token = resolved.token
     this.platformInstanceId = resolved.platformInstanceId
     log.debug({ platformInstanceId: this.platformInstanceId }, 'MattermostChatProvider constructed')
   }
-
   registerCommand(name: string, handler: CommandHandler): void {
     this.commands.set(name, handler)
   }
@@ -80,7 +85,6 @@ export class MattermostChatProvider implements ChatProvider {
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
   }
-
   async sendMessage(_platformInstanceId: string, target: DeferredDeliveryTarget, markdown: string): Promise<void> {
     if (target.contextType === 'dm') {
       if (this.botUserId === null) throw new Error('Bot not started')
