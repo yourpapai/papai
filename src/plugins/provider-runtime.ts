@@ -70,7 +70,7 @@ async function validateHop(
   assertPublicUrl: (url: URL) => Promise<void>,
 ): Promise<void> {
   if (!hostSet.has(url.hostname.toLowerCase())) {
-    throw new Error(`Host ${url.hostname} is not allowed`)
+    throw new Error(`Host '${url.hostname}' is not in the plugin providerAllowedHosts allowlist`)
   }
   await assertPublicUrl(url)
 }

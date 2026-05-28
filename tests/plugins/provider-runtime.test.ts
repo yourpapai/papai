@@ -141,7 +141,9 @@ describe('buildProviderRuntime.httpFetch', () => {
     const addToSet = Reflect.get(Set.prototype, 'add')
     Reflect.apply(addToSet, runtime.allowedHosts, ['evil.example'])
 
-    await expect(runtime.httpFetch('https://evil.example/data')).rejects.toThrow('Host evil.example is not allowed')
+    await expect(runtime.httpFetch('https://evil.example/data')).rejects.toThrow(
+      "Host 'evil.example' is not in the plugin providerAllowedHosts allowlist",
+    )
   })
 
   test('fetch receives an AbortSignal even when caller provides no init', async () => {
