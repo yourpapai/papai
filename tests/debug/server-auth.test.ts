@@ -10,7 +10,7 @@ import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { mintSession } from '../../src/dashboard-auth/index.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
-import { __routeRequestForTest } from '../../src/debug/server.js'
+import { routeRequestForTest } from '../../src/debug/server.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 describe('debug server auth (session-only)', () => {
@@ -27,12 +27,12 @@ describe('debug server auth (session-only)', () => {
   })
 
   test('returns 401 with no cookie', async () => {
-    const res = await __routeRequestForTest(new Request('http://localhost/events'))
+    const res = await routeRequestForTest(new Request('http://localhost/events'))
     expect(res.status).toBe(401)
   })
 
   test('returns 401 with an unknown cookie value', async () => {
-    const res = await __routeRequestForTest(
+    const res = await routeRequestForTest(
       new Request('http://localhost/events', { headers: { Cookie: `${SESSION_COOKIE_NAME}=ffff` } }),
     )
     expect(res.status).toBe(401)
@@ -40,7 +40,7 @@ describe('debug server auth (session-only)', () => {
 
   test('accepts a minted session cookie', async () => {
     const { cookieValue } = mintSession('admin-1', { secure: false })
-    const res = await __routeRequestForTest(
+    const res = await routeRequestForTest(
       new Request('http://localhost/logs/stats', { headers: { Cookie: `${SESSION_COOKIE_NAME}=${cookieValue}` } }),
     )
     expect(res.status).toBe(200)
@@ -48,7 +48,7 @@ describe('debug server auth (session-only)', () => {
 
   test('rejects bearer header (DEBUG_TOKEN no longer accepted)', async () => {
     process.env['DEBUG_TOKEN'] = 'legacy'
-    const res = await __routeRequestForTest(
+    const res = await routeRequestForTest(
       new Request('http://localhost/logs/stats', { headers: { Authorization: 'Bearer legacy' } }),
     )
     expect(res.status).toBe(401)

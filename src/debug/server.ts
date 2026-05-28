@@ -262,7 +262,7 @@ export function startDebugServer(adminUserId: string, ...args: [] | [string]): v
   log.info({ port, hostname }, 'Debug server started (session auth)')
 }
 
-export const __routeRequestForTest = (req: Request): Promise<Response> => routeRequest(req)
+export const routeRequestForTest = (req: Request): Promise<Response> => routeRequest(req)
 
 export function stopDebugServer(): void {
   if (server !== null) {
