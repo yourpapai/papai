@@ -10,6 +10,7 @@
   import TopBar from '../../shared/ui/TopBar.svelte'
 
   import { adminState, refreshAll, setWindow } from '../admin.svelte.js'
+  import { logout } from '../auth.js'
   import { adminGlobals } from '../global-stats.svelte.js'
   import type { StatsWindow } from '../global-stats.svelte.js'
 
@@ -28,6 +29,10 @@
       <Pill tone="accent" dot>{#snippet children()}configured{/snippet}</Pill>
       <span class="admin-topbar__sep"></span>
       <a class="admin-topbar__back" href="/debug">← /debug</a>
+      <span class="admin-topbar__spacer"></span>
+      <Btn variant="ghost" size="sm" onClick={() => void logout()}>
+        {#snippet children()}sign out{/snippet}
+      </Btn>
     </div>
   {/snippet}
   {#snippet secondaryRow()}
