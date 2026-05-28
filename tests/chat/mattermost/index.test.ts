@@ -722,6 +722,40 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
+    test('replies with guidance when a message only mentions the bot', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      const replies = createMockReply()
+      provider.onMessage(async (_msg, reply) => {
+        await reply.text('should not be called')
+      })
+
+      // @ts-expect-error - replacing private method for testing
+      provider.buildReplyFn = (): typeof replies.reply => replies.reply
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post129',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(replies.getReplies()).toEqual(['Use `@papai /help` to see commands, or mention me with a question.'])
+
+      restoreFetch()
+    })
+
     test('keeps non-prefix mentions on the normal message flow while preserving isMentioned', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 

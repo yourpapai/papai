@@ -66,13 +66,7 @@ export class MattermostChatProvider implements ChatProvider {
   private wsSeq = 1
 
   constructor(...args: [] | [MattermostConstructorConfig]) {
-    let config: MattermostConstructorConfig
-    if (args[0] === undefined) {
-      config = {}
-    } else {
-      config = args[0]
-    }
-    const resolved = resolveMattermostConfig(config)
+    const resolved = resolveMattermostConfig(args[0] ?? {})
     this.baseUrl = resolved.baseUrl
     this.token = resolved.token
     this.platformInstanceId = resolved.platformInstanceId
@@ -170,12 +164,16 @@ export class MattermostChatProvider implements ChatProvider {
     const replyToMessageId = extractReplyId(post.parent_id, post.root_id)
     cacheIncomingPost(post, replyToMessageId, senderName)
     const { msg, reply, command, isAdmin } = await this.buildPostedMessage(post, senderName, replyToMessageId)
+    if (msg.isMentioned && msg.text === '') {
+      await reply.text('Use `@papai /help` to see commands, or mention me with a question.')
+      return
+    }
     if (command !== null) {
       const auth = buildScopedCommandAuth(msg, isAdmin, this.platformInstanceId)
       await command.handler(msg, reply, auth)
-    } else if (this.messageHandler !== null) {
-      await this.messageHandler(msg, reply)
+      return
     }
+    if (this.messageHandler !== null) await this.messageHandler(msg, reply)
   }
 
   async buildPostedMessage(
