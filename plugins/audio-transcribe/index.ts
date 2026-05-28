@@ -6,11 +6,7 @@
 import { z } from 'zod'
 
 import type { PluginContext } from '../../src/plugins/context.js'
-import type {
-  PluginAttachmentRecord,
-  PluginFactory,
-  PluginToolRuntimeContext,
-} from '../../src/plugins/types.js'
+import type { PluginAttachmentRecord, PluginFactory, PluginToolRuntimeContext } from '../../src/plugins/types.js'
 
 const DEFAULT_BASE_URL = 'https://api.openai.com'
 const DEFAULT_MODEL = 'whisper-1'
@@ -46,10 +42,7 @@ function normalizeModel(raw: string | undefined): string {
   return value === '' ? DEFAULT_MODEL : value
 }
 
-function readCachedTranscript(
-  kv: PluginToolRuntimeContext['kv'],
-  cacheKey: string,
-): TranscribeResult | undefined {
+function readCachedTranscript(kv: PluginToolRuntimeContext['kv'], cacheKey: string): TranscribeResult | undefined {
   const raw = kv.get(cacheKey)
   if (raw === undefined) return undefined
   try {
@@ -66,10 +59,7 @@ function readCachedTranscript(
 async function loadAudioAttachment(
   runtimeContext: PluginToolRuntimeContext,
   attachmentId: string,
-): Promise<
-  | { ok: true; record: PluginAttachmentRecord; bytes: Buffer }
-  | { ok: false; result: unknown }
-> {
+): Promise<{ ok: true; record: PluginAttachmentRecord; bytes: Buffer } | { ok: false; result: unknown }> {
   try {
     const { record, bytes } = await runtimeContext.attachments.read(attachmentId)
     if (record.mimeType === undefined || !record.mimeType.startsWith('audio/')) {
@@ -105,9 +95,11 @@ function buildMultipartBody(
   form.append('model', model)
   form.append('response_format', 'json')
   if (language !== undefined) form.append('language', language)
-  // Convert Buffer to ArrayBuffer view (Bun's Blob constructor accepts BufferSource)
-  const view = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  form.append('file', new Blob([view], { type: record.mimeType ?? 'application/octet-stream' }), record.filename)
+  // Copy to a fresh ArrayBuffer. Buffer's underlying `.buffer` is typed as
+  // ArrayBuffer | SharedArrayBuffer since TS 5.7, which BlobPart rejects.
+  const arrayBuffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(arrayBuffer).set(bytes)
+  form.append('file', new Blob([arrayBuffer], { type: record.mimeType ?? 'application/octet-stream' }), record.filename)
   return form
 }
 
@@ -214,8 +206,7 @@ const factory: PluginFactory = () => {
 
       ctx.registration.registerTool({
         name: 'transcribe',
-        description:
-          'Transcribes an audio attachment to text. Call this when the user sends a voice/audio message.',
+        description: 'Transcribes an audio attachment to text. Call this when the user sends a voice/audio message.',
         inputSchema: transcribeInputSchema,
         execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
           executeTranscribe(input, runtimeContext, apiKey, baseUrl, model, httpFetch),

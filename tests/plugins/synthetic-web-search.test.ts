@@ -96,6 +96,9 @@ function createMockRuntimeContext(
         retryAfterSec: overrides.retryAfterSec,
       }),
     },
+    attachments: {
+      read: () => notImplemented(),
+    },
   }
 }
 

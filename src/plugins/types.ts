@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 import type { AuthorizationResult, ChatCapability, IncomingMessage, ReplyFn } from '../chat/types.js'
 import type { TaskCapability, TaskProvider } from '../providers/types.js'
+import type { PluginAttachmentFacade } from './attachment-types.js'
 import type { PluginContext } from './context.js'
 
 /** Current plugin API version. Plugins declaring a different apiVersion will be rejected as incompatible. */
@@ -237,20 +238,7 @@ export type PluginTaskProviderFacade = Pick<
   'getTask' | 'listTasks' | 'searchTasks' | 'createTask' | 'updateTask'
 >
 
-export type PluginAttachmentRecord = {
-  attachmentId: string
-  filename: string
-  mimeType: string | undefined
-  size: number | undefined
-  createdAt: string
-}
-
-export type PluginAttachmentFacade = {
-  read(attachmentId: string): Promise<{
-    record: PluginAttachmentRecord
-    bytes: Buffer
-  }>
-}
+export type { PluginAttachmentFacade, PluginAttachmentRecord } from './attachment-types.js'
 
 export type PluginToolRuntimeContext = {
   pluginId: string

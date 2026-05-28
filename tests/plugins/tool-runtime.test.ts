@@ -86,7 +86,7 @@ describe('buildPluginToolRuntimeContext', () => {
 
     test('throws when plugin lacks attachments.read permission', async () => {
       const ctx = buildPluginToolRuntimeContext('test-plugin', makeManifest({ permissions: [] }), makeRuntime())
-      await expect(ctx.attachments.read('att_anything')).rejects.toThrow(/attachments\.read/)
+      await expect(ctx.attachments.read('att_anything')).rejects.toThrow(/attachments\.read/u)
     })
 
     test('returns record metadata and bytes for an attachment in the current context', async () => {
@@ -119,7 +119,7 @@ describe('buildPluginToolRuntimeContext', () => {
         makeManifest({ permissions: ['attachments.read'] }),
         makeRuntime({ storageContextId: 'ctx-1' }),
       )
-      await expect(ctx.attachments.read('att_does_not_exist')).rejects.toThrow(/attachment_not_found/)
+      await expect(ctx.attachments.read('att_does_not_exist')).rejects.toThrow(/attachment_not_found/u)
     })
 
     test('cannot access an attachment from a different storage context', async () => {
@@ -139,7 +139,7 @@ describe('buildPluginToolRuntimeContext', () => {
         makeRuntime({ storageContextId: 'ctx-B' }),
       )
 
-      await expect(ctx.attachments.read(saved.attachmentId)).rejects.toThrow(/attachment_not_found/)
+      await expect(ctx.attachments.read(saved.attachmentId)).rejects.toThrow(/attachment_not_found/u)
     })
   })
 })

@@ -79,6 +79,8 @@ function createMockContext(
   return { ctx, registeredTool, registeredFragment }
 }
 
+type MockAttachments = { facade: PluginAttachmentFacade; readMock: ReturnType<typeof mock> }
+
 function createMockAttachments(
   overrides: {
     filename?: string
@@ -87,26 +89,25 @@ function createMockAttachments(
     bytes?: Buffer
     throwOnRead?: Error
   } = {},
-): PluginAttachmentFacade {
+): MockAttachments {
   const filename = overrides.filename ?? 'voice.ogg'
   const mimeType: string | undefined = 'mimeType' in overrides ? overrides.mimeType : 'audio/ogg'
   const bytes = overrides.bytes ?? Buffer.from('fake-audio-bytes')
   const size = overrides.size ?? bytes.byteLength
-  return {
-    read: mock(async (attachmentId: string) => {
-      if (overrides.throwOnRead !== undefined) throw overrides.throwOnRead
-      return {
-        record: {
-          attachmentId,
-          filename,
-          mimeType,
-          size,
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-        bytes,
-      }
-    }),
-  }
+  const readMock = mock((attachmentId: string) => {
+    if (overrides.throwOnRead !== undefined) return Promise.reject(overrides.throwOnRead)
+    return Promise.resolve({
+      record: {
+        attachmentId,
+        filename,
+        mimeType,
+        size,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      bytes,
+    })
+  })
+  return { facade: { read: readMock }, readMock }
 }
 
 type RuntimeOverrides = {
@@ -146,7 +147,7 @@ function createMockRuntimeContext(overrides: RuntimeOverrides = {}): PluginToolR
         retryAfterSec: overrides.retryAfterSec,
       }),
     },
-    attachments: overrides.attachments ?? createMockAttachments(),
+    attachments: overrides.attachments ?? createMockAttachments().facade,
   }
 }
 
@@ -219,19 +220,19 @@ describe('audio-transcribe plugin', () => {
 
   test('returns rate_limited error without touching attachments or httpFetch', async () => {
     const mockHttpFetch = mock().mockResolvedValue(new Response('', { status: 200 }))
-    const attachments = createMockAttachments()
+    const { facade, readMock } = createMockAttachments()
     const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
     const instance = factory()
     void instance.activate(ctx)
 
     const result = await registeredTool.value!.execute(
       { attachment_id: 'att_1' },
-      createMockRuntimeContext({ rateAllowed: false, retryAfterSec: 30, attachments }),
+      createMockRuntimeContext({ rateAllowed: false, retryAfterSec: 30, attachments: facade }),
       createMockOptions(),
     )
 
     expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
-    expect(attachments.read).not.toHaveBeenCalled()
+    expect(readMock).not.toHaveBeenCalled()
     expect(mockHttpFetch).not.toHaveBeenCalled()
   })
 
@@ -244,7 +245,7 @@ describe('audio-transcribe plugin', () => {
     const result = await registeredTool.value!.execute(
       { attachment_id: 'att_missing' },
       createMockRuntimeContext({
-        attachments: createMockAttachments({ throwOnRead: new Error('attachment_not_found') }),
+        attachments: createMockAttachments({ throwOnRead: new Error('attachment_not_found') }).facade,
       }),
       createMockOptions(),
     )
@@ -262,7 +263,7 @@ describe('audio-transcribe plugin', () => {
     const result = await registeredTool.value!.execute(
       { attachment_id: 'att_1' },
       createMockRuntimeContext({
-        attachments: createMockAttachments({ mimeType: 'image/png', filename: 'pic.png' }),
+        attachments: createMockAttachments({ mimeType: 'image/png', filename: 'pic.png' }).facade,
       }),
       createMockOptions(),
     )
@@ -281,7 +282,7 @@ describe('audio-transcribe plugin', () => {
     const result = await registeredTool.value!.execute(
       { attachment_id: 'att_1' },
       createMockRuntimeContext({
-        attachments: createMockAttachments({ size: tooBig, bytes: Buffer.from('x') }),
+        attachments: createMockAttachments({ size: tooBig, bytes: Buffer.from('x') }).facade,
       }),
       createMockOptions(),
     )
@@ -319,11 +320,7 @@ describe('audio-transcribe plugin', () => {
     const instance = factory()
     void instance.activate(ctx)
 
-    await registeredTool.value!.execute(
-      { attachment_id: 'att_1' },
-      createMockRuntimeContext(),
-      createMockOptions(),
-    )
+    await registeredTool.value!.execute({ attachment_id: 'att_1' }, createMockRuntimeContext(), createMockOptions())
 
     expect(mockHttpFetch).toHaveBeenCalledWith(
       'https://api.groq.com/openai/v1/audio/transcriptions',
