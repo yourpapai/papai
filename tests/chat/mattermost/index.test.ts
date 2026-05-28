@@ -557,6 +557,105 @@ describe('MattermostChatProvider', () => {
       restoreFetch()
     })
 
+    test('routes @mention-prefixed slash text to the registered command handler', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(true)
+
+      restoreFetch()
+    })
+
+    test('does not route bare slash text to papai command handlers', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '/config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+
+      restoreFetch()
+    })
+
+    test('keeps mention-prefixed natural language on the message flow', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let seen: unknown = null
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot summarize this thread',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('summarize this thread')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
     test('IncomingMessage contains threadId from replyToMessageId when root_id empty', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
 
