@@ -5,6 +5,7 @@
 
 import type { ToolSet } from 'ai'
 
+import { getConfigContextIdFromStorageContextId } from '../chat/scoped-context.js'
 import { getPluginConfig } from '../config.js'
 import { buildMcpToolSet, buildPluginMcpToolSet, mcpPool } from '../mcp/index.js'
 import type { PluginMcpDescriptor } from '../mcp/plugin-endpoints.js'
@@ -21,7 +22,8 @@ export type { MakeToolsOptions, ToolMode }
 
 function applyToolPreferences(tools: ToolSet, contextId: string | undefined): ToolSet {
   if (contextId === undefined) return tools
-  const prefs = getToolPrefs(contextId)
+  const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
+  const prefs = getToolPrefs(prefsContextId)
   if (prefs.disabledDomains.length === 0 && Object.keys(prefs.toolOverrides).length === 0) return tools
   const { enabled } = partitionToolNames(prefs, Object.keys(tools))
   return Object.fromEntries(Object.entries(tools).filter(([name]) => enabled.has(name)))
@@ -152,6 +154,7 @@ export async function makeTools(
   const chatUserId = options === undefined ? undefined : options.chatUserId
   const username = options === undefined ? undefined : options.username
   const contextId = storageContextId
+  const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
   const mode = options === undefined || options.mode === undefined ? 'normal' : options.mode
   const contextType = options === undefined ? undefined : options.contextType
   const stagedDownloadFn = options === undefined ? undefined : options.stagedDownloadFn
@@ -160,17 +163,17 @@ export async function makeTools(
   const wrappedBuiltins = wrapToolSet(tools)
 
   let mcpTools: ToolSet = {}
-  if (contextId !== undefined) {
+  if (sharedContextId !== undefined) {
     try {
-      mcpTools = await buildMcpToolSet(contextId)
+      mcpTools = await buildMcpToolSet(sharedContextId)
     } catch {
       // MCP failures don't break the tool pipeline
     }
   }
 
   let pluginTools: ToolSet = {}
-  if (contextId !== undefined && chatUserId !== undefined) {
-    const result = await buildPluginAndMcpTools(provider, contextId, chatUserId, wrappedBuiltins)
+  if (sharedContextId !== undefined && chatUserId !== undefined) {
+    const result = await buildPluginAndMcpTools(provider, sharedContextId, chatUserId, wrappedBuiltins)
     pluginTools = result.pluginTools
     Object.assign(mcpTools, result.extraMcpTools)
   }

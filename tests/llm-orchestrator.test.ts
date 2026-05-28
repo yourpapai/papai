@@ -9,10 +9,11 @@ import assert from 'node:assert/strict'
 import { APICallError } from '@ai-sdk/provider'
 import type { ModelMessage } from 'ai'
 
+import { getConfigContextIdFromStorageContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import type { ReplyFn } from '../src/chat/types.js'
 import type { DebugEvent } from '../src/debug/event-bus.js'
 import type { LlmOrchestratorDeps } from '../src/llm-orchestrator-types.js'
-import { defaultDeps, processMessage } from '../src/llm-orchestrator.js'
+import { defaultDeps, processMessage, resolveAiOutputSettingsContextId } from '../src/llm-orchestrator.js'
 import type { TaskProvider } from '../src/providers/types.js'
 import type { MemoryFact } from '../src/types/memory.js'
 import { createMockProvider } from './tools/mock-provider.js'
@@ -147,6 +148,18 @@ import type { MakeToolsOptions } from '../src/tools/index.js'
 import { setKaneoWorkspace } from '../src/users.js'
 
 const CTX_ID = 'ctx-1'
+
+test('AI output settings context resolves thread to parent group', () => {
+  const threadContextId = toScopedThreadContextId({
+    platformInstanceId: 'telegram-default',
+    nativeContextId: 'group-1',
+    threadId: 'thread-1',
+  })
+
+  expect(resolveAiOutputSettingsContextId(threadContextId)).toBe(
+    getConfigContextIdFromStorageContextId(threadContextId),
+  )
+})
 
 /** Seed the central LLM config used by every orchestrator call. */
 const seedSystemLlmConfig = (): void => {

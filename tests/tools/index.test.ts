@@ -69,6 +69,31 @@ describe('makeTools preference filtering', () => {
     expect(Object.keys(tools)).toContain('create_task')
   })
 
+  test('applies parent group tool preferences in thread context', async () => {
+    const provider = createMockProvider()
+    const parentContextId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+    })
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-1',
+    })
+    setToolPrefs(parentContextId, { disabledDomains: ['memo'], toolOverrides: {} })
+
+    const tools = await makeTools(provider, {
+      storageContextId: threadContextId,
+      chatUserId: 'user-1',
+      contextType: 'group',
+    })
+
+    expect(Object.keys(tools)).not.toContain('save_memo')
+    expect(Object.keys(tools)).not.toContain('search_memos')
+    expect(Object.keys(tools)).toContain('create_task')
+    expect(Object.keys(tools)).toContain('lookup_group_history')
+  })
+
   test('honors a per-tool override that disables one tool in an enabled domain', async () => {
     const provider = createMockProvider()
     setToolPrefs(CONTEXT, { disabledDomains: [], toolOverrides: { create_task: false } })
