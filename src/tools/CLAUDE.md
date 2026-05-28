@@ -24,11 +24,17 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
 
 - Core tool construction starts in `src/tools/core-tools.ts`.
 - Context-aware assembly happens in `src/tools/tools-builder.ts`.
-- Public entry point is `makeTools(provider, options)` in `src/tools/index.ts`.
-- After capability + context gating and plugin merge, `makeTools()` applies the
-  per-context tool denylist from `src/tools/tool-preferences.ts` (default all-on).
-  Disabled tools are physically removed from the returned `ToolSet`, so they cannot be
-  invoked. Preferences are keyed by the same `storageContextId` used elsewhere.
+- Public entry point is `makeTools(provider, options)` in `src/tools/index.ts`. It is
+  **async** and returns `Promise<ToolSet>` (both overloads) — callers must `await` it —
+  because it may connect to external MCP servers.
+- The merge order inside `makeTools()` is: wrapped builtins → MCP tools (user endpoints
+  from `buildMcpToolSet`, plus plugin-declared servers from `buildPluginMcpToolSet`) →
+  plugin tools. MCP tool building is wrapped in `try/catch` and never breaks the pipeline;
+  see `src/mcp/CLAUDE.md`.
+- After capability + context gating and the plugin/MCP merge, `makeTools()` applies the
+  per-context tool denylist from `src/tools/tool-preferences.ts` (default all-on) as the
+  final filter. Disabled tools are physically removed from the returned `ToolSet`, so they
+  cannot be invoked. Preferences are keyed by the same `storageContextId` used elsewhere.
 
 `MakeToolsOptions` controls tool exposure:
 

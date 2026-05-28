@@ -260,6 +260,7 @@ describe('PluginContributionRegistry', () => {
         taskProviderTypes: [],
       },
     })
+    markPluginActive(manifest)
     contributionRegistry.register(
       'test-plugin',
       {
@@ -278,6 +279,7 @@ describe('PluginContributionRegistry', () => {
       },
       manifest,
     )
+    setPluginEnabledForContext('test-plugin', 'user-1', true)
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
 
     registerPluginCommands(provider)
@@ -296,6 +298,60 @@ describe('PluginContributionRegistry', () => {
 
     expect(commandHandlers.has('plugin_test_plugin_sync')).toBe(true)
     expect(executed).toBe(true)
+  })
+
+  test('plugin command handler refuses execution when plugin is disabled for the context', async () => {
+    let executed = false
+    const textCalls: string[] = []
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: ['sync'],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [
+          {
+            name: 'sync',
+            description: 'Sync plugin data',
+            execute: (): void => {
+              executed = true
+            },
+          },
+        ],
+        jobs: [],
+      },
+      manifest,
+    )
+    setPluginEnabledForContext('test-plugin', 'user-1', false)
+    const { provider, commandHandlers } = createMockChatWithCommandHandlers()
+
+    registerPluginCommands(provider)
+    await commandHandlers.get('plugin_test_plugin_sync')!(
+      createDmMessage('user-1'),
+      {
+        text: (text) => {
+          textCalls.push(text)
+          return Promise.resolve()
+        },
+        formatted: () => Promise.resolve(),
+        typing: () => {},
+        buttons: () => Promise.resolve(),
+      },
+      createAuth('user-1'),
+    )
+
+    expect(executed).toBe(false)
+    expect(textCalls[0]).toContain('disabled')
   })
 
   test('runs scheduled jobs only for explicitly enabled plugin contexts', async () => {
@@ -339,6 +395,52 @@ describe('PluginContributionRegistry', () => {
     const taskState = scheduler.getTaskState('plugin:test-plugin:daily')
     expect(taskState).toBeDefined()
     expect(taskState!.running).toBe(true)
+  })
+
+  test('scheduled jobs include configured and explicit contexts once when plugin is default enabled', async () => {
+    const seenContexts: string[] = []
+    const manifest = makeManifest({
+      defaultEnabled: true,
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['daily'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    markPluginActive(manifest)
+    seedTestPlatformInstance({ id: 'telegram-a' })
+    seedTestTaskInstance({ id: 'task-a' })
+    setContextSettings({ contextId: 'ctx-default-a', taskInstanceId: 'task-a', platformInstanceId: 'telegram-a' })
+    setContextSettings({ contextId: 'ctx-default-b', taskInstanceId: 'task-a', platformInstanceId: 'telegram-a' })
+    setPluginEnabledForContext('test-plugin', 'ctx-default-a', true)
+    setPluginEnabledForContext('test-plugin', 'ctx-default-b', false)
+    setPluginEnabledForContext('test-plugin', 'ctx-explicit', true)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [
+          {
+            name: 'daily',
+            intervalMs: 60_000,
+            execute: (contextId): void => {
+              seenContexts.push(contextId)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'daily')
+
+    expect(seenContexts).toHaveLength(2)
+    expect(new Set(seenContexts)).toEqual(new Set(['ctx-default-a', 'ctx-explicit']))
   })
 
   test('scheduled jobs skip contexts that are not plugin eligible', async () => {
@@ -898,6 +1000,39 @@ describe('buildPluginPromptSection', () => {
     )
     buildPluginPromptSection(['test-plugin'])
     expect(called).toBe(true)
+  })
+
+  test('prompt section skips throwing fragment and keeps later fragments', () => {
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: ['bad', 'good'],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [
+          {
+            name: 'bad',
+            content: (): string => {
+              throw new Error('fragment boom')
+            },
+          },
+          { name: 'good', content: 'SAFE_FRAGMENT' },
+        ],
+        commands: [],
+        jobs: [],
+      },
+      manifest,
+    )
+
+    expect(buildPluginPromptSection(['test-plugin'])).toContain('SAFE_FRAGMENT')
   })
 
   test('truncates fragment exceeding per-plugin limit', () => {

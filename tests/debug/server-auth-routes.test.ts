@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { issueClaim, mintSession } from '../../src/dashboard-auth/index.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
-import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
+import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import { routeRequestForTest } from '../../src/debug/server.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
@@ -20,7 +20,7 @@ describe('/auth/* routes', () => {
   beforeEach(() => {
     mockLogger()
     db = new Database(':memory:')
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     setStoreDb(db)
   })
   afterEach(() => {

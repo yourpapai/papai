@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { mintSession } from '../../src/dashboard-auth/index.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
-import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
+import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import { routeRequestForTest } from '../../src/debug/server.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
@@ -18,7 +18,7 @@ describe('write routes accept the session cookie (no DEBUG_TOKEN)', () => {
   beforeEach(() => {
     mockLogger()
     db = new Database(':memory:')
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     setStoreDb(db)
     delete process.env['DEBUG_TOKEN']
   })

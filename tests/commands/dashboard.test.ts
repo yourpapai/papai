@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { CommandHandler } from '../../src/chat/types.js'
 import { registerDashboardCommand } from '../../src/commands/dashboard.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
-import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
+import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import {
   createAuth,
   createDmMessage,
@@ -27,7 +27,7 @@ describe('/dashboard command', () => {
   beforeEach(() => {
     mockLogger()
     db = new Database(':memory:')
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     setStoreDb(db)
     process.env['DEBUG_SERVER'] = 'true'
     lastHandler = null

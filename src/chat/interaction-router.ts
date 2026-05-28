@@ -218,7 +218,7 @@ export function routeInteraction(
   }
 
   if (callbackData.startsWith('tgl:')) {
-    return resolvedDeps.handleToolToggleInteraction(interaction, reply)
+    return resolvedDeps.handleToolToggleInteraction(routedInteraction, reply)
   }
 
   log.debug({ callbackData }, 'No route matched for interaction callback')

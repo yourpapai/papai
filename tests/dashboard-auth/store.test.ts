@@ -16,7 +16,7 @@ import {
   setStoreDb,
   touchSession,
 } from '../../src/dashboard-auth/store.js'
-import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
+import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 describe('dashboard-auth/store', () => {
@@ -24,7 +24,7 @@ describe('dashboard-auth/store', () => {
   beforeEach(() => {
     mockLogger()
     db = new Database(':memory:')
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     setStoreDb(db)
   })
   afterEach(() => {

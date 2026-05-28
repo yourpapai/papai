@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Plugin Developer Guide
 
-Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, provider-as-plugin API, raw provider access, raw DB access, or arbitrary process/env/network facade.
+Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, raw provider access, raw DB access, or arbitrary process/env/network facade. Plugins may register one declared task-provider type through the trusted provider-task plugin API.
 
 ## Quick Start
 
@@ -52,23 +52,31 @@ Papai plugins are trusted, repository-local extensions loaded from `plugins/<plu
 }
 ```
 
-Required fields: `id`, `name`, `version`, `description`, `apiVersion`, and `main`.
+Required fields: `id`, `name`, `version`, `description`, and `apiVersion`.
 
 Supported optional fields:
 
-| Field                         | Description                                                                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contributes.tools`           | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
-| `contributes.promptFragments` | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
-| `contributes.commands`        | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
-| `contributes.jobs`            | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
-| `contributes.configKeys`      | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
-| `permissions`                 | Permission claims checked by framework facades.                                                                                                   |
-| `defaultEnabled`              | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
-| `requiredTaskCapabilities`    | Task provider capabilities required before activation and per-context eligibility.                                                                |
-| `requiredChatCapabilities`    | Chat platform capabilities required before activation and per-context eligibility.                                                                |
-| `configRequirements`          | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
-| `activationTimeoutMs`         | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
+| Field                           | Description                                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                          | Entry point path, defaulting to `index.ts`.                                                                                                       |
+| `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
+| `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
+| `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
+| `contributes.jobs`              | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
+| `contributes.configKeys`        | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
+| `contributes.taskProviderTypes` | At most one plugin-owned task provider type. Requires `provider.task`.                                                                            |
+| `providerCapabilities`          | Task capabilities exposed by the contributed provider type.                                                                                       |
+| `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                  |
+| `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                        |
+| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`.                                                                                         |
+| `providerConfigValidator`       | Optional exported validator function name for provider instance and context config.                                                               |
+| `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                        |
+| `permissions`                   | Permission claims checked by framework facades.                                                                                                   |
+| `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
+| `requiredTaskCapabilities`      | Task provider capabilities required before activation and per-context eligibility.                                                                |
+| `requiredChatCapabilities`      | Chat platform capabilities required before activation and per-context eligibility.                                                                |
+| `configRequirements`            | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
+| `activationTimeoutMs`           | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
 
 The manifest `id` must match the directory name. The entry point must stay inside the plugin directory and must be a relative `.ts` or `.js` path without `..` components.
 
@@ -106,10 +114,14 @@ The `ctx` object is frozen and exposes only framework-owned facades:
 | `ctx.permissions`                                   | Readonly set of requested permissions.                                                                                     |
 | `ctx.log.debug/info/warn/error(data, msg)`          | Structured plugin logger. Never log secrets.                                                                               |
 | `ctx.kv.get/set/delete/list`                        | Plugin/context KV store, available only with `storage` permission. KV is not a secret store.                               |
+| `ctx.adminConfig.get(key)`                          | Read-only admin-scoped plugin config for keys declared with `scope: "admin"`.                                              |
+| `ctx.providerRuntime`                               | Provider runtime helpers, present with `provider.task` or `http` permission.                                               |
+| `ctx.identity`                                      | Identity facade, present with `identity` permission when exactly one task provider type is declared.                       |
 | `ctx.registration.registerTool(tool)`               | Register a declared `PluginTool`.                                                                                          |
 | `ctx.registration.registerPromptFragment(fragment)` | Register a declared prompt fragment.                                                                                       |
 | `ctx.registration.registerCommand(command)`         | Register a declared command.                                                                                               |
 | `ctx.registration.registerScheduledJob(job)`        | Register a declared scheduled job.                                                                                         |
+| `ctx.registration.registerTaskProviderType(...)`    | Register the plugin's single declared task provider type. Requires `provider.task`.                                        |
 
 Undeclared registrations throw during activation. Activation failure cleans framework-owned contributions and records runtime diagnostics.
 
@@ -125,6 +137,8 @@ For example, `hello-world` plus `greet` becomes `plugin_hello_world__greet`.
 
 Tool execution receives a request-scoped runtime context with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade, and plugin/context KV. The raw task provider is not exposed.
 
+When a plugin declares `permissions: ["identity"]` and exactly one `contributes.taskProviderTypes` value, tool executions receive `runtimeContext.identity`. Declaring a task provider type also requires `provider.task`, so runtime identity provider plugins need `identity` plus the manifest/provider-task requirements. The facade supports `lookupForChatUser(chatUserId)` and `recordClaim(chatUserId, providerUserId, providerLogin, displayName?)`. Claims are recorded as `manual_nl` mappings and are not treated as auto-verified.
+
 ## Prompt Fragments
 
 Prompt fragments are synchronous strings or synchronous functions returning strings. Async prompt fragments are not supported. Fragments are delimited in the system prompt and budgeted at 2,000 characters per fragment and 8,000 characters total across active plugins.
@@ -139,6 +153,8 @@ plugin_<sanitized-plugin-id>_<command-name>
 
 Command handlers receive the normal `IncomingMessage`, `ReplyFn`, and `AuthorizationResult` values. They run through the same chat command registration path as core commands.
 
+Plugin command handlers run only when the plugin is active and eligible for the current command context. Disabled plugins, missing config, or missing capabilities produce a denial message and the plugin handler is not invoked.
+
 ## Scheduled Jobs
 
 Plugin jobs are registered through `ctx.registration.registerScheduledJob()` with an `intervalMs` and an `execute(contextId)` function. Jobs are registered with owner names like `plugin:<pluginId>:<jobName>` and execute only for contexts where the plugin is enabled and eligible.
@@ -147,14 +163,17 @@ Plugin jobs are registered through `ctx.registration.registerScheduledJob()` wit
 
 Supported MVP permissions:
 
-| Permission    | Effect                                                                                  |
-| ------------- | --------------------------------------------------------------------------------------- |
-| `storage`     | Enables plugin KV access. Without it, KV calls fail closed.                             |
-| `tasks.read`  | Enables read methods on the task-provider facade.                                       |
-| `tasks.write` | Enables write methods on the task-provider facade.                                      |
-| `commands`    | Reserved declaration for command-capable plugins; registration is still manifest-gated. |
-| `scheduler`   | Reserved declaration for scheduled-job plugins; registration is still manifest-gated.   |
-| `chat.send`   | Declared in the permission list but no raw chat-send facade is exposed in the MVP.      |
+| Permission      | Effect                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `storage`       | Enables plugin KV access. Without it, KV calls fail closed.                              |
+| `tasks.read`    | Enables read methods on the task-provider facade.                                        |
+| `tasks.write`   | Enables write methods on the task-provider facade.                                       |
+| `provider.task` | Allows registering one declared task-provider type and exposes provider runtime helpers. |
+| `identity`      | Exposes identity facade when exactly one task-provider type is declared.                 |
+| `http`          | Exposes provider runtime HTTP helper without requiring a contributed task provider.      |
+| `commands`      | Reserved declaration for command-capable plugins; registration is still manifest-gated.  |
+| `scheduler`     | Reserved declaration for scheduled-job plugins; registration is still manifest-gated.    |
+| `chat.send`     | Declared in the permission list but no raw chat-send facade is exposed in the MVP.       |
 
 Unsupported in the MVP: raw chat provider access, raw task provider access, raw DB access, raw environment access, encrypted plugin secrets, arbitrary network access, and sandbox isolation.
 

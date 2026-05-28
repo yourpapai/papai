@@ -117,12 +117,12 @@ export function buildProviderRuntime(
   logger: PluginLogger,
   deps: ProviderRuntimeDeps = defaultDeps,
 ): PluginProviderRuntime {
-  // Private enforcement set. Never exposed directly — callers get a separate
-  // copy so mutating the exposed set cannot affect enforcement.
+  // Private enforcement set. Never exposed directly; httpFetch closes over this
+  // copy, so mutations to the exposed Set cannot affect enforcement.
   const hostSet: ReadonlySet<string> = new Set(allowedHosts.map((h) => h.toLowerCase()))
 
-  // Expose a separate Set instance so that mutations to the exposed copy do NOT
-  // affect the private enforcement set that httpFetch closes over.
+  // This is a diagnostic copy, not a security boundary. Object.freeze() does not
+  // make Set entries immutable; security comes from the private hostSet above.
   const exposedHosts: ReadonlySet<string> = Object.freeze(new Set(hostSet))
 
   return Object.freeze({

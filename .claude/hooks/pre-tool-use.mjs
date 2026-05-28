@@ -38,6 +38,15 @@ try {
 
   const state = new SessionState(ctx.session_id, getSessionsDir(ctx.cwd))
   state.setNeedsRecheck(true)
+
+  // Track source file changes for doc review
+  const filePath = ctx.tool_input?.file_path
+  if (filePath) {
+    const { trackSourceWrite } = await import('../../.hooks/docs/track-source-write.mjs')
+    if (trackSourceWrite(filePath)) {
+      state.addChangedSourceFile(filePath)
+    }
+  }
 } catch (err) {
   console.error(
     JSON.stringify({

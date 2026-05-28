@@ -7,7 +7,7 @@ import type { ToolSet } from 'ai'
 
 import { isS3Configured } from '../attachments/index.js'
 import type { StagedFileDownloadFn } from '../attachments/types.js'
-import { hasThreadContextId } from '../chat/scoped-context.js'
+import { getConfigContextIdFromStorageContextId, hasThreadContextId } from '../chat/scoped-context.js'
 import type { ContextType } from '../chat/types.js'
 import type { TaskProvider } from '../providers/types.js'
 import { makeAddCommentReactionTool } from './add-comment-reaction.js'
@@ -178,7 +178,7 @@ function maybeAddPhaseFiveQueryTools(tools: ToolSet, provider: TaskProvider, mod
 }
 
 function getStorageOwnerId(chatUserId: string | undefined, contextId: string | undefined): string | undefined {
-  if (contextId !== undefined) return contextId
+  if (contextId !== undefined) return getConfigContextIdFromStorageContextId(contextId)
   return chatUserId
 }
 
@@ -274,7 +274,7 @@ export function buildTools(
     tools['count_tasks'] = makeCountTasksTool(provider)
   addRecurringTools(tools, storageOwnerId)
   addMemoTools(tools, provider, storageOwnerId)
-  addInstructionTools(tools, contextId)
+  addInstructionTools(tools, storageOwnerId)
   addLookupGroupHistoryTool(tools, chatUserId, contextId)
   addWebFetchTool(tools, contextId, storageOwnerId, contextType)
   maybeAddIdentityTools(tools, provider, chatUserId, contextType)

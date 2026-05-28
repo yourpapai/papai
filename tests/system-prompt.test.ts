@@ -5,7 +5,9 @@
 
 import { beforeEach, describe, expect, test, mock } from 'bun:test'
 
+import { toScopedContextId, toScopedThreadContextId } from '../src/chat/scoped-context.js'
 import { setPluginConfig } from '../src/config.js'
+import { saveInstruction } from '../src/instructions.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { pluginRegistry } from '../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../src/plugins/types.js'
@@ -121,6 +123,23 @@ describe('buildSystemPrompt', () => {
 
     expect(prompt).toContain('CONFIGURED_PLUGIN_GUIDANCE')
     contributionRegistry.deregister(pluginId)
+  })
+
+  test('includes parent group instructions for thread context', () => {
+    const parentContextId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+    })
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-1',
+    })
+    saveInstruction(parentContextId, 'Use concise status updates for this group.')
+
+    const prompt = buildSystemPrompt(provider, threadContextId)
+
+    expect(prompt).toContain('Use concise status updates for this group.')
   })
 })
 

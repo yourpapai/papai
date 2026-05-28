@@ -20,7 +20,7 @@ import {
   sweepExpired,
 } from '../../src/dashboard-auth/index.js'
 import { insertSession, setStoreDb } from '../../src/dashboard-auth/store.js'
-import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
+import { migration047DashboardSessions } from '../../src/db/migrations/047_dashboard_sessions.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 const makeReq = (cookie?: string): Request =>
@@ -31,7 +31,7 @@ describe('dashboard-auth', () => {
   beforeEach(() => {
     mockLogger()
     db = new Database(':memory:')
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     setStoreDb(db)
   })
   afterEach(() => {

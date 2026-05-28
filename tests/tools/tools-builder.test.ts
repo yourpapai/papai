@@ -5,11 +5,16 @@
 
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import { persistIncomingAttachments } from '../../src/attachments/index.js'
-import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
+import { listActiveAttachments, persistIncomingAttachments, stageFileMetadata } from '../../src/attachments/index.js'
+import {
+  getConfigContextIdFromStorageContextId,
+  toScopedContextId,
+  toScopedThreadContextId,
+} from '../../src/chat/scoped-context.js'
 import type { IncomingFile } from '../../src/chat/types.js'
 import { createAlertPrompt, listAlertPrompts } from '../../src/deferred-prompts/alerts.js'
 import { getIdentityMapping } from '../../src/identity/mapping.js'
+import { listInstructions } from '../../src/instructions.js'
 import { listMemos } from '../../src/memos.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
@@ -121,6 +126,122 @@ describe('buildTools', () => {
     expect(rawIdentity).not.toBeNull()
     expect(rawIdentity!.providerUserLogin).toBe('alice')
     expect(getIdentityMapping(scopedContextId, provider.name)).toBeNull()
+  })
+
+  it('uses parent group context for durable tools in scoped thread contexts', async () => {
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-42',
+    })
+    const parentContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    const provider = createMockProvider()
+    const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', 'alice')
+
+    await getToolExecutor(tools['save_memo'])({ content: 'shared group memo' })
+    await getToolExecutor(tools['save_instruction'])({ text: 'Prefer concise replies' })
+    await getToolExecutor(tools['create_recurring_task'])({
+      title: 'Shared recurring task',
+      projectId: 'project-1',
+      triggerType: 'on_complete',
+    })
+    await getToolExecutor(tools['create_deferred_prompt'])({
+      prompt: 'Check blocked tasks',
+      condition: { field: 'task.status', op: 'eq', value: 'blocked' },
+      execution: { mode: 'lightweight', delivery_brief: 'Report blocked tasks' },
+    })
+
+    expect(parentContextId).not.toBe(threadContextId)
+    expect(listMemos(parentContextId).map((memo) => memo.content)).toContain('shared group memo')
+    expect(listMemos(threadContextId).map((memo) => memo.content)).not.toContain('shared group memo')
+    expect(listInstructions(parentContextId).map((instruction) => instruction.text)).toContain('Prefer concise replies')
+    expect(listInstructions(threadContextId).map((instruction) => instruction.text)).not.toContain(
+      'Prefer concise replies',
+    )
+    expect(listRecurringTasks(parentContextId).map((task) => task.title)).toContain('Shared recurring task')
+    expect(listRecurringTasks(threadContextId).map((task) => task.title)).not.toContain('Shared recurring task')
+    const parentAlertPrompts = listAlertPrompts(parentContextId)
+    expect(parentAlertPrompts.map((prompt) => prompt.prompt)).toContain('Check blocked tasks')
+    expect(listAlertPrompts(threadContextId).map((prompt) => prompt.prompt)).not.toContain('Check blocked tasks')
+    expect(parentAlertPrompts[0]!.deliveryTarget.storageContextId).toBe(threadContextId)
+  })
+
+  it('keeps workspace and staged-file tools scoped to the current thread context', async () => {
+    const threadContextId = toScopedThreadContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: 'group-1',
+      threadId: 'thread-42',
+    })
+    const parentContextId = getConfigContextIdFromStorageContextId(threadContextId)
+    const threadFile: IncomingFile = {
+      fileId: 'platform-thread-file',
+      filename: 'thread-note.txt',
+      mimeType: 'text/plain',
+      size: 12,
+      content: Buffer.from('thread file'),
+    }
+    const parentFile: IncomingFile = {
+      fileId: 'platform-parent-file',
+      filename: 'parent-note.txt',
+      mimeType: 'text/plain',
+      size: 12,
+      content: Buffer.from('parent file'),
+    }
+
+    await persistIncomingAttachments({ contextId: threadContextId, sourceProvider: 'telegram', files: [threadFile] })
+    await persistIncomingAttachments({ contextId: parentContextId, sourceProvider: 'telegram', files: [parentFile] })
+    const stagedThreadFile = stageFileMetadata({
+      contextId: threadContextId,
+      messageId: null,
+      senderId: 'user-123',
+      senderUsername: 'alice',
+      filename: 'thread-staged.txt',
+      mimeType: null,
+      size: null,
+      platformFileId: 'staged-thread-file',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-default',
+    })
+    const stagedParentFile = stageFileMetadata({
+      contextId: parentContextId,
+      messageId: null,
+      senderId: 'user-123',
+      senderUsername: 'alice',
+      filename: 'parent-staged.txt',
+      mimeType: null,
+      size: null,
+      platformFileId: 'staged-parent-file',
+      sourceProvider: 'telegram',
+      sourcePlatformInstanceId: 'telegram-default',
+    })
+    const stagedDownloadFn = mock(() => Promise.resolve(Buffer.from('resolved thread file')))
+
+    const provider = createMockProvider({ capabilities: new Set(['attachments.list']) })
+    const tools = buildTools(provider, 'user-123', threadContextId, 'normal', 'group', undefined, stagedDownloadFn)
+
+    const files = await getToolExecutor(tools['list_files'])({})
+    const staged = await getToolExecutor(tools['search_staged_files'])({ query: 'staged' })
+    const resolved = await getToolExecutor(tools['resolve_staged_file'])({ stagedId: stagedThreadFile.stagedId })
+    const threadAttachmentsAfterResolve = listActiveAttachments(threadContextId)
+    const resolvedThreadAttachment = threadAttachmentsAfterResolve.find(
+      (attachment) => attachment.filename === 'thread-staged.txt',
+    )
+
+    expect(files).toEqual([expect.objectContaining({ filename: 'thread-note.txt' })])
+    expect(staged).toEqual([expect.objectContaining({ filename: 'thread-staged.txt' })])
+    expect(resolved).toEqual({
+      status: 'resolved',
+      attachmentId: resolvedThreadAttachment!.attachmentId,
+      filename: 'thread-staged.txt',
+    })
+    expect(stagedDownloadFn).toHaveBeenCalledWith('staged-thread-file', 'telegram', 'telegram-default')
+    expect(threadAttachmentsAfterResolve.map((attachment) => attachment.filename)).toContain('thread-staged.txt')
+    expect(listActiveAttachments(parentContextId).map((attachment) => attachment.filename)).not.toContain(
+      'thread-staged.txt',
+    )
+    expect(listActiveAttachments(threadContextId).map((attachment) => attachment.filename)).not.toContain(
+      stagedParentFile.filename,
+    )
   })
 
   it('should conditionally add project tools', () => {

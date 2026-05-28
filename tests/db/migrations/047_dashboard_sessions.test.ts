@@ -6,7 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { migration046DashboardSessions } from '../../../src/db/migrations/046_dashboard_sessions.js'
+import { migration047DashboardSessions } from '../../../src/db/migrations/047_dashboard_sessions.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 interface ColumnRow {
@@ -16,7 +16,7 @@ interface ColumnRow {
   pk: number
 }
 
-describe('migration046DashboardSessions', () => {
+describe('migration047DashboardSessions', () => {
   let db: Database
   beforeEach(() => {
     mockLogger()
@@ -28,7 +28,7 @@ describe('migration046DashboardSessions', () => {
   })
 
   test('creates dashboard_claims with expected columns', () => {
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     const cols = db.query<ColumnRow, []>(`PRAGMA table_info('dashboard_claims')`).all()
     const names = cols.map((c) => c.name).sort()
     expect(names).toEqual([
@@ -47,7 +47,7 @@ describe('migration046DashboardSessions', () => {
   })
 
   test('creates dashboard_sessions with expected columns', () => {
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     const cols = db.query<ColumnRow, []>(`PRAGMA table_info('dashboard_sessions')`).all()
     const names = cols.map((c) => c.name).sort()
     expect(names).toEqual([
@@ -67,7 +67,7 @@ describe('migration046DashboardSessions', () => {
   })
 
   test('creates dashboard_sessions admin lookup index', () => {
-    migration046DashboardSessions.up(db)
+    migration047DashboardSessions.up(db)
     const idx = db
       .query<{ name: string }, []>(
         `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='dashboard_sessions'`,
@@ -77,11 +77,11 @@ describe('migration046DashboardSessions', () => {
   })
 
   test('is idempotent', () => {
-    migration046DashboardSessions.up(db)
-    expect(() => migration046DashboardSessions.up(db)).not.toThrow()
+    migration047DashboardSessions.up(db)
+    expect(() => migration047DashboardSessions.up(db)).not.toThrow()
   })
 
   test('exports the expected migration id', () => {
-    expect(migration046DashboardSessions.id).toBe('046_dashboard_sessions')
+    expect(migration047DashboardSessions.id).toBe('047_dashboard_sessions')
   })
 })

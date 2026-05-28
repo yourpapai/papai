@@ -36,8 +36,8 @@ const createSessionsTable = (db: Database): void => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_dashboard_sessions_admin ON dashboard_sessions (admin_user_id)`)
 }
 
-export const migration046DashboardSessions: Migration = {
-  id: '046_dashboard_sessions',
+export const migration047DashboardSessions: Migration = {
+  id: '047_dashboard_sessions',
   up(db) {
     createClaimsTable(db)
     createSessionsTable(db)

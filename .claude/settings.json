@@ -46,6 +46,17 @@
             "statusMessage": "Running full check..."
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/doc-review-stop.mjs",
+            "timeout": 200,
+            "statusMessage": "Checking doc review..."
+          }
+        ]
       }
     ]
   }
