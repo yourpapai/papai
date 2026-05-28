@@ -7,10 +7,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { handleAdminSystem } from '../../src/debug/admin-system.js'
+import { insertPlatformInstance } from '../../src/instances/platform-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
+import { setupTestDb } from '../utils/test-helpers.js'
 
 const readJson = async (res: Response): Promise<object> => {
   const parsed: unknown = JSON.parse(await res.text())
-  assert(typeof parsed === 'object' && parsed !== null, 'expected JSON object')
+  assert.ok(typeof parsed === 'object' && parsed !== null, 'expected JSON object')
   return parsed
 }
 
@@ -24,7 +27,8 @@ describe('handleAdminSystem', () => {
     ADMIN_USER_ID: process.env['ADMIN_USER_ID'],
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await setupTestDb()
     process.env['CHAT_PROVIDER'] = saved['CHAT_PROVIDER']
     process.env['TASK_PROVIDER'] = saved['TASK_PROVIDER']
     process.env['DEBUG_SERVER'] = saved['DEBUG_SERVER']
@@ -49,18 +53,25 @@ describe('handleAdminSystem', () => {
     expect(res.headers.get('Content-Type')).toBe('application/json')
   })
 
-  test('returns known providers verbatim', async () => {
-    process.env['CHAT_PROVIDER'] = 'mattermost'
-    process.env['TASK_PROVIDER'] = 'youtrack'
-    process.env['ADMIN_USER_ID'] = 'admin-2'
+  test('returns providers from instance tables when bootstrap env vars are unset', async () => {
+    delete process.env['CHAT_PROVIDER']
+    delete process.env['TASK_PROVIDER']
+    insertPlatformInstance({ id: 'discord-main', type: 'discord', config: { token: 'secret' }, status: 'active' })
+    insertTaskInstance({
+      id: 'youtrack-main',
+      type: 'youtrack',
+      config: { baseUrl: 'https://youtrack.invalid' },
+      status: 'active',
+    })
 
     const res = handleAdminSystem()
     const body = await readJson(res)
-    expect(pick(body, 'chatProvider')).toBe('mattermost')
+
+    expect(pick(body, 'chatProvider')).toBe('discord')
     expect(pick(body, 'taskProvider')).toBe('youtrack')
   })
 
-  test('maps unknown providers to "unknown"', async () => {
+  test('ignores unsupported bootstrap env provider values', async () => {
     process.env['CHAT_PROVIDER'] = 'signal'
     process.env['TASK_PROVIDER'] = 'jira'
 
@@ -70,7 +81,7 @@ describe('handleAdminSystem', () => {
     expect(pick(body, 'taskProvider')).toBe('unknown')
   })
 
-  test('reports unknown task provider when TASK_PROVIDER is unset', async () => {
+  test('reports unknown task provider when no task instances exist', async () => {
     delete process.env['TASK_PROVIDER']
 
     const res = handleAdminSystem()

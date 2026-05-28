@@ -10,6 +10,8 @@ import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import { mintSession } from '../../src/dashboard-auth/index.js'
 import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
+import { insertPlatformInstance } from '../../src/instances/platform-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { getLogLevel } from '../../src/logger.js'
 import { getTestDb, mockLogger, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
 
@@ -52,6 +54,18 @@ describe('debug-server admin/system route', () => {
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['TELEGRAM_BOT_TOKEN'] = 'secret-token-value'
     process.env['LLM_API_KEY'] = 'sk-secret-value'
+    insertPlatformInstance({
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'secret-token-value' },
+      status: 'active',
+    })
+    insertTaskInstance({
+      id: 'kaneo-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
   })
 
   afterAll(() => {
@@ -88,7 +102,7 @@ describe('debug-server admin/system route', () => {
     expect(Object.keys(body).toSorted()).toEqual(['adminUserSet', 'chatProvider', 'debugServer', 'taskProvider'])
   })
 
-  test('GET /admin/system maps unsupported providers to unknown', async () => {
+  test('GET /admin/system ignores unsupported bootstrap env providers', async () => {
     process.env['CHAT_PROVIDER'] = 'custom-chat-secret'
     process.env['TASK_PROVIDER'] = 'custom-task-secret'
 
@@ -99,7 +113,7 @@ describe('debug-server admin/system route', () => {
     expect(text).not.toContain('custom-task-secret')
 
     const body = parseJsonObject(text)
-    expect(pick(body, 'chatProvider')).toBe('unknown')
-    expect(pick(body, 'taskProvider')).toBe('unknown')
+    expect(pick(body, 'chatProvider')).toBe('telegram')
+    expect(pick(body, 'taskProvider')).toBe('kaneo')
   })
 })
