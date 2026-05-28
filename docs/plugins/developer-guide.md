@@ -7,7 +7,7 @@ See LICENSE in the project root for details.
 
 # Plugin Developer Guide
 
-Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, provider-as-plugin API, raw provider access, raw DB access, or arbitrary process/env/network facade.
+Papai plugins are trusted, repository-local extensions loaded from `plugins/<plugin-id>/`. The MVP is for first-party local plugins only: there is no sandbox, marketplace, npm package installation, hot reload, encrypted plugin secret store, raw provider access, raw DB access, or arbitrary process/env/network facade. Plugins may register one declared task-provider type through the trusted provider-task plugin API.
 
 ## Quick Start
 
@@ -52,12 +52,13 @@ Papai plugins are trusted, repository-local extensions loaded from `plugins/<plu
 }
 ```
 
-Required fields: `id`, `name`, `version`, `description`, `apiVersion`, and `main`.
+Required fields: `id`, `name`, `version`, `description`, and `apiVersion`.
 
 Supported optional fields:
 
 | Field                           | Description                                                                                                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                          | Entry point path, defaulting to `index.ts`.                                                                                                       |
 | `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
 | `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
 | `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
