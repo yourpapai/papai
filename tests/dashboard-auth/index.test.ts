@@ -5,6 +5,7 @@
 
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 
 import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
 import {
@@ -14,10 +15,11 @@ import {
   getSessionTtlSeconds,
   issueClaim,
   mintSession,
+  recordActivity,
   revokeSession,
   sweepExpired,
 } from '../../src/dashboard-auth/index.js'
-import { setStoreDb } from '../../src/dashboard-auth/store.js'
+import { insertSession, setStoreDb } from '../../src/dashboard-auth/store.js'
 import { migration046DashboardSessions } from '../../src/db/migrations/046_dashboard_sessions.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
@@ -106,5 +108,52 @@ describe('dashboard-auth', () => {
     expect(getClaimTtlSeconds()).toBe(30)
     delete process.env['DASHBOARD_SESSION_TTL_SECONDS']
     delete process.env['DASHBOARD_CLAIM_TTL_SECONDS']
+  })
+
+  test('rejects malformed TTL env vars and falls back to defaults', () => {
+    process.env['DASHBOARD_SESSION_TTL_SECONDS'] = '10abc'
+    expect(getSessionTtlSeconds()).toBe(28800)
+    process.env['DASHBOARD_SESSION_TTL_SECONDS'] = '1.5e3'
+    expect(getSessionTtlSeconds()).toBe(28800)
+    process.env['DASHBOARD_SESSION_TTL_SECONDS'] = '3.14'
+    expect(getSessionTtlSeconds()).toBe(28800)
+    process.env['DASHBOARD_SESSION_TTL_SECONDS'] = '-5'
+    expect(getSessionTtlSeconds()).toBe(28800)
+    delete process.env['DASHBOARD_SESSION_TTL_SECONDS']
+  })
+
+  test('recordActivity records IP from X-Forwarded-For', () => {
+    const { cookieValue } = mintSession('u1', { secure: false })
+    const res = authenticate(makeReq(`${SESSION_COOKIE_NAME}=${cookieValue}`))
+    expect(res).not.toBeNull()
+    const req = new Request('http://localhost/', {
+      headers: { 'X-Forwarded-For': '10.0.0.5, 192.168.1.1', 'User-Agent': 'agent/2' },
+    })
+    recordActivity(res!.sessionIdHash, req)
+    const row = db
+      .query<{ last_seen_ip: string | null; user_agent: string | null }, []>(
+        `SELECT last_seen_ip, user_agent FROM dashboard_sessions LIMIT 1`,
+      )
+      .get()
+    expect(row?.last_seen_ip).toBe('10.0.0.5')
+    expect(row?.user_agent).toBe('agent/2')
+  })
+
+  test('recordActivity stores null IP when X-Forwarded-For is empty', () => {
+    const { cookieValue } = mintSession('u1', { secure: false })
+    const res = authenticate(makeReq(`${SESSION_COOKIE_NAME}=${cookieValue}`))
+    expect(res).not.toBeNull()
+    recordActivity(res!.sessionIdHash, new Request('http://localhost/', { headers: { 'X-Forwarded-For': '' } }))
+    const row = db
+      .query<{ last_seen_ip: string | null }, []>(`SELECT last_seen_ip FROM dashboard_sessions LIMIT 1`)
+      .get()
+    expect(row?.last_seen_ip).toBeNull()
+  })
+
+  test('authenticate returns null for an expired session', () => {
+    const cookieValue = 'a'.repeat(64)
+    const idHash = createHash('sha256').update(cookieValue).digest('hex')
+    insertSession({ idHash, adminUserId: 'u1', issuedAt: 0, expiresAt: 1 })
+    expect(authenticate(makeReq(`${SESSION_COOKIE_NAME}=${cookieValue}`))).toBeNull()
   })
 })

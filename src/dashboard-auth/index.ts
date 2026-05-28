@@ -29,8 +29,9 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 const positiveIntFromEnv = (name: string, fallback: number): number => {
   const raw = process.env[name]
   if (raw === undefined || raw === '') return fallback
-  const parsed = Number.parseInt(raw, 10)
-  if (Number.isNaN(parsed) || parsed <= 0) return fallback
+  if (!/^\d+$/u.test(raw.trim())) return fallback
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback
   return parsed
 }
 
@@ -95,7 +96,8 @@ export const revokeSession = (cookieValue: string): void => {
 }
 
 export const recordActivity = (idHash: string, req: Readonly<Request>): void => {
-  const ip = req.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ?? null
+  const xff = req.headers.get('X-Forwarded-For')
+  const ip = xff === null ? null : (xff.split(',')[0]?.trim() ?? '') || null
   const ua = req.headers.get('User-Agent')
   touchSession(idHash, Date.now(), ip, ua)
 }
