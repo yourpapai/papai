@@ -3,13 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isAuthorizedGroup } from '../authorized-groups.js'
-import { getNativeContextId, isScopedContextId, toScopedContextId } from '../chat/scoped-context.js'
+import { isAuthorizedGroup, listAuthorizedGroups } from '../authorized-groups.js'
+import {
+  getNativeContextId,
+  isScopedContextId,
+  parseScopedContextId,
+  toScopedContextId,
+} from '../chat/scoped-context.js'
+import { isAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import { listAdminGroupContextsForUser } from './registry.js'
 import type { KnownGroupContext } from './types.js'
 
 const log = logger.child({ scope: 'group-settings:access' })
+const FALLBACK_PROVIDER = 'unknown'
 
 export type GroupMatchResult =
   | { kind: 'match'; group: KnownGroupContext }
@@ -39,6 +46,44 @@ const isAuthorizedGroupContext = (group: KnownGroupContext, platformInstanceId: 
   return isAuthorizedGroup(getNativeContextId(group.contextId))
 }
 
+const fallbackKnownGroupContext = (contextId: string): KnownGroupContext => {
+  const now = new Date().toISOString()
+  return {
+    contextId,
+    provider: FALLBACK_PROVIDER,
+    displayName: getNativeContextId(contextId),
+    parentName: null,
+    firstSeenAt: now,
+    lastSeenAt: now,
+    source: 'authorized-fallback',
+  }
+}
+
+const appendAuthorizedFallbackGroups = (
+  groups: readonly KnownGroupContext[],
+  userId: string,
+  platformInstanceId: string | undefined,
+): KnownGroupContext[] => {
+  if (platformInstanceId === undefined || !isAdmin(userId, platformInstanceId)) {
+    return [...groups]
+  }
+
+  const existing = new Set(groups.map((group) => group.contextId))
+  const fallbackGroups = listAuthorizedGroups()
+    .map((row) => row.group_id)
+    .filter((groupId) => {
+      if (existing.has(groupId) || !isScopedContextId(groupId)) {
+        return false
+      }
+
+      const parsed = parseScopedContextId(groupId)
+      return parsed?.platformInstanceId === platformInstanceId
+    })
+    .map((groupId) => fallbackKnownGroupContext(groupId))
+
+  return [...groups, ...fallbackGroups].toSorted((left, right) => left.displayName.localeCompare(right.displayName))
+}
+
 export function listManageableGroups(userId: string, ...args: [] | [platformInstanceId: string]): KnownGroupContext[] {
   const platformInstanceId = args[0]
   log.debug({ userId }, 'listManageableGroups called')
@@ -47,8 +92,10 @@ export function listManageableGroups(userId: string, ...args: [] | [platformInst
     isAuthorizedGroupContext(group, platformInstanceId),
   )
 
-  log.debug({ userId, groupCount: groups.length }, 'Listed manageable groups')
-  return groups
+  const mergedGroups = appendAuthorizedFallbackGroups(groups, userId, platformInstanceId)
+
+  log.debug({ userId, groupCount: mergedGroups.length }, 'Listed manageable groups')
+  return mergedGroups
 }
 
 export function validateGroupTargetAccess(
