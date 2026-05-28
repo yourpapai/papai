@@ -28,6 +28,28 @@ type TelegramCommandBot = {
   }
 }
 
+async function publishScopeCommands(
+  bot: TelegramCommandBot,
+  commands: readonly TelegramPublishedCommand[],
+  options: TelegramCommandOptions,
+): Promise<void> {
+  try {
+    await bot.api.setMyCommands(commands, options)
+  } catch (error) {
+    log.error({ err: error, scope: options.scope.type }, 'Telegram command publication failed')
+    throw error
+  }
+}
+
+async function clearScopeCommands(bot: TelegramCommandBot, options: TelegramCommandOptions): Promise<void> {
+  try {
+    await bot.api.deleteMyCommands(options)
+  } catch (error) {
+    log.error({ err: error, scope: options.scope.type }, 'Telegram command publication failed')
+    throw error
+  }
+}
+
 function commandsForScope(scope: TelegramCommandScope): readonly TelegramPublishedCommand[] {
   return listCommandCatalogEntries()
     .filter((entry) => {
@@ -58,15 +80,15 @@ function parseAdminChatId(adminUserId: string): number {
 export async function registerTelegramCommands(bot: TelegramCommandBot, adminUserId: string): Promise<void> {
   const adminChatId = parseAdminChatId(adminUserId)
 
-  await bot.api.setMyCommands(commandsForScope('dm-user'), { scope: { type: 'all_private_chats' } })
-  await bot.api.setMyCommands(commandsForScope('dm-admin'), { scope: { type: 'chat', chat_id: adminChatId } })
-  await bot.api.setMyCommands(commandsForScope('group-user'), { scope: { type: 'all_group_chats' } })
+  await publishScopeCommands(bot, commandsForScope('dm-user'), { scope: { type: 'all_private_chats' } })
+  await publishScopeCommands(bot, commandsForScope('dm-admin'), { scope: { type: 'chat', chat_id: adminChatId } })
+  await publishScopeCommands(bot, commandsForScope('group-user'), { scope: { type: 'all_group_chats' } })
 
   const groupAdminCommands = commandsForScope('group-admin')
   if (groupAdminCommands.length > 0) {
-    await bot.api.setMyCommands(groupAdminCommands, { scope: { type: 'all_chat_administrators' } })
+    await publishScopeCommands(bot, groupAdminCommands, { scope: { type: 'all_chat_administrators' } })
   } else {
-    await bot.api.deleteMyCommands({ scope: { type: 'all_chat_administrators' } })
+    await clearScopeCommands(bot, { scope: { type: 'all_chat_administrators' } })
   }
 
   log.info({ adminUserId }, 'Telegram command menu registered')
