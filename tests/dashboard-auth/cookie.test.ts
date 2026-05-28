@@ -34,6 +34,10 @@ describe('readSessionCookie', () => {
   test('returns null on malformed percent-encoding instead of throwing', () => {
     expect(readSessionCookie(reqWith({ Cookie: `${SESSION_COOKIE_NAME}=%E0%A4%A` }))).toBeNull()
   })
+
+  test('returns null when value is empty (dashboard_session=)', () => {
+    expect(readSessionCookie(reqWith({ Cookie: `${SESSION_COOKIE_NAME}=` }))).toBeNull()
+  })
 })
 
 describe('buildSetCookie', () => {
@@ -60,5 +64,9 @@ describe('buildClearCookie', () => {
     expect(value).toContain('HttpOnly')
     expect(value).toContain('SameSite=Strict')
     expect(value).toContain('Path=/')
+  })
+
+  test('omits Secure when secure=false', () => {
+    expect(buildClearCookie({ secure: false })).not.toContain('Secure')
   })
 })

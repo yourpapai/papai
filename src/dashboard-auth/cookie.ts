@@ -14,6 +14,7 @@ export const readSessionCookie = (req: Readonly<Request>): string | null => {
     const name = part.slice(0, eq).trim()
     if (name !== SESSION_COOKIE_NAME) continue
     const rawValue = part.slice(eq + 1).trim()
+    if (rawValue === '') return null
     try {
       return decodeURIComponent(rawValue)
     } catch {
