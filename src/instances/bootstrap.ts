@@ -10,8 +10,7 @@ import { platformInstances, taskInstances } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from './admin-store.js'
 import { insertPlatformInstance } from './platform-store.js'
-import { insertTaskInstance } from './task-store.js'
-import type { BootstrapResult, BuiltinTaskType, InstanceConfig, PlatformInstanceType } from './types.js'
+import type { BootstrapResult, InstanceConfig, PlatformInstanceType } from './types.js'
 
 const log = logger.child({ scope: 'instances:bootstrap' })
 
@@ -19,11 +18,6 @@ const CHAT_ENV_REQUIREMENTS: Readonly<Record<PlatformInstanceType, readonly stri
   telegram: ['TELEGRAM_BOT_TOKEN'],
   mattermost: ['MATTERMOST_URL', 'MATTERMOST_BOT_TOKEN'],
   discord: ['DISCORD_BOT_TOKEN'],
-}
-
-const TASK_ENV_REQUIREMENTS: Readonly<Record<BuiltinTaskType, readonly string[]>> = {
-  kaneo: ['KANEO_CLIENT_URL'],
-  youtrack: ['YOUTRACK_URL'],
 }
 
 const unreachable = (value: never): never => {
@@ -39,11 +33,6 @@ const getTrimmedEnv = (name: string): string | undefined => {
 
 const parsePlatformType = (value: string | undefined): PlatformInstanceType | null => {
   if (value === 'telegram' || value === 'mattermost' || value === 'discord') return value
-  return null
-}
-
-const parseTaskType = (value: string | undefined): BuiltinTaskType | null => {
-  if (value === 'kaneo' || value === 'youtrack') return value
   return null
 }
 
@@ -63,17 +52,6 @@ const buildPlatformConfig = (type: PlatformInstanceType): InstanceConfig => {
   }
 }
 
-const buildTaskConfig = (type: BuiltinTaskType): InstanceConfig => {
-  switch (type) {
-    case 'kaneo':
-      return { baseUrl: getTrimmedEnv('KANEO_CLIENT_URL') ?? '' }
-    case 'youtrack':
-      return { baseUrl: getTrimmedEnv('YOUTRACK_URL') ?? '' }
-    default:
-      return unreachable(type)
-  }
-}
-
 const countInstances = (): { platforms: number; tasks: number } => {
   const db = getDrizzleDb()
   const p = db.select({ n: count() }).from(platformInstances).get()
@@ -83,41 +61,28 @@ const countInstances = (): { platforms: number; tasks: number } => {
 
 interface ParsedEnv {
   chatType: PlatformInstanceType | null
-  taskType: BuiltinTaskType | null
   adminUserId: string | undefined
 }
 
 const parseEnv = (): ParsedEnv => ({
   chatType: parsePlatformType(getTrimmedEnv('CHAT_PROVIDER')),
-  taskType: parseTaskType(getTrimmedEnv('TASK_PROVIDER')),
   adminUserId: getTrimmedEnv('ADMIN_USER_ID'),
 })
 
 const collectMissing = (parsed: ParsedEnv): string[] => {
   const missing: string[] = []
   if (parsed.chatType === null) missing.push('CHAT_PROVIDER')
-  if (parsed.taskType === null) missing.push('TASK_PROVIDER')
   if (parsed.adminUserId === undefined) missing.push('ADMIN_USER_ID')
   if (parsed.chatType !== null) {
     for (const v of CHAT_ENV_REQUIREMENTS[parsed.chatType]) {
       if (getTrimmedEnv(v) === undefined) missing.push(v)
     }
   }
-  if (parsed.taskType !== null) {
-    for (const v of TASK_ENV_REQUIREMENTS[parsed.taskType]) {
-      if (getTrimmedEnv(v) === undefined) missing.push(v)
-    }
-  }
   return missing
 }
 
-const seedInstances = (
-  chatType: PlatformInstanceType,
-  taskType: BuiltinTaskType,
-  adminUserId: string,
-): { platformInstanceId: string; taskInstanceId: string } => {
+const seedInstances = (chatType: PlatformInstanceType, adminUserId: string): { platformInstanceId: string } => {
   const platformInstanceId = `${chatType}-default`
-  const taskInstanceId = `${taskType}-default`
 
   // Spec requirement (docs/superpowers/specs/2026-04-13-multi-provider-phase-1-instance-data-model.md
   // §4 Error Handling): "bootstrap is wrapped in a transaction so partial writes are
@@ -133,18 +98,12 @@ const seedInstances = (
       config: buildPlatformConfig(chatType),
       status: 'active',
     })
-    insertTaskInstance({
-      id: taskInstanceId,
-      type: taskType,
-      config: buildTaskConfig(taskType),
-      status: 'active',
-    })
     addAdmin(adminUserId, SUPER_ADMIN_PLATFORM_ID)
     addAdmin(adminUserId, platformInstanceId)
   })
   tx()
 
-  return { platformInstanceId, taskInstanceId }
+  return { platformInstanceId }
 }
 
 export const bootstrapInstancesFromEnv = (): BootstrapResult => {
@@ -155,7 +114,7 @@ export const bootstrapInstancesFromEnv = (): BootstrapResult => {
   }
 
   const parsed = parseEnv()
-  if (parsed.chatType === null && parsed.taskType === null && parsed.adminUserId === undefined) {
+  if (parsed.chatType === null && parsed.adminUserId === undefined) {
     log.warn('No instances configured. Use the dashboard to add platform and task instances.')
     return { bootstrapped: false, reason: 'no-env' }
   }
@@ -166,16 +125,16 @@ export const bootstrapInstancesFromEnv = (): BootstrapResult => {
     return { bootstrapped: false, reason: 'partial-env', missing }
   }
 
-  // Narrowing for the type checker: all three are non-null because missing is empty.
-  if (parsed.chatType === null || parsed.taskType === null || parsed.adminUserId === undefined) {
+  // Narrowing for the type checker: all required values are non-null because missing is empty.
+  if (parsed.chatType === null || parsed.adminUserId === undefined) {
     return { bootstrapped: false, reason: 'partial-env', missing }
   }
 
-  const { platformInstanceId, taskInstanceId } = seedInstances(parsed.chatType, parsed.taskType, parsed.adminUserId)
+  const { platformInstanceId } = seedInstances(parsed.chatType, parsed.adminUserId)
 
   log.info(
-    { platformInstanceId, taskInstanceId, adminUserId: parsed.adminUserId },
+    { platformInstanceId, adminUserId: parsed.adminUserId },
     'Bootstrapped from environment variables. DB is now the source of truth.',
   )
-  return { bootstrapped: true, platformInstanceId, taskInstanceId }
+  return { bootstrapped: true, platformInstanceId }
 }
