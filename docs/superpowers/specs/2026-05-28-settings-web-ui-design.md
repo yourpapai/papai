@@ -33,12 +33,14 @@ step-by-step implementation tasks.
   server** (`src/debug/server.ts`, native `Bun.serve()`), under a new
   `/settings/*` route family. No separate listener. This means the
   settings auth domain and the operator `DEBUG_TOKEN` domain share one
-  process and one bind; the auth design (sub-spec 2) must keep the two
-  trust domains strictly separate despite sharing a listener.
+  process and one bind; the access model (the Access Model spec) must
+  keep the two trust domains strictly separate despite sharing a
+  listener.
 - **D2 — Command fate:** **Web UI only, hard removal.** Once the UI
   reaches parity, the interactive chat flows are removed, not kept as a
   fallback. The chat commands that survive become thin "here is your
-  link" launchers (or are removed where redundant). See sub-spec 6.
+  link" launchers (or are removed where redundant). See the Command
+  Retirement spec.
 - **D3 — Tiers:** The UI covers **all three permission tiers** in scope:
   regular user, group admin, bot admin. Each tier is detailed enough
   here to plan, but the deep design lives in the scoped sub-specs.
@@ -48,7 +50,7 @@ step-by-step implementation tasks.
 
 ## Why this is tractable
 
-The configuration *logic* in papai is already platform-agnostic and
+The configuration _logic_ in papai is already platform-agnostic and
 context-scoped. The chat commands are thin presentation/state-machine
 layers over reusable stores. The migration is therefore mostly a new
 **presentation + auth + transport** layer over existing modules, plus
@@ -56,31 +58,31 @@ the removal of the old chat-driven state machines.
 
 Reusable backing modules (no business-logic rewrite expected):
 
-| Concern | Module(s) |
-| --- | --- |
-| Per-context config get/set | `src/config.ts`, `src/config-keys.ts`, `src/types/config.ts` |
-| Field validation | `src/config-editor/validation.ts` |
-| Tool enable/disable | `src/tools/tool-preferences.ts`, `src/tools/tool-metadata.ts` |
-| MCP endpoints | `src/mcp/user-endpoints.ts`, `src/mcp/types.ts` (`mcpEndpointConfigSchema`) |
-| Plugins | `src/plugins/store.ts`, `src/plugins/registry.ts` (`getPluginContextEligibility`) |
-| Authorization | `src/auth.ts` (`checkAuthorizationExtended`), `src/instances/admin-store.ts`, `src/users.ts`, `src/authorized-groups.ts`, `src/groups.ts` |
-| Instances / system config | `src/instances/*`, `src/system-config.ts` |
-| Context scoping | `src/chat/scoped-context.ts` (`toScopedContextId`, `getConfigContextIdFromStorageContextId`) |
-| Existing web server + admin API | `src/debug/server.ts`, `src/debug/instance-routes.ts`, `src/debug/admin-llm.ts`, etc. |
-| Client build + Svelte stack | `scripts/build-client.ts`, `scripts/svelte-plugin.ts`, `client/admin/*` |
+| Concern                         | Module(s)                                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-context config get/set      | `src/config.ts`, `src/config-keys.ts`, `src/types/config.ts`                                                                              |
+| Field validation                | `src/config-editor/validation.ts`                                                                                                         |
+| Tool enable/disable             | `src/tools/tool-preferences.ts`, `src/tools/tool-metadata.ts`                                                                             |
+| MCP endpoints                   | `src/mcp/user-endpoints.ts`, `src/mcp/types.ts` (`mcpEndpointConfigSchema`)                                                               |
+| Plugins                         | `src/plugins/store.ts`, `src/plugins/registry.ts` (`getPluginContextEligibility`)                                                         |
+| Authorization                   | `src/auth.ts` (`checkAuthorizationExtended`), `src/instances/admin-store.ts`, `src/users.ts`, `src/authorized-groups.ts`, `src/groups.ts` |
+| Instances / system config       | `src/instances/*`, `src/system-config.ts`                                                                                                 |
+| Context scoping                 | `src/chat/scoped-context.ts` (`toScopedContextId`, `getConfigContextIdFromStorageContextId`)                                              |
+| Existing web server + admin API | `src/debug/server.ts`, `src/debug/instance-routes.ts`, `src/debug/admin-llm.ts`, etc.                                                     |
+| Client build + Svelte stack     | `scripts/build-client.ts`, `scripts/svelte-plugin.ts`, `client/admin/*`                                                                   |
 
 ## What is being replaced
 
 The interactive, callback-button chat flows routed through
 `src/chat/interaction-router.ts`:
 
-| Callback prefix | Flow | Module |
-| --- | --- | --- |
-| `gsel:` | personal-vs-group target selector | `src/group-settings/` |
-| `cfg:` / `cfg:ai:` | config field editor | `src/config-editor/` |
-| `wizard_` | setup wizard | `src/wizard/` |
-| `tgl:` | tool enable/disable | `src/chat/tool-toggle-interaction-handler.ts` |
-| `plg:` | plugin enable/disable | `src/chat/plugin-interaction-handler.ts` |
+| Callback prefix    | Flow                              | Module                                        |
+| ------------------ | --------------------------------- | --------------------------------------------- |
+| `gsel:`            | personal-vs-group target selector | `src/group-settings/`                         |
+| `cfg:` / `cfg:ai:` | config field editor               | `src/config-editor/`                          |
+| `wizard_`          | setup wizard                      | `src/wizard/`                                 |
+| `tgl:`             | tool enable/disable               | `src/chat/tool-toggle-interaction-handler.ts` |
+| `plg:`             | plugin enable/disable             | `src/chat/plugin-interaction-handler.ts`      |
 
 …and the corresponding commands in `src/commands/`: `/setup`, `/config`,
 plus the management commands `/plugin`, `/group`/`/groups`,
@@ -122,6 +124,7 @@ Key properties:
 ## Scope by tier (summary; deepened in sub-specs)
 
 **Regular user (own contexts only):**
+
 - Profile / `timezone`
 - Task-provider credentials (`kaneo_apikey`, `youtrack_token`) for own contexts
 - Tools enable/disable (`tool_prefs`)
@@ -131,13 +134,15 @@ Key properties:
 - Context switch between personal and each group they administer
 
 **Group admin (managed groups + own):**
-- Everything above, scoped to a selected managed group's *config context*
+
+- Everything above, scoped to a selected managed group's _config context_
   (thread suffix stripped — see `getConfigContextIdFromStorageContextId`)
 - Group member add/remove (`group_members`)
 - Group task-instance selection / group-scoped config
 - Per-context plugin enablement for managed groups
 
 **Bot admin (everything):**
+
 - All of `/admin` today: platform/task instances, admin roster, system
   LLM config, plugin approve/reject, authorized users & groups, announce
 - Cross-context edits
@@ -148,7 +153,7 @@ Key properties:
   internet-reachable with TLS. Because hosting is on the existing debug
   server (D1), the deployment story (reverse proxy + TLS, and making the
   bind non-localhost for settings traffic) is an explicit open item; see
-  sub-spec 2 §"Exposure".
+  the Access Model spec §"Exposure / TLS".
 - **Per-instance identity:** codes and sessions bind to
   `(platformInstanceId, platformUserId)`; a code from one instance must
   not act in another.
@@ -161,27 +166,46 @@ Key properties:
 
 ## Sub-spec index
 
+This umbrella indexes three scoped sub-specs (consolidated from the
+original six-document research output):
+
 1. **This document** — overview, decisions, scope.
-2. `2026-05-28-settings-web-ui-auth-session-design.md` — one-time code
-   issuance, exchange, sessions, cookies, CSRF, rate limiting, trust
-   isolation from `DEBUG_TOKEN`, exposure/TLS.
-3. `2026-05-28-settings-web-ui-permission-model-design.md` — principal
-   resolution, scope guard, context switching, per-tier capability
-   matrix.
-4. `2026-05-28-settings-web-ui-http-api-design.md` — the `/settings/api/*`
-   route surface and how each route maps onto existing stores.
-5. `2026-05-28-settings-web-ui-client-spa-design.md` — `client/settings/`
-   Svelte SPA structure, sections, build-pipeline integration.
-6. `2026-05-28-settings-web-ui-command-retirement-design.md` — hard
-   removal of interaction routers/wizard/config-editor, command→launcher
-   conversion, sequencing and parity gate.
+2. [`2026-05-28-settings-web-ui-access-model-design.md`](./2026-05-28-settings-web-ui-access-model-design.md)
+   — **Access Model.** Part A: one-time code issuance, exchange,
+   sessions, cookies, CSRF, rate limiting, trust isolation from
+   `DEBUG_TOKEN`, exposure/TLS. Part B: principal resolution, scope
+   guard, context switching, per-tier capability matrix.
+3. [`2026-05-28-settings-web-ui-surface-design.md`](./2026-05-28-settings-web-ui-surface-design.md)
+   — **Surface.** Part A: the `/settings/api/*` HTTP route surface and how
+   each route maps onto existing stores. Part B: the `client/settings/`
+   Svelte SPA structure, sections, and build-pipeline integration.
+4. [`2026-05-28-settings-web-ui-command-retirement-design.md`](./2026-05-28-settings-web-ui-command-retirement-design.md)
+   — **Command Retirement.** Hard removal of interaction
+   routers/wizard/config-editor, command→launcher conversion, sequencing
+   and parity gate.
+
+> **Migration note:** these four documents supersede the original
+> six-file set (`-overview-`, `-auth-session-`, `-permission-model-`,
+> `-http-api-`, `-client-spa-`, `-command-retirement-`) that lived under
+> `docs/`. Auth+session and permission+scope were merged into the Access
+> Model spec; HTTP API and client SPA were merged into the Surface spec.
 
 ## Open questions (carried into sub-specs)
 
-- OQ1 — Exposure model for a shared listener that must serve both a
-  public per-user surface and a private operator surface (sub-spec 2).
-- OQ2 — Session store: in-memory vs SQLite-backed (survives restart?)
-  (sub-spec 2).
-- OQ3 — How `/setup`'s Kaneo auto-provisioning flow maps to a web form,
-  including the credentials-return UX (sub-spec 4/5).
-- OQ4 — Parity definition that gates hard removal (sub-spec 6).
+- OQ1 — **[RESOLVED 2026-05-28]** Exposure model: **reverse proxy** in
+  front of the existing `127.0.0.1` bind; `/settings/*` public, operator
+  paths restricted; new `SETTINGS_PUBLIC_BASE_URL` config. See Access
+  Model spec §Exposure / TLS.
+- OQ2 — **[RESOLVED 2026-05-28]** Session store: **SQLite-backed**
+  (survives restart). See Access Model spec §Sessions.
+- OQ3 — _(open)_ How `/setup`'s Kaneo auto-provisioning flow maps to a
+  web form, including the credentials-return UX (Surface spec).
+- OQ4 — _(open)_ Parity definition that gates hard removal (Command
+  Retirement spec).
+
+> **Also resolved this session** (sub-spec local IDs): OQ-A1 (SQLite
+> sessions), OQ-A2 (synchronizer-token CSRF), OQ-A3 (reverse proxy),
+> OQ-A4 (10 min code / 60 min sliding session) in the Access Model spec;
+> OQ-H1 (thin `/settings/api/admin/*` wrappers) in the Surface spec.
+> Still open: OQ-A5, OQ-P1, OQ-P2, OQ-H2, OQ-H3, OQ-C1, OQ-C2, OQ-R1,
+> OQ-R2.

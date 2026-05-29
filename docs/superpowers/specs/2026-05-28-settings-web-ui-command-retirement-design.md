@@ -9,7 +9,7 @@ See LICENSE in the project root for details.
 
 **Date:** 2026-05-28
 **Status:** Draft spec
-**Parent:** [`2026-05-28-settings-web-ui-overview-design.md`](./2026-05-28-settings-web-ui-overview-design.md)
+**Parent:** [`2026-05-28-settings-web-ui-design.md`](./2026-05-28-settings-web-ui-design.md)
 
 ## Scope
 
@@ -22,21 +22,21 @@ configuration path.
 
 ## End state
 
-| Command | Fate |
-| --- | --- |
-| `/config` | **Launcher.** Issues a one-time code and replies with the settings URL (sub-spec 2). Sole entry point to the UI. |
-| `/setup` | **Removed.** Onboarding folds into the UI (config + identity + provider + Kaneo provision). `/config`'s link is the entry. Optionally `/start` mentions the link for first-run. |
-| `/config` interactive editor | **Removed** (`src/config-editor/`). |
-| Setup wizard | **Removed** (`src/wizard/`). |
-| Group settings selector | **Removed** (`src/group-settings/selector.ts`); the *access* helpers (`access.ts`, `target-validation.ts`) are **kept** — sub-spec 3 reuses them. |
-| Tool toggle UI | **Removed** (`src/chat/tool-toggle-interaction-handler.ts`, `src/commands/tool-config-view.ts`). |
-| Plugin toggle UI | **Removed** (`src/chat/plugin-interaction-handler.ts`). |
-| AI-output config UI | **Removed** (`src/ai-output-config-ui.ts`, `ai-output-config-interaction.ts`). |
-| `/plugin` | **Removed** (admin plugin mgmt moves to the UI admin area). Consider keeping a launcher only if admins need a non-UI path. |
-| `/group` / `/groups` | **Removed**; membership + group authorization move to UI. |
-| `/user` / `/users` | **Removed**; authorized-user mgmt moves to UI. |
-| `/announce` | **Removed** as a command; broadcast logic extracted to a reusable function called by the UI admin area. |
-| `/help`, `/start`, `/context`, `/clear` | **Kept** (not configuration flows). `/help` text updated to point at `/config`. |
+| Command                                 | Fate                                                                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/config`                               | **Launcher.** Issues a one-time code and replies with the settings URL (Access Model spec). Sole entry point to the UI.                                                         |
+| `/setup`                                | **Removed.** Onboarding folds into the UI (config + identity + provider + Kaneo provision). `/config`'s link is the entry. Optionally `/start` mentions the link for first-run. |
+| `/config` interactive editor            | **Removed** (`src/config-editor/`).                                                                                                                                             |
+| Setup wizard                            | **Removed** (`src/wizard/`).                                                                                                                                                    |
+| Group settings selector                 | **Removed** (`src/group-settings/selector.ts`); the _access_ helpers (`access.ts`, `target-validation.ts`) are **kept** — the Access Model spec reuses them.                    |
+| Tool toggle UI                          | **Removed** (`src/chat/tool-toggle-interaction-handler.ts`, `src/commands/tool-config-view.ts`).                                                                                |
+| Plugin toggle UI                        | **Removed** (`src/chat/plugin-interaction-handler.ts`).                                                                                                                         |
+| AI-output config UI                     | **Removed** (`src/ai-output-config-ui.ts`, `ai-output-config-interaction.ts`).                                                                                                  |
+| `/plugin`                               | **Removed** (admin plugin mgmt moves to the UI admin area). Consider keeping a launcher only if admins need a non-UI path.                                                      |
+| `/group` / `/groups`                    | **Removed**; membership + group authorization move to UI.                                                                                                                       |
+| `/user` / `/users`                      | **Removed**; authorized-user mgmt moves to UI.                                                                                                                                  |
+| `/announce`                             | **Removed** as a command; broadcast logic extracted to a reusable function called by the UI admin area.                                                                         |
+| `/help`, `/start`, `/context`, `/clear` | **Kept** (not configuration flows). `/help` text updated to point at `/config`.                                                                                                 |
 
 The interaction router (`src/chat/interaction-router.ts`) loses the
 `gsel:`, `cfg:`, `cfg:ai:`, `wizard_`, `tgl:`, `plg:` branches. The
@@ -77,15 +77,16 @@ each removal PR:
 6. Identity link/clear.
 7. Kaneo group auto-provision path.
 8. Authorization parity: the same principals can/can't do the same
-   things as in chat (sub-spec 3 matrix), verified by tests.
+   things as in chat (Access Model spec capability matrix), verified by
+   tests.
 
 ## Sequencing
 
 Removal trails delivery so there is never a gap with no config path:
 
-1. **Land the UI** (auth → API → SPA, sub-specs 2/4/5) behind the
-   existing build, with `/config` *additionally* able to emit a link
-   while the old editor still works.
+1. **Land the UI** (auth → API → SPA, the Access Model + Surface specs)
+   behind the existing build, with `/config` _additionally_ able to emit
+   a link while the old editor still works.
 2. **Verify parity** against the gate checklist (tests + manual).
 3. **Flip `/config`** to launcher-only; delete the config-editor, wizard,
    selector-UI, tool/plugin/ai-output interaction handlers, and the
@@ -113,9 +114,9 @@ Each step is its own PR; step 3+ only after the parity gate passes.
 
 - **Accessibility regression for chat-only users:** some users may be on
   networks where the web UI is hard to reach. Mitigation is the exposure
-  work in sub-spec 2; flag if a chat fallback for a minimal subset (e.g.
-  identity linking) is ever required — but per D2 the decision is hard
-  removal.
+  work in the Access Model spec; flag if a chat fallback for a minimal
+  subset (e.g. identity linking) is ever required — but per D2 the
+  decision is hard removal.
 - **Removing too early:** the parity gate + per-step PRs guard against
   this; do not delete a flow before its UI equivalent ships and passes
   tests.
