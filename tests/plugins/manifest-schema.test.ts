@@ -216,6 +216,22 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 
+  test('rejects providerConfigValidator when no task provider type is declared', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'validator-without-provider-type',
+      name: 'Validator Without Provider Type',
+      version: '1.0.0',
+      description: 'validator without provider type',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['provider.task'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      providerConfigValidator: 'validateConfig',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   test('accepts explicit mcp-only manifests without main', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'mcp-only-schema',

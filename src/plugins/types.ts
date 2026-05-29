@@ -233,6 +233,10 @@ export const pluginManifestSchema = z
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
     path: ['permissions'],
   })
+  .refine((m) => m.providerConfigValidator === undefined || m.contributes.taskProviderTypes.length > 0, {
+    message: 'providerConfigValidator requires contributes.taskProviderTypes',
+    path: ['providerConfigValidator'],
+  })
   .refine(hasProviderManifestPermission, {
     message: "Provider-only manifest fields require the 'provider.task' permission",
     path: ['permissions'],

@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { z } from 'zod'
+
 import {
   getTaskProviderConfigValidator,
   listTaskProviderTypes,
@@ -47,6 +49,14 @@ const taskProviderTypeView = (descriptor: TaskProviderTypeDescriptor): TaskProvi
   source: descriptor.source,
 })
 
+const providerConfigValidatorResultSchema = z.union([
+  z.strictObject({ ok: z.literal(true) }),
+  z.strictObject({ ok: z.literal(false), reason: z.string() }),
+])
+
+const INVALID_PROVIDER_CONFIG_VALIDATOR_RESULT_REASON =
+  'provider config validator returned an invalid result; expected { ok: true } or { ok: false, reason: string }'
+
 /** Run the optional provider config validator. Returns a 400 Response on failure, null on success or no validator. */
 export const validateTaskInstanceConfig = async (
   type: string,
@@ -60,8 +70,22 @@ export const validateTaskInstanceConfig = async (
       const reason = error instanceof Error ? error.message : String(error)
       return { ok: false as const, reason }
     })
-  if (result.ok) return null
-  return jsonResponse({ error: 'invalid_task_instance_config', type, reason: result.reason }, { status: 400 })
+  const parsedResult = providerConfigValidatorResultSchema.safeParse(result)
+  if (!parsedResult.success) {
+    return jsonResponse(
+      {
+        error: 'invalid_task_instance_config',
+        type,
+        reason: INVALID_PROVIDER_CONFIG_VALIDATOR_RESULT_REASON,
+      },
+      { status: 400 },
+    )
+  }
+  if (parsedResult.data.ok) return null
+  return jsonResponse(
+    { error: 'invalid_task_instance_config', type, reason: parsedResult.data.reason },
+    { status: 400 },
+  )
 }
 
 export const handleTaskProviderTypes = (req: Request, url: URL): Response | null => {

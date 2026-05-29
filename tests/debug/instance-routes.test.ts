@@ -1079,6 +1079,72 @@ describe('instance API routes', () => {
     }
   })
 
+  test('returns a clear 400 when the provider validator returns an invalid failure shape', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateBadShapeConfig() {
+        return { ok: false }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated-bad-shape', () => ({ name: 'validated-bad-shape' }))
+          },
+        }
+      }
+    `)
+    const plugin: DiscoveredPlugin = {
+      manifest: makePluginManifest('val-bad-shape', {
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['validated-bad-shape'],
+        },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+        providerConfigValidator: 'validateBadShapeConfig',
+      }),
+      pluginDir: tmpdir(),
+      entryPoint,
+      manifestHash: 'hash-val-bad-shape',
+    }
+    approvePlugin(plugin)
+
+    try {
+      await activatePlugins([plugin])
+
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'v-bad-shape-1',
+              type: 'validated-bad-shape',
+              config: { baseUrl: 'https://x.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-bad-shape',
+        reason:
+          'provider config validator returned an invalid result; expected { ok: true } or { ok: false, reason: string }',
+      })
+      expect(getTaskInstance('v-bad-shape-1')).toBeNull()
+    } finally {
+      await deactivateAllPlugins()
+    }
+  })
+
   test('masks instance-scoped sensitive fields declared by a contributed task provider type', async () => {
     mockLogger()
     registerContributedTaskProviderType('masktest', {
