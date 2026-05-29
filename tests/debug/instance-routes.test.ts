@@ -1195,6 +1195,96 @@ describe('instance API routes', () => {
     }
   })
 
+  test('validates contributed instance storageKey and passes logical config to validator on create', async () => {
+    const validateConfig = mock((_config: Record<string, string>) => Promise.resolve({ ok: true as const }))
+    registerContributedTaskProviderType('storage-validated', {
+      pluginId: 'storage-val',
+      factory: () => createMockProvider({ name: 'storage-validated' }),
+      validateConfig,
+      capabilities: new Set<never>(),
+      displayName: 'Storage Validated',
+      instanceConfigSchema: [
+        {
+          key: 'baseUrl',
+          storageKey: 'tracker_url',
+          label: 'Tracker URL',
+          required: true,
+          sensitive: false,
+          scope: 'instance',
+        },
+      ],
+    })
+    try {
+      const created = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'storage-validated-1',
+              type: 'storage-validated',
+              config: { tracker_url: 'https://tracker.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(created.status).toBe(201)
+      expect(validateConfig).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid' })
+      expect(getTaskInstance('storage-validated-1')?.config).toEqual({ tracker_url: 'https://tracker.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('storage-val')
+    }
+  })
+
+  test('rejects contributed instance config when required storageKey is absent', async () => {
+    registerContributedTaskProviderType('storage-missing', {
+      pluginId: 'storage-missing-plugin',
+      factory: () => createMockProvider({ name: 'storage-missing' }),
+      capabilities: new Set<never>(),
+      displayName: 'Storage Missing',
+      instanceConfigSchema: [
+        {
+          key: 'baseUrl',
+          storageKey: 'tracker_url',
+          label: 'Tracker URL',
+          required: true,
+          sensitive: false,
+          scope: 'instance',
+        },
+      ],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'storage-missing-1',
+              type: 'storage-missing',
+              config: { baseUrl: 'https://tracker.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'storage-missing',
+        missing: ['baseUrl'],
+      })
+      expect(getTaskInstance('storage-missing-1')).toBeNull()
+    } finally {
+      unregisterContributedTaskProviderType('storage-missing-plugin')
+    }
+  })
+
   test('masks instance-scoped sensitive fields declared by a contributed task provider type', async () => {
     mockLogger()
     registerContributedTaskProviderType('masktest', {
@@ -1245,6 +1335,42 @@ describe('instance API routes', () => {
       expect(pick(listedConfig, 'apiSecret')).toBe('********')
     } finally {
       unregisterContributedTaskProviderType('mask-plugin')
+    }
+  })
+
+  test('masks instance-scoped sensitive contributed fields by storageKey', async () => {
+    registerContributedTaskProviderType('storage-mask', {
+      pluginId: 'storage-mask-plugin',
+      factory: () => createMockProvider({ name: 'storage-mask' }),
+      capabilities: new Set<never>(),
+      displayName: 'Storage Mask',
+      instanceConfigSchema: [
+        {
+          key: 'apiSecret',
+          storageKey: 'credential_value',
+          label: 'Credential',
+          required: true,
+          sensitive: true,
+          scope: 'instance',
+        },
+      ],
+    })
+    try {
+      insertTaskInstance({
+        id: 'storage-mask-1',
+        type: 'storage-mask',
+        config: { credential_value: 'super-secret-value' },
+        status: 'active',
+      })
+
+      const listed = expectResponse(await route('/api/task-instances'))
+
+      const rows = assertArray(await readJson(listed))
+      const storageMaskRow = rows.find((row) => pick(assertObject(row), 'type') === 'storage-mask')
+      const listedConfig = assertObject(pick(assertObject(storageMaskRow), 'config'))
+      expect(pick(listedConfig, 'credential_value')).toBe('********')
+    } finally {
+      unregisterContributedTaskProviderType('storage-mask-plugin')
     }
   })
 })

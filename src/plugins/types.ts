@@ -251,6 +251,10 @@ export const pluginManifestSchema = z
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
     path: ['permissions'],
   })
+  .refine((m) => m.providerConfigValidator === undefined || m.contributes.taskProviderTypes.length > 0, {
+    message: 'Declaring providerConfigValidator requires a contributed task provider type',
+    path: ['providerConfigValidator'],
+  })
 
 type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema' | 'providerTraits'> & {

@@ -28,6 +28,8 @@ export type TaskInstanceConfigValidationDeps = Readonly<{
   getTaskProviderConfigValidator: (type: string) => TaskProviderConfigValidator | undefined
 }>
 
+export type TaskInstanceConfigKeyMode = 'storage' | 'logical'
+
 const defaultDeps: TaskInstanceConfigValidationDeps = {
   getTaskProviderDescriptor,
   getTaskProviderConfigValidator,
@@ -51,41 +53,68 @@ const isHttpUrl = (value: string): boolean => {
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
+const configKeyForField = (field: ProviderConfigField, mode: TaskInstanceConfigKeyMode): string => {
+  if (mode === 'logical') return field.key
+  return field.storageKey ?? field.key
+}
+
 const validateDescriptorConfig = (
   fields: readonly ProviderConfigField[],
   config: InstanceConfig,
+  mode: TaskInstanceConfigKeyMode,
 ): Pick<
   Extract<TaskInstanceConfigValidationFailure, { kind: 'invalid_task_instance_config' }>,
   'missing' | 'invalidUrls'
 > => {
-  const missing = fields.filter((field) => field.required && isBlank(config[field.key])).map((field) => field.key)
+  const missing = fields
+    .filter((field) => field.required && isBlank(config[configKeyForField(field, mode)]))
+    .map((field) => field.key)
   const invalidUrls = fields
     .filter((field) => isUrlField(field.key))
     .filter((field) => {
-      const value = config[field.key]
+      const value = config[configKeyForField(field, mode)]
       return value !== undefined && value.trim() !== '' && !isHttpUrl(value)
     })
     .map((field) => field.key)
   return { missing, invalidUrls }
 }
 
+const normalizeDescriptorConfig = (
+  fields: readonly ProviderConfigField[],
+  config: InstanceConfig,
+  mode: TaskInstanceConfigKeyMode,
+): InstanceConfig => {
+  const storageKeys = new Set(fields.map((field) => configKeyForField(field, mode)))
+  return {
+    ...Object.fromEntries(Object.entries(config).filter(([key]) => !storageKeys.has(key))),
+    ...Object.fromEntries(
+      fields.flatMap((field) => {
+        const value = config[configKeyForField(field, mode)]
+        return value === undefined ? [] : [[field.key, value]]
+      }),
+    ),
+  }
+}
+
 export const validateTaskInstanceConfigResult = async (
   type: string,
   config: InstanceConfig,
   deps: TaskInstanceConfigValidationDeps = defaultDeps,
+  mode: TaskInstanceConfigKeyMode = 'storage',
 ): Promise<TaskInstanceConfigValidationFailure | null> => {
   const descriptor = deps.getTaskProviderDescriptor(type)
   if (descriptor === undefined) return { kind: 'unknown_task_provider', type }
 
-  const descriptorResult = validateDescriptorConfig(descriptor.instanceConfigSchema, config)
+  const descriptorResult = validateDescriptorConfig(descriptor.instanceConfigSchema, config, mode)
   if (descriptorResult.missing.length > 0 || descriptorResult.invalidUrls.length > 0) {
     return { kind: 'invalid_task_instance_config', type, ...descriptorResult }
   }
 
   const validator = deps.getTaskProviderConfigValidator(type)
   if (validator === undefined) return null
+  const validatorConfig = normalizeDescriptorConfig(descriptor.instanceConfigSchema, config, mode)
   const result = await Promise.resolve()
-    .then(() => validator(config))
+    .then(() => validator(validatorConfig))
     .catch((error: unknown) => ({
       ok: false as const,
       reason: errorMessage(error),

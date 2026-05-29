@@ -53,11 +53,11 @@ const readContextScopedField = (
   return deps.getConfig(contextId, storageKeyForField(descriptor, field))
 }
 
-const readInstanceScopedField = (instance: TaskInstance, fieldKey: string): string | undefined => {
-  const value = instance.config[fieldKey]
+const readInstanceScopedField = (instance: TaskInstance, field: ProviderConfigField): string | undefined => {
+  const value = instance.config[field.storageKey ?? field.key]
   if (value !== undefined) return value
   // Back-compat: some instances persist the URL under the legacy `url` key.
-  if (fieldKey === 'baseUrl') return instance.config['url']
+  if (field.key === 'baseUrl') return instance.config['url']
   return undefined
 }
 
@@ -70,7 +70,7 @@ const buildConfigFromDescriptor = (
   const merged: Record<string, string> = {}
   const missing: string[] = []
   for (const field of descriptor.instanceConfigSchema) {
-    const raw = readInstanceScopedField(instance, field.key)
+    const raw = readInstanceScopedField(instance, field)
     if (raw !== undefined && raw !== '') {
       merged[field.key] = raw
     } else if (field.required) {
@@ -101,7 +101,7 @@ const createValidatedProvider = async (
   config: Record<string, string>,
   deps: TaskProviderResolverDeps,
 ): Promise<TaskProvider | null> => {
-  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps)
+  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps, 'logical')
   if (validationFailure !== null) {
     log.warn(
       { contextId, taskInstanceId: instance.id, taskProvider: instance.type, validationFailure },

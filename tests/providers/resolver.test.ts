@@ -9,6 +9,10 @@ import { setConfig, setConfigValue } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import {
+  validateTaskInstanceConfigResult,
+  type TaskInstanceConfigValidationDeps,
+} from '../../src/providers/config-validation.js'
+import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
@@ -185,6 +189,87 @@ describe('TaskProviderResolver', () => {
       expect(created).toEqual([{ name: 'demo-tracker', config: { baseUrl: 'https://demo.invalid', region: 'eu' } }])
     } finally {
       unregisterContributedTaskProviderType('demo-plugin')
+    }
+  })
+
+  test('validates contributed instance config using storageKey and passes logical key to validator', async () => {
+    const validateConfig = mock((_config: Record<string, string>) => Promise.resolve({ ok: true as const }))
+    const deps: TaskInstanceConfigValidationDeps = {
+      getTaskProviderConfigValidator: () => validateConfig,
+      getTaskProviderDescriptor: () => ({
+        type: 'storage-tracker',
+        displayName: 'Storage Tracker',
+        source: { plugin: 'storage-plugin' } as const,
+        instanceConfigSchema: [
+          {
+            key: 'baseUrl',
+            storageKey: 'tracker_url',
+            label: 'Tracker URL',
+            required: true,
+            sensitive: false,
+            scope: 'instance' as const,
+          },
+        ],
+        contextConfigSchema: [],
+        capabilities: new Set(),
+        traits: new Set(),
+        configSchema: [],
+      }),
+    }
+
+    await expect(
+      validateTaskInstanceConfigResult('storage-tracker', { tracker_url: 'https://tracker.invalid' }, deps),
+    ).resolves.toBeNull()
+    expect(validateConfig).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid' })
+
+    await expect(
+      validateTaskInstanceConfigResult('storage-tracker', { baseUrl: 'https://tracker.invalid' }, deps),
+    ).resolves.toEqual({
+      kind: 'invalid_task_instance_config',
+      type: 'storage-tracker',
+      missing: ['baseUrl'],
+      invalidUrls: [],
+    })
+  })
+
+  test('resolves contributed instance config from storageKey and passes logical key to factory and validator', async () => {
+    const factory = mock(() => createMockProvider({ name: 'storage-tracker' }))
+    const validateConfig = mock((_config: Record<string, string>) => Promise.resolve({ ok: true as const }))
+    registerContributedTaskProviderType('storage-tracker', {
+      pluginId: 'storage-plugin',
+      factory,
+      validateConfig,
+      capabilities: new Set(),
+      displayName: 'Storage Tracker',
+      instanceConfigSchema: [
+        {
+          key: 'baseUrl',
+          storageKey: 'tracker_url',
+          label: 'Tracker URL',
+          required: true,
+          sensitive: false,
+          scope: 'instance',
+        },
+      ],
+      contextConfigSchema: [],
+      traits: new Set(),
+    })
+    try {
+      insertTaskInstance({
+        id: 'storage-1',
+        type: 'storage-tracker',
+        config: { tracker_url: 'https://tracker.invalid' },
+        status: 'active',
+      })
+      setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'storage-1', platformInstanceId: 'telegram-default' })
+
+      const provider = await new TaskProviderResolver().resolve('ctx-1')
+
+      expect(provider?.name).toBe('storage-tracker')
+      expect(validateConfig).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid' })
+      expect(factory).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('storage-plugin')
     }
   })
 
