@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { routeSettingsApi } from './settings-api-router.js'
 import { handleSettingsBootstrap, handleSettingsExchange, handleSettingsLogout } from './settings-routes.js'
 
 /** True for any path the settings trust domain owns. */
@@ -30,7 +31,11 @@ export function routeSettingsPaths(req: Request, url: URL): Promise<Response | n
     return Promise.resolve(req.method === 'GET' ? handleSettingsBootstrap(req) : methodNotAllowed())
   }
 
-  // Static SPA serving (client/settings) and the per-capability /settings/api/*
-  // write routes are delivered by the Surface spec. Anything else is 404.
+  if (url.pathname.startsWith('/settings/api/')) {
+    return routeSettingsApi(req, url).then((res) => res ?? new Response('Not found', { status: 404 }))
+  }
+
+  // Static SPA serving (client/settings) is delivered by the Surface spec Part B.
+  // Anything else is 404.
   return Promise.resolve(new Response('Not found', { status: 404 }))
 }
