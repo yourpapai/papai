@@ -165,7 +165,11 @@ const runOneFile = (
     testFiles: resolved.testFiles,
   })
   fs.rmSync(reportPath, { force: true })
-  deps.runStryker(configPath, input.projectRoot)
+  try {
+    deps.runStryker(configPath, input.projectRoot)
+  } catch {
+    // Stryker returns non-zero for threshold failures even when it wrote a usable report.
+  }
   if (!fs.existsSync(reportPath)) {
     throw new Error(`missing Stryker JSON report for ${srcFile}: ${reportPath}`)
   }

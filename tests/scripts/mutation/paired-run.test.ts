@@ -156,6 +156,56 @@ describe('pairedRun', () => {
     ).rejects.toThrow(/missing Stryker JSON report/u)
   })
 
+  test('continues when Stryker throws after writing the expected report', async () => {
+    const reportDir = makeReportDir()
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/foo.test.ts',
+      loadOverrides: () => ({}),
+      runStryker: mock((configPath: string) => {
+        writeConfiguredReport(configPath, makeReport(['Killed', 'Survived']))
+        throw new Error('stryker threshold failed')
+      }),
+      readReport: readStrykerReport,
+      log: () => {},
+    }
+
+    const result = await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      deps,
+    })
+
+    expect(result.merged.killed).toBe(1)
+    expect(result.merged.survived).toBe(1)
+  })
+
+  test('fails with missing-report error when Stryker throws without writing the report', async () => {
+    const reportDir = makeReportDir()
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/foo.test.ts',
+      loadOverrides: () => ({}),
+      runStryker: mock(() => {
+        throw new Error('stryker crashed')
+      }),
+      readReport: () => makeReport(['Killed']),
+      log: () => {},
+    }
+
+    await expect(
+      Promise.resolve().then(() =>
+        pairedRun({
+          projectRoot: '/repo',
+          reportDir,
+          sourceFiles: ['src/foo.ts'],
+          deps,
+        }),
+      ),
+    ).rejects.toThrow(/missing Stryker JSON report/u)
+  })
+
   test('skips files with no companion and no override', async () => {
     const reportDir = makeReportDir()
     const deps: PairedRunDeps = {
