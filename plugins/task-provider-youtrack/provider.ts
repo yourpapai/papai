@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { logger } from '../../logger.js'
 import type {
   Attachment,
   Column,
@@ -20,7 +19,9 @@ import type {
   TaskSearchResult,
   UpdateWorkItemParams,
   WorkItem,
-} from '../types.js'
+} from 'papai/plugin-types'
+
+import { logger } from '../../src/logger.js'
 import type { YouTrackConfig } from './client.js'
 import { CONFIG_REQUIREMENTS, YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './constants.js'
 import { normalizeYouTrackDueDateInput, normalizeYouTrackListTaskParams } from './due-date.js'

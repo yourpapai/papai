@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { logger } from '../../logger.js'
+import { logger } from '../../src/logger.js'
 import { classifyYouTrackError } from './classify-error.js'
 import { youtrackFetch, type YouTrackConfig } from './client.js'
 import { ProjectCustomFieldSchema, StateBundleSchema } from './schemas/bundle.js'

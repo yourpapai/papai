@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { YouTrackAttachmentSchema } from '../../../../src/providers/youtrack/schemas/attachment.js'
+import { YouTrackAttachmentSchema } from '../../../../plugins/task-provider-youtrack/schemas/attachment.js'
 
 describe('YouTrackAttachmentSchema', () => {
   const validAttachment = {

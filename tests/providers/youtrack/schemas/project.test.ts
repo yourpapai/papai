@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/project.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { ProjectSchema } from '../../../../src/providers/youtrack/schemas/project.js'
+import { ProjectSchema } from '../../../../plugins/task-provider-youtrack/schemas/project.js'
 
 describe('Project schemas', () => {
   const validProject = {

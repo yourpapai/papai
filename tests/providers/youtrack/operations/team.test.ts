@@ -7,13 +7,13 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
 import {
   addYouTrackProjectMember,
   listYouTrackProjectTeam,
   removeYouTrackProjectMember,
-} from '../../../../src/providers/youtrack/operations/team.js'
+} from '../../../../plugins/task-provider-youtrack/operations/team.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 let fetchMock: ReturnType<typeof mock<(url: string, init: RequestInit) => Promise<Response>>>

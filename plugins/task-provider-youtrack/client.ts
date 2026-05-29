@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { logger } from '../../logger.js'
+import { logger } from '../../src/logger.js'
 
 const log = logger.child({ scope: 'youtrack:client' })
 

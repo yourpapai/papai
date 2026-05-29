@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ListTasksParams } from 'papai/plugin-types'
 import { z } from 'zod'
 
-import type { ListTasksParams } from '../../types.js'
 import type { YouTrackConfig, YouTrackQueryValue } from '../client.js'
 import { youtrackFetch } from '../client.js'
 import { ISSUE_LIST_FIELDS, YOUTRACK_INLINE_LIST_CUSTOM_FIELDS } from '../constants.js'

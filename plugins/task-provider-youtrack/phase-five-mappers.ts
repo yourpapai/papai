@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Activity, Agile, SavedQuery, Sprint } from '../types.js'
+import type { Activity, Agile, SavedQuery, Sprint } from 'papai/plugin-types'
+
 import type { YouTrackActivity } from './schemas/activity.js'
 import type { YouTrackAgile } from './schemas/agile.js'
 import type { YouTrackSavedQuery } from './schemas/saved-query.js'

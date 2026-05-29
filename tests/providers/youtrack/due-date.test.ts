@@ -10,7 +10,7 @@ import {
   normalizeYouTrackDueDateInput,
   normalizeYouTrackListTaskParams,
   parseDueDateValue,
-} from '../../../src/providers/youtrack/due-date.js'
+} from '../../../plugins/task-provider-youtrack/due-date.js'
 
 describe('YouTrack due-date helpers', () => {
   describe('normalizeYouTrackDueDateInput', () => {

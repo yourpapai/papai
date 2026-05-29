@@ -14,7 +14,7 @@ import {
   mapIssueToSearchResult,
   mapComment,
   buildCustomFields,
-} from '../../../src/providers/youtrack/mappers.js'
+} from '../../../plugins/task-provider-youtrack/mappers.js'
 
 describe('mapIssueToTask', () => {
   test('maps basic issue fields', () => {
@@ -44,7 +44,7 @@ describe('mapIssueToTask', () => {
         },
       ],
       tags: [{ id: 'tag-1', name: 'bug', color: { background: '#ff0000' } }],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -79,7 +79,7 @@ describe('mapIssueToTask', () => {
       subtasks: {
         issues: [{ id: '200', idReadable: 'PROJ-2', summary: 'Subtask' }],
       },
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -108,7 +108,7 @@ describe('mapIssueToTask', () => {
           value: Date.parse('2026-03-25T12:00:00.000Z'),
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -130,7 +130,7 @@ describe('mapIssueToTask', () => {
           { id: '201', idReadable: 'PROJ-3', summary: 'Unresolved Subtask' },
         ],
       },
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -148,7 +148,7 @@ describe('mapIssueToTask', () => {
       updated: 1704153600000,
       project: { id: 'proj-1' },
       customFields: [],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -174,7 +174,7 @@ describe('mapIssueToTask', () => {
       project: { id: 'proj-1' },
       customFields: [],
       resolved: null,
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -230,7 +230,7 @@ describe('mapIssueToTask', () => {
         permittedGroups: [{ id: 'group-1', name: 'team-a' }],
         permittedUsers: [{ id: 'user-1', login: 'alice', fullName: 'Alice Example' }],
       },
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -283,7 +283,7 @@ describe('mapIssueToTask', () => {
           issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Blocking Task' }],
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -300,7 +300,7 @@ describe('mapIssueToTask', () => {
       project: { id: 'proj-1' },
       customFields: [],
       links: [],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -316,7 +316,7 @@ describe('mapIssueToTask', () => {
       updated: 1704153600000,
       project: { id: 'proj-1' },
       customFields: [],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
 
@@ -341,7 +341,7 @@ describe('mapIssueToTask', () => {
           issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Duplicate Task' }],
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
     expect(result.relations).toEqual([{ type: 'duplicate', taskId: 'PROJ-2' }])
@@ -364,7 +364,7 @@ describe('mapIssueToTask', () => {
           issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Subtask' }],
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
     expect(result.relations).toEqual([{ type: 'child', taskId: 'PROJ-2' }])
@@ -387,7 +387,7 @@ describe('mapIssueToTask', () => {
           issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Parent Task' }],
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
     expect(result.relations).toEqual([{ type: 'parent', taskId: 'PROJ-2' }])
@@ -410,7 +410,7 @@ describe('mapIssueToTask', () => {
           issues: [{ id: '456', idReadable: 'PROJ-2', summary: 'Related Task' }],
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
     expect(result.relations).toEqual([{ type: 'related', taskId: 'PROJ-2' }])
@@ -425,7 +425,7 @@ describe('mapIssueToTask', () => {
       updated: 1704153600000,
       project: { id: 'proj-1' },
       customFields: [{ $type: 'SimpleIssueCustomField' as const, name: 'State', value: 'Open' }],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
     expect(result.status).toBe('Open')
@@ -446,7 +446,7 @@ describe('mapIssueToTask', () => {
           value: { $type: 'EnumBundleElement' as const, name: 'Open' },
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueSchema>
 
     const result = mapIssueToTask(issue, 'https://example.com')
     expect(result.status).toBe('Open')
@@ -472,7 +472,7 @@ describe('mapIssueToListItem', () => {
           value: { $type: 'EnumBundleElement' as const, name: 'High' },
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueListSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
 
     const result = mapIssueToListItem(issue, 'https://example.com')
 
@@ -492,7 +492,7 @@ describe('mapIssueToListItem', () => {
       resolved: 1704067200000,
       project: { id: 'proj-1' },
       customFields: [],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueListSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
 
     const result = mapIssueToListItem(issue, 'https://example.com')
 
@@ -507,7 +507,7 @@ describe('mapIssueToListItem', () => {
       summary: 'Test Task',
       project: { id: 'proj-1' },
       customFields: [],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueListSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
 
     const result = mapIssueToListItem(issue, 'https://example.com')
 
@@ -537,7 +537,7 @@ describe('mapIssueToSearchResult', () => {
           value: { $type: 'EnumBundleElement' as const, name: 'High' },
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueListSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
 
     const result = mapIssueToSearchResult(issue, 'https://example.com')
 
@@ -555,7 +555,7 @@ describe('mapIssueToSearchResult', () => {
       summary: 'Test',
       project: { id: 'proj-1' },
       customFields: [],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/issue.js').IssueListSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/issue.js').IssueListSchema>
 
     const result = mapIssueToSearchResult(issue, 'https://example.com')
 
@@ -571,7 +571,7 @@ describe('mapComment', () => {
       text: 'This is a comment',
       author: { id: 'u-1', name: 'Alice Smith', login: 'alice' },
       created: 1704067200000,
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/comment.js').CommentSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/comment.js').CommentSchema>
 
     const result = mapComment(comment)
 
@@ -587,7 +587,7 @@ describe('mapComment', () => {
       text: 'Another comment',
       author: { id: 'u-1', login: 'bob' },
       created: 1704153600000,
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/comment.js').CommentSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/comment.js').CommentSchema>
 
     const result = mapComment(comment)
 
@@ -613,7 +613,7 @@ describe('mapComment', () => {
           },
         },
       ],
-    } satisfies z.infer<typeof import('../../../src/providers/youtrack/schemas/comment.js').CommentSchema>
+    } satisfies z.infer<typeof import('../../../plugins/task-provider-youtrack/schemas/comment.js').CommentSchema>
 
     const result = mapComment(comment)
 

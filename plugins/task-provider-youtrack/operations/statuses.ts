@@ -3,11 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { Column } from 'papai/plugin-types'
+import { providerError } from 'papai/plugin-types'
 import { z } from 'zod'
 
-import { providerError } from '../../../errors.js'
-import { logger } from '../../../logger.js'
-import type { Column } from '../../types.js'
+import { logger } from '../../../src/logger.js'
 import { resolveStateBundle } from '../bundle-cache.js'
 import { YouTrackClassifiedError, classifyYouTrackError } from '../classify-error.js'
 import type { YouTrackConfig } from '../client.js'

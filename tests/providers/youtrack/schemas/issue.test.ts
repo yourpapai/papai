@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/issue.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { IssueSchema, IssueListSchema } from '../../../../src/providers/youtrack/schemas/issue.js'
+import { IssueSchema, IssueListSchema } from '../../../../plugins/task-provider-youtrack/schemas/issue.js'
 
 describe('Issue schemas', () => {
   const validIssue = {

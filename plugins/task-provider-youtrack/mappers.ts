@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { z } from 'zod'
-
 import type {
   Attachment,
   Comment,
@@ -16,7 +14,9 @@ import type {
   TaskVisibility,
   UserRef,
   VisibilityGroupRef,
-} from '../types.js'
+} from 'papai/plugin-types'
+import type { z } from 'zod'
+
 import { YOUTRACK_DUE_DATE_FIELD_NAME } from './constants.js'
 import { mapYouTrackDueDateValue } from './due-date.js'
 import type { CommentSchema } from './schemas/comment.js'

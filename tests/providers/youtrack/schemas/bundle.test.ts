@@ -10,7 +10,7 @@ import {
   ProjectCustomFieldSchema,
   StateBundleSchema,
   StateValueSchema,
-} from '../../../../src/providers/youtrack/schemas/bundle.js'
+} from '../../../../plugins/task-provider-youtrack/schemas/bundle.js'
 
 describe('YouTrack bundle schemas', () => {
   describe('StateValueSchema', () => {

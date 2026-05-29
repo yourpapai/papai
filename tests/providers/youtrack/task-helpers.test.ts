@@ -9,7 +9,7 @@ import {
   buildCreateCustomFields,
   buildYouTrackQuery,
   mapYouTrackDueDateValue,
-} from '../../../src/providers/youtrack/task-helpers.js'
+} from '../../../plugins/task-provider-youtrack/task-helpers.js'
 
 describe('task-helpers', () => {
   test('maps YouTrack due date timestamps to date-only values', () => {

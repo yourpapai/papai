@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { YouTrackWorkItemSchema } from '../../../../src/providers/youtrack/schemas/work-item.js'
+import { YouTrackWorkItemSchema } from '../../../../plugins/task-provider-youtrack/schemas/work-item.js'
 
 describe('YouTrackWorkItemSchema', () => {
   const validWorkItem = {

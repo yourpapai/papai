@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ProviderConfigRequirement, TaskCapability, TaskProviderTrait } from '../types.js'
+import type { ProviderConfigRequirement, TaskCapability } from 'papai/plugin-types'
+
+import type { TaskProviderTrait } from '../../src/providers/types.js'
 
 /** Fields parameter for issue requests returning full detail. */
 export const REACTION_FIELDS = 'id,reaction,author(id,login,fullName,email)'

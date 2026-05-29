@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { SavedQuerySchema } from '../../../../src/providers/youtrack/schemas/saved-query.js'
+import { SavedQuerySchema } from '../../../../plugins/task-provider-youtrack/schemas/saved-query.js'
 
 describe('SavedQuerySchema', () => {
   test('parses valid saved query', () => {

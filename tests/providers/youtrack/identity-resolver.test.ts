@@ -5,12 +5,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import type { IdentityUser } from '../../../src/providers/types.js'
-import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
+import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
 import {
   createYouTrackIdentityResolver,
   type YouTrackIdentityResolver,
-} from '../../../src/providers/youtrack/identity-resolver.js'
+} from '../../../plugins/task-provider-youtrack/identity-resolver.js'
+import type { IdentityUser } from '../../../src/providers/types.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const mockConfig: YouTrackConfig = {

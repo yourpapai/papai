@@ -3,7 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { Activity, Agile, SavedQuery, Sprint, TaskSearchResult } from '../types.js'
+import type { Activity, Agile, SavedQuery, Sprint, TaskSearchResult } from 'papai/plugin-types'
+
 import { YouTrackCollaborationProvider } from './collaboration-provider.js'
 import { getYouTrackTaskHistory } from './operations/activities.js'
 import {

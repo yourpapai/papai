@@ -6,9 +6,12 @@
 import { describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import {
+  classifyYouTrackError,
+  YouTrackClassifiedError,
+} from '../../../plugins/task-provider-youtrack/classify-error.js'
+import { YouTrackApiError } from '../../../plugins/task-provider-youtrack/client.js'
 import { getUserMessage, providerError, systemError } from '../../../src/errors.js'
-import { classifyYouTrackError, YouTrackClassifiedError } from '../../../src/providers/youtrack/classify-error.js'
-import { YouTrackApiError } from '../../../src/providers/youtrack/client.js'
 
 describe('classifyYouTrackError', () => {
   describe('HTTP status code classification', () => {

@@ -3,9 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { AppError } from '../../errors.js'
-import { providerError, systemError } from '../../errors.js'
-import type { CustomFieldRequirement } from '../errors.js'
+import type { AppError } from 'papai/plugin-types'
+import { providerError, systemError } from 'papai/plugin-types'
+
+import type { CustomFieldRequirement } from '../../src/providers/errors.js'
 import { YouTrackApiError } from './client.js'
 
 export class YouTrackClassifiedError extends Error {

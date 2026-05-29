@@ -5,9 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import type { SetTaskVisibilityParams } from '../../../../src/providers/types.js'
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
 import {
   addYouTrackCommentReaction,
   addYouTrackVote,
@@ -17,7 +16,8 @@ import {
   removeYouTrackVote,
   removeYouTrackWatcher,
   setYouTrackVisibility,
-} from '../../../../src/providers/youtrack/operations/collaboration.js'
+} from '../../../../plugins/task-provider-youtrack/operations/collaboration.js'
+import type { SetTaskVisibilityParams } from '../../../../src/providers/types.js'
 import { mockLogger, restoreFetch } from '../../../utils/test-helpers.js'
 import {
   type FetchMockFn,

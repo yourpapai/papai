@@ -3,12 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { YouTrackProvider } from '../../plugins/task-provider-youtrack/provider.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { builtinDescriptorSeeds } from './builtin-descriptors.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
-import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
 

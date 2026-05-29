@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { logger } from '../../logger.js'
-import type { IdentityUser, UserIdentityResolver } from '../types.js'
+import type { IdentityUser, UserIdentityResolver } from 'papai/plugin-types'
+
+import { logger } from '../../src/logger.js'
 import type { YouTrackConfig } from './client.js'
 import { listYouTrackUsers, resolveYouTrackUserRingId } from './operations/users.js'
 

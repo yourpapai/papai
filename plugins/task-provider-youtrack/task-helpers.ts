@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ListTasksParams, Task } from 'papai/plugin-types'
+import { providerError } from 'papai/plugin-types'
 import type { z } from 'zod'
 
-import { providerError } from '../../errors.js'
-import type { ListTasksParams, Task } from '../types.js'
 import { YouTrackClassifiedError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import { youtrackFetch } from './client.js'

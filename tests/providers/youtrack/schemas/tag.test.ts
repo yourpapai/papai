@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/tag.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { TagSchema } from '../../../../src/providers/youtrack/schemas/tag.js'
+import { TagSchema } from '../../../../plugins/task-provider-youtrack/schemas/tag.js'
 
 describe('Tag schemas', () => {
   const validTag = {

@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { ReactionSchema } from '../../../../src/providers/youtrack/schemas/reaction.js'
+import { ReactionSchema } from '../../../../plugins/task-provider-youtrack/schemas/reaction.js'
 
 describe('ReactionSchema', () => {
   const validReaction = {

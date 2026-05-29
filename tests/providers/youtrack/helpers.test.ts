@@ -7,13 +7,13 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
+import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
 import {
   minutesToIso,
   paginate,
   parseDuration,
   resolveWorkItemTypeId,
-} from '../../../src/providers/youtrack/helpers.js'
+} from '../../../plugins/task-provider-youtrack/helpers.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 mockLogger()

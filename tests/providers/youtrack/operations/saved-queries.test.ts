@@ -5,13 +5,13 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { extractAppError } from '../../../../src/errors.js'
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
 import {
   listYouTrackSavedQueries,
   runYouTrackSavedQuery,
-} from '../../../../src/providers/youtrack/operations/saved-queries.js'
+} from '../../../../plugins/task-provider-youtrack/operations/saved-queries.js'
+import { extractAppError } from '../../../../src/errors.js'
 import { mockLogger, restoreFetch } from '../../../utils/test-helpers.js'
 import {
   type FetchMockFn,

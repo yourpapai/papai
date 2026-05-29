@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { z } from 'zod'
 
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
-import { countYouTrackTasks } from '../../../../src/providers/youtrack/operations/count.js'
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
+import { countYouTrackTasks } from '../../../../plugins/task-provider-youtrack/operations/count.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 let fetchMock: ReturnType<typeof mock<(url: string, init: RequestInit) => Promise<Response>>> | undefined

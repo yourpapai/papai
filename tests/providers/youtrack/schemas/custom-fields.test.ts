@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/custom-fields.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { CustomFieldValueSchema } from '../../../../src/providers/youtrack/schemas/custom-fields.js'
+import { CustomFieldValueSchema } from '../../../../plugins/task-provider-youtrack/schemas/custom-fields.js'
 
 describe('CustomFieldValueSchema', () => {
   describe('SingleEnumIssueCustomField', () => {

@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { TaskCustomField } from 'papai/plugin-types'
 import type { z } from 'zod'
 
-import type { TaskCustomField } from '../types.js'
 import { YOUTRACK_DUE_DATE_FIELD_NAME } from './constants.js'
 import type { CustomFieldValueSchema } from './schemas/custom-fields.js'
 

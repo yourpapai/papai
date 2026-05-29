@@ -5,9 +5,9 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
-import { YouTrackCollaborationProvider } from '../../../src/providers/youtrack/collaboration-provider.js'
-import { YouTrackProvider } from '../../../src/providers/youtrack/index.js'
+import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
+import { YouTrackCollaborationProvider } from '../../../plugins/task-provider-youtrack/collaboration-provider.js'
+import { YouTrackProvider } from '../../../plugins/task-provider-youtrack/provider.js'
 
 const createConfig = (): YouTrackConfig => ({
   baseUrl: 'https://test.youtrack.cloud',

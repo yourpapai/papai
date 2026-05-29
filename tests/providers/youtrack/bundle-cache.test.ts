@@ -5,7 +5,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 
-import * as bundleCacheModule from '../../../src/providers/youtrack/bundle-cache.js'
+import * as bundleCacheModule from '../../../plugins/task-provider-youtrack/bundle-cache.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { createUniqueProjectId, createUniqueYouTrackConfig } from './fetch-mock-utils.js'
 

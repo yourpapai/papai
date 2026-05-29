@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { ISSUE_FIELDS, YOUTRACK_CAPABILITIES } from '../../../src/providers/youtrack/constants.js'
+import { ISSUE_FIELDS, YOUTRACK_CAPABILITIES } from '../../../plugins/task-provider-youtrack/constants.js'
 
 describe('YOUTRACK_CAPABILITIES', () => {
   test('includes projects.delete capability', () => {

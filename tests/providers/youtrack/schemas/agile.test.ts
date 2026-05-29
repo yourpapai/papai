@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { AgileSchema, AgileWithSprintsSchema } from '../../../../src/providers/youtrack/schemas/agile.js'
+import { AgileSchema, AgileWithSprintsSchema } from '../../../../plugins/task-provider-youtrack/schemas/agile.js'
 
 describe('AgileSchema', () => {
   test('parses valid agile', () => {

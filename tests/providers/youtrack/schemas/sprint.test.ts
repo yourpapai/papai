@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { SprintSchema } from '../../../../src/providers/youtrack/schemas/sprint.js'
+import { SprintSchema } from '../../../../plugins/task-provider-youtrack/schemas/sprint.js'
 
 describe('SprintSchema', () => {
   test('parses valid sprint with all fields', () => {

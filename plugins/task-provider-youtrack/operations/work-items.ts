@@ -3,9 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { providerError } from '../../../errors.js'
-import { logger } from '../../../logger.js'
-import type { CreateWorkItemParams, UpdateWorkItemParams, WorkItem } from '../../types.js'
+import type { CreateWorkItemParams, UpdateWorkItemParams, WorkItem } from 'papai/plugin-types'
+import { providerError } from 'papai/plugin-types'
+
+import { logger } from '../../../src/logger.js'
 import { YouTrackClassifiedError, classifyYouTrackError } from '../classify-error.js'
 import type { YouTrackConfig } from '../client.js'
 import { youtrackFetch } from '../client.js'

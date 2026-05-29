@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { ActivitySchema } from '../../../../src/providers/youtrack/schemas/activity.js'
+import { ActivitySchema } from '../../../../plugins/task-provider-youtrack/schemas/activity.js'
 
 describe('ActivitySchema', () => {
   test('parses valid activity', () => {

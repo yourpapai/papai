@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import { YOUTRACK_PROMPT_ADDENDUM } from '../../../src/providers/youtrack/prompt-addendum.js'
+import { YOUTRACK_PROMPT_ADDENDUM } from '../../../plugins/task-provider-youtrack/prompt-addendum.js'
 
 describe('YOUTRACK_PROMPT_ADDENDUM', () => {
   test('contains YouTrack-specific behaviors header', () => {

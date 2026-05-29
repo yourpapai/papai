@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/issue-link.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { IssueLinkSchema } from '../../../../src/providers/youtrack/schemas/issue-link.js'
+import { IssueLinkSchema } from '../../../../plugins/task-provider-youtrack/schemas/issue-link.js'
 
 describe('Issue link schemas', () => {
   test('validates embedded link with all fields', () => {

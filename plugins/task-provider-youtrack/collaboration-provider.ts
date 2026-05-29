@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { AppError } from '../../errors.js'
-import type { CommentReaction, SetTaskVisibilityParams, TaskVisibility, UserRef } from '../types.js'
+import type { AppError, CommentReaction, SetTaskVisibilityParams, TaskVisibility, UserRef } from 'papai/plugin-types'
+
 import { classifyYouTrackError } from './classify-error.js'
 import type { YouTrackConfig } from './client.js'
 import {

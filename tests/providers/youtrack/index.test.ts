@@ -8,9 +8,9 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { YouTrackApiError } from '../../../src/providers/youtrack/client.js'
-import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
-import { YouTrackProvider } from '../../../src/providers/youtrack/index.js'
+import { YouTrackApiError } from '../../../plugins/task-provider-youtrack/client.js'
+import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
+import { YouTrackProvider } from '../../../plugins/task-provider-youtrack/provider.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { createUniqueYouTrackConfig } from './fetch-mock-utils.js'
 

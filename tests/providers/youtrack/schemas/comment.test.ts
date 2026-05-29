@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/comment.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { CommentSchema } from '../../../../src/providers/youtrack/schemas/comment.js'
+import { CommentSchema } from '../../../../plugins/task-provider-youtrack/schemas/comment.js'
 
 describe('Comment schemas', () => {
   const validComment = {

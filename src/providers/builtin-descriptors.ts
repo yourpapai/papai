@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from '../../plugins/task-provider-youtrack/constants.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProviderTrait } from './types.js'
-import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './youtrack/constants.js'
 
 export type BuiltinDescriptorSeed = {
   type: string

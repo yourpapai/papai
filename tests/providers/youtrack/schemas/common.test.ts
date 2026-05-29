@@ -6,7 +6,7 @@
 // tests/providers/youtrack/schemas/common.test.ts
 import { describe, expect, test } from 'bun:test'
 
-import { BaseEntitySchema, TimestampSchema } from '../../../../src/providers/youtrack/schemas/common.js'
+import { BaseEntitySchema, TimestampSchema } from '../../../../plugins/task-provider-youtrack/schemas/common.js'
 
 describe('YouTrack common schemas', () => {
   describe('BaseEntitySchema', () => {

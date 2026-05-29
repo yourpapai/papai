@@ -6,10 +6,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
+import { applyYouTrackCommand } from '../../../../plugins/task-provider-youtrack/operations/commands.js'
 import { providerError } from '../../../../src/errors.js'
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
-import { applyYouTrackCommand } from '../../../../src/providers/youtrack/operations/commands.js'
 import { mockLogger, restoreFetch } from '../../../utils/test-helpers.js'
 import { type FetchMockFn, defaultConfig, getLastFetchBody, installFetchMock } from '../fetch-mock-utils.js'
 

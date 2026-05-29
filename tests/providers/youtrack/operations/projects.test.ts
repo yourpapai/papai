@@ -6,8 +6,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
 import {
   createYouTrackProject,
   deleteYouTrackProject,
@@ -15,7 +15,7 @@ import {
   getYouTrackProject,
   listYouTrackProjects,
   updateYouTrackProject,
-} from '../../../../src/providers/youtrack/operations/projects.js'
+} from '../../../../plugins/task-provider-youtrack/operations/projects.js'
 import { mockLogger, restoreFetch } from '../../../utils/test-helpers.js'
 import {
   type FetchMockFn,

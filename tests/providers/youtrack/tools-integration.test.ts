@@ -5,8 +5,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
-import type { YouTrackConfig } from '../../../src/providers/youtrack/client.js'
-import { YouTrackProvider } from '../../../src/providers/youtrack/index.js'
+import type { YouTrackConfig } from '../../../plugins/task-provider-youtrack/client.js'
+import { YouTrackProvider } from '../../../plugins/task-provider-youtrack/provider.js'
 import { makeTools } from '../../../src/tools/index.js'
 import { mockLogger, setupTestDb } from '../../utils/test-helpers.js'
 

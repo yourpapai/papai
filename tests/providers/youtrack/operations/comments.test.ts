@@ -8,15 +8,15 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { YouTrackClassifiedError } from '../../../../src/providers/youtrack/classify-error.js'
-import type { YouTrackConfig } from '../../../../src/providers/youtrack/client.js'
+import { YouTrackClassifiedError } from '../../../../plugins/task-provider-youtrack/classify-error.js'
+import type { YouTrackConfig } from '../../../../plugins/task-provider-youtrack/client.js'
 import {
   addYouTrackComment,
   getYouTrackComment,
   getYouTrackComments,
   removeYouTrackComment,
   updateYouTrackComment,
-} from '../../../../src/providers/youtrack/operations/comments.js'
+} from '../../../../plugins/task-provider-youtrack/operations/comments.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 // --- Fetch mocking infrastructure ---
