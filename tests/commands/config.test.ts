@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ChatCapability, ChatProvider, CommandHandler } from '../../src/chat/types.js'
@@ -403,5 +403,35 @@ describe('/config Command', () => {
       const output = textCalls[0]
       expect(output).toContain('not available')
     })
+  })
+})
+
+const originalSettingsBaseUrl = process.env['SETTINGS_PUBLIC_BASE_URL']
+
+describe('/config settings link issuance', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    delete process.env['SETTINGS_PUBLIC_BASE_URL']
+  })
+
+  afterEach(() => {
+    if (originalSettingsBaseUrl === undefined) delete process.env['SETTINGS_PUBLIC_BASE_URL']
+    else process.env['SETTINGS_PUBLIC_BASE_URL'] = originalSettingsBaseUrl
+  })
+
+  test('replies with a single-use settings link when configured', async () => {
+    process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+    const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
+    registerConfigCommand(mockChat, (_userId: string) => true)
+    const handler = commandHandlers.get('config')
+    assert.ok(handler !== undefined, 'expected config handler to be registered')
+
+    const { reply, textCalls } = createMockReply()
+    await handler(createDmMessage(USER_ID), reply, createAuth(USER_ID))
+
+    const allText = textCalls.join('\n')
+    expect(allText).toContain('https://bot.example.com/settings?code=')
+    expect(allText).toMatch(/single-use/iu)
   })
 })

@@ -15,6 +15,7 @@ import { logger } from '../logger.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { getPluginContextState } from '../plugins/store.js'
+import { issueSettingsLink } from '../settings/issue-link.js'
 import { getToolPrefs } from '../tools/tool-preferences.js'
 import type { ConfigField } from '../types/config.js'
 
@@ -213,10 +214,26 @@ export function registerConfigCommand(chat: ChatProvider, ..._rest: [] | [_check
     }
 
     log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command called')
+
+    const link = issueSettingsLink({ platformInstanceId: msg.platformInstanceId, platformUserId: msg.user.id })
+    if (link.kind === 'ok') {
+      log.info({ userId: msg.user.id }, '/config issued settings link')
+      await reply.formatted(
+        `🔧 Open your settings: ${link.url}\n\n⚠️ This link is single-use and expires in 10 minutes. Do not share it.`,
+      )
+      return
+    }
+    if (link.kind === 'rate_limited') {
+      const minutes = Math.max(1, Math.ceil(link.retryAfterSec / 60))
+      await reply.text(`Too many settings links requested. Please try again in ${minutes} minute(s).`)
+      return
+    }
+
+    // link.kind === 'not_configured' → fall back to the legacy in-chat flow.
     const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
     const interactiveButtons = supportsInteractiveButtons(sourceChat)
 
-    log.info({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command executed')
+    log.info({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/config command executed (legacy)')
     if (!supportsMessageDeletion(sourceChat)) {
       await reply.text(NO_DELETE_WARNING)
     }
