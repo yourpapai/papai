@@ -14,7 +14,6 @@ import {
 } from '../../src/providers/registry.js'
 import { TaskProviderResolver } from '../../src/providers/resolver.js'
 import type { TaskProviderResolverDeps } from '../../src/providers/resolver.js'
-import { setKaneoWorkspace } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   mockLogger,
@@ -139,12 +138,12 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a Kaneo provider from instance URL, API key, and workspace ID', () => {
-    // kaneo is plugin-contributed; credential is stored under the plugin-namespaced key
+    // kaneo is plugin-contributed; credential and workspaceId are stored under plugin-namespaced keys
     registerKaneoContributed()
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:credential', 'kn-key')
-    setKaneoWorkspace('ctx-1', 'workspace-1')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId', 'workspace-1')
     const resolver = makeResolver()
 
     const provider = resolver.resolve('ctx-1')
@@ -156,7 +155,7 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a Kaneo provider with session cookie credentials', () => {
-    // kaneo is plugin-contributed; credential is stored under the plugin-namespaced key
+    // kaneo is plugin-contributed; credential and workspaceId are stored under plugin-namespaced keys
     registerKaneoContributed()
     insertTaskInstance({
       id: 'kaneo-prod',
@@ -166,7 +165,7 @@ describe('TaskProviderResolver', () => {
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:credential', 'better-auth.session_token=abc')
-    setKaneoWorkspace('ctx-1', 'workspace-1')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId', 'workspace-1')
     const resolver = makeResolver()
 
     const provider = resolver.resolve('ctx-1')
@@ -260,18 +259,16 @@ describe('TaskProviderResolver', () => {
     ])
   })
 
-  // Task 3.7 will remove the kaneo special-case branch in resolver.ts and route workspaceId
-  // through getConfig(contextId, 'kaneo_workspace_id') like every other context-scoped field.
-  // Until then, the resolver's getKaneoWorkspace dep is what supplies workspaceId; this test
-  // documents that the special-case branch is what resolves workspaceId and that the dep is
-  // consulted — not getConfig — for the kaneo workspaceId field specifically.
-  // Kaneo is now plugin-contributed; the special-case branch fires on descriptor.type === 'kaneo'.
-  test('resolves kaneo workspaceId via getKaneoWorkspace dep (Task 3.7 will route via getConfig)', () => {
+  // Task 3.7: kaneo workspaceId now routes through getConfig via the generic plugin-namespaced path.
+  // The getKaneoWorkspace special-case branch has been removed from the resolver.
+  test('resolves kaneo workspaceId via plugin-namespaced getConfig key (not getKaneoWorkspace)', () => {
     registerKaneoContributed()
-    // getConfig always returns 'k-abc' so the credential field resolves; workspaceId is
-    // short-circuited by the special-case branch before getConfig is reached.
-    const getConfig = mock((_contextId: string, _key: string): string | null => 'k-abc')
-    const getKaneoWorkspace = mock((_contextId: string): string | null => 'ws-from-dep')
+    // contextConfigSchema lists credential first, then workspaceId — use mockReturnValueOnce in that order
+    const getConfig = mock((_contextId: string, _key: string): string | null => null)
+    // first call: credential
+    getConfig.mockReturnValueOnce('k-abc')
+    // second call: workspaceId
+    getConfig.mockReturnValueOnce('ws-from-config')
     const capturedProviderConfigs: Array<Record<string, string>> = []
     const resolver = new TaskProviderResolver({
       getContextSettings: (): ReturnType<TaskProviderResolverDeps['getContextSettings']> => ({
@@ -286,7 +283,6 @@ describe('TaskProviderResolver', () => {
         status: 'active',
         createdAt: '2026-05-28T00:00:00.000Z',
       }),
-      getKaneoWorkspace: getKaneoWorkspace as TaskProviderResolverDeps['getKaneoWorkspace'],
       getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
       createProvider: (
         type: string,
@@ -301,16 +297,15 @@ describe('TaskProviderResolver', () => {
 
     // Resolution succeeds
     expect(provider).not.toBeNull()
-    // The getKaneoWorkspace dep was consulted for workspaceId (special-case branch in resolver.ts:48)
-    expect(getKaneoWorkspace).toHaveBeenCalledWith('ctx-1')
     // getConfig is consulted for the credential field using the plugin-contributed storage key path
-    // (kaneo is no longer builtin; Task 3.7 will route workspaceId through getConfig as well)
     expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:task-provider-kaneo:provider:credential')
-    // Provider was created with workspaceId sourced from getKaneoWorkspace (not getConfig)
+    // getConfig is also consulted for workspaceId via the plugin-namespaced key (no special-case branch)
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId')
+    // Provider was created with workspaceId sourced from getConfig (not getKaneoWorkspace)
     expect(capturedProviderConfigs[0]).toEqual({
       baseUrl: 'https://kaneo.invalid',
       credential: 'k-abc',
-      workspaceId: 'ws-from-dep',
+      workspaceId: 'ws-from-config',
     })
   })
 

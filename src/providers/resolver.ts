@@ -8,7 +8,6 @@ import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { getKaneoWorkspace } from '../users.js'
 import { createProvider, getTaskProviderDescriptor } from './registry.js'
 import type { TaskProviderTypeDescriptor } from './registry.js'
 import type { ProviderConfigField, TaskProvider } from './types.js'
@@ -20,7 +19,6 @@ export interface TaskProviderResolverDeps {
   getTaskInstance: typeof getTaskInstance
   /** Wider than `typeof getConfig`: resolver must look up arbitrary contributed-type field names. */
   getConfig: (contextId: string, key: string) => string | null
-  getKaneoWorkspace: typeof getKaneoWorkspace
   getTaskProviderDescriptor: typeof getTaskProviderDescriptor
   createProvider: typeof createProvider
 }
@@ -29,7 +27,6 @@ const defaultDeps: TaskProviderResolverDeps = {
   getContextSettings,
   getTaskInstance,
   getConfig: getConfigValue,
-  getKaneoWorkspace,
   getTaskProviderDescriptor,
   createProvider,
 }
@@ -45,7 +42,6 @@ const readContextScopedField = (
   contextId: string,
   deps: TaskProviderResolverDeps,
 ): string | null => {
-  if (descriptor.type === 'kaneo' && field.key === 'workspaceId') return deps.getKaneoWorkspace(contextId)
   return deps.getConfig(contextId, storageKeyForField(descriptor, field))
 }
 
