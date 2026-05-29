@@ -3,8 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ToolExecutionOptions } from 'ai'
+import type { FlexibleSchema, ToolExecutionOptions } from 'ai'
+import { jsonSchema } from 'ai'
 import { z } from 'zod'
+
+import { logger } from '../logger.js'
+
+const log = logger.child({ scope: 'tools:permission-gate' })
 
 export interface PermissionDeniedResult {
   readonly status: 'permission_denied'
@@ -22,17 +27,66 @@ const PERMISSION_REASON_DESCRIPTION =
 
 export const PERMISSION_REASON_FIELD = '_permission_reason'
 
+const PERMISSION_REASON_JSON_PROPERTY = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 280,
+  description: PERMISSION_REASON_DESCRIPTION,
+} as const
+
 function isZodObject(schema: unknown): schema is z.ZodObject<z.ZodRawShape> {
   return schema instanceof z.ZodObject
 }
 
-export function extendSchemaForAsk(schema: unknown): z.ZodObject<z.ZodRawShape> {
-  if (!isZodObject(schema)) {
-    return z.object({ _permission_reason: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION) })
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getJsonFromSchema(schema: unknown): Record<string, unknown> | null {
+  if (!isRecord(schema)) return null
+  // The AI SDK Schema type exposes the underlying JSON schema via .jsonSchema
+  const raw = schema['jsonSchema']
+  if (isRecord(raw)) return raw
+  return null
+}
+
+function extractProperties(original: Record<string, unknown>): Record<string, unknown> {
+  const props = original['properties']
+  return isRecord(props) ? props : {}
+}
+
+function extractRequired(original: Record<string, unknown>): string[] {
+  if (!Array.isArray(original['required'])) return []
+  return original['required'].filter((item): item is string => typeof item === 'string')
+}
+
+function mergeJsonSchemaWithPermissionReason(original: Record<string, unknown>): Record<string, unknown> {
+  const properties = extractProperties(original)
+  const required = extractRequired(original)
+  return {
+    ...original,
+    type: 'object',
+    properties: { ...properties, [PERMISSION_REASON_FIELD]: PERMISSION_REASON_JSON_PROPERTY },
+    required: required.includes(PERMISSION_REASON_FIELD) ? required : [...required, PERMISSION_REASON_FIELD],
   }
-  return schema.extend({
-    _permission_reason: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION),
-  })
+}
+
+export function extendSchemaForAsk(schema: z.ZodObject<z.ZodRawShape>): z.ZodObject<z.ZodRawShape>
+export function extendSchemaForAsk(schema: unknown): FlexibleSchema
+export function extendSchemaForAsk(schema: unknown): FlexibleSchema {
+  if (isZodObject(schema)) {
+    return schema.extend({
+      [PERMISSION_REASON_FIELD]: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION),
+    })
+  }
+  const wrappedJson = getJsonFromSchema(schema)
+  if (wrappedJson === null) {
+    log.warn({ schemaType: typeof schema }, 'Cannot extend schema for ask; missing JSON shape')
+    // Best-effort: return original schema untouched. Gate will deny without _permission_reason.
+    return z.object({ [PERMISSION_REASON_FIELD]: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION) })
+  }
+  const merged = mergeJsonSchemaWithPermissionReason(wrappedJson)
+  return jsonSchema(merged)
 }
 
 export type AskPermissionFn = (req: { toolName: string; reason: string }) => Promise<'allow' | 'deny'>

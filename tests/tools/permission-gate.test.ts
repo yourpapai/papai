@@ -5,9 +5,10 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { jsonSchema } from 'ai'
 import { z } from 'zod'
 
-import { buildPermissionDenied, extendSchemaForAsk } from '../../src/tools/permission-gate.js'
+import { buildPermissionDenied, PERMISSION_REASON_FIELD, extendSchemaForAsk } from '../../src/tools/permission-gate.js'
 
 describe('buildPermissionDenied', () => {
   test('returns structured permission_denied shape', () => {
@@ -16,8 +17,8 @@ describe('buildPermissionDenied', () => {
   })
 })
 
-describe('extendSchemaForAsk', () => {
-  test('adds required _permission_reason field', () => {
+describe('extendSchemaForAsk (Zod input)', () => {
+  test('adds required _permission_reason field and rejects without it', () => {
     const original = z.object({ id: z.string() })
     const extended = extendSchemaForAsk(original)
     expect(extended.safeParse({ id: 'x' }).success).toBe(false)
@@ -40,6 +41,43 @@ describe('extendSchemaForAsk', () => {
     const extended = extendSchemaForAsk(original)
     expect(extended.safeParse({ id: 'x', _permission_reason: 'r' }).success).toBe(false)
     expect(extended.safeParse({ id: 'x', count: 1, _permission_reason: 'r' }).success).toBe(true)
+  })
+})
+
+describe('extendSchemaForAsk (jsonSchema/MCP input)', () => {
+  const baseJsonSchema = { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] }
+
+  test('returns a schema wrapper with both id and _permission_reason in properties', () => {
+    const wrapped = jsonSchema(baseJsonSchema)
+    const extended = extendSchemaForAsk(wrapped)
+    expect(extended).toMatchObject({
+      jsonSchema: {
+        properties: {
+          id: expect.anything() as unknown,
+          [PERMISSION_REASON_FIELD]: expect.anything() as unknown,
+        },
+      },
+    })
+  })
+
+  test('includes _permission_reason in required array', () => {
+    const wrapped = jsonSchema(baseJsonSchema)
+    const extended = extendSchemaForAsk(wrapped)
+    expect(extended).toMatchObject({
+      jsonSchema: {
+        required: expect.arrayContaining(['id', PERMISSION_REASON_FIELD]) as unknown,
+      },
+    })
+  })
+
+  test('preserves original required fields in extended schema', () => {
+    const wrapped = jsonSchema(baseJsonSchema)
+    const extended = extendSchemaForAsk(wrapped)
+    expect(extended).toMatchObject({
+      jsonSchema: {
+        required: expect.arrayContaining(['id']) as unknown,
+      },
+    })
   })
 })
 
