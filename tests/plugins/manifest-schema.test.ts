@@ -92,6 +92,19 @@ describe('pluginManifestSchema strict validation', () => {
     expect(uncResult.success).toBe(false)
   })
 
+  test('accepts main paths whose filename contains dot-dot but no parent segment', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'dotted-main',
+      name: 'Dotted Main',
+      version: '1.0.0',
+      description: 'dotted filename',
+      apiVersion: 1,
+      main: 'plugin..entry.ts',
+    })
+
+    expect(result.success).toBe(true)
+  })
+
   test('rejects configKeys without matching context-scoped config requirement', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'bad-config-keys',

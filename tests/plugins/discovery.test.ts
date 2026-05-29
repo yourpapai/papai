@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, win32 } from 'node:path'
 
@@ -83,6 +83,25 @@ describe('discoverPlugins', () => {
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.directoryName).toBe('broken')
     expect(result.errors[0]?.reason).toContain('Invalid JSON')
+  })
+
+  test('reports plugin.json read failures distinctly from JSON parse failures', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'unreadable')
+    mkdirSync(pluginDir)
+    writeFileSync(join(pluginDir, 'plugin.json'), '{"id":"unreadable"}', 'utf-8')
+    chmodSync(join(pluginDir, 'plugin.json'), 0)
+
+    try {
+      const result = discoverPlugins(root)
+
+      expect(result.plugins).toEqual([])
+      expect(result.errors).toHaveLength(1)
+      expect(result.errors[0]?.directoryName).toBe('unreadable')
+      expect(result.errors[0]?.reason).toContain('Failed to read plugin.json')
+    } finally {
+      chmodSync(join(pluginDir, 'plugin.json'), 0o644)
+    }
   })
 
   test('reports plugin id mismatch with directory name', () => {

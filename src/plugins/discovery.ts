@@ -153,7 +153,7 @@ function parseAndValidateManifest(
   } catch (error) {
     return {
       directoryName: dirName,
-      reason: `Invalid JSON in plugin.json: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `Failed to read plugin.json: ${error instanceof Error ? error.message : String(error)}`,
     }
   }
 

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { win32 } from 'node:path'
+import { posix, win32 } from 'node:path'
 
 type ManifestValidationInput = {
   permissions: readonly string[]
@@ -31,7 +31,7 @@ type ManifestValidationInput = {
 export function isValidMainPath(path: string): boolean {
   if (path.startsWith('/')) return false
   if (win32.isAbsolute(path)) return false
-  if (path.includes('..')) return false
+  if (posix.normalize(path).split('/').includes('..')) return false
   return path.endsWith('.ts') || path.endsWith('.js')
 }
 
