@@ -15,7 +15,7 @@ import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { getContributedTaskProviderType } from '../../src/providers/registry.js'
+import { createProvider, getTaskProviderDescriptor } from '../../src/providers/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
@@ -298,10 +298,12 @@ describe('activatePlugins', () => {
     approvePlugin(plugin)
 
     await activatePlugins([plugin])
-    expect(getContributedTaskProviderType('demo')?.pluginId).toBe('provider-plugin')
+    expect(getTaskProviderDescriptor('demo')?.source).toEqual({ plugin: 'provider-plugin' })
+    expect(() => createProvider('demo', {})).not.toThrow()
 
     await deactivateAllPlugins()
-    expect(getContributedTaskProviderType('demo')).toBeUndefined()
+    expect(getTaskProviderDescriptor('demo')).toBeUndefined()
+    expect(() => createProvider('demo', {})).toThrow('Unknown provider: demo')
   })
 
   test('keeps active task instances when plugin runtime shuts down normally', async () => {

@@ -10,7 +10,6 @@ import {
   createProvider,
   getCapabilitiesForTaskInstance,
   getTaskProviderDescriptor,
-  getContributedTaskProviderType,
   getTaskProviderConfigValidator,
   listTaskProviderTypes,
   registerContributedTaskProviderType,
@@ -65,31 +64,43 @@ describe('contributed task provider registry', () => {
   test('registers and resolves a contributed type', () => {
     mockLogger()
     registerContributedTaskProviderType('custom-tracker', entry)
-    const found = getContributedTaskProviderType('custom-tracker')
-    expect(found).toBeDefined()
-    expect(found!.pluginId).toBe('task-provider-kaneo')
+
+    const descriptor = getTaskProviderDescriptor('custom-tracker')
+    const provider = createProvider('custom-tracker', {})
+
+    expect(descriptor).toBeDefined()
+    expect(descriptor?.source).toEqual({ plugin: 'task-provider-kaneo' })
+    expect(provider).toBe(fakeProvider)
   })
 
-  test('first-wins: duplicate type from another plugin is silently skipped', () => {
+  test('first-wins: duplicate type from another plugin is skipped', () => {
     mockLogger()
+    const otherProvider = createMockProvider({ name: 'other-plugin-provider' })
     registerContributedTaskProviderType('custom-tracker', entry)
     expect(() =>
       registerContributedTaskProviderType('custom-tracker', {
         pluginId: 'other-plugin',
-        factory: (): TaskProvider => fakeProvider,
+        factory: (): TaskProvider => otherProvider,
         capabilities: new Set<TaskCapability>(),
         displayName: 'Other',
         configSchema: [] as const,
       }),
     ).not.toThrow()
-    expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('task-provider-kaneo')
+
+    const descriptor = getTaskProviderDescriptor('custom-tracker')
+    const provider = createProvider('custom-tracker', {})
+
+    expect(descriptor?.source).toEqual({ plugin: 'task-provider-kaneo' })
+    expect(provider).toBe(fakeProvider)
   })
 
   test('unregister by pluginId removes its types', () => {
     mockLogger()
     registerContributedTaskProviderType('custom-tracker', entry)
     unregisterContributedTaskProviderType('task-provider-kaneo')
-    expect(getContributedTaskProviderType('custom-tracker')).toBeUndefined()
+
+    expect(getTaskProviderDescriptor('custom-tracker')).toBeUndefined()
+    expect(() => createProvider('custom-tracker', {})).toThrow('Unknown provider: custom-tracker')
   })
 
   test('rejects registering a type that shadows a built-in', () => {
@@ -238,7 +249,7 @@ describe('registerContributedTaskProviderType duplicates', () => {
     try {
       registerContributedTaskProviderType('dup', makeEntry('plugin-a'))
       expect(() => registerContributedTaskProviderType('dup', makeEntry('plugin-b'))).not.toThrow()
-      expect(getContributedTaskProviderType('dup')?.pluginId).toBe('plugin-a')
+      expect(getTaskProviderDescriptor('dup')?.source).toEqual({ plugin: 'plugin-a' })
     } finally {
       unregisterContributedTaskProviderType('plugin-a')
       unregisterContributedTaskProviderType('plugin-b')

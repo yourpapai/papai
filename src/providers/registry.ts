@@ -19,8 +19,6 @@ export type TaskProviderConfigValidator = (
   config: Record<string, string>,
 ) => Promise<{ ok: true } | { ok: false; reason: string }>
 
-type ProviderFactory = TaskProviderFactory
-
 type LegacyProviderConfigField = Omit<ProviderConfigField, 'scope' | 'sensitive'> & {
   sensitive?: boolean
   scope?: 'instance' | 'context' | 'user'
@@ -33,7 +31,7 @@ const configValue = (config: Record<string, string>, key: string): string => {
 }
 
 /** Register the built-in Kaneo provider. */
-const createKaneoProvider: ProviderFactory = (config) => {
+const createKaneoProvider: TaskProviderFactory = (config) => {
   const baseUrl = configValue(config, 'baseUrl')
   const workspaceId = configValue(config, 'workspaceId')
   const credential = configValue(config, 'credential')
@@ -46,13 +44,13 @@ const createKaneoProvider: ProviderFactory = (config) => {
 }
 
 /** Register the built-in YouTrack provider. */
-const createYouTrackProvider: ProviderFactory = (config) => {
+const createYouTrackProvider: TaskProviderFactory = (config) => {
   const baseUrl = configValue(config, 'baseUrl')
   const token = configValue(config, 'token')
   return new YouTrackProvider({ baseUrl, token })
 }
 
-const providers = new Map<string, ProviderFactory>([
+const providers = new Map<string, TaskProviderFactory>([
   ['kaneo', createKaneoProvider],
   ['youtrack', createYouTrackProvider],
 ])
@@ -152,11 +150,6 @@ export function unregisterContributedTaskProviderType(pluginId: string): string[
     }
   }
   return removedTypes
-}
-
-/** Look up a contributed task provider entry by type. */
-export function getContributedTaskProviderType(type: string): ContributedTaskProviderEntry | undefined {
-  return pluginContributedTaskProviderFactories.get(type)
 }
 
 /** Resolve the optional instance-config validator for a task-provider type. */

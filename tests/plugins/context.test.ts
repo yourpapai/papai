@@ -9,7 +9,7 @@ import { buildPluginContext } from '../../src/plugins/context.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
-import { getContributedTaskProviderType, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
+import { getTaskProviderDescriptor, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -205,7 +205,7 @@ describe('buildPluginContext', () => {
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
       ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
-      expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('test-plugin')
+      expect(getTaskProviderDescriptor('custom-tracker')?.source).toEqual({ plugin: 'test-plugin' })
     })
 
     test('registers provider context config schema from manifest', () => {
@@ -224,9 +224,9 @@ describe('buildPluginContext', () => {
 
       ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
 
-      const contributed = getContributedTaskProviderType('custom-tracker')
-      expect(contributed?.instanceConfigSchema?.map((field) => field.key)).toEqual(['base_url'])
-      expect(contributed?.contextConfigSchema?.map((field) => field.key)).toEqual(['token'])
+      const descriptor = getTaskProviderDescriptor('custom-tracker')
+      expect(descriptor?.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
+      expect(descriptor?.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
     })
 
     test('throws without provider.task permission', () => {
