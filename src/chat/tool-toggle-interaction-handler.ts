@@ -14,7 +14,7 @@ import {
 } from '../commands/tool-config-view.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
-import { getToolMetadata, TOOL_METADATA, type ToolDomain } from '../tools/tool-metadata.js'
+import { getToolMetadata, TOOL_DOMAINS, type ToolDomain } from '../tools/tool-metadata.js'
 import { getToolPrefs, setToolPrefs, toggleDomain, toggleTool } from '../tools/tool-preferences.js'
 import { buildTools } from '../tools/tools-builder.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
@@ -22,7 +22,7 @@ import type { IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:tool-toggle-interaction' })
 
-const DOMAIN_SET = new Set<string>(Object.values(TOOL_METADATA).map((m) => m.domain))
+const DOMAIN_SET = new Set<string>(TOOL_DOMAINS)
 
 function isToolDomain(value: string): value is ToolDomain {
   return DOMAIN_SET.has(value)

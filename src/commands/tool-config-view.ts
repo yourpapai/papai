@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import type { ChatButton } from '../chat/types.js'
-import { getToolMetadata, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
+import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
 import { getDomainStatus, isToolEnabled, type ToolPrefs } from '../tools/tool-preferences.js'
 
 export interface ToolMenuView {
@@ -47,28 +47,7 @@ const RISK_EMOJI: Record<ToolRisk, string> = {
 }
 
 const MAX_CALLBACK_DATA_BYTES = 64
-const DOMAIN_CODES: readonly ToolDomain[] = [
-  'task',
-  'project',
-  'comment',
-  'label',
-  'status',
-  'attachment',
-  'work',
-  'sprint',
-  'query',
-  'collaboration',
-  'memo',
-  'recurring',
-  'deferred',
-  'instruction',
-  'history',
-  'web',
-  'identity',
-  'time',
-  'mcp',
-  'plugin',
-]
+const DOMAIN_CODES: readonly ToolDomain[] = TOOL_DOMAINS
 
 function callbackData(raw: string, compact: string): string | null {
   if (Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES) return raw

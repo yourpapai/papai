@@ -51,6 +51,13 @@ describe('handleToolToggleInteraction', () => {
     expect(getToolPrefs(USER).disabledDomains).toContain('memo')
   })
 
+  it('toggling the plugin domain off persists a disabled plugin domain for the user', async () => {
+    const { reply } = createMockReply()
+    const handled = await handleToolToggleInteraction(dmInteraction(`tgl:dom:plugin:${CTX}`), reply)
+    expect(handled).toBe(true)
+    expect(getToolPrefs(USER).disabledDomains).toContain('plugin')
+  })
+
   it('toggling a domain off accepts a scoped personal DM target context', async () => {
     const scopedContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER })
     const scopedCtx = Buffer.from(scopedContextId).toString('base64url')
@@ -84,6 +91,14 @@ describe('handleToolToggleInteraction', () => {
     const handled = await handleToolToggleInteraction(dmInteraction(`tgl:open:task:${CTX}`), reply)
     expect(handled).toBe(true)
     expect(buttonCalls.length).toBeGreaterThan(0)
+  })
+
+  it('renders the plugin drill view for tgl:open instead of rejecting the domain', async () => {
+    const { reply, buttonCalls, textCalls } = createMockReply()
+    const handled = await handleToolToggleInteraction(dmInteraction(`tgl:open:plugin:${CTX}`), reply)
+    expect(handled).toBe(true)
+    expect(buttonCalls.length).toBeGreaterThan(0)
+    expect(textCalls).not.toContain('Unknown tool domain.')
   })
 
   it('renders the domain list for tgl:back and returns handled', async () => {

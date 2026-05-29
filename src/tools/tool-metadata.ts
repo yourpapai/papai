@@ -3,27 +3,30 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export type ToolDomain =
-  | 'task'
-  | 'project'
-  | 'comment'
-  | 'label'
-  | 'status'
-  | 'attachment'
-  | 'work'
-  | 'sprint'
-  | 'query'
-  | 'collaboration'
-  | 'memo'
-  | 'recurring'
-  | 'deferred'
-  | 'instruction'
-  | 'history'
-  | 'web'
-  | 'identity'
-  | 'time'
-  | 'mcp'
-  | 'plugin'
+export const TOOL_DOMAINS = [
+  'task',
+  'project',
+  'comment',
+  'label',
+  'status',
+  'attachment',
+  'work',
+  'sprint',
+  'query',
+  'collaboration',
+  'memo',
+  'recurring',
+  'deferred',
+  'instruction',
+  'history',
+  'web',
+  'identity',
+  'time',
+  'mcp',
+  'plugin',
+] as const
+
+export type ToolDomain = (typeof TOOL_DOMAINS)[number]
 
 export type ToolOperation = 'read' | 'create' | 'update' | 'delete' | 'manage'
 

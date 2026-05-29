@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { buildDomainListView, buildDomainDrillView } from '../../src/commands/tool-config-view.js'
 
 const AVAILABLE = ['create_task', 'update_task', 'search_tasks', 'delete_task', 'web_fetch', 'get_current_time']
+const AVAILABLE_WITH_PLUGIN = [...AVAILABLE, 'plugin_hello_world__greet']
 
 describe('buildDomainListView', () => {
   it('lists domains present in the available set with on status by default', () => {
@@ -45,6 +46,17 @@ describe('buildDomainListView', () => {
     const taskRow = view.text.split('\n').find((l) => l.toLowerCase().includes('task'))
     expect(taskRow).toContain('🟡')
   })
+
+  it('renders a plugin domain row when plugin tools are available', () => {
+    const view = buildDomainListView('ctx', AVAILABLE_WITH_PLUGIN, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
+
+    expect(view.text).toContain('Plugin tools')
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:dom:plugin:'))).toBe(true)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:open:plugin:'))).toBe(true)
+  })
 })
 
 describe('buildDomainDrillView', () => {
@@ -76,5 +88,15 @@ describe('buildDomainDrillView', () => {
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:t:'))).toBe(true)
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:b:'))).toBe(true)
     expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
+  it('renders plugin tools in the plugin drill view', () => {
+    const view = buildDomainDrillView('ctx', 'plugin', AVAILABLE_WITH_PLUGIN, {
+      disabledDomains: [],
+      toolOverrides: {},
+    })
+
+    expect(view.text).toContain('plugin_hello_world__greet')
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:plugin_hello_world__greet:'))).toBe(true)
   })
 })

@@ -76,7 +76,7 @@ export function isToolEnabled(prefs: ToolPrefs, toolName: string): boolean {
   const override = prefs.toolOverrides[toolName]
   if (override !== undefined) return override
   const meta = getToolMetadata(toolName)
-  // un-classified tools (e.g. plugin tools) are never grouped/disabled here
+  // Unclassified tools are never grouped or disabled at the domain level.
   if (meta === undefined) return true
   return domainEnabled(prefs, meta.domain)
 }
