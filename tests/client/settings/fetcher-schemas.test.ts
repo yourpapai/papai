@@ -83,8 +83,24 @@ describe('fetcher-schemas', () => {
     const parsed = IdentityResponseSchema.parse({
       contextId: 'user:1',
       providerName: 'kaneo',
-      mapping: { providerUserId: null, providerUserLogin: null, displayName: null, matchMethod: null, confidence: 0 },
+      mapping: {
+        providerUserId: null,
+        providerUserLogin: null,
+        displayName: null,
+        matchedAt: '2026-01-01T00:00:00Z',
+        matchMethod: null,
+        confidence: null,
+      },
     })
-    expect(parsed.mapping.providerUserId).toBeNull()
+    expect(parsed.mapping?.providerUserId).toBeNull()
+  })
+
+  test('IdentityResponseSchema accepts null mapping', () => {
+    const parsed = IdentityResponseSchema.parse({
+      contextId: 'user:1',
+      providerName: 'kaneo',
+      mapping: null,
+    })
+    expect(parsed.mapping).toBeNull()
   })
 })

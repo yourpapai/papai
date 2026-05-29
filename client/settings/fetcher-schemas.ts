@@ -107,13 +107,14 @@ export const IdentityMappingSchema = z.object({
   providerUserId: z.string().nullable(),
   providerUserLogin: z.string().nullable(),
   displayName: z.string().nullable(),
+  matchedAt: z.string(),
   matchMethod: z.string().nullable(),
-  confidence: z.number(),
+  confidence: z.number().nullable(),
 })
 export const IdentityResponseSchema = z.object({
   contextId: z.string(),
   providerName: z.string(),
-  mapping: IdentityMappingSchema,
+  mapping: IdentityMappingSchema.nullable(),
 })
 export type IdentityResponse = z.infer<typeof IdentityResponseSchema>
 
