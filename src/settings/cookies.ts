@@ -23,7 +23,7 @@ export function parseSessionCookie(req: Request): string | null {
     const eq = trimmed.indexOf('=')
     if (eq === -1) continue
     if (trimmed.slice(0, eq) === SESSION_COOKIE_NAME) {
-      const value = trimmed.slice(eq + 1)
+      const value = trimmed.slice(eq + 1).trim()
       return value === '' ? null : value
     }
   }

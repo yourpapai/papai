@@ -20,8 +20,10 @@ describe('settings cookies', () => {
     )
   })
 
-  test('clearSessionCookie expires the cookie', () => {
-    expect(clearSessionCookie()).toContain('Max-Age=0')
+  test('clearSessionCookie expires the cookie with the same path scope', () => {
+    expect(clearSessionCookie()).toBe(
+      `${SESSION_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/settings; Max-Age=0`,
+    )
   })
 
   test('parseSessionCookie extracts the session id', () => {
