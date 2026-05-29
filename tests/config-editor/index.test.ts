@@ -95,6 +95,20 @@ describe('config-editor public API', () => {
     expect(parsed.targetContextId).toBe('group-9')
   })
 
+  test('cancel and back callbacks round-trip a session token when provided', () => {
+    for (const action of ['cancel', 'back'] as const) {
+      const data = serializeCallbackData({ action, sessionToken: 'abc123' }, 'group-9')
+
+      expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+
+      const parsed = parseCallbackData(data)
+      expect(parsed.action).toBe(action)
+      expect(parsed.key).toBeNull()
+      expect(parsed.sessionToken).toBe('abc123')
+      expect(parsed.targetContextId).toBe('group-9')
+    }
+  })
+
   test('serializeCallbackData encodes targetContextId when provided', () => {
     const data = serializeCallbackData({ action: 'edit', key: 'timezone' }, 'group-9')
     expect(data).toContain('cfg:edit:timezone@')

@@ -72,7 +72,8 @@ describe('config_editor events', () => {
     })
 
     startEditor(userId, storageContextId, 'kaneo_apikey')
-    handleEditorCallback(userId, storageContextId, 'cancel')
+    const session = getEditorSession(userId, storageContextId)
+    handleEditorCallback(userId, storageContextId, 'cancel', undefined, session?.sessionToken)
 
     const closedEvent = events.find((e) => e.type === 'config_editor:closed')
     expect(closedEvent).toBeDefined()

@@ -53,7 +53,9 @@ function compactCallbackData(
     (button.action === 'cancel' || button.action === 'back' || button.action === 'setup') &&
     targetContextId !== undefined
   ) {
-    return `cfg:${COMPACT_ACTIONS[button.action]}:${targetTag(targetContextId)}`
+    return button.sessionToken === undefined
+      ? `cfg:${COMPACT_ACTIONS[button.action]}:${targetTag(targetContextId)}`
+      : `cfg:${COMPACT_ACTIONS[button.action]}:${targetTag(targetContextId)}:${button.sessionToken}`
   }
 
   const fallback = button.action === 'setup' ? 'cfg:setup' : button.action === 'cancel' ? 'cfg:cancel' : 'cfg:back'
@@ -112,18 +114,73 @@ function parseCompactActionTag(core: string): {
   action: 'cancel' | 'back' | 'setup' | null
   key: null
   targetTag?: string
+  sessionToken?: string
 } | null {
-  const match = /^cfg:([cbu]):([A-Za-z0-9_-]+)$/u.exec(core)
+  const match = /^cfg:([cbu]):([A-Za-z0-9_-]+)(?::([A-Za-z0-9_-]+))?$/u.exec(core)
   if (match === null) return null
-  const [, compactAction, compactTargetTag] = match
+  const [, compactAction, compactTargetTag, sessionToken] = match
   if (compactAction === undefined || compactTargetTag === undefined) return { action: null, key: null }
   const action =
     compactAction === 'c' ? 'cancel' : compactAction === 'b' ? 'back' : compactAction === 'u' ? 'setup' : null
   return {
     action,
     key: null,
+    sessionToken,
     targetTag: compactTargetTag,
   }
+}
+
+type ParsedCallbackData = {
+  action: 'edit' | 'save' | 'cancel' | 'back' | 'setup' | null
+  key: string | null
+  sessionToken?: string
+  targetContextId?: string
+  targetTag?: string
+}
+
+function parseBasicActionCallback(core: string, targetContextId: string | undefined): ParsedCallbackData | null {
+  if (core === 'cfg:cancel') return { action: 'cancel', key: null, targetContextId }
+  if (core === 'cfg:back') return { action: 'back', key: null, targetContextId }
+  if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
+
+  if (core.startsWith('cfg:cancel~')) {
+    const sessionToken = core.replace('cfg:cancel~', '')
+    return /^[A-Za-z0-9_-]+$/u.test(sessionToken)
+      ? { action: 'cancel', key: null, sessionToken, targetContextId }
+      : { action: null, key: null }
+  }
+
+  if (!core.startsWith('cfg:back~')) return null
+
+  const sessionToken = core.replace('cfg:back~', '')
+  return /^[A-Za-z0-9_-]+$/u.test(sessionToken)
+    ? { action: 'back', key: null, sessionToken, targetContextId }
+    : { action: null, key: null }
+}
+
+function parseLegacyFieldCallback(core: string, targetContextId: string | undefined): ParsedCallbackData | null {
+  if (core.startsWith('cfg:edit:')) {
+    const key = core.replace('cfg:edit:', '')
+    return isAllowedDynamicConfigKey(key) ? { action: 'edit', key, targetContextId } : { action: null, key: null }
+  }
+
+  if (!core.startsWith('cfg:save:')) return null
+
+  const payload = core.replace('cfg:save:', '')
+  const separatorIndex = payload.lastIndexOf('~')
+  if (separatorIndex === -1) {
+    return isAllowedDynamicConfigKey(payload)
+      ? { action: 'save', key: payload, targetContextId }
+      : { action: null, key: null }
+  }
+
+  const key = payload.slice(0, separatorIndex)
+  const sessionToken = payload.slice(separatorIndex + 1)
+  const hasValidSessionToken = /^[A-Za-z0-9_-]+$/u.test(sessionToken)
+
+  return isAllowedDynamicConfigKey(key) && hasValidSessionToken
+    ? { action: 'save', key, sessionToken, targetContextId }
+    : { action: null, key: null }
 }
 
 export function serializeCallbackData(
@@ -151,9 +208,23 @@ export function serializeCallbackData(
         targetContextId,
       )
     case 'cancel':
-      return compactCallbackData(appendContext('cfg:cancel', targetContextId), button, targetContextId)
+      return compactCallbackData(
+        appendContext(
+          button.sessionToken === undefined ? 'cfg:cancel' : `cfg:cancel~${button.sessionToken}`,
+          targetContextId,
+        ),
+        button,
+        targetContextId,
+      )
     case 'back':
-      return compactCallbackData(appendContext('cfg:back', targetContextId), button, targetContextId)
+      return compactCallbackData(
+        appendContext(
+          button.sessionToken === undefined ? 'cfg:back' : `cfg:back~${button.sessionToken}`,
+          targetContextId,
+        ),
+        button,
+        targetContextId,
+      )
     case 'setup':
       return compactCallbackData(appendContext('cfg:setup', targetContextId), button, targetContextId)
     default:
@@ -161,18 +232,11 @@ export function serializeCallbackData(
   }
 }
 
-function parseRawCallbackData(data: string): {
-  action: 'edit' | 'save' | 'cancel' | 'back' | 'setup' | null
-  key: string | null
-  sessionToken?: string
-  targetContextId?: string
-  targetTag?: string
-} {
+function parseRawCallbackData(data: string): ParsedCallbackData {
   const { core, targetContextId } = splitCallbackContext(data)
 
-  if (core === 'cfg:cancel') return { action: 'cancel', key: null, targetContextId }
-  if (core === 'cfg:back') return { action: 'back', key: null, targetContextId }
-  if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
+  const basicAction = parseBasicActionCallback(core, targetContextId)
+  if (basicAction !== null) return basicAction
 
   const compactAction = parseCompactActionTag(core)
   if (compactAction !== null) return { ...compactAction, targetContextId }
@@ -183,28 +247,8 @@ function parseRawCallbackData(data: string): {
   const compactSave = parseCompactCallbackKey('cfg:s:', 'save', core)
   if (compactSave !== null) return { ...compactSave, targetContextId }
 
-  if (core.startsWith('cfg:edit:')) {
-    const key = core.replace('cfg:edit:', '')
-    return isAllowedDynamicConfigKey(key) ? { action: 'edit', key, targetContextId } : { action: null, key: null }
-  }
-
-  if (core.startsWith('cfg:save:')) {
-    const payload = core.replace('cfg:save:', '')
-    const separatorIndex = payload.lastIndexOf('~')
-    if (separatorIndex === -1) {
-      return isAllowedDynamicConfigKey(payload)
-        ? { action: 'save', key: payload, targetContextId }
-        : { action: null, key: null }
-    }
-
-    const key = payload.slice(0, separatorIndex)
-    const sessionToken = payload.slice(separatorIndex + 1)
-    const hasValidSessionToken = /^[A-Za-z0-9_-]+$/u.test(sessionToken)
-
-    return isAllowedDynamicConfigKey(key) && hasValidSessionToken
-      ? { action: 'save', key, sessionToken, targetContextId }
-      : { action: null, key: null }
-  }
+  const legacyFieldCallback = parseLegacyFieldCallback(core, targetContextId)
+  if (legacyFieldCallback !== null) return legacyFieldCallback
 
   return { action: null, key: null }
 }
