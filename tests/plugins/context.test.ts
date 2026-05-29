@@ -11,6 +11,7 @@ import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
 import {
   getContributedTaskProviderType,
+  getTaskProviderConfigValidator,
   getTaskProviderDescriptor,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
@@ -277,6 +278,34 @@ describe('buildPluginContext', () => {
       expect(descriptor?.contextConfigSchema.find((field) => field.key === 'apiToken')?.storageKey).toBe(
         'metadata_token',
       )
+    })
+
+    test('wraps malformed direct provider validators as rejected validation results', async () => {
+      const manifest = makeManifest({
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['custom-tracker'],
+        },
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      const validateConfig = (): Promise<{ ok: false; reason: string }> => Promise.resolve({ ok: false, reason: '' })
+
+      ctx.registration.registerTaskProviderType('custom-tracker', {
+        factory: stubProviderFactory,
+        validateConfig,
+      })
+
+      await expect(
+        getTaskProviderConfigValidator('custom-tracker')?.({ baseUrl: 'https://bad.invalid' }),
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'Contributed task provider validator returned an invalid result',
+      })
     })
 
     test('throws without provider.task permission', () => {

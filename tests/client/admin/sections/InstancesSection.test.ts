@@ -148,7 +148,7 @@ const responseFor = (method: string, url: string): Response => {
         type: 'linear',
         displayName: 'Linear',
         instanceConfigSchema: [
-          { key: 'baseUrl', label: 'Linear URL', required: true, sensitive: false },
+          { key: 'baseUrl', storageKey: 'tracker_url', label: 'Linear URL', required: true, sensitive: false },
           { key: 'apiKey', label: 'API Key', required: true, sensitive: true },
         ],
         contextConfigSchema: [],
@@ -451,6 +451,34 @@ describe('InstancesSection', () => {
       JSON.stringify({ id: 'kaneo-main', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' } }),
     )
     expect(callNames(calls)).toContain('DELETE /api/task-instances/kaneo-main')
+
+    void unmount(component)
+  })
+
+  test('creates task instances using instance config storage keys', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    selectTaskType(target, 'task-create-form', 'linear')
+    await drain()
+    enterValue(input(target, 'task-id-input'), 'linear-main')
+    enterValue(input(target, 'task-config-baseUrl'), 'https://linear.invalid')
+    enterValue(input(target, 'task-config-apiKey'), 'lin-key')
+    click(target, 'task-create-button')
+    await drain()
+
+    expect(callNames(calls)).toContain('POST /api/task-instances')
+    expect(expectCall(calls[5], 5).body).toBe(
+      JSON.stringify({
+        id: 'linear-main',
+        type: 'linear',
+        config: { tracker_url: 'https://linear.invalid', apiKey: 'lin-key' },
+      }),
+    )
+    expect(expectCall(calls[5], 5).body).not.toContain('baseUrl')
 
     void unmount(component)
   })

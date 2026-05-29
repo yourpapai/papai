@@ -19,6 +19,8 @@ export type TaskProviderConfigValidator = (
   config: Record<string, string>,
 ) => Promise<{ ok: true } | { ok: false; reason: string }>
 
+type TaskProviderConfigValidatorResult = Awaited<ReturnType<TaskProviderConfigValidator>>
+
 type ProviderFactory = TaskProviderFactory
 
 type LegacyProviderConfigField = Omit<ProviderConfigField, 'scope' | 'sensitive'> & {
@@ -70,6 +72,26 @@ export type ContributedTaskProviderEntry = {
 }
 
 const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
+
+const isTaskProviderConfigValidatorResult = (value: unknown): value is TaskProviderConfigValidatorResult => {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('ok' in value)) return false
+  const ok = value.ok
+  if (ok === true) return true
+  if (ok !== false || !('reason' in value)) return false
+  return typeof value.reason === 'string' && value.reason !== ''
+}
+
+const normalizeTaskProviderConfigValidator = (
+  validator: TaskProviderConfigValidator | undefined,
+): TaskProviderConfigValidator | undefined => {
+  if (validator === undefined) return undefined
+  return async (config) => {
+    const result: unknown = await validator(config)
+    if (isTaskProviderConfigValidatorResult(result)) return result
+    return { ok: false, reason: 'Contributed task provider validator returned an invalid result' }
+  }
+}
 
 const normalizeContributedProviderTraits = (
   provider: TaskProvider,
@@ -130,7 +152,10 @@ export function registerContributedTaskProviderType(type: string, entry: Contrib
     )
     return
   }
-  pluginContributedTaskProviderFactories.set(type, entry)
+  pluginContributedTaskProviderFactories.set(type, {
+    ...entry,
+    validateConfig: normalizeTaskProviderConfigValidator(entry.validateConfig),
+  })
   log.info({ type, pluginId: entry.pluginId }, 'Registered contributed task provider type')
 }
 

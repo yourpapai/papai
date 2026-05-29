@@ -55,6 +55,7 @@
   const selectedTaskType = $derived(taskProviderTypes.find((descriptor) => descriptor.type === taskType))
 
   const configLabel = (config: InstanceConfigView): string => JSON.stringify(config)
+  const fieldStorageKey = (field: { readonly key: string; readonly storageKey?: string }): string => field.storageKey ?? field.key
   const setSuccess = (message: string): void => {
     status = { kind: 'success', message }
   }
@@ -203,7 +204,7 @@
         const rawValue = taskConfigFields[field.key]
         const value = (rawValue === undefined ? '' : rawValue).trim()
         if (field.required && value === '') throw new Error(`${field.label} is required`)
-        if (value !== '') config[field.key] = value
+        if (value !== '') config[fieldStorageKey(field)] = value
       }
       await createTaskInstance({ id: taskId.trim(), type: taskType, config })
       taskId = ''
