@@ -1,5 +1,14 @@
 # Provider Conventions
 
+## Built-In vs Plugin Providers
+
+`createProvider` resolves task providers through two paths:
+
+1. **Plugin-contributed** (preferred): providers registered via `ctx.registration.registerTaskProviderType()` in an approved, active plugin. After Phase 3 of the task-provider migration, Kaneo is exclusively a plugin-contributed provider at `plugins/task-provider-kaneo/`. There is no built-in factory or descriptor for Kaneo in `src/providers/`.
+2. **Built-in**: YouTrack remains a built-in provider until Phase 4.
+
+`plugins/task-provider-kaneo/` is the canonical reference implementation for a provider plugin.
+
 ## Interface
 
 All providers implement `TaskProvider` from `src/providers/types.ts`. Core methods are required; optional methods are gated by `Capability` strings (e.g. `'tasks.archive'`, `'comments.create'`).
