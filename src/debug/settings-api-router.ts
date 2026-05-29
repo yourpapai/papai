@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { handleConfigRoutes } from './settings/config-routes.js'
+import { handleMcpRoutes } from './settings/mcp-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
 
 /**
@@ -16,5 +17,6 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {
     return handleToolsRoutes(req, url, url.pathname)
   }
+  if (url.pathname === '/settings/api/mcp') return handleMcpRoutes(req, url)
   return Promise.resolve(null)
 }
