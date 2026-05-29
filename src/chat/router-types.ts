@@ -11,12 +11,14 @@ export type ManagedChatInstance = {
   readonly type: PlatformInstanceType
   readonly provider: ChatProvider
   status: InstanceStatus
+  readonly configFingerprint: string
 }
 
 export type ManagedChatInstanceSnapshot = {
   readonly id: string
   readonly type: PlatformInstanceType
   readonly status: InstanceStatus
+  readonly configFingerprint: string
 }
 
 export type ManagedChatInstanceFactory = (

@@ -6,7 +6,15 @@
 import type { AttachmentSourceProvider } from '../attachments/types.js'
 import type { InstanceStatus } from '../instances/types.js'
 import type { ManagedChatInstance, ManagedChatInstanceSnapshot } from './router-types.js'
-import type { ChatCapability, ChatProviderTraits, ContextRendered, ThreadCapabilities } from './types.js'
+import type {
+  ChatCapability,
+  ChatProviderTraits,
+  ContextRendered,
+  IncomingInteraction,
+  IncomingMessage,
+  ReplyFn,
+  ThreadCapabilities,
+} from './types.js'
 
 export const activeInstanceStatuses = new Set<InstanceStatus>(['active', 'pending'])
 
@@ -59,7 +67,12 @@ export const providerForManagedInstance = (
 export const managedInstanceSnapshots = (
   instances: Iterable<ManagedChatInstance>,
 ): readonly ManagedChatInstanceSnapshot[] =>
-  [...instances].map((instance) => ({ id: instance.id, type: instance.type, status: instance.status }))
+  [...instances].map((instance) => ({
+    id: instance.id,
+    type: instance.type,
+    status: instance.status,
+    configFingerprint: instance.configFingerprint,
+  }))
 
 export const renderContextFromManagedInstances = (
   instances: Iterable<ManagedChatInstance>,
@@ -100,6 +113,24 @@ export const downloadFileFromManagedInstance = (
   if (instance.type !== sourceProvider) return Promise.resolve(null)
   if (!hasDownloadFile(instance.provider)) return Promise.resolve(null)
   return instance.provider.downloadFile(fileId)
+}
+
+export const routedMessageHandler =
+  (
+    platformInstanceId: string,
+    handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>,
+  ): ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) =>
+  (msg, reply) =>
+    handler({ ...msg, platformInstanceId }, reply)
+
+export const registerInteractionHandlerForManagedInstance = (
+  instance: ManagedChatInstance,
+  handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>,
+): void => {
+  if (instance.provider.onInteraction === undefined) return
+  instance.provider.onInteraction((interaction, reply) =>
+    handler({ ...interaction, platformInstanceId: instance.id }, reply),
+  )
 }
 
 type FileDownloadingProvider = Readonly<{

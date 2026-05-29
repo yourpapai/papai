@@ -17,8 +17,10 @@ import {
   managedInstanceOrNull,
   managedInstanceSnapshots,
   providerForManagedInstance,
+  registerInteractionHandlerForManagedInstance,
   renderContextForManagedInstance,
   renderContextFromManagedInstances,
+  routedMessageHandler,
   threadCapabilitiesForManagedInstances,
   traitsForManagedInstance,
   traitsForManagedInstances,
@@ -43,6 +45,14 @@ export type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstan
 
 const log = logger.child({ scope: 'chat:router' })
 const ROUTER_LIFECYCLE_CONCURRENCY = 4
+
+const stableConfigEntries = (config: InstanceConfig): readonly (readonly [string, string])[] =>
+  Object.entries(config).toSorted(([left], [right]) => left.localeCompare(right))
+
+const configFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
+  const payload = JSON.stringify({ type, config: stableConfigEntries(config) })
+  return Bun.hash(payload).toString(16)
+}
 
 export class ChatRouter implements ChatProvider {
   readonly name = 'router'
@@ -72,7 +82,13 @@ export class ChatRouter implements ChatProvider {
       throw new Error(`Chat instance already exists: ${id}`)
     }
     const provider = this.factory(id, type, config)
-    const instance: ManagedChatInstance = { id, type, provider, status: 'pending' }
+    const instance: ManagedChatInstance = {
+      id,
+      type,
+      provider,
+      status: 'pending',
+      configFingerprint: configFingerprint(type, config),
+    }
     this.instances.set(id, instance)
     this.registerExistingHandlers(instance)
     return instance
@@ -148,14 +164,14 @@ export class ChatRouter implements ChatProvider {
   onMessage(handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>): void {
     this.messageHandler = handler
     for (const instance of this.instances.values()) {
-      instance.provider.onMessage(this.wrapMessageHandler(instance.id, handler))
+      instance.provider.onMessage(routedMessageHandler(instance.id, handler))
     }
   }
 
   onInteraction(handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>): void {
     this.interactionHandler = handler
     for (const instance of this.instances.values()) {
-      this.registerInteractionHandler(instance, handler)
+      registerInteractionHandlerForManagedInstance(instance, handler)
     }
   }
 
@@ -236,10 +252,10 @@ export class ChatRouter implements ChatProvider {
       this.registerCommandForInstance(instance, name, handler)
     }
     if (this.messageHandler !== null) {
-      instance.provider.onMessage(this.wrapMessageHandler(instance.id, this.messageHandler))
+      instance.provider.onMessage(routedMessageHandler(instance.id, this.messageHandler))
     }
     if (this.interactionHandler !== null) {
-      this.registerInteractionHandler(instance, this.interactionHandler)
+      registerInteractionHandlerForManagedInstance(instance, this.interactionHandler)
     }
   }
 
@@ -247,23 +263,6 @@ export class ChatRouter implements ChatProvider {
     instance.provider.registerCommand(name, async (msg, reply, auth) => {
       await handler({ ...msg, platformInstanceId: instance.id }, reply, auth)
     })
-  }
-
-  private wrapMessageHandler(
-    platformInstanceId: string,
-    handler: (msg: IncomingMessage, reply: ReplyFn) => Promise<void>,
-  ): (msg: IncomingMessage, reply: ReplyFn) => Promise<void> {
-    return (msg, reply) => handler({ ...msg, platformInstanceId }, reply)
-  }
-
-  private registerInteractionHandler(
-    instance: ManagedChatInstance,
-    handler: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>,
-  ): void {
-    if (instance.provider.onInteraction === undefined) return
-    instance.provider.onInteraction((interaction, reply) =>
-      handler({ ...interaction, platformInstanceId: instance.id }, reply),
-    )
   }
 
   private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {

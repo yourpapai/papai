@@ -413,12 +413,26 @@ describe('ChatRouter', () => {
 
     const snapshots = router.listInstances()
 
-    expect(snapshots).toEqual([
+    expect(snapshots.map(({ id, type, status }) => ({ id, type, status }))).toEqual([
       { id: 'telegram-main', type: 'telegram', status: 'active' },
       { id: 'discord-main', type: 'discord', status: 'stopped' },
     ])
+    expect(snapshots[0]?.configFingerprint).toBeString()
+    expect(snapshots[1]?.configFingerprint).toBeString()
     expect('provider' in snapshots[0]!).toBe(false)
     expect(snapshots[0]).not.toBe(routerInstance('telegram-main'))
+  })
+
+  test('listInstances exposes safe config fingerprints without raw config', () => {
+    const snapshotRouter = new ChatRouter((_id, type, _config) => makeProvider(type, {}))
+
+    snapshotRouter.addInstance('telegram-main', 'telegram', { token: 'secret-token' })
+
+    const [snapshot] = snapshotRouter.listInstances()
+
+    expect(snapshot).toMatchObject({ id: 'telegram-main', type: 'telegram', status: 'pending' })
+    expect(snapshot?.configFingerprint).toBeString()
+    expect(JSON.stringify(snapshot)).not.toContain('secret-token')
   })
 
   test('isolates start failures and starts remaining instances', async () => {
