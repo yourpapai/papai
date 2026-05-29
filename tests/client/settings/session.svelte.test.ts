@@ -50,13 +50,13 @@ describe('session store', () => {
   })
 
   test('bootstrapSession with a code calls exchange', async () => {
-    let calledUrl = ''
+    const calledUrls: string[] = []
     setMockFetch((url) => {
-      calledUrl = url
+      calledUrls.push(url)
       return Promise.resolve(json(bootstrapPayload))
     })
     await bootstrapSession('CODE')
-    expect(calledUrl).toContain('/settings/auth/exchange')
+    expect(calledUrls.some((u) => u.includes('/settings/auth/exchange'))).toBe(true)
     expect(settingsSession.status).toBe('ready')
   })
 
