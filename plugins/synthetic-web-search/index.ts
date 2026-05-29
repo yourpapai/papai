@@ -31,7 +31,7 @@ type SearchResult = z.infer<typeof searchResultSchema>
 type SearchInput = z.infer<typeof searchInputSchema>
 
 function truncate(text: string, maxLength: number): string {
-  if (maxLength <= 0) return text
+  if (maxLength < 0) return text
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
 
@@ -70,6 +70,7 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
 async function executeSearch(
   input: unknown,
   runtimeContext: PluginToolRuntimeContext,
+  abortSignal: AbortSignal | undefined,
   httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
 ): Promise<unknown> {
   const rateResult = runtimeContext.rateLimit.check(runtimeContext.chatUserId || runtimeContext.storageContextId)
@@ -93,6 +94,7 @@ async function executeSearch(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query: parsed.query }),
+      signal: abortSignal,
     })
 
     if (!response.ok) {
@@ -129,8 +131,8 @@ const factory: PluginFactory = () => {
         name: 'search',
         description: 'Uses a search engine which returns title, url, and content in markdown',
         inputSchema: searchInputSchema,
-        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
-          executeSearch(input, runtimeContext, httpFetch),
+        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options) =>
+          executeSearch(input, runtimeContext, options.abortSignal, httpFetch),
       })
 
       ctx.registration.registerPromptFragment({

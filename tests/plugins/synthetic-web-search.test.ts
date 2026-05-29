@@ -358,6 +358,61 @@ describe('synthetic-web-search plugin', () => {
     })
   })
 
+  test('search tool truncates each selected result even when max_length is smaller than result count', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            { url: 'https://example.com/1', title: 'Result 1', text: 'Alpha' },
+            { url: 'https://example.com/2', title: 'Result 2', text: 'Beta' },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'test query', max_length: 1 }, runtimeCtx, options)
+
+    expect(result).toEqual({
+      results: [
+        { title: 'Result 1', url: 'https://example.com/1', text: '...', published: undefined },
+        { title: 'Result 2', url: 'https://example.com/2', text: '...', published: undefined },
+      ],
+    })
+  })
+
+  test('search tool forwards abortSignal to outbound fetch', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const abortController = new AbortController()
+    const options: ToolExecutionOptions = {
+      ...createMockOptions(),
+      abortSignal: abortController.signal,
+    }
+
+    await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(mockHttpFetch).toHaveBeenCalledWith(
+      'https://api.synthetic.new/v2/search',
+      expect.objectContaining({ signal: abortController.signal }),
+    )
+  })
+
   test('search tool returns timeout error on AbortError', async () => {
     const abortError = new Error('The operation was aborted')
     abortError.name = 'AbortError'
