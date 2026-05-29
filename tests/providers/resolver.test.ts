@@ -241,6 +241,25 @@ describe('TaskProviderResolver', () => {
     })
   })
 
+  test('admin-style task config validation does not require context-scoped fields', async () => {
+    const failure = await validateTaskInstanceConfigResult('youtrack', { baseUrl: 'https://yt.invalid' })
+
+    expect(failure).toBeNull()
+  })
+
+  test('effective task config validation requires context-scoped fields', async () => {
+    const { validateEffectiveTaskProviderConfigResult } = await import('../../src/providers/config-validation.js')
+
+    const failure = await validateEffectiveTaskProviderConfigResult('youtrack', { baseUrl: 'https://yt.invalid' })
+
+    expect(failure).toEqual({
+      kind: 'invalid_task_instance_config',
+      type: 'youtrack',
+      missing: ['token'],
+      invalidUrls: [],
+    })
+  })
+
   test('resolves contributed instance config from storageKey and passes logical key to factory and validator', async () => {
     const factory = mock(() => createMockProvider({ name: 'storage-tracker' }))
     const validateConfig = mock((_config: Record<string, string>) => Promise.resolve({ ok: true as const }))

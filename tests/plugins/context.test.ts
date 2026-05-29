@@ -27,7 +27,7 @@ function requireValue<T>(value: T | undefined, label: string): T {
 
 function makeManifest(...args: readonly [] | readonly [overrides: Partial<PluginManifest>]): PluginManifest {
   const overrides = args.length === 1 ? args[0] : {}
-  return {
+  const baseManifest: PluginManifest = {
     id: 'test-plugin',
     name: 'Test Plugin',
     version: '1.0.0',
@@ -49,10 +49,17 @@ function makeManifest(...args: readonly [] | readonly [overrides: Partial<Plugin
     requiredChatCapabilities: [],
     configRequirements: [],
     providerCapabilities: [],
+    providerTraits: [],
     providerConfigSchema: [],
     providerContextConfigSchema: [],
     providerAllowedHosts: [],
+  }
+  return {
+    ...baseManifest,
     ...overrides,
+    contributes: overrides.contributes ?? baseManifest.contributes,
+    providerTraits: overrides.providerTraits ?? baseManifest.providerTraits,
+    providerContextConfigSchema: overrides.providerContextConfigSchema ?? baseManifest.providerContextConfigSchema,
   }
 }
 

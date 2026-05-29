@@ -41,4 +41,17 @@ describe('pluginManifestSchema providerConfigSchema scope', () => {
     })
     expect(parsed.providerContextConfigSchema?.[0]?.scope).toBe('context')
   })
+
+  test('parsed plugin manifest exposes defaulted provider arrays', () => {
+    const parsed = pluginManifestSchema.parse({
+      id: 'defaults-plugin',
+      name: 'Defaults Plugin',
+      version: '1.0.0',
+      description: 'defaults',
+      apiVersion: 1,
+    })
+
+    expect(parsed.providerTraits).toEqual([])
+    expect(parsed.providerContextConfigSchema).toEqual([])
+  })
 })

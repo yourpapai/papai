@@ -256,11 +256,7 @@ export const pluginManifestSchema = z
     path: ['providerConfigValidator'],
   })
 
-type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
-export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema' | 'providerTraits'> & {
-  providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
-  providerTraits?: ParsedPluginManifest['providerTraits']
-}
+export type PluginManifest = z.output<typeof pluginManifestSchema>
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {
   manifest: PluginManifest

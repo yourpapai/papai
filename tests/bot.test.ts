@@ -492,7 +492,9 @@ function makePluginCommandManifest(pluginId: string): PluginManifest {
     requiredChatCapabilities: [],
     configRequirements: [],
     providerCapabilities: [],
+    providerTraits: [],
     providerConfigSchema: [],
+    providerContextConfigSchema: [],
     providerAllowedHosts: [],
   }
 }

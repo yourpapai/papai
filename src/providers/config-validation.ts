@@ -53,6 +53,14 @@ const isHttpUrl = (value: string): boolean => {
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
+const descriptorFieldsForMode = (
+  descriptor: TaskProviderTypeDescriptor,
+  includeContext: boolean,
+): readonly ProviderConfigField[] =>
+  includeContext
+    ? [...descriptor.instanceConfigSchema, ...descriptor.contextConfigSchema]
+    : descriptor.instanceConfigSchema
+
 const configKeyForField = (field: ProviderConfigField, mode: TaskInstanceConfigKeyMode): string => {
   if (mode === 'logical') return field.key
   return field.storageKey ?? field.key
@@ -105,7 +113,7 @@ export const validateTaskInstanceConfigResult = async (
   const descriptor = deps.getTaskProviderDescriptor(type)
   if (descriptor === undefined) return { kind: 'unknown_task_provider', type }
 
-  const descriptorResult = validateDescriptorConfig(descriptor.instanceConfigSchema, config, mode)
+  const descriptorResult = validateDescriptorConfig(descriptorFieldsForMode(descriptor, false), config, mode)
   if (descriptorResult.missing.length > 0 || descriptorResult.invalidUrls.length > 0) {
     return { kind: 'invalid_task_instance_config', type, ...descriptorResult }
   }
@@ -113,6 +121,38 @@ export const validateTaskInstanceConfigResult = async (
   const validator = deps.getTaskProviderConfigValidator(type)
   if (validator === undefined) return null
   const validatorConfig = normalizeDescriptorConfig(descriptor.instanceConfigSchema, config, mode)
+  const result = await Promise.resolve()
+    .then(() => validator(validatorConfig))
+    .catch((error: unknown) => ({
+      ok: false as const,
+      reason: errorMessage(error),
+      validatorFailed: true as const,
+    }))
+  if ('validatorFailed' in result) {
+    return { kind: 'task_provider_config_validator_failed', type, reason: result.reason }
+  }
+  if (result.ok) return null
+  return { kind: 'task_provider_config_validator_rejected', type, reason: result.reason }
+}
+
+export const validateEffectiveTaskProviderConfigResult = async (
+  type: string,
+  config: InstanceConfig,
+  deps: TaskInstanceConfigValidationDeps = defaultDeps,
+  mode: TaskInstanceConfigKeyMode = 'logical',
+): Promise<TaskInstanceConfigValidationFailure | null> => {
+  const descriptor = deps.getTaskProviderDescriptor(type)
+  if (descriptor === undefined) return { kind: 'unknown_task_provider', type }
+
+  const fields = descriptorFieldsForMode(descriptor, true)
+  const descriptorResult = validateDescriptorConfig(fields, config, mode)
+  if (descriptorResult.missing.length > 0 || descriptorResult.invalidUrls.length > 0) {
+    return { kind: 'invalid_task_instance_config', type, ...descriptorResult }
+  }
+
+  const validator = deps.getTaskProviderConfigValidator(type)
+  if (validator === undefined) return null
+  const validatorConfig = normalizeDescriptorConfig(fields, config, mode)
   const result = await Promise.resolve()
     .then(() => validator(validatorConfig))
     .catch((error: unknown) => ({

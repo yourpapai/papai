@@ -38,7 +38,7 @@ function makeManifest(
 ): PluginManifest {
   const [id] = args
   const overrides = args.length === 2 ? args[1] : {}
-  return {
+  const baseManifest: PluginManifest = {
     id,
     name: 'Test Plugin',
     version: '1.0.0',
@@ -60,9 +60,17 @@ function makeManifest(
     requiredChatCapabilities: [],
     configRequirements: [],
     providerCapabilities: [],
+    providerTraits: [],
     providerConfigSchema: [],
+    providerContextConfigSchema: [],
     providerAllowedHosts: [],
+  }
+  return {
+    ...baseManifest,
     ...overrides,
+    contributes: overrides.contributes ?? baseManifest.contributes,
+    providerTraits: overrides.providerTraits ?? baseManifest.providerTraits,
+    providerContextConfigSchema: overrides.providerContextConfigSchema ?? baseManifest.providerContextConfigSchema,
   }
 }
 

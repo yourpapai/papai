@@ -9,7 +9,7 @@ import { getTaskInstance } from '../instances/task-store.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { getKaneoWorkspace } from '../users.js'
-import { validateTaskInstanceConfigResult } from './config-validation.js'
+import { validateEffectiveTaskProviderConfigResult } from './config-validation.js'
 import { createProvider, getTaskProviderConfigValidator, getTaskProviderDescriptor } from './registry.js'
 import type { TaskProviderConfigValidator, TaskProviderTypeDescriptor } from './registry.js'
 import type { ProviderConfigField, TaskProvider } from './types.js'
@@ -97,7 +97,7 @@ const createValidatedProvider = async (
   config: Record<string, string>,
   deps: TaskProviderResolverDeps,
 ): Promise<TaskProvider | null> => {
-  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps, 'logical')
+  const validationFailure = await validateEffectiveTaskProviderConfigResult(instance.type, config, deps, 'logical')
   if (validationFailure !== null) {
     log.warn(
       { contextId, taskInstanceId: instance.id, taskProvider: instance.type, validationFailure },
