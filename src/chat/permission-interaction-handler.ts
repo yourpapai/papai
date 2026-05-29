@@ -13,10 +13,12 @@ import type { IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:permission-interaction' })
 
-function canManageTargetContext(interaction: IncomingInteraction, targetContextId: string): boolean {
-  if (interaction.contextType !== 'dm') return targetContextId === interaction.storageContextId
-  if (targetContextId === interaction.user.id) return true
-  return listManageableGroups(interaction.user.id).some((group) => group.contextId === targetContextId)
+function canManageTargetContext(interaction: IncomingInteraction, targetStorageContextId: string): boolean {
+  if (targetStorageContextId === interaction.storageContextId) return true
+  if (interaction.contextType === 'dm') {
+    return listManageableGroups(interaction.user.id).some((group) => group.contextId === targetStorageContextId)
+  }
+  return false
 }
 
 function parseDecision(code: string): PermissionDecision | null {

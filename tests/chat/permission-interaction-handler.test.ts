@@ -35,14 +35,19 @@ function makeReply(): {
   return { reply, textCalls, buttonCalls }
 }
 
-function makeInteraction(callbackData: string, userId = 'u-1', contextId = 'u-1'): IncomingInteraction {
+function makeInteraction(
+  callbackData: string,
+  userId = 'u-1',
+  storageContextId = 'scoped:u-1',
+  contextType: 'dm' | 'group' = 'dm',
+): IncomingInteraction {
   return {
     kind: 'button',
     callbackData,
     user: { id: userId, username: null, isAdmin: false },
-    contextType: 'dm',
-    contextId,
-    storageContextId: contextId,
+    contextType,
+    contextId: storageContextId,
+    storageContextId,
     platformInstanceId: 'p-1',
   }
 }
@@ -53,7 +58,7 @@ async function tickAsync(): Promise<void> {
   })
 }
 
-function startPrompt(reply: ReplyFn, contextId = 'u-1'): Promise<'allow' | 'deny'> {
+function startPrompt(reply: ReplyFn, contextId = 'scoped:u-1'): Promise<'allow' | 'deny'> {
   return askPermissionViaChat(reply, contextId, { toolName: 'demo_tool', reason: 'why' })
 }
 
@@ -76,22 +81,22 @@ describe('handlePermissionInteraction', () => {
     expect(result).toBe(false)
   })
 
-  test('resolves promise with allow on perm:a', async () => {
+  test('resolves promise with allow on perm:a (DM: scoped context matches storageContextId)', async () => {
     const { reply, buttonCalls } = makeReply()
-    const pending = startPrompt(reply)
+    const pending = startPrompt(reply, 'scoped:u-1')
     await tickAsync()
     const id = extractAllowId(buttonCalls)
-    const handled = await handlePermissionInteraction(makeInteraction(`perm:a:${id}`), reply)
+    const handled = await handlePermissionInteraction(makeInteraction(`perm:a:${id}`, 'u-1', 'scoped:u-1', 'dm'), reply)
     expect(handled).toBe(true)
     await expect(pending).resolves.toBe('allow')
   })
 
   test('resolves promise with deny on perm:d', async () => {
     const { reply, buttonCalls } = makeReply()
-    const pending = startPrompt(reply)
+    const pending = startPrompt(reply, 'scoped:u-1')
     await tickAsync()
     const id = extractAllowId(buttonCalls)
-    await handlePermissionInteraction(makeInteraction(`perm:d:${id}`), reply)
+    await handlePermissionInteraction(makeInteraction(`perm:d:${id}`, 'u-1', 'scoped:u-1', 'dm'), reply)
     await expect(pending).resolves.toBe('deny')
   })
 
@@ -102,14 +107,27 @@ describe('handlePermissionInteraction', () => {
     expect(textCalls.length).toBeGreaterThan(0)
   })
 
-  test('rejects when user cannot manage the target context', async () => {
+  test('resolves when group storageContextId matches pending contextId', async () => {
+    const { reply: promptReply, buttonCalls } = makeReply()
+    void startPrompt(promptReply, 'group-A')
+    await tickAsync()
+    const id = extractAllowId(buttonCalls)
+    const { reply: handlerReply } = makeReply()
+    const handled = await handlePermissionInteraction(
+      makeInteraction(`perm:a:${id}`, 'admin-1', 'group-A', 'group'),
+      handlerReply,
+    )
+    expect(handled).toBe(true)
+  })
+
+  test('rejects when storageContextId does not match pending contextId', async () => {
     const { reply: promptReply, buttonCalls } = makeReply()
     void startPrompt(promptReply, 'group-A')
     await tickAsync()
     const id = extractAllowId(buttonCalls)
     const { reply: handlerReply, textCalls } = makeReply()
     const handled = await handlePermissionInteraction(
-      makeInteraction(`perm:a:${id}`, 'other-user', 'other-user'),
+      makeInteraction(`perm:a:${id}`, 'other-user', 'other-context', 'group'),
       handlerReply,
     )
     expect(handled).toBe(true)

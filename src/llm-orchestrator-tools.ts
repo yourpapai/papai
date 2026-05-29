@@ -84,7 +84,7 @@ export function buildLlmInvocationOpts(
   provider: TaskProvider,
   stagedDownloadFn: StagedFileDownloadFn | undefined,
 ): LlmInvocationOptions {
-  const askPermission: AskPermissionFn = (req) => askPermissionViaChat(src.reply, configId, req)
+  const askPermission: AskPermissionFn = (req) => askPermissionViaChat(src.reply, src.contextId, req)
   return {
     contextId: src.contextId,
     configId,
