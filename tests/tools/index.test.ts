@@ -5,11 +5,14 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { tool, type ToolSet } from 'ai'
+import { z } from 'zod'
+
 import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scoped-context.js'
 import { setConfigValue, setPluginConfig } from '../../src/config.js'
 import { setPluginEnabledForContext } from '../../src/plugins/registry.js'
-import { makeTools } from '../../src/tools/index.js'
+import { applyToolPreferences, makeTools } from '../../src/tools/index.js'
 import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 import { createMockProvider } from './mock-provider.js'
@@ -179,5 +182,57 @@ describe('makeTools preference filtering', () => {
     setConfigValue(parentContextId, 'mcp_endpoints', '[]')
 
     expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
+  })
+})
+
+function fakeTool(name: string): ToolSet[string] {
+  return tool({
+    description: `fake ${name}`,
+    inputSchema: z.object({ id: z.string() }),
+    execute: ({ id }: { id: string }) => Promise.resolve(`${name}:${id}`),
+  })
+}
+
+describe('applyToolPreferences (ask integration)', () => {
+  const contextId = 'ctx-ask-1'
+
+  test('deny removes tool from set', () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'deny' } })
+    const tools: ToolSet = { create_task: fakeTool('create_task'), list_tasks: fakeTool('list_tasks') }
+    const result = applyToolPreferences(tools, contextId, undefined)
+    expect(Object.keys(result).toSorted()).toEqual(['list_tasks'])
+  })
+
+  test('allow leaves tool unwrapped', () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: {} })
+    const tools: ToolSet = { create_task: fakeTool('create_task') }
+    const result = applyToolPreferences(tools, contextId, undefined)
+    expect(result['create_task']).toBe(tools['create_task'])
+  })
+
+  test('ask wraps execute and extends schema', async () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const tools: ToolSet = { create_task: fakeTool('create_task') }
+    const result = applyToolPreferences(tools, contextId, () => Promise.resolve('allow' as const))
+    const wrapped = result['create_task']
+    expect(wrapped).toBeDefined()
+    // Schema must be extended: still a ZodObject but with _permission_reason added.
+    expect(wrapped!.inputSchema).toBeInstanceOf(z.ZodObject)
+    expect(wrapped!.inputSchema).not.toBe(tools['create_task']!.inputSchema)
+    // Execute must pass through when permission is granted.
+    const executeFn = wrapped!.execute
+    expect(executeFn).toBeDefined()
+    const out: unknown = await executeFn!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] })
+    expect(out).toBe('create_task:X')
+  })
+
+  test('ask denies when no askPermission provided', async () => {
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const tools: ToolSet = { create_task: fakeTool('create_task') }
+    const result = applyToolPreferences(tools, contextId, undefined)
+    const executeFn = result['create_task']!.execute
+    expect(executeFn).toBeDefined()
+    const out: unknown = await executeFn!({ id: 'X', _permission_reason: 'r' }, { toolCallId: 't1', messages: [] })
+    expect(out).toMatchObject({ status: 'permission_denied' })
   })
 })

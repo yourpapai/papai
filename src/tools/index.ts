@@ -13,20 +13,38 @@ import type { McpPluginConfig } from '../mcp/types.js'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
-import { getToolPrefs, partitionToolNames } from './tool-preferences.js'
+import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
+import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
 import { buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
 export type { MakeToolsOptions, ToolMode }
 
-function applyToolPreferences(tools: ToolSet, contextId: string | undefined): ToolSet {
+export function applyToolPreferences(
+  tools: ToolSet,
+  contextId: string | undefined,
+  askPermission: AskPermissionFn | undefined,
+): ToolSet {
   if (contextId === undefined) return tools
   const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
   const prefs = getToolPrefs(prefsContextId)
-  if (Object.keys(prefs.domainDefaults).length === 0 && Object.keys(prefs.toolOverrides).length === 0) return tools
-  const { exposed } = partitionToolNames(prefs, Object.keys(tools))
-  return Object.fromEntries(Object.entries(tools).filter(([name]) => exposed.has(name)))
+  const out: ToolSet = {}
+  for (const [name, t] of Object.entries(tools)) {
+    if (t === undefined) continue
+    const perm = resolveToolPermission(prefs, name)
+    if (perm === 'deny') continue
+    if (perm === 'allow') {
+      out[name] = t
+      continue
+    }
+    // perm === 'ask'
+    const extendedSchema = extendSchemaForAsk(t.inputSchema)
+    const boundExecute = t.execute === undefined ? undefined : wrapToolExecution(t.execute.bind(t), name)
+    const wrappedExecute = boundExecute === undefined ? undefined : gatedExecute(boundExecute, name, askPermission)
+    out[name] = { ...t, inputSchema: extendedSchema, execute: wrappedExecute }
+  }
+  return out
 }
 
 function wrapToolSet(tools: ToolSet): ToolSet {
@@ -178,5 +196,5 @@ export async function makeTools(
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  return applyToolPreferences({ ...wrappedBuiltins, ...mcpTools, ...pluginTools }, contextId)
+  return applyToolPreferences({ ...wrappedBuiltins, ...mcpTools, ...pluginTools }, contextId, options?.askPermission)
 }

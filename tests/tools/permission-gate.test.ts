@@ -43,11 +43,13 @@ describe('extendSchemaForAsk', () => {
   })
 })
 
+import type { ToolExecutionOptions } from 'ai'
+
 import { type AskPermissionFn, gatedExecute } from '../../src/tools/permission-gate.js'
 
-const toolOpts = { toolCallId: 't1' }
+const toolOpts: ToolExecutionOptions = { toolCallId: 't1', messages: [] }
 
-function fakeExecute(input: unknown, _opts: unknown): Promise<string> {
+function fakeExecute(input: unknown, _opts: ToolExecutionOptions): Promise<string> {
   const rec = typeof input === 'object' && input !== null ? input : {}
   return Promise.resolve(`ran:${String(Object.entries(rec).find(([k]) => k === 'id')?.[1] ?? '')}`)
 }
@@ -62,7 +64,7 @@ describe('gatedExecute', () => {
 
   test('strips _permission_reason before forwarding to original execute', async () => {
     let seen: unknown = null
-    const recorder = (input: unknown): Promise<string> => {
+    const recorder = (input: unknown, _opts: ToolExecutionOptions): Promise<string> => {
       seen = input
       return Promise.resolve('ok')
     }

@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import type { ToolExecutionOptions } from 'ai'
 import { z } from 'zod'
 
 export interface PermissionDeniedResult {
@@ -21,7 +22,14 @@ const PERMISSION_REASON_DESCRIPTION =
 
 export const PERMISSION_REASON_FIELD = '_permission_reason'
 
-export function extendSchemaForAsk(schema: z.ZodObject<z.ZodRawShape>): z.ZodObject<z.ZodRawShape> {
+function isZodObject(schema: unknown): schema is z.ZodObject<z.ZodRawShape> {
+  return schema instanceof z.ZodObject
+}
+
+export function extendSchemaForAsk(schema: unknown): z.ZodObject<z.ZodRawShape> {
+  if (!isZodObject(schema)) {
+    return z.object({ _permission_reason: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION) })
+  }
   return schema.extend({
     _permission_reason: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION),
   })
@@ -29,7 +37,7 @@ export function extendSchemaForAsk(schema: z.ZodObject<z.ZodRawShape>): z.ZodObj
 
 export type AskPermissionFn = (req: { toolName: string; reason: string }) => Promise<'allow' | 'deny'>
 
-type ExecuteFn<O> = (input: unknown, options: unknown) => Promise<O>
+export type ExecuteFn<O> = (input: unknown, options: ToolExecutionOptions) => Promise<O>
 
 function extractReason(input: Record<string, unknown>): string {
   const raw = input[PERMISSION_REASON_FIELD]
@@ -46,7 +54,7 @@ export function gatedExecute<O>(
   toolName: string,
   askPermission: AskPermissionFn | undefined,
 ): ExecuteFn<O | PermissionDeniedResult> {
-  return async (input: unknown, options: unknown): Promise<O | PermissionDeniedResult> => {
+  return async (input: unknown, options: ToolExecutionOptions): Promise<O | PermissionDeniedResult> => {
     if (askPermission === undefined) {
       return buildPermissionDenied(`Tool '${toolName}' requires user permission, but no chat surface is available.`)
     }
