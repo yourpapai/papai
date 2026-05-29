@@ -7,6 +7,7 @@ import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
 import { handlePluginsRoutes } from './settings/plugins-routes.js'
+import { handleProvisionKaneo } from './settings/provision-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
 
 /**
@@ -22,5 +23,6 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   if (url.pathname === '/settings/api/mcp') return handleMcpRoutes(req, url)
   if (url.pathname.startsWith('/settings/api/plugins')) return handlePluginsRoutes(req, url, url.pathname)
   if (url.pathname === '/settings/api/identity') return handleIdentityRoutes(req, url)
+  if (url.pathname === '/settings/api/provision/kaneo') return handleProvisionKaneo(req)
   return Promise.resolve(null)
 }
