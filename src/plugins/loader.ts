@@ -9,7 +9,7 @@ import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
 import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
-import { buildPluginContext } from './context.js'
+import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
@@ -104,11 +104,14 @@ function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnTyp
 
 async function activatePluginInstance(
   instance: PluginInstance | null,
-  ctx: ReturnType<typeof buildPluginContext>['ctx'],
+  activationContext: ReturnType<typeof buildPluginContext>,
   activationTimeout: ReturnType<typeof buildActivationTimeout>,
 ): Promise<void> {
   if (instance === null) return
-  await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
+  await Promise.race([
+    runWithClosedRegistration(activationContext, (ctx) => instance.activate(ctx)),
+    activationTimeout.promise,
+  ])
 }
 
 function finalizeSuccessfulActivation(
@@ -128,6 +131,10 @@ function finalizeSuccessfulActivation(
   activationOrder.push(manifest.id)
   recordRuntimeEvent(manifest.id, 'activated')
   log.info({ pluginId: manifest.id }, 'Plugin activated successfully')
+}
+
+function closeActivationRegistration(activationContext: ReturnType<typeof buildPluginContext>): void {
+  activationContext.closeRegistration()
 }
 
 function handleActivationFailure(pluginId: string, msg: string): false {
@@ -158,18 +165,17 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   if (entryPoint !== '' && instance === null) return false
 
   const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
-  const { ctx } = activationContext
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    await activatePluginInstance(instance, ctx, activationTimeout)
+    await activatePluginInstance(instance, activationContext, activationTimeout)
     finalizeSuccessfulActivation(plugin, activationContext, instance)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return handleActivationFailure(manifest.id, msg)
   } finally {
-    activationContext.closeRegistration()
+    closeActivationRegistration(activationContext)
     activationTimeout.cancel()
   }
 }
@@ -209,7 +215,9 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
 
   try {
     if (instance !== undefined && typeof instance.deactivate === 'function') {
-      const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID)
+      const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID, {
+        registrationInitiallyOpen: false,
+      })
       await Promise.resolve(instance.deactivate(ctx))
     }
     activeInstances.delete(pluginId)

@@ -223,6 +223,55 @@ describe('activatePlugins', () => {
     ).toHaveLength(1)
   })
 
+  test('microtask registration queued at activation tail is rejected before publish', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTool({
+              name: 'registered_tool',
+              description: 'Registered tool',
+              execute: async () => 'ok',
+            })
+            queueMicrotask(() => {
+              try {
+                ctx.registration.registerTool({
+                  name: 'registered_tool',
+                  description: 'Registered tool',
+                  execute: async () => 'microtask',
+                })
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('microtask-success-plugin', entryPoint, {
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(
+      requireValue(
+        contributionRegistry.getContributions('microtask-success-plugin'),
+        'microtask success plugin contributions',
+      ).tools,
+    ).toHaveLength(1)
+  })
+
   test('marks explicit mcp-only plugins active without importing an entry point', async () => {
     const plugin = makePlugin('mcp-only-plugin', '', {
       main: '',
@@ -527,6 +576,45 @@ describe('activatePlugins', () => {
     expect(
       requireValue(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0], 'deactivate error runtime event').message,
     ).toContain('deactivate boom')
+  })
+
+  test('deactivate context rejects registration attempts', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate(ctx) {
+            try {
+              ctx.registration.registerTool({
+                name: 'registered_tool',
+                description: 'Registered tool',
+                execute: async () => 'late',
+              })
+            } catch (error) {
+              globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+            }
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('deactivate-registration-plugin', entryPoint, {
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(contributionRegistry.getContributions('deactivate-registration-plugin')).toBeUndefined()
   })
 
   test('removes contributed provider type on deactivation', async () => {

@@ -191,6 +191,16 @@ function buildRegistration(
   })
 }
 
+type BuildPluginContextOptions = {
+  registrationInitiallyOpen?: boolean
+}
+
+export type BuiltPluginContext = {
+  ctx: PluginContext
+  collected: PluginContributions
+  closeRegistration(): void
+}
+
 /**
  * Build a PluginContext for use during plugin activation.
  * Returns the context and the collected contributions (populated during activate()).
@@ -198,10 +208,14 @@ function buildRegistration(
 export function buildPluginContext(
   manifest: PluginManifest,
   contextId: string,
-): { ctx: PluginContext; collected: PluginContributions; closeRegistration(): void } {
+  options: BuildPluginContextOptions = {},
+): BuiltPluginContext {
   const permissions = buildPermissions(manifest.permissions)
   const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
   const activationGuard = buildActivationGuard()
+  if (options.registrationInitiallyOpen === false) {
+    activationGuard.close()
+  }
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)
   const log = buildPluginLogger(manifest.id)
@@ -235,6 +249,22 @@ export function buildPluginContext(
     closeRegistration(): void {
       activationGuard.close()
     },
+  }
+}
+
+export async function runWithClosedRegistration<T>(
+  builtContext: BuiltPluginContext,
+  callback: (ctx: PluginContext) => Promise<T> | T,
+): Promise<T> {
+  const result = callback(builtContext.ctx)
+  if (!(result instanceof Promise)) {
+    builtContext.closeRegistration()
+    return result
+  }
+  try {
+    return await result
+  } finally {
+    builtContext.closeRegistration()
   }
 }
 
