@@ -40,6 +40,7 @@
   }
 
   async function load(): Promise<void> {
+    error = null
     loading = true
     try {
       const [p, t, pt, tt] = await Promise.all([
@@ -116,9 +117,9 @@
   }
 
   async function deletePlatform(id: string): Promise<void> {
+    if (!window.confirm(`Delete platform instance ${id}?`)) return
     error = null
     status = null
-    if (!window.confirm(`Delete platform instance ${id}?`)) return
     try {
       await deleteAdminPlatformInstance(id)
       await load()
@@ -128,9 +129,9 @@
   }
 
   async function deleteTask(id: string): Promise<void> {
+    if (!window.confirm(`Delete task instance ${id}?`)) return
     error = null
     status = null
-    if (!window.confirm(`Delete task instance ${id}?`)) return
     try {
       await deleteAdminTaskInstance(id)
       await load()
