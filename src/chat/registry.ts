@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { validateChatProviderEnv } from '../env-validation.js'
 import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { DiscordChatProvider } from './discord/index.js'
@@ -16,17 +15,7 @@ import type { ChatProvider, ChatProviderDescriptor } from './types.js'
 
 const log = logger.child({ scope: 'chat:registry' })
 
-type ChatProviderFactory = (deps: RegistryDeps) => ChatProvider
 type InstanceChatProviderFactory = (id: string, config: InstanceConfig) => ChatProvider
-
-export interface RegistryDeps {
-  env: Record<string, string | undefined>
-  platformInstanceId?: string
-}
-
-const defaultDeps: RegistryDeps = { env: process.env }
-
-const providers = new Map<string, ChatProviderFactory>()
 
 const platformDescriptors = [
   {
@@ -65,26 +54,6 @@ const platformDescriptors = [
   },
 ] as const satisfies readonly ChatProviderDescriptor[]
 
-registerChatProvider(
-  'telegram',
-  (deps) =>
-    new TelegramChatProvider({ token: deps.env['TELEGRAM_BOT_TOKEN'], platformInstanceId: deps.platformInstanceId }),
-)
-registerChatProvider(
-  'mattermost',
-  (deps) =>
-    new MattermostChatProvider({
-      baseUrl: deps.env['MATTERMOST_URL'],
-      token: deps.env['MATTERMOST_BOT_TOKEN'],
-      platformInstanceId: deps.platformInstanceId,
-    }),
-)
-registerChatProvider(
-  'discord',
-  (deps) =>
-    new DiscordChatProvider({ token: deps.env['DISCORD_BOT_TOKEN'], platformInstanceId: deps.platformInstanceId }),
-)
-
 const instanceProviders = new Map<PlatformInstanceType, InstanceChatProviderFactory>([
   [
     'telegram',
@@ -101,22 +70,7 @@ const instanceProviders = new Map<PlatformInstanceType, InstanceChatProviderFact
   ],
 ])
 
-function registerChatProvider(name: string, factory: ChatProviderFactory): void {
-  providers.set(name, factory)
-}
-
 export const listPlatformProviderTypes = (): readonly ChatProviderDescriptor[] => platformDescriptors
-
-export function createChatProvider(name: string, deps: RegistryDeps = defaultDeps): ChatProvider {
-  const validation = validateChatProviderEnv(name, deps.env)
-  if (!validation.ok) {
-    log.error({ reason: validation.reason, missing: validation.missing }, 'Invalid chat provider configuration')
-    throw new Error(validation.reason)
-  }
-  const factory = providers.get(name)!
-  log.debug({ name }, 'Creating chat provider instance')
-  return factory(deps)
-}
 
 const missingConfigMessage = (type: PlatformInstanceType): string => `Missing ${type} instance config`
 
