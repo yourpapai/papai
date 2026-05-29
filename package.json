@@ -45,6 +45,7 @@
     "test:mutate:changed": "stryker run --incremental",
     "test:mutate:full": "stryker run --force",
     "test:mutate:file": "bun scripts/mutation/paired-run.ts",
+    "test:mutate:changed-paired": "bun scripts/mutation/changed-files.ts",
     "test:e2e": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts",
     "test:e2e:watch": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts --watch",
     "check": "./scripts/check.sh --staged",
