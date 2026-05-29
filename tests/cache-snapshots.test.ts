@@ -20,7 +20,6 @@ type UserCache = {
   facts: Array<{ identifier: string; title: string; url: string; last_seen: string }>
   instructions: Array<{ id: string; text: string; createdAt: string }> | null
   config: Map<string, string | null>
-  workspaceId: string | null
   tools: unknown
   lastAccessed: number
 }
@@ -57,7 +56,6 @@ describe('getSessionSnapshots', () => {
         ['model', 'gpt-4'],
         ['history_loaded', 'true'],
       ]),
-      workspaceId: 'workspace-abc',
       tools: {
         /* mock tools */
       },
@@ -74,7 +72,6 @@ describe('getSessionSnapshots', () => {
     expect(snapshot.historyLength).toBe(2)
     expect(snapshot.factsCount).toBe(1)
     expect(snapshot.summary).toBe('Test conversation summary')
-    expect(snapshot.workspaceId).toBe('workspace-abc')
     expect(snapshot.hasTools).toBe(true)
     expect(snapshot.instructionsCount).toBe(1)
 
@@ -108,7 +105,6 @@ describe('getSessionSnapshots', () => {
         ['summary_loaded', 'true'],
         ['key2', 'value2'],
       ]),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     }
@@ -129,7 +125,6 @@ describe('getSessionSnapshots', () => {
       facts: [],
       instructions: null,
       config: new Map(),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     }
@@ -150,7 +145,6 @@ describe('getSessionSnapshots', () => {
       facts: [],
       instructions: null,
       config: new Map(),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     }
@@ -173,7 +167,6 @@ describe('getSessionSnapshots', () => {
       facts: [],
       instructions: null,
       config: new Map(),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     }

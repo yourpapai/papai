@@ -27,6 +27,6 @@
   name="Minimal session"
   args={{
     userId: 'tg:2',
-    session: makeSession({ userId: 'tg:2', summary: null, workspaceId: null, factsCount: 0, historyLength: 0 }),
+    session: makeSession({ userId: 'tg:2', summary: null, factsCount: 0, historyLength: 0 }),
     onSelect: noop,
   }} />

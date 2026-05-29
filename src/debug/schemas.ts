@@ -36,7 +36,6 @@ export const SessionSchema = z.object({
   factsCount: z.number(),
   summary: z.string().nullable(),
   configKeys: z.array(z.string()),
-  workspaceId: z.string().nullable(),
   // Full data fields
   facts: z.array(FactSchema).optional(),
   config: z.record(z.string(), z.string().nullable()).optional(),

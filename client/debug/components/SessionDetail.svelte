@@ -31,10 +31,6 @@
     <div class="session-detail-item"><div class="label">User ID</div><div class="value">{userId}</div></div>
     <div class="session-detail-item"><div class="label">Last Accessed</div><div class="value">{formatTime(session.lastAccessed)}</div></div>
     <div class="session-detail-item"><div class="label">History Length</div><div class="value">{session.historyLength} messages</div></div>
-    <div class="session-detail-item">
-      <div class="label">Workspace</div>
-      <div class="value" class:null={session.workspaceId === null}>{session.workspaceId === null ? 'none' : session.workspaceId}</div>
-    </div>
     <div class="session-detail-item"><div class="label">Has Tools</div><div class="value">{session.hasTools === true ? 'yes' : 'no'}</div></div>
   </div>
 </div>

@@ -55,7 +55,6 @@ describe('api-types', () => {
       factsCount: 5,
       summary: null,
       configKeys: ['llm_apikey'],
-      workspaceId: null,
     }
 
     const wizard: Wizard = {

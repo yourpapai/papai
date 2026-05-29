@@ -6,7 +6,7 @@
 import type { ModelMessage } from 'ai'
 import { sql } from 'drizzle-orm'
 
-import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb, syncWorkspaceToDb } from './cache-db.js'
+import { syncConfigToDb, syncFactToDb, syncHistoryToDb, syncSummaryToDb } from './cache-db.js'
 import { parseHistoryFromDb } from './cache-helpers.js'
 import { userCacheStore } from './cache-store.js'
 import type { CachedFact, UserCache } from './cache-types.js'
@@ -14,7 +14,6 @@ import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memoryFacts, memorySummary, userConfig } from './db/schema.js'
 import { emitUser } from './debug/event-bus.js'
 import { logger } from './logger.js'
-import { KANEO_PLUGIN_WORKSPACE_KEY } from './types/config.js'
 
 export { addCachedInstruction, deleteCachedInstruction, getCachedInstructions } from './cache-instructions.js'
 export { cleanupExpiredCaches, evictUser } from './cache-eviction.js'
@@ -35,7 +34,6 @@ export function getOrCreateCache(userId: string): UserCache {
       facts: [],
       instructions: null,
       config: new Map(),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     }
@@ -165,33 +163,6 @@ export function setCachedConfig(userId: string, key: string, value: string): voi
   cache.config.set(key, value)
   syncConfigToDb(userId, key, value)
   emitUser('cache:sync', userId, { field: 'config', operation: 'set' })
-}
-
-export function getCachedWorkspace(userId: string): string | null {
-  const cache = getOrCreateCache(userId)
-  if (cache.workspaceId === null && !cache.config.has('workspace_loaded')) {
-    log.debug({ userId }, 'Loading workspace from DB into cache')
-    const row = getDrizzleDb()
-      .select({ value: userConfig.value })
-      .from(userConfig)
-      .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${KANEO_PLUGIN_WORKSPACE_KEY}`)
-      .get()
-    if (row === undefined) {
-      cache.workspaceId = null
-    } else {
-      cache.workspaceId = row.value
-    }
-    cache.config.set('workspace_loaded', 'true')
-    emitUser('cache:load', userId, { field: 'workspace' })
-  }
-  return cache.workspaceId
-}
-
-export function setCachedWorkspace(userId: string, workspaceId: string): void {
-  const cache = getOrCreateCache(userId)
-  cache.workspaceId = workspaceId
-  syncWorkspaceToDb(userId, workspaceId)
-  emitUser('cache:sync', userId, { field: 'workspace', operation: 'set' })
 }
 
 export function getCachedTools(userId: string): unknown {

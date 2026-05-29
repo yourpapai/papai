@@ -32,9 +32,6 @@
   {#if session.configKeys.length > 0}
     <div class="session-detail">config: {session.configKeys.length} keys</div>
   {/if}
-  {#if session.workspaceId !== null && session.workspaceId !== undefined}
-    <div class="session-detail">workspace: {session.workspaceId}</div>
-  {/if}
   {#if wizard !== undefined}
     <div class="wizard-badge">🧙 wizard step {wizard.currentStep}/{wizard.totalSteps}</div>
   {/if}

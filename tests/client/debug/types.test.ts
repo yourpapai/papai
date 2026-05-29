@@ -16,7 +16,6 @@ describe('dashboard-ui types', () => {
       factsCount: 2,
       summary: 'Test summary',
       configKeys: ['key1', 'key2'],
-      workspaceId: 'ws-1',
       hasTools: true,
       instructionsCount: 3,
       facts: [

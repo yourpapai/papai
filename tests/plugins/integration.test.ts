@@ -25,7 +25,7 @@ import { defaultTaskProviderResolver } from '../../src/providers/resolver.js'
 import type { TaskCapability } from '../../src/providers/task-capability.js'
 import { buildSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
-import { setKaneoWorkspace } from '../../src/users.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChat,
@@ -335,7 +335,7 @@ describe('plugin lifecycle integration', () => {
     })
     // kaneo is now plugin-contributed; resolver looks for plugin-namespaced credential key
     setConfigValue('ctx-kaneo', KANEO_CREDENTIAL_KEY, 'kn-key')
-    setKaneoWorkspace('ctx-kaneo', 'workspace-1')
+    setConfigValue('ctx-kaneo', KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
     setConfig('ctx-youtrack', 'youtrack_token', 'perm:abc')
     const router = new ChatRouter(() => createMockChat())
     router.addInstance('telegram-default', 'telegram', { token: 'x' })
