@@ -29,6 +29,7 @@ export type TaskInstanceConfigValidationDeps = Readonly<{
 }>
 
 export type TaskInstanceConfigKeyMode = 'storage' | 'logical'
+export type TaskInstanceValidatorConfigScope = 'instance' | 'resolved'
 
 const defaultDeps: TaskInstanceConfigValidationDeps = {
   getTaskProviderDescriptor,
@@ -92,11 +93,20 @@ const normalizeDescriptorConfig = (
   )
 }
 
+const validatorConfigFields = (
+  descriptor: TaskProviderTypeDescriptor,
+  scope: TaskInstanceValidatorConfigScope,
+): readonly ProviderConfigField[] => {
+  if (scope === 'resolved') return [...descriptor.instanceConfigSchema, ...descriptor.contextConfigSchema]
+  return descriptor.instanceConfigSchema
+}
+
 export const validateTaskInstanceConfigResult = async (
   type: string,
   config: InstanceConfig,
   deps: TaskInstanceConfigValidationDeps = defaultDeps,
   mode: TaskInstanceConfigKeyMode = 'storage',
+  validatorScope: TaskInstanceValidatorConfigScope = 'instance',
 ): Promise<TaskInstanceConfigValidationFailure | null> => {
   const descriptor = deps.getTaskProviderDescriptor(type)
   if (descriptor === undefined) return { kind: 'unknown_task_provider', type }
@@ -108,7 +118,7 @@ export const validateTaskInstanceConfigResult = async (
 
   const validator = deps.getTaskProviderConfigValidator(type)
   if (validator === undefined) return null
-  const validatorConfig = normalizeDescriptorConfig(descriptor.instanceConfigSchema, config, mode)
+  const validatorConfig = normalizeDescriptorConfig(validatorConfigFields(descriptor, validatorScope), config, mode)
   const result = await Promise.resolve()
     .then(() => validator(validatorConfig))
     .catch((error: unknown) => ({

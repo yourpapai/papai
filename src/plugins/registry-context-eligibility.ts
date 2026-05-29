@@ -84,6 +84,7 @@ function getChatCapabilitiesForContext(settings: ReturnType<typeof getContextSet
 
 function getMissingRequiredCapabilities(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
   const settings = getContextSettings(contextId)
+  if (settings === null) return []
   const taskCapabilities = getTaskCapabilitiesForContext(settings)
   const chatCapabilities = getChatCapabilitiesForContext(settings)
 

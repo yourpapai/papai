@@ -39,13 +39,16 @@ export function isValidMainPath(path: string): boolean {
 }
 
 export function hasProviderManifestPermission(m: ManifestValidationInput): boolean {
-  const allowsProviderHosts = m.providerAllowedHosts.length === 0 || m.permissions.includes('http')
+  const hasTaskProviderPermission =
+    m.permissions.includes('provider.task') && m.contributes.taskProviderTypes.length > 0
+  const allowsProviderHosts =
+    m.providerAllowedHosts.length === 0 || m.permissions.includes('http') || hasTaskProviderPermission
   const allowsTaskProviderFields =
     (m.providerCapabilities.length === 0 &&
       m.providerConfigSchema.length === 0 &&
       (m.providerContextConfigSchema?.length ?? 0) === 0 &&
       m.providerConfigValidator === undefined) ||
-    (m.permissions.includes('provider.task') && m.contributes.taskProviderTypes.length > 0)
+    hasTaskProviderPermission
 
   return allowsProviderHosts && allowsTaskProviderFields
 }

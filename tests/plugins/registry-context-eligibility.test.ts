@@ -156,7 +156,7 @@ describe('admin-scoped config eligibility', () => {
     })
   })
 
-  test('returns capability_missing when no context settings exist for required capabilities', () => {
+  test('skips capability checks when no context settings exist for required capabilities', () => {
     const plugin = makePlugin({
       manifest: {
         ...makePlugin().manifest,
@@ -166,10 +166,6 @@ describe('admin-scoped config eligibility', () => {
 
     const result = getPluginContextEligibilityForEntry(makeActiveEntry(plugin), 'test-plugin', 'ctx-no-settings')
 
-    expect(result).toEqual({
-      eligible: false,
-      reason: 'capability_missing',
-      missingCapabilities: ['workItems.list'],
-    })
+    expect(result).toEqual({ eligible: true })
   })
 })
