@@ -296,6 +296,47 @@ describe('/config Command', () => {
       expect(buttonCalls[0]).toContain('unavailable (missing capability: workItems.list)')
     })
 
+    test('selected but unavailable plugins render a disable button', async () => {
+      const pluginId = 'sel-unavail'
+      const buttonLabels: string[] = []
+      const callbackData: string[] = []
+      const buttonStyles: string[] = []
+      registerActivePlugin(
+        makePlugin(pluginId, {
+          name: 'Selected Unavailable Plugin',
+          defaultEnabled: true,
+          configRequirements: [
+            { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
+          ],
+        }),
+      )
+
+      const { reply } = createMockReply()
+      await renderConfigForTarget(
+        {
+          ...reply,
+          buttons: (_content, options): Promise<void> => {
+            assert.ok(options.buttons !== undefined, 'expected options.buttons to be defined')
+            buttonLabels.push(...options.buttons.map((button) => button.text))
+            callbackData.push(...options.buttons.map((button) => button.callbackData))
+            buttonStyles.push(
+              ...options.buttons
+                .map((button) => button.style)
+                .filter((style): style is NonNullable<typeof style> => style !== undefined),
+            )
+            return Promise.resolve()
+          },
+        },
+        USER_ID,
+        true,
+      )
+
+      expect(buttonLabels).toContain('Disable Selected Unavailable Plugin')
+      expect(callbackData).toContain(`plg:disable:${pluginId}:${Buffer.from(USER_ID).toString('base64url')}`)
+      expect(buttonStyles).toContain('danger')
+      expect(buttonLabels).not.toContain('Enable Selected Unavailable Plugin')
+    })
+
     test('plugin rows treat admin-scoped required config as satisfied when admin config exists', async () => {
       const pluginId = 'config-admin-scope-plugin'
       registerActivePlugin(

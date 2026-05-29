@@ -67,18 +67,25 @@ const safeTaskCapabilities = (
 
 const emptyChatCapabilities = (): ReadonlySet<ChatCapability> => new Set<ChatCapability>()
 
+function getTaskCapabilitiesForContext(settings: ReturnType<typeof getContextSettings>): ReadonlySet<TaskCapability> {
+  if (settings === null) return emptyTaskCapabilities()
+  const taskInstance = getTaskInstance(settings.taskInstanceId)
+  return taskInstance === null || taskInstance.status !== 'active'
+    ? emptyTaskCapabilities()
+    : safeTaskCapabilities(taskInstance)
+}
+
+function getChatCapabilitiesForContext(settings: ReturnType<typeof getContextSettings>): ReadonlySet<ChatCapability> {
+  const router = getRuntimeChatRouter()
+  return settings === null || router === null
+    ? emptyChatCapabilities()
+    : router.getPlatformInstanceCapabilities(settings.platformInstanceId)
+}
+
 function getMissingRequiredCapabilities(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
   const settings = getContextSettings(contextId)
-  if (settings === null) return []
-
-  const taskInstance = getTaskInstance(settings.taskInstanceId)
-  const taskCapabilities =
-    taskInstance === null || taskInstance.status !== 'active'
-      ? emptyTaskCapabilities()
-      : safeTaskCapabilities(taskInstance)
-  const router = getRuntimeChatRouter()
-  const chatCapabilities =
-    router === null ? emptyChatCapabilities() : router.getPlatformInstanceCapabilities(settings.platformInstanceId)
+  const taskCapabilities = getTaskCapabilitiesForContext(settings)
+  const chatCapabilities = getChatCapabilitiesForContext(settings)
 
   return [
     ...missingFromSet(plugin.manifest.requiredTaskCapabilities, taskCapabilities),

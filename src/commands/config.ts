@@ -92,8 +92,8 @@ function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string)
 
 function pluginButtonCallback(entry: PluginRegistryEntry, targetContextId: string): string {
   const pluginId = entry.discoveredPlugin.manifest.id
-  const enabled = isPluginActiveForContext(pluginId, targetContextId)
-  return `plg:${enabled ? 'disable' : 'enable'}:${pluginId}:${encodePluginContextId(targetContextId)}`
+  const selected = isPluginSelectedForContext(entry, targetContextId)
+  return `plg:${selected ? 'disable' : 'enable'}:${pluginId}:${encodePluginContextId(targetContextId)}`
 }
 
 function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntry, targetContextId: string): void {
@@ -137,12 +137,11 @@ function buildPluginButtons(targetContextId: string): ChatButton[] {
     .getAllEntries()
     .filter((entry) => entry.state === 'active')
     .map((entry) => {
-      const pluginId = entry.discoveredPlugin.manifest.id
-      const enabled = isPluginActiveForContext(pluginId, targetContextId)
+      const selected = isPluginSelectedForContext(entry, targetContextId)
       return {
-        text: `${enabled ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
+        text: `${selected ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
         callbackData: pluginButtonCallback(entry, targetContextId),
-        style: enabled ? ('danger' as const) : ('primary' as const),
+        style: selected ? ('danger' as const) : ('primary' as const),
       }
     })
     .filter((button) => isSafeCallbackData(button.callbackData))
