@@ -7,10 +7,16 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { getTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
-import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../../src/plugins/loader.js'
+import {
+  activatePlugins,
+  deactivateAllPlugins,
+  getActivatedPluginIds,
+  toPluginImportSpecifier,
+} from '../../src/plugins/loader.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
@@ -119,6 +125,12 @@ describe('activatePlugins', () => {
     expect(requireValue(getRecentRuntimeEvents('bad-plugin', 1)[0], 'bad plugin runtime event').message).toContain(
       'Import failed',
     )
+  })
+
+  test('converts entry point paths to portable file URLs before import', () => {
+    const entryPoint = '/tmp/plugin entry.mjs'
+
+    expect(toPluginImportSpecifier(entryPoint)).toBe(pathToFileURL(entryPoint).href)
   })
 
   test('accepts default-exported factory returning plugin instance', async () => {

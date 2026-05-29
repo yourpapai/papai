@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { pathToFileURL } from 'node:url'
+
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
@@ -30,16 +32,18 @@ function isPluginInstance(value: unknown): value is PluginInstance {
 }
 
 async function importPluginModule(entryPoint: string): Promise<PluginInstance> {
-  const mod: unknown = await import(entryPoint)
+  const mod: unknown = await import(toPluginImportSpecifier(entryPoint))
   const candidate = typeof mod === 'object' && mod !== null && 'default' in mod ? mod.default : mod
-  if (!isPluginFactory(candidate)) {
+  if (!isPluginFactory(candidate))
     throw new Error('Invalid plugin module contract: default export must be a factory function')
-  }
   const instance = candidate()
-  if (!isPluginInstance(instance)) {
+  if (!isPluginInstance(instance))
     throw new Error('Invalid plugin module contract: factory must return an object with activate(ctx)')
-  }
   return instance
+}
+
+function toPluginImportSpecifier(entryPoint: string): string {
+  return pathToFileURL(entryPoint).href
 }
 
 function buildActivationTimeout(timeoutMs: number): {
@@ -190,3 +194,5 @@ export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions 
 export function getActivatedPluginIds(): string[] {
   return [...activationOrder]
 }
+
+export { toPluginImportSpecifier }
