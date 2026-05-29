@@ -208,6 +208,28 @@ describe('synthetic-web-search plugin', () => {
     expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
   })
 
+  test('search tool rate-limits by chat user when available', async () => {
+    const check = mock(() => ({ allowed: true }))
+    const { ctx, registeredTool } = createMockContext({
+      httpFetch: mock().mockResolvedValue(
+        new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      ),
+    })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = {
+      ...createMockRuntimeContext(),
+      rateLimit: { check },
+    } as PluginToolRuntimeContext
+    const options = createMockOptions()
+
+    await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(check).toHaveBeenCalledWith('test-user')
+  })
+
   test('search tool returns single result when index is specified', async () => {
     const mockHttpFetch = mock().mockResolvedValue(
       new Response(

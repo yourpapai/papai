@@ -72,7 +72,7 @@ async function executeSearch(
   runtimeContext: PluginToolRuntimeContext,
   httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
 ): Promise<unknown> {
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
+  const rateResult = runtimeContext.rateLimit.check(runtimeContext.chatUserId || runtimeContext.storageContextId)
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
   }
