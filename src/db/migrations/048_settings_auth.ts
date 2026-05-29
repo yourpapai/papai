@@ -8,7 +8,7 @@ import type { Database } from 'bun:sqlite'
 import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
 
-const log = logger.child({ scope: 'migration:047' })
+const log = logger.child({ scope: 'migration:048' })
 
 function createSettingsAuthCodesTable(db: Database): void {
   db.run(`
@@ -58,12 +58,12 @@ const up = (db: Database): void => {
   createSettingsAuthCodesTable(db)
   createSettingsSessionsTable(db)
   createSettingsRateLimitTable(db)
-  log.info('migration 047: settings auth tables created')
+  log.info('migration 048: settings auth tables created')
 }
 
-export const migration047SettingsAuth: Migration = {
-  id: '047_settings_auth',
+export const migration048SettingsAuth: Migration = {
+  id: '048_settings_auth',
   up,
 }
 
-export default migration047SettingsAuth
+export default migration048SettingsAuth

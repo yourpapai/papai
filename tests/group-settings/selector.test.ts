@@ -16,6 +16,8 @@ import {
 } from '../../src/group-settings/selector.js'
 import { deleteGroupSettingsSession, getActiveGroupSettingsTarget } from '../../src/group-settings/state.js'
 import type { GroupSettingsSelectorResult } from '../../src/group-settings/types.js'
+import { addAdmin } from '../../src/instances/admin-store.js'
+import { insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const getResponse = (
@@ -42,6 +44,7 @@ describe('group settings selector', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    process.env['INSTANCE_CONFIG_KEY'] = '1'.repeat(64)
     deleteGroupSettingsSession('user-1')
     deleteGroupSettingsSession('user-1', 'telegram-default')
   })
@@ -102,6 +105,29 @@ describe('group settings selector', () => {
       continueWith: { command: 'config', targetContextId: scopedGroup1 },
     })
     expect(getActiveGroupSettingsTarget('user-1', 'telegram-default')).toBe(scopedGroup1)
+  })
+
+  test('shows a newly authorized scoped group in DM selection before any observation exists and can continue with it', () => {
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: 'telegram-default',
+      nativeContextId: '-10012345',
+    })
+
+    insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
+    addAdmin('admin-id', 'telegram-default')
+    addAuthorizedGroup(scopedGroupId, 'admin-id')
+
+    startGroupSettingsSelection('admin-id', 'config', false, 'telegram-default')
+    const listResult = handleGroupSettingsSelectorMessage('admin-id', 'group', false, 'telegram-default')
+    const response = getResponse(listResult)
+    const selectionResult = handleGroupSettingsSelectorMessage('admin-id', '-10012345', false, 'telegram-default')
+
+    expect(response.response).toContain('-10012345')
+    expect(selectionResult).toEqual({
+      handled: true,
+      continueWith: { command: 'config', targetContextId: scopedGroupId },
+    })
+    expect(getActiveGroupSettingsTarget('admin-id', 'telegram-default')).toBe(scopedGroupId)
   })
 
   test('does not double-scope an already-scoped manageable group context', () => {

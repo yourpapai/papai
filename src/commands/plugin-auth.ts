@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ReplyFn } from '../chat/types.js'
+import { toStorageContextId } from '../chat/scoped-context.js'
+import type { IncomingInteraction, ReplyFn } from '../chat/types.js'
+import { listManageableGroups } from '../group-settings/access.js'
 import { isAdmin } from '../instances/admin-store.js'
 import { getContextSettings } from '../instances/context-store.js'
 
@@ -36,6 +38,24 @@ export const canManageTargetContext = (
   const platformInstanceId = settings === null ? sourcePlatformInstanceId : settings.platformInstanceId
   if (isAdmin(userId, platformInstanceId)) return { allowed: true }
   return { allowed: false, reason: 'not_authorized' }
+}
+
+export const canManageInteractionTargetContext = (
+  interaction: IncomingInteraction,
+  targetContextId: string,
+): TargetContextAuthorization => {
+  if (interaction.contextType !== 'dm') {
+    return targetContextId === interaction.storageContextId
+      ? { allowed: true }
+      : { allowed: false, reason: 'not_authorized' }
+  }
+  if (targetContextId === interaction.storageContextId || targetContextId === interaction.user.id)
+    return { allowed: true }
+  const manageable = listManageableGroups(interaction.user.id, interaction.platformInstanceId).some((group) => {
+    if (group.contextId === targetContextId) return true
+    return toStorageContextId(interaction.platformInstanceId, group.contextId) === targetContextId
+  })
+  return manageable ? { allowed: true } : { allowed: false, reason: 'not_authorized' }
 }
 
 export const replyTargetAuthorizationFailure = async (

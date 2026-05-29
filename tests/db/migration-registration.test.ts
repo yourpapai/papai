@@ -18,8 +18,13 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('040_platform_instances')
   })
 
-  test('047 is the last migration', () => {
+  test('includes migration 047_dashboard_sessions', () => {
+    const ids = MIGRATIONS.map((m) => m.id)
+    expect(ids).toContain('047_dashboard_sessions')
+  })
+
+  test('048 is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('047_settings_auth')
+    expect(lastMigration.id).toBe('048_settings_auth')
   })
 })

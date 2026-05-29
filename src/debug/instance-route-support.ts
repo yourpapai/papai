@@ -17,11 +17,19 @@ export type InstanceApiDeps = {
 
 const INSTANCE_APPLY_CONCURRENCY = 4
 
+const INSTANCE_API_PREFIXES = [
+  '/api/admins',
+  '/api/platform-provider-types',
+  '/api/platform-instances',
+  '/api/task-instances',
+  '/api/task-provider-types',
+] as const
+
 export const instanceConfigSchema: z.ZodType<InstanceConfig> = z.record(z.string(), z.string())
 
 export const platformInstanceSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['telegram', 'mattermost', 'discord']),
+  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
   config: instanceConfigSchema,
 })
 
@@ -108,3 +116,6 @@ export const splitPath = (url: URL): readonly string[] =>
     .split('/')
     .filter((part) => part !== '')
     .map((part) => decodeURIComponent(part))
+
+export const isInstanceApiPath = (pathname: string): boolean =>
+  INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))

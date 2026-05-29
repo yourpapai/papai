@@ -6,7 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import migration047SettingsAuth from '../../../src/db/migrations/047_settings_auth.js'
+import migration048SettingsAuth from '../../../src/db/migrations/048_settings_auth.js'
 
 const getTableNames = (db: Database): string[] =>
   db
@@ -20,7 +20,7 @@ const getIndexNames = (db: Database): string[] =>
     .all()
     .map((row) => row.name)
 
-describe('migration047SettingsAuth', () => {
+describe('migration048SettingsAuth', () => {
   let db: Database
 
   beforeEach(() => {
@@ -32,11 +32,11 @@ describe('migration047SettingsAuth', () => {
   })
 
   test('has the expected migration id', () => {
-    expect(migration047SettingsAuth.id).toBe('047_settings_auth')
+    expect(migration048SettingsAuth.id).toBe('048_settings_auth')
   })
 
   test('creates settings auth tables', () => {
-    migration047SettingsAuth.up(db)
+    migration048SettingsAuth.up(db)
     const tables = getTableNames(db)
     expect(tables).toContain('settings_auth_codes')
     expect(tables).toContain('settings_sessions')
@@ -44,14 +44,14 @@ describe('migration047SettingsAuth', () => {
   })
 
   test('creates principal indexes', () => {
-    migration047SettingsAuth.up(db)
+    migration048SettingsAuth.up(db)
     const indexes = getIndexNames(db)
     expect(indexes).toContain('idx_settings_auth_codes_principal')
     expect(indexes).toContain('idx_settings_sessions_principal')
   })
 
   test('is idempotent', () => {
-    migration047SettingsAuth.up(db)
-    expect(() => migration047SettingsAuth.up(db)).not.toThrow()
+    migration048SettingsAuth.up(db)
+    expect(() => migration048SettingsAuth.up(db)).not.toThrow()
   })
 })

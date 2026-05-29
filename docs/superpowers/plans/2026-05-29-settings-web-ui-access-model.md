@@ -225,12 +225,12 @@ git commit -m "feat(settings): add crypto helpers for codes and sessions"
 
 ---
 
-## Task 3: DB schema & migration `047_settings_auth`
+## Task 3: DB schema & migration `048_settings_auth`
 
 **Files:**
 
 - Create: `src/db/settings-auth-schema.ts`
-- Create: `src/db/migrations/047_settings_auth.ts`
+- Create: `src/db/migrations/048_settings_auth.ts`
 - Modify: `src/db/schema.ts` (add barrel re-export)
 - Modify: `src/db/index.ts` (import + append to `MIGRATIONS`)
 - Test: `tests/db/settings-auth-schema.test.ts`
@@ -367,7 +367,7 @@ export { settingsAuthCodes, settingsRateLimit, settingsSessions } from './settin
 
 - [ ] **Step 5: Create the migration file**
 
-Create `src/db/migrations/047_settings_auth.ts`:
+Create `src/db/migrations/048_settings_auth.ts`:
 
 ```typescript
 // SPDX-License-Identifier: BUSL-1.1
@@ -433,12 +433,12 @@ const up = (db: Database): void => {
   log.info('migration 047: settings auth tables created')
 }
 
-export const migration047SettingsAuth: Migration = {
-  id: '047_settings_auth',
+export const migration048SettingsAuth: Migration = {
+  id: '048_settings_auth',
   up,
 }
 
-export default migration047SettingsAuth
+export default migration048SettingsAuth
 ```
 
 - [ ] **Step 6: Register the migration**
@@ -446,14 +446,14 @@ export default migration047SettingsAuth
 In `src/db/index.ts`, add the import alongside the other migration imports:
 
 ```typescript
-import { migration047SettingsAuth } from './migrations/047_settings_auth.js'
+import { migration048SettingsAuth } from './migrations/048_settings_auth.js'
 ```
 
 Then append it to the `MIGRATIONS` array, immediately after `migration046ParentSharedContextEntities`:
 
 ```typescript
   migration046ParentSharedContextEntities,
-  migration047SettingsAuth,
+  migration048SettingsAuth,
 ]
 ```
 
@@ -465,7 +465,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/db/settings-auth-schema.ts src/db/migrations/047_settings_auth.ts src/db/schema.ts src/db/index.ts tests/db/settings-auth-schema.test.ts
+git add src/db/settings-auth-schema.ts src/db/migrations/048_settings_auth.ts src/db/schema.ts src/db/index.ts tests/db/settings-auth-schema.test.ts
 git commit -m "feat(settings): add 047 migration and schema for auth codes, sessions, rate limit"
 ```
 
@@ -2409,7 +2409,7 @@ In the "Main Modules" list, add an entry:
   which the debug server routes to **before** any `DEBUG_TOKEN` check so the
   per-user settings trust domain stays strictly separate from the operator domain.
   Tables `settings_auth_codes`, `settings_sessions`, `settings_rate_limit` are
-  created by migration `047_settings_auth`.
+  created by migration `048_settings_auth`.
 ```
 
 - [ ] **Step 2: Run the full check suite**

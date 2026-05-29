@@ -123,14 +123,13 @@ export function getEnabledPluginsForContext(contextId: string): string[] {
     .map((r) => r.pluginId)
 }
 
-export function getEnabledContextsForPlugin(pluginId: string): string[] {
+export function getContextStatesForPlugin(pluginId: string): Array<{ contextId: string; enabled: boolean }> {
   const db = getDrizzleDb()
   return db
-    .select({ contextId: pluginContextState.contextId })
+    .select({ contextId: pluginContextState.contextId, enabled: pluginContextState.enabled })
     .from(pluginContextState)
-    .where(and(eq(pluginContextState.pluginId, pluginId), eq(pluginContextState.enabled, true)))
+    .where(eq(pluginContextState.pluginId, pluginId))
     .all()
-    .map((r) => r.contextId)
 }
 
 // ---- KV store ----

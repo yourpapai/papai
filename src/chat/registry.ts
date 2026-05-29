@@ -8,6 +8,8 @@ import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js
 import { logger } from '../logger.js'
 import { DiscordChatProvider } from './discord/index.js'
 import { discordCapabilities, discordTraits } from './discord/metadata.js'
+import { KonturTalkChatProvider } from './kontur-talk/index.js'
+import { konturTalkCapabilities, konturTalkTraits } from './kontur-talk/metadata.js'
 import { MattermostChatProvider } from './mattermost/index.js'
 import { mattermostCapabilities, mattermostTraits } from './mattermost/metadata.js'
 import { TelegramChatProvider } from './telegram/index.js'
@@ -62,6 +64,15 @@ const platformDescriptors = [
     capabilities: discordCapabilities,
     traits: discordTraits,
   },
+  {
+    type: 'kontur-talk',
+    displayName: 'Kontur Talk',
+    source: 'builtin',
+    instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true, scope: 'instance' }],
+    contextConfigSchema: [],
+    capabilities: konturTalkCapabilities,
+    traits: konturTalkTraits,
+  },
 ] as const satisfies readonly ChatProviderDescriptor[]
 
 registerChatProvider(
@@ -80,6 +91,14 @@ registerChatProvider(
 registerChatProvider(
   'discord',
   (deps) => new DiscordChatProvider(undefined, deps.env['DISCORD_BOT_TOKEN'], deps.platformInstanceId),
+)
+registerChatProvider(
+  'kontur-talk',
+  (deps) =>
+    new KonturTalkChatProvider({
+      jwtToken: deps.env['KONTUR_TALK_JWT_TOKEN'],
+      platformInstanceId: deps.platformInstanceId,
+    }),
 )
 
 function registerChatProvider(name: string, factory: ChatProviderFactory): void {
@@ -103,6 +122,9 @@ const configToEnv = (type: PlatformInstanceType, config: InstanceConfig): Record
   if (type === 'telegram') return { TELEGRAM_BOT_TOKEN: config['token'] }
   if (type === 'mattermost') {
     return { MATTERMOST_URL: config['baseUrl'] ?? config['url'], MATTERMOST_BOT_TOKEN: config['token'] }
+  }
+  if (type === 'kontur-talk') {
+    return { KONTUR_TALK_JWT_TOKEN: config['jwtToken'] }
   }
   return { DISCORD_BOT_TOKEN: config['token'] }
 }

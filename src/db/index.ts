@@ -57,7 +57,8 @@ import { migration043ScopedContextIds } from './migrations/043_scoped_context_id
 import { migration044InstanceIntegrity } from './migrations/044_instance_integrity.js'
 import { migration045ProviderBaseUrl } from './migrations/045_provider_base_url.js'
 import { migration046ParentSharedContextEntities } from './migrations/046_parent_shared_context_entities.js'
-import { migration047SettingsAuth } from './migrations/047_settings_auth.js'
+import { migration047DashboardSessions } from './migrations/047_dashboard_sessions.js'
+import { migration048SettingsAuth } from './migrations/048_settings_auth.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -139,7 +140,8 @@ export const MIGRATIONS: readonly Migration[] = [
   migration044InstanceIntegrity,
   migration045ProviderBaseUrl,
   migration046ParentSharedContextEntities,
-  migration047SettingsAuth,
+  migration047DashboardSessions,
+  migration048SettingsAuth,
 ]
 
 export const initDb = (): void => {

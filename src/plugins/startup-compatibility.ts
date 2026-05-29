@@ -14,9 +14,14 @@ const EMPTY_TASK_CAPABILITIES: ReadonlySet<TaskCapability> = new Set()
 const EMPTY_CHAT_CAPABILITIES: ReadonlySet<ChatCapability> = new Set()
 
 const activeTaskCapabilitySets = (taskInstances: readonly TaskInstance[]): readonly ReadonlySet<TaskCapability>[] =>
-  taskInstances
-    .filter((instance) => instance.status === 'active')
-    .map((instance) => getCapabilitiesForTaskInstance(instance))
+  taskInstances.flatMap((instance) => {
+    if (instance.status !== 'active') return []
+    try {
+      return [getCapabilitiesForTaskInstance(instance)]
+    } catch {
+      return []
+    }
+  })
 
 const activeChatCapabilitySets = (
   router: ChatRouter,

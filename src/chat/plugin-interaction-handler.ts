@@ -3,8 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { canManageInteractionTargetContext } from '../commands/plugin-auth.js'
 import { getPluginConfig } from '../config.js'
-import { listManageableGroups } from '../group-settings/access.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
@@ -20,12 +20,6 @@ function decodeContextId(encoded: string): string | null {
   } catch {
     return null
   }
-}
-
-function canManageTargetContext(interaction: IncomingInteraction, targetContextId: string): boolean {
-  if (interaction.contextType !== 'dm') return targetContextId === interaction.storageContextId
-  if (targetContextId === interaction.user.id) return true
-  return listManageableGroups(interaction.user.id).some((group) => group.contextId === targetContextId)
 }
 
 function getMissingRequiredConfigLabels(entry: PluginRegistryEntry, contextId: string): readonly string[] {
@@ -70,6 +64,12 @@ async function handleDisablePlugin(
   interaction: IncomingInteraction,
   reply: ReplyFn,
 ): Promise<void> {
+  const entry = pluginRegistry.getEntry(pluginId)
+  if (entry === undefined || entry.state !== 'active') {
+    await replyTextPreferReplace(reply, `Plugin \`${pluginId}\` is not available.`)
+    return
+  }
+
   setPluginEnabledForContext(pluginId, contextId, false)
   log.info({ pluginId, contextId, userId: interaction.user.id }, 'Plugin disabled via interaction')
   await replyTextPreferReplace(reply, `⭕ Plugin \`${pluginId}\` disabled.`)
@@ -97,7 +97,8 @@ export async function handlePluginInteraction(interaction: IncomingInteraction, 
     await replyTextPreferReplace(reply, 'Invalid plugin action. Please try again.')
     return true
   }
-  if (!canManageTargetContext(interaction, contextId)) {
+  const authorization = canManageInteractionTargetContext(interaction, contextId)
+  if (!authorization.allowed) {
     await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, contextId))
     return true
   }

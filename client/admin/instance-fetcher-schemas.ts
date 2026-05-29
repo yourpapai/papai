@@ -17,7 +17,7 @@ const InstanceViewBaseSchema = z.object({
 })
 
 export const PlatformInstanceViewSchema = InstanceViewBaseSchema.extend({
-  type: z.enum(['telegram', 'mattermost', 'discord']),
+  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
 })
 
 export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
@@ -51,7 +51,7 @@ export const TaskProviderTypeViewSchema = z.object({
 })
 
 export const PlatformProviderTypeViewSchema = z.object({
-  type: z.enum(['telegram', 'mattermost', 'discord']),
+  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
   displayName: z.string(),
   instanceConfigSchema: z.array(ProviderConfigRequirementViewSchema),
   contextConfigSchema: z.array(ProviderConfigRequirementViewSchema),
