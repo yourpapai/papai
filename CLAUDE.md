@@ -174,6 +174,9 @@ Optional but important runtime flags include:
 - `LOG_LEVEL`
 - `DEMO_MODE`
 - `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
+- `SETTINGS_PUBLIC_BASE_URL` — external base URL (e.g. `https://bot.example.com`)
+  used to build single-use settings links and scope the `Secure` settings
+  session cookie. When unset, `/config` falls back to the legacy in-chat flow.
 
 When `DEBUG_SERVER=true`, the local UI is split by audience:
 
@@ -283,6 +286,17 @@ Optional: debug server + debug/admin clients
 - `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
 - `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
 - `src/mcp/` — Model Context Protocol adapter. Connects to external MCP servers and exposes their tools to the LLM as Vercel AI SDK tools. Two sources: per-context user endpoints from the `mcp_endpoints` config key (`user-endpoints.ts`) and plugin-declared servers from a manifest's `mcp` field (`plugin-endpoints.ts`). `McpConnectionPool`/`mcpPool` (`client-pool.ts`) pools connections with retry and idle eviction; `convertMcpToolsToToolSet()` (`tool-adapter.ts`) wraps remote tools. `makeTools()` merges these tools and swallows all MCP failures so a dead server never breaks the pipeline. Only `streamable-http` is runtime-supported; `stdio` is schema-reserved. See `src/mcp/CLAUDE.md`.
+- `src/settings/` — settings web UI access model: one-time auth-code issuance
+  (`issue-link.ts`, `auth-code-store.ts`), SQLite-backed sessions with
+  synchronizer-token CSRF (`session-store.ts`), per-request principal resolution
+  (`principal.ts`), the `requireScope` guard (`scope-guard.ts`), context listing
+  (`contexts.ts`), and cookie/request auth helpers (`cookies.ts`, `request-auth.ts`).
+  HTTP handlers live in `src/debug/settings-routes.ts`, dispatched by
+  `src/debug/settings-router.ts`, which `src/debug/server.ts` routes to **before**
+  any `DEBUG_TOKEN` check so the per-user settings trust domain stays strictly
+  separate from the operator domain. Tables `settings_auth_codes`,
+  `settings_sessions`, `settings_rate_limit` are created by migration
+  `047_settings_auth`.
 
 ## Plugin System
 
