@@ -12,9 +12,3 @@ export function getSettingsPublicBaseUrl(): string | null {
 export function buildSettingsUrlFromBase(base: string, code: string): string {
   return `${base}/settings?code=${encodeURIComponent(code)}`
 }
-
-export function buildSettingsUrl(code: string): string | null {
-  const base = getSettingsPublicBaseUrl()
-  if (base === null) return null
-  return buildSettingsUrlFromBase(base, code)
-}
