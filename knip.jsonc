@@ -58,6 +58,10 @@
     "src/stats/index.ts": ["exports"],
     // resetUsageRecorderForTesting is a test-only seam.
     "src/usage/index.ts": ["exports"],
+    // resetPermissionPromptForTesting is a test-only seam.
+    "src/chat/permission-prompt.ts": ["exports"],
+    // partitionToolNames is a test-only seam.
+    "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
     "src/instances/admin-store.ts": ["exports"],
     // deleteContextsByTaskInstance, deleteContextsByPlatformInstance are test-only seams.

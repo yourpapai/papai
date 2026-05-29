@@ -201,7 +201,9 @@ async function runFullGeneration(
     deliveryTarget.contextType,
     prompt,
   )
-  const systemPrompt = buildSystemPrompt(provider, storageContextId, enabledToolNames)
+  const systemPrompt = buildSystemPrompt(provider, storageContextId, enabledToolNames, {
+    askPermissionAvailable: false,
+  })
   const { messages } = buildFullMessages(createdByUserId, storageContextId, type, prompt, matchedTasksSummary, metadata)
   log.debug(
     { userId: createdByUserId, mainModel: config.mainModel, historyLength: messages.length, mode: 'full' },
