@@ -558,10 +558,12 @@ describe('ChatRouter', () => {
     }
     router = new ChatRouter(factory)
     router.addInstance('telegram-main', 'telegram', {})
+    await router.startInstance('telegram-main')
 
     await expect(router.removeInstanceStrict('telegram-main')).rejects.toThrow('stop telegram-main')
 
     expect(router.getInstance('telegram-main')).not.toBeNull()
+    expect(router.getInstance('telegram-main')?.status).toBe('active')
   })
 
   test('exposes metadata and delegates per-instance operations', async () => {
