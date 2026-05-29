@@ -18,8 +18,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('040_platform_instances')
   })
 
-  test('046 is the last migration', () => {
+  test('047 is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('046_parent_shared_context_entities')
+    expect(lastMigration.id).toBe('047_settings_auth')
   })
 })
