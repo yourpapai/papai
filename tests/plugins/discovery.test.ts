@@ -334,6 +334,22 @@ describe('discoverPlugins', () => {
     expect(result.plugins[0]?.manifest.id).toBe('quoted-import-text-plugin')
   })
 
+  test('ignores static import text inside ordinary string literals', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'quoted-static-import-text-plugin',
+      { main: 'index.ts' },
+      'export default function createPlugin(){ const note = "import \'./missing.ts\'"; return { activate(){ return note } } }',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('quoted-static-import-text-plugin')
+  })
+
   test('resolves deterministic literal dynamic imports', () => {
     const root = makeTempDir()
     writePlugin(
@@ -366,6 +382,41 @@ describe('discoverPlugins', () => {
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('comment-dynamic-import-plugin')
+  })
+
+  test('manifest hash changes when template literal expressions contain deterministic dynamic imports', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'template-expression-dynamic-import')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'template-expression-dynamic-import',
+        name: 'Template Expression Dynamic Import',
+        version: '1.0.0',
+        description: 'template expression dynamic import',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "export default function createPlugin(){ const script = `${import('./helper.ts')}`; return { activate(){ return script.length } } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
   test('accepts explicit mcp-only plugins without reading index.ts', () => {

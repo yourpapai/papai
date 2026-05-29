@@ -8,7 +8,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from '
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
-import { readLiteralDynamicImports } from './discovery-imports.js'
+import { readLiteralDynamicImports, readStaticImportSpecifiers } from './discovery-imports.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
@@ -50,8 +50,6 @@ function isRealDirectory(path: string): boolean {
     return false
   }
 }
-
-const STATIC_IMPORT_RE = /(?:import\s+(?:[^'";]+\s+from\s+)?|export\s+[^'";]*\s+from\s+)(['"])(\.[^'"]+)\1/gu
 
 function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
   const candidate = resolve(join(dirname(fromFile), specifier))
@@ -105,9 +103,7 @@ function readPluginSourceGraph(entryPoint: string, pluginDir: string): string[] 
       throw new Error(`Unresolvable plugin dynamic import in ${current}`)
     }
 
-    for (const match of source.matchAll(STATIC_IMPORT_RE)) {
-      const specifier = match[2]
-      if (specifier === undefined) continue
+    for (const specifier of readStaticImportSpecifiers(source)) {
       if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
       pending.push(resolveEntryImport(current, pluginDir, specifier))
     }
