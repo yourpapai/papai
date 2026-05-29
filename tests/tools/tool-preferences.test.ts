@@ -8,14 +8,11 @@ import { describe, expect, it, test } from 'bun:test'
 import {
   cycleDomain,
   cycleTool,
-  getDomainStatus,
   getDomainSummary,
   parseToolPrefs,
   partitionToolNames,
   resolveToolPermission,
   serializeToolPrefs,
-  toggleDomain,
-  toggleTool,
   type ToolPrefs,
 } from '../../src/tools/tool-preferences.js'
 
@@ -82,63 +79,6 @@ describe('partitionToolNames (legacy)', () => {
     const { exposed, denied } = partitionToolNames(prefs, ['create_task', 'delete_task', 'web_fetch'])
     expect([...exposed].sort()).toEqual(['create_task', 'web_fetch'])
     expect([...denied]).toEqual(['delete_task'])
-  })
-})
-
-describe('getDomainStatus', () => {
-  it('reports on when nothing in the domain is disabled', () => {
-    expect(getDomainStatus(empty, 'task', ['create_task', 'delete_task'])).toBe('on')
-  })
-
-  it('reports off when the whole domain is disabled and no overrides re-enable', () => {
-    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
-    expect(getDomainStatus(prefs, 'task', ['create_task', 'delete_task'])).toBe('off')
-  })
-
-  it('reports partial when some tools in the domain differ from the rest', () => {
-    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
-    expect(getDomainStatus(prefs, 'task', ['create_task', 'delete_task'])).toBe('partial')
-  })
-
-  it('uses the domain flag (ignoring overrides) when domainToolNames is empty', () => {
-    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { web_fetch: 'allow' } }
-    expect(getDomainStatus(prefs, 'web', [])).toBe('off')
-  })
-})
-
-describe('toggleDomain', () => {
-  it('flips an on domain to off and drops per-tool overrides within the domain', () => {
-    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
-    const next = toggleDomain(prefs, 'task', ['create_task', 'delete_task'])
-    expect(next.domainDefaults['task']).toBe('deny')
-    // delete_task override is dropped because the domain bulk action wins
-    expect(next.toolOverrides['delete_task']).toBeUndefined()
-  })
-
-  it('flips an off domain back to on', () => {
-    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
-    const next = toggleDomain(prefs, 'task', ['create_task'])
-    expect(next.domainDefaults['task']).toBe('allow')
-  })
-})
-
-describe('toggleTool', () => {
-  it('disables a single tool inside an on domain via an override', () => {
-    const next = toggleTool(empty, 'delete_task', ['create_task', 'delete_task'])
-    expect(next.toolOverrides['delete_task']).toBe('deny')
-  })
-
-  it('re-enables a denied tool by flipping its override to allow', () => {
-    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
-    const next = toggleTool(prefs, 'delete_task', ['create_task', 'delete_task'])
-    expect(next.toolOverrides['delete_task']).toBe('allow')
-  })
-
-  it('removes the force-allow override when toggling a tool inside a disabled domain to deny', () => {
-    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { web_fetch: 'allow' } }
-    const next = toggleTool(prefs, 'web_fetch', [])
-    expect(next.toolOverrides['web_fetch']).toBe('deny')
-    expect(next.domainDefaults['web']).toBe('deny')
   })
 })
 
