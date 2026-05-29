@@ -98,6 +98,22 @@ export const validationError = (error: z.ZodError): Response =>
 export const instanceExistsError = (id: string): Response =>
   jsonResponse({ error: 'instance_exists', id }, { status: 409 })
 
+const isSqliteConstraintError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false
+  const candidate = error as Error & { readonly code?: string }
+  return candidate.code === 'SQLITE_CONSTRAINT' || error.message.includes('UNIQUE constraint failed')
+}
+
+export const insertOrConflict = (id: string, insert: () => void): Response | null => {
+  try {
+    insert()
+    return null
+  } catch (error) {
+    if (isSqliteConstraintError(error)) return instanceExistsError(id)
+    throw error
+  }
+}
+
 const failedPatch = (id: string, action: ApplyFailureAction, error: unknown): ApplyResultPatch => ({
   failed: [{ id, action, error: errorMessage(error) }],
 })

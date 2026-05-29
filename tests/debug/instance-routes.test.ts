@@ -180,7 +180,7 @@ describe('instance API routes', () => {
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'token')).toBe('********')
   })
 
-  test('duplicate platform create returns instance_exists conflict', async () => {
+  test('POST /api/platform-instances maps duplicate insert failures to 409', async () => {
     insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
     const res = expectResponse(
@@ -754,12 +754,16 @@ describe('instance API routes', () => {
     expect(stop).toHaveBeenCalledTimes(1)
   })
 
-  test('updates platform instance status', async () => {
+  test('updates platform instance status and clears referencing context tool cache', async () => {
     await route('/api/platform-instances', {
       method: 'POST',
       headers: jsonHeaders(),
       body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' } }),
     })
+    seedTaskInstance('tasks-main')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main/status', {
@@ -771,6 +775,8 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(200)
     expect(pick(assertObject(await readJson(res)), 'status')).toBe('stopped')
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('deletes task instance context settings before deleting the task instance', async () => {
@@ -857,14 +863,19 @@ describe('instance API routes', () => {
     })
   })
 
-  test('duplicate task create returns instance_exists conflict', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  test('POST /api/task-instances maps duplicate insert failures to 409', async () => {
+    insertTaskInstance({
+      id: 'tasks-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
 
     const res = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://other.invalid' } }),
+        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { baseUrl: 'https://other.invalid' } }),
       }),
     )
 
@@ -902,6 +913,26 @@ describe('instance API routes', () => {
       baseUrl: 'https://new-kaneo.invalid',
       internalUrl: 'https://internal.kaneo.invalid',
     })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+  })
+
+  test('PATCH /api/platform-instances/:id clears referencing context tool cache', async () => {
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
     expect(cachedToolsFor('ctx-1')).toBeNull()
     expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
