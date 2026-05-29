@@ -948,10 +948,13 @@ describe('buildPluginToolSet', () => {
     )
     const existing = new Set(['plugin_test_plugin__my_tool'])
 
-    const tools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
-    const events = getRecentRuntimeEvents('test-plugin', 1)
+    const firstTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const secondTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const events = getRecentRuntimeEvents('test-plugin', 5)
 
-    expect(Object.keys(tools)).toHaveLength(0)
+    expect(Object.keys(firstTools)).toHaveLength(0)
+    expect(Object.keys(secondTools)).toHaveLength(0)
+    expect(events).toHaveLength(1)
     expect(events[0]?.eventType).toBe('skipped')
     expect(events[0]?.message).toBe(
       "Tool contribution 'plugin_test_plugin__my_tool' skipped because the name already exists",
