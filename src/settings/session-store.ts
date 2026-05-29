@@ -107,6 +107,7 @@ export function deleteSession(sessionId: string): void {
     .run()
 }
 
+/** @public Consumed by the settings Surface spec's admin "revoke all sessions" action. */
 export function deleteSessionsForPrincipal(platformInstanceId: string, platformUserId: string): number {
   const db = getDrizzleDb()
   const rows = db

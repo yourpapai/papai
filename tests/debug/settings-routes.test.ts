@@ -14,7 +14,8 @@ import {
 import { issueAuthCode } from '../../src/settings/auth-code-store.js'
 import { SESSION_COOKIE_NAME } from '../../src/settings/cookies.js'
 import { CSRF_HEADER } from '../../src/settings/request-auth.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { addUser } from '../../src/users.js'
+import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 
 const readJson = async (res: Response): Promise<object> => {
   const parsed: unknown = JSON.parse(await res.text())
@@ -52,6 +53,8 @@ describe('settings routes', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    seedTestPlatformInstance({ id: 'pi-1' })
+    addUser({ userId: 'u-1', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
     process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
   })
 
@@ -102,6 +105,24 @@ describe('settings routes', () => {
     expect(res.status).toBe(200)
     const body = await readJson(res)
     expect(typeof pickString(body, 'csrfToken')).toBe('string')
+  })
+
+  test('bootstrap denies a session whose principal is not authorized', async () => {
+    const code = issueAuthCode({ platformInstanceId: 'pi-1', platformUserId: 'stranger' }, 1000)
+    const exchanged = await handleSettingsExchange(
+      new Request('https://x/settings/auth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      }),
+      2000,
+    )
+    const sid = cookieFrom(exchanged)
+    const res = handleSettingsBootstrap(
+      new Request('https://x/settings/api/session', { headers: { Cookie: `${SESSION_COOKIE_NAME}=${sid}` } }),
+      3000,
+    )
+    expect(res.status).toBe(403)
   })
 
   test('logout requires a valid CSRF token then clears the cookie', async () => {

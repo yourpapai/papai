@@ -12,6 +12,7 @@ import { buildSessionCookie, clearSessionCookie } from '../settings/cookies.js'
 import { resolveSettingsPrincipal } from '../settings/principal.js'
 import { consumeSettingsQuota } from '../settings/rate-limit.js'
 import { authenticateSettingsRequest, verifyCsrf } from '../settings/request-auth.js'
+import { requireScope } from '../settings/scope-guard.js'
 import { createSession, deleteSession, rotateSessionCsrf } from '../settings/session-store.js'
 
 const log = logger.child({ scope: 'debug-server:settings-routes' })
@@ -80,6 +81,12 @@ export async function handleSettingsExchange(req: Request, nowMs: number = Date.
 export function handleSettingsBootstrap(req: Request, nowMs: number = Date.now()): Response {
   const authed = authenticateSettingsRequest(req, nowMs)
   if (authed === null) return jsonResponse(401, { error: 'unauthenticated' })
+
+  // Live authorization: a session whose principal lost access (e.g. de-authorized
+  // after login) must not keep working. A principal with any manageable group is
+  // necessarily authorized, so a personal-read scope check covers all access.
+  const access = requireScope(authed.principal, { action: 'read', target: { kind: 'personal' } })
+  if (!access.ok) return jsonResponse(403, { error: 'forbidden' })
 
   const csrfToken = rotateSessionCsrf(authed.sessionId, nowMs)
   if (csrfToken === null) return jsonResponse(401, { error: 'unauthenticated' })
