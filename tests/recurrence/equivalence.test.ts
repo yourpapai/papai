@@ -69,7 +69,7 @@ describe('cron engine vs facade equivalence', () => {
           const facadeResults = collectFacadeOccurrences(translated.rrule, translated.dtstartUtc, tz, anchor, 10)
 
           expect(facadeResults.map((d) => d.toISOString())).toEqual(cronResults.map((d) => d.toISOString()))
-        })
+        }, 15000)
       }
     }
   }

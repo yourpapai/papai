@@ -6,12 +6,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
-import type { PluginManifest } from '../../src/plugins/types.js'
+import { pluginManifestSchema, type PluginManifest } from '../../src/plugins/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
-  return {
+  return pluginManifestSchema.parse({
     id: 'test-plugin',
     name: 'Test Plugin',
     version: '1.0.0',
@@ -29,7 +29,7 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     providerAllowedHosts: [],
     activationTimeoutMs: 5000,
     ...overrides,
-  } as PluginManifest
+  })
 }
 
 function makeRuntime(overrides: Partial<PluginToolSetRuntime> = {}): PluginToolSetRuntime {
