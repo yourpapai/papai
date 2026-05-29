@@ -59,7 +59,7 @@ describe('handleToolToggleInteraction', () => {
     expect(getToolPrefs(USER).domainDefaults['memo']).toBe('deny')
   })
 
-  it('toggling a domain off accepts a scoped personal DM target context', async () => {
+  it('cycling a domain accepts a scoped personal DM target context', async () => {
     const scopedContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER })
     const scopedCtx = Buffer.from(scopedContextId).toString('base64url')
     const { reply } = createMockReply()
@@ -69,7 +69,7 @@ describe('handleToolToggleInteraction', () => {
     )
 
     expect(handled).toBe(true)
-    expect(getToolPrefs(scopedContextId).disabledDomains).toContain('memo')
+    expect(getToolPrefs(scopedContextId).domainDefaults['memo']).toBe('ask')
   })
 
   it('rejects toggling for a context the user cannot manage', async () => {
