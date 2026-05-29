@@ -89,6 +89,23 @@ function getMethod(fetchInit: RequestInit): string {
   return fetchInit.method
 }
 
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+}
+
+function buildRedirectFetchInit(fetchInit: RequestInit, status: number): RequestInit {
+  const method = getMethod(fetchInit).toUpperCase()
+  const shouldRewriteToGet =
+    (status === 301 || status === 302 || status === 303) && method !== 'GET' && method !== 'HEAD'
+
+  if (!shouldRewriteToGet) {
+    return fetchInit
+  }
+
+  const { body: _ignoredBody, ...rest } = fetchInit
+  return { ...rest, method: 'GET' }
+}
+
 async function fetchWithRedirects(
   currentUrl: URL,
   fetchInit: RequestInit,
@@ -99,7 +116,7 @@ async function fetchWithRedirects(
 ): Promise<Response> {
   logger.debug({ host: currentUrl.hostname, method: getMethod(fetchInit) }, 'plugin provider httpFetch')
   const response = await deps.fetch(currentUrl.toString(), fetchInit)
-  const isRedirect = response.status >= 300 && response.status < 400
+  const isRedirect = isRedirectStatus(response.status)
 
   if (!isRedirect) {
     return response
@@ -116,7 +133,14 @@ async function fetchWithRedirects(
   // redirect target. This is acceptable because every hop must pass both the
   // allowlist check and assertPublicUrl, so headers only ever reach hosts the
   // plugin manifest already trusts.
-  return fetchWithRedirects(redirectUrl, fetchInit, hostSet, deps, logger, redirectsLeft - 1)
+  return fetchWithRedirects(
+    redirectUrl,
+    buildRedirectFetchInit(fetchInit, response.status),
+    hostSet,
+    deps,
+    logger,
+    redirectsLeft - 1,
+  )
 }
 
 export function buildProviderRuntime(

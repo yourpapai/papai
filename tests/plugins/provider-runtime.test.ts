@@ -135,9 +135,59 @@ describe('buildProviderRuntime.httpFetch', () => {
     const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
 
     await expect(runtime.httpFetch('https://api.kaneo.io/start')).rejects.toThrow()
-    // fetch call count must be bounded (max redirects + 1 initial = 6 total for MAX_REDIRECTS=5)
-    expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(7)
-    expect(fetchSpy.mock.calls.length).toBeGreaterThan(1)
+    expect(fetchSpy.mock.calls.length).toBe(6)
+  })
+
+  test('returns a non-redirect 304 response directly without requiring location', async () => {
+    mockLogger()
+    const { fetchSpy, assertSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 304 }))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    const response = await runtime.httpFetch('https://api.kaneo.io/v1/tasks')
+
+    expect(response.status).toBe(304)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(assertSpy).toHaveBeenCalledTimes(1)
+  })
+
+  test('rewrites a 302 POST redirect replay to GET without the original body', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'POST',
+      body: 'title=Task',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' })
+    expect(fetchSpy.mock.calls[1]?.[1]?.body).toBeUndefined()
+  })
+
+  test('preserves POST method and body across a 307 redirect replay', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 307, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'POST',
+      body: 'title=Task',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', body: 'title=Task' })
   })
 
   test('allowedHosts is a separate copy so mutating it cannot affect enforcement', async () => {
