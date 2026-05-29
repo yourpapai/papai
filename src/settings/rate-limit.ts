@@ -43,7 +43,9 @@ export function consumeSettingsQuota(
       .get()
 
     if (updated !== undefined) {
-      return { allowed: true, remaining: limit - updated.count }
+      const remaining = limit - updated.count
+      log.info({ bucket, actorId, windowStart, count: updated.count, remaining }, 'Consumed settings quota')
+      return { allowed: true, remaining }
     }
 
     const retryAfterSec = Math.ceil((windowStart + windowMs - nowMs) / 1000)

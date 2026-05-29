@@ -34,6 +34,11 @@ describe('consumeSettingsQuota', () => {
     expect(consumeSettingsQuota('exchange', 'a-1', 3, 60_000, 0)).toEqual({ allowed: true, remaining: 2 })
   })
 
+  test('actors are independent within a bucket', () => {
+    for (let i = 0; i < 3; i += 1) consumeSettingsQuota('issue', 'a-1', 3, 60_000, 0)
+    expect(consumeSettingsQuota('issue', 'a-2', 3, 60_000, 0)).toEqual({ allowed: true, remaining: 2 })
+  })
+
   test('quota resets after the window rolls over', () => {
     for (let i = 0; i < 3; i += 1) consumeSettingsQuota('issue', 'a-1', 3, 60_000, 0)
     expect(consumeSettingsQuota('issue', 'a-1', 3, 60_000, 60_000)).toEqual({ allowed: true, remaining: 2 })
