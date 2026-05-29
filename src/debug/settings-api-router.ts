@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { handleConfigRoutes } from './settings/config-routes.js'
+import { handleToolsRoutes } from './settings/tools-routes.js'
 
 /**
  * Dispatch `/settings/api/*` requests (excluding `/settings/api/session`, owned by
@@ -12,5 +13,8 @@ import { handleConfigRoutes } from './settings/config-routes.js'
  */
 export function routeSettingsApi(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
+  if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {
+    return handleToolsRoutes(req, url, url.pathname)
+  }
   return Promise.resolve(null)
 }
