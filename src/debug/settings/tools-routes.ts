@@ -49,14 +49,16 @@ function groupByDomain(names: readonly string[]): Map<ToolDomain, string[]> {
 
 function buildDomainView(names: readonly string[], prefs: ToolPrefs): unknown[] {
   const grouped = groupByDomain(names)
-  return [...grouped.entries()].map(([domain, domainTools]) => ({
-    domain,
-    status: getDomainStatus(prefs, domain, domainTools),
-    tools: [...domainTools].toSorted().map((name) => {
-      const meta = getToolMetadata(name)
-      return { name, enabled: isToolEnabled(prefs, name), risk: meta?.risk ?? 'read' }
-    }),
-  }))
+  return [...grouped.entries()]
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([domain, domainTools]) => ({
+      domain,
+      status: getDomainStatus(prefs, domain, domainTools),
+      tools: [...domainTools].toSorted().map((name) => {
+        const meta = getToolMetadata(name)
+        return { name, enabled: isToolEnabled(prefs, name), risk: meta?.risk ?? 'read' }
+      }),
+    }))
 }
 
 function handleGet(req: Request, url: URL): Response {
