@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { createChatProvider, listPlatformProviderTypes } from '../../src/chat/registry.js'
+import { createChatProvider, createChatProviderFromConfig, listPlatformProviderTypes } from '../../src/chat/registry.js'
 import { mockLogger } from '../utils/test-helpers.js'
 
 describe('chat registry', () => {
@@ -45,6 +45,22 @@ describe('chat registry', () => {
     expect(provider.name).toBe('telegram')
   })
 
+  test('createChatProviderFromConfig constructs adapters from typed instance config without env mapping', () => {
+    const telegram = createChatProviderFromConfig('telegram-default', 'telegram', { token: 'secret-token' })
+    const mattermost = createChatProviderFromConfig('mattermost-default', 'mattermost', {
+      baseUrl: 'https://mm.invalid',
+      token: 'secret',
+    })
+    const discord = createChatProviderFromConfig('discord-default', 'discord', { token: 'secret-token' })
+
+    expect(telegram.name).toBe('telegram')
+    expect('start' in telegram).toBe(true)
+    expect(mattermost.name).toBe('mattermost')
+    expect('start' in mattermost).toBe(true)
+    expect(discord.name).toBe('discord')
+    expect('start' in discord).toBe(true)
+  })
+
   // Failure paths: pass { env: {} } so validation fires before the constructor reads process.env
   test('createChatProvider throws for unknown provider', () => {
     expect(() => createChatProvider('unknown', { env: {} })).toThrow(/CHAT_PROVIDER must be/u)
@@ -62,36 +78,19 @@ describe('chat registry', () => {
     expect(() => createChatProvider('mattermost', { env: {} })).toThrow(/Missing mattermost env vars/u)
   })
 
-  test('createChatProviderFromConfig creates telegram from encrypted-row config token', async () => {
-    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
-
+  test('createChatProviderFromConfig creates telegram from encrypted-row config token', () => {
     const provider = createChatProviderFromConfig('telegram-default', 'telegram', { token: '123:test-token' })
 
     expect(provider.name).toBe('telegram')
   })
 
-  test('createChatProviderFromConfig creates discord from encrypted-row config token', async () => {
-    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
-
+  test('createChatProviderFromConfig creates discord from encrypted-row config token', () => {
     const provider = createChatProviderFromConfig('discord-default', 'discord', { token: 'discord-token' })
 
     expect(provider.name).toBe('discord')
   })
 
-  test('createChatProviderFromConfig creates mattermost from encrypted-row url and token', async () => {
-    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
-
-    const provider = createChatProviderFromConfig('mattermost-default', 'mattermost', {
-      url: 'https://mattermost.example.test',
-      token: 'mattermost-token',
-    })
-
-    expect(provider.name).toBe('mattermost')
-  })
-
-  test('createChatProviderFromConfig creates mattermost from descriptor-shaped baseUrl and token', async () => {
-    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
-
+  test('createChatProviderFromConfig creates mattermost from descriptor-shaped baseUrl and token', () => {
     const provider = createChatProviderFromConfig('mattermost-default', 'mattermost', {
       baseUrl: 'https://mattermost.example.test',
       token: 'mattermost-token',
@@ -100,9 +99,7 @@ describe('chat registry', () => {
     expect(provider.name).toBe('mattermost')
   })
 
-  test('createChatProviderFromConfig rejects missing config values before adapter construction', async () => {
-    const { createChatProviderFromConfig } = await import('../../src/chat/registry.js')
-
+  test('createChatProviderFromConfig rejects missing config values before adapter construction', () => {
     expect(() =>
       createChatProviderFromConfig('mattermost-default', 'mattermost', { token: 'mattermost-token' }),
     ).toThrow('Missing mattermost instance config')
