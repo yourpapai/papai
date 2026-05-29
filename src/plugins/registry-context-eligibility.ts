@@ -8,6 +8,7 @@ import { getPluginConfig } from '../config.js'
 import { getRuntimeChatRouter } from '../debug/chat-router-runtime.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
+import type { ContextSettings } from '../instances/types.js'
 import { getCapabilitiesForTaskInstance } from '../providers/registry.js'
 import type { TaskCapability } from '../providers/types.js'
 import type { PluginRegistryEntry } from './registry.js'
@@ -67,7 +68,7 @@ const safeTaskCapabilities = (
 
 const emptyChatCapabilities = (): ReadonlySet<ChatCapability> => new Set<ChatCapability>()
 
-function getTaskCapabilitiesForContext(settings: ReturnType<typeof getContextSettings>): ReadonlySet<TaskCapability> {
+function getTaskCapabilitiesForContext(settings: ContextSettings): ReadonlySet<TaskCapability> {
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   return taskInstance === null || taskInstance.status !== 'active'
     ? emptyTaskCapabilities()
