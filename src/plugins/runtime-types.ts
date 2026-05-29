@@ -9,6 +9,7 @@ import type { z } from 'zod'
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/types.js'
 import type { TaskProviderConfigValidator, TaskProviderFactory } from '../providers/registry.js'
 import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
+import type { PluginAdminConfig } from './context.js'
 import type { PluginContext } from './context.js'
 import type { PluginIdentityFacade } from './identity-facade.js'
 
@@ -23,6 +24,7 @@ export type PluginToolRuntimeContext = {
   chatUserId: string
   taskProvider: PluginTaskProviderFacade
   kv: PluginContext['kv']
+  adminConfig: PluginAdminConfig
   identity?: PluginIdentityFacade
   rateLimit: {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }

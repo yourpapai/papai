@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -159,5 +160,29 @@ describe('buildPluginToolRuntimeContext', () => {
 
     expect(runtime.identity).toBeUndefined()
     expect(runtime).not.toHaveProperty('identity')
+  })
+
+  test('tool runtime exposes admin config for declared admin-scoped keys', () => {
+    setPluginAdminConfig('test-plugin', 'api_key', 'runtime-api-key', 'admin-user')
+    setPluginAdminConfig('test-plugin', 'ignored_key', 'should-not-be-exposed', 'admin-user')
+
+    const runtime = buildPluginToolRuntimeContext(
+      'test-plugin',
+      makeManifest({
+        configRequirements: [
+          {
+            key: 'api_key',
+            label: 'API Key',
+            required: true,
+            sensitive: true,
+            scope: 'admin',
+          },
+        ],
+      }),
+      makeRuntime(),
+    )
+
+    expect(runtime.adminConfig.get('api_key')).toBe('runtime-api-key')
+    expect(runtime.adminConfig.get('ignored_key')).toBeUndefined()
   })
 })

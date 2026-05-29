@@ -69,7 +69,7 @@ function createMockContext(
 }
 
 function createMockRuntimeContext(
-  overrides: { allowed?: boolean; retryAfterSec?: number } = {},
+  overrides: { allowed?: boolean; retryAfterSec?: number; apiKey?: string } = {},
 ): PluginToolRuntimeContext {
   const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
 
@@ -96,7 +96,11 @@ function createMockRuntimeContext(
         retryAfterSec: overrides.retryAfterSec,
       }),
     },
-  }
+    adminConfig: {
+      get: (key: string) =>
+        key === 'api_key' ? ('apiKey' in overrides ? overrides.apiKey : 'test-api-key') : undefined,
+    },
+  } as PluginToolRuntimeContext
 }
 
 function createMockOptions(): ToolExecutionOptions {
@@ -161,6 +165,34 @@ describe('synthetic-web-search plugin', () => {
         { url: 'https://example.com/2', title: 'Result 2', text: 'Text 2', published: '2026-01-01' },
       ],
     })
+  })
+
+  test('search tool reads updated admin API key at execution time without restart', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ apiKey: 'stale-api-key', httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext({ apiKey: 'updated-api-key' })
+    const options = createMockOptions()
+
+    await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(mockHttpFetch).toHaveBeenCalledWith(
+      'https://api.synthetic.new/v2/search',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer updated-api-key',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: 'test query' }),
+      }),
+    )
   })
 
   test('search tool returns rate_limited error when rate limit exceeded', async () => {
@@ -267,7 +299,7 @@ describe('synthetic-web-search plugin', () => {
     void instance.activate(ctx)
 
     const tool = registeredTool.value!
-    const runtimeCtx = createMockRuntimeContext()
+    const runtimeCtx = createMockRuntimeContext({ apiKey: undefined })
     const options = createMockOptions()
     const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
 

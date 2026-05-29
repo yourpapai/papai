@@ -70,13 +70,14 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
 async function executeSearch(
   input: unknown,
   runtimeContext: PluginToolRuntimeContext,
-  apiKey: string | undefined,
   httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
 ): Promise<unknown> {
   const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
   }
+
+  const apiKey = runtimeContext.adminConfig.get('api_key')
 
   if (apiKey === undefined || httpFetch === undefined) {
     return { error: 'not_configured', message: 'Synthetic API key is not configured' }
@@ -116,12 +117,10 @@ async function executeSearch(
 }
 
 const factory: PluginFactory = () => {
-  let apiKey: string | undefined
   let httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined
 
   return {
     activate(ctx: PluginContext): void {
-      apiKey = ctx.adminConfig.get('api_key')
       httpFetch = ctx.providerRuntime?.httpFetch
 
       ctx.log.info({}, 'synthetic-web-search plugin activated')
@@ -131,7 +130,7 @@ const factory: PluginFactory = () => {
         description: 'Uses a search engine which returns title, url, and content in markdown',
         inputSchema: searchInputSchema,
         execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
-          executeSearch(input, runtimeContext, apiKey, httpFetch),
+          executeSearch(input, runtimeContext, httpFetch),
       })
 
       ctx.registration.registerPromptFragment({
