@@ -85,4 +85,22 @@ describe('requireScope', () => {
       }),
     ).toEqual({ ok: false, status: 403 })
   })
+
+  test('group: the reserved system sentinel is denied even for a bot admin', () => {
+    expect(
+      requireScope(principal({ isBotAdmin: true }), {
+        action: 'write',
+        target: { kind: 'group', contextId: '__system__' },
+      }),
+    ).toEqual({ ok: false, status: 403 })
+  })
+
+  test('admin: super-admin-only sub-action allowed for a super admin', () => {
+    expect(
+      requireScope(principal({ isBotAdmin: true, isSuperAdmin: true }), {
+        action: 'write',
+        target: { kind: 'admin', requireSuperAdmin: true },
+      }),
+    ).toEqual({ ok: true, contextId: '__system__' })
+  })
 })
