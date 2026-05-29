@@ -51,6 +51,18 @@ describe('settings identity routes', () => {
     expect(body.mapping?.providerUserId).toBe('kaneo-42')
   })
 
+  test('PUT authenticates before parsing the body (no session + bad body → 401)', async () => {
+    const res = await handleIdentityRoutes(
+      new Request('https://x/settings/api/identity', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not-json',
+      }),
+      new URL('https://x/settings/api/identity'),
+    )
+    expect(res.status).toBe(401)
+  })
+
   test('DELETE clears the mapping', async () => {
     const res = await handleIdentityRoutes(
       new Request('https://x/settings/api/identity', { method: 'DELETE', headers: authHeaders(session, true) }),

@@ -9,6 +9,7 @@ import { clearIdentityMapping, getIdentityMapping, setIdentityMapping } from '..
 import { getContextSettings } from '../../instances/context-store.js'
 import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
+import type { AuthenticatedSettingsRequest } from '../../settings/request-auth.js'
 import {
   authenticate,
   parseJsonBody,
@@ -49,15 +50,11 @@ const PutBodySchema = z.object({
   contextId: z.string().optional(),
 })
 
-function resolveWriteScope(
-  req: Request,
+function resolveProviderScope(
+  authed: AuthenticatedSettingsRequest,
   rawContextId: string | undefined,
 ): { ok: true; scope: ContextScope; provider: string } | { ok: false; response: Response } {
-  const auth = authenticate(req)
-  if (!auth.ok) return { ok: false, response: auth.response }
-  const csrf = requireCsrf(req, auth.authed)
-  if (csrf !== null) return { ok: false, response: csrf }
-  const scope = resolveContextScope(auth.authed.principal, 'write', rawContextId)
+  const scope = resolveContextScope(authed.principal, 'write', rawContextId)
   if (!scope.ok) return { ok: false, response: scope.response }
   const provider = providerNameFor(scope.scope.contextId)
   if (provider === null)
@@ -66,11 +63,15 @@ function resolveWriteScope(
 }
 
 async function handlePut(req: Request): Promise<Response> {
+  const auth = authenticate(req)
+  if (!auth.ok) return auth.response
+  const csrf = requireCsrf(req, auth.authed)
+  if (csrf !== null) return csrf
   const parsed = await parseJsonBody(req)
   if (!parsed.ok) return parsed.response
   const body = PutBodySchema.safeParse(parsed.value)
   if (!body.success) return settingsJson(422, { error: 'invalid request' })
-  const resolved = resolveWriteScope(req, body.data.contextId)
+  const resolved = resolveProviderScope(auth.authed, body.data.contextId)
   if (!resolved.ok) return resolved.response
 
   setIdentityMapping({
@@ -87,7 +88,11 @@ async function handlePut(req: Request): Promise<Response> {
 }
 
 function handleDelete(req: Request, url: URL): Response {
-  const resolved = resolveWriteScope(req, url.searchParams.get('contextId') ?? undefined)
+  const auth = authenticate(req)
+  if (!auth.ok) return auth.response
+  const csrf = requireCsrf(req, auth.authed)
+  if (csrf !== null) return csrf
+  const resolved = resolveProviderScope(auth.authed, url.searchParams.get('contextId') ?? undefined)
   if (!resolved.ok) return resolved.response
   clearIdentityMapping(resolved.scope.contextId, resolved.provider)
   log.info(
