@@ -100,6 +100,26 @@ const createTempRepo = (): Readonly<{ repoDir: string; binDir: string; logFile: 
       '    exit 1',
       '  fi',
       'fi',
+      'if [ "$#" -gt 0 ] && [ "$1" = "oxfmt" ]; then',
+      '  shift',
+      '  has_formattable=false',
+      '  while [ "$#" -gt 0 ]; do',
+      '    case "$1" in',
+      '      --check|--ignore-path=*)',
+      '        ;;',
+      '      .opencode/package.json|*.lock.json|*package-lock.json)',
+      '        ;;',
+      '      *)',
+      '        has_formattable=true',
+      '        ;;',
+      '    esac',
+      '    shift',
+      '  done',
+      '  if [ "$has_formattable" = false ]; then',
+      '    printf "%s\n" "Expected at least one target file. All matched files may have been excluded by ignore rules."',
+      '    exit 2',
+      '  fi',
+      'fi',
       'exit 0',
       '',
     ].join('\n'),
@@ -161,6 +181,35 @@ describe('check.sh --staged', () => {
       expect(result.exitCode).toBe(1)
       expect(result.stdout).toContain('Missing BUSL-1.1 license header')
       codeFiles.forEach((file) => expect(result.stdout).toContain(`  ${file}`))
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test('skips format check when staged files are all ignored by oxfmt', () => {
+    const { repoDir, binDir, logFile } = createTempRepo()
+
+    try {
+      const opencodeDir = path.join(repoDir, '.opencode')
+      mkdirSync(opencodeDir, { recursive: true })
+      writeFileSync(path.join(repoDir, '.oxfmtignore'), '.opencode/package.json\n')
+      writeFileSync(path.join(opencodeDir, 'package.json'), '{"dependencies":{"@opencode-ai/plugin":"1.15.12"}}\n')
+      writeFileSync(path.join(opencodeDir, 'package-lock.json'), '{"lockfileVersion":3}\n')
+      expectSuccess(
+        runCommand(repoDir, ['git', 'add', '.oxfmtignore', '.opencode/package.json', '.opencode/package-lock.json']),
+      )
+
+      const env = createEnv({
+        PATH: `${binDir}:${basePath}`,
+        CHECK_LOG_FILE: logFile,
+      })
+      const result = runCommand(repoDir, ['bash', 'scripts/check.sh', '--staged'], env)
+
+      expect(result.exitCode).toBe(0)
+
+      const calls = readFileSync(logFile, 'utf8')
+      expect(calls).toContain('bun run typecheck')
+      expect(calls).not.toContain('bunx oxfmt')
     } finally {
       rmSync(repoDir, { recursive: true, force: true })
     }

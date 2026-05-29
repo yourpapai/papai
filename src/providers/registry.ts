@@ -17,6 +17,8 @@ export type TaskProviderConfigValidator = (
   config: Record<string, string>,
 ) => Promise<{ ok: true } | { ok: false; reason: string }>
 
+type TaskProviderConfigValidatorResult = Awaited<ReturnType<TaskProviderConfigValidator>>
+
 /**
  * Built-in provider factory map.
  *
@@ -29,15 +31,35 @@ const providers = new Map<string, TaskProviderFactory>()
 export type ContributedTaskProviderEntry = {
   pluginId: string
   factory: TaskProviderFactory
-  validateConfig?: TaskProviderConfigValidator
   capabilities: ReadonlySet<TaskCapability>
   displayName: string
-  instanceConfigSchema: readonly ProviderConfigField[]
-  contextConfigSchema: readonly ProviderConfigField[]
+  validateConfig?: TaskProviderConfigValidator
+  instanceConfigSchema?: readonly ProviderConfigField[]
+  contextConfigSchema?: readonly ProviderConfigField[]
   traits?: ReadonlySet<TaskProviderTrait>
 }
 
 const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
+
+const isTaskProviderConfigValidatorResult = (value: unknown): value is TaskProviderConfigValidatorResult => {
+  if (typeof value !== 'object' || value === null) return false
+  if (!('ok' in value)) return false
+  const ok = value.ok
+  if (ok === true) return true
+  if (ok !== false || !('reason' in value)) return false
+  return typeof value.reason === 'string' && value.reason !== ''
+}
+
+const normalizeTaskProviderConfigValidator = (
+  validator: TaskProviderConfigValidator | undefined,
+): TaskProviderConfigValidator | undefined => {
+  if (validator === undefined) return undefined
+  return async (config) => {
+    const result: unknown = await validator(config)
+    if (isTaskProviderConfigValidatorResult(result)) return result
+    return { ok: false, reason: 'Contributed task provider validator returned an invalid result' }
+  }
+}
 
 const normalizeContributedProviderTraits = (
   provider: TaskProvider,
@@ -45,6 +67,13 @@ const normalizeContributedProviderTraits = (
 ): TaskProvider => {
   Object.defineProperty(provider, 'traits', { value: traits, configurable: true, enumerable: true })
   return provider
+}
+
+const emptyTaskProviderTraits = (): ReadonlySet<TaskProviderTrait> => new Set<TaskProviderTrait>()
+
+const contributedTraits = (entry: ContributedTaskProviderEntry): ReadonlySet<TaskProviderTrait> => {
+  if (entry.traits !== undefined) return entry.traits
+  return emptyTaskProviderTraits()
 }
 
 /**
@@ -72,10 +101,7 @@ export function createProvider(name: string, config: Record<string, string>): Ta
     )
   }
   log.debug({ name, pluginId: contributed.pluginId }, 'Creating contributed provider instance')
-  return normalizeContributedProviderTraits(
-    contributed.factory(config),
-    contributed.traits ?? new Set<TaskProviderTrait>(),
-  )
+  return normalizeContributedProviderTraits(contributed.factory(config), contributedTraits(contributed))
 }
 
 export function getCapabilitiesForTaskInstance(instance: TaskInstance): ReadonlySet<TaskCapability> {
@@ -98,7 +124,10 @@ export function registerContributedTaskProviderType(type: string, entry: Contrib
     )
     return
   }
-  pluginContributedTaskProviderFactories.set(type, entry)
+  pluginContributedTaskProviderFactories.set(type, {
+    ...entry,
+    validateConfig: normalizeTaskProviderConfigValidator(entry.validateConfig),
+  })
   log.info({ type, pluginId: entry.pluginId }, 'Registered contributed task provider type')
 }
 
@@ -124,7 +153,9 @@ export function unregisterContributedTaskProviderType(pluginId: string): string[
 
 /** Resolve the optional instance-config validator for a task-provider type. */
 export function getTaskProviderConfigValidator(type: string): TaskProviderConfigValidator | undefined {
-  return pluginContributedTaskProviderFactories.get(type)?.validateConfig
+  const contributed = pluginContributedTaskProviderFactories.get(type)
+  if (contributed === undefined) return undefined
+  return contributed.validateConfig
 }
 
 export type TaskProviderTypeDescriptor = {
@@ -136,6 +167,23 @@ export type TaskProviderTypeDescriptor = {
   capabilities: ReadonlySet<TaskCapability>
   traits: ReadonlySet<TaskProviderTrait>
 }
+const normalizeConfigField = (field: ProviderConfigField): ProviderConfigField => ({
+  key: field.key,
+  label: field.label,
+  required: field.required,
+  sensitive: field.sensitive,
+  scope: field.scope,
+  ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
+})
+
+const normalizeContributedFields = (fields: readonly ProviderConfigField[] | undefined): ProviderConfigField[] =>
+  (fields ?? []).map((field) => normalizeConfigField(field))
+
+const contributedInstanceFields = (entry: ContributedTaskProviderEntry): readonly ProviderConfigField[] =>
+  normalizeContributedFields(entry.instanceConfigSchema)
+
+const contributedContextFields = (entry: ContributedTaskProviderEntry): readonly ProviderConfigField[] =>
+  normalizeContributedFields(entry.contextConfigSchema)
 
 /** Look up a single task-provider type descriptor (built-in or contributed). */
 export function getTaskProviderDescriptor(type: string): TaskProviderTypeDescriptor | undefined {
@@ -144,25 +192,31 @@ export function getTaskProviderDescriptor(type: string): TaskProviderTypeDescrip
 
 /** Merge built-in and plugin-contributed task provider types into a static catalog. */
 export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
-  const builtin: TaskProviderTypeDescriptor[] = builtinDescriptorSeeds.map((seed) => ({
-    type: seed.type,
-    displayName: seed.displayName,
-    source: 'builtin',
-    instanceConfigSchema: seed.instanceConfigSchema,
-    contextConfigSchema: seed.contextConfigSchema,
-    capabilities: seed.capabilities,
-    traits: seed.traits,
-  }))
+  const builtin: TaskProviderTypeDescriptor[] = builtinDescriptorSeeds.map((seed) => {
+    return {
+      type: seed.type,
+      displayName: seed.displayName,
+      source: 'builtin',
+      instanceConfigSchema: seed.instanceConfigSchema,
+      contextConfigSchema: seed.contextConfigSchema,
+      capabilities: seed.capabilities,
+      traits: seed.traits,
+    }
+  })
   const contributed: TaskProviderTypeDescriptor[] = [...pluginContributedTaskProviderFactories.entries()].map(
-    ([type, entry]) => ({
-      type,
-      displayName: entry.displayName,
-      source: { plugin: entry.pluginId },
-      instanceConfigSchema: entry.instanceConfigSchema,
-      contextConfigSchema: entry.contextConfigSchema,
-      capabilities: entry.capabilities,
-      traits: entry.traits ?? new Set<TaskProviderTrait>(),
-    }),
+    ([type, entry]) => {
+      const instanceConfigSchema = contributedInstanceFields(entry)
+      const contextConfigSchema = contributedContextFields(entry)
+      return {
+        type,
+        displayName: entry.displayName,
+        source: { plugin: entry.pluginId },
+        instanceConfigSchema,
+        contextConfigSchema,
+        capabilities: entry.capabilities,
+        traits: contributedTraits(entry),
+      }
+    },
   )
   return [...builtin, ...contributed]
 }

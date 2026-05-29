@@ -31,7 +31,7 @@ type SearchResult = z.infer<typeof searchResultSchema>
 type SearchInput = z.infer<typeof searchInputSchema>
 
 function truncate(text: string, maxLength: number): string {
-  if (maxLength <= 0) return text
+  if (maxLength < 0) return text
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
 
@@ -70,13 +70,15 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
 async function executeSearch(
   input: unknown,
   runtimeContext: PluginToolRuntimeContext,
-  apiKey: string | undefined,
+  abortSignal: AbortSignal | undefined,
   httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
 ): Promise<unknown> {
-  const rateResult = runtimeContext.rateLimit.check(runtimeContext.storageContextId)
+  const rateResult = runtimeContext.rateLimit.check(runtimeContext.chatUserId || runtimeContext.storageContextId)
   if (!rateResult.allowed) {
     return { error: 'rate_limited', retryAfterSec: rateResult.retryAfterSec }
   }
+
+  const apiKey = runtimeContext.adminConfig.get('api_key')
 
   if (apiKey === undefined || httpFetch === undefined) {
     return { error: 'not_configured', message: 'Synthetic API key is not configured' }
@@ -92,6 +94,7 @@ async function executeSearch(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query: parsed.query }),
+      signal: abortSignal,
     })
 
     if (!response.ok) {
@@ -116,12 +119,10 @@ async function executeSearch(
 }
 
 const factory: PluginFactory = () => {
-  let apiKey: string | undefined
   let httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined
 
   return {
     activate(ctx: PluginContext): void {
-      apiKey = ctx.adminConfig.get('api_key')
       httpFetch = ctx.providerRuntime?.httpFetch
 
       ctx.log.info({}, 'synthetic-web-search plugin activated')
@@ -130,8 +131,8 @@ const factory: PluginFactory = () => {
         name: 'search',
         description: 'Uses a search engine which returns title, url, and content in markdown',
         inputSchema: searchInputSchema,
-        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext) =>
-          executeSearch(input, runtimeContext, apiKey, httpFetch),
+        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options) =>
+          executeSearch(input, runtimeContext, options.abortSignal, httpFetch),
       })
 
       ctx.registration.registerPromptFragment({

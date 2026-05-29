@@ -40,6 +40,24 @@ const admin = {
   createdAt: '2026-05-24T00:02:00.000Z',
 } as const
 
+const applyResult = {
+  applied: 1,
+  started: ['telegram-main'],
+  stopped: [],
+  removed: [],
+  recreated: [],
+  unchanged: [],
+  failed: [],
+} as const
+
+const failedApplyResult = {
+  ...applyResult,
+  started: [],
+  failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+} as const
+
+let nextApplyResult: unknown = applyResult
+
 type RecordedCall = { readonly method: string; readonly url: string; readonly body: string | null }
 
 const originalConfirm = window.confirm
@@ -131,7 +149,7 @@ const responseFor = (method: string, url: string): Response => {
         type: 'linear',
         displayName: 'Linear',
         instanceConfigSchema: [
-          { key: 'baseUrl', label: 'Linear URL', required: true, sensitive: false },
+          { key: 'baseUrl', storageKey: 'tracker_url', label: 'Linear URL', required: true, sensitive: false },
           { key: 'apiKey', label: 'API Key', required: true, sensitive: true },
         ],
         contextConfigSchema: [],
@@ -141,7 +159,7 @@ const responseFor = (method: string, url: string): Response => {
       },
     ])
   if (method === 'POST' && url === '/api/platform-instances') return jsonResponse(platformInstance)
-  if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse({ applied: 1 })
+  if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse(nextApplyResult)
   if (method === 'PATCH' && url === '/api/platform-instances/telegram-main')
     return jsonResponse(stoppedPlatformInstance)
   if (method === 'DELETE' && url === '/api/platform-instances/telegram-main') return jsonResponse({ ok: true })
@@ -243,6 +261,7 @@ const recordConfirm = (value: boolean, messages: string[]): void => {
 
 afterEach(() => {
   restoreFetch()
+  nextApplyResult = applyResult
   Object.defineProperty(window, 'confirm', {
     configurable: true,
     value: originalConfirm,
@@ -314,6 +333,29 @@ describe('InstancesSection', () => {
     expect(callNames(calls)).toContain('POST /api/platform-instances/apply')
     expect(target.querySelector('[data-testid="platform-unapplied-indicator"]')).toBeNull()
     expect(target.textContent).toContain('Applied 1 platform change')
+
+    void unmount(component)
+  })
+
+  test('keeps platform changes unapplied and shows failure when apply returns failures', async () => {
+    const calls: RecordedCall[] = []
+    nextApplyResult = failedApplyResult
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    enterValue(input(target, 'platform-id-input'), 'telegram-main')
+    enterValue(input(target, 'platform-config-token'), 'token')
+    click(target, 'platform-create-button')
+    await drain()
+    click(target, 'platform-apply-button')
+    await drain()
+
+    expect(callNames(calls)).toContain('POST /api/platform-instances/apply')
+    expect(target.querySelector('[data-testid="platform-unapplied-indicator"]')).not.toBeNull()
+    expect(target.textContent).toContain('Failed to apply 1 platform change')
+    expect(target.textContent).toContain('telegram-main stop failed: stop failed')
 
     void unmount(component)
   })
@@ -421,6 +463,34 @@ describe('InstancesSection', () => {
       JSON.stringify({ id: 'kaneo-main', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' } }),
     )
     expect(callNames(calls)).toContain('DELETE /api/task-instances/kaneo-main')
+
+    void unmount(component)
+  })
+
+  test('creates task instances using instance config storage keys', async () => {
+    const calls: RecordedCall[] = []
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    selectTaskType(target, 'task-create-form', 'linear')
+    await drain()
+    enterValue(input(target, 'task-id-input'), 'linear-main')
+    enterValue(input(target, 'task-config-baseUrl'), 'https://linear.invalid')
+    enterValue(input(target, 'task-config-apiKey'), 'lin-key')
+    click(target, 'task-create-button')
+    await drain()
+
+    expect(callNames(calls)).toContain('POST /api/task-instances')
+    expect(expectCall(calls[5], 5).body).toBe(
+      JSON.stringify({
+        id: 'linear-main',
+        type: 'linear',
+        config: { tracker_url: 'https://linear.invalid', apiKey: 'lin-key' },
+      }),
+    )
+    expect(expectCall(calls[5], 5).body).not.toContain('baseUrl')
 
     void unmount(component)
   })

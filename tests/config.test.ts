@@ -139,7 +139,6 @@ const registerYouTrackContributed = (): void => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'youtrack_token',
       },
     ],
     traits: new Set(),

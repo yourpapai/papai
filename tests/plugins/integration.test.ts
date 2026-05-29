@@ -56,7 +56,6 @@ beforeAll(() => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'kaneo_apikey',
       },
     ],
     traits: new Set(),
@@ -77,7 +76,6 @@ beforeAll(() => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'youtrack_token',
       },
     ],
     traits: new Set(),
@@ -349,8 +347,13 @@ describe('plugin lifecycle integration', () => {
     ])
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
-    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'youtrack-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'youtrack-a',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-default' })
     setContextSettings({
       contextId: 'ctx-youtrack',
@@ -366,8 +369,8 @@ describe('plugin lifecycle integration', () => {
     router.addInstance('telegram-default', 'telegram', { token: 'x' })
     setRuntimeChatRouter(router)
 
-    const kaneoProvider = defaultTaskProviderResolver.resolve('ctx-kaneo')
-    const youtrackProvider = defaultTaskProviderResolver.resolve('ctx-youtrack')
+    const kaneoProvider = await defaultTaskProviderResolver.resolve('ctx-kaneo')
+    const youtrackProvider = await defaultTaskProviderResolver.resolve('ctx-youtrack')
     expect(kaneoProvider).not.toBeNull()
     expect(youtrackProvider).not.toBeNull()
 

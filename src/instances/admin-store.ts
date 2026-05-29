@@ -51,20 +51,6 @@ export const removeAdmin = (userId: string, platformInstanceId: string): void =>
   log.info({ userId, platformInstanceId }, 'admin removed')
 }
 
-export const deleteAdminsByPlatformInstance = (platformInstanceId: string): number => {
-  if (platformInstanceId === SUPER_ADMIN_PLATFORM_ID) {
-    log.warn({ platformInstanceId }, 'refusing to delete super-admin rows as platform cleanup')
-    return 0
-  }
-  const deletedRows = getDrizzleDb()
-    .delete(platformAdmins)
-    .where(eq(platformAdmins.platformInstanceId, platformInstanceId))
-    .returning({ userId: platformAdmins.userId })
-    .all()
-  log.info({ platformInstanceId, deletedCount: deletedRows.length }, 'admins removed for platform instance')
-  return deletedRows.length
-}
-
 export const isSuperAdmin = (userId: string): boolean =>
   getDrizzleDb()
     .select({ userId: superAdmins.userId })

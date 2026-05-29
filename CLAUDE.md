@@ -39,9 +39,10 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun test:client` — run debug/admin UI tests with happy-dom
 - `bun test:watch` — run unit tests in watch mode
 - `bun test:coverage` — run unit tests with coverage
-- `bun test:mutate` — run mutation tests with Stryker
-- `bun test:mutate:changed` — run incremental mutation tests
-- `bun test:mutate:full` — force a full mutation run
+- `bun test:mutate` — accurate full paired mutation run over the configured Stryker mutate scope
+- `bun test:mutate:changed` — accurate paired mutation run over files changed vs `origin/master`; this is what CI uses
+- `bun test:mutate:file <paths...>` — accurate per-file paired mutation run (ignoreStatic:false + companion tests only); fast measurement that bypasses the static-bucket artifact
+- `bun test:mutate:changed-paired` — descriptive alias for `bun test:mutate:changed`
 - `bun test:e2e` — run Docker-backed E2E tests
 - `bun test:e2e:watch` — run E2E tests in watch mode
 - `bun check` — run lint/typecheck/format checks for staged files

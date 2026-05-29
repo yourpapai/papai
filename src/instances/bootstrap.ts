@@ -18,6 +18,7 @@ const CHAT_ENV_REQUIREMENTS: Readonly<Record<PlatformInstanceType, readonly stri
   telegram: ['TELEGRAM_BOT_TOKEN'],
   mattermost: ['MATTERMOST_URL', 'MATTERMOST_BOT_TOKEN'],
   discord: ['DISCORD_BOT_TOKEN'],
+  'kontur-talk': ['KONTUR_TALK_JWT_TOKEN'],
 }
 
 const unreachable = (value: never): never => {
@@ -32,7 +33,7 @@ const getTrimmedEnv = (name: string): string | undefined => {
 }
 
 const parsePlatformType = (value: string | undefined): PlatformInstanceType | null => {
-  if (value === 'telegram' || value === 'mattermost' || value === 'discord') return value
+  if (value === 'telegram' || value === 'mattermost' || value === 'discord' || value === 'kontur-talk') return value
   return null
 }
 
@@ -47,6 +48,8 @@ const buildPlatformConfig = (type: PlatformInstanceType): InstanceConfig => {
       }
     case 'discord':
       return { token: getTrimmedEnv('DISCORD_BOT_TOKEN') ?? '' }
+    case 'kontur-talk':
+      return { jwtToken: getTrimmedEnv('KONTUR_TALK_JWT_TOKEN') ?? '' }
     default:
       return unreachable(type)
   }

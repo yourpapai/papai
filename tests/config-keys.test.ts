@@ -43,7 +43,6 @@ const registerYouTrackContributed = (): void => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'youtrack_token',
       },
     ],
     traits: new Set(),
@@ -60,6 +59,7 @@ describe('getConfigKeysForContext', () => {
 
   afterEach(() => {
     unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+    unregisterContributedTaskProviderType('demo-plugin')
   })
 
   test('returns preferences only for an unassigned context', () => {
@@ -69,20 +69,28 @@ describe('getConfigKeysForContext', () => {
   test('returns preferences only for an active Kaneo assignment (kaneo is now plugin-contributed)', () => {
     // kaneo is no longer a builtin; its descriptor is only present when the plugin is registered.
     // Without the plugin registered, config-keys falls back to preference fields only.
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
 
     expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
-  test('returns only preferences for an active YouTrack assignment (contributed, token key is plugin-namespaced)', () => {
-    // youtrack is now plugin-contributed; its token key is plugin-namespaced (not a ConfigKey),
-    // so getConfigKeysForContext filters it out and returns only preference keys
+  test('returns plugin-namespaced token key for an active YouTrack assignment (contributed)', () => {
+    // youtrack is now plugin-contributed; its token key is plugin-namespaced and returned by getConfigKeysForContext
     registerYouTrackContributed()
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-yt')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-yt')).toEqual([
+      'plugin:task-provider-youtrack:provider:token',
+      'timezone',
+      'mcp_endpoints',
+    ])
   })
 
   test('returns preferences only when deleted task instance cascades assignment removal', () => {
@@ -94,7 +102,12 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('returns preferences only when assigned instance is inactive', () => {
-    insertTaskInstance({ id: 'yt-stopped', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'stopped' })
+    insertTaskInstance({
+      id: 'yt-stopped',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'stopped',
+    })
     setContextSettings({
       contextId: 'ctx-stopped',
       taskInstanceId: 'yt-stopped',
@@ -104,7 +117,14 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
-  test('returns preferences only for an active contributed (non-builtin) assignment', () => {
+  test('returns dynamic provider keys for an active contributed assignment', () => {
+    registerContributedTaskProviderType('demo-tracker', {
+      pluginId: 'demo-plugin',
+      factory: () => createMockProvider({ name: 'demo-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Demo Tracker',
+      contextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
+    })
     insertTaskInstance({
       id: 'demo-prod',
       type: 'demo-tracker',
@@ -113,13 +133,17 @@ describe('getConfigKeysForContext', () => {
     })
     setContextSettings({ contextId: 'ctx-demo', taskInstanceId: 'demo-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-demo')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-demo')).toEqual([
+      'plugin:demo-plugin:provider:token',
+      'timezone',
+      'mcp_endpoints',
+    ])
   })
 
   test('getAllConfig only includes keys valid for the context (contributed youtrack)', () => {
     // youtrack is now plugin-contributed; token key is plugin-namespaced
     registerYouTrackContributed()
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
     setConfig('ctx-yt', 'youtrack_token', 'perm:abc')
@@ -168,7 +192,7 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
   })
 
-  test('ignores plugin provider context storageKey and uses namespaced dynamic key', () => {
+  test('uses plugin provider context storageKey inside namespaced dynamic key', () => {
     registerContributedTaskProviderType('plugin-tracker', {
       pluginId: 'plugin-tracker',
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
@@ -200,7 +224,8 @@ describe('getConfigFieldsForContext', () => {
 
     const fields = getConfigFieldsForContext('ctx-plugin')
 
-    expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
+    expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:custom_token')
+    expect(fields.map((field) => field.storageKey)).not.toContain('plugin:plugin-tracker:provider:token')
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
   })
 })

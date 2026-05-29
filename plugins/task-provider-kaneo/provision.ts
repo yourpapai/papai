@@ -39,9 +39,7 @@ type NormalizedProvisionConfig = Readonly<{
 const REGISTRATION_DISABLED_MARKERS = ['signup_disabled', 'registration disabled', 'sign up is disabled'] as const
 
 function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
-  const baseUrl = config['baseUrl']
-  if (baseUrl !== undefined) return baseUrl
-  return config['url']
+  return config['baseUrl']
 }
 
 function generatePassword(): string {

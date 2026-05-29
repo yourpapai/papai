@@ -36,7 +36,6 @@ const registerKaneoContributed = (): void => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'kaneo_apikey',
       },
       {
         key: 'workspaceId',
@@ -44,7 +43,6 @@ const registerKaneoContributed = (): void => {
         required: true,
         sensitive: false,
         scope: 'context',
-        storageKey: 'kaneo_workspace_id',
       },
     ],
     traits: new Set(),

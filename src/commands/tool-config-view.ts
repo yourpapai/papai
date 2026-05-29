@@ -3,9 +3,17 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import type { ChatButton } from '../chat/types.js'
-import { getToolMetadata, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
-import { getDomainStatus, isToolEnabled, type ToolPrefs } from '../tools/tool-preferences.js'
+import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
+import {
+  getDomainSummary,
+  resolveToolPermission,
+  type DomainSummary,
+  type Permission,
+  type ToolPrefs,
+} from '../tools/tool-preferences.js'
 
 export interface ToolMenuView {
   text: string
@@ -36,6 +44,7 @@ const DOMAIN_LABELS: Record<ToolDomain, string> = {
   identity: 'Identity',
   time: 'Time',
   mcp: 'MCP tools',
+  plugin: 'Plugin tools',
 }
 
 const RISK_EMOJI: Record<ToolRisk, string> = {
@@ -46,34 +55,23 @@ const RISK_EMOJI: Record<ToolRisk, string> = {
 }
 
 const MAX_CALLBACK_DATA_BYTES = 64
-const DOMAIN_CODES: readonly ToolDomain[] = [
-  'task',
-  'project',
-  'comment',
-  'label',
-  'status',
-  'attachment',
-  'work',
-  'sprint',
-  'query',
-  'collaboration',
-  'memo',
-  'recurring',
-  'deferred',
-  'instruction',
-  'history',
-  'web',
-  'identity',
-  'time',
-]
+const DOMAIN_CODES: readonly ToolDomain[] = TOOL_DOMAINS
 
 function callbackData(raw: string, compact: string): string | null {
   if (Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES) return raw
   return Buffer.byteLength(compact, 'utf8') <= MAX_CALLBACK_DATA_BYTES ? compact : null
 }
 
+function callbackDataRawOnly(raw: string): string | null {
+  return Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES ? raw : null
+}
+
 function sortedToolNames(availableToolNames: readonly string[]): string[] {
   return [...availableToolNames].filter((name) => getToolMetadata(name) !== undefined).toSorted()
+}
+
+function toolNameCode(toolName: string): string {
+  return createHash('sha256').update(toolName).digest('base64url').slice(0, 5)
 }
 
 function domainCode(domain: ToolDomain): string {
@@ -87,6 +85,11 @@ export function resolveToolDomainCode(code: string): ToolDomain | null {
 }
 
 export function resolveToolNameCode(code: string, availableToolNames: readonly string[]): string | null {
+  if (availableToolNames.includes(code)) return code
+
+  const hashedMatches = sortedToolNames(availableToolNames).filter((name) => toolNameCode(name) === code)
+  if (hashedMatches.length === 1) return hashedMatches[0] ?? null
+
   const index = Number.parseInt(code, 36)
   if (!Number.isSafeInteger(index)) return null
   return sortedToolNames(availableToolNames)[index] ?? null
@@ -107,10 +110,17 @@ function groupByDomain(availableToolNames: readonly string[]): Map<ToolDomain, s
   return map
 }
 
-function statusMarker(status: 'on' | 'off' | 'partial'): string {
-  if (status === 'on') return '🟢'
-  if (status === 'off') return '⭕'
+function summaryMarker(summary: DomainSummary): string {
+  if (summary === 'allow') return '🟢'
+  if (summary === 'ask') return '❓'
+  if (summary === 'deny') return '⭕'
   return '🟡'
+}
+
+function permissionMarker(perm: Permission): string {
+  if (perm === 'allow') return '🟢'
+  if (perm === 'ask') return '❓'
+  return '⭕'
 }
 
 export function buildDomainListView(
@@ -121,7 +131,7 @@ export function buildDomainListView(
   const ctx = encodeCtx(contextId)
   const grouped = groupByDomain(availableToolNames)
   const domains = [...grouped.keys()].toSorted((a, b) => DOMAIN_LABELS[a].localeCompare(DOMAIN_LABELS[b]))
-  const lines = ['🧰 **Tools** — tap a domain to toggle it on/off, or "Edit" to pick individual tools.\n']
+  const lines = ['🧰 **Tools** — tap a domain to cycle its permission, or "Edit" to pick individual tools.\n']
   const buttons: ChatButton[] = []
   for (const domain of domains) {
     const domainToolList = grouped.get(domain)
@@ -131,14 +141,14 @@ export function buildDomainListView(
     } else {
       names = domainToolList
     }
-    const status = getDomainStatus(prefs, domain, names)
-    lines.push(`${statusMarker(status)} ${DOMAIN_LABELS[domain]}`)
+    const summary = getDomainSummary(prefs, domain, names)
+    lines.push(`${summaryMarker(summary)} ${DOMAIN_LABELS[domain]}`)
     const toggleCallback = callbackData(`tgl:dom:${domain}:${ctx}`, `tgl:d:${domainCode(domain)}:${ctx}`)
     if (toggleCallback !== null) {
       buttons.push({
-        text: `${statusMarker(status)} ${DOMAIN_LABELS[domain]}`,
+        text: `${summaryMarker(summary)} ${DOMAIN_LABELS[domain]}`,
         callbackData: toggleCallback,
-        style: status === 'off' ? 'secondary' : 'primary',
+        style: summary === 'deny' ? 'secondary' : 'primary',
       })
     }
     const openCallback = callbackData(`tgl:open:${domain}:${ctx}`, `tgl:o:${domainCode(domain)}:${ctx}`)
@@ -150,42 +160,77 @@ export function buildDomainListView(
       })
     }
   }
+  const externalNames = [...availableToolNames].filter((name) => getToolMetadata(name) === undefined)
+  if (externalNames.length > 0) {
+    lines.push(`🧩 External — ${externalNames.length} tools`)
+    const editCallback = callbackData(`tgl:open:external:${ctx}`, `tgl:o:ext:${ctx}`)
+    if (editCallback !== null) {
+      buttons.push({ text: '✏️ Edit External', callbackData: editCallback, style: 'secondary' })
+    }
+  }
+  lines.push('')
+  lines.push('🟢 = always allowed   ❓ = ask each time   ⭕ = blocked')
   return { text: lines.join('\n'), buttons }
 }
 
-export function buildDomainDrillView(
-  contextId: string,
-  domain: ToolDomain,
-  availableToolNames: readonly string[],
-  prefs: ToolPrefs,
-): ToolMenuView {
-  const ctx = encodeCtx(contextId)
-  const domainTools = groupByDomain(availableToolNames).get(domain)
-  let names: string[]
-  if (domainTools === undefined) {
-    names = []
-  } else {
-    names = domainTools
-  }
-  const sorted = [...names].toSorted()
-  const allSorted = sortedToolNames(availableToolNames)
-  const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to toggle it.\n`]
+function buildExternalDrillView(ctx: string, availableToolNames: readonly string[], prefs: ToolPrefs): ToolMenuView {
+  const sortedExt = [...availableToolNames].filter((n) => getToolMetadata(n) === undefined).toSorted()
+  const lines = ['🧰 **External tools** — tap a tool to cycle its permission.\n']
   const buttons: ChatButton[] = []
-  for (const name of sorted) {
-    const meta = getToolMetadata(name)
-    const risk = meta === undefined ? '' : RISK_EMOJI[meta.risk]
-    const enabled = isToolEnabled(prefs, name)
-    lines.push(`${enabled ? '🟢' : '⭕'} ${risk} ${name}`)
-    const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${allSorted.indexOf(name).toString(36)}:${ctx}`)
+  for (const name of sortedExt) {
+    const perm = resolveToolPermission(prefs, name)
+    lines.push(`${permissionMarker(perm)} ${name}`)
+    const toolCallback = callbackDataRawOnly(`tgl:tool:${name}:${ctx}`)
     if (toolCallback !== null) {
       buttons.push({
-        text: `${enabled ? '🟢' : '⭕'} ${risk} ${name}`,
+        text: `${permissionMarker(perm)} ${name}`,
         callbackData: toolCallback,
-        style: enabled ? 'primary' : 'secondary',
+        style: perm === 'deny' ? 'secondary' : 'primary',
       })
     }
   }
   const backCallback = callbackData(`tgl:back:${ctx}`, `tgl:b:${ctx}`)
   if (backCallback !== null) buttons.push({ text: '⬅️ Back', callbackData: backCallback, style: 'secondary' })
   return { text: lines.join('\n'), buttons }
+}
+
+function buildNamedDomainDrillView(
+  ctx: string,
+  domain: ToolDomain,
+  availableToolNames: readonly string[],
+  prefs: ToolPrefs,
+): ToolMenuView {
+  const domainTools = groupByDomain(availableToolNames).get(domain)
+  const names = domainTools ?? []
+  const sorted = [...names].toSorted()
+  const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to cycle its permission.\n`]
+  const buttons: ChatButton[] = []
+  for (const name of sorted) {
+    const meta = getToolMetadata(name)
+    const risk = meta === undefined ? '' : RISK_EMOJI[meta.risk]
+    const perm = resolveToolPermission(prefs, name)
+    lines.push(`${permissionMarker(perm)} ${risk} ${name}`)
+    const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${toolNameCode(name)}:${ctx}`)
+    if (toolCallback !== null) {
+      buttons.push({
+        text: `${permissionMarker(perm)} ${risk} ${name}`,
+        callbackData: toolCallback,
+        style: perm === 'deny' ? 'secondary' : 'primary',
+      })
+    }
+  }
+  const backCallback = callbackData(`tgl:back:${ctx}`, `tgl:b:${ctx}`)
+  if (backCallback !== null) buttons.push({ text: '⬅️ Back', callbackData: backCallback, style: 'secondary' })
+  return { text: lines.join('\n'), buttons }
+}
+
+export function buildDomainDrillView(
+  contextId: string,
+  domain: ToolDomain | 'external',
+  availableToolNames: readonly string[],
+  prefs: ToolPrefs,
+): ToolMenuView {
+  const ctx = encodeCtx(contextId)
+  if (domain === 'external') return buildExternalDrillView(ctx, availableToolNames, prefs)
+  return buildNamedDomainDrillView(ctx, domain, availableToolNames, prefs)
 }

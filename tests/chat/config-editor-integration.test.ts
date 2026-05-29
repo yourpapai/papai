@@ -39,7 +39,6 @@ const registerKaneoContributed = (): void => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'kaneo_apikey',
       },
     ],
     traits: new Set(),
@@ -54,7 +53,7 @@ describe('config-editor chat integration', () => {
     insertTaskInstance({
       id: 'ctx456-kaneo',
       type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
+      config: { baseUrl: 'https://kaneo.invalid' },
       status: 'active',
     })
     setContextSettings({

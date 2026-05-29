@@ -217,7 +217,7 @@ describe('registerPluginCommand', () => {
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'root-admin', plugin.manifestHash)
     pluginRegistry.markActive(plugin.manifest.id)
-    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'root-admin', taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-default' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set() }))
     router.addInstance('telegram-default', 'telegram', { token: 'x' })

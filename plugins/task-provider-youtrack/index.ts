@@ -7,15 +7,17 @@ import type { PluginContext, TaskProvider } from 'papai/plugin-types'
 
 import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
 import { YouTrackProvider } from './provider.js'
-import { validateConfig } from './validate-config.js'
+
+// Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
+export { validateConfig } from './validate-config.js'
 
 const factory: PluginFactory = (): PluginInstance => ({
   activate(ctx: PluginContext): void {
-    ctx.registration.registerTaskProviderType('youtrack', {
-      factory: (config): TaskProvider =>
+    ctx.registration.registerTaskProviderType(
+      'youtrack',
+      (config): TaskProvider =>
         new YouTrackProvider({ baseUrl: config['baseUrl'] ?? '', token: config['token'] ?? '' }),
-      validateConfig,
-    })
+    )
   },
 })
 

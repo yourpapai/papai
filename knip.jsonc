@@ -68,6 +68,10 @@
     "src/stats/index.ts": ["exports"],
     // resetUsageRecorderForTesting is a test-only seam.
     "src/usage/index.ts": ["exports"],
+    // resetPermissionPromptForTesting is a test-only seam.
+    "src/chat/permission-prompt.ts": ["exports"],
+    // partitionToolNames is a test-only seam.
+    "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
     "src/instances/admin-store.ts": ["exports"],
     // deleteContextsByTaskInstance, deleteContextsByPlatformInstance are test-only seams.
@@ -107,6 +111,11 @@
     "plugins/synthetic-web-search/index.ts": ["exports"],
     "plugins/task-provider-kaneo/index.ts": ["exports"],
     "plugins/task-provider-youtrack/index.ts": ["exports"],
+    // validateConfig is resolved dynamically by the loader from the manifest's
+    // `providerConfigValidator` named export (re-exported through index.ts), so knip
+    // sees no static consumer of the implementation.
+    "plugins/task-provider-kaneo/validate-config.ts": ["exports"],
+    "plugins/task-provider-youtrack/validate-config.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

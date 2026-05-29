@@ -8,7 +8,9 @@ import type { PluginContext, TaskProvider } from 'papai/plugin-types'
 import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
 import { isKaneoSessionCookie, type KaneoConfig } from './client.js'
 import { KaneoProvider } from './provider.js'
-import { validateConfig } from './validate-config.js'
+
+// Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
+export { validateConfig } from './validate-config.js'
 
 const buildKaneoConfig = (config: Record<string, string>): KaneoConfig => {
   const baseUrl = config['baseUrl'] ?? ''
@@ -20,10 +22,10 @@ const buildKaneoConfig = (config: Record<string, string>): KaneoConfig => {
 
 const factory: PluginFactory = (): PluginInstance => ({
   activate(ctx: PluginContext): void {
-    ctx.registration.registerTaskProviderType('kaneo', {
-      factory: (config): TaskProvider => new KaneoProvider(buildKaneoConfig(config), config['workspaceId'] ?? ''),
-      validateConfig,
-    })
+    ctx.registration.registerTaskProviderType(
+      'kaneo',
+      (config): TaskProvider => new KaneoProvider(buildKaneoConfig(config), config['workspaceId'] ?? ''),
+    )
   },
 })
 

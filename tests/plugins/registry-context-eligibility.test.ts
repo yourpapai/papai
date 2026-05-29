@@ -82,6 +82,26 @@ describe('admin-scoped config eligibility', () => {
     expect(result).toEqual({ eligible: true })
   })
 
+  test('admin-scoped required keys are satisfied from admin plugin config', () => {
+    const pluginId = 'admin-config-eligibility-plugin'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Admin Config Eligibility Plugin',
+        defaultEnabled: true,
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+      },
+      manifestHash: 'hash-admin-config-eligibility',
+    })
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-admin-config-eligibility')
+    pluginRegistry.markActive(pluginId)
+    setPluginAdminConfig(pluginId, 'api_key', 'configured', 'admin-user')
+
+    expect(getPluginContextEligibility(pluginId, 'ctx-1')).toEqual({ eligible: true })
+  })
+
   test('returns config_missing when admin config is set but empty', () => {
     const plugin = makePlugin({
       manifest: {
@@ -134,5 +154,18 @@ describe('admin-scoped config eligibility', () => {
       reason: 'capability_missing',
       missingCapabilities: ['workItems.list'],
     })
+  })
+
+  test('skips capability checks when no context settings exist for required capabilities', () => {
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        requiredTaskCapabilities: ['workItems.list'],
+      },
+    })
+
+    const result = getPluginContextEligibilityForEntry(makeActiveEntry(plugin), 'test-plugin', 'ctx-no-settings')
+
+    expect(result).toEqual({ eligible: true })
   })
 })

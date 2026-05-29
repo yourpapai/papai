@@ -16,7 +16,7 @@ import type {
   PluginRegistration,
 } from '../../../src/plugins/context.js'
 import { pluginManifestSchema, type PluginPermission } from '../../../src/plugins/types.js'
-import type { TaskProviderConfigValidator, TaskProviderFactory } from '../../../src/providers/registry.js'
+import type { TaskProviderFactory } from '../../../src/providers/registry.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('task-provider-youtrack activation', () => {
@@ -67,12 +67,9 @@ describe('task-provider-youtrack activation', () => {
     }
 
     const stubRegistration: PluginRegistration = {
-      registerTaskProviderType(
-        type: string,
-        descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
-      ): void {
+      registerTaskProviderType(type: string, providerFactory: TaskProviderFactory): void {
         expect(type).toBe('youtrack')
-        capturedFactory = descriptor.factory
+        capturedFactory = providerFactory
       },
       registerTool(): void {},
       registerPromptFragment(): void {},

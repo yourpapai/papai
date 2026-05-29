@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "YouTrack task-tracker integration.",
   "apiVersion": 1,
+  "main": "index.ts",
   "permissions": ["provider.task", "identity"],
   "contributes": {
     "taskProviderTypes": ["youtrack"]
@@ -58,6 +59,7 @@
   "providerContextConfigSchema": [
     { "key": "token", "label": "YouTrack Permanent Token", "required": true, "sensitive": true, "scope": "context" }
   ],
+  "providerTraits": ["supports-command-language", "command-language:youtrack", "custom-fields"],
   "providerAllowedHosts": [],
   "providerConfigValidator": "validateConfig",
   "defaultEnabled": false

@@ -43,7 +43,6 @@ const registerKaneoContributed = (): void => {
         required: true,
         sensitive: true,
         scope: 'context',
-        storageKey: 'kaneo_apikey',
       },
     ],
     traits: new Set(),
@@ -77,7 +76,6 @@ describe('Wizard Integration (Phase 1)', () => {
           required: true,
           sensitive: true,
           scope: 'context',
-          storageKey: 'youtrack_token',
         },
       ],
       traits: new Set(),
@@ -87,6 +85,10 @@ describe('Wizard Integration (Phase 1)', () => {
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
     unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('metadata-plugin')
   })
 
   test('completes the kaneo two-step flow and saves the config', async () => {
@@ -133,6 +135,37 @@ describe('Wizard Integration (Phase 1)', () => {
     // contributed youtrack stores token under plugin-namespaced key
     expect(getConfigValue(storageContextId, YOUTRACK_TOKEN_KEY)).toBe('perm:token')
     expect(getConfig(storageContextId, 'timezone')).toBe('America/New_York')
+  })
+
+  test('saves plugin provider context values under manifest storageKey', async () => {
+    registerContributedTaskProviderType('metadata-tracker', {
+      pluginId: 'metadata-plugin',
+      factory: () => createMockProvider({ name: 'metadata-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Metadata Tracker',
+      contextConfigSchema: [
+        {
+          key: 'apiToken',
+          storageKey: 'metadata_token',
+          label: 'API Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+
+    const start = await createWizard(userId, storageContextId, 'metadata-tracker')
+    expect(start.success).toBe(true)
+    expect(start.prompt).toContain('Enter your API Token')
+
+    await advanceStep(userId, storageContextId, 'secret-token', true)
+    await advanceStep(userId, storageContextId, 'UTC', true)
+    const saveResult = await validateAndSaveWizardConfig(userId, storageContextId)
+
+    expect(saveResult.success).toBe(true)
+    expect(getConfigValue(storageContextId, 'plugin:metadata-plugin:provider:metadata_token')).toBe('secret-token')
+    expect(getConfigValue(storageContextId, 'plugin:metadata-plugin:provider:apiToken')).toBeNull()
   })
 
   test('processWizardMessage advances step by step', async () => {

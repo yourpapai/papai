@@ -5,9 +5,10 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
+import { readLiteralDynamicImports, readStaticImportSpecifiers } from './discovery-imports.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
@@ -23,6 +24,23 @@ export type DiscoveryResult = {
   errors: DiscoveryError[]
 }
 
+export function isPathInsideDirectory(
+  directoryPath: string,
+  candidatePath: string,
+  pathOps: {
+    isAbsolute(path: string): boolean
+    relative(from: string, to: string): string
+    resolve(...paths: string[]): string
+    sep: string
+  } = { isAbsolute: (path) => resolve(path) === path, relative, resolve, sep },
+): boolean {
+  const relativePath = pathOps.relative(pathOps.resolve(directoryPath), pathOps.resolve(candidatePath))
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith(`..${pathOps.sep}`) && relativePath !== '..' && !pathOps.isAbsolute(relativePath))
+  )
+}
+
 function isRealDirectory(path: string): boolean {
   try {
     const stat = lstatSync(path)
@@ -33,25 +51,92 @@ function isRealDirectory(path: string): boolean {
   }
 }
 
-function computeManifestHash(manifestContent: string, entryPointContent: string): string {
-  return createHash('sha256')
-    .update(`${manifestContent.length}:`)
-    .update(manifestContent)
-    .update(`${entryPointContent.length}:`)
-    .update(entryPointContent)
-    .digest('hex')
+function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
+  const candidate = resolve(join(dirname(fromFile), specifier))
+  if (!isPathInsideDirectory(pluginDir, candidate)) {
+    throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
+  }
+
+  const candidates =
+    candidate.endsWith('.ts') || candidate.endsWith('.js')
+      ? [candidate]
+      : [`${candidate}.ts`, `${candidate}.js`, join(candidate, 'index.ts'), join(candidate, 'index.js')]
+
+  const resolvedPath = candidates.find((path) => existsSync(path))
+  if (resolvedPath === undefined) throw new Error(`Imported plugin file not found: ${specifier}`)
+
+  try {
+    const realPluginDir = realpathSync(pluginDir)
+    const realImportedPath = realpathSync(resolvedPath)
+    if (!isPathInsideDirectory(realPluginDir, realImportedPath)) {
+      throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Plugin import resolves outside plugin directory:')) {
+      throw error
+    }
+  }
+
+  return resolvedPath
+}
+
+function readPluginSourceGraph(entryPoint: string, pluginDir: string): string[] {
+  const pending = [entryPoint]
+  const visited = new Set<string>()
+  const ordered: string[] = []
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === undefined || visited.has(current)) continue
+
+    visited.add(current)
+    ordered.push(current)
+
+    const source = readFileSync(current, 'utf-8')
+
+    try {
+      for (const specifier of readLiteralDynamicImports(source)) {
+        if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
+        pending.push(resolveEntryImport(current, pluginDir, specifier))
+      }
+    } catch {
+      throw new Error(`Unresolvable plugin dynamic import in ${current}`)
+    }
+
+    for (const specifier of readStaticImportSpecifiers(source)) {
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
+      pending.push(resolveEntryImport(current, pluginDir, specifier))
+    }
+  }
+
+  return ordered.sort()
+}
+
+function computePluginManifestHash(manifestContent: string, sourceFiles: readonly string[]): string {
+  const hash = createHash('sha256')
+  hash.update(`${manifestContent.length}:`).update(manifestContent)
+
+  const sourceRoot = sourceFiles[0] === undefined ? '' : dirname(sourceFiles[0])
+
+  for (const filePath of sourceFiles) {
+    const content = readFileSync(filePath, 'utf-8')
+    const relativeFilePath = sourceRoot === '' ? filePath : relative(sourceRoot, filePath).split(sep).join('/')
+    hash.update(`${relativeFilePath.length}:`).update(relativeFilePath)
+    hash.update(`${content.length}:`).update(content)
+  }
+
+  return hash.digest('hex')
 }
 
 function resolveEntryPoint(pluginDir: string, main: string): string | null {
   const resolved = resolve(join(pluginDir, main))
-  // Ensure the entry point stays inside the plugin directory (not above or at the dir itself)
-  if (!resolved.startsWith(resolve(pluginDir) + '/')) {
+  if (!isPathInsideDirectory(pluginDir, resolved)) {
     return null
   }
   try {
     const realPluginDir = realpathSync(pluginDir)
     const realEntryPoint = realpathSync(resolved)
-    if (!realEntryPoint.startsWith(realPluginDir + '/')) return null
+    if (!isPathInsideDirectory(realPluginDir, realEntryPoint)) return null
   } catch {
     return resolved
   }
@@ -61,16 +146,14 @@ function resolveEntryPoint(pluginDir: string, main: string): string | null {
 function parseAndValidateManifest(
   manifestPath: string,
   dirName: string,
-):
-  | { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string; rawManifest: unknown }
-  | DiscoveryError {
+): { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string } | DiscoveryError {
   let manifestContent: string
   try {
     manifestContent = readFileSync(manifestPath, 'utf-8')
   } catch (error) {
     return {
       directoryName: dirName,
-      reason: `Invalid JSON in plugin.json: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `Failed to read plugin.json: ${error instanceof Error ? error.message : String(error)}`,
     }
   }
 
@@ -97,32 +180,26 @@ function parseAndValidateManifest(
     }
   }
 
-  return { manifest: parseResult.data, manifestContent, rawManifest: parsed }
+  return { manifest: parseResult.data, manifestContent }
 }
 
-function resolveAndReadEntryPoint(
+function resolveEntrypointForDiscovery(
   pluginDir: string,
-  main: string,
-  isMcpOnly: boolean,
-): { entryPoint: string; entryPointContent: string } | DiscoveryError {
-  const entryPoint = resolveEntryPoint(pluginDir, main)
-  if (entryPoint === null && !isMcpOnly) {
-    return {
-      directoryName: '',
-      reason: `Entry point "${main}" resolves outside the plugin directory`,
-    }
-  }
+  main: string | undefined,
+): { entryPoint: string; sourceFiles: string[] } | DiscoveryError {
+  if (main === undefined) return { entryPoint: '', sourceFiles: [] }
 
-  if (entryPoint === null) {
-    return { entryPoint: resolve(join(pluginDir, main)), entryPointContent: '' }
-  }
+  const entryPoint = resolveEntryPoint(pluginDir, main)
+  if (entryPoint === null)
+    return { directoryName: '', reason: `Entry point "${main}" resolves outside the plugin directory` }
 
   try {
-    return { entryPoint, entryPointContent: readFileSync(entryPoint, 'utf-8') }
+    const sourceFiles = readPluginSourceGraph(entryPoint, pluginDir)
+    return { entryPoint, sourceFiles }
   } catch (error) {
     return {
       directoryName: '',
-      reason: `Entry point file not readable: ${error instanceof Error ? error.message : String(error)}`,
+      reason: error instanceof Error ? error.message : String(error),
     }
   }
 }
@@ -145,23 +222,16 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const parsed = parseAndValidateManifest(manifestPath, dirName)
   if ('reason' in parsed) return parsed
 
-  const { manifest, manifestContent, rawManifest } = parsed
-  const rawObj = typeof rawManifest === 'object' && rawManifest !== null ? rawManifest : undefined
-  const isMcpOnly = rawObj !== undefined && 'mcp' in rawObj && !('main' in rawObj)
+  const { manifest, manifestContent } = parsed
 
-  const ep = resolveAndReadEntryPoint(pluginDir, manifest.main, isMcpOnly)
-  if (ep !== null && 'reason' in ep) {
-    return { ...ep, directoryName: dirName }
-  }
-
-  const entryPoint = ep.entryPoint
-  const entryPointContent = ep.entryPointContent
+  const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main)
+  if ('reason' in ep) return { ...ep, directoryName: dirName }
 
   return {
     manifest,
     pluginDir: resolve(pluginDir),
-    entryPoint,
-    manifestHash: computeManifestHash(manifestContent, entryPointContent),
+    entryPoint: ep.entryPoint,
+    manifestHash: computePluginManifestHash(manifestContent, ep.sourceFiles),
   }
 }
 
@@ -214,6 +284,3 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
   return { plugins, errors }
 }
-
-/** Compute a hash for a manifest+entrypoint combo. Re-exported for tests. */
-export { computeManifestHash }

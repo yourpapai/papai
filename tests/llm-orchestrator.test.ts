@@ -178,7 +178,7 @@ const assignKaneoContext = (contextId: string): void => {
     insertTaskInstance({
       id: taskInstanceId,
       type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
+      config: { baseUrl: 'https://kaneo.invalid' },
       status: 'active',
     })
   }
@@ -191,7 +191,7 @@ const assignYouTrackContext = (contextId: string): void => {
     insertTaskInstance({
       id: taskInstanceId,
       type: 'youtrack',
-      config: { url: 'https://yt.invalid' },
+      config: { baseUrl: 'https://yt.invalid' },
       status: 'active',
     })
   }
@@ -271,7 +271,6 @@ describe('processMessage', () => {
           required: true,
           sensitive: true,
           scope: 'context',
-          storageKey: 'kaneo_apikey',
         },
       ],
       traits: new Set(),
@@ -293,7 +292,6 @@ describe('processMessage', () => {
           required: true,
           sensitive: true,
           scope: 'context',
-          storageKey: 'youtrack_token',
         },
       ],
       traits: new Set(),
@@ -467,7 +465,7 @@ describe('processMessage', () => {
       insertTaskInstance({
         id: 'yt-prod-null',
         type: 'youtrack',
-        config: { url: 'https://yt.invalid' },
+        config: { baseUrl: 'https://yt.invalid' },
         status: 'active',
       })
       setContextSettings({
@@ -1317,14 +1315,16 @@ describe('processMessage', () => {
       // Seed config for the group context
       seedConfigForContext(GROUP_CTX)
 
-      // Track how many times tools are built by capturing makeTools calls
+      // Track how many times descriptors are built by capturing buildToolDescriptors calls
       let toolBuildCount = 0
-      const { makeTools: realMakeTools } = await import('../src/tools/index.js')
+      const { buildToolDescriptors: realBuildToolDescriptors, applyToolPreferences } =
+        await import('../src/tools/index.js')
 
       void mock.module('../src/tools/index.js', () => ({
-        makeTools: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
+        applyToolPreferences,
+        buildToolDescriptors: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
           toolBuildCount++
-          return realMakeTools(provider, options)
+          return realBuildToolDescriptors(provider, options)
         },
       }))
 
@@ -1453,12 +1453,14 @@ describe('processMessage', () => {
       seedConfigForContext('dm-ctx-2')
 
       let toolBuildCount = 0
-      const { makeTools: realMakeTools } = await import('../src/tools/index.js')
+      const { buildToolDescriptors: realBuildToolDescriptors, applyToolPreferences } =
+        await import('../src/tools/index.js')
 
       void mock.module('../src/tools/index.js', () => ({
-        makeTools: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
+        applyToolPreferences,
+        buildToolDescriptors: (provider: TaskProvider, options: MakeToolsOptions): unknown => {
           toolBuildCount++
-          return realMakeTools(provider, options)
+          return realBuildToolDescriptors(provider, options)
         },
       }))
 

@@ -5,9 +5,11 @@
 
 import { listPlatformProviderTypes } from '../chat/registry.js'
 import type { InstanceConfig } from '../instances/types.js'
-import { getTaskProviderDescriptor } from '../providers/registry.js'
+import {
+  validateTaskInstanceConfigResult,
+  type TaskInstanceConfigValidationFailure,
+} from '../providers/config-validation.js'
 import { jsonResponse } from './json-response.js'
-import { validateTaskInstanceConfig } from './task-provider-type-routes.js'
 
 type InstanceConfigField = {
   readonly key: string
@@ -81,21 +83,31 @@ export const validatePlatformInstanceConfig = (type: string, config: InstanceCon
   )
 }
 
-export const validateTaskDescriptorInstanceConfig = (type: string, config: InstanceConfig): Response | null => {
-  const descriptor = getTaskProviderDescriptor(type)
-  if (descriptor === undefined) return jsonResponse({ error: 'unknown_task_provider_type', type }, { status: 400 })
-  return validationResponse(
-    'invalid_task_instance_config',
-    type,
-    validateDescriptorConfig(descriptor.instanceConfigSchema, config),
+const taskInstanceConfigValidationResponse = (failure: TaskInstanceConfigValidationFailure): Response => {
+  if (failure.kind === 'unknown_task_provider') {
+    return jsonResponse({ error: 'unknown_task_provider_type', type: failure.type }, { status: 400 })
+  }
+  if (
+    failure.kind === 'task_provider_config_validator_rejected' ||
+    failure.kind === 'task_provider_config_validator_failed'
+  ) {
+    return jsonResponse(
+      { error: 'invalid_task_instance_config', type: failure.type, reason: failure.reason },
+      { status: 400 },
+    )
+  }
+  return jsonResponse(
+    {
+      error: 'invalid_task_instance_config',
+      type: failure.type,
+      ...(failure.missing.length === 0 ? {} : { missing: failure.missing }),
+      ...(failure.invalidUrls.length === 0 ? {} : { invalidUrls: failure.invalidUrls }),
+    },
+    { status: 400 },
   )
 }
 
-export const validateTaskInstanceRouteConfig = (
-  type: string,
-  config: InstanceConfig,
-): Response | Promise<Response | null> => {
-  const descriptorConfigError = validateTaskDescriptorInstanceConfig(type, config)
-  if (descriptorConfigError !== null) return descriptorConfigError
-  return validateTaskInstanceConfig(type, config)
-}
+export const validateTaskInstanceRouteConfig = (type: string, config: InstanceConfig): Promise<Response | null> =>
+  validateTaskInstanceConfigResult(type, config).then((failure) =>
+    failure === null ? null : taskInstanceConfigValidationResponse(failure),
+  )

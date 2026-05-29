@@ -6,10 +6,27 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  ApplyInstancesResultSchema,
   PlatformProviderTypeViewSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from '../../../client/admin/instance-fetcher-schemas.js'
+
+describe('ApplyInstancesResultSchema', () => {
+  test('ApplyInstancesResultSchema accepts detailed reconciliation result', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 2,
+      started: ['telegram-main'],
+      stopped: ['discord-old'],
+      removed: ['discord-old'],
+      recreated: ['mattermost-main'],
+      unchanged: ['telegram-secondary'],
+      failed: [{ id: 'telegram-bad', action: 'stop', error: 'boom' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
+})
 
 describe('TaskInstanceViewSchema', () => {
   test('accepts any string type after the enum was opened', () => {
@@ -134,6 +151,20 @@ describe('PlatformProviderTypeViewSchema', () => {
 
     expect(parsed.traits.observedGroupMessages).toBe('all')
     expect(parsed.traits.maxMessageLength).toBe(16383)
+  })
+
+  test('accepts kontur-talk type', () => {
+    const parsed = PlatformProviderTypeViewSchema.parse({
+      type: 'kontur-talk',
+      displayName: 'Kontur Talk',
+      instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true }],
+      contextConfigSchema: [],
+      capabilities: ['messages.reply-context'],
+      traits: { observedGroupMessages: 'all', maxMessageLength: 4096 },
+      source: 'builtin',
+    })
+
+    expect(parsed.type).toBe('kontur-talk')
   })
 
   test('rejects legacy array traits', () => {

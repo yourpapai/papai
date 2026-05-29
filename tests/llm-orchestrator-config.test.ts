@@ -30,7 +30,7 @@ const assignYoutrackContext = (contextId: string): void => {
   insertTaskInstance({
     id: `${contextId}-yt`,
     type: 'youtrack',
-    config: { url: 'https://youtrack.invalid' },
+    config: { baseUrl: 'https://youtrack.invalid' },
     status: 'active',
   })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })

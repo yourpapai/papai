@@ -60,7 +60,7 @@ const platformInstance = (id: string, status: PlatformInstance['status']): Platf
 const taskInstance = (id: string, type: TaskInstance['type'], status: TaskInstance['status']): TaskInstance => ({
   id,
   type,
-  config: { url: `https://${id}.invalid` },
+  config: { baseUrl: `https://${id}.invalid` },
   status,
   createdAt: 'now',
 })
