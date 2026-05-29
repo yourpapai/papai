@@ -12,7 +12,6 @@ import { getConfigFieldsForContext } from '../config-keys.js'
 import {
   getConfigValue,
   getPluginConfig,
-  isSensitiveKey,
   maskSensitiveValue,
   maskValue,
   setConfigValue,
@@ -21,20 +20,18 @@ import {
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { ConfigField } from '../types/config.js'
-import { createEditorSession, deleteEditorSession, getEditorSession, updateEditorSession } from './state.js'
+import {
+  buildCancelBackButtonsForSession,
+  buildInvalidValueResponse,
+  buildPendingValueResponse,
+} from './message-responses.js'
+import { createEditorSession, deleteEditorSession, getEditorSession } from './state.js'
 import type { EditorButton, EditorProcessResult } from './types.js'
 import { validateConfigField } from './validation.js'
 
 export { parseCallbackData, serializeCallbackData } from './callback-data.js'
 
 const log = logger.child({ scope: 'config-editor:handlers' })
-
-function buildCancelBackButtons(): EditorButton[] {
-  return [
-    { text: '❌ Cancel', action: 'cancel', style: 'danger' },
-    { text: '⬅️ Back', action: 'back', style: 'secondary' },
-  ]
-}
 
 function getFieldEmoji(field: ConfigField): string {
   if (field.storageKey === 'timezone') return '🌍'
@@ -104,7 +101,7 @@ export function startEditor(userId: string, storageContextId: string, key: strin
     return { handled: true, response: `Config key "${key}" is not valid for this context.` }
   }
 
-  createEditorSession({ userId, storageContextId, editingKey: key })
+  const session = createEditorSession({ userId, storageContextId, editingKey: key })
 
   const currentValue = getStoredFieldValue(storageContextId, field)
   const emoji = getFieldEmoji(field)
@@ -131,7 +128,7 @@ export function startEditor(userId: string, storageContextId: string, key: strin
   return {
     handled: true,
     response: lines.join('\n'),
-    buttons: buildCancelBackButtons(),
+    buttons: buildCancelBackButtonsForSession(session.sessionToken),
   }
 }
 
@@ -183,7 +180,21 @@ function handleSaveAction(
   }
 }
 
-function handleCancelAction(userId: string, storageContextId: string): EditorProcessResult {
+function matchesActiveSessionToken(
+  userId: string,
+  storageContextId: string,
+  sessionToken: string | undefined,
+): boolean {
+  const session = getEditorSession(userId, storageContextId)
+  if (session === null) return sessionToken === undefined
+  return sessionToken !== undefined && session.sessionToken === sessionToken
+}
+
+function handleCancelAction(userId: string, storageContextId: string, sessionToken?: string): EditorProcessResult {
+  if (!matchesActiveSessionToken(userId, storageContextId, sessionToken)) {
+    return { handled: false }
+  }
+
   deleteEditorSession(userId, storageContextId)
   log.info({ userId, storageContextId }, 'Config editor cancelled')
 
@@ -196,7 +207,11 @@ function handleCancelAction(userId: string, storageContextId: string): EditorPro
   }
 }
 
-function handleBackAction(userId: string, storageContextId: string): EditorProcessResult {
+function handleBackAction(userId: string, storageContextId: string, sessionToken?: string): EditorProcessResult {
+  if (!matchesActiveSessionToken(userId, storageContextId, sessionToken)) {
+    return { handled: false }
+  }
+
   deleteEditorSession(userId, storageContextId)
   const { text, buttons } = buildConfigList(storageContextId)
   return { handled: true, response: text, buttons }
@@ -207,20 +222,6 @@ function handleSetupAction(): EditorProcessResult {
     handled: true,
     response: '🔄 Use `/setup` to run the full configuration wizard.',
   }
-}
-
-function buildSaveConfirmationButtons(sessionKey: string, sessionToken: string, emoji: string): EditorButton[] {
-  return [
-    { text: '❌ Cancel', action: 'cancel', style: 'danger' },
-    { text: '⬅️ Back', action: 'back', style: 'secondary' },
-    {
-      text: `✅ Save ${emoji}`,
-      action: 'save',
-      key: sessionKey,
-      sessionToken,
-      style: 'primary',
-    },
-  ]
 }
 
 /**
@@ -239,9 +240,9 @@ export function handleEditorCallback(
     case 'save':
       return handleSaveAction(userId, storageContextId, key, sessionToken)
     case 'cancel':
-      return handleCancelAction(userId, storageContextId)
+      return handleCancelAction(userId, storageContextId, sessionToken)
     case 'back':
-      return handleBackAction(userId, storageContextId)
+      return handleBackAction(userId, storageContextId, sessionToken)
     case 'setup':
       return handleSetupAction()
     default:
@@ -266,35 +267,8 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
 
   const validation = validateConfigField(field, text)
   if (!validation.valid) {
-    return {
-      handled: true,
-      response: `❌ **${validation.error}**\n\nPlease enter a valid value for ${field.label}:`,
-      buttons: buildCancelBackButtons(),
-    }
+    return buildInvalidValueResponse(userId, storageContextId, field, validation.error ?? 'Invalid value')
   }
 
-  updateEditorSession(userId, storageContextId, {
-    pendingValue: text.trim(),
-    rotateSessionToken: true,
-  })
-  const updatedSession = getEditorSession(userId, storageContextId)
-  if (updatedSession === null) {
-    return { handled: false }
-  }
-
-  const emoji = getFieldEmoji(field)
-  const sensitiveKey = field.sensitive || isSensitiveKey(session.editingKey)
-  const trimmedText = text.trim()
-  const maskedOrRaw = sensitiveKey ? maskSensitiveValue(trimmedText) : trimmedText
-
-  log.info({ userId, storageContextId, key: session.editingKey }, 'Config value entered, awaiting confirmation')
-
-  emitUser('config_editor:step', userId, { userId, step: 'value_entered' })
-
-  return {
-    handled: true,
-    response: `✏️ **${field.label}**\n\nNew value: \`${maskedOrRaw}\`\n\nSave this value?`,
-    buttons: buildSaveConfirmationButtons(session.editingKey, updatedSession.sessionToken, emoji),
-    isSensitiveKey: sensitiveKey,
-  }
+  return buildPendingValueResponse(userId, storageContextId, session.editingKey, field, text, getFieldEmoji(field))
 }
