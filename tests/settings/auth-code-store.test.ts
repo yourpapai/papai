@@ -32,6 +32,11 @@ describe('settings auth-code store', () => {
     expect(consumeAuthCode(code, 1000 + CODE_TTL_MS + 1)).toBeNull()
   })
 
+  test('a code is rejected at exactly its expiry instant', () => {
+    const code = issueAuthCode(principal, 1000)
+    expect(consumeAuthCode(code, 1000 + CODE_TTL_MS)).toBeNull()
+  })
+
   test('an unknown code is rejected', () => {
     expect(consumeAuthCode('not-a-real-code', 2000)).toBeNull()
   })
