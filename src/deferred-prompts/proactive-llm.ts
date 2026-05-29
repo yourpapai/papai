@@ -56,7 +56,7 @@ const defaultProactiveLlmDeps: ProactiveLlmDeps = {
   buildModel: (config, modelId) => createOpenAICompatible({ name: 'openai-compatible', ...config })(modelId),
 }
 
-export type BuildProviderFn = (contextId: string) => TaskProvider | null
+export type BuildProviderFn = (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
 
 type LlmConfig = { apiKey: string; baseURL: string; mainModel: string }
 type DispatchExecutionArgs = ProactiveLlmDispatchArgs<ProactiveLlmDeps, BuildProviderFn>
@@ -169,13 +169,13 @@ async function invokeWithContext(
   return resultTextOrDone(result.text)
 }
 
-function resolveFullProvider(
+async function resolveFullProvider(
   buildProviderFn: BuildProviderFn,
   userId: string,
   storageContextId: string,
   configContextId: string,
-): TaskProvider | string {
-  const provider = buildProviderFn(configContextId)
+): Promise<TaskProvider | string> {
+  const provider = await buildProviderFn(configContextId)
   if (provider !== null) return provider
   log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for deferred prompt')
   return 'Deferred prompt skipped: task provider not configured.'
@@ -188,7 +188,7 @@ async function runFullGeneration(
   metadata: ExecutionMetadata,
   matchedTasksSummary: string | undefined,
   config: { apiKey: string; baseURL: string; mainModel: string },
-  provider: NonNullable<ReturnType<BuildProviderFn>>,
+  provider: NonNullable<Awaited<ReturnType<BuildProviderFn>>>,
   deps: ProactiveLlmDeps,
 ): Promise<string> {
   const { createdByUserId, deliveryTarget } = execCtx
@@ -219,7 +219,7 @@ async function runFullGeneration(
   return resultTextOrDone(result.text)
 }
 
-function invokeFull(
+async function invokeFull(
   execCtx: DeferredExecutionContext,
   type: 'scheduled' | 'alert',
   prompt: string,
@@ -233,10 +233,10 @@ function invokeFull(
   const configContextId = getConfigContextIdFromStorageContextId(storageContextId)
   log.debug({ userId: createdByUserId, mode: 'full' }, 'invokeFull called')
   const config = getLlmConfigFromSystem()
-  if (typeof config === 'string') return Promise.resolve(config)
+  if (typeof config === 'string') return config
 
-  const provider = resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
-  if (typeof provider === 'string') return Promise.resolve(provider)
+  const provider = await resolveFullProvider(buildProviderFn, createdByUserId, storageContextId, configContextId)
+  if (typeof provider === 'string') return provider
 
   return runFullGeneration(execCtx, type, prompt, metadata, matchedTasksSummary, config, provider, deps)
 }

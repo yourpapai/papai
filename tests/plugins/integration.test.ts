@@ -305,8 +305,8 @@ describe('plugin lifecycle integration', () => {
     router.addInstance('telegram-default', 'telegram', { token: 'x' })
     setRuntimeChatRouter(router)
 
-    const kaneoProvider = defaultTaskProviderResolver.resolve('ctx-kaneo')
-    const youtrackProvider = defaultTaskProviderResolver.resolve('ctx-youtrack')
+    const kaneoProvider = await defaultTaskProviderResolver.resolve('ctx-kaneo')
+    const youtrackProvider = await defaultTaskProviderResolver.resolve('ctx-youtrack')
     expect(kaneoProvider).not.toBeNull()
     expect(youtrackProvider).not.toBeNull()
 

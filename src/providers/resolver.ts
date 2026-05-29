@@ -9,8 +9,9 @@ import { getTaskInstance } from '../instances/task-store.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { getKaneoWorkspace } from '../users.js'
-import { createProvider, getTaskProviderDescriptor } from './registry.js'
-import type { TaskProviderTypeDescriptor } from './registry.js'
+import { validateTaskInstanceConfigResult } from './config-validation.js'
+import { createProvider, getTaskProviderConfigValidator, getTaskProviderDescriptor } from './registry.js'
+import type { TaskProviderConfigValidator, TaskProviderTypeDescriptor } from './registry.js'
 import type { ProviderConfigField, TaskProvider } from './types.js'
 
 const log = logger.child({ scope: 'provider:resolver' })
@@ -22,6 +23,7 @@ export interface TaskProviderResolverDeps {
   getConfig: (contextId: string, key: string) => string | null
   getKaneoWorkspace: typeof getKaneoWorkspace
   getTaskProviderDescriptor: typeof getTaskProviderDescriptor
+  getTaskProviderConfigValidator: (type: string) => TaskProviderConfigValidator | undefined
   createProvider: typeof createProvider
 }
 
@@ -31,6 +33,7 @@ const defaultDeps: TaskProviderResolverDeps = {
   getConfig: getConfigValue,
   getKaneoWorkspace,
   getTaskProviderDescriptor,
+  getTaskProviderConfigValidator,
   createProvider,
 }
 
@@ -91,6 +94,38 @@ const buildConfigFromDescriptor = (
   return merged
 }
 
+const createValidatedProvider = async (
+  contextId: string,
+  instance: TaskInstance,
+  config: Record<string, string>,
+  deps: TaskProviderResolverDeps,
+): Promise<TaskProvider | null> => {
+  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps)
+  if (validationFailure !== null) {
+    log.warn(
+      { contextId, taskInstanceId: instance.id, taskProvider: instance.type, validationFailure },
+      'Cannot resolve task provider: config validation failed',
+    )
+    return null
+  }
+
+  log.info({ contextId, taskInstanceId: instance.id, taskProvider: instance.type }, 'Task provider resolved')
+  try {
+    return deps.createProvider(instance.type, config)
+  } catch (error) {
+    log.warn(
+      {
+        contextId,
+        taskInstanceId: instance.id,
+        taskProvider: instance.type,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Cannot resolve task provider: provider creation failed',
+    )
+    return null
+  }
+}
+
 export class TaskProviderResolver {
   private readonly deps: TaskProviderResolverDeps
 
@@ -98,7 +133,7 @@ export class TaskProviderResolver {
     this.deps = { ...defaultDeps, ...deps }
   }
 
-  resolve(contextId: string): TaskProvider | null {
+  async resolve(contextId: string): Promise<TaskProvider | null> {
     const settings = this.deps.getContextSettings(contextId)
     if (settings === null) {
       log.warn({ contextId }, 'Cannot resolve task provider: context has no task assignment')
@@ -125,25 +160,12 @@ export class TaskProviderResolver {
         : buildConfigFromDescriptor(contextId, instance, descriptor, this.deps)
     if (config === null) return null
 
-    log.info({ contextId, taskInstanceId: instance.id, taskProvider: instance.type }, 'Task provider resolved')
-    try {
-      return this.deps.createProvider(instance.type, config)
-    } catch (error) {
-      log.warn(
-        {
-          contextId,
-          taskInstanceId: instance.id,
-          taskProvider: instance.type,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Cannot resolve task provider: provider creation failed',
-      )
-      return null
-    }
+    const provider = await createValidatedProvider(contextId, instance, config, this.deps)
+    return provider
   }
 
-  resolveStrict(contextId: string): TaskProvider {
-    const provider = this.resolve(contextId)
+  async resolveStrict(contextId: string): Promise<TaskProvider> {
+    const provider = await this.resolve(contextId)
     if (provider === null) throw new Error(`Context ${contextId} needs /setup`)
     return provider
   }
