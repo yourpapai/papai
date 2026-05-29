@@ -152,9 +152,7 @@ function resolveEntryPoint(pluginDir: string, main: string): string | null {
 function parseAndValidateManifest(
   manifestPath: string,
   dirName: string,
-):
-  | { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string; rawManifest: unknown }
-  | DiscoveryError {
+): { manifest: ReturnType<typeof pluginManifestSchema.parse>; manifestContent: string } | DiscoveryError {
   let manifestContent: string
   try {
     manifestContent = readFileSync(manifestPath, 'utf-8')
@@ -188,16 +186,14 @@ function parseAndValidateManifest(
     }
   }
 
-  return { manifest: parseResult.data, manifestContent, rawManifest: parsed }
+  return { manifest: parseResult.data, manifestContent }
 }
 
 function resolveEntrypointForDiscovery(
   pluginDir: string,
   main: string | undefined,
-  isMcpOnly: boolean,
 ): { entryPoint: string; sourceFiles: string[] } | DiscoveryError {
-  if (isMcpOnly) return { entryPoint: '', sourceFiles: [] }
-  if (main === undefined) return { directoryName: '', reason: 'Non-MCP plugin must declare a main entry point' }
+  if (main === undefined) return { entryPoint: '', sourceFiles: [] }
 
   const entryPoint = resolveEntryPoint(pluginDir, main)
   if (entryPoint === null)
@@ -232,11 +228,9 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const parsed = parseAndValidateManifest(manifestPath, dirName)
   if ('reason' in parsed) return parsed
 
-  const { manifest, manifestContent, rawManifest } = parsed
-  const rawObj = typeof rawManifest === 'object' && rawManifest !== null ? rawManifest : undefined
-  const isMcpOnly = rawObj !== undefined && 'mcp' in rawObj && !('main' in rawObj)
+  const { manifest, manifestContent } = parsed
 
-  const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main, isMcpOnly)
+  const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main)
   if ('reason' in ep) return { ...ep, directoryName: dirName }
 
   return {

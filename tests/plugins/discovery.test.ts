@@ -33,6 +33,7 @@ function writePlugin(
     version: '1.0.0',
     description: 'Test plugin',
     apiVersion: 1,
+    main: 'index.ts',
     ...manifestOverrides,
   }
 

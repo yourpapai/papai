@@ -147,7 +147,7 @@ const providerHostSchema = z
     'Provider allowed host must be a valid hostname',
   )
 
-const pluginContributesSchema = z.object({
+const pluginContributesSchema = z.strictObject({
   tools: z.array(toolNameSchema).optional().default([]),
   promptFragments: z.array(z.string().min(1).max(64)).optional().default([]),
   commands: z.array(commandNameSchema).optional().default([]),
@@ -156,7 +156,7 @@ const pluginContributesSchema = z.object({
   taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
 })
 
-const configRequirementBaseSchema = z.object({
+const configRequirementBaseSchema = z.strictObject({
   key: configKeySchema,
   label: z.string().min(1),
   required: z.boolean(),
@@ -193,13 +193,15 @@ const permissionTuple = PLUGIN_PERMISSIONS
 
 /** Zod schema for a plugin manifest (plugin.json). */
 export const pluginManifestSchema = z
-  .object({
+  .strictObject({
     id: pluginIdSchema,
     name: z.string().min(1).max(128),
-    version: z.string().regex(/^\d+\.\d+\.\d+/u, 'version must be semver (major.minor.patch)'),
+    version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$/u, 'version must be semver (major.minor.patch)'),
     description: z.string().min(1).max(512),
     apiVersion: z.literal(PLUGIN_API_VERSION),
-    main: mainPathSchema.optional().default('index.ts'),
+    main: mainPathSchema.optional(),
     contributes: pluginContributesSchema.optional().default({
       tools: [],
       promptFragments: [],
@@ -233,6 +235,38 @@ export const pluginManifestSchema = z
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
     path: ['permissions'],
   })
+  .refine(
+    (m) => {
+      const configKeys = new Set(m.contributes.configKeys)
+      if (configKeys.size === 0) return true
+
+      return [...configKeys].every((key) =>
+        m.configRequirements.some((requirement) => requirement.key === key && requirement.scope === 'context'),
+      )
+    },
+    {
+      message: 'Every contributes.configKeys entry must match a context-scoped configRequirements entry',
+      path: ['contributes', 'configKeys'],
+    },
+  )
+  .refine(
+    (m) => {
+      const runtimeContributionCount =
+        m.contributes.tools.length +
+        m.contributes.promptFragments.length +
+        m.contributes.commands.length +
+        m.contributes.jobs.length +
+        m.contributes.taskProviderTypes.length
+      const isMcpOnly = m.mcp !== undefined && runtimeContributionCount === 0 && m.providerConfigValidator === undefined
+
+      if (isMcpOnly) return m.main === undefined
+      return m.main !== undefined
+    },
+    {
+      message: 'main is required unless the manifest is an explicit MCP-only plugin',
+      path: ['main'],
+    },
+  )
 
 type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
 export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema'> & {
