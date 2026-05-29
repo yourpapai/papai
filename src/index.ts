@@ -16,6 +16,7 @@ import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
+import { warnUnresolvedTaskInstances } from './instances/health.js'
 import { listActivePlatformInstances } from './instances/platform-store.js'
 import { listTaskInstances } from './instances/task-store.js'
 import { logger } from './logger.js'
@@ -135,6 +136,7 @@ log.info(
   'Plugin activation complete',
 )
 
+warnUnresolvedTaskInstances()
 warnIfLegacyDebugToken()
 
 setupBot(chatProvider, adminUserId, botDeps)
