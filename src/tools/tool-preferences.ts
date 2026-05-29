@@ -32,10 +32,6 @@ export function isPermission(value: unknown): value is Permission {
   return typeof value === 'string' && (PERMISSIONS as ReadonlySet<string>).has(value)
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 const TOOL_DOMAINS: ReadonlySet<string> = new Set(Object.values(TOOL_METADATA).map((m) => m.domain))
 
 function isToolDomain(value: string): value is ToolDomain {
@@ -50,26 +46,54 @@ export function resolveToolPermission(prefs: ToolPrefs, toolName: string): Permi
   return prefs.domainDefaults[meta.domain] ?? 'allow'
 }
 
+function isStringRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseDomainDefaults(parsed: Record<string, unknown>): Partial<Record<ToolDomain, Permission>> {
+  const out: Partial<Record<ToolDomain, Permission>> = {}
+  // New shape: domainDefaults: { task: 'ask' }
+  const newShape = parsed['domainDefaults']
+  if (isStringRecord(newShape)) {
+    for (const [key, value] of Object.entries(newShape)) {
+      if (isToolDomain(key) && isPermission(value)) out[key] = value
+    }
+  }
+  // Legacy: disabledDomains: ['task']  → domainDefaults: { task: 'deny' }
+  const legacy = parsed['disabledDomains']
+  if (Array.isArray(legacy)) {
+    for (const item of legacy) {
+      if (typeof item === 'string' && isToolDomain(item)) out[item] = 'deny'
+    }
+  }
+  return out
+}
+
+function parseToolOverrides(parsed: Record<string, unknown>): Record<string, Permission> {
+  const out: Record<string, Permission> = {}
+  const overridesRaw = parsed['toolOverrides']
+  if (!isStringRecord(overridesRaw)) return out
+  for (const [name, value] of Object.entries(overridesRaw)) {
+    if (isPermission(value)) {
+      out[name] = value
+    } else if (value === true) {
+      out[name] = 'allow'
+    } else if (value === false) {
+      out[name] = 'deny'
+    }
+  }
+  return out
+}
+
 export function parseToolPrefs(raw: string | null): ToolPrefs {
   if (raw === null || raw.trim() === '') return emptyPrefs()
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!isPlainObject(parsed)) return emptyPrefs()
-    const domainDefaults: Partial<Record<ToolDomain, Permission>> = {}
-    const defaultsRaw = parsed['domainDefaults']
-    if (isPlainObject(defaultsRaw)) {
-      for (const [key, value] of Object.entries(defaultsRaw)) {
-        if (isToolDomain(key) && isPermission(value)) domainDefaults[key] = value
-      }
+    if (!isStringRecord(parsed)) return emptyPrefs()
+    return {
+      domainDefaults: parseDomainDefaults(parsed),
+      toolOverrides: parseToolOverrides(parsed),
     }
-    const toolOverrides: Record<string, Permission> = {}
-    const overridesRaw = parsed['toolOverrides']
-    if (isPlainObject(overridesRaw)) {
-      for (const [name, value] of Object.entries(overridesRaw)) {
-        if (isPermission(value)) toolOverrides[name] = value
-      }
-    }
-    return { domainDefaults, toolOverrides }
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Corrupt tool_prefs; using empty prefs')
     return emptyPrefs()

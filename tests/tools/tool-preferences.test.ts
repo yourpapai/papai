@@ -166,3 +166,39 @@ describe('resolveToolPermission', () => {
     expect(resolveToolPermission(prefs, 'plugin_foo__bar')).toBe('deny')
   })
 })
+
+describe('parseToolPrefs legacy migration', () => {
+  test('legacy disabledDomains → domainDefaults deny', () => {
+    const legacy = JSON.stringify({ disabledDomains: ['task', 'project'], toolOverrides: {} })
+    const prefs = parseToolPrefs(legacy)
+    expect(prefs.domainDefaults).toEqual({ task: 'deny', project: 'deny' })
+    expect(prefs.toolOverrides).toEqual({})
+  })
+
+  test('legacy boolean overrides map to allow/deny', () => {
+    const legacy = JSON.stringify({ disabledDomains: [], toolOverrides: { create_task: true, delete_task: false } })
+    const prefs = parseToolPrefs(legacy)
+    expect(prefs.toolOverrides).toEqual({ create_task: 'allow', delete_task: 'deny' })
+  })
+
+  test('new-shape strings pass through', () => {
+    const fresh = JSON.stringify({
+      domainDefaults: { task: 'ask' },
+      toolOverrides: { delete_task: 'deny' },
+    })
+    const prefs = parseToolPrefs(fresh)
+    expect(prefs.domainDefaults).toEqual({ task: 'ask' })
+    expect(prefs.toolOverrides).toEqual({ delete_task: 'deny' })
+  })
+
+  test('unknown permission string → dropped', () => {
+    const garbage = JSON.stringify({ domainDefaults: { task: 'maybe' }, toolOverrides: { x: 'sometimes' } })
+    const prefs = parseToolPrefs(garbage)
+    expect(prefs).toEqual({ domainDefaults: {}, toolOverrides: {} })
+  })
+
+  test('null or empty input → empty prefs', () => {
+    expect(parseToolPrefs(null)).toEqual({ domainDefaults: {}, toolOverrides: {} })
+    expect(parseToolPrefs('')).toEqual({ domainDefaults: {}, toolOverrides: {} })
+  })
+})
