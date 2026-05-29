@@ -36,14 +36,15 @@ export async function handleProvisionKaneo(req: Request): Promise<Response> {
 
   if (outcome.status === 'provisioned') {
     log.info({ contextId: scope.scope.contextId, status: 'provisioned' }, 'Settings Kaneo provision succeeded')
-    // One-time credential reveal: email/password/apiKey are not logged — returned in body only.
+    // One-time login reveal: email/password are not logged — returned in body only. The
+    // generated API key is persisted into config by provisionAndConfigure and is never
+    // returned in the response (it would needlessly widen secret exposure to the SPA).
     return settingsJson(200, {
       status: 'provisioned',
       contextId: scope.scope.contextId,
       email: outcome.email,
       password: outcome.password,
       kaneoUrl: outcome.kaneoUrl,
-      apiKey: outcome.apiKey,
       workspaceId: outcome.workspaceId,
     })
   }
