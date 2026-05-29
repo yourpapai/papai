@@ -50,8 +50,6 @@
     "src/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
-    // getContributedTaskProviderType is a test-only seam.
-    "src/providers/registry.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.
@@ -73,8 +71,14 @@
     "tests/scripts/behavior-audit-integration.runtime-helpers.ts": ["exports"],
     "tests/scripts/behavior-audit-integration.support.ts": ["exports", "types"],
     "tests/scripts/behavior-audit/test-fixtures.ts": ["exports"],
+    // setStoreDb is a test-only seam.
+    "src/dashboard-auth/store.ts": ["exports"],
+    // routeRequestForTest is a test-only seam.
+    "src/debug/server.ts": ["exports"],
     // The client uses Svelte components that knip can't parse, so most of these
     // exports look orphaned even though .svelte files consume them.
+    "client/admin/auth.ts": ["exports"],
+    "client/debug/auth.ts": ["exports"],
     "client/debug/handlers.ts": ["exports"],
     "client/debug/log-bootstrap.ts": ["exports"],
     "client/debug/log-filter.ts": ["exports"],

@@ -221,7 +221,7 @@ export function routeInteraction(
   }
 
   if (callbackData.startsWith('tgl:')) {
-    return resolvedDeps.handleToolToggleInteraction(interaction, reply)
+    return resolvedDeps.handleToolToggleInteraction(routedInteraction, reply)
   }
 
   if (callbackData.startsWith('perm:')) {

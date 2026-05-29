@@ -13,7 +13,7 @@ import type { InstanceConfig, InstanceStatus, PlatformInstance, PlatformInstance
 
 const log = logger.child({ scope: 'instances:platform-store' })
 
-const PLATFORM_INSTANCE_TYPES: readonly PlatformInstanceType[] = ['telegram', 'mattermost', 'discord']
+const PLATFORM_INSTANCE_TYPES: readonly PlatformInstanceType[] = ['telegram', 'mattermost', 'discord', 'kontur-talk']
 const INSTANCE_STATUSES: readonly InstanceStatus[] = ['pending', 'active', 'stopped']
 
 export interface InsertPlatformInstanceInput {

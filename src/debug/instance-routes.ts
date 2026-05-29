@@ -4,9 +4,10 @@
 // See LICENSE in the project root for details.
 
 import { listPlatformProviderTypes } from '../chat/registry.js'
+import { authenticate } from '../dashboard-auth/index.js'
 import * as adminStore from '../instances/admin-store.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
-import { maskConfig, providerSensitiveKeys } from '../instances/encryption.js'
+import { maskConfig, providerSensitiveKeys, unknownProviderSensitiveKeys } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
@@ -25,14 +26,16 @@ import {
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { getTaskProviderDescriptor, listTaskProviderTypes } from '../providers/registry.js'
+import { getTaskProviderDescriptor } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
+import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from './instance-config-validation.js'
 import {
   adminSchema,
   applyPlatformInstances,
   type InstanceApiDeps,
   instanceExistsError,
   instancePatchSchema,
+  isInstanceApiPath,
   parseBody,
   platformInstanceSchema,
   splitPath,
@@ -42,7 +45,7 @@ import {
 } from './instance-route-support.js'
 import { jsonResponse } from './json-response.js'
 import { handlePlatformProviderTypes } from './platform-provider-type-routes.js'
-import { handleTaskProviderTypes, validateTaskInstanceConfig } from './task-provider-type-routes.js'
+import { handleTaskProviderTypes } from './task-provider-type-routes.js'
 
 const log = logger.child({ scope: 'debug:instance-routes' })
 
@@ -53,11 +56,11 @@ const defaultDeps: InstanceApiDeps = {
 
 const INSTANCE_ROUTE_MASK = '********'
 
-const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> =>
-  providerSensitiveKeys(
-    config,
-    listPlatformProviderTypes().find((descriptor) => descriptor.type === type)?.instanceConfigSchema,
-  )
+const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
+  const descriptor = listPlatformProviderTypes().find((candidate) => candidate.type === type)
+  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
+  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
+}
 
 const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance => ({
   ...instance,
@@ -73,7 +76,8 @@ const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance =>
 // keys operators can now write in-place via PATCH, which the descriptor schema does not constrain.
 const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
   const descriptor = getTaskProviderDescriptor(type)
-  return providerSensitiveKeys(config, descriptor?.instanceConfigSchema)
+  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
+  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
 }
 
 const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
@@ -94,26 +98,6 @@ const taskInstanceView = (
   }
 }
 
-const INSTANCE_API_PREFIXES = [
-  '/api/admins',
-  '/api/platform-provider-types',
-  '/api/platform-instances',
-  '/api/task-instances',
-  '/api/task-provider-types',
-] as const
-
-const isInstanceApiPath = (pathname: string): boolean =>
-  INSTANCE_API_PREFIXES.some((prefix) => [pathname === prefix, pathname.startsWith(`${prefix}/`)].includes(true))
-
-const authorizeWrite = (req: Request): boolean => {
-  const token = process.env['DEBUG_TOKEN']
-  if (token === undefined || token === '') return false
-  const authorization = req.headers.get('Authorization')
-  if (authorization === null) return false
-  const headerToken = authorization.replace('Bearer ', '')
-  return headerToken === token
-}
-
 const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Promise<Response> => {
   if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
   const body = await parseBody(req, statusSchema)
@@ -124,9 +108,14 @@ const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Pro
 }
 
 const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Response> => {
-  if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
+  const existing = getPlatformInstance(instanceId)
+  if (existing === null) return textResponse('Not found', 404)
   const body = await parseBody(req, instancePatchSchema)
   if (body instanceof Response) return body
+  if (body.config !== undefined) {
+    const configError = validatePlatformInstanceConfig(existing.type, body.config)
+    if (configError !== null) return configError
+  }
   updatePlatformInstance(instanceId, { config: body.config, status: body.status })
   const instance = getPlatformInstance(instanceId)
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
@@ -148,6 +137,8 @@ const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApi
     const body = await parseBody(req, platformInstanceSchema)
     if (body instanceof Response) return body
     if (getPlatformInstance(body.id) !== null) return instanceExistsError(body.id)
+    const configError = validatePlatformInstanceConfig(body.type, body.config)
+    if (configError !== null) return configError
     insertPlatformInstance({ ...body, status: 'active' })
     const instance = getPlatformInstance(body.id)
     return jsonResponse(instance === null ? null : maskedPlatformInstance(instance), { status: 201 })
@@ -193,11 +184,8 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {
     const body = await parseBody(req, taskInstanceSchema)
     if (body instanceof Response) return body
-    if (!listTaskProviderTypes().some((descriptor) => descriptor.type === body.type)) {
-      return jsonResponse({ error: 'unknown_task_provider_type', type: body.type }, { status: 400 })
-    }
     if (getTaskInstance(body.id) !== null) return instanceExistsError(body.id)
-    const configError = await validateTaskInstanceConfig(body.type, body.config)
+    const configError = await validateTaskInstanceRouteConfig(body.type, body.config)
     if (configError !== null) return configError
     insertTaskInstance({ ...body, status: 'active' })
     const instance = getTaskInstance(body.id)
@@ -207,9 +195,14 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   if (parts.length === 3 && parts[0] === 'api' && parts[1] === 'task-instances' && req.method === 'PATCH') {
     const taskInstanceId = parts[2]
     if (taskInstanceId === undefined) return textResponse('Not found', 404)
-    if (getTaskInstance(taskInstanceId) === null) return textResponse('Not found', 404)
+    const existing = getTaskInstance(taskInstanceId)
+    if (existing === null) return textResponse('Not found', 404)
     const body = await parseBody(req, instancePatchSchema)
     if (body instanceof Response) return body
+    if (body.config !== undefined) {
+      const configError = await validateTaskInstanceRouteConfig(existing.type, body.config)
+      if (configError !== null) return configError
+    }
     const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
     updateTaskInstance(taskInstanceId, { config: body.config, status: body.status })
     clearToolCachesForContexts(referencingContextIds)
@@ -277,7 +270,7 @@ export const handleInstanceApiRouteWithDeps = async (
   deps: InstanceApiDeps,
 ): Promise<Response | null> => {
   if (!isInstanceApiPath(url.pathname)) return null
-  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && !authorizeWrite(req)) {
+  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && authenticate(req) === null) {
     return textResponse('Unauthorized', 401)
   }
 

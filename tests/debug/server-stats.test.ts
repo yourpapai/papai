@@ -6,6 +6,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { users } from '../../src/db/schema.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
@@ -19,7 +22,6 @@ import {
 } from '../utils/test-helpers.js'
 
 const TEST_PORT = 19112
-const TOKEN = 'stats-route-token'
 
 const readJson = async (res: Response): Promise<object> => {
   const parsed: unknown = JSON.parse(await res.text())
@@ -28,42 +30,46 @@ const readJson = async (res: Response): Promise<object> => {
 }
 const pick = (obj: object, key: string): unknown => Reflect.get(obj, key)
 
-const authHeaders: HeadersInit = { Authorization: `Bearer ${TOKEN}` }
+let authCookieValue: string
+const authHeaders = (): HeadersInit => ({ Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}` })
 
 describe('debug-server stats routes', () => {
   beforeAll(async () => {
     mockLogger()
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
     process.env['DEBUG_HOSTNAME'] = 'localhost'
-    process.env['DEBUG_TOKEN'] = TOKEN
     process.env['ADMIN_USER_ID'] = 'admin-1'
     startDebugServer('test-admin', getLogLevel())
   })
 
   beforeEach(async () => {
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     seedCommonTestPlatformInstances()
     clearStatsCacheForTesting()
   })
 
   afterAll(() => {
     stopDebugServer()
+    setStoreDb(null)
     delete process.env['DEBUG_PORT']
     delete process.env['DEBUG_HOSTNAME']
-    delete process.env['DEBUG_TOKEN']
     delete process.env['ADMIN_USER_ID']
   })
 
-  test('GET /stats/global without token returns 401', async () => {
+  test('GET /stats/global without session cookie returns 401', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/stats/global`)
     expect(res.status).toBe(401)
     await res.body?.cancel()
   })
 
   test('GET /stats/global with token returns GlobalStats shape', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/stats/global`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/stats/global`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const body = await readJson(res)
     expect(pick(body, 'window')).toBe('30d')
@@ -79,7 +85,7 @@ describe('debug-server stats routes', () => {
 
   test('GET /stats/global?window=7d returns body with window 7d', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/stats/global?window=7d`, {
-      headers: authHeaders,
+      headers: authHeaders(),
     })
     expect(res.status).toBe(200)
     const body = await readJson(res)
@@ -88,7 +94,7 @@ describe('debug-server stats routes', () => {
 
   test('GET /stats/global rejects unknown window with 400', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/stats/global?window=foo`, {
-      headers: authHeaders,
+      headers: authHeaders(),
     })
     expect(res.status).toBe(400)
     await res.body?.cancel()
@@ -96,7 +102,7 @@ describe('debug-server stats routes', () => {
 
   test('GET /stats/subject/<unknown> returns 404', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/nobody`, {
-      headers: authHeaders,
+      headers: authHeaders(),
     })
     expect(res.status).toBe(404)
     await res.body?.cancel()
@@ -109,7 +115,7 @@ describe('debug-server stats routes', () => {
       .run()
 
     const res = await fetch(`http://localhost:${TEST_PORT}/stats/subject/u1`, {
-      headers: authHeaders,
+      headers: authHeaders(),
     })
     expect(res.status).toBe(200)
     const body = await readJson(res)

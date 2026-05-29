@@ -71,4 +71,93 @@ describe('buildPluginToolRuntimeContext', () => {
       expect(lastResult.retryAfterSec!).toBeGreaterThan(0)
     })
   })
+
+  test('tool runtime exposes identity facade for identity provider plugins', () => {
+    const runtime = buildPluginToolRuntimeContext(
+      'identity-plugin',
+      {
+        ...makeManifest(),
+        permissions: ['identity'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['identity-provider'],
+        },
+      },
+      { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
+    )
+
+    expect(runtime.identity).toBeDefined()
+    expect(runtime).toHaveProperty('identity')
+    expect(runtime.identity?.lookupForChatUser('chat-user-1')).toBeNull()
+  })
+
+  test('tool runtime omits identity facade when plugin lacks identity permission', () => {
+    const runtime = buildPluginToolRuntimeContext(
+      'no-identity-plugin',
+      {
+        ...makeManifest(),
+        permissions: [],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['identity-provider'],
+        },
+      },
+      { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
+    )
+
+    expect(runtime.identity).toBeUndefined()
+    expect(runtime).not.toHaveProperty('identity')
+  })
+
+  test('tool runtime omits identity facade when plugin contributes no provider types', () => {
+    const runtime = buildPluginToolRuntimeContext(
+      'no-provider-plugin',
+      {
+        ...makeManifest(),
+        permissions: ['identity'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+        },
+      },
+      { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
+    )
+
+    expect(runtime.identity).toBeUndefined()
+    expect(runtime).not.toHaveProperty('identity')
+  })
+
+  test('tool runtime omits identity facade when plugin contributes multiple provider types', () => {
+    const runtime = buildPluginToolRuntimeContext(
+      'multi-provider-plugin',
+      {
+        ...makeManifest(),
+        permissions: ['identity'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['identity-provider-a', 'identity-provider-b'],
+        },
+      } as PluginManifest,
+      { provider: createMockProvider(), storageContextId: 'ctx-1', chatUserId: 'chat-user-1' },
+    )
+
+    expect(runtime.identity).toBeUndefined()
+    expect(runtime).not.toHaveProperty('identity')
+  })
 })

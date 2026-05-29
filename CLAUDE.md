@@ -170,10 +170,18 @@ Task-provider bootstrap requirements:
 
 Optional but important runtime flags include:
 
-- `DEBUG_SERVER`, `DEBUG_HOSTNAME`, `DEBUG_PORT`, `DEBUG_TOKEN`
+- `DEBUG_SERVER`, `DEBUG_HOSTNAME`, `DEBUG_PORT`
 - `LOG_LEVEL`
 - `DEMO_MODE`
 - `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
+
+When `DEBUG_SERVER=true`, the dashboard requires a session cookie minted via the bot. DM `/dashboard` to receive a one-time sign-in link (TTL 5 min). Sessions last `DASHBOARD_SESSION_TTL_SECONDS` (default 8h). See `docs/deployment/dashboard-access.md` for recommended deployment patterns.
+
+| Var                             | Required | Default                                | Purpose                        |
+| ------------------------------- | -------- | -------------------------------------- | ------------------------------ |
+| `DASHBOARD_BASE_URL`            | no       | `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}` | URL embedded in the magic link |
+| `DASHBOARD_SESSION_TTL_SECONDS` | no       | `28800`                                | session lifetime               |
+| `DASHBOARD_CLAIM_TTL_SECONDS`   | no       | `300`                                  | sign-in link lifetime          |
 
 When `DEBUG_SERVER=true`, the local UI is split by audience:
 
@@ -182,17 +190,13 @@ When `DEBUG_SERVER=true`, the local UI is split by audience:
 - `/dashboard` — compatibility redirect to `/debug`
 
 The admin system surface lives at `/admin#system` and includes the
-credentials form backed by `GET`/`POST /admin/llm`. The admin billing
-surface lives at `/admin#billing`, and the admin stats surface lives at
-`/admin#stats` and uses `GET /stats/global` and `GET /stats/subject/:id`.
-The admin instances surface lives at `/admin#instances` and manages
-platform instances, task instances, and admin assignments through
-`/api/platform-instances`, `/api/task-instances`, and `/api/admins`.
-When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer
-token. When it is unset, read-only debug/admin routes remain available
-without a token. `POST /admin/llm` is the special case: it returns 401
-when `DEBUG_TOKEN` is unset, so production-style deployments behind a
-reverse proxy keep the write surface closed by default.
+credentials form backed by `GET`/`POST /admin/llm` (requires an active
+dashboard session). The admin billing surface lives at `/admin#billing`,
+and the admin stats surface lives at `/admin#stats` and uses
+`GET /stats/global` and `GET /stats/subject/:id`. The admin instances
+surface lives at `/admin#instances` and manages platform instances, task
+instances, and admin assignments through `/api/platform-instances`,
+`/api/task-instances`, and `/api/admins`.
 
 #### Anonymity contract for `/stats/*`
 
@@ -279,7 +283,7 @@ Optional: debug server + debug/admin clients
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
 - `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side. The Instances section at `/admin#instances` is backed by `src/debug/instance-routes.ts` and manages platform instances, task instances, and admin assignments.
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
-- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes are bearer-token gated only when `DEBUG_TOKEN` is configured. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
+- `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes require an active dashboard session. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
 - `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
 - `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
 - `src/mcp/` — Model Context Protocol adapter. Connects to external MCP servers and exposes their tools to the LLM as Vercel AI SDK tools. Two sources: per-context user endpoints from the `mcp_endpoints` config key (`user-endpoints.ts`) and plugin-declared servers from a manifest's `mcp` field (`plugin-endpoints.ts`). `McpConnectionPool`/`mcpPool` (`client-pool.ts`) pools connections with retry and idle eviction; `convertMcpToolsToToolSet()` (`tool-adapter.ts`) wraps remote tools. `makeTools()` merges these tools and swallows all MCP failures so a dead server never breaks the pipeline. Only `streamable-http` is runtime-supported; `stdio` is schema-reserved. See `src/mcp/CLAUDE.md`.
@@ -322,10 +326,13 @@ Activation receives a frozen `PluginContext` exposing only:
 
 - `ctx.pluginId`, `ctx.contextId` (activation runs against `__system__`), `ctx.permissions`
 - `ctx.log.{debug,info,warn,error}(data, msg)` — pino child logger scoped by `pluginId`. Never log secrets.
-- `ctx.kv.{get,set,delete,list}` — context-scoped string KV, **only** when the `storage` permission is declared. Without it, all KV calls throw. KV is not a secret store.
-- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless the contribution name was declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`. `registerTaskProviderType` additionally requires the `provider.task` permission.
+- `ctx.kv.{get,set,delete,list}` — context-scoped string KV, only when the `storage` permission is declared. Without it, all KV calls throw. KV is not a secret store.
+- `ctx.adminConfig.get(key)` — read-only admin-scoped plugin config declared in `configRequirements`.
+- `ctx.providerRuntime` — HTTP helper for provider plugins when `provider.task` or `http` is declared; every hop must match `providerAllowedHosts` and pass public URL checks.
+- `ctx.identity` — available when `identity` is declared and the plugin declares exactly one task provider type.
+- `ctx.registration.{registerTool,registerPromptFragment,registerCommand,registerScheduledJob,registerTaskProviderType}` — registrations are rejected unless declared in `contributes.{tools,promptFragments,commands,jobs,taskProviderTypes}`.
 
-Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated `taskProvider` facade (`getTask`, `listTasks`, `searchTasks`, `createTask`, `updateTask`), and the plugin/context KV.
+Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `process.env`. Tool executions receive a request-scoped `PluginToolRuntimeContext` with `pluginId`, `storageContextId`, `chatUserId`, a permission-gated task-provider facade, optional `identity`, rate-limit helper, and plugin/context KV.
 
 ### Contribution Naming
 
@@ -334,9 +341,9 @@ Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `proce
 - Scheduled job owner: `plugin:<pluginId>:<jobName>`, executed only for contexts where the plugin is enabled and eligible.
 - Prompt fragments are synchronous strings or sync functions; appended to the system prompt with a 2,000-char-per-fragment / 8,000-char-total budget.
 
-### Permissions
+### Permissions (MVP)
 
-`PLUGIN_PERMISSIONS` (`src/plugins/types.ts`): `storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, `http`. Runtime-gated today: `storage` (KV access), `tasks.read`/`tasks.write` (task-provider facade methods), `provider.task` (registering a task provider type and presence of the provider facade), `identity` (identity facade, when one task provider type is declared), and `http` (provider HTTP facade). `commands`, `scheduler`, and `chat.send` are declared but not yet separately enforced beyond the contribution-declaration check. Declaring `contributes.taskProviderTypes` requires the `provider.task` permission (manifest `.refine`). Raw chat sending, raw provider access, raw DB access, and arbitrary network access are not exposed.
+`storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, and `http`. Runtime gating exists for storage, task reads/writes, provider HTTP runtime, contributed task-provider registration, and identity facade exposure. Raw chat sending, raw provider access, raw DB access, and arbitrary unallowlisted network access are not exposed.
 
 ### Admin Command
 

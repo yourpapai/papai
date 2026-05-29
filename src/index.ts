@@ -10,6 +10,7 @@ import { setupBot, type BotDeps } from './bot.js'
 import { createChatProviderFromConfig } from './chat/registry.js'
 import { ChatRouter } from './chat/router.js'
 import { registerCommandMenuIfSupported } from './chat/startup.js'
+import { startSweeper } from './dashboard-auth/sweeper.js'
 import { closeDrizzleDb } from './db/drizzle.js'
 import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
@@ -27,6 +28,7 @@ import { collectStartupCompatibilityInstances } from './plugins/startup-compatib
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import { scheduler } from './scheduler-instance.js'
 import { startScheduler, stopScheduler } from './scheduler.js'
+import { warnIfLegacyDebugToken } from './startup-helpers.js'
 import { missingSystemConfigKeys, seedSystemConfigFromEnv } from './system-config.js'
 import { initUsageRecorder } from './usage/index.js'
 
@@ -109,29 +111,7 @@ const processMessage: BotDeps['processMessage'] = (...args) =>
 const stagedDownloadFn = createStagedDownloadFn()
 const botDeps: BotDeps = { processMessage, stagedDownloadFn }
 
-setupBot(chatProvider, adminUserId, botDeps)
-
-await chatProvider.start()
-
-void registerCommandMenuIfSupported(chatProvider, adminUserId)
-
-const [firstActivePlatformInstance] = activePlatformInstances
-const announcementPlatformInstanceId =
-  firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
-if (announcementPlatformInstanceId === undefined) {
-  log.warn('Skipping startup announcement: cannot determine current platform instance')
-} else {
-  void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)
-}
-
-startScheduler(chatProvider)
-
-startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
-
-// Start the central scheduler with all cleanup tasks
-scheduler.startAll()
-
-// Discover and activate plugins
+// Discover and activate plugins before command registration so contributed commands are registered.
 const pluginDir = 'plugins'
 const { plugins: discoveredPlugins, errors: pluginErrors } = discoverPlugins(pluginDir)
 if (pluginErrors.length > 0) {
@@ -155,6 +135,31 @@ log.info(
   'Plugin activation complete',
 )
 
+warnIfLegacyDebugToken()
+
+setupBot(chatProvider, adminUserId, botDeps)
+
+await chatProvider.start()
+
+void registerCommandMenuIfSupported(chatProvider, adminUserId)
+
+const [firstActivePlatformInstance] = activePlatformInstances
+const announcementPlatformInstanceId =
+  firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
+if (announcementPlatformInstanceId === undefined) {
+  log.warn('Skipping startup announcement: cannot determine current platform instance')
+} else {
+  void announceNewVersion(chatProvider, announcementPlatformInstanceId, adminUserId)
+}
+
+startScheduler(chatProvider)
+
+startPollers(chatProvider, (contextId) => defaultTaskProviderResolver.resolve(contextId))
+
+scheduler.startAll()
+
+const stopSweeper = startSweeper()
+
 let stopDebugServerFn: (() => void) | null = null
 
 if (process.env['DEBUG_SERVER'] === 'true') {
@@ -173,6 +178,7 @@ const shutdown = (signal: string): void => {
       stopScheduler()
       scheduler.stopAll()
       stopPollers()
+      stopSweeper()
       if (stopDebugServerFn !== null) stopDebugServerFn()
       return chatProvider.stop()
     })

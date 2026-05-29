@@ -43,6 +43,16 @@ const missingFromSet = <Capability extends string>(
 
 const emptyTaskCapabilities = (): ReadonlySet<TaskCapability> => new Set<TaskCapability>()
 
+const safeTaskCapabilities = (
+  taskInstance: NonNullable<ReturnType<typeof getTaskInstance>>,
+): ReadonlySet<TaskCapability> => {
+  try {
+    return getCapabilitiesForTaskInstance(taskInstance)
+  } catch {
+    return emptyTaskCapabilities()
+  }
+}
+
 const emptyChatCapabilities = (): ReadonlySet<ChatCapability> => new Set<ChatCapability>()
 
 function getMissingRequiredCapabilities(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
@@ -53,7 +63,7 @@ function getMissingRequiredCapabilities(plugin: DiscoveredPlugin, contextId: str
   const taskCapabilities =
     taskInstance === null || taskInstance.status !== 'active'
       ? emptyTaskCapabilities()
-      : getCapabilitiesForTaskInstance(taskInstance)
+      : safeTaskCapabilities(taskInstance)
   const router = getRuntimeChatRouter()
   const chatCapabilities =
     router === null ? emptyChatCapabilities() : router.getPlatformInstanceCapabilities(settings.platformInstanceId)

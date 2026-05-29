@@ -126,7 +126,20 @@ export class TaskProviderResolver {
     if (config === null) return null
 
     log.info({ contextId, taskInstanceId: instance.id, taskProvider: instance.type }, 'Task provider resolved')
-    return this.deps.createProvider(instance.type, config)
+    try {
+      return this.deps.createProvider(instance.type, config)
+    } catch (error) {
+      log.warn(
+        {
+          contextId,
+          taskInstanceId: instance.id,
+          taskProvider: instance.type,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Cannot resolve task provider: provider creation failed',
+      )
+      return null
+    }
   }
 
   resolveStrict(contextId: string): TaskProvider {

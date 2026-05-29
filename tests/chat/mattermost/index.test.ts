@@ -527,6 +527,8 @@ describe('MattermostChatProvider', () => {
     test('command auth uses scoped storage context for active platform instance', async () => {
       setMockFetch(makeFetchWithGroupChannel('O'))
       provider = new MattermostChatProvider({ platformInstanceId: 'mattermost-secondary' })
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
       let auth: AuthorizationResult | undefined
       provider.registerCommand('test', (_msg, _reply, commandAuth): Promise<void> => {
         auth = commandAuth
@@ -540,7 +542,7 @@ describe('MattermostChatProvider', () => {
           id: 'post123',
           user_id: 'user456',
           channel_id: 'channel789',
-          message: '/test',
+          message: '@testbot /test',
           root_id: 'threadRoot',
           parent_id: '',
         }),
@@ -553,6 +555,325 @@ describe('MattermostChatProvider', () => {
           threadId: 'threadRoot',
         }),
       )
+
+      restoreFetch()
+    })
+
+    test('routes @mention-prefixed slash text to the registered command handler', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(true)
+
+      restoreFetch()
+    })
+
+    test('routes @mention-prefixed slash text to the registered command handler in dm', async () => {
+      setMockFetch(makeFetchWithGroupChannel('D'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post124',
+          user_id: 'user456',
+          channel_id: 'dm-channel',
+          message: '@testbot /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(true)
+
+      restoreFetch()
+    })
+
+    test('preserves commandMatch after removing a mention-prefixed slash command mention', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandMatch: string | undefined
+      provider.registerCommand('config', (msg) => {
+        commandMatch = msg.commandMatch
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post125',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot /config foo',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandMatch).toBe('foo')
+
+      restoreFetch()
+    })
+
+    test('does not route bare slash text to papai command handlers', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+
+      let commandCalled = false
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '/config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+
+      restoreFetch()
+    })
+
+    test('keeps mention-prefixed natural language on the message flow', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let seen: unknown = null
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post123',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot summarize this thread',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('summarize this thread')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('replies with guidance when a message only mentions the bot', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      const replies = createMockReply()
+      provider.onMessage(async (_msg, reply) => {
+        await reply.text('should not be called')
+      })
+
+      // @ts-expect-error - replacing private method for testing
+      provider.buildReplyFn = (): typeof replies.reply => replies.reply
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post129',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(replies.getReplies()).toEqual(['Use `@testbot /help` to see commands, or mention me with a question.'])
+
+      restoreFetch()
+    })
+
+    test('keeps non-prefix mentions on the normal message flow while preserving isMentioned', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      let seen: unknown = null
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post126',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: 'hello @testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('hello @testbot')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('does not treat near-match prefixes as bot mentions or commands', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let commandCalled = false
+      let seen: unknown = null
+      provider.registerCommand('config', () => {
+        commandCalled = true
+        return Promise.resolve()
+      })
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post127',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbotty /config',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(commandCalled).toBe(false)
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(false)
+      expect(message.text).toBe('@testbotty /config')
+      expect(message.commandMatch).toBeUndefined()
+
+      restoreFetch()
+    })
+
+    test('recognizes a later standalone mention after an earlier near-match mention', async () => {
+      setMockFetch(makeFetchWithGroupChannel('O'))
+
+      provider = new MattermostChatProvider()
+      // @ts-expect-error - accessing private field for testing
+      provider.botUsername = 'testbot'
+
+      let seen: unknown = null
+      provider.onMessage((msg) => {
+        seen = msg
+        return Promise.resolve()
+      })
+
+      const handlePostedEvent = getPostedEventHandler(provider)
+
+      await handlePostedEvent.call(provider, {
+        sender_name: 'testuser',
+        post: JSON.stringify({
+          id: 'post128',
+          user_id: 'user456',
+          channel_id: 'channel789',
+          message: '@testbotty please ask @testbot',
+          root_id: '',
+          parent_id: '',
+        }),
+      })
+
+      expect(seen).not.toBeNull()
+      assert(isIncomingMessage(seen))
+      const message = seen
+      expect(message.isMentioned).toBe(true)
+      expect(message.text).toBe('@testbotty please ask @testbot')
 
       restoreFetch()
     })

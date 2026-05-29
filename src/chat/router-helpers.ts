@@ -87,7 +87,7 @@ export const traitsForManagedInstance = (instance: ManagedChatInstance | undefin
 export const capabilitiesForManagedInstance = (
   instance: ManagedChatInstance | undefined,
 ): ReadonlySet<ChatCapability> => {
-  if (instance === undefined || instance.status !== 'active') return new Set()
+  if (instance === undefined || !activeInstanceStatuses.has(instance.status)) return new Set()
   return instance.provider.capabilities
 }
 

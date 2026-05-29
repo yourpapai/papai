@@ -250,6 +250,30 @@ describe('routeInteraction', () => {
     expect(seenStorageIds).toEqual([scopedContextId])
   })
 
+  test('routes tool toggle callbacks with scoped auth context instead of native interaction storage', async () => {
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'telegram-secondary', nativeContextId: 'user-1' })
+    const seenStorageIds: string[] = []
+
+    const handled = await routeInteraction(
+      { ...interaction, callbackData: 'tgl:dom:memo:dXNlci0x', storageContextId: 'user-1' },
+      reply,
+      { ...createMockAuth(true), storageContextId: scopedContextId },
+      {
+        handleGroupSettingsInteraction: () => Promise.resolve(false),
+        handleConfigInteraction: () => Promise.resolve(false),
+        handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: (routedInteraction) => {
+          seenStorageIds.push(routedInteraction.storageContextId)
+          return Promise.resolve(true)
+        },
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(seenStorageIds).toEqual([scopedContextId])
+  })
+
   test('routes wizard callbacks through the wizard interaction dependency', async () => {
     const calls: string[] = []
     const handled = await routeInteraction(

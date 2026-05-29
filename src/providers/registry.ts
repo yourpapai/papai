@@ -5,11 +5,10 @@
 
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { ALL_CAPABILITIES, KANEO_TRAITS } from './kaneo/constants.js'
+import { builtinDescriptorSeeds } from './builtin-descriptors.js'
 import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
-import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './youtrack/constants.js'
 import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
@@ -20,12 +19,8 @@ export type TaskProviderConfigValidator = (
   config: Record<string, string>,
 ) => Promise<{ ok: true } | { ok: false; reason: string }>
 
-type ProviderFactory = TaskProviderFactory
-
-type LegacyProviderConfigField = Omit<ProviderConfigField, 'scope' | 'sensitive'> & {
-  sensitive?: boolean
-  scope?: 'instance' | 'context' | 'user'
-}
+type LegacyProviderConfigField = Omit<ProviderConfigField, 'scope' | 'sensitive'> &
+  Partial<Record<'sensitive', boolean> & Record<'scope', 'instance' | 'context' | 'user'>>
 
 const configValue = (config: Record<string, string>, key: string): string => {
   const value = config[key]
@@ -34,7 +29,7 @@ const configValue = (config: Record<string, string>, key: string): string => {
 }
 
 /** Register the built-in Kaneo provider. */
-const createKaneoProvider: ProviderFactory = (config) => {
+const createKaneoProvider: TaskProviderFactory = (config) => {
   const baseUrl = configValue(config, 'baseUrl')
   const workspaceId = configValue(config, 'workspaceId')
   const credential = configValue(config, 'credential')
@@ -47,13 +42,13 @@ const createKaneoProvider: ProviderFactory = (config) => {
 }
 
 /** Register the built-in YouTrack provider. */
-const createYouTrackProvider: ProviderFactory = (config) => {
+const createYouTrackProvider: TaskProviderFactory = (config) => {
   const baseUrl = configValue(config, 'baseUrl')
   const token = configValue(config, 'token')
   return new YouTrackProvider({ baseUrl, token })
 }
 
-const providers = new Map<string, ProviderFactory>([
+const providers = new Map<string, TaskProviderFactory>([
   ['kaneo', createKaneoProvider],
   ['youtrack', createYouTrackProvider],
 ])
@@ -61,14 +56,15 @@ const providers = new Map<string, ProviderFactory>([
 export type ContributedTaskProviderEntry = {
   pluginId: string
   factory: TaskProviderFactory
-  validateConfig?: TaskProviderConfigValidator
   capabilities: ReadonlySet<TaskCapability>
   displayName: string
-  instanceConfigSchema?: readonly LegacyProviderConfigField[]
-  contextConfigSchema?: readonly LegacyProviderConfigField[]
-  traits?: ReadonlySet<TaskProviderTrait>
-  configSchema?: readonly LegacyProviderConfigField[]
-}
+} & Partial<
+  Record<'validateConfig', TaskProviderConfigValidator> &
+    Record<'instanceConfigSchema', readonly LegacyProviderConfigField[]> &
+    Record<'contextConfigSchema', readonly LegacyProviderConfigField[]> &
+    Record<'traits', ReadonlySet<TaskProviderTrait>> &
+    Record<'configSchema', readonly LegacyProviderConfigField[]>
+>
 
 const pluginContributedTaskProviderFactories = new Map<string, ContributedTaskProviderEntry>()
 
@@ -78,6 +74,13 @@ const normalizeContributedProviderTraits = (
 ): TaskProvider => {
   Object.defineProperty(provider, 'traits', { value: traits, configurable: true, enumerable: true })
   return provider
+}
+
+const emptyTaskProviderTraits = (): ReadonlySet<TaskProviderTrait> => new Set<TaskProviderTrait>()
+
+const contributedTraits = (entry: ContributedTaskProviderEntry): ReadonlySet<TaskProviderTrait> => {
+  if (entry.traits !== undefined) return entry.traits
+  return emptyTaskProviderTraits()
 }
 
 /**
@@ -105,10 +108,7 @@ export function createProvider(name: string, config: Record<string, string>): Ta
     )
   }
   log.debug({ name, pluginId: contributed.pluginId }, 'Creating contributed provider instance')
-  return normalizeContributedProviderTraits(
-    contributed.factory(config),
-    contributed.traits ?? new Set<TaskProviderTrait>(),
-  )
+  return normalizeContributedProviderTraits(contributed.factory(config), contributedTraits(contributed))
 }
 
 export function getCapabilitiesForTaskInstance(instance: TaskInstance): ReadonlySet<TaskCapability> {
@@ -135,24 +135,31 @@ export function registerContributedTaskProviderType(type: string, entry: Contrib
   log.info({ type, pluginId: entry.pluginId }, 'Registered contributed task provider type')
 }
 
+/** List contributed types owned by a plugin. */
+export function listContributedTaskProviderTypesForPlugin(pluginId: string): string[] {
+  return [...pluginContributedTaskProviderFactories.entries()]
+    .filter(([, entry]) => entry.pluginId === pluginId)
+    .map(([type]) => type)
+}
+
 /** Remove all contributed types owned by a plugin (deactivation / failure cleanup). */
-export function unregisterContributedTaskProviderType(pluginId: string): void {
+export function unregisterContributedTaskProviderType(pluginId: string): string[] {
+  const removedTypes: string[] = []
   for (const [type, entry] of pluginContributedTaskProviderFactories) {
     if (entry.pluginId === pluginId) {
       pluginContributedTaskProviderFactories.delete(type)
+      removedTypes.push(type)
       log.debug({ type, pluginId }, 'Unregistered contributed task provider type')
     }
   }
-}
-
-/** Look up a contributed task provider entry by type. */
-export function getContributedTaskProviderType(type: string): ContributedTaskProviderEntry | undefined {
-  return pluginContributedTaskProviderFactories.get(type)
+  return removedTypes
 }
 
 /** Resolve the optional instance-config validator for a task-provider type. */
 export function getTaskProviderConfigValidator(type: string): TaskProviderConfigValidator | undefined {
-  return pluginContributedTaskProviderFactories.get(type)?.validateConfig
+  const contributed = pluginContributedTaskProviderFactories.get(type)
+  if (contributed === undefined) return undefined
+  return contributed.validateConfig
 }
 
 export type TaskProviderTypeDescriptor = {
@@ -167,31 +174,50 @@ export type TaskProviderTypeDescriptor = {
   configSchema: readonly ProviderConfigField[]
 }
 
-type BuiltinDescriptorSeed = {
-  type: string
-  displayName: string
-  capabilities: ReadonlySet<TaskCapability>
-  instanceConfigSchema: readonly ProviderConfigField[]
-  contextConfigSchema: readonly ProviderConfigField[]
-  traits: ReadonlySet<TaskProviderTrait>
-}
-
 const legacyConfigSchema = (descriptor: TaskProviderTypeDescriptor): readonly ProviderConfigField[] => [
   ...descriptor.instanceConfigSchema,
   ...descriptor.contextConfigSchema,
 ]
 
-const normalizeConfigField = (field: LegacyProviderConfigField): ProviderConfigField => ({
-  key: field.key,
-  label: field.label,
-  required: field.required,
-  sensitive: field.sensitive ?? false,
-  scope: field.scope === 'user' ? 'context' : (field.scope ?? 'instance'),
-  ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
-})
+const normalizeSensitive = (sensitive: boolean | undefined): boolean => {
+  if (sensitive === undefined) return false
+  return sensitive
+}
 
-const normalizeContributedFields = (fields: readonly LegacyProviderConfigField[] | undefined): ProviderConfigField[] =>
-  (fields ?? []).map((field) => normalizeConfigField(field))
+const normalizeConfigField = (field: LegacyProviderConfigField): ProviderConfigField => {
+  const sensitive = normalizeSensitive(field.sensitive)
+  const scope = normalizeLegacyScope(field.scope)
+  if (field.storageKey === undefined) {
+    return {
+      key: field.key,
+      label: field.label,
+      required: field.required,
+      sensitive,
+      scope,
+    }
+  }
+  return {
+    key: field.key,
+    label: field.label,
+    required: field.required,
+    sensitive,
+    scope,
+    storageKey: field.storageKey,
+  }
+}
+
+const normalizeLegacyScope = (scope: LegacyProviderConfigField['scope']): ProviderConfigField['scope'] => {
+  if (scope === 'user') return 'context'
+  if (scope === undefined) return 'instance'
+  return scope
+}
+
+const normalizeContributedFields = (
+  fields: readonly LegacyProviderConfigField[] | undefined,
+): ProviderConfigField[] => {
+  if (fields === undefined) return []
+  return fields.map((field) => normalizeConfigField(field))
+}
 
 const contributedInstanceFields = (entry: ContributedTaskProviderEntry): readonly ProviderConfigField[] => {
   if (entry.instanceConfigSchema !== undefined) return normalizeContributedFields(entry.instanceConfigSchema)
@@ -203,56 +229,6 @@ const contributedContextFields = (entry: ContributedTaskProviderEntry): readonly
   return normalizeContributedFields(entry.configSchema).filter((field) => field.scope === 'context')
 }
 
-const builtinDescriptorSeeds: readonly BuiltinDescriptorSeed[] = [
-  {
-    type: 'kaneo',
-    displayName: 'Kaneo',
-    capabilities: ALL_CAPABILITIES,
-    traits: KANEO_TRAITS,
-    instanceConfigSchema: [
-      { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
-      { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
-    ],
-    contextConfigSchema: [
-      {
-        key: 'credential',
-        label: 'Kaneo API Key',
-        required: true,
-        sensitive: true,
-        scope: 'context',
-        storageKey: 'kaneo_apikey',
-      },
-      {
-        key: 'workspaceId',
-        label: 'Workspace ID',
-        required: true,
-        sensitive: false,
-        scope: 'context',
-        storageKey: 'kaneo_workspace_id',
-      },
-    ],
-  },
-  {
-    type: 'youtrack',
-    displayName: 'YouTrack',
-    capabilities: YOUTRACK_CAPABILITIES,
-    traits: YOUTRACK_TRAITS,
-    instanceConfigSchema: [
-      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
-    ],
-    contextConfigSchema: [
-      {
-        key: 'token',
-        label: 'YouTrack Permanent Token',
-        required: true,
-        sensitive: true,
-        scope: 'context',
-        storageKey: 'youtrack_token',
-      },
-    ],
-  },
-]
-
 /** Look up a single task-provider type descriptor (built-in or contributed). */
 export function getTaskProviderDescriptor(type: string): TaskProviderTypeDescriptor | undefined {
   return listTaskProviderTypes().find((descriptor) => descriptor.type === type)
@@ -261,7 +237,8 @@ export function getTaskProviderDescriptor(type: string): TaskProviderTypeDescrip
 /** Merge built-in and plugin-contributed task provider types into a static catalog. */
 export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
   const builtin: TaskProviderTypeDescriptor[] = builtinDescriptorSeeds.map((seed) => {
-    const descriptor: TaskProviderTypeDescriptor = {
+    const configSchema = [...seed.instanceConfigSchema, ...seed.contextConfigSchema]
+    return {
       type: seed.type,
       displayName: seed.displayName,
       source: 'builtin',
@@ -269,25 +246,33 @@ export function listTaskProviderTypes(): TaskProviderTypeDescriptor[] {
       contextConfigSchema: seed.contextConfigSchema,
       capabilities: seed.capabilities,
       traits: seed.traits,
-      configSchema: [],
+      configSchema,
     }
-    return { ...descriptor, configSchema: legacyConfigSchema(descriptor) }
   })
   const contributed: TaskProviderTypeDescriptor[] = [...pluginContributedTaskProviderFactories.entries()].map(
     ([type, entry]) => {
       const instanceConfigSchema = contributedInstanceFields(entry)
       const contextConfigSchema = contributedContextFields(entry)
-      const descriptor: TaskProviderTypeDescriptor = {
+      const configSchema = legacyConfigSchema({
         type,
         displayName: entry.displayName,
         source: { plugin: entry.pluginId },
         instanceConfigSchema,
         contextConfigSchema,
         capabilities: entry.capabilities,
-        traits: entry.traits ?? new Set<TaskProviderTrait>(),
+        traits: contributedTraits(entry),
         configSchema: [],
+      })
+      return {
+        type,
+        displayName: entry.displayName,
+        source: { plugin: entry.pluginId },
+        instanceConfigSchema,
+        contextConfigSchema,
+        capabilities: entry.capabilities,
+        traits: contributedTraits(entry),
+        configSchema,
       }
-      return { ...descriptor, configSchema: legacyConfigSchema(descriptor) }
     },
   )
   return [...builtin, ...contributed]

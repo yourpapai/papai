@@ -1,5 +1,6 @@
 // Block test file writes that don't import their corresponding implementation module
 
+import fs from 'node:fs'
 import path from 'node:path'
 
 import { isTestFile, resolveImplPath, testFileImportsImpl } from '../test-resolver.mjs'

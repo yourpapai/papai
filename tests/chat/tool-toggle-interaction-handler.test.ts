@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, test } from 'bun:test'
 
 import { userCachesForTesting } from '../../src/cache.js'
+import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import { handleToolToggleInteraction } from '../../src/chat/tool-toggle-interaction-handler.js'
 import type { IncomingInteraction } from '../../src/chat/types.js'
 import { getToolPrefs, resolveToolPermission } from '../../src/tools/tool-preferences.js'
@@ -56,6 +57,19 @@ describe('handleToolToggleInteraction', () => {
     const { reply: reply2 } = createMockReply()
     await handleToolToggleInteraction(dmInteraction(`tgl:dom:memo:${CTX}`), reply2)
     expect(getToolPrefs(USER).domainDefaults['memo']).toBe('deny')
+  })
+
+  it('toggling a domain off accepts a scoped personal DM target context', async () => {
+    const scopedContextId = toScopedContextId({ platformInstanceId: 'telegram-default', nativeContextId: USER })
+    const scopedCtx = Buffer.from(scopedContextId).toString('base64url')
+    const { reply } = createMockReply()
+    const handled = await handleToolToggleInteraction(
+      { ...dmInteraction(`tgl:dom:memo:${scopedCtx}`), storageContextId: scopedContextId },
+      reply,
+    )
+
+    expect(handled).toBe(true)
+    expect(getToolPrefs(scopedContextId).disabledDomains).toContain('memo')
   })
 
   it('rejects toggling for a context the user cannot manage', async () => {

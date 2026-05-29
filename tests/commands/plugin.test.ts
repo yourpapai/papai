@@ -13,7 +13,12 @@ import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-sto
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
-import { getPluginAdminState, isPluginEnabledForContext, recordRuntimeEvent } from '../../src/plugins/store.js'
+import {
+  getPluginAdminState,
+  getPluginContextState,
+  isPluginEnabledForContext,
+  recordRuntimeEvent,
+} from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
@@ -67,7 +72,7 @@ function makePlugin(...args: [id: string] | [id: string, hash: string]): Discove
 
 function registerCommandForTest(): CommandHandler {
   const { provider, commandHandlers } = createMockChatWithCommandHandlers()
-  registerPluginCommand(provider, 'admin-user')
+  registerPluginCommand(provider)
   const handler = commandHandlers.get('plugin')
   if (handler === undefined) throw new Error('plugin command was not registered')
   return handler
@@ -124,7 +129,7 @@ describe('registerPluginCommand', () => {
   test('registers plugin management list command for bot admin', async () => {
     addAdmin('admin-user', 'test-instance')
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
-    registerPluginCommand(provider, 'admin-user')
+    registerPluginCommand(provider)
 
     const handler = commandHandlers.get('plugin')
     expect(handler).toBeDefined()
@@ -353,6 +358,28 @@ describe('registerPluginCommand', () => {
     expect(isPluginEnabledForContext('toggle-plugin', 'ctx-1')).toBe(false)
   })
 
+  test('disable rejects an unknown plugin without writing context state', async () => {
+    addAdmin('admin-user', 'test-instance')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-1', platformInstanceId: 'test-instance' })
+
+    const output = await runPluginCommand('disable typo-plugin ctx-1')
+
+    expect(output).toContain('not found')
+    expect(getPluginContextState('typo-plugin', 'ctx-1')).toBeUndefined()
+  })
+
+  test('disable rejects a discovered but inactive plugin without writing context state', async () => {
+    addAdmin('admin-user', 'test-instance')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-1', platformInstanceId: 'test-instance' })
+    const plugin = makePlugin('inactive-disable-plugin')
+    pluginRegistry.registerDiscovered(plugin)
+
+    const output = await runPluginCommand('disable inactive-disable-plugin ctx-1')
+
+    expect(output).toContain('not active')
+    expect(getPluginContextState('inactive-disable-plugin', 'ctx-1')).toBeUndefined()
+  })
+
   test('denies enable when target context belongs to another platform instance', async () => {
     addAdmin('platform-admin', 'test-instance')
     setContextSettings({ contextId: 'other-context', taskInstanceId: 'tasks-1', platformInstanceId: 'other-platform' })
@@ -479,12 +506,12 @@ describe('registerPluginCommand', () => {
       manifest: { ...plugin.manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
-    pluginRegistry.evaluateCompatibility(plugin.manifest.id, new Set(), new Set())
+    pluginRegistry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
 
     const output = await runPluginCommand('info incompatible-plugin')
 
     expect(output).toContain('incompatible')
-    expect(output).toContain('Required task capability missing')
+    expect(output).toContain('No active instance satisfies required capabilities')
   })
 
   test('shows runtime error diagnostics in plugin info', async () => {

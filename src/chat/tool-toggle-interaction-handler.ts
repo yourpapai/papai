@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { safeBuildProvider } from '../commands/context-tool-resolution.js'
+import { canManageInteractionTargetContext } from '../commands/plugin-auth.js'
 import {
   buildDomainDrillView,
   buildDomainListView,
@@ -11,7 +12,6 @@ import {
   resolveToolNameCode,
   type ToolMenuView,
 } from '../commands/tool-config-view.js'
-import { listManageableGroups } from '../group-settings/access.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
 import { getToolMetadata, TOOL_METADATA, type ToolDomain } from '../tools/tool-metadata.js'
@@ -34,12 +34,6 @@ function decodeContextId(encoded: string): string | null {
   } catch {
     return null
   }
-}
-
-function canManageTargetContext(interaction: IncomingInteraction, targetContextId: string): boolean {
-  if (interaction.contextType !== 'dm') return targetContextId === interaction.storageContextId
-  if (targetContextId === interaction.user.id) return true
-  return listManageableGroups(interaction.user.id).some((group) => group.contextId === targetContextId)
 }
 
 function availableToolNames(targetContextId: string, actorUserId: string, contextType: 'dm' | 'group'): string[] {
@@ -183,7 +177,8 @@ export async function handleToolToggleInteraction(interaction: IncomingInteracti
     await replyTextPreferReplace(reply, 'Invalid tool action. Please try again.')
     return true
   }
-  if (!canManageTargetContext(interaction, contextId)) {
+  const authorization = canManageInteractionTargetContext(interaction, contextId)
+  if (!authorization.allowed) {
     await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, contextId))
     return true
   }

@@ -289,12 +289,12 @@ export class ChatRouter implements ChatProvider {
   }
 
   private async setCommandsForInstance(instance: ManagedChatInstance, adminUserId: string): Promise<void> {
+    if (instance.provider.setCommands === undefined) return
     try {
-      if (instance.provider.setCommands !== undefined) {
-        await instance.provider.setCommands(adminUserId)
-      }
+      await instance.provider.setCommands(adminUserId)
     } catch (error) {
       log.warn({ platformInstanceId: instance.id, error: errorMessage(error) }, 'failed to set chat commands')
+      throw error
     }
   }
 }
