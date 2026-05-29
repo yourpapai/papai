@@ -11,7 +11,7 @@ import { RecentRequestsResponseSchema } from './admin-schemas.js'
 
 const TASK_PROVIDERS = ['kaneo', 'youtrack'] as const
 
-type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
+type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk' | 'unknown'
 type AdminTaskProvider = (typeof TASK_PROVIDERS)[number] | 'unknown'
 
 const singleKnownProvider = <T extends string>(values: readonly T[]): T | 'unknown' => {
