@@ -272,7 +272,7 @@ async function runPluginSubcommand(subcommand: string, ctx: PluginCommandContext
   }
 }
 
-export function registerPluginCommand(chat: ChatProvider, _adminUserId: string): void {
+export function registerPluginCommand(chat: ChatProvider): void {
   chat.registerCommand('plugin', async (msg, reply, auth) => {
     if (!auth.allowed) return
     if (!isAdmin(msg.user.id, msg.platformInstanceId)) {

@@ -72,7 +72,7 @@ function makePlugin(...args: [id: string] | [id: string, hash: string]): Discove
 
 function registerCommandForTest(): CommandHandler {
   const { provider, commandHandlers } = createMockChatWithCommandHandlers()
-  registerPluginCommand(provider, 'admin-user')
+  registerPluginCommand(provider)
   const handler = commandHandlers.get('plugin')
   if (handler === undefined) throw new Error('plugin command was not registered')
   return handler
@@ -129,7 +129,7 @@ describe('registerPluginCommand', () => {
   test('registers plugin management list command for bot admin', async () => {
     addAdmin('admin-user', 'test-instance')
     const { provider, commandHandlers } = createMockChatWithCommandHandlers()
-    registerPluginCommand(provider, 'admin-user')
+    registerPluginCommand(provider)
 
     const handler = commandHandlers.get('plugin')
     expect(handler).toBeDefined()
