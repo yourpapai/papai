@@ -31,6 +31,13 @@ function extractSignal(init: RequestInit | undefined): AbortSignal | null | unde
   return init.signal
 }
 
+function getHeaderValue(headers: HeadersInit | undefined, name: string): string | null {
+  if (headers === undefined) {
+    return null
+  }
+  return new Headers(headers).get(name)
+}
+
 function makeDeps(): TestDeps {
   const fetchSpy = mock((_url: string, _init?: RequestInit) => Promise.resolve(new Response('ok')))
   const assertSpy = mock((_url: URL) => Promise.resolve())
@@ -151,7 +158,7 @@ describe('buildProviderRuntime.httpFetch', () => {
     expect(assertSpy).toHaveBeenCalledTimes(1)
   })
 
-  test('rewrites a 302 POST redirect replay to GET without the original body', async () => {
+  test('preserves PUT method and body across a 302 redirect replay', async () => {
     mockLogger()
     const { fetchSpy, ...deps } = makeDeps()
     fetchSpy.mockResolvedValueOnce(
@@ -161,14 +168,13 @@ describe('buildProviderRuntime.httpFetch', () => {
     const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
 
     await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
-      method: 'POST',
+      method: 'PUT',
       body: 'title=Task',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
     })
 
     expect(fetchSpy).toHaveBeenCalledTimes(2)
-    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' })
-    expect(fetchSpy.mock.calls[1]?.[1]?.body).toBeUndefined()
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'PUT', body: 'title=Task' })
   })
 
   test('preserves POST method and body across a 307 redirect replay', async () => {
@@ -188,6 +194,52 @@ describe('buildProviderRuntime.httpFetch', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(2)
     expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', body: 'title=Task' })
+  })
+
+  test('rewrites a 303 PUT redirect replay to GET and drops the original body', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 303, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'PUT',
+      body: 'title=Task',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' })
+    expect(fetchSpy.mock.calls[1]?.[1]?.body).toBeUndefined()
+  })
+
+  test('rewritten GET redirect replay drops body-specific headers', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 303, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      method: 'POST',
+      body: 'title=Task',
+      headers: {
+        'content-length': '10',
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: 'Bearer secret',
+      },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' })
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'content-type')).toBeNull()
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'content-length')).toBeNull()
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'authorization')).toBe('Bearer secret')
   })
 
   test('allowedHosts is a separate copy so mutating it cannot affect enforcement', async () => {

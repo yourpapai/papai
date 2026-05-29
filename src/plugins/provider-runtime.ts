@@ -93,17 +93,33 @@ function isRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
 }
 
+function stripRequestBodyHeaders(headers: HeadersInit | undefined): HeadersInit | undefined {
+  if (headers === undefined) {
+    return undefined
+  }
+
+  const nextHeaders = new Headers(headers)
+  nextHeaders.delete('Content-Encoding')
+  nextHeaders.delete('Content-Language')
+  nextHeaders.delete('Content-Location')
+  nextHeaders.delete('Content-Type')
+  nextHeaders.delete('Content-Length')
+
+  return nextHeaders
+}
+
 function buildRedirectFetchInit(fetchInit: RequestInit, status: number): RequestInit {
   const method = getMethod(fetchInit).toUpperCase()
   const shouldRewriteToGet =
-    (status === 301 || status === 302 || status === 303) && method !== 'GET' && method !== 'HEAD'
+    ((status === 301 || status === 302) && method === 'POST') ||
+    (status === 303 && method !== 'GET' && method !== 'HEAD')
 
   if (!shouldRewriteToGet) {
     return fetchInit
   }
 
-  const { body: _ignoredBody, ...rest } = fetchInit
-  return { ...rest, method: 'GET' }
+  const { body: _ignoredBody, headers, ...rest } = fetchInit
+  return { ...rest, headers: stripRequestBodyHeaders(headers), method: 'GET' }
 }
 
 async function fetchWithRedirects(
