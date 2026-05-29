@@ -381,6 +381,26 @@ describe('KonturTalkChatProvider', () => {
       expect(capturedThreadId).toBe('$thread123')
     })
 
+    test('handleUpdate skips non-text messages (e.g. m.image)', async () => {
+      const received: IncomingMessage[] = []
+      mockFetchWithUpdates([
+        makeUpdate({ event_id: '$img1', message_type: 'm.image', body: '' }),
+        makeUpdate({ event_id: '$text1', message_type: 'm.text', body: 'Hello' }),
+      ])
+      const provider = new KonturTalkChatProvider()
+      provider.onMessage((msg, _reply) => {
+        received.push(msg)
+        return Promise.resolve()
+      })
+      await provider.start()
+
+      await delay(200)
+      await provider.stop()
+
+      expect(received.length).toBe(1)
+      expect(received[0]?.text).toBe('Hello')
+    })
+
     test('handleUpdate treats DM messages as contextType=dm', async () => {
       const received: IncomingMessage[] = []
       mockFetchWithUpdates([

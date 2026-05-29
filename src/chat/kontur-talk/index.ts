@@ -176,6 +176,11 @@ export class KonturTalkChatProvider implements ChatProvider {
   }
 
   private async handleUpdate(update: KonturTalkUpdate): Promise<void> {
+    if (update.message_type !== 'm.text') {
+      log.debug({ message_type: update.message_type }, 'Skipping non-text message')
+      return
+    }
+
     const text = update.body ?? ''
     const mentioned = this.isMentioned(update.mentions)
 
