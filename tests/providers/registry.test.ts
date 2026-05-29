@@ -39,11 +39,8 @@ const entry = {
 }
 
 describe('provider registry capability lookup', () => {
-  test('returns YouTrack task capabilities without requiring context credentials', () => {
-    const capabilities = getCapabilitiesForTaskInstance(taskInstance('youtrack'))
-
-    expect(capabilities.has('comments.read')).toBe(true)
-    expect(capabilities.has('workItems.list')).toBe(true)
+  test('throws for unknown provider type (youtrack is no longer a built-in)', () => {
+    expect(() => getCapabilitiesForTaskInstance(taskInstance('youtrack'))).toThrow(/Unknown provider/u)
   })
 })
 
@@ -96,9 +93,9 @@ describe('contributed task provider registry', () => {
     expect(() => createProvider('custom-tracker', {})).toThrow('Unknown provider: custom-tracker')
   })
 
-  test('rejects registering a type that shadows a built-in', () => {
+  test('youtrack is no longer a built-in; registering it as contributed does not throw', () => {
     mockLogger()
-    expect(() => registerContributedTaskProviderType('youtrack', entry)).toThrow()
+    expect(() => registerContributedTaskProviderType('youtrack', entry)).not.toThrow()
   })
 
   test('kaneo is no longer a built-in; it must be plugin-contributed', () => {
@@ -152,59 +149,42 @@ describe('contributed task provider registry', () => {
 })
 
 describe('listTaskProviderTypes (built-in catalog)', () => {
-  test('built-in descriptors expose split instance and context schemas plus traits', () => {
-    const youtrack = listTaskProviderTypes().find((d) => d.type === 'youtrack')
-
-    expect(youtrack?.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl'])
-    expect(youtrack?.contextConfigSchema.find((f) => f.key === 'token')?.storageKey).toBe('youtrack_token')
-    expect(youtrack?.traits.has('command-language:youtrack')).toBe(true)
-  })
-
-  test('includes only youtrack as a built-in descriptor (kaneo is plugin-contributed)', () => {
+  test('built-in catalog is empty (both kaneo and youtrack are plugin-contributed)', () => {
     const types = listTaskProviderTypes()
-
-    expect(types).toHaveLength(1)
-
-    const youtrack = types.find((descriptor) => descriptor.type === 'youtrack')
-
-    expect(youtrack).toBeDefined()
-    expect(youtrack?.source).toBe('builtin')
-    expect(youtrack?.displayName).toBe('YouTrack')
-    expect(youtrack?.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
+    expect(types).toHaveLength(0)
+    expect(types.map((d) => d.type)).not.toContain('youtrack')
+    expect(types.map((d) => d.type)).not.toContain('kaneo')
   })
 
-  test('built-in youtrack provider runtime traits equal descriptor traits', () => {
-    const youtrackDescriptor = getTaskProviderDescriptor('youtrack')
+  test('youtrack is no longer in the built-in catalog', () => {
+    expect(getTaskProviderDescriptor('youtrack')).toBeUndefined()
+  })
 
-    const youtrackProvider = createProvider('youtrack', {
-      baseUrl: 'https://youtrack.invalid',
-      token: 'perm-token',
-    })
-
-    expect(youtrackDescriptor).toBeDefined()
-    expect(youtrackProvider.traits).toEqual(youtrackDescriptor!.traits)
+  test('createProvider throws for youtrack when no plugin has registered it', () => {
+    expect(() => createProvider('youtrack', { baseUrl: 'https://youtrack.invalid', token: 'perm-token' })).toThrow(
+      /Unknown provider/u,
+    )
   })
 })
 
 describe('listTaskProviderTypes built-in scopes', () => {
-  test('youtrack declares instance baseUrl and context token', () => {
+  test('no built-in scopes exist; youtrack is no longer a built-in', () => {
     const yt = listTaskProviderTypes().find((d) => d.type === 'youtrack')
-    expect(yt?.configSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
-    expect(yt?.contextConfigSchema.find((f) => f.key === 'token')?.scope).toBe('context')
-    expect(yt?.contextConfigSchema.find((f) => f.key === 'token')?.sensitive).toBe(true)
+    expect(yt).toBeUndefined()
   })
 })
 
 describe('getCapabilitiesForTaskInstance without credentials', () => {
-  test('returns youtrack capabilities for an instance with no credentials in config', () => {
-    const caps = getCapabilitiesForTaskInstance({
-      id: 'yt',
-      type: 'youtrack',
-      config: { baseUrl: 'https://yt.invalid' },
-      status: 'active',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    })
-    expect(caps.has('comments.create')).toBe(true)
+  test('throws for youtrack when no plugin has registered it (not a builtin)', () => {
+    expect(() =>
+      getCapabilitiesForTaskInstance({
+        id: 'yt',
+        type: 'youtrack',
+        config: { baseUrl: 'https://yt.invalid' },
+        status: 'active',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toThrow(/Unknown provider/u)
   })
 })
 
@@ -228,17 +208,18 @@ describe('registerContributedTaskProviderType duplicates', () => {
     }
   })
 
-  test('a contributed type that shadows a built-in (youtrack) still throws', () => {
+  test('youtrack can be registered as contributed now that it is not a built-in', () => {
     mockLogger()
     expect(() =>
       registerContributedTaskProviderType('youtrack', {
-        pluginId: 'evil',
+        pluginId: 'task-provider-youtrack',
         factory: () => createMockProvider({ name: 'youtrack' }),
         capabilities: new Set<never>(),
-        displayName: 'evil',
+        displayName: 'YouTrack',
         configSchema: [] as const,
       }),
-    ).toThrow()
+    ).not.toThrow()
+    unregisterContributedTaskProviderType('task-provider-youtrack')
   })
 })
 

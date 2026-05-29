@@ -20,11 +20,6 @@ import type { TaskProviderConfigValidator, TaskProviderFactory } from '../../../
 import { mockLogger } from '../../utils/test-helpers.js'
 
 describe('task-provider-youtrack activation', () => {
-  // NOTE: full registry registration (activate() → registerContributedTaskProviderType) will only work
-  // after Task 4.5 removes the youtrack built-in descriptor. Until then, calling activate() on the real
-  // ctx throws because the built-in guard blocks overriding built-in provider types.
-  // This test exercises the factory and provider construction path directly.
-
   test('factory produces a YouTrackProvider with name youtrack', () => {
     mockLogger()
     const provider = new YouTrackProvider({ baseUrl: 'https://youtrack.invalid', token: 'token-abc' })

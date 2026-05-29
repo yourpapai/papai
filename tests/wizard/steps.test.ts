@@ -14,6 +14,31 @@ import { createMockProvider } from '../tools/mock-provider.js'
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
 const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+const YOUTRACK_TOKEN_KEY = 'plugin:task-provider-youtrack:provider:token'
+
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 const registerKaneoContributed = (): void => {
   registerContributedTaskProviderType('kaneo', {
@@ -40,10 +65,12 @@ const registerKaneoContributed = (): void => {
 describe('getWizardSteps', () => {
   beforeEach(() => {
     registerKaneoContributed()
+    registerYouTrackContributed()
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
     unregisterContributedTaskProviderType('plugin-tracker')
   })
 
@@ -56,11 +83,12 @@ describe('getWizardSteps', () => {
     expect(steps[1]?.key).toBe('timezone')
   })
 
-  test('returns the two-step provider+timezone wizard for youtrack', () => {
+  test('returns the two-step provider+timezone wizard for youtrack (contributed)', () => {
     const steps = getWizardSteps('youtrack')
 
     expect(steps).toHaveLength(2)
-    expect(steps[0]?.key).toBe('youtrack_token')
+    // contributed youtrack uses plugin-namespaced storage key
+    expect(steps[0]?.key).toBe(YOUTRACK_TOKEN_KEY)
     expect(steps[1]?.key).toBe('timezone')
   })
 
@@ -86,9 +114,11 @@ describe('getWizardSteps', () => {
     expect(steps[0]?.prompt).toBe('🔑 Enter your Kaneo API key:')
   })
 
-  test('youtrack_token step has correct prompt', () => {
+  test('youtrack token step uses label fallback prompt (contributed, no BUILTIN_PROMPTS match)', () => {
+    // contributed youtrack token storageKey is plugin-namespaced; BUILTIN_PROMPTS has no entry for it
+    // so the prompt falls back to '🔑 Enter your ${field.label}:'
     const steps = getWizardSteps('youtrack')
-    expect(steps[0]?.prompt).toBe('🔑 Enter your YouTrack token:')
+    expect(steps[0]?.prompt).toBe('🔑 Enter your YouTrack Permanent Token:')
   })
 
   test('timezone step has correct prompt', () => {
@@ -124,10 +154,12 @@ describe('getWizardSteps', () => {
 describe('step validation', () => {
   beforeEach(() => {
     registerKaneoContributed()
+    registerYouTrackContributed()
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('validates kaneo credential - accepts non-empty string (contributed)', async () => {
@@ -141,18 +173,20 @@ describe('step validation', () => {
     expect(result).toBe('Kaneo API key cannot be empty')
   })
 
-  test('validates youtrack_token - accepts non-empty string', async () => {
+  test('validates youtrack token step - accepts non-empty string (contributed)', async () => {
+    // contributed youtrack token uses generic required-field validator
     const result = await getWizardSteps('youtrack')[0]!.validate('perm:my-token')
     expect(result).toBeNull()
   })
 
-  test('validates youtrack_token - rejects empty string', async () => {
+  test('validates youtrack token step - rejects empty string (contributed, generic validator)', async () => {
+    // contributed youtrack uses generic required-field validator: '${field.label} cannot be empty'
     const result = await getWizardSteps('youtrack')[0]!.validate('')
-    expect(result).toBe('Token cannot be empty')
+    expect(result).toBe('YouTrack Permanent Token cannot be empty')
   })
 
   test('validates timezone - accepts valid IANA timezone', async () => {
-    // Use youtrack (builtin) for stable timezone step index tests
+    // Use youtrack (contributed) for stable timezone step index tests (step index 1)
     const result = await getWizardSteps('youtrack')[1]!.validate('America/New_York')
     expect(result).toBeNull()
   })
@@ -178,10 +212,12 @@ describe('step validation', () => {
 describe('getStepByIndex', () => {
   beforeEach(() => {
     registerKaneoContributed()
+    registerYouTrackContributed()
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('returns the first step for index 0 (kaneo contributed)', () => {
@@ -190,7 +226,7 @@ describe('getStepByIndex', () => {
     expect(step?.key).toBe(KANEO_CREDENTIAL_KEY)
   })
 
-  test('returns the second step for index 1 (youtrack)', () => {
+  test('returns the second step for index 1 (youtrack contributed)', () => {
     const step = getStepByIndex('youtrack', 1)
     expect(step?.key).toBe('timezone')
   })
@@ -209,10 +245,12 @@ describe('getStepByIndex', () => {
 describe('formatSummary', () => {
   beforeEach(() => {
     registerKaneoContributed()
+    registerYouTrackContributed()
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('formats summary for kaneo provider (contributed)', () => {
@@ -232,16 +270,18 @@ describe('formatSummary', () => {
     expect(summary).not.toContain('Base URL')
   })
 
-  test('formats summary for youtrack provider', () => {
+  test('formats summary for youtrack provider (contributed)', () => {
+    // contributed youtrack token is stored under plugin-namespaced key
     const data = {
-      youtrack_token: 'perm:yt-token',
+      [YOUTRACK_TOKEN_KEY]: 'perm:yt-token',
       timezone: 'UTC',
     }
 
     const summary = formatSummary(data, 'youtrack')
 
     expect(summary).toContain('Configuration Summary')
-    expect(summary).toContain('YouTrack Token: ****oken')
+    // label is 'YouTrack Permanent Token' (from descriptor), displayLabelForKey falls back to label
+    expect(summary).toContain('YouTrack Permanent Token: ****oken')
     expect(summary).toContain('Timezone: UTC')
     expect(summary).not.toContain('LLM API Key')
   })

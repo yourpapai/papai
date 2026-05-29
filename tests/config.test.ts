@@ -3,13 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import { getAllConfig, getConfig, isConfigKey, isSensitiveKey, maskValue, setConfig } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../src/providers/registry.js'
 import type { ConfigKey } from '../src/types/config.js'
+import { createMockProvider } from './tools/mock-provider.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
@@ -115,12 +120,43 @@ describe('isConfigKey', () => {
   })
 })
 
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+const YOUTRACK_TOKEN_KEY = 'plugin:task-provider-youtrack:provider:token' as const
+
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
 describe('getAllConfig', () => {
   beforeEach(async () => {
     await setupTestDb()
     seedCommonTestPlatformInstances()
     clearUserCache(USER_A)
     clearUserCache(USER_B)
+    registerYouTrackContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   const assignYoutrackContext = (contextId: string): void => {
@@ -133,12 +169,14 @@ describe('getAllConfig', () => {
     setContextSettings({ contextId, taskInstanceId: `${contextId}-youtrack`, platformInstanceId: 'telegram-default' })
   }
 
-  test('returns all set configs for user (youtrack builtin context)', () => {
+  test('returns only preference configs for user (youtrack contributed context)', () => {
+    // youtrack is now plugin-contributed; its token key is plugin-namespaced and not a ConfigKey,
+    // so getAllConfig only includes preference keys for a contributed youtrack context
     assignYoutrackContext(USER_A)
-    setConfig(USER_A, 'youtrack_token', 'perm:tok-1')
     setConfig(USER_A, 'timezone', 'UTC')
     const allConfig = getAllConfig(USER_A)
-    expect(allConfig.youtrack_token).toBe('perm:tok-1')
+    // plugin-namespaced token key is not a ConfigKey, so it does not appear in getAllConfig
+    expect(Object.keys(allConfig)).not.toContain(YOUTRACK_TOKEN_KEY)
     expect(allConfig.timezone).toBe('UTC')
   })
 
@@ -148,12 +186,14 @@ describe('getAllConfig', () => {
     expect(allConfig.timezone).toBe('Etc/GMT-5')
   })
 
-  test('does not leak config from other users (youtrack builtin context)', () => {
+  test('does not leak preference config from other users (youtrack contributed context)', () => {
+    // youtrack is now plugin-contributed; preference isolation is still tested via timezone
     assignYoutrackContext(USER_A)
-    setConfig(USER_A, 'youtrack_token', 'perm:tok-a')
-    setConfig(USER_B, 'youtrack_token', 'perm:tok-b')
+    setConfig(USER_A, 'timezone', 'America/New_York')
+    setConfig(USER_B, 'timezone', 'Europe/Berlin')
     const configA = getAllConfig(USER_A)
-    expect(configA.youtrack_token).toBe('perm:tok-a')
+    expect(configA.timezone).toBe('America/New_York')
+    expect(configA.timezone).not.toBe('Europe/Berlin')
   })
 })
 

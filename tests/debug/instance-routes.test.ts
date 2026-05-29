@@ -34,6 +34,31 @@ import { createMockProvider } from '../tools/mock-provider.js'
 import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+/** Register youtrack as a contributed type (it is no longer a builtin). */
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 /** Register kaneo as a contributed type (it is no longer a builtin). */
 const registerKaneoContributed = (): void => {
@@ -168,6 +193,7 @@ describe('instance API routes', () => {
     authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
     registerKaneoContributed()
+    registerYouTrackContributed()
   })
 
   afterEach(() => {
@@ -175,6 +201,7 @@ describe('instance API routes', () => {
     userCachesForTesting.clear()
     setStoreDb(null)
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('creates and lists masked platform instances', async () => {
@@ -757,8 +784,8 @@ describe('instance API routes', () => {
     expect(pick(assertObject(assertArray(await readJson(res))[0]), 'userId')).toBe('admin-1')
   })
 
-  test('GET /api/task-provider-types returns the catalog (youtrack builtin, kaneo contributed)', async () => {
-    // kaneo is registered in beforeEach as a contributed type; youtrack remains builtin
+  test('GET /api/task-provider-types returns the catalog (both kaneo and youtrack are plugin-contributed)', async () => {
+    // both kaneo and youtrack are registered in beforeEach as contributed types
     const res = expectResponse(await route('/api/task-provider-types'))
 
     expect(res.status).toBe(200)
@@ -769,6 +796,8 @@ describe('instance API routes', () => {
     const kaneoEntry = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo'))
     expect(pick(kaneoEntry, 'source')).toEqual({ plugin: KANEO_PLUGIN_ID })
     expect(Array.isArray(pick(kaneoEntry, 'capabilities'))).toBe(true)
+    const youtrackEntry = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack'))
+    expect(pick(youtrackEntry, 'source')).toEqual({ plugin: YOUTRACK_PLUGIN_ID })
   })
 
   test('POST /api/task-instances rejects an unknown provider type', async () => {

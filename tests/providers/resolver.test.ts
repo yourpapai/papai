@@ -24,6 +24,30 @@ import {
 
 /** Minimal kaneo contributed descriptor for resolver tests that need the kaneo config schema. */
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: (config) => createMockProvider({ name: 'youtrack', ...config }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 const registerKaneoContributed = (): void => {
   registerContributedTaskProviderType('kaneo', {
@@ -83,6 +107,7 @@ describe('TaskProviderResolver', () => {
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('returns null when context has no assignment', () => {
@@ -126,9 +151,12 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a YouTrack provider from instance URL and per-context token', () => {
+    // youtrack is now plugin-contributed; register it so the resolver knows its config schema
+    registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-1', 'youtrack_token', 'perm:abc')
+    // youtrack token is sourced via plugin-namespaced key (contributed provider path)
+    setConfigValue('ctx-1', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
     const resolver = makeResolver()
 
     const provider = resolver.resolve('ctx-1')
@@ -184,6 +212,8 @@ describe('TaskProviderResolver', () => {
   })
 
   test('returns null when provider credentials are missing', () => {
+    // youtrack is now plugin-contributed; register it so the resolver knows token is required
+    registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     const resolver = makeResolver()

@@ -18,9 +18,10 @@ import type { TaskCapability } from '../../src/providers/task-capability.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { createMockChat } from '../utils/test-helpers.js'
 
-// Register kaneo as contributed for these tests (it is no longer a builtin).
+// Register kaneo and youtrack as contributed for these tests (neither is a builtin).
 // Kaneo has 'comments.read' capability but not 'workItems.list' (that's YouTrack only).
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
 
 beforeAll(() => {
   registerContributedTaskProviderType('kaneo', {
@@ -32,10 +33,20 @@ beforeAll(() => {
     contextConfigSchema: [],
     traits: new Set(),
   })
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set<TaskCapability>(['workItems.list', 'comments.read']),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [],
+    contextConfigSchema: [],
+    traits: new Set(),
+  })
 })
 
 afterAll(() => {
   unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
 })
 
 const platformInstance = (id: string, status: PlatformInstance['status']): PlatformInstance => ({

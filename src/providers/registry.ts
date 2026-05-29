@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { YouTrackProvider } from '../../plugins/task-provider-youtrack/provider.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { builtinDescriptorSeeds } from './builtin-descriptors.js'
@@ -23,20 +22,14 @@ type LegacyProviderConfigField = Omit<ProviderConfigField, 'scope' | 'sensitive'
   scope?: 'instance' | 'context' | 'user'
 }
 
-const configValue = (config: Record<string, string>, key: string): string => {
-  const value = config[key]
-  if (value === undefined) return ''
-  return value
-}
-
-/** Register the built-in YouTrack provider. */
-const createYouTrackProvider: TaskProviderFactory = (config) => {
-  const baseUrl = configValue(config, 'baseUrl')
-  const token = configValue(config, 'token')
-  return new YouTrackProvider({ baseUrl, token })
-}
-
-const providers = new Map<string, TaskProviderFactory>([['youtrack', createYouTrackProvider]])
+/**
+ * Built-in provider factory map.
+ *
+ * All task providers (Kaneo, YouTrack) are now plugin-contributed exclusively.
+ * This map is intentionally empty; it is still checked in registerContributedTaskProviderType
+ * to guard against future accidental built-in registrations.
+ */
+const providers = new Map<string, TaskProviderFactory>()
 
 export type ContributedTaskProviderEntry = {
   pluginId: string

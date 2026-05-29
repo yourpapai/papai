@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import type { ChatCapability, ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerConfigCommand, renderConfigForTarget } from '../../src/commands/config.js'
-import { setConfig, setPluginConfig } from '../../src/config.js'
+import { setPluginConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
@@ -33,6 +33,7 @@ import {
 const USER_ID = 'config-test-user'
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
 
 const registerKaneoContributed = (): void => {
   registerContributedTaskProviderType('kaneo', {
@@ -133,6 +134,26 @@ describe('/config Command', () => {
       seedCommonTestPlatformInstances()
       clearUserCache(USER_ID)
       registerKaneoContributed()
+      registerContributedTaskProviderType('youtrack', {
+        pluginId: YOUTRACK_PLUGIN_ID,
+        factory: () => createMockProvider({ name: 'youtrack' }),
+        capabilities: new Set(),
+        displayName: 'YouTrack',
+        instanceConfigSchema: [
+          { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+        ],
+        contextConfigSchema: [
+          {
+            key: 'token',
+            label: 'YouTrack Permanent Token',
+            required: true,
+            sensitive: true,
+            scope: 'context',
+            storageKey: 'youtrack_token',
+          },
+        ],
+        traits: new Set(),
+      })
 
       const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
       registerConfigCommand(mockChat, (_userId: string) => true)
@@ -143,6 +164,7 @@ describe('/config Command', () => {
 
     afterEach(() => {
       unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+      unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
     })
 
     test('shows all config keys with values and masked secrets', async () => {
@@ -195,15 +217,16 @@ describe('/config Command', () => {
     })
 
     test('renders only config keys for the assigned task instance', async () => {
+      // youtrack is now plugin-contributed; its field label is 'YouTrack Permanent Token'
       insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
       setContextSettings({ contextId: USER_ID, taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
-      setConfig(USER_ID, 'youtrack_token', 'perm:abc1234')
 
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
 
       assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
-      expect(buttonCalls[0]).toContain('YouTrack Token')
+      // contributed youtrack uses label 'YouTrack Permanent Token' (display label from descriptor)
+      expect(buttonCalls[0]).toContain('YouTrack Permanent Token')
       expect(buttonCalls[0]).toContain('Timezone')
       expect(buttonCalls[0]).not.toContain('Kaneo API Key')
     })

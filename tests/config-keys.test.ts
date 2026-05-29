@@ -25,12 +25,41 @@ import {
   setupTestDb,
 } from './utils/test-helpers.js'
 
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
 describe('getConfigKeysForContext', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
     process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('returns preferences only for an unassigned context', () => {
@@ -46,11 +75,14 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
-  test('returns YouTrack visible keys for an active YouTrack assignment', () => {
+  test('returns only preferences for an active YouTrack assignment (contributed, token key is plugin-namespaced)', () => {
+    // youtrack is now plugin-contributed; its token key is plugin-namespaced (not a ConfigKey),
+    // so getConfigKeysForContext filters it out and returns only preference keys
+    registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-yt')).toEqual(['youtrack_token', 'timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-yt')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('returns preferences only when deleted task instance cascades assignment removal', () => {
@@ -84,14 +116,17 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-demo')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
-  test('getAllConfig only includes keys valid for the context', () => {
+  test('getAllConfig only includes keys valid for the context (contributed youtrack)', () => {
+    // youtrack is now plugin-contributed; token key is plugin-namespaced
+    registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
     setConfig('ctx-yt', 'youtrack_token', 'perm:abc')
     setConfig('ctx-yt', 'timezone', 'UTC')
 
-    expect(getAllConfig('ctx-yt')).toEqual({ youtrack_token: 'perm:abc', timezone: 'UTC' })
+    // The contributed youtrack token uses plugin-namespaced key; legacy 'youtrack_token' is not visible
+    expect(getAllConfig('ctx-yt')).toEqual({ timezone: 'UTC' })
   })
 })
 

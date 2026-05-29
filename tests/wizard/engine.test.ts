@@ -24,6 +24,8 @@ const { validateAndSaveWizardConfig } = await import('../../src/wizard/save.js')
 const { hasActiveWizard, deleteWizardSession } = await import('../../src/wizard/state.js')
 
 const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+const YOUTRACK_TOKEN_KEY = 'plugin:task-provider-youtrack:provider:token'
 
 const registerKaneoContributed = (): void => {
   registerContributedTaskProviderType('kaneo', {
@@ -60,10 +62,31 @@ describe('Wizard Integration (Phase 1)', () => {
     await setupTestDb()
     await deleteWizardSession(userId, storageContextId)
     registerKaneoContributed()
+    registerContributedTaskProviderType('youtrack', {
+      pluginId: YOUTRACK_PLUGIN_ID,
+      factory: () => createMockProvider({ name: 'youtrack' }),
+      capabilities: new Set(),
+      displayName: 'YouTrack',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [
+        {
+          key: 'token',
+          label: 'YouTrack Permanent Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+          storageKey: 'youtrack_token',
+        },
+      ],
+      traits: new Set(),
+    })
   })
 
   afterEach(() => {
     unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('completes the kaneo two-step flow and saves the config', async () => {
@@ -95,9 +118,11 @@ describe('Wizard Integration (Phase 1)', () => {
   })
 
   test('completes the youtrack two-step flow', async () => {
+    // youtrack is now plugin-contributed; prompt uses label fallback (no BUILTIN_PROMPTS match)
     const start = await createWizard(userId, storageContextId, 'youtrack')
     expect(start.success).toBe(true)
-    expect(start.prompt).toContain('🔑 Enter your YouTrack token')
+    // contributed youtrack uses '🔑 Enter your YouTrack Permanent Token:' (label fallback)
+    expect(start.prompt).toContain('🔑 Enter your YouTrack Permanent Token')
 
     await advanceStep(userId, storageContextId, 'perm:token', true)
     const step2 = await advanceStep(userId, storageContextId, 'America/New_York', true)
@@ -105,7 +130,8 @@ describe('Wizard Integration (Phase 1)', () => {
 
     const saveResult = await validateAndSaveWizardConfig(userId, storageContextId)
     expect(saveResult.success).toBe(true)
-    expect(getConfig(storageContextId, 'youtrack_token')).toBe('perm:token')
+    // contributed youtrack stores token under plugin-namespaced key
+    expect(getConfigValue(storageContextId, YOUTRACK_TOKEN_KEY)).toBe('perm:token')
     expect(getConfig(storageContextId, 'timezone')).toBe('America/New_York')
   })
 
