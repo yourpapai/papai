@@ -13,6 +13,15 @@ const base = {
   version: '1.0.0',
   description: 'A test plugin',
   apiVersion: 1,
+  main: 'index.ts',
+  contributes: {
+    tools: ['sample_tool'],
+    promptFragments: [],
+    commands: [],
+    jobs: [],
+    configKeys: [],
+    taskProviderTypes: [],
+  },
 }
 
 describe('pluginManifestSchema mcp field', () => {
@@ -61,15 +70,20 @@ describe('pluginManifestSchema mcp field', () => {
     expect(result.success).toBe(false)
   })
 
-  test('allows main to be omitted when mcp is declared (defaults to index.ts)', () => {
+  test('allows main to be omitted when mcp is declared for explicit mcp-only manifests', () => {
     const parsed = pluginManifestSchema.parse({
-      ...base,
+      id: 'mcp-only-plugin',
+      name: 'MCP Only Plugin',
+      version: '1.0.0',
+      description: 'A test plugin',
+      apiVersion: 1,
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
       mcp: {
         transport: 'streamable-http',
         url: 'https://example.com/mcp',
       },
     })
-    expect(parsed.main).toBe('index.ts')
+    expect(parsed.main).toBeUndefined()
   })
 
   test('accepts mcp with headers, env, toolFilter, and idleTimeoutMs', () => {

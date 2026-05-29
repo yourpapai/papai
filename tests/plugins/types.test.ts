@@ -15,6 +15,7 @@ const baseManifest: z.input<typeof pluginManifestSchema> = {
   version: '1.0.0',
   description: 'A test plugin',
   apiVersion: PLUGIN_API_VERSION,
+  main: 'index.ts',
   contributes: { taskProviderTypes: [] },
 }
 

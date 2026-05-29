@@ -223,6 +223,7 @@ describe('buildPluginContext', () => {
         version: '1.0.0',
         description: 'A test plugin',
         apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
         permissions: ['provider.task'],
         contributes: { taskProviderTypes: ['custom-tracker'] },
         providerConfigSchema: [{ key: 'base_url', label: 'Base URL', required: true }],
