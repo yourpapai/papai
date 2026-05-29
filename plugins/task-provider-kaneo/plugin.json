@@ -8,7 +8,28 @@
   "contributes": {
     "taskProviderTypes": ["kaneo"]
   },
-  "providerCapabilities": [],
+  "providerCapabilities": [
+    "comments.create",
+    "comments.delete",
+    "comments.read",
+    "comments.update",
+    "labels.assign",
+    "labels.create",
+    "labels.list",
+    "labels.update",
+    "projects.create",
+    "projects.delete",
+    "projects.list",
+    "projects.read",
+    "projects.update",
+    "statuses.create",
+    "statuses.delete",
+    "statuses.list",
+    "statuses.reorder",
+    "statuses.update",
+    "tasks.delete",
+    "tasks.relations"
+  ],
   "providerConfigSchema": [
     { "key": "baseUrl", "label": "Kaneo URL", "required": true, "sensitive": false, "scope": "instance" },
     { "key": "internalUrl", "label": "Kaneo Internal URL", "required": false, "sensitive": false, "scope": "instance" }
