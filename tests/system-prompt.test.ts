@@ -225,4 +225,21 @@ describe('ask-tools instruction', () => {
     const prompt = buildSystemPrompt(provider, contextId, enabled)
     expect(prompt).not.toContain('_permission_reason')
   })
+
+  test('does not include ask fragment when askPermissionAvailable is false (proactive turn)', () => {
+    const contextId = 'ask-proactive-ctx'
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const enabled = new Set(['create_task', 'update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled, { askPermissionAvailable: false })
+    expect(prompt).not.toContain('_permission_reason')
+  })
+
+  test('includes ask fragment when askPermissionAvailable is true (interactive turn)', () => {
+    const contextId = 'ask-interactive-ctx'
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const enabled = new Set(['create_task', 'update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled, { askPermissionAvailable: true })
+    expect(prompt).toContain('_permission_reason')
+    expect(prompt).toContain('create_task')
+  })
 })

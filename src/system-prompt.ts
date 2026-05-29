@@ -160,10 +160,15 @@ function buildAskToolsLine(prefs: ToolPrefs, exposed: ReadonlySet<string>): stri
   ].join('\n')
 }
 
+interface AssembleOptions {
+  readonly askPermissionAvailable: boolean
+}
+
 function assembleSystemPrompt(
   provider: TaskProvider,
   contextId: string,
   enabledToolNames: ReadonlySet<string> | undefined,
+  options: AssembleOptions,
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [CORE_INTRO]
@@ -176,8 +181,10 @@ function assembleSystemPrompt(
     const prefs = getToolPrefs(sharedContextId)
     const line = buildUnavailableLine(prefs, enabledToolNames)
     if (line !== null) parts.push(line)
-    const askLine = buildAskToolsLine(prefs, enabledToolNames)
-    if (askLine !== null) parts.push(askLine)
+    if (options.askPermissionAvailable) {
+      const askLine = buildAskToolsLine(prefs, enabledToolNames)
+      if (askLine !== null) parts.push(askLine)
+    }
   }
 
   const basePromptBody = parts.join('\n\n')
@@ -205,8 +212,15 @@ export function buildSystemPrompt(
 export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
-  ...args: readonly [ReadonlySet<string>] | readonly []
+  enabledToolNames: ReadonlySet<string>,
+  options: { askPermissionAvailable: boolean },
+): string
+export function buildSystemPrompt(
+  provider: TaskProvider,
+  contextId: string,
+  ...args: readonly [ReadonlySet<string>, { askPermissionAvailable: boolean }?] | readonly []
 ): string {
   const enabledToolNames = args[0]
-  return assembleSystemPrompt(provider, contextId, enabledToolNames)
+  const options: AssembleOptions = { askPermissionAvailable: args[1]?.askPermissionAvailable ?? true }
+  return assembleSystemPrompt(provider, contextId, enabledToolNames, options)
 }
