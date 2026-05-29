@@ -164,7 +164,11 @@ const runOneFile = (
     srcFile,
     testFiles: resolved.testFiles,
   })
+  fs.rmSync(reportPath, { force: true })
   deps.runStryker(configPath, input.projectRoot)
+  if (!fs.existsSync(reportPath)) {
+    throw new Error(`missing Stryker JSON report for ${srcFile}: ${reportPath}`)
+  }
   const report = deps.readReport(reportPath)
   return {
     sourceFile: srcFile,
@@ -203,6 +207,10 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
 }
 
 export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
+  const unknownArg = argv.find((arg) => arg.startsWith('--') && !arg.startsWith('--threshold='))
+  if (unknownArg !== undefined) {
+    return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
+  }
   const thresholdArgs = argv.filter((arg) => arg.startsWith('--threshold='))
   if (thresholdArgs.length > 1) {
     return { kind: 'usageError', reason: 'threshold must be provided at most once' }

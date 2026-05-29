@@ -26,6 +26,42 @@ const makeReport = (statuses: readonly string[]): StrykerReport => ({
 
 const makeReportDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'paired-run-'))
 
+const isReportConfig = (value: unknown): value is { readonly jsonReporter: { readonly fileName: string } } =>
+  value !== null &&
+  typeof value === 'object' &&
+  'jsonReporter' in value &&
+  value.jsonReporter !== null &&
+  typeof value.jsonReporter === 'object' &&
+  'fileName' in value.jsonReporter &&
+  typeof value.jsonReporter.fileName === 'string'
+
+const isStrykerReport = (value: unknown): value is StrykerReport => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  if (!('files' in value)) return true
+  const files = value.files
+  return files !== null && typeof files === 'object' && !Array.isArray(files)
+}
+
+const readConfiguredReportPath = (configPath: string): string => {
+  const parsed: unknown = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  if (!isReportConfig(parsed)) {
+    throw new Error('Expected paired config to contain jsonReporter.fileName')
+  }
+  return parsed.jsonReporter.fileName
+}
+
+const writeConfiguredReport = (configPath: string, report: StrykerReport): void => {
+  fs.writeFileSync(readConfiguredReportPath(configPath), `${JSON.stringify(report)}\n`)
+}
+
+const readStrykerReport = (reportPath: string): StrykerReport => {
+  const parsed: unknown = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+  if (!isStrykerReport(parsed)) {
+    throw new Error('Expected Stryker report JSON object')
+  }
+  return parsed
+}
+
 const ZERO_SCORE = {
   killed: 0,
   survived: 0,
@@ -43,13 +79,15 @@ const ZERO_SCORE = {
 describe('pairedRun', () => {
   test('runs Stryker once per source file and returns merged score', async () => {
     const reportDir = makeReportDir()
-    const runStryker = mock(() => {})
+    const runStryker = mock((configPath: string) => {
+      writeConfiguredReport(configPath, makeReport(['Killed', 'Survived']))
+    })
     const deps: PairedRunDeps = {
       readBaseConfig: () => ({ bun: { timeout: 120_000 } }),
       resolveCompanion: (srcFile) => `tests/${path.basename(srcFile, '.ts')}.test.ts`,
       loadOverrides: () => ({}),
       runStryker,
-      readReport: () => makeReport(['Killed', 'Survived']),
+      readReport: readStrykerReport,
       log: () => {},
     }
 
@@ -65,6 +103,57 @@ describe('pairedRun', () => {
     expect(result.merged.survived).toBe(2)
     expect(result.merged.score).toBe(0.5)
     expect(result.skipped).toEqual([])
+  })
+
+  test('removes stale reports before running Stryker', async () => {
+    const reportDir = makeReportDir()
+    const staleReportPath = path.join(reportDir, 'src__foo.ts.stryker-report.json')
+    fs.writeFileSync(staleReportPath, `${JSON.stringify(makeReport(['Survived']))}\n`)
+    const runStryker = mock((configPath: string) => {
+      expect(fs.existsSync(staleReportPath)).toBe(false)
+      writeConfiguredReport(configPath, makeReport(['Killed']))
+    })
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/foo.test.ts',
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: () => {},
+    }
+
+    const result = await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      deps,
+    })
+
+    expect(result.merged.killed).toBe(1)
+    expect(result.merged.survived).toBe(0)
+  })
+
+  test('fails when Stryker does not write the expected report', async () => {
+    const reportDir = makeReportDir()
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/foo.test.ts',
+      loadOverrides: () => ({}),
+      runStryker: mock(() => {}),
+      readReport: () => makeReport(['Killed']),
+      log: () => {},
+    }
+
+    await expect(
+      Promise.resolve().then(() =>
+        pairedRun({
+          projectRoot: '/repo',
+          reportDir,
+          sourceFiles: ['src/foo.ts'],
+          deps,
+        }),
+      ),
+    ).rejects.toThrow(/missing Stryker JSON report/u)
   })
 
   test('skips files with no companion and no override', async () => {
@@ -100,13 +189,14 @@ describe('pairedRun', () => {
     const captured = { configPath: '' }
     const runStryker = mock((configPath: string) => {
       captured.configPath = configPath
+      writeConfiguredReport(configPath, makeReport(['Killed']))
     })
     const deps: PairedRunDeps = {
       readBaseConfig: () => ({ bun: { timeout: 120_000 }, ignoreStatic: true }),
       resolveCompanion: () => 'tests/foo.test.ts',
       loadOverrides: () => ({}),
       runStryker,
-      readReport: () => makeReport(['Killed']),
+      readReport: readStrykerReport,
       log: () => {},
     }
 
@@ -165,6 +255,20 @@ describe('parsePairedRunCliArgs', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=1', '--threshold=not-a-number'])).toEqual({
       kind: 'usageError',
       reason: 'threshold must be provided at most once',
+    })
+  })
+
+  test('rejects unknown flags', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshod=0.75'])).toEqual({
+      kind: 'usageError',
+      reason: 'unknown argument --threshod=0.75',
+    })
+  })
+
+  test('rejects split threshold syntax', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold', '0.75'])).toEqual({
+      kind: 'usageError',
+      reason: 'unknown argument --threshold',
     })
   })
 })
