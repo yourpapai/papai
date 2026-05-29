@@ -17,7 +17,7 @@ import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-route
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
 import { listActivePlatformInstancesSafe } from './instances/platform-store.js'
-import { listTaskInstances } from './instances/task-store.js'
+import { listTaskInstancesSafe } from './instances/task-store.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
 import { flushOnShutdown } from './message-queue/index.js'
@@ -122,9 +122,13 @@ if (pluginErrors.length > 0) {
 }
 syncRegistryFromDb(discoveredPlugins)
 try {
+  const taskInstanceResult = listTaskInstancesSafe()
+  for (const failure of taskInstanceResult.failures) {
+    log.warn(failure, 'Skipping unreadable task instance during plugin compatibility evaluation')
+  }
   const compatibilityInstances = collectStartupCompatibilityInstances(
     chatProvider,
-    listTaskInstances(),
+    taskInstanceResult.instances,
     activePlatformResult.instances,
   )
   pluginRegistry.evaluateCompatibilityAcrossInstances(compatibilityInstances)

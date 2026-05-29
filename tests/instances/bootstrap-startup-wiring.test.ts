@@ -20,4 +20,15 @@ describe('bootstrap startup wiring', () => {
     expect(initDbIdx).toBeGreaterThan(-1)
     expect(bootIdx).toBeGreaterThan(initDbIdx)
   })
+
+  test('plugin startup compatibility uses safe task instance decoding', () => {
+    const source = readFileSync('src/index.ts', 'utf8')
+    const compatibilityStart = source.indexOf('collectStartupCompatibilityInstances(')
+    const compatibilityEnd = source.indexOf('pluginRegistry.evaluateCompatibilityAcrossInstances', compatibilityStart)
+    const compatibilitySource = source.slice(compatibilityStart, compatibilityEnd)
+
+    expect(source).toContain("import { listTaskInstancesSafe } from './instances/task-store.js'")
+    expect(compatibilitySource).toContain('taskInstanceResult.instances')
+    expect(compatibilitySource).not.toContain('listTaskInstances()')
+  })
 })
