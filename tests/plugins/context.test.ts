@@ -9,7 +9,11 @@ import { buildPluginContext } from '../../src/plugins/context.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
-import { getContributedTaskProviderType, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
+import {
+  getContributedTaskProviderType,
+  getTaskProviderDescriptor,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -188,6 +192,7 @@ describe('buildPluginContext', () => {
 
     afterEach(() => {
       unregisterContributedTaskProviderType('test-plugin')
+      unregisterContributedTaskProviderType('provider-metadata-plugin')
     })
 
     test('registers a declared type when provider.task is held', () => {
@@ -227,6 +232,51 @@ describe('buildPluginContext', () => {
       const contributed = getContributedTaskProviderType('custom-tracker')
       expect(contributed?.instanceConfigSchema?.map((field) => field.key)).toEqual(['base_url'])
       expect(contributed?.contextConfigSchema?.map((field) => field.key)).toEqual(['token'])
+    })
+
+    test('registers provider storage keys and traits from manifest metadata', () => {
+      const manifest = pluginManifestSchema.parse({
+        id: 'provider-metadata-plugin',
+        name: 'Provider Metadata Plugin',
+        version: '1.0.0',
+        description: 'A provider metadata plugin',
+        apiVersion: PLUGIN_API_VERSION,
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['metadata-tracker'],
+        },
+        providerCapabilities: ['tasks.commands'],
+        providerTraits: ['supports-command-language'],
+        providerConfigSchema: [
+          { key: 'baseUrl', label: 'Base URL', required: true, sensitive: false, scope: 'instance' },
+        ],
+        providerContextConfigSchema: [
+          {
+            key: 'apiToken',
+            storageKey: 'metadata_token',
+            label: 'API Token',
+            required: true,
+            sensitive: true,
+            scope: 'context',
+          },
+        ],
+      })
+      const { ctx } = buildPluginContext(manifest, '__system__')
+
+      ctx.registration.registerTaskProviderType('metadata-tracker', {
+        factory: () => createMockProvider({ name: 'metadata-tracker' }),
+      })
+
+      const descriptor = getTaskProviderDescriptor('metadata-tracker')
+      expect(descriptor?.traits.has('supports-command-language')).toBe(true)
+      expect(descriptor?.contextConfigSchema.find((field) => field.key === 'apiToken')?.storageKey).toBe(
+        'metadata_token',
+      )
     })
 
     test('throws without provider.task permission', () => {
