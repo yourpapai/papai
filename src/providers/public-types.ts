@@ -19,7 +19,6 @@ export type {
   ListTasksParams,
   Project,
   ProviderConfigField,
-  ProviderConfigRequirement,
   RelationType,
   SavedQuery,
   SetTaskVisibilityParams,

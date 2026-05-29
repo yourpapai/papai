@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ProviderConfigRequirement, TaskCapability } from 'papai/plugin-types'
+import type { TaskCapability } from 'papai/plugin-types'
 
 import type { TaskProviderTrait } from '../../src/providers/types.js'
 
@@ -142,8 +142,3 @@ export const YOUTRACK_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProvi
   'command-language:youtrack',
   'custom-fields',
 ])
-
-export const CONFIG_REQUIREMENTS: readonly ProviderConfigRequirement[] = [
-  { key: 'youtrack_url', label: 'YouTrack Base URL', required: true, sensitive: false, scope: 'instance' },
-  { key: 'youtrack_token', label: 'YouTrack Permanent Token', required: true, sensitive: true, scope: 'context' },
-]

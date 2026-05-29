@@ -23,7 +23,7 @@ import type {
 
 import { logger } from '../../src/logger.js'
 import type { YouTrackConfig } from './client.js'
-import { CONFIG_REQUIREMENTS, YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './constants.js'
+import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './constants.js'
 import { normalizeYouTrackDueDateInput, normalizeYouTrackListTaskParams } from './due-date.js'
 import { createYouTrackIdentityResolver } from './identity-resolver.js'
 import {
@@ -86,7 +86,6 @@ export class YouTrackProvider extends YouTrackPhaseFiveProvider implements TaskP
   readonly supportsCustomFields = true
   readonly capabilities = YOUTRACK_CAPABILITIES
   readonly traits = YOUTRACK_TRAITS
-  readonly configRequirements = CONFIG_REQUIREMENTS
   readonly preferredUserIdentifier = 'login' as const
   readonly identityResolver
 

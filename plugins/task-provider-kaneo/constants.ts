@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ProviderConfigRequirement, TaskCapability } from 'papai/plugin-types'
+import type { TaskCapability } from 'papai/plugin-types'
 
 import type { TaskProviderTrait } from '../../src/providers/types.js'
 
@@ -39,7 +39,3 @@ export const KANEO_TRAITS: ReadonlySet<TaskProviderTrait> = new Set<TaskProvider
   'workspace-scoped',
   'task-label-read-requires-provider-specific-api',
 ])
-
-export const CONFIG_REQUIREMENTS: readonly ProviderConfigRequirement[] = [
-  { key: 'kaneo_apikey', label: 'Kaneo API Key', required: true, sensitive: true, scope: 'context' },
-]

@@ -246,12 +246,6 @@ describe('YouTrackProvider', () => {
       expect(provider.capabilities.has('queries.saved')).toBe(true)
     })
 
-    test('has config requirements', () => {
-      expect(provider.configRequirements).toHaveLength(2)
-      expect(provider.configRequirements[0]!.key).toBe('youtrack_url')
-      expect(provider.configRequirements[1]!.key).toBe('youtrack_token')
-    })
-
     test('returns prompt addendum about YouTrack', () => {
       const addendum = provider.getPromptAddendum()
       expect(addendum).toContain('YouTrack')

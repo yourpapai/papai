@@ -247,5 +247,3 @@ export type ProviderConfigField = {
   scope: 'instance' | 'context'
   storageKey?: string
 }
-
-export type ProviderConfigRequirement = ProviderConfigField
