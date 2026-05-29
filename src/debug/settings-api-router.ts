@@ -5,8 +5,6 @@
 
 import { handleConfigRoutes } from './settings/config-routes.js'
 
-const methodNotAllowed = (): Response => new Response('Method not allowed', { status: 405 })
-
 /**
  * Dispatch `/settings/api/*` requests (excluding `/settings/api/session`, owned by
  * settings-router.ts). Returns a Response for owned paths, or null to fall through
@@ -16,5 +14,3 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
   return Promise.resolve(null)
 }
-
-export { methodNotAllowed }
