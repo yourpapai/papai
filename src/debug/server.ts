@@ -17,6 +17,7 @@ import { handleInstanceApiRoute } from './instance-routes.js'
 import { logBuffer, logBufferStream } from './log-buffer.js'
 import { handleMcpStatus } from './mcp-routes.js'
 import { handleAdminPluginConfigGet, handleAdminPluginConfigPost } from './plugin-config-routes.js'
+import { isSettingsPath, routeSettingsPaths } from './settings-router.js'
 import { addClient, init, removeClient, findTurnById } from './state-collector.js'
 import { handleStatsGlobal, handleStatsSubject } from './stats-routes.js'
 
@@ -213,11 +214,14 @@ function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> |
 }
 
 async function routeRequest(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  // Settings trust domain: session-cookie auth only, never DEBUG_TOKEN.
+  if (isSettingsPath(url.pathname)) {
+    return (await routeSettingsPaths(req, url)) ?? new Response('Not found', { status: 404 })
+  }
   if (!isAuthorizedRequest(req)) {
     return new Response('Unauthorized', { status: 401 })
   }
-
-  const url = new URL(req.url)
 
   const instanceApiResponse = await handleInstanceApiRoute(req, url)
   if (instanceApiResponse !== null) return instanceApiResponse

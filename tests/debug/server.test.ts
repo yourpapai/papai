@@ -432,4 +432,24 @@ describe('debug-server', () => {
     await cancelBody(res)
     delete process.env['DEBUG_TOKEN']
   })
+
+  test('settings domain is isolated from DEBUG_TOKEN', async () => {
+    process.env['DEBUG_TOKEN'] = 'server-test-token'
+
+    // A DEBUG_TOKEN bearer must NOT authenticate a settings route (no session cookie).
+    const settingsRes = await fetch(`http://localhost:${TEST_PORT}/settings/api/session`, {
+      headers: { Authorization: 'Bearer server-test-token' },
+    })
+    await cancelBody(settingsRes)
+    expect(settingsRes.status).toBe(401)
+
+    // A settings cookie must NOT authenticate an operator route when DEBUG_TOKEN is set.
+    const operatorRes = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
+      headers: { Cookie: 'papai_settings_session=anything' },
+    })
+    await cancelBody(operatorRes)
+    expect(operatorRes.status).toBe(401)
+
+    delete process.env['DEBUG_TOKEN']
+  })
 })
