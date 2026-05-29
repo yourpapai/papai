@@ -181,7 +181,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
-  const provider = deps.resolve(configId)
+  const provider = await deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
     await reply.text('I need /setup before I can do that.')

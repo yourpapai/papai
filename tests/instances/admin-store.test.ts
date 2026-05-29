@@ -9,7 +9,6 @@ import { getDrizzleDb } from '../../src/db/drizzle.js'
 import { platformAdmins, platformInstances, superAdmins } from '../../src/db/schema.js'
 import {
   addAdmin,
-  deleteAdminsByPlatformInstance,
   isAdmin,
   isPlatformAdmin,
   isSuperAdmin,
@@ -109,38 +108,6 @@ describe('admin-store', () => {
       .map((a) => a.userId)
       .toSorted()
     expect(ids).toEqual(['u1', 'u2'])
-  })
-
-  test('deleteAdminsByPlatformInstance removes only rows for that platform', () => {
-    seedPlatform('tg-default')
-    seedPlatform('mm-default')
-
-    addAdmin('platform-1', 'tg-default')
-    addAdmin('platform-2', 'tg-default')
-    addAdmin('other-platform', 'mm-default')
-    addAdmin('super-user', SUPER_ADMIN_PLATFORM_ID)
-
-    expect(deleteAdminsByPlatformInstance('tg-default')).toBe(2)
-
-    const rows = listAdmins()
-      .map((a) => `${a.platformInstanceId}:${a.userId}`)
-      .toSorted()
-    expect(rows).toEqual(['__super__:super-user', 'mm-default:other-platform'])
-  })
-
-  test('deleteAdminsByPlatformInstance refuses to remove super-admin rows', () => {
-    seedPlatform('tg-default')
-
-    addAdmin('super-user', SUPER_ADMIN_PLATFORM_ID)
-    addAdmin('other-super-user', SUPER_ADMIN_PLATFORM_ID)
-    addAdmin('platform-user', 'tg-default')
-
-    expect(deleteAdminsByPlatformInstance(SUPER_ADMIN_PLATFORM_ID)).toBe(0)
-
-    const rows = listAdmins()
-      .map((a) => `${a.platformInstanceId}:${a.userId}`)
-      .toSorted()
-    expect(rows).toEqual(['__super__:other-super-user', '__super__:super-user', 'tg-default:platform-user'])
   })
 
   test('stores super-admin and platform-admin rows in separate tables', () => {

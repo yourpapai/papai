@@ -199,6 +199,16 @@ describe('pluginManifestSchema', () => {
       })
       expect(result.success).toBe(false)
     })
+
+    test('rejects providerConfigValidator without a contributed task provider type', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: [] },
+        providerConfigValidator: 'validateTrackerConfig',
+      })
+      expect(result.success).toBe(false)
+    })
   })
 
   describe('activationTimeoutMs validation', () => {

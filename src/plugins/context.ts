@@ -76,6 +76,10 @@ export type PluginContext = {
   readonly adminConfig: PluginAdminConfig
 }
 
+export type BuildPluginContextOptions = Readonly<{
+  providerConfigValidator?: TaskProviderConfigValidator
+}>
+
 function buildAdminConfig(manifest: PluginManifest): PluginAdminConfig {
   const adminKeys = new Set(manifest.configRequirements.filter((req) => req.scope === 'admin').map((req) => req.key))
   return Object.freeze({
@@ -122,7 +126,7 @@ function buildPluginLogger(pluginId: string): PluginLogger {
 }
 
 const toProviderConfigField = (
-  field: { key: string; label: string; required: boolean; sensitive: boolean },
+  field: { key: string; label: string; required: boolean; sensitive: boolean; storageKey?: string },
   scope: ProviderConfigField['scope'],
 ): ProviderConfigField => ({
   key: field.key,
@@ -130,10 +134,12 @@ const toProviderConfigField = (
   required: field.required,
   sensitive: field.sensitive,
   scope,
+  ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
 })
 
 function buildRegisterTaskProviderType(
   manifest: PluginManifest,
+  options: BuildPluginContextOptions,
 ): (type: string, descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator }) => void {
   return function registerTaskProviderType(
     type: string,
@@ -151,19 +157,23 @@ function buildRegisterTaskProviderType(
     registerContributedTaskProviderType(type, {
       pluginId: manifest.id,
       factory: descriptor.factory,
-      validateConfig: descriptor.validateConfig,
+      validateConfig: descriptor.validateConfig ?? options.providerConfigValidator,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
       contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
         toProviderConfigField(field, 'context'),
       ),
-      traits: new Set(),
+      traits: new Set(manifest.providerTraits ?? []),
     })
   }
 }
 
-function buildRegistration(manifest: PluginManifest, collected: PluginContributions): PluginRegistration {
+function buildRegistration(
+  manifest: PluginManifest,
+  collected: PluginContributions,
+  options: BuildPluginContextOptions,
+): PluginRegistration {
   const declaredTools = new Set(manifest.contributes.tools)
   const declaredFragments = new Set(manifest.contributes.promptFragments)
   const declaredCommands = new Set(manifest.contributes.commands)
@@ -196,7 +206,7 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
       }
       collected.jobs = [...(collected.jobs ?? []), job]
     },
-    registerTaskProviderType: buildRegisterTaskProviderType(manifest),
+    registerTaskProviderType: buildRegisterTaskProviderType(manifest, options),
   })
 }
 
@@ -207,6 +217,7 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
 export function buildPluginContext(
   manifest: PluginManifest,
   contextId: string,
+  options: BuildPluginContextOptions = {},
 ): { ctx: PluginContext; collected: PluginContributions } {
   const permissions = new Set(manifest.permissions) as ReadonlySet<PluginPermission>
   const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
@@ -231,7 +242,7 @@ export function buildPluginContext(
     permissions,
     kv,
     log,
-    registration: buildRegistration(manifest, collected),
+    registration: buildRegistration(manifest, collected, options),
     providerRuntime,
     identity,
     adminConfig: buildAdminConfig(manifest),

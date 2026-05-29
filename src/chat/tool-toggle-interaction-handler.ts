@@ -36,8 +36,12 @@ function decodeContextId(encoded: string): string | null {
   }
 }
 
-function availableToolNames(targetContextId: string, actorUserId: string, contextType: 'dm' | 'group'): string[] {
-  const provider = safeBuildProvider(targetContextId)
+async function availableToolNames(
+  targetContextId: string,
+  actorUserId: string,
+  contextType: 'dm' | 'group',
+): Promise<string[]> {
+  const provider = await safeBuildProvider(targetContextId)
   if (provider === null) return []
   const tools = buildTools(provider, actorUserId, targetContextId, 'normal', contextType)
   return Object.keys(tools)
@@ -183,7 +187,7 @@ export async function handleToolToggleInteraction(interaction: IncomingInteracti
     return true
   }
 
-  const names = availableToolNames(contextId, interaction.user.id, interaction.contextType)
+  const names = await availableToolNames(contextId, interaction.user.id, interaction.contextType)
   const handled = await handleDomainAction(action, middle, contextId, names, interaction.user.id, reply)
   if (handled) return true
 

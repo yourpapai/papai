@@ -200,7 +200,7 @@ export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
     .values({
       id: input.id,
       type: input.type ?? 'kaneo',
-      config: encryptInstanceConfig(input.config ?? { url: 'https://tasks.invalid' }),
+      config: encryptInstanceConfig(input.config ?? { baseUrl: 'https://tasks.invalid' }),
       status: input.status ?? 'active',
     })
     .onConflictDoNothing({ target: schema.taskInstances.id })

@@ -39,7 +39,7 @@ describe('config-editor back action', () => {
   })
 
   test('rejects editing a key that is not valid for the assigned context', () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: USER_ID, taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
     const result = startEditor(USER_ID, USER_ID, 'kaneo_apikey')
@@ -54,7 +54,7 @@ describe('config-editor back action', () => {
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
-      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+      contextConfigSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
     })
     insertTaskInstance({
       id: 'plugin-prod',

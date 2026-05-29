@@ -6,10 +6,27 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  ApplyInstancesResultSchema,
   PlatformProviderTypeViewSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from '../../../client/admin/instance-fetcher-schemas.js'
+
+describe('ApplyInstancesResultSchema', () => {
+  test('ApplyInstancesResultSchema accepts detailed reconciliation result', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 2,
+      started: ['telegram-main'],
+      stopped: ['discord-old'],
+      removed: ['discord-old'],
+      recreated: ['mattermost-main'],
+      unchanged: ['telegram-secondary'],
+      failed: [{ id: 'telegram-bad', action: 'stop', error: 'boom' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
+})
 
 describe('TaskInstanceViewSchema', () => {
   test('accepts any string type after the enum was opened', () => {

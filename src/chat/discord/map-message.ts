@@ -30,12 +30,11 @@ const ACCEPTED_MESSAGE_TYPES = new Set<number>([0, 19])
 
 /** Map a Discord message to papai's IncomingMessage. Returns null if the message should be ignored. */
 export function mapDiscordMessage(
-  ...args:
-    | [message: DiscordMessageLike, botId: string, _adminUserId: string]
-    | [message: DiscordMessageLike, botId: string, _adminUserId: string, platformInstanceId: string]
+  message: DiscordMessageLike,
+  botId: string,
+  _adminUserId: string,
+  platformInstanceId: string,
 ): IncomingMessage | null {
-  const [message, botId] = args
-  const platformInstanceId = args.length === 4 ? args[3] : 'discord-default'
   if (message.author.bot) {
     log.debug({ messageId: message.id, authorId: message.author.id }, 'Skipping bot-authored message')
     return null

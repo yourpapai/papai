@@ -65,13 +65,7 @@ export class MattermostChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private wsSeq = 1
 
-  constructor(...args: [] | [MattermostConstructorConfig]) {
-    let config: MattermostConstructorConfig
-    if (args[0] === undefined) {
-      config = {}
-    } else {
-      config = args[0]
-    }
+  constructor(config: MattermostConstructorConfig) {
     const resolved = resolveMattermostConfig(config)
     this.baseUrl = resolved.baseUrl
     this.token = resolved.token

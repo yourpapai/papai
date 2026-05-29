@@ -4,8 +4,10 @@
 // See LICENSE in the project root for details.
 
 import pLimit from 'p-limit'
+import { z } from 'zod'
 
 import { logger } from '../logger.js'
+import type { TaskProviderConfigValidator } from '../providers/registry.js'
 import { buildPluginContext } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
@@ -15,6 +17,20 @@ import {
   unregisterContributedTaskProviderTypes,
 } from './task-provider-lifecycle.js'
 import type { DiscoveredPlugin, PluginFactory, PluginInstance } from './types.js'
+
+type PluginModuleRecord = Record<string, unknown> & { readonly default?: unknown }
+
+type ImportedPluginModule = Readonly<{
+  instance: PluginInstance
+  moduleRecord: PluginModuleRecord
+}>
+
+type UnknownProviderConfigValidator = (config: Record<string, string>) => unknown
+
+const providerConfigValidatorResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }),
+  z.object({ ok: z.literal(false), reason: z.string().min(1) }),
+])
 
 function isPluginFactory(value: unknown): value is PluginFactory {
   return typeof value === 'function'
@@ -29,9 +45,19 @@ function isPluginInstance(value: unknown): value is PluginInstance {
   )
 }
 
-async function importPluginModule(entryPoint: string): Promise<PluginInstance> {
+function isUnknownProviderConfigValidator(value: unknown): value is UnknownProviderConfigValidator {
+  return typeof value === 'function'
+}
+
+const isPluginModuleRecord = (value: unknown): value is PluginModuleRecord =>
+  typeof value === 'object' && value !== null
+
+async function importPluginModule(entryPoint: string): Promise<ImportedPluginModule> {
   const mod: unknown = await import(entryPoint)
-  const candidate = typeof mod === 'object' && mod !== null && 'default' in mod ? mod.default : mod
+  if (!isPluginModuleRecord(mod)) {
+    throw new Error('Invalid plugin module contract: module import must return an object')
+  }
+  const candidate = 'default' in mod ? mod.default : mod
   if (!isPluginFactory(candidate)) {
     throw new Error('Invalid plugin module contract: default export must be a factory function')
   }
@@ -39,7 +65,26 @@ async function importPluginModule(entryPoint: string): Promise<PluginInstance> {
   if (!isPluginInstance(instance)) {
     throw new Error('Invalid plugin module contract: factory must return an object with activate(ctx)')
   }
-  return instance
+  return { instance, moduleRecord: mod }
+}
+
+function resolveProviderConfigValidator(
+  exportName: string | undefined,
+  moduleRecord: PluginModuleRecord,
+): TaskProviderConfigValidator | undefined {
+  if (exportName === undefined) return undefined
+  const candidate = moduleRecord[exportName]
+  if (!isUnknownProviderConfigValidator(candidate)) {
+    throw new Error(`Provider config validator export '${exportName}' is not a function`)
+  }
+  return async (config) => {
+    const result = providerConfigValidatorResultSchema.safeParse(await candidate(config))
+    if (result.success) return result.data
+    return {
+      ok: false,
+      reason: `Provider config validator export '${exportName}' returned an invalid result`,
+    }
+  }
 }
 
 function buildActivationTimeout(timeoutMs: number): {
@@ -75,25 +120,29 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
-  const instance = await importPluginModule(entryPoint).catch((err: unknown) => {
+  const imported = await importPluginModule(entryPoint).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
     log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
     pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
     recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
     return null
   })
-  if (instance === null) return false
+  if (imported === null) return false
 
-  const { ctx, collected } = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
+    const providerConfigValidator = resolveProviderConfigValidator(
+      manifest.providerConfigValidator,
+      imported.moduleRecord,
+    )
+    const { ctx, collected } = buildPluginContext(manifest, SYSTEM_CONTEXT_ID, { providerConfigValidator })
+
+    await Promise.race([Promise.resolve(imported.instance.activate(ctx)), activationTimeout.promise])
 
     contributionRegistry.register(manifest.id, collected, manifest)
-    activeInstances.set(manifest.id, instance)
+    activeInstances.set(manifest.id, imported.instance)
     pluginRegistry.markActive(manifest.id)
-    activationOrder.push(manifest.id)
     recordRuntimeEvent(manifest.id, 'activated')
     log.info({ pluginId: manifest.id }, 'Plugin activated successfully')
     return true
@@ -122,6 +171,7 @@ export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void
   const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p))))
   const activated = results.filter(Boolean).length
   const failed = results.length - activated
+  activationOrder.push(...plugins.filter((_, index) => results[index] === true).map((plugin) => plugin.manifest.id))
 
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
 }

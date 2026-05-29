@@ -55,11 +55,17 @@
   const selectedTaskType = $derived(taskProviderTypes.find((descriptor) => descriptor.type === taskType))
 
   const configLabel = (config: InstanceConfigView): string => JSON.stringify(config)
+  const fieldStorageKey = (field: { readonly key: string; readonly storageKey?: string }): string => field.storageKey ?? field.key
   const setSuccess = (message: string): void => {
     status = { kind: 'success', message }
   }
   const setError = (err: unknown): void => {
     status = { kind: 'error', message: err instanceof Error ? err.message : String(err) }
+  }
+
+  const applyFailureMessage = (result: Awaited<ReturnType<typeof applyPlatformInstances>>): string => {
+    const details = result.failed.map((failure) => `${failure.id} ${failure.action} failed: ${failure.error}`).join('; ')
+    return `Failed to apply ${result.applied} platform ${result.applied === 1 ? 'change' : 'changes'}: ${details}`
   }
 
   function confirmDestructive(message: string): boolean {
@@ -178,6 +184,10 @@
   async function applyPlatforms(): Promise<void> {
     try {
       const result = await applyPlatformInstances()
+      if (result.failed.length > 0) {
+        setError(new Error(applyFailureMessage(result)))
+        return
+      }
       platformDirty = false
       await loadPlatformInstances()
       setSuccess(`Applied ${result.applied} platform ${result.applied === 1 ? 'change' : 'changes'}.`)
@@ -194,7 +204,7 @@
         const rawValue = taskConfigFields[field.key]
         const value = (rawValue === undefined ? '' : rawValue).trim()
         if (field.required && value === '') throw new Error(`${field.label} is required`)
-        if (value !== '') config[field.key] = value
+        if (value !== '') config[fieldStorageKey(field)] = value
       }
       await createTaskInstance({ id: taskId.trim(), type: taskType, config })
       taskId = ''

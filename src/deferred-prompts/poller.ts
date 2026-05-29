@@ -201,7 +201,7 @@ async function executeAlertsForUser(
   const storageContextId = getStorageContextId(alerts[0]!.deliveryTarget)
   const configContextId = configContextIdForDelivery(alerts[0]!.deliveryTarget)
   if (resolveProactivePlatformInstanceId(chat, alerts[0]!.deliveryTarget) === null) return
-  const provider = buildProviderFn(configContextId)
+  const provider = await buildProviderFn(configContextId)
   if (provider === null) {
     log.warn({ userId, storageContextId, configContextId }, 'Could not build task provider for alert polling')
     return

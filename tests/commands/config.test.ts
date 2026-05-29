@@ -54,7 +54,7 @@ function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
     id: `${contextId}-kaneo`,
     type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
+    config: { baseUrl: 'https://kaneo.invalid' },
     status: 'active',
   })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
@@ -167,7 +167,12 @@ describe('/config Command', () => {
     })
 
     test('renders only config keys for the assigned task instance', async () => {
-      insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+      insertTaskInstance({
+        id: 'yt-prod',
+        type: 'youtrack',
+        config: { baseUrl: 'https://yt.invalid' },
+        status: 'active',
+      })
       setContextSettings({ contextId: USER_ID, taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
       setConfig(USER_ID, 'youtrack_token', 'perm:abc1234')
 
@@ -189,7 +194,7 @@ describe('/config Command', () => {
         factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
         capabilities: new Set(),
         displayName: 'Long Plugin Provider',
-        configSchema: [
+        contextConfigSchema: [
           {
             key: 'very-long-context-token-field',
             label: 'Plugin Token',
@@ -280,7 +285,7 @@ describe('/config Command', () => {
       insertTaskInstance({
         id: `${USER_ID}-missing-capability`,
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
       })
       setContextSettings({

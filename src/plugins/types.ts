@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import type { ChatCapability } from '../chat/types.js'
 import { mcpPluginConfigSchema } from '../mcp/types.js'
-import type { TaskCapability } from '../providers/types.js'
+import type { TaskCapability, TaskProviderTrait } from '../providers/types.js'
 
 export type {
   PluginCommand,
@@ -138,6 +138,12 @@ const providerTypeSchema = z
   .max(64)
   .regex(/^[a-z][a-z0-9-]*$/u, 'Provider type must be lowercase kebab-case starting with a letter')
 
+const providerConfigFieldKeySchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-zA-Z0-9_]*$/u, 'Provider config field key must start with a letter')
+
 const providerHostSchema = z
   .string()
   .min(1)
@@ -168,10 +174,14 @@ const pluginConfigRequirementSchema = configRequirementBaseSchema.extend({
 })
 
 const providerInstanceConfigRequirementSchema = configRequirementBaseSchema.extend({
+  key: providerConfigFieldKeySchema,
+  storageKey: configKeySchema.optional(),
   scope: z.literal('instance').optional().default('instance'),
 })
 
 const providerContextConfigRequirementSchema = configRequirementBaseSchema.extend({
+  key: providerConfigFieldKeySchema,
+  storageKey: configKeySchema.optional(),
   scope: z.literal('context').optional().default('context'),
 })
 
@@ -188,6 +198,13 @@ const mainPathSchema = z.string().refine(
 )
 
 const taskCapabilityTuple = TASK_CAPABILITY_VALUES
+const taskProviderTraitTuple = [
+  'workspace-scoped',
+  'task-label-read-requires-provider-specific-api',
+  'supports-command-language',
+  'command-language:youtrack',
+  'custom-fields',
+] as const satisfies readonly TaskProviderTrait[]
 const chatCapabilityTuple = CHAT_CAPABILITY_VALUES
 const permissionTuple = PLUGIN_PERMISSIONS
 
@@ -217,6 +234,7 @@ export const pluginManifestSchema = z
     requiredChatCapabilities: z.array(z.enum(chatCapabilityTuple)).optional().default([]),
     configRequirements: z.array(pluginConfigRequirementSchema).optional().default([]),
     providerCapabilities: z.array(z.enum(taskCapabilityTuple)).optional().default([]),
+    providerTraits: z.array(z.enum(taskProviderTraitTuple)).optional().default([]),
     providerConfigSchema: z.array(providerInstanceConfigRequirementSchema).optional().default([]),
     providerContextConfigSchema: z.array(providerContextConfigRequirementSchema).optional().default([]),
     providerAllowedHosts: z.array(providerHostSchema).optional().default([]),
@@ -233,10 +251,15 @@ export const pluginManifestSchema = z
     message: "Declaring contributes.taskProviderTypes requires the 'provider.task' permission",
     path: ['permissions'],
   })
+  .refine((m) => m.providerConfigValidator === undefined || m.contributes.taskProviderTypes.length > 0, {
+    message: 'Declaring providerConfigValidator requires a contributed task provider type',
+    path: ['providerConfigValidator'],
+  })
 
 type ParsedPluginManifest = z.output<typeof pluginManifestSchema>
-export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema'> & {
+export type PluginManifest = Omit<ParsedPluginManifest, 'providerContextConfigSchema' | 'providerTraits'> & {
   providerContextConfigSchema?: ParsedPluginManifest['providerContextConfigSchema']
+  providerTraits?: ParsedPluginManifest['providerTraits']
 }
 /** A validated plugin discovered from the filesystem. */
 export type DiscoveredPlugin = {
