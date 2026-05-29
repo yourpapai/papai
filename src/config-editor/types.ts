@@ -15,6 +15,7 @@ export interface ConfigEditorSession {
   userId: string
   storageContextId: string
   startedAt: Date
+  sessionToken: string
   editingKey: string
   pendingValue?: string
   originalMessageId?: string
@@ -37,6 +38,7 @@ export interface EditorButton {
   text: string
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup'
   key?: string
+  sessionToken?: string
   style?: 'primary' | 'secondary' | 'danger'
 }
 

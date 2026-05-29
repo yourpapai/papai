@@ -8,6 +8,8 @@
  * In-memory store for active config editor sessions
  */
 
+import { randomBytes } from 'node:crypto'
+
 import { logger } from '../logger.js'
 import type { ConfigEditorSession, CreateEditorSessionParams } from './types.js'
 
@@ -18,6 +20,8 @@ const activeSessions: Map<string, ConfigEditorSession> = new Map()
 
 // 30 minutes TTL
 const EDITOR_SESSION_TTL_MS = 30 * 60 * 1000
+
+const createSessionToken = (): string => randomBytes(4).toString('base64url')
 
 /**
  * Create a session key from userId and storageContextId
@@ -40,6 +44,7 @@ export const createEditorSession = (params: CreateEditorSessionParams): ConfigEd
     userId,
     storageContextId,
     startedAt: new Date(),
+    sessionToken: createSessionToken(),
     editingKey,
     originalMessageId,
   }

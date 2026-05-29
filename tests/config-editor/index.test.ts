@@ -83,6 +83,18 @@ describe('config-editor public API', () => {
     expect(serializeCallbackData({ action: 'save', key: 'timezone' })).toBe('cfg:save:timezone')
   })
 
+  test('save callbacks round-trip a session token when provided', () => {
+    const data = serializeCallbackData({ action: 'save', key: 'timezone', sessionToken: 'abc123' }, 'group-9')
+
+    expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+
+    const parsed = parseCallbackData(data)
+    expect(parsed.action).toBe('save')
+    expect(parsed.key).toBe('timezone')
+    expect(parsed.sessionToken).toBe('abc123')
+    expect(parsed.targetContextId).toBe('group-9')
+  })
+
   test('serializeCallbackData encodes targetContextId when provided', () => {
     const data = serializeCallbackData({ action: 'edit', key: 'timezone' }, 'group-9')
     expect(data).toContain('cfg:edit:timezone@')
@@ -173,7 +185,7 @@ describe('config-editor public API', () => {
     const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
     const actions = [
       { action: 'edit' as const, key },
-      { action: 'save' as const, key },
+      { action: 'save' as const, key, sessionToken: 'abc123' },
       { action: 'cancel' as const },
       { action: 'back' as const },
       { action: 'setup' as const },

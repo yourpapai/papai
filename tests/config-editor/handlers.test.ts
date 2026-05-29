@@ -107,7 +107,8 @@ describe('config-editor back action', () => {
     const key = 'plugin:plugin-tracker:provider:token'
     const started = startEditor(USER_ID, USER_ID, key)
     const pending = handleEditorMessage(USER_ID, USER_ID, 'secret-token')
-    const saved = handleEditorCallback(USER_ID, USER_ID, 'save', key)
+    const session = getEditorSession(USER_ID, USER_ID)
+    const saved = handleEditorCallback(USER_ID, USER_ID, 'save', key, session?.sessionToken)
 
     expect(started.response).toContain('Plugin Token')
     expect(pending.response).toContain('****oken')
@@ -122,7 +123,8 @@ describe('config-editor back action', () => {
     const key = `plugin:${pluginId}:api_token`
     const started = startEditor(USER_ID, USER_ID, key)
     const pending = handleEditorMessage(USER_ID, USER_ID, 'secret-token')
-    const saved = handleEditorCallback(USER_ID, USER_ID, 'save', key)
+    const session = getEditorSession(USER_ID, USER_ID)
+    const saved = handleEditorCallback(USER_ID, USER_ID, 'save', key, session?.sessionToken)
 
     expect(started.response).toContain('API Token')
     expect(pending.response).toContain('****oken')
@@ -171,5 +173,46 @@ describe('config-editor back action', () => {
     })
 
     handleEditorCallback(userId, storageContextId, 'back')
+  })
+
+  test('same-field stale save callback from an older session is rejected', () => {
+    const userId = 'config-editor-stale-same-field-user'
+    const storageContextId = 'config-editor-stale-same-field-context'
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'UTC')
+    const olderSession = getEditorSession(userId, storageContextId)
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'Europe/Berlin')
+    const activeSession = getEditorSession(userId, storageContextId)
+
+    const result = handleEditorCallback(userId, storageContextId, 'save', 'timezone', olderSession?.sessionToken)
+
+    expect(result).toEqual({ handled: false })
+    expect(getConfigValue(storageContextId, 'timezone')).toBeNull()
+    expect(getEditorSession(userId, storageContextId)).toMatchObject({
+      editingKey: 'timezone',
+      pendingValue: 'Europe/Berlin',
+      sessionToken: activeSession?.sessionToken,
+    })
+
+    handleEditorCallback(userId, storageContextId, 'back')
+  })
+
+  test('active save callback for the current session still saves successfully', () => {
+    const userId = 'config-editor-active-save-user'
+    const storageContextId = 'config-editor-active-save-context'
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'Europe/Berlin')
+    const activeSession = getEditorSession(userId, storageContextId)
+
+    const result = handleEditorCallback(userId, storageContextId, 'save', 'timezone', activeSession?.sessionToken)
+
+    expect(result.handled).toBe(true)
+    expect(result.response).toBe('✅ **Timezone** saved successfully.')
+    expect(getConfigValue(storageContextId, 'timezone')).toBe('Europe/Berlin')
+    expect(getEditorSession(userId, storageContextId)).toBeNull()
   })
 })

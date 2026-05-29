@@ -32,7 +32,7 @@ function fieldFingerprint(storageKey: string): string {
 
 function compactCallbackData(
   raw: string,
-  button: Pick<EditorButton, 'action' | 'key'>,
+  button: Pick<EditorButton, 'action' | 'key' | 'sessionToken'>,
   targetContextId: string | undefined,
 ): string {
   if (Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES) return raw
@@ -44,7 +44,9 @@ function compactCallbackData(
   ) {
     const fieldIndex = getConfigFieldsForContext(targetContextId).findIndex((field) => field.storageKey === button.key)
     if (fieldIndex !== -1)
-      return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}:${targetTag(targetContextId)}:${fieldFingerprint(button.key)}`
+      return button.action === 'save' && button.sessionToken !== undefined
+        ? `cfg:s:${fieldIndex.toString(36)}:${targetTag(targetContextId)}:${fieldFingerprint(button.key)}:${button.sessionToken}`
+        : `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}:${targetTag(targetContextId)}:${fieldFingerprint(button.key)}`
   }
 
   if (
@@ -83,19 +85,27 @@ function parseCompactCallbackKey(
 ): {
   action: 'edit' | 'save' | null
   key: string | null
+  sessionToken?: string
 } | null {
   if (!core.startsWith(prefix)) return null
 
-  const [index, tag, fingerprint] = core.slice(prefix.length).split(':')
+  const [index, tag, fingerprint, sessionToken] = core.slice(prefix.length).split(':')
   const isValid =
     index !== undefined &&
     tag !== undefined &&
     fingerprint !== undefined &&
     /^[0-9a-z]+$/u.test(index) &&
     /^[A-Za-z0-9_-]+$/u.test(tag) &&
-    /^[A-Za-z0-9_-]+$/u.test(fingerprint)
+    /^[A-Za-z0-9_-]+$/u.test(fingerprint) &&
+    (sessionToken === undefined || /^[A-Za-z0-9_-]+$/u.test(sessionToken))
 
-  return isValid ? { action, key: `#${index}:${tag}:${fingerprint}` } : { action: null, key: null }
+  return isValid
+    ? {
+        action,
+        key: `#${index}:${tag}:${fingerprint}`,
+        sessionToken,
+      }
+    : { action: null, key: null }
 }
 
 function parseCompactActionTag(core: string): {
@@ -116,7 +126,10 @@ function parseCompactActionTag(core: string): {
   }
 }
 
-export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key'>, targetContextId?: string): string {
+export function serializeCallbackData(
+  button: Pick<EditorButton, 'action' | 'key' | 'sessionToken'>,
+  targetContextId?: string,
+): string {
   switch (button.action) {
     case 'edit':
       return compactCallbackData(
@@ -126,7 +139,14 @@ export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key
       )
     case 'save':
       return compactCallbackData(
-        appendContext(button.key === undefined ? 'cfg:back' : `cfg:save:${button.key}`, targetContextId),
+        appendContext(
+          button.key === undefined
+            ? 'cfg:back'
+            : button.sessionToken === undefined
+              ? `cfg:save:${button.key}`
+              : `cfg:save:${button.key}~${button.sessionToken}`,
+          targetContextId,
+        ),
         button,
         targetContextId,
       )
@@ -144,6 +164,7 @@ export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key
 function parseRawCallbackData(data: string): {
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup' | null
   key: string | null
+  sessionToken?: string
   targetContextId?: string
   targetTag?: string
 } {
@@ -168,8 +189,21 @@ function parseRawCallbackData(data: string): {
   }
 
   if (core.startsWith('cfg:save:')) {
-    const key = core.replace('cfg:save:', '')
-    return isAllowedDynamicConfigKey(key) ? { action: 'save', key, targetContextId } : { action: null, key: null }
+    const payload = core.replace('cfg:save:', '')
+    const separatorIndex = payload.lastIndexOf('~')
+    if (separatorIndex === -1) {
+      return isAllowedDynamicConfigKey(payload)
+        ? { action: 'save', key: payload, targetContextId }
+        : { action: null, key: null }
+    }
+
+    const key = payload.slice(0, separatorIndex)
+    const sessionToken = payload.slice(separatorIndex + 1)
+    const hasValidSessionToken = /^[A-Za-z0-9_-]+$/u.test(sessionToken)
+
+    return isAllowedDynamicConfigKey(key) && hasValidSessionToken
+      ? { action: 'save', key, sessionToken, targetContextId }
+      : { action: null, key: null }
   }
 
   return { action: null, key: null }

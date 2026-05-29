@@ -131,13 +131,22 @@ export function startEditor(userId: string, storageContextId: string, key: strin
   }
 }
 
-function handleSaveAction(userId: string, storageContextId: string, key?: string): EditorProcessResult {
+function handleSaveAction(
+  userId: string,
+  storageContextId: string,
+  key?: string,
+  sessionToken?: string,
+): EditorProcessResult {
   const session = getEditorSession(userId, storageContextId)
   if (session === null || session.pendingValue === undefined) {
     return { handled: false }
   }
 
   if (key !== undefined && key !== session.editingKey) {
+    return { handled: false }
+  }
+
+  if (sessionToken === undefined || sessionToken !== session.sessionToken) {
     return { handled: false }
   }
 
@@ -196,6 +205,20 @@ function handleSetupAction(): EditorProcessResult {
   }
 }
 
+function buildSaveConfirmationButtons(sessionKey: string, sessionToken: string, emoji: string): EditorButton[] {
+  return [
+    { text: '❌ Cancel', action: 'cancel', style: 'danger' },
+    { text: '⬅️ Back', action: 'back', style: 'secondary' },
+    {
+      text: `✅ Save ${emoji}`,
+      action: 'save',
+      key: sessionKey,
+      sessionToken,
+      style: 'primary',
+    },
+  ]
+}
+
 /**
  * Handle a button callback action
  */
@@ -204,12 +227,13 @@ export function handleEditorCallback(
   storageContextId: string,
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup',
   key?: string,
+  sessionToken?: string,
 ): EditorProcessResult {
   switch (action) {
     case 'edit':
       return key === undefined ? { handled: false } : startEditor(userId, storageContextId, key)
     case 'save':
-      return handleSaveAction(userId, storageContextId, key)
+      return handleSaveAction(userId, storageContextId, key, sessionToken)
     case 'cancel':
       return handleCancelAction(userId, storageContextId)
     case 'back':
@@ -264,11 +288,7 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
   return {
     handled: true,
     response: `✏️ **${field.label}**\n\nNew value: \`${maskedOrRaw}\`\n\nSave this value?`,
-    buttons: [
-      { text: '❌ Cancel', action: 'cancel', style: 'danger' },
-      { text: '⬅️ Back', action: 'back', style: 'secondary' },
-      { text: `✅ Save ${emoji}`, action: 'save', key: session.editingKey, style: 'primary' },
-    ],
+    buttons: buildSaveConfirmationButtons(session.editingKey, session.sessionToken, emoji),
     isSensitiveKey: sensitiveKey,
   }
 }

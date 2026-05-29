@@ -651,7 +651,7 @@ describe('routeInteraction', () => {
   })
 
   test('saves encoded legacy personal cfg callback with unscoped editor session', async () => {
-    createEditorSession({
+    const session = createEditorSession({
       userId: interaction.user.id,
       storageContextId: interaction.user.id,
       editingKey: 'timezone',
@@ -661,7 +661,10 @@ describe('routeInteraction', () => {
     const handled = await routeInteraction(
       {
         ...interaction,
-        callbackData: `cfg:save:timezone@${Buffer.from(interaction.user.id).toString('base64url')}`,
+        callbackData: serializeCallbackData(
+          { action: 'save', key: 'timezone', sessionToken: session.sessionToken },
+          interaction.user.id,
+        ),
       },
       reply,
       createMockAuth(true),
@@ -708,14 +711,21 @@ describe('routeInteraction', () => {
       platformInstanceId: interaction.platformInstanceId,
       nativeContextId: 'group-9',
     })
-    createEditorSession({
+    const session = createEditorSession({
       userId: interaction.user.id,
       storageContextId: scopedGroupId,
       editingKey: 'timezone',
     })
     handleEditorMessage(interaction.user.id, scopedGroupId, 'Europe/Berlin')
 
-    await routeInteraction({ ...interaction, callbackData: 'cfg:save:timezone' }, reply, createMockAuth(true))
+    await routeInteraction(
+      {
+        ...interaction,
+        callbackData: serializeCallbackData({ action: 'save', key: 'timezone', sessionToken: session.sessionToken }),
+      },
+      reply,
+      createMockAuth(true),
+    )
 
     expect(getConfig(scopedGroupId, 'timezone')).toBe('Europe/Berlin')
     expect(getConfig('group-9', 'timezone')).toBeNull()

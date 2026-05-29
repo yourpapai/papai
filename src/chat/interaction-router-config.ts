@@ -140,7 +140,7 @@ export async function defaultHandleConfigInteraction(
   if (parsed.key?.startsWith('#') === true && key === undefined) {
     return replyUnknownConfigAction(reply, callbackData)
   }
-  const result = handleEditorCallback(user.id, targetContextId, parsed.action, key)
+  const result = handleEditorCallback(user.id, targetContextId, parsed.action, key, parsed.sessionToken)
 
   if (!result.handled) {
     log.warn({ action: parsed.action, key: parsed.key }, 'Config editor callback not handled')
