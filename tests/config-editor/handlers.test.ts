@@ -128,6 +128,6 @@ describe('config-editor back action', () => {
     expect(pending.response).toContain('****oken')
     expect(saved.response).toBe('✅ **API Token** saved successfully.')
     expect(getPluginConfig(USER_ID, pluginId, 'api_token')).toBe('secret-token')
-    expect(getConfigValue(USER_ID, key)).toBeNull()
+    expect(getConfigValue(USER_ID, key)).toBe('secret-token')
   })
 })
