@@ -424,6 +424,9 @@ describe('activatePlugins', () => {
 
     expect(contributionRegistry.getContributions('deactivate-error-plugin')).toBeUndefined()
     expect(
+      requireValue(pluginRegistry.getEntry('deactivate-error-plugin'), 'deactivate error registry entry').state,
+    ).toBe('approved')
+    expect(
       requireValue(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0], 'deactivate error runtime event').message,
     ).toContain('deactivate boom')
   })

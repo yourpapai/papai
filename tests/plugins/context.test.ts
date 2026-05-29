@@ -149,6 +149,13 @@ describe('buildPluginContext', () => {
     expect(Object.isFrozen(ctx.adminConfig)).toBe(true)
   })
 
+  test('exposes permissions as an immutable set', () => {
+    const { ctx } = buildPluginContext(makeManifest({ permissions: ['storage', 'http'] }), 'ctx-1')
+
+    expect(ctx.permissions.has('storage')).toBe(true)
+    expect('add' in ctx.permissions).toBe(false)
+  })
+
   test('denies kv operations when storage permission is missing', () => {
     const { ctx } = buildPluginContext(makeManifest({ permissions: [] }), 'ctx-1')
 
@@ -270,6 +277,86 @@ describe('buildPluginContext', () => {
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
       expect(() => ctx.registration.registerTaskProviderType('youtrack', stubProviderFactory)).toThrow(
         'is not declared in plugin manifest contributes.taskProviderTypes',
+      )
+    })
+
+    test('throws on duplicate task provider registration', () => {
+      const manifest = makeManifest({
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['custom-tracker'],
+        },
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+
+      ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)
+
+      expect(() => ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)).toThrow(
+        "Task provider type 'custom-tracker' was registered more than once",
+      )
+    })
+  })
+
+  describe('duplicate registration rejection', () => {
+    test('throws on duplicate tool registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const tool = {
+        name: 'allowed_tool',
+        description: 'Allowed tool',
+        execute: (): Promise<unknown> => Promise.resolve<unknown>('ok'),
+      }
+
+      ctx.registration.registerTool(tool)
+
+      expect(() => ctx.registration.registerTool(tool)).toThrow("Tool 'allowed_tool' was registered more than once")
+    })
+
+    test('throws on duplicate prompt fragment registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const fragment = {
+        name: 'allowed_fragment',
+        content: 'Allowed fragment',
+      }
+
+      ctx.registration.registerPromptFragment(fragment)
+
+      expect(() => ctx.registration.registerPromptFragment(fragment)).toThrow(
+        "Prompt fragment 'allowed_fragment' was registered more than once",
+      )
+    })
+
+    test('throws on duplicate command registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const command = {
+        name: 'allowed_command',
+        description: 'Allowed command',
+        execute: (): Promise<void> => Promise.resolve(),
+      }
+
+      ctx.registration.registerCommand(command)
+
+      expect(() => ctx.registration.registerCommand(command)).toThrow(
+        "Command 'allowed_command' was registered more than once",
+      )
+    })
+
+    test('throws on duplicate scheduled job registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const job = {
+        name: 'allowed_job',
+        intervalMs: 60_000,
+        execute: (): Promise<void> => Promise.resolve(),
+      }
+
+      ctx.registration.registerScheduledJob(job)
+
+      expect(() => ctx.registration.registerScheduledJob(job)).toThrow(
+        "Scheduled job 'allowed_job' was registered more than once",
       )
     })
   })

@@ -40,6 +40,13 @@ export type PluginAdminConfig = {
   get(key: string): string | undefined
 }
 
+export type PluginPermissionSet = Pick<
+  ReadonlySet<PluginPermission>,
+  'has' | 'forEach' | 'entries' | 'keys' | 'values' | 'size'
+> & {
+  [Symbol.iterator](): SetIterator<PluginPermission>
+}
+
 /** Registration API given to a plugin's activate() function. */
 export type PluginRegistration = {
   /** Register a tool contribution. The name must match a declared contributes.tools entry. */
@@ -58,7 +65,7 @@ export type PluginRegistration = {
 export type PluginContext = {
   readonly pluginId: string
   readonly contextId: string
-  readonly permissions: ReadonlySet<PluginPermission>
+  readonly permissions: PluginPermissionSet
   readonly kv: PluginKvStore
   readonly log: PluginLogger
   readonly registration: PluginRegistration
@@ -114,6 +121,38 @@ function buildPluginLogger(pluginId: string): PluginLogger {
   })
 }
 
+function buildPermissions(manifest: PluginManifest): PluginPermissionSet {
+  const permissions = new Set(manifest.permissions)
+  return Object.freeze({
+    get size(): number {
+      return permissions.size
+    },
+    has(permission: PluginPermission): boolean {
+      return permissions.has(permission)
+    },
+    forEach(
+      callbackfn: (value: PluginPermission, value2: PluginPermission, set: ReadonlySet<PluginPermission>) => void,
+      thisArg?: unknown,
+    ): void {
+      permissions.forEach((value) => {
+        callbackfn.call(thisArg, value, value, permissions)
+      })
+    },
+    entries(): SetIterator<[PluginPermission, PluginPermission]> {
+      return permissions.entries()
+    },
+    keys(): SetIterator<PluginPermission> {
+      return permissions.keys()
+    },
+    values(): SetIterator<PluginPermission> {
+      return permissions.values()
+    },
+    [Symbol.iterator](): SetIterator<PluginPermission> {
+      return permissions[Symbol.iterator]()
+    },
+  })
+}
+
 const toProviderConfigField = (
   field: { key: string; label: string; required: boolean; sensitive: boolean },
   scope: ProviderConfigField['scope'],
@@ -139,6 +178,9 @@ function buildRegisterTaskProviderType(
         `Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes (declared: [${declared.join(', ')}])`,
       )
     }
+    if (collected.taskProviderRegistration !== undefined) {
+      throw new Error(`Task provider type '${type}' was registered more than once`)
+    }
     collected.taskProviderRegistration = {
       type,
       factory,
@@ -153,17 +195,29 @@ function buildRegisterTaskProviderType(
   }
 }
 
+function rejectDuplicateRegistration(kind: string, name: string, duplicate: boolean): void {
+  if (duplicate) {
+    throw new Error(`${kind} '${name}' was registered more than once`)
+  }
+}
+
 function buildRegistration(manifest: PluginManifest, collected: PluginContributions): PluginRegistration {
   const declaredTools = new Set(manifest.contributes.tools)
   const declaredFragments = new Set(manifest.contributes.promptFragments)
   const declaredCommands = new Set(manifest.contributes.commands)
   const declaredJobs = new Set(manifest.contributes.jobs)
+  const registeredTools = new Set<string>()
+  const registeredFragments = new Set<string>()
+  const registeredCommands = new Set<string>()
+  const registeredJobs = new Set<string>()
 
   return Object.freeze({
     registerTool(pluginTool: PluginTool): void {
       if (!declaredTools.has(pluginTool.name)) {
         throw new Error(`Tool '${pluginTool.name}' is not declared in plugin manifest contributes.tools`)
       }
+      rejectDuplicateRegistration('Tool', pluginTool.name, registeredTools.has(pluginTool.name))
+      registeredTools.add(pluginTool.name)
       collected.tools.push(pluginTool)
     },
     registerPromptFragment(fragment: PluginPromptFragment): void {
@@ -172,18 +226,24 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
           `Prompt fragment '${fragment.name}' is not declared in plugin manifest contributes.promptFragments`,
         )
       }
+      rejectDuplicateRegistration('Prompt fragment', fragment.name, registeredFragments.has(fragment.name))
+      registeredFragments.add(fragment.name)
       collected.promptFragments.push(fragment)
     },
     registerCommand(command: PluginCommand): void {
       if (!declaredCommands.has(command.name)) {
         throw new Error(`Command '${command.name}' is not declared in plugin manifest contributes.commands`)
       }
+      rejectDuplicateRegistration('Command', command.name, registeredCommands.has(command.name))
+      registeredCommands.add(command.name)
       collected.commands = [...(collected.commands ?? []), command]
     },
     registerScheduledJob(job: PluginScheduledJob): void {
       if (!declaredJobs.has(job.name)) {
         throw new Error(`Scheduled job '${job.name}' is not declared in plugin manifest contributes.jobs`)
       }
+      rejectDuplicateRegistration('Scheduled job', job.name, registeredJobs.has(job.name))
+      registeredJobs.add(job.name)
       collected.jobs = [...(collected.jobs ?? []), job]
     },
     registerTaskProviderType: buildRegisterTaskProviderType(manifest, collected),
@@ -198,7 +258,7 @@ export function buildPluginContext(
   manifest: PluginManifest,
   contextId: string,
 ): { ctx: PluginContext; collected: PluginContributions } {
-  const permissions = new Set(manifest.permissions) as ReadonlySet<PluginPermission>
+  const permissions = buildPermissions(manifest)
   const collected: PluginContributions = { tools: [], promptFragments: [], commands: [], jobs: [] }
 
   const kv = permissions.has('storage') ? buildKvStore(manifest.id, contextId) : buildDeniedKvStore(manifest.id)

@@ -66,7 +66,7 @@ function buildActivationTimeout(timeoutMs: number): {
 }
 
 const log = logger.child({ scope: 'plugins:loader' })
-const PLUGIN_LIFECYCLE_CONCURRENCY = 4
+const PLUGIN_LIFECYCLE_CONCURRENCY = 1
 
 /** Default system context ID used during plugin activation (non-user-specific). */
 const SYSTEM_CONTEXT_ID = '__system__'
@@ -203,6 +203,7 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     cleanupContributedTaskProviderTypes(pluginId, options)
+    pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
   }
 }
