@@ -17,6 +17,7 @@
   let notice: string | null = $state(null)
   let error: string | null = $state(null)
   let status: string | null = $state(null)
+  let loading = $state(false)
   let providerUserId = $state('')
   let providerUserLogin = $state('')
   let displayName = $state('')
@@ -26,6 +27,7 @@
     notice = null
     status = null
     data = null
+    loading = true
     try {
       const result = await fetchIdentity(id)
       data = result
@@ -37,6 +39,8 @@
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('no task instance')) notice = message
       else error = message
+    } finally {
+      loading = false
     }
   }
 
@@ -87,37 +91,41 @@
   {:else}
     {#if error !== null}<p class="status-error">{error}</p>{/if}
     {#if status !== null}<p class="status-success">{status}</p>{/if}
-    <form
-      class="settings-form"
-      onsubmit={(event) => {
-        event.preventDefault()
-        void save()
-      }}
-    >
-      <label>
-        <span>Provider user ID</span>
-        <input
-          data-testid="identity-user-id"
-          value={providerUserId}
-          oninput={(e) => (providerUserId = (e.target as HTMLInputElement).value)}
-        />
-      </label>
-      <label>
-        <span>Provider login</span>
-        <input
-          value={providerUserLogin}
-          oninput={(e) => (providerUserLogin = (e.target as HTMLInputElement).value)}
-        />
-      </label>
-      <label>
-        <span>Display name</span>
-        <input
-          value={displayName}
-          oninput={(e) => (displayName = (e.target as HTMLInputElement).value)}
-        />
-      </label>
-      <button type="submit" data-testid="identity-save">Save</button>
-      <button type="button" data-testid="identity-clear" onclick={() => void clear()}>Clear</button>
-    </form>
+    {#if loading}
+      <p class="placeholder">Loading…</p>
+    {:else}
+      <form
+        class="settings-form"
+        onsubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <label>
+          <span>Provider user ID</span>
+          <input
+            data-testid="identity-user-id"
+            value={providerUserId}
+            oninput={(e) => (providerUserId = (e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label>
+          <span>Provider login</span>
+          <input
+            value={providerUserLogin}
+            oninput={(e) => (providerUserLogin = (e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input
+            value={displayName}
+            oninput={(e) => (displayName = (e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <button type="submit" data-testid="identity-save">Save</button>
+        <button type="button" data-testid="identity-clear" onclick={() => void clear()}>Clear</button>
+      </form>
+    {/if}
   {/if}
 </section>

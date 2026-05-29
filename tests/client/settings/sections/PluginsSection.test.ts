@@ -49,8 +49,30 @@ const captureToggleMock = (url: string, init: RequestInit): Promise<Response> =>
   return Promise.resolve(json(pluginsPayload))
 }
 
+const configPatchRequests: Array<{ url: string; init: RequestInit }> = []
+const isConfigPatch = (r: { url: string; init: RequestInit }): boolean =>
+  r.url.includes('/plugins/config') && r.init.method === 'PATCH'
+const configPayload = {
+  contextId: 'user:1',
+  plugins: [
+    {
+      id: 'needs-token',
+      name: 'Needs Token',
+      active: true,
+      enabled: false,
+      eligibility: { eligible: false, reason: 'config_missing', missingKeys: ['token'] },
+      contextConfig: [{ key: 'token', label: 'Token', required: true, sensitive: false, hasValue: false }],
+    },
+  ],
+}
+const trackConfigMock = (url: string, init: RequestInit): Promise<Response> => {
+  configPatchRequests.push({ url, init })
+  return Promise.resolve(json(configPayload))
+}
+
 afterEach(() => {
   capturedToggleBody = ''
+  configPatchRequests.length = 0
   restoreFetch()
   setCsrfToken('')
 })
@@ -77,6 +99,24 @@ describe('PluginsSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="plugin-toggle-hello-world"]')!.click()
     await drain()
     expect(capturedToggleBody).toBe(JSON.stringify({ pluginId: 'hello-world', enabled: true, contextId: 'user:1' }))
+    void unmount(component)
+  })
+
+  test('saving an empty required plugin config shows an error and does not POST', async () => {
+    setCsrfToken('c')
+    setMockFetch(trackConfigMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(PluginsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-cfg-save-needs-token-token"]')!.click()
+    await drain()
+
+    const errorEl = target.querySelector('.status-error')
+    expect(errorEl).not.toBeNull()
+    expect(errorEl!.textContent).toContain('required')
+    expect(configPatchRequests.filter(isConfigPatch)).toHaveLength(0)
     void unmount(component)
   })
 })

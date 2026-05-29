@@ -55,8 +55,15 @@
 
   async function saveConfig(pluginId: string, key: string): Promise<void> {
     error = null
+    const value = drafts[draftKey(pluginId, key)] ?? ''
+    const plugin = plugins.find((p) => p.id === pluginId)
+    const cfg = plugin?.contextConfig.find((c) => c.key === key)
+    if (cfg?.required === true && value.trim() === '') {
+      error = `${cfg.label} is required.`
+      return
+    }
     try {
-      await patchPluginConfig({ pluginId, key, value: drafts[draftKey(pluginId, key)] ?? '', contextId })
+      await patchPluginConfig({ pluginId, key, value, contextId })
       drafts[draftKey(pluginId, key)] = ''
       await load(contextId)
     } catch (err) {

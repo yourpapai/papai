@@ -9,7 +9,7 @@
   import SettingsSidebar from './components/SettingsSidebar.svelte'
   import type { SidebarItem } from './components/SettingsSidebar.svelte'
   import SettingsTopBar from './components/SettingsTopBar.svelte'
-  import { untrack } from 'svelte'
+  import { tick, untrack } from 'svelte'
   import { useScrollSpy } from './scrollspy.js'
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
@@ -75,7 +75,7 @@
       activeId = id
       if (window.location.hash !== `#${id}`) window.history.replaceState(null, '', `#${id}`)
     })
-    spy.start()
+    void tick().then(() => spy.start())
     return (): void => spy.stop()
   })
 </script>
