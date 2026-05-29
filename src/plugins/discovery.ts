@@ -52,6 +52,11 @@ function isRealDirectory(path: string): boolean {
 
 const STATIC_IMPORT_RE = /(?:import\s+(?:[^'";]+\s+from\s+)?|export\s+[^'";]*\s+from\s+)(['"])(\.[^'"]+)\1/gu
 const DYNAMIC_IMPORT_RE = /import\s*\(([^)]+)\)/gu
+const STRING_LITERAL_RE = /(['"`])(?:\\.|(?!\1)[^\\])*\1/gu
+
+function stripStringLiterals(source: string): string {
+  return source.replaceAll(STRING_LITERAL_RE, (match) => ' '.repeat(match.length))
+}
 
 function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
   const candidate = resolve(join(dirname(fromFile), specifier))
@@ -95,8 +100,9 @@ function readPluginSourceGraph(entryPoint: string, pluginDir: string): string[] 
     ordered.push(current)
 
     const source = readFileSync(current, 'utf-8')
+    const sourceWithoutStrings = stripStringLiterals(source)
 
-    for (const match of source.matchAll(DYNAMIC_IMPORT_RE)) {
+    for (const match of sourceWithoutStrings.matchAll(DYNAMIC_IMPORT_RE)) {
       const raw = match[1]?.trim()
       if (raw === undefined) continue
       if (!raw.startsWith("'") && !raw.startsWith('"')) {

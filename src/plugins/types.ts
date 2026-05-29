@@ -3,6 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { win32 } from 'node:path'
+
 import { z } from 'zod'
 
 import type { ChatCapability } from '../chat/types.js'
@@ -178,6 +180,7 @@ const providerContextConfigRequirementSchema = configRequirementBaseSchema.exten
 const mainPathSchema = z.string().refine(
   (v) => {
     if (v.startsWith('/')) return false
+    if (win32.isAbsolute(v)) return false
     if (v.includes('..')) return false
     if (!v.endsWith('.ts') && !v.endsWith('.js')) return false
     return true

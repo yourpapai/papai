@@ -70,6 +70,28 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 
+  test('rejects Windows absolute main paths', () => {
+    const driveLetterResult = pluginManifestSchema.safeParse({
+      id: 'windows-drive-main',
+      name: 'Windows Drive Main',
+      version: '1.0.0',
+      description: 'windows path',
+      apiVersion: 1,
+      main: 'C:\\plugin\\index.ts',
+    })
+    const uncResult = pluginManifestSchema.safeParse({
+      id: 'windows-unc-main',
+      name: 'Windows UNC Main',
+      version: '1.0.0',
+      description: 'windows path',
+      apiVersion: 1,
+      main: '\\\\server\\share\\index.ts',
+    })
+
+    expect(driveLetterResult.success).toBe(false)
+    expect(uncResult.success).toBe(false)
+  })
+
   test('rejects configKeys without matching context-scoped config requirement', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'bad-config-keys',

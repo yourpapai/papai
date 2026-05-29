@@ -283,6 +283,22 @@ describe('discoverPlugins', () => {
     expect(result.errors[0]?.reason).toContain('dynamic import')
   })
 
+  test('ignores import text inside string literals when scanning dynamic imports', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'quoted-import-text-plugin',
+      { main: 'index.ts' },
+      'export default function createPlugin(){ const note = "import(name)"; return { activate(){ return note } } }',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('quoted-import-text-plugin')
+  })
+
   test('accepts explicit mcp-only plugins without reading index.ts', () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'mcp-only-plugin')
