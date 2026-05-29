@@ -12,6 +12,7 @@ describe('routeSettingsStatic', () => {
     const res = routeSettingsStatic('/settings')
     expect(res).not.toBeNull()
     expect(res!.status).toBe(200)
+    expect(res!.headers.get('Content-Type')).toContain('html')
   })
 
   test('serves the settings JS bundle with a JS content type', () => {
@@ -24,6 +25,7 @@ describe('routeSettingsStatic', () => {
     const res = routeSettingsStatic('/settings.css')
     expect(res).not.toBeNull()
     expect(res!.status).toBe(200)
+    expect(res!.headers.get('Content-Type')).toContain('css')
   })
 
   test('returns null for non-static settings paths', () => {
