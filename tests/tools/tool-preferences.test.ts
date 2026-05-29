@@ -6,7 +6,10 @@
 import { describe, expect, it, test } from 'bun:test'
 
 import {
+  cycleDomain,
+  cycleTool,
   getDomainStatus,
+  getDomainSummary,
   parseToolPrefs,
   partitionToolNames,
   resolveToolPermission,
@@ -229,5 +232,77 @@ describe('parseToolPrefs legacy migration', () => {
     })
     const prefs = parseToolPrefs(mixed)
     expect(prefs.domainDefaults).toEqual({ task: 'ask' })
+  })
+})
+
+describe('cycleTool', () => {
+  test('cycles allow → ask → deny → allow', () => {
+    let prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: {} }
+    // allow → ask
+    prefs = cycleTool(prefs, 'create_task')
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('ask')
+    // ask → deny
+    prefs = cycleTool(prefs, 'create_task')
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('deny')
+    // deny → allow
+    prefs = cycleTool(prefs, 'create_task')
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('allow')
+  })
+
+  test('prunes override when it matches the domain default', () => {
+    let prefs: ToolPrefs = { domainDefaults: { task: 'ask' }, toolOverrides: { create_task: 'deny' } }
+    // deny → allow (override stays; differs from default 'ask')
+    prefs = cycleTool(prefs, 'create_task')
+    expect(prefs.toolOverrides['create_task']).toBe('allow')
+    // allow → ask (matches domain default → pruned)
+    prefs = cycleTool(prefs, 'create_task')
+    expect(prefs.toolOverrides['create_task']).toBeUndefined()
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('ask')
+  })
+})
+
+describe('cycleDomain', () => {
+  test('cycles domain default and clears per-tool overrides in that domain', () => {
+    let prefs: ToolPrefs = {
+      domainDefaults: { task: 'allow' },
+      toolOverrides: { create_task: 'deny', save_memo: 'deny' },
+    }
+    prefs = cycleDomain(prefs, 'task', ['create_task', 'delete_task'])
+    expect(prefs.domainDefaults['task']).toBe('ask')
+    // create_task override is cleared because the domain bulk action wins
+    expect(prefs.toolOverrides['create_task']).toBeUndefined()
+    // save_memo is untouched (different domain)
+    expect(prefs.toolOverrides['save_memo']).toBe('deny')
+  })
+
+  test('cycles allow → ask → deny → allow on the domain itself', () => {
+    let prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: {} }
+    prefs = cycleDomain(prefs, 'task', [])
+    expect(prefs.domainDefaults['task']).toBe('ask')
+    prefs = cycleDomain(prefs, 'task', [])
+    expect(prefs.domainDefaults['task']).toBe('deny')
+    prefs = cycleDomain(prefs, 'task', [])
+    // pruned when returning to 'allow' default
+    expect(prefs.domainDefaults['task']).toBeUndefined()
+  })
+})
+
+describe('getDomainSummary', () => {
+  test('returns allow/ask/deny when all tools share the same permission', () => {
+    const prefs: ToolPrefs = { domainDefaults: { task: 'ask' }, toolOverrides: {} }
+    expect(getDomainSummary(prefs, 'task', ['create_task', 'delete_task'])).toBe('ask')
+  })
+
+  test('returns partial when tools disagree', () => {
+    const prefs: ToolPrefs = {
+      domainDefaults: { task: 'allow' },
+      toolOverrides: { delete_task: 'deny' },
+    }
+    expect(getDomainSummary(prefs, 'task', ['create_task', 'delete_task'])).toBe('partial')
+  })
+
+  test('falls back to the domain default when name list is empty', () => {
+    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
+    expect(getDomainSummary(prefs, 'task', [])).toBe('deny')
   })
 })

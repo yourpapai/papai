@@ -128,6 +128,75 @@ export function partitionToolNames(
   return { exposed, denied }
 }
 
+const CYCLE_ORDER: readonly Permission[] = ['allow', 'ask', 'deny']
+
+function nextPermission(current: Permission): Permission {
+  const index = CYCLE_ORDER.indexOf(current)
+  return CYCLE_ORDER[(index + 1) % CYCLE_ORDER.length] ?? 'allow'
+}
+
+function domainDefault(prefs: ToolPrefs, domain: ToolDomain): Permission {
+  return prefs.domainDefaults[domain] ?? 'allow'
+}
+
+function pruneRedundantOverrides(prefs: ToolPrefs): ToolPrefs {
+  const toolOverrides: Record<string, Permission> = {}
+  for (const [name, value] of Object.entries(prefs.toolOverrides)) {
+    const meta = getToolMetadata(name)
+    const def: Permission = meta === undefined ? 'allow' : domainDefault(prefs, meta.domain)
+    if (value !== def) toolOverrides[name] = value
+  }
+  return { domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
+}
+
+function pruneRedundantDomainDefaults(prefs: ToolPrefs): ToolPrefs {
+  const domainDefaults: Partial<Record<ToolDomain, Permission>> = {}
+  for (const [domain, value] of Object.entries(prefs.domainDefaults)) {
+    if (value !== 'allow' && isToolDomain(domain)) domainDefaults[domain] = value
+  }
+  return { domainDefaults, toolOverrides: prefs.toolOverrides }
+}
+
+export type DomainSummary = 'allow' | 'ask' | 'deny' | 'partial'
+
+export function getDomainSummary(
+  prefs: ToolPrefs,
+  domain: ToolDomain,
+  domainToolNames: readonly string[],
+): DomainSummary {
+  if (domainToolNames.length === 0) return domainDefault(prefs, domain)
+  const set = new Set(domainToolNames.map((name) => resolveToolPermission(prefs, name)))
+  if (set.size === 1) {
+    const only = [...set][0]
+    if (only !== undefined) return only
+  }
+  return 'partial'
+}
+
+export function cycleDomain(prefs: ToolPrefs, domain: ToolDomain, domainToolNames: readonly string[]): ToolPrefs {
+  const current = getDomainSummary(prefs, domain, domainToolNames)
+  const base: Permission = current === 'partial' ? 'allow' : current
+  const next = nextPermission(base)
+  const domainDefaults = { ...prefs.domainDefaults, [domain]: next }
+  // Clear any per-tool override inside the domain so the bulk action wins cleanly.
+  const toolOverrides: Record<string, Permission> = {}
+  for (const [name, value] of Object.entries(prefs.toolOverrides)) {
+    const meta = getToolMetadata(name)
+    if (meta !== undefined && meta.domain === domain) continue
+    toolOverrides[name] = value
+  }
+  return pruneRedundantDomainDefaults(pruneRedundantOverrides({ domainDefaults, toolOverrides }))
+}
+
+export function cycleTool(prefs: ToolPrefs, toolName: string): ToolPrefs {
+  const current = resolveToolPermission(prefs, toolName)
+  const next = nextPermission(current)
+  const toolOverrides = { ...prefs.toolOverrides, [toolName]: next }
+  return pruneRedundantOverrides({ domainDefaults: { ...prefs.domainDefaults }, toolOverrides })
+}
+
+// --- Legacy two-state shims (removed in Task 7.1) ---
+
 export type DomainStatus = 'on' | 'off' | 'partial'
 
 export function getDomainStatus(
