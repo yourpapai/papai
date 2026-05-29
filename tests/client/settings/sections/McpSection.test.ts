@@ -34,6 +34,13 @@ const capturePutMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(mcpPayload))
 }
 
+const errorPutMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/settings/api/mcp') && init.method !== undefined && init.method !== 'GET') {
+    return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+  }
+  return Promise.resolve(json(mcpPayload))
+}
+
 afterEach(() => {
   capturedPutMethod = undefined
   restoreFetch()
@@ -61,6 +68,33 @@ describe('McpSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="mcp-save"]')!.click()
     await drain()
     expect(capturedPutMethod).toBe('PUT')
+    void unmount(component)
+  })
+
+  test('a failed Save keeps the editor visible and shows an error', async () => {
+    setCsrfToken('c')
+    setMockFetch(errorPutMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(McpSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="mcp-save"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="mcp-row-srv1"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('Add endpoint adds a row', async () => {
+    setMockFetch(() => Promise.resolve(json(mcpPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(McpSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelectorAll('[data-testid^="mcp-row-"]').length).toBe(1)
+    target.querySelector<HTMLButtonElement>('[data-testid="mcp-add"]')!.click()
+    flushSync()
+    expect(target.querySelectorAll('[data-testid^="mcp-row-"]').length).toBe(2)
     void unmount(component)
   })
 })

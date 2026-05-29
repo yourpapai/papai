@@ -18,7 +18,6 @@
   let status: string | null = $state(null)
   let loading = $state(false)
   let saving = $state(false)
-  let nextId = $state(1)
   let initialLoad = $state(true)
 
   async function load(id: string): Promise<void> {
@@ -37,8 +36,10 @@
   }
 
   function addRow(): void {
-    endpoints = [...endpoints, { id: `srv-${nextId}`, url: '', label: '', enabled: true }]
-    nextId += 1
+    const existing = new Set(endpoints.map((e) => e.id))
+    let n = 1
+    while (existing.has(`srv-${n}`)) n += 1
+    endpoints = [...endpoints, { id: `srv-${n}`, url: '', label: '', enabled: true }]
   }
 
   function removeRow(index: number): void {
@@ -51,8 +52,8 @@
     saving = true
     try {
       await putMcp({ endpoints, contextId })
-      status = 'Saved.'
       await load(contextId)
+      status = 'Saved.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
