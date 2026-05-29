@@ -91,6 +91,26 @@ describe('AdminUsersSection', () => {
     void unmount(component)
   })
 
+  test('adding a user with a username posts userId + username', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureUsersMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminUsersSection, { target })
+    await drain()
+    const idInput = target.querySelector<HTMLInputElement>('[data-testid="user-add-input"]')!
+    idInput.value = '55'
+    idInput.dispatchEvent(new Event('input', { bubbles: true }))
+    const usernameInput = target.querySelectorAll<HTMLInputElement>('input')[1]!
+    usernameInput.value = 'alice'
+    usernameInput.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="user-add"]')!.click()
+    await drain()
+    expect(capturedPostBody).toBe(JSON.stringify({ userId: '55', username: 'alice' }))
+    void unmount(component)
+  })
+
   test('a failed add keeps the users table visible and shows an error', async () => {
     setCsrfToken('c')
     setMockFetch(postErrorMock)

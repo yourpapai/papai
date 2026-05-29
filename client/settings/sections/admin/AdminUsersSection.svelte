@@ -29,6 +29,7 @@
 
   async function add(): Promise<void> {
     error = null
+    status = null
     const userId = newUserId.trim()
     if (userId === '') return
     try {
@@ -37,6 +38,7 @@
       newUserId = ''
       newUsername = ''
       await load()
+      status = 'User added.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -44,9 +46,11 @@
 
   async function remove(userId: string): Promise<void> {
     error = null
+    status = null
     try {
       await removeAdminUser({ userId })
       await load()
+      status = 'User removed.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
