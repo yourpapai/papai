@@ -38,7 +38,9 @@ function storageKeyForField(
   descriptor: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>,
   field: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>['contextConfigSchema'][number],
 ): string {
-  if (descriptor.source !== 'builtin') return `plugin:${descriptor.source.plugin}:provider:${field.key}`
+  if (descriptor.source !== 'builtin') {
+    return `plugin:${descriptor.source.plugin}:provider:${field.storageKey ?? field.key}`
+  }
   if (field.storageKey !== undefined) return field.storageKey
   return field.key
 }

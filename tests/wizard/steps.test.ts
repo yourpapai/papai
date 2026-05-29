@@ -86,6 +86,30 @@ describe('getWizardSteps', () => {
     expect(steps.map((step) => step.key)).toEqual(['plugin:plugin-tracker:provider:token', 'timezone'])
     expect(steps[0]?.field.label).toBe('Plugin Token')
   })
+
+  test('uses plugin provider storageKey inside namespaced dynamic step key', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      contextConfigSchema: [
+        {
+          key: 'apiToken',
+          storageKey: 'metadata_token',
+          label: 'API Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+
+    const steps = getWizardSteps('plugin-tracker')
+
+    expect(steps.map((step) => step.key)).toEqual(['plugin:plugin-tracker:provider:metadata_token', 'timezone'])
+    expect(steps.map((step) => step.key)).not.toContain('plugin:plugin-tracker:provider:apiToken')
+  })
 })
 
 describe('step validation', () => {
