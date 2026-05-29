@@ -26,3 +26,42 @@ export function extendSchemaForAsk(schema: z.ZodObject<z.ZodRawShape>): z.ZodObj
     _permission_reason: z.string().min(1).max(280).describe(PERMISSION_REASON_DESCRIPTION),
   })
 }
+
+export type AskPermissionFn = (req: { toolName: string; reason: string }) => Promise<'allow' | 'deny'>
+
+type ExecuteFn<O> = (input: unknown, options: unknown) => Promise<O>
+
+function extractReason(input: Record<string, unknown>): string {
+  const raw = input[PERMISSION_REASON_FIELD]
+  return typeof raw === 'string' ? raw : ''
+}
+
+function omitReasonField(input: Record<string, unknown>): Record<string, unknown> {
+  const entries = Object.entries(input).filter(([k]) => k !== PERMISSION_REASON_FIELD)
+  return Object.fromEntries(entries)
+}
+
+export function gatedExecute<O>(
+  execute: ExecuteFn<O>,
+  toolName: string,
+  askPermission: AskPermissionFn | undefined,
+): ExecuteFn<O | PermissionDeniedResult> {
+  return async (input: unknown, options: unknown): Promise<O | PermissionDeniedResult> => {
+    if (askPermission === undefined) {
+      return buildPermissionDenied(`Tool '${toolName}' requires user permission, but no chat surface is available.`)
+    }
+    const inputRecord: Record<string, unknown> = {}
+    if (typeof input === 'object' && input !== null) {
+      for (const [k, v] of Object.entries(input)) {
+        inputRecord[k] = v
+      }
+    }
+    const reason = extractReason(inputRecord)
+    const cleaned = omitReasonField(inputRecord)
+    const decision = await askPermission({ toolName, reason })
+    if (decision === 'deny') {
+      return buildPermissionDenied(`User denied execution of '${toolName}'.`)
+    }
+    return execute(cleaned, options)
+  }
+}
