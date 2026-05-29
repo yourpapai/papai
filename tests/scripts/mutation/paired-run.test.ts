@@ -265,6 +265,13 @@ describe('parsePairedRunCliArgs', () => {
     })
   })
 
+  test('rejects unknown short flags', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '-x'])).toEqual({
+      kind: 'usageError',
+      reason: 'unknown argument -x',
+    })
+  })
+
   test('rejects split threshold syntax', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold', '0.75'])).toEqual({
       kind: 'usageError',

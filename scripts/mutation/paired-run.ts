@@ -207,7 +207,7 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
 }
 
 export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
-  const unknownArg = argv.find((arg) => arg.startsWith('--') && !arg.startsWith('--threshold='))
+  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold='))
   if (unknownArg !== undefined) {
     return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
   }
