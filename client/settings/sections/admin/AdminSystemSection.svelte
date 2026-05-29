@@ -7,6 +7,8 @@
   import { fetchAdminSystem, submitAdminSystem } from '../../fetchers.js'
   import type { AdminSystemResponse } from '../../fetcher-schemas.js'
 
+  const SENSITIVE_SYSTEM_KEYS = new Set<string>(['llm_apikey'])
+
   let config: AdminSystemResponse['config'] = $state({})
   let drafts: Record<string, string> = $state({})
   let error: string | null = $state(null)
@@ -17,6 +19,7 @@
 
   async function load(): Promise<void> {
     error = null
+    status = null
     loading = true
     try {
       config = (await fetchAdminSystem()).config
@@ -30,6 +33,7 @@
   async function save(key: string): Promise<void> {
     error = null
     status = null
+    if ((drafts[key] ?? '').trim() === '') return
     try {
       await submitAdminSystem({ key, value: drafts[key] ?? '' })
       drafts[key] = ''
@@ -67,6 +71,7 @@
         <div class="settings-field__editor">
           <input
             data-testid={`system-input-${key}`}
+            type={SENSITIVE_SYSTEM_KEYS.has(key) ? 'password' : 'text'}
             value={drafts[key] ?? ''}
             placeholder="enter a new value"
             oninput={(e) => (drafts[key] = (e.target as HTMLInputElement).value)} />

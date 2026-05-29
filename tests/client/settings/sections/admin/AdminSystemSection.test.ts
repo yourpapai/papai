@@ -37,6 +37,13 @@ const captureSaveMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(systemPayload))
 }
 
+const failSaveMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/system') && (init.method ?? 'GET') === 'POST') {
+    return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+  }
+  return Promise.resolve(json(systemPayload))
+}
+
 afterEach(() => {
   capturedSaveBody = ''
   restoreFetch()
@@ -52,7 +59,21 @@ describe('AdminSystemSection', () => {
     await drain()
     expect(target.querySelector('#system')).not.toBeNull()
     expect(target.textContent).toContain('llm_apikey')
+    expect(target.textContent).toContain('****1234')
     expect(target.textContent).toContain('gpt-main')
+    void unmount(component)
+  })
+
+  test('llm_apikey input is type password', async () => {
+    setMockFetch(() => Promise.resolve(json(systemPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminSystemSection, { target })
+    await drain()
+    const apikeyInput = target.querySelector<HTMLInputElement>('[data-testid="system-input-llm_apikey"]')!
+    expect(apikeyInput.type).toBe('password')
+    const modelInput = target.querySelector<HTMLInputElement>('[data-testid="system-input-main_model"]')!
+    expect(modelInput.type).toBe('text')
     void unmount(component)
   })
 
@@ -70,6 +91,24 @@ describe('AdminSystemSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="system-save-main_model"]')!.click()
     await drain()
     expect(capturedSaveBody).toBe(JSON.stringify({ key: 'main_model', value: 'gpt-next' }))
+    void unmount(component)
+  })
+
+  test('a failed save keeps the key list visible and shows an error', async () => {
+    setCsrfToken('c')
+    setMockFetch(failSaveMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminSystemSection, { target })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="system-input-main_model"]')!
+    input.value = 'bad-value'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="system-save-main_model"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="system-row-main_model"]')).not.toBeNull()
     void unmount(component)
   })
 })
