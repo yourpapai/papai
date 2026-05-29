@@ -56,6 +56,8 @@ const failedApplyResult = {
 } as const
 
 let nextApplyResult: unknown = applyResult
+let nextPlatformInstancesResponse: unknown = [platformInstance]
+let nextTaskInstancesResponse: unknown = [taskInstance]
 
 type RecordedCall = { readonly method: string; readonly url: string; readonly body: string | null }
 
@@ -88,7 +90,7 @@ const callNames = (calls: readonly RecordedCall[]): readonly string[] =>
   calls.map((call) => `${call.method} ${call.url}`)
 
 const responseFor = (method: string, url: string): Response => {
-  if (method === 'GET' && url === '/api/platform-instances') return jsonResponse([platformInstance])
+  if (method === 'GET' && url === '/api/platform-instances') return jsonResponse(nextPlatformInstancesResponse)
   if (method === 'GET' && url === '/api/platform-provider-types')
     return jsonResponse([
       {
@@ -122,7 +124,7 @@ const responseFor = (method: string, url: string): Response => {
         source: 'builtin',
       },
     ])
-  if (method === 'GET' && url === '/api/task-instances') return jsonResponse([taskInstance])
+  if (method === 'GET' && url === '/api/task-instances') return jsonResponse(nextTaskInstancesResponse)
   if (method === 'GET' && url === '/api/admins') return jsonResponse([admin])
   if (method === 'GET' && url === '/api/task-provider-types')
     return jsonResponse([
@@ -250,6 +252,8 @@ const recordConfirm = (value: boolean, messages: string[]): void => {
 afterEach(() => {
   restoreFetch()
   nextApplyResult = applyResult
+  nextPlatformInstancesResponse = [platformInstance]
+  nextTaskInstancesResponse = [taskInstance]
   Object.defineProperty(window, 'confirm', {
     configurable: true,
     value: originalConfirm,
@@ -277,6 +281,30 @@ describe('InstancesSection', () => {
     expect(target.textContent).toContain('kaneo-main')
     expect(target.textContent).toContain('Admins')
     expect(target.textContent).toContain('admin-user')
+
+    void unmount(component)
+  })
+
+  test('renders rows when instance APIs include unreadable diagnostics', async () => {
+    const calls: RecordedCall[] = []
+    nextPlatformInstancesResponse = {
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'broken', type: 'telegram', error: 'Encrypted payload' }],
+    }
+    nextTaskInstancesResponse = {
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'broken', type: 'kaneo', error: 'Encrypted payload' }],
+    }
+    installFetch(calls)
+
+    const { target, component } = render()
+    await drain()
+
+    expect(target.textContent).toContain('telegram-main')
+    expect(target.textContent).toContain('kaneo-main')
+    expect(target.querySelectorAll('[data-testid="platform-instance-row"]')).toHaveLength(1)
+    expect(target.querySelectorAll('[data-testid="task-instance-row"]')).toHaveLength(1)
+    expect(target.textContent).not.toContain('Invalid input: expected array, received object')
 
     void unmount(component)
   })

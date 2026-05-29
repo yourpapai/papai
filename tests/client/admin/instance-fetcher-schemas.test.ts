@@ -7,7 +7,10 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   ApplyInstancesResultSchema,
+  PlatformInstanceListResponseSchema,
+  PlatformInstanceViewSchema,
   PlatformProviderTypeViewSchema,
+  TaskInstanceListResponseSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from '../../../client/admin/instance-fetcher-schemas.js'
@@ -49,6 +52,54 @@ describe('TaskInstanceViewSchema', () => {
       createdAt: '2026-05-26T00:00:00.000Z',
     })
     expect(result.success).toBe(true)
+  })
+})
+
+describe('instance list response schemas', () => {
+  const platformInstance = {
+    id: 'telegram-main',
+    type: 'telegram',
+    config: { token: '********' },
+    status: 'active',
+    createdAt: '2026-05-26T00:00:00.000Z',
+  } as const
+
+  const taskInstance = {
+    id: 'kaneo-main',
+    type: 'kaneo',
+    config: { baseUrl: 'https://kaneo.invalid' },
+    status: 'active',
+    createdAt: '2026-05-26T00:00:00.000Z',
+  } as const
+
+  test('PlatformInstanceListResponseSchema accepts the clean array shape', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse([platformInstance])
+    expect(result.success).toBe(true)
+  })
+
+  test('PlatformInstanceListResponseSchema accepts unreadable diagnostics shape', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse({
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('TaskInstanceListResponseSchema accepts unreadable diagnostics shape', () => {
+    const result = TaskInstanceListResponseSchema.safeParse({
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo', error: 'Encrypted payload' }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('instance list object shape still validates row schemas', () => {
+    const result = PlatformInstanceListResponseSchema.safeParse({
+      instances: [{ ...platformInstance, type: 'unknown' }],
+      unreadable: [],
+    })
+    expect(result.success).toBe(false)
+    expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, type: 'unknown' }).success).toBe(false)
   })
 })
 

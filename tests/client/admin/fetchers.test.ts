@@ -372,6 +372,18 @@ describe('instance API fetchers', () => {
     expect(result).toEqual([platformInstance])
   })
 
+  test('fetchPlatformInstances accepts unreadable diagnostics object shape', async () => {
+    installFetch(200, {
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+
+    const result = await fetchPlatformInstances()
+
+    expect(firstCaptured().url).toBe('/api/platform-instances')
+    expect(result).toEqual([platformInstance])
+  })
+
   test('createPlatformInstance POSTs JSON and returns the created instance', async () => {
     installFetch(201, platformInstance)
 
@@ -427,6 +439,18 @@ describe('instance API fetchers', () => {
 
   test('fetchTaskInstances GETs task instances', async () => {
     installFetch(200, [taskInstance])
+
+    const result = await fetchTaskInstances()
+
+    expect(firstCaptured().url).toBe('/api/task-instances')
+    expect(result).toEqual([taskInstance])
+  })
+
+  test('fetchTaskInstances accepts unreadable diagnostics object shape', async () => {
+    installFetch(200, {
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo', error: 'Encrypted payload' }],
+    })
 
     const result = await fetchTaskInstances()
 

@@ -20,11 +20,34 @@ export const PlatformInstanceViewSchema = InstanceViewBaseSchema.extend({
   type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
 })
 
+const InstanceDecodeFailureSchema = z.object({
+  table: z.enum(['platform_instances', 'task_instances']),
+  id: z.string(),
+  type: z.string(),
+  error: z.string(),
+})
+
+export const PlatformInstanceListResponseSchema = z.union([
+  z.array(PlatformInstanceViewSchema),
+  z.object({
+    instances: z.array(PlatformInstanceViewSchema),
+    unreadable: z.array(InstanceDecodeFailureSchema),
+  }),
+])
+
 export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
   type: z.string(),
   referencingContextIds: z.array(z.string()).optional(),
   referencingContextCount: z.number().optional(),
 })
+
+export const TaskInstanceListResponseSchema = z.union([
+  z.array(TaskInstanceViewSchema),
+  z.object({
+    instances: z.array(TaskInstanceViewSchema),
+    unreadable: z.array(InstanceDecodeFailureSchema),
+  }),
+])
 
 const ProviderConfigRequirementViewSchema = z.object({
   key: z.string(),

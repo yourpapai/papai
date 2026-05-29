@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm'
 import { getDrizzleDb } from '../db/drizzle.js'
 import { platformInstances } from '../db/schema.js'
 import { logger } from '../logger.js'
+import { rowsToInstancesSafe } from './decode-result.js'
 import { decryptInstanceConfig, encryptInstanceConfig } from './encryption.js'
 import type {
   InstanceConfig,
@@ -62,20 +63,6 @@ const decodeFailure = (row: typeof platformInstances.$inferSelect, error: unknow
   error: error instanceof Error ? error.message : String(error),
 })
 
-const rowsToInstancesSafe = (
-  rows: readonly (typeof platformInstances.$inferSelect)[],
-): InstanceDecodeResult<PlatformInstance> =>
-  rows.reduce<InstanceDecodeResult<PlatformInstance>>(
-    (result, row) => {
-      try {
-        return { ...result, instances: [...result.instances, rowToInstance(row)] }
-      } catch (error) {
-        return { ...result, failures: [...result.failures, decodeFailure(row, error)] }
-      }
-    },
-    { instances: [], failures: [] },
-  )
-
 export const insertPlatformInstance = (input: InsertPlatformInstanceInput): void => {
   getDrizzleDb()
     .insert(platformInstances)
@@ -101,7 +88,7 @@ export const listPlatformInstances = (): PlatformInstance[] => {
 
 export const listPlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstance> => {
   const rows = getDrizzleDb().select().from(platformInstances).all()
-  return rowsToInstancesSafe(rows)
+  return rowsToInstancesSafe(rows, rowToInstance, decodeFailure)
 }
 
 export const listActivePlatformInstances = (): PlatformInstance[] =>
