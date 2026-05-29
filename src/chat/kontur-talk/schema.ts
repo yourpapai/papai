@@ -39,19 +39,3 @@ export const KonturTalkGetUpdatesResponseSchema = z.object({
 export const KonturTalkSendMessageResponseSchema = z.object({
   event_id: z.string(),
 })
-
-export const KonturTalkErrorResponseSchema = z.object({
-  detail: z.union([
-    z.object({
-      errcode: z.string(),
-      error: z.string(),
-    }),
-    z.array(
-      z.object({
-        loc: z.array(z.union([z.string(), z.number()])),
-        msg: z.string(),
-        type: z.string(),
-      }),
-    ),
-  ]),
-})

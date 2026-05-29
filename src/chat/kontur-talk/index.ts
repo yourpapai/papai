@@ -16,14 +16,16 @@ import type {
   DeferredDeliveryTarget,
   IncomingMessage,
   ReplyFn,
+  ResolveUserContext,
   ThreadCapabilities,
 } from '../types.js'
 import { resolveKonturTalkConfig, type KonturTalkConstructorConfig } from './config.js'
 import { renderKonturTalkContext } from './context-renderer.js'
+import { resolveKonturTalkGroupLabel, resolveKonturTalkUserLabel } from './label-helpers.js'
 import { konturTalkCapabilities, konturTalkConfigRequirements, konturTalkTraits } from './metadata.js'
 import { createKonturTalkReplyFn } from './reply-helpers.js'
 import type { KonturTalkUpdate } from './schema.js'
-import { KonturTalkGetUpdatesResponseSchema } from './schema.js'
+import { KonturTalkGetUpdatesResponseSchema, KonturTalkSendMessageResponseSchema } from './schema.js'
 
 const BASE_URL = 'https://chat.ktalk.ru/_matrix/client/strangler/api/v1'
 
@@ -233,7 +235,17 @@ export class KonturTalkChatProvider implements ChatProvider {
       format: 'markdown',
       thread_id: target.threadId ?? null,
       mentions: [],
+    }).then((data) => {
+      KonturTalkSendMessageResponseSchema.parse(data)
     })
+  }
+
+  resolveUserLabel(userId: string, _context: ResolveUserContext | undefined): Promise<string | null> {
+    return resolveKonturTalkUserLabel((m, p, b) => this.apiFetch(m, p, b), userId)
+  }
+
+  resolveGroupLabel(groupId: string): Promise<string | null> {
+    return resolveKonturTalkGroupLabel((m, p, b) => this.apiFetch(m, p, b), groupId)
   }
 
   renderContext(snapshot: ContextSnapshot): ContextRendered {

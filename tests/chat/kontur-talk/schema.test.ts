@@ -5,11 +5,7 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  KonturTalkUpdateSchema,
-  KonturTalkSendMessageResponseSchema,
-  KonturTalkErrorResponseSchema,
-} from '../../../src/chat/kontur-talk/schema.js'
+import { KonturTalkUpdateSchema, KonturTalkSendMessageResponseSchema } from '../../../src/chat/kontur-talk/schema.js'
 
 describe('Kontur Talk schemas', () => {
   describe('KonturTalkUpdateSchema', () => {
@@ -118,33 +114,6 @@ describe('Kontur Talk schemas', () => {
 
     test('rejects missing event_id', () => {
       const result = KonturTalkSendMessageResponseSchema.safeParse({})
-      expect(result.success).toBe(false)
-    })
-  })
-
-  describe('KonturTalkErrorResponseSchema', () => {
-    test('validates error with detail.errcode', () => {
-      const data = { detail: { errcode: 'M_UNKNOWN_TOKEN', error: 'Access token has expired' } }
-      const result = KonturTalkErrorResponseSchema.safeParse(data)
-      expect(result.success).toBe(true)
-    })
-
-    test('validates error with detail array (validation error)', () => {
-      const data = {
-        detail: [
-          {
-            loc: ['body', 'message'],
-            msg: 'ensure this value has at most 4096 characters',
-            type: 'value_error.any_str.max_length',
-          },
-        ],
-      }
-      const result = KonturTalkErrorResponseSchema.safeParse(data)
-      expect(result.success).toBe(true)
-    })
-    test('rejects detail that is neither errcode object nor validation array', () => {
-      const data = { detail: 'unexpected string' }
-      const result = KonturTalkErrorResponseSchema.safeParse(data)
       expect(result.success).toBe(false)
     })
   })
