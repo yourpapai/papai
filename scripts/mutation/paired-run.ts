@@ -28,7 +28,7 @@ export interface PairedRunInput {
   readonly projectRoot: string
   readonly reportDir: string
   readonly sourceFiles: readonly string[]
-  readonly deps?: PairedRunDeps
+  readonly deps: PairedRunDeps | undefined
 }
 
 export interface SkippedFile {
@@ -75,8 +75,12 @@ const readJsonRecord = (filePath: string): Record<string, unknown> => {
   return parsed
 }
 
-const isStrykerReport = (value: unknown): value is StrykerReport =>
-  isRecord(value) && (value['files'] === undefined || isRecord(value['files']))
+const isStrykerReport = (value: unknown): value is StrykerReport => {
+  if (!isRecord(value)) return false
+  const files = value['files']
+  if (files === undefined) return true
+  return isRecord(files)
+}
 
 const defaultDeps: PairedRunDeps = {
   readBaseConfig: (projectRoot) => {
@@ -110,7 +114,7 @@ const toProjectRelativePath = (filePath: string, projectRoot: string): string =>
 const toAbsolutePath = (filePath: string, projectRoot: string): string =>
   path.isAbsolute(filePath) ? filePath : path.join(projectRoot, filePath)
 
-const safeFileStem = (srcFile: string): string => srcFile.replace(/[^a-zA-Z0-9._-]+/gu, '__')
+const safeFileStem = (srcFile: string): string => srcFile.replaceAll(/[^a-zA-Z0-9._-]+/gu, '__')
 
 const writePairedConfig = (input: {
   readonly base: StrykerConfig
@@ -174,8 +178,13 @@ const runOneFile = (
 
 const isSkippedFile = (result: CompletedFileRun | SkippedFile): result is SkippedFile => !('reportPath' in result)
 
+const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
+  if (deps === undefined) return defaultDeps
+  return deps
+}
+
 export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
-  const deps = input.deps ?? defaultDeps
+  const deps = resolveDeps(input.deps)
   const sourceFiles = input.sourceFiles.map((filePath) => toProjectRelativePath(filePath, input.projectRoot))
   const base = deps.readBaseConfig(input.projectRoot)
   const overrides = deps.loadOverrides(input.projectRoot)
@@ -184,7 +193,7 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const results = sourceFiles.map((srcFile) => runOneFile(srcFile, input, deps, base, overrides))
   const completed = results.filter((result): result is CompletedFileRun => !isSkippedFile(result))
   const perFile = completed.map(({ report: _report, ...result }) => result)
-  const skipped = results.filter(isSkippedFile)
+  const skipped = results.filter((result) => isSkippedFile(result))
   const merged = mergeReports(completed.map((result) => result.report))
 
   deps.log(
@@ -194,7 +203,11 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
 }
 
 export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
-  const thresholdArg = argv.find((arg) => arg.startsWith('--threshold='))
+  const thresholdArgs = argv.filter((arg) => arg.startsWith('--threshold='))
+  if (thresholdArgs.length > 1) {
+    return { kind: 'usageError', reason: 'threshold must be provided at most once' }
+  }
+  const thresholdArg = thresholdArgs[0]
   const thresholdText = thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length)
   const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
   if (thresholdText === '') {
@@ -221,7 +234,8 @@ const main = async (bun: BunLike): Promise<number> => {
   const usageExitCode = resolvePairedRunCliUsageExitCode(parsed)
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    return usageExitCode ?? 2
+    if (usageExitCode === null) return 2
+    return usageExitCode
   }
   const { sourceFiles, threshold } = parsed
   if (usageExitCode !== null) {
@@ -234,6 +248,7 @@ const main = async (bun: BunLike): Promise<number> => {
     projectRoot,
     reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
     sourceFiles,
+    deps: undefined,
   })
 
   if (resolvePairedRunExitCode(result.merged, threshold) === 1) {
@@ -243,7 +258,7 @@ const main = async (bun: BunLike): Promise<number> => {
   return 0
 }
 
-const maybeBun = (globalThis as typeof globalThis & { readonly Bun?: BunLike }).Bun
+const maybeBun = (globalThis as typeof globalThis & { readonly Bun: BunLike | undefined }).Bun
 if (maybeBun !== undefined && import.meta.path === maybeBun.main) {
   process.exit(await main(maybeBun))
 }

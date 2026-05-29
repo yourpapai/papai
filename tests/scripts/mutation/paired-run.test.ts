@@ -132,6 +132,14 @@ describe('pairedRun', () => {
 })
 
 describe('parsePairedRunCliArgs', () => {
+  test('parses source files with a threshold value', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', 'src/bar.ts', '--threshold=0.75'])).toEqual({
+      kind: 'ok',
+      sourceFiles: ['src/foo.ts', 'src/bar.ts'],
+      threshold: 0.75,
+    })
+  })
+
   test('treats invalid threshold values as usage errors', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=not-a-number'])).toEqual({
       kind: 'usageError',
@@ -143,6 +151,20 @@ describe('parsePairedRunCliArgs', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold='])).toEqual({
       kind: 'usageError',
       reason: 'threshold must be a finite number',
+    })
+  })
+
+  test('rejects duplicate threshold arguments', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=0.5', '--threshold=0.75'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be provided at most once',
+    })
+  })
+
+  test('rejects duplicate threshold arguments with an invalid later value', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=1', '--threshold=not-a-number'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be provided at most once',
     })
   })
 })
