@@ -50,8 +50,6 @@
     "src/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
-    // getContributedTaskProviderType is a test-only seam.
-    "src/providers/registry.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.
