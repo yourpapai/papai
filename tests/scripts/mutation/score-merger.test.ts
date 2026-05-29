@@ -25,6 +25,7 @@ describe('mergeReports', () => {
       compileError: 0,
       ignored: 0,
       runtimeError: 0,
+      pending: 0,
       total: 0,
       scored: 0,
       score: 0,
@@ -54,6 +55,40 @@ describe('mergeReports', () => {
   test('treats an all-Ignored report as score 0 with no scored mutants', () => {
     const out = mergeReports([makeReport(['Ignored', 'Ignored'])])
     expect(out.ignored).toBe(2)
+    expect(out.scored).toBe(0)
+    expect(out.score).toBe(0)
+  })
+
+  test('treats a Pending report as total-only with no scored mutants', () => {
+    const out = mergeReports([makeReport(['Pending'])])
+    expect(out.pending).toBe(1)
+    expect(out.runtimeError).toBe(0)
+    expect(out.total).toBe(1)
+    expect(out.scored).toBe(0)
+    expect(out.score).toBe(0)
+  })
+
+  test('handles missing report fields as zero-count reports', () => {
+    const out = mergeReports([{}, { files: {} }, { files: { 'src/x.ts': {} } }])
+    expect(out).toEqual({
+      killed: 0,
+      survived: 0,
+      noCoverage: 0,
+      timeout: 0,
+      compileError: 0,
+      ignored: 0,
+      runtimeError: 0,
+      pending: 0,
+      total: 0,
+      scored: 0,
+      score: 0,
+    })
+  })
+
+  test('counts RuntimeError as runtimeError without scoring it', () => {
+    const out = mergeReports([makeReport(['RuntimeError'])])
+    expect(out.runtimeError).toBe(1)
+    expect(out.total).toBe(1)
     expect(out.scored).toBe(0)
     expect(out.score).toBe(0)
   })

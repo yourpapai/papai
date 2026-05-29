@@ -24,6 +24,7 @@ export interface MergedScore {
   readonly compileError: number
   readonly ignored: number
   readonly runtimeError: number
+  readonly pending: number
   readonly total: number
   readonly scored: number
   readonly score: number
@@ -39,6 +40,7 @@ const ZERO_COUNTS: Counts = {
   compileError: 0,
   ignored: 0,
   runtimeError: 0,
+  pending: 0,
   total: 0,
 }
 
@@ -57,6 +59,8 @@ const addMutant = (counts: Counts, mutant: StrykerMutant): Counts => {
       return { ...withTotal, compileError: withTotal.compileError + 1 }
     case 'Ignored':
       return { ...withTotal, ignored: withTotal.ignored + 1 }
+    case 'Pending':
+      return { ...withTotal, pending: withTotal.pending + 1 }
     case undefined:
       return { ...withTotal, runtimeError: withTotal.runtimeError + 1 }
     default:
