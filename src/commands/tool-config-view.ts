@@ -78,6 +78,10 @@ function callbackData(raw: string, compact: string): string | null {
   return Buffer.byteLength(compact, 'utf8') <= MAX_CALLBACK_DATA_BYTES ? compact : null
 }
 
+function callbackDataRawOnly(raw: string): string | null {
+  return Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES ? raw : null
+}
+
 function sortedToolNames(availableToolNames: readonly string[]): string[] {
   return [...availableToolNames].filter((name) => getToolMetadata(name) !== undefined).toSorted()
 }
@@ -163,25 +167,48 @@ export function buildDomainListView(
       })
     }
   }
+  const externalNames = [...availableToolNames].filter((name) => getToolMetadata(name) === undefined)
+  if (externalNames.length > 0) {
+    lines.push(`🧩 External — ${externalNames.length} tools`)
+    const editCallback = callbackData(`tgl:open:external:${ctx}`, `tgl:o:ext:${ctx}`)
+    if (editCallback !== null) {
+      buttons.push({ text: '✏️ Edit External', callbackData: editCallback, style: 'secondary' })
+    }
+  }
   lines.push('')
   lines.push('🟢 = always allowed   ❓ = ask each time   ⭕ = blocked')
   return { text: lines.join('\n'), buttons }
 }
 
-export function buildDomainDrillView(
-  contextId: string,
+function buildExternalDrillView(ctx: string, availableToolNames: readonly string[], prefs: ToolPrefs): ToolMenuView {
+  const sortedExt = [...availableToolNames].filter((n) => getToolMetadata(n) === undefined).toSorted()
+  const lines = ['🧰 **External tools** — tap a tool to cycle its permission.\n']
+  const buttons: ChatButton[] = []
+  for (const name of sortedExt) {
+    const perm = resolveToolPermission(prefs, name)
+    lines.push(`${permissionMarker(perm)} ${name}`)
+    const toolCallback = callbackDataRawOnly(`tgl:tool:${name}:${ctx}`)
+    if (toolCallback !== null) {
+      buttons.push({
+        text: `${permissionMarker(perm)} ${name}`,
+        callbackData: toolCallback,
+        style: perm === 'deny' ? 'secondary' : 'primary',
+      })
+    }
+  }
+  const backCallback = callbackData(`tgl:back:${ctx}`, `tgl:b:${ctx}`)
+  if (backCallback !== null) buttons.push({ text: '⬅️ Back', callbackData: backCallback, style: 'secondary' })
+  return { text: lines.join('\n'), buttons }
+}
+
+function buildNamedDomainDrillView(
+  ctx: string,
   domain: ToolDomain,
   availableToolNames: readonly string[],
   prefs: ToolPrefs,
 ): ToolMenuView {
-  const ctx = encodeCtx(contextId)
   const domainTools = groupByDomain(availableToolNames).get(domain)
-  let names: string[]
-  if (domainTools === undefined) {
-    names = []
-  } else {
-    names = domainTools
-  }
+  const names = domainTools ?? []
   const sorted = [...names].toSorted()
   const allSorted = sortedToolNames(availableToolNames)
   const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to cycle its permission.\n`]
@@ -203,4 +230,15 @@ export function buildDomainDrillView(
   const backCallback = callbackData(`tgl:back:${ctx}`, `tgl:b:${ctx}`)
   if (backCallback !== null) buttons.push({ text: '⬅️ Back', callbackData: backCallback, style: 'secondary' })
   return { text: lines.join('\n'), buttons }
+}
+
+export function buildDomainDrillView(
+  contextId: string,
+  domain: ToolDomain | 'external',
+  availableToolNames: readonly string[],
+  prefs: ToolPrefs,
+): ToolMenuView {
+  const ctx = encodeCtx(contextId)
+  if (domain === 'external') return buildExternalDrillView(ctx, availableToolNames, prefs)
+  return buildNamedDomainDrillView(ctx, domain, availableToolNames, prefs)
 }

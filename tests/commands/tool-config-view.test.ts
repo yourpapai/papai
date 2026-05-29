@@ -131,3 +131,31 @@ describe('tool-config-view tri-state markers', () => {
     expect(view.text).toContain('⭕ = blocked')
   })
 })
+
+describe('external pseudo-domain', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+  })
+
+  test('absent when no plugin/MCP tools', () => {
+    const view = buildDomainListView('ctx-ext-none', ['create_task'], getToolPrefs('ctx-ext-none'))
+    expect(view.text).not.toContain('External')
+  })
+
+  test('shown when plugin/MCP tools present', () => {
+    const view = buildDomainListView(
+      'ctx-ext-yes',
+      ['create_task', 'plugin_foo__greet', 'mcp_bar__ping'],
+      getToolPrefs('ctx-ext-yes'),
+    )
+    expect(view.text).toContain('External')
+  })
+
+  test('no bulk-toggle button for External; only Edit', () => {
+    const view = buildDomainListView('ctx-ext-buttons', ['plugin_foo__greet'], getToolPrefs('ctx-ext-buttons'))
+    const editButtons = view.buttons.filter((b) => b.text.includes('External'))
+    expect(editButtons.length).toBeGreaterThan(0)
+    expect(editButtons.every((b) => b.text.startsWith('✏️'))).toBe(true)
+  })
+})
