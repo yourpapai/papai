@@ -15,6 +15,7 @@ import { wrapToolExecution } from '../tools/wrap-tool-execution.js'
 import { namespacedJobName, namespacedToolName } from './contribution-names.js'
 import { getPluginContextEligibility } from './registry.js'
 import { getScheduledJobContextIds } from './scheduled-contexts.js'
+import { recordRuntimeEvent } from './store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from './tool-runtime.js'
 import type {
   PluginCommand,
@@ -260,7 +261,9 @@ export function buildPluginToolSet(
       const namespacedName = namespacedToolName(pluginId, pluginTool.name)
 
       if (usedNames.has(namespacedName)) {
+        const message = `Tool contribution '${namespacedName}' skipped because the name already exists`
         log.warn({ pluginId, toolName: namespacedName }, 'Plugin tool name collision — skipping')
+        recordRuntimeEvent(pluginId, 'skipped', message)
         continue
       }
 

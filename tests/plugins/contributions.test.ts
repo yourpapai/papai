@@ -30,6 +30,7 @@ import {
   resetPluginRegistryForTesting,
   setPluginEnabledForContext,
 } from '../../src/plugins/registry.js'
+import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -929,7 +930,7 @@ describe('buildPluginToolSet', () => {
     )
   })
 
-  test('skips tools that collide with existing tool names', () => {
+  test('skips tools that collide with existing tool names and records a runtime event', () => {
     const manifest = makeManifest()
     contributionRegistry.register(
       'test-plugin',
@@ -946,8 +947,15 @@ describe('buildPluginToolSet', () => {
       manifest,
     )
     const existing = new Set(['plugin_test_plugin__my_tool'])
+
     const tools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const events = getRecentRuntimeEvents('test-plugin', 1)
+
     expect(Object.keys(tools)).toHaveLength(0)
+    expect(events[0]?.eventType).toBe('skipped')
+    expect(events[0]?.message).toBe(
+      "Tool contribution 'plugin_test_plugin__my_tool' skipped because the name already exists",
+    )
   })
 })
 
