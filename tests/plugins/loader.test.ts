@@ -238,6 +238,102 @@ describe('activatePlugins', () => {
     expect(contributionRegistry.getContributions('timeout-plugin')).toBeUndefined()
   })
 
+  test('timeout plugin does not publish late provider registration after activation failure', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            setTimeout(() => {
+              ctx.registration.registerTaskProviderType('late-timeout-provider', () => ({}))
+            }, 150)
+            return new Promise(() => {})
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('late-timeout-plugin', entryPoint, {
+      activationTimeoutMs: 100,
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['late-timeout-provider'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200)
+    })
+
+    expect(
+      requireValue(pluginRegistry.getEntry('late-timeout-plugin'), 'late timeout plugin registry entry').state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('late-timeout-provider')).toBeUndefined()
+  })
+
+  test('duplicate contributed provider type fails later plugin activation', async () => {
+    const firstEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('duplicate-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const secondEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('duplicate-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const firstPlugin = makePlugin('first-duplicate-provider-plugin', firstEntry, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['duplicate-provider'],
+      },
+    })
+    const secondPlugin = makePlugin('second-duplicate-provider-plugin', secondEntry, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['duplicate-provider'],
+      },
+    })
+    approvePlugin(firstPlugin)
+    approvePlugin(secondPlugin)
+
+    await activatePlugins([firstPlugin, secondPlugin])
+
+    expect(
+      requireValue(pluginRegistry.getEntry('first-duplicate-provider-plugin'), 'first duplicate plugin registry entry')
+        .state,
+    ).toBe('active')
+    expect(
+      requireValue(
+        pluginRegistry.getEntry('second-duplicate-provider-plugin'),
+        'second duplicate plugin registry entry',
+      ).state,
+    ).toBe('error')
+  })
+
   test('activation failure cleans framework-owned partial contributions', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
@@ -337,7 +433,7 @@ describe('activatePlugins', () => {
       export default function createPlugin() {
         return {
           activate(ctx) {
-            ctx.registration.registerTaskProviderType('demo', { factory: () => ({}) })
+            ctx.registration.registerTaskProviderType('demo', () => ({}))
           },
         }
       }
@@ -371,7 +467,7 @@ describe('activatePlugins', () => {
       export default function createPlugin() {
         return {
           activate(ctx) {
-            ctx.registration.registerTaskProviderType('demo-stop', { factory: () => ({}) })
+            ctx.registration.registerTaskProviderType('demo-stop', () => ({}))
           },
         }
       }
@@ -401,7 +497,7 @@ describe('activatePlugins', () => {
       export default function createPlugin() {
         return {
           activate(ctx) {
-            ctx.registration.registerTaskProviderType('demo-retire', { factory: () => ({}) })
+            ctx.registration.registerTaskProviderType('demo-retire', () => ({}))
           },
         }
       }

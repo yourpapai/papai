@@ -7,7 +7,8 @@ import type { ToolExecutionOptions } from 'ai'
 import type { z } from 'zod'
 
 import type { AuthorizationResult, IncomingMessage, ReplyFn } from '../chat/types.js'
-import type { TaskProvider } from '../providers/types.js'
+import type { TaskProviderFactory } from '../providers/registry.js'
+import type { TaskCapability, ProviderConfigField, TaskProvider, TaskProviderTrait } from '../providers/types.js'
 import type { PluginContext } from './context.js'
 import type { PluginIdentityFacade } from './identity-facade.js'
 
@@ -62,6 +63,15 @@ export type PluginContributions = {
   promptFragments: PluginPromptFragment[]
   commands?: PluginCommand[]
   jobs?: PluginScheduledJob[]
+  taskProviderRegistration?: {
+    type: string
+    factory: TaskProviderFactory
+    capabilities: ReadonlySet<TaskCapability>
+    displayName: string
+    instanceConfigSchema: readonly ProviderConfigField[]
+    contextConfigSchema: readonly ProviderConfigField[]
+    traits: ReadonlySet<TaskProviderTrait>
+  }
 }
 
 /** Runtime plugin instance returned by a plugin factory. */

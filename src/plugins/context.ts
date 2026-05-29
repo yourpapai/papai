@@ -4,17 +4,13 @@
 // See LICENSE in the project root for details.
 
 import { logger } from '../logger.js'
-import {
-  registerContributedTaskProviderType,
-  type TaskProviderFactory,
-  type TaskProviderConfigValidator,
-} from '../providers/registry.js'
+import type { TaskProviderFactory } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
 import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
+import type { PluginContributions } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type {
-  PluginContributions,
   PluginManifest,
   PluginPermission,
   PluginCommand,
@@ -55,10 +51,7 @@ export type PluginRegistration = {
   /** Register a scheduled job. The name must match a declared contributes.jobs entry. */
   registerScheduledJob(job: PluginScheduledJob): void
   /** Register the plugin's single declared task provider type. Requires the 'provider.task' permission. */
-  registerTaskProviderType(
-    type: string,
-    descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
-  ): void
+  registerTaskProviderType(type: string, factory: TaskProviderFactory): void
 }
 
 /** Full context passed to a plugin's activate() function. */
@@ -134,11 +127,9 @@ const toProviderConfigField = (
 
 function buildRegisterTaskProviderType(
   manifest: PluginManifest,
-): (type: string, descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator }) => void {
-  return function registerTaskProviderType(
-    type: string,
-    descriptor: { factory: TaskProviderFactory; validateConfig?: TaskProviderConfigValidator },
-  ): void {
+  collected: PluginContributions,
+): (type: string, factory: TaskProviderFactory) => void {
+  return function registerTaskProviderType(type: string, factory: TaskProviderFactory): void {
     if (!manifest.permissions.includes('provider.task')) {
       throw new Error(`Plugin ${manifest.id} cannot register a task provider type without 'provider.task'`)
     }
@@ -148,10 +139,9 @@ function buildRegisterTaskProviderType(
         `Task provider type '${type}' is not declared in plugin manifest contributes.taskProviderTypes (declared: [${declared.join(', ')}])`,
       )
     }
-    registerContributedTaskProviderType(type, {
-      pluginId: manifest.id,
-      factory: descriptor.factory,
-      validateConfig: descriptor.validateConfig,
+    collected.taskProviderRegistration = {
+      type,
+      factory,
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
@@ -159,7 +149,7 @@ function buildRegisterTaskProviderType(
         toProviderConfigField(field, 'context'),
       ),
       traits: new Set(),
-    })
+    }
   }
 }
 
@@ -196,7 +186,7 @@ function buildRegistration(manifest: PluginManifest, collected: PluginContributi
       }
       collected.jobs = [...(collected.jobs ?? []), job]
     },
-    registerTaskProviderType: buildRegisterTaskProviderType(manifest),
+    registerTaskProviderType: buildRegisterTaskProviderType(manifest, collected),
   })
 }
 

@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url'
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
+import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
@@ -74,6 +75,33 @@ const SYSTEM_CONTEXT_ID = '__system__'
 const activationOrder: string[] = []
 const activeInstances = new Map<string, PluginInstance>()
 
+function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnType<typeof buildPluginContext>): void {
+  const registration = ctx.collected.taskProviderRegistration
+  if (registration === undefined) return
+
+  const { manifest } = plugin
+  const { type, ...entry } = registration
+  const before = getTaskProviderDescriptor(type)
+  registerContributedTaskProviderType(type, {
+    pluginId: manifest.id,
+    factory: entry.factory,
+    capabilities: entry.capabilities,
+    displayName: entry.displayName,
+    instanceConfigSchema: entry.instanceConfigSchema,
+    contextConfigSchema: entry.contextConfigSchema,
+    traits: entry.traits,
+  })
+  const after = getTaskProviderDescriptor(type)
+  if (
+    before !== undefined ||
+    after?.source === undefined ||
+    after.source === 'builtin' ||
+    after.source.plugin !== manifest.id
+  ) {
+    throw new Error(`Task provider type '${type}' could not be registered for plugin '${manifest.id}'`)
+  }
+}
+
 async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   const { manifest, entryPoint } = plugin
 
@@ -91,13 +119,16 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
         })
   if (entryPoint !== '' && instance === null) return false
 
-  const { ctx, collected } = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
+  const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
+  const { ctx, collected } = activationContext
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
     if (instance !== null) {
       await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
     }
+
+    commitTaskProviderRegistration(plugin, activationContext)
 
     contributionRegistry.register(manifest.id, collected, manifest)
     if (instance !== null) {

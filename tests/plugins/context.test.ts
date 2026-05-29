@@ -3,13 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { buildPluginContext } from '../../src/plugins/context.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
-import { getTaskProviderDescriptor, unregisterContributedTaskProviderType } from '../../src/providers/registry.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -188,15 +187,7 @@ describe('buildPluginContext', () => {
   })
 
   describe('registerTaskProviderType', () => {
-    beforeEach(() => {
-      unregisterContributedTaskProviderType('test-plugin')
-    })
-
-    afterEach(() => {
-      unregisterContributedTaskProviderType('test-plugin')
-    })
-
-    test('registers a declared type when provider.task is held', () => {
+    test('stages a declared type when provider.task is held', () => {
       const manifest = makeManifest({
         permissions: ['provider.task'],
         contributes: {
@@ -209,14 +200,22 @@ describe('buildPluginContext', () => {
         },
         providerCapabilities: ['labels.list'],
       })
-      const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
-      expect(requireValue(getTaskProviderDescriptor('custom-tracker'), 'custom tracker descriptor').source).toEqual({
-        plugin: 'test-plugin',
+      const { ctx, collected } = buildPluginContext(manifest, 'ctx-1')
+
+      ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)
+
+      expect(collected.taskProviderRegistration).toEqual({
+        type: 'custom-tracker',
+        factory: stubProviderFactory,
+        capabilities: new Set(['labels.list']),
+        displayName: 'Test Plugin',
+        instanceConfigSchema: [],
+        contextConfigSchema: [],
+        traits: new Set(),
       })
     })
 
-    test('registers provider context config schema from manifest', () => {
+    test('stages provider config schema from manifest', () => {
       const manifest = pluginManifestSchema.parse({
         id: 'test-plugin',
         name: 'Test Plugin',
@@ -229,13 +228,13 @@ describe('buildPluginContext', () => {
         providerConfigSchema: [{ key: 'base_url', label: 'Base URL', required: true }],
         providerContextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true }],
       })
-      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      const { ctx, collected } = buildPluginContext(manifest, 'ctx-1')
 
-      ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
+      ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)
 
-      const descriptor = requireValue(getTaskProviderDescriptor('custom-tracker'), 'custom tracker descriptor')
-      expect(descriptor.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
-      expect(descriptor.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
+      const registration = requireValue(collected.taskProviderRegistration, 'custom tracker registration')
+      expect(registration.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
+      expect(registration.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
     })
 
     test('throws without provider.task permission', () => {
@@ -251,7 +250,7 @@ describe('buildPluginContext', () => {
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      expect(() => ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })).toThrow(
+      expect(() => ctx.registration.registerTaskProviderType('kaneo', stubProviderFactory)).toThrow(
         "cannot register a task provider type without 'provider.task'",
       )
     })
@@ -269,7 +268,7 @@ describe('buildPluginContext', () => {
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      expect(() => ctx.registration.registerTaskProviderType('youtrack', { factory: stubProviderFactory })).toThrow(
+      expect(() => ctx.registration.registerTaskProviderType('youtrack', stubProviderFactory)).toThrow(
         'is not declared in plugin manifest contributes.taskProviderTypes',
       )
     })
