@@ -18,6 +18,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
+import { ISSUE_LIMIT } from '../../src/settings/issue-link.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { clearUserCache } from '../utils/test-cache.js'
 import {
@@ -433,5 +434,24 @@ describe('/config settings link issuance', () => {
     const allText = textCalls.join('\n')
     expect(allText).toContain('https://bot.example.com/settings?code=')
     expect(allText).toMatch(/single-use/iu)
+    expect(textCalls).toHaveLength(1)
+  })
+
+  test('warns when settings links are rate limited', async () => {
+    process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
+    const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
+    registerConfigCommand(mockChat, (_userId: string) => true)
+    const handler = commandHandlers.get('config')
+    assert.ok(handler !== undefined, 'expected config handler to be registered')
+
+    const msg = createDmMessage(USER_ID)
+    const auth = createAuth(USER_ID)
+    // ISSUE_LIMIT = 5; invoking ISSUE_LIMIT+1 times exhausts the quota on the last call
+    let lastReply = createMockReply()
+    for (let i = 0; i < ISSUE_LIMIT + 1; i += 1) {
+      lastReply = createMockReply()
+      await handler(msg, lastReply.reply, auth)
+    }
+    expect(lastReply.textCalls.join('\n').toLowerCase()).toContain('too many')
   })
 })
