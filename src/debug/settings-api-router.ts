@@ -5,6 +5,7 @@
 
 import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleMcpRoutes } from './settings/mcp-routes.js'
+import { handlePluginsRoutes } from './settings/plugins-routes.js'
 import { handleToolsRoutes } from './settings/tools-routes.js'
 
 /**
@@ -18,5 +19,6 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
     return handleToolsRoutes(req, url, url.pathname)
   }
   if (url.pathname === '/settings/api/mcp') return handleMcpRoutes(req, url)
+  if (url.pathname.startsWith('/settings/api/plugins')) return handlePluginsRoutes(req, url, url.pathname)
   return Promise.resolve(null)
 }
