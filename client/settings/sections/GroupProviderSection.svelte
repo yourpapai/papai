@@ -26,7 +26,11 @@
     try {
       const result = await fetchGroupTaskInstance(id)
       data = result
-      selected = result.taskInstanceId ?? (result.available[0]?.id ?? '')
+      const currentId = result.taskInstanceId
+      selected =
+        currentId !== null && result.available.some((a) => a.id === currentId)
+          ? currentId
+          : (result.available[0]?.id ?? '')
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -40,8 +44,8 @@
     if (selected === '') return
     try {
       await patchGroupTaskInstance({ taskInstanceId: selected, contextId })
-      status = 'Task instance updated.'
       await load(contextId)
+      status = 'Task instance updated.'
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }

@@ -71,6 +71,44 @@ describe('GroupProviderSection', () => {
     void unmount(component)
   })
 
+  test('preselects the first available when no task instance is set', async () => {
+    const noInstancePayload = {
+      contextId: 'group:7',
+      taskInstanceId: null,
+      available: [
+        { id: 'kaneo-a', type: 'kaneo', status: 'active' },
+        { id: 'kaneo-b', type: 'kaneo', status: 'active' },
+      ],
+    }
+    setMockFetch(() => Promise.resolve(json(noInstancePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
+    expect(select.value).toBe('kaneo-a')
+    void unmount(component)
+  })
+
+  test('falls back to first available when the assigned instance is missing from available', async () => {
+    const stalePayload = {
+      contextId: 'group:7',
+      taskInstanceId: 'gone',
+      available: [
+        { id: 'kaneo-a', type: 'kaneo', status: 'active' },
+        { id: 'kaneo-b', type: 'kaneo', status: 'active' },
+      ],
+    }
+    setMockFetch(() => Promise.resolve(json(stalePayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(GroupProviderSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="group-task-instance"]')!
+    expect(select.value).toBe('kaneo-a')
+    void unmount(component)
+  })
+
   test('a failed save keeps the form visible and shows an error', async () => {
     setCsrfToken('c')
     setMockFetch(patchErrorMock)
