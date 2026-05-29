@@ -27,6 +27,11 @@ describe('settings kaneo provision route', () => {
     process.env['KANEO_CLIENT_URL'] = originalUrl
   })
 
+  test('non-POST returns 405', async () => {
+    const res = await handleProvisionKaneo(new Request('https://x/settings/api/provision/kaneo', { method: 'GET' }))
+    expect(res.status).toBe(405)
+  })
+
   test('returns 422 when no Kaneo public URL is configured', async () => {
     const res = await handleProvisionKaneo(
       new Request('https://x/settings/api/provision/kaneo', {
