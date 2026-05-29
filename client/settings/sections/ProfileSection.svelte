@@ -50,9 +50,9 @@
 
   {#if error !== null}
     <p class="status-error">{error}</p>
-  {/if}
-
-  {#if visible.length === 0}
+  {:else if loading}
+    <p class="placeholder">Loading…</p>
+  {:else if visible.length === 0}
     <p class="placeholder">No editable profile settings for this context.</p>
   {:else}
     <div class="settings-field-list">

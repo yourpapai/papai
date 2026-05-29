@@ -58,6 +58,8 @@ afterEach(() => {
   restoreFetch()
 })
 
+const errorResponse = (): Promise<Response> => Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+
 describe('ProfileSection', () => {
   test('renders only preference fields excluding mcp_endpoints', async () => {
     setMockFetch(() => Promise.resolve(json(configPayload)))
@@ -69,6 +71,17 @@ describe('ProfileSection', () => {
     expect(target.querySelector('[data-testid="cfg-row-timezone"]')).not.toBeNull()
     expect(target.querySelector('[data-testid="cfg-row-mcp_endpoints"]')).toBeNull()
     expect(target.querySelector('[data-testid="cfg-row-kaneo_apikey"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows an error message when the config fetch fails', async () => {
+    setMockFetch(errorResponse)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ProfileSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('.placeholder')).toBeNull()
     void unmount(component)
   })
 })
