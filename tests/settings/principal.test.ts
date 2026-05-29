@@ -42,4 +42,12 @@ describe('resolveSettingsPrincipal', () => {
     expect(principal.isSuperAdmin).toBe(true)
     expect(principal.authorized).toBe(true)
   })
+
+  test('a platform admin resolves isBotAdmin true but isSuperAdmin false', () => {
+    addAdmin('padmin', 'pi-1')
+    const principal = resolveSettingsPrincipal('pi-1', 'padmin')
+    expect(principal.isBotAdmin).toBe(true)
+    expect(principal.isSuperAdmin).toBe(false)
+    expect(principal.authorized).toBe(true)
+  })
 })

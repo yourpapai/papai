@@ -33,7 +33,7 @@ export function resolveSettingsPrincipal(platformInstanceId: string, platformUse
   const personalConfigContextId = toScopedContextId({ platformInstanceId, nativeContextId: platformUserId })
   const manageableGroups = listManageableGroups(platformUserId, platformInstanceId)
 
-  log.debug({ platformInstanceId, isBotAdmin: botAdmin, authorized }, 'Resolved settings principal')
+  log.debug({ platformInstanceId, platformUserId, isBotAdmin: botAdmin, authorized }, 'Resolved settings principal')
   return {
     platformInstanceId,
     platformUserId,
