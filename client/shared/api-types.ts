@@ -189,6 +189,7 @@ export type TaskInstanceView = Readonly<{
   config: InstanceConfigView
   status: InstanceStatusView
   createdAt: string
+  unresolvedReason: string | null
 }> &
   Partial<Readonly<{ referencingContextIds: readonly string[]; referencingContextCount: number }>>
 

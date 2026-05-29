@@ -98,6 +98,7 @@ describe('instance API schemas', () => {
       createdAt: '2026-05-24T00:00:00.000Z',
       referencingContextIds: ['ctx-1', 'ctx-2'],
       referencingContextCount: 2,
+      unresolvedReason: null,
     })
     expect(result.success).toBe(true)
   })
@@ -122,7 +123,9 @@ describe('instance API schemas', () => {
   test('rejects unknown platform and status enums; task type is open string', () => {
     expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, type: 'slack' }).success).toBe(false)
     // TaskInstanceViewSchema.type is now open (string) — any string is valid
-    expect(TaskInstanceViewSchema.safeParse({ ...platformInstance, type: 'jira' }).success).toBe(true)
+    expect(
+      TaskInstanceViewSchema.safeParse({ ...platformInstance, type: 'jira', unresolvedReason: null }).success,
+    ).toBe(true)
     expect(PlatformInstanceViewSchema.safeParse({ ...platformInstance, status: 'running' }).success).toBe(false)
   })
 

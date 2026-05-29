@@ -352,7 +352,12 @@
             {#each taskInstances as instance (instance.id)}
               <tr data-testid="task-instance-row">
                 <td>{instance.id}</td><td>{instance.type}</td><td>{instance.status}</td><td>{configLabel(instance.config)}</td><td>{instance.createdAt}</td>
-                <td><button type="button" data-testid={`task-delete-${instance.id}`} onclick={() => void removeTask(instance)}>Delete</button></td>
+                <td>
+                  {#if instance.unresolvedReason}
+                    <span data-testid={`task-instance-unresolved-${instance.id}`} class="unresolved-label">{instance.unresolvedReason}</span>
+                  {/if}
+                  <button type="button" data-testid={`task-delete-${instance.id}`} onclick={() => void removeTask(instance)}>Delete</button>
+                </td>
               </tr>
             {/each}
           </tbody>
@@ -408,6 +413,17 @@
 
   .status-success {
     color: var(--success);
+  }
+
+  .unresolved-label {
+    display: inline-block;
+    margin-bottom: 4px;
+    padding: 2px 6px;
+    border: 1px solid var(--warn, #b45309);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--warn, #b45309);
+    font-size: 0.8em;
   }
 
   @media (max-width: 720px) {

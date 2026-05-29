@@ -19,6 +19,7 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'active',
       createdAt: '2026-05-26T00:00:00.000Z',
+      unresolvedReason: null,
     })
     expect(result.success).toBe(true)
   })
@@ -30,6 +31,19 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'pending',
       createdAt: '2026-05-26T00:00:00.000Z',
+      unresolvedReason: null,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('accepts a non-null unresolvedReason when the provider plugin is not active', () => {
+    const result = TaskInstanceViewSchema.safeParse({
+      id: 'missing-1',
+      type: 'no-such-provider',
+      config: {},
+      status: 'active',
+      createdAt: '2026-05-29T00:00:00.000Z',
+      unresolvedReason: "Provider plugin for type 'no-such-provider' is not active. Run /plugin approve.",
     })
     expect(result.success).toBe(true)
   })

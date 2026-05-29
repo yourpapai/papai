@@ -813,6 +813,18 @@ describe('instance API routes', () => {
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'publicish')).toBe('********')
   })
 
+  test('GET /api/task-instances marks rows whose provider plugin is not active', async () => {
+    insertTaskInstance({ id: 'no-plugin-1', type: 'no-such-provider', config: { url: 'x' }, status: 'active' })
+
+    const res = expectResponse(await route('/api/task-instances'))
+
+    const body = assertArray(await readJson(res))
+    const row = assertObject(body.find((entry) => pick(assertObject(entry), 'id') === 'no-plugin-1'))
+    const unresolvedReason = pick(row, 'unresolvedReason')
+    expect(typeof unresolvedReason).toBe('string')
+    expect(String(unresolvedReason)).toContain('not active')
+  })
+
   test('rejects a task-instance create when the provider validator fails', async () => {
     registerContributedTaskProviderType('validated', {
       pluginId: 'val',
