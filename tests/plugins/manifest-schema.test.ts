@@ -118,6 +118,32 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 
+  test('rejects raw POSIX parent-segment main paths', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'posix-parent-segment-main',
+      name: 'POSIX Parent Segment Main',
+      version: '1.0.0',
+      description: 'posix parent segment',
+      apiVersion: 1,
+      main: 'foo/../index.ts',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects raw Windows parent-segment main paths', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'windows-parent-segment-main',
+      name: 'Windows Parent Segment Main',
+      version: '1.0.0',
+      description: 'windows parent segment',
+      apiVersion: 1,
+      main: 'foo\\..\\index.ts',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   test('rejects configKeys without matching context-scoped config requirement', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'bad-config-keys',

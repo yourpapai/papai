@@ -31,6 +31,8 @@ type ManifestValidationInput = {
 export function isValidMainPath(path: string): boolean {
   if (path.startsWith('/')) return false
   if (win32.isAbsolute(path)) return false
+  if (path.split('/').includes('..')) return false
+  if (path.split('\\').includes('..')) return false
   if (posix.normalize(path).split('/').includes('..')) return false
   if (win32.normalize(path).split('\\').includes('..')) return false
   return path.endsWith('.ts') || path.endsWith('.js')
