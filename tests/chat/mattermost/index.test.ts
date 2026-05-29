@@ -190,6 +190,14 @@ describe('MattermostChatProvider', () => {
     process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
   })
 
+  test('constructor accepts legacy url config without MATTERMOST_URL env', () => {
+    delete process.env['MATTERMOST_URL']
+
+    const constructedProvider = new MattermostChatProvider({ url: 'https://legacy.invalid', token: 'cfg-token' })
+
+    expect(constructedProvider.name).toBe('mattermost')
+  })
+
   describe('resolveUserId', () => {
     test('resolves username to user ID', async () => {
       setMockFetch(makeFetchWithUsernameTestuser())
