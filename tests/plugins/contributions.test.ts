@@ -30,6 +30,7 @@ import {
   resetPluginRegistryForTesting,
   setPluginEnabledForContext,
 } from '../../src/plugins/registry.js'
+import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -59,6 +60,11 @@ function getManifestOverrides(args: MakeManifestArgs): ManifestOverrides {
 function getRuntimeOverrides(args: MakeRuntimeArgs): Partial<PluginToolSetRuntime> {
   if (args.length === 0) return {}
   return args[0]
+}
+
+function requireValue<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
+  return value
 }
 
 function makeManifest(...args: MakeManifestArgs): PluginManifest {
@@ -929,7 +935,7 @@ describe('buildPluginToolSet', () => {
     )
   })
 
-  test('skips tools that collide with existing tool names', () => {
+  test('skips tools that collide with existing tool names and records a runtime event', () => {
     const manifest = makeManifest()
     contributionRegistry.register(
       'test-plugin',
@@ -946,8 +952,19 @@ describe('buildPluginToolSet', () => {
       manifest,
     )
     const existing = new Set(['plugin_test_plugin__my_tool'])
-    const tools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
-    expect(Object.keys(tools)).toHaveLength(0)
+
+    const firstTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const secondTools = buildPluginToolSet(['test-plugin'], existing, makeRuntime())
+    const events = getRecentRuntimeEvents('test-plugin', 5)
+
+    expect(Object.keys(firstTools)).toHaveLength(0)
+    expect(Object.keys(secondTools)).toHaveLength(0)
+    expect(events).toHaveLength(1)
+    const event = requireValue(events[0], 'collision runtime event')
+    expect(event.eventType).toBe('skipped')
+    expect(event.message).toBe(
+      "Tool contribution 'plugin_test_plugin__my_tool' skipped because the name already exists",
+    )
   })
 })
 

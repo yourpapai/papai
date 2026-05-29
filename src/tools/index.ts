@@ -13,20 +13,40 @@ import type { McpPluginConfig } from '../mcp/types.js'
 import { buildPluginToolSet, contributionRegistry } from '../plugins/contributions.js'
 import { getPluginsForContext } from '../plugins/registry.js'
 import type { TaskProvider } from '../providers/types.js'
-import { getToolPrefs, partitionToolNames } from './tool-preferences.js'
+import { extendSchemaForAsk, gatedExecute, type AskPermissionFn } from './permission-gate.js'
+import { getToolPrefs, resolveToolPermission } from './tool-preferences.js'
 import { buildTools } from './tools-builder.js'
 import type { MakeToolsOptions, ToolMode } from './types.js'
 import { wrapToolExecution } from './wrap-tool-execution.js'
 
 export type { MakeToolsOptions, ToolMode }
 
-function applyToolPreferences(tools: ToolSet, contextId: string | undefined): ToolSet {
+export function applyToolPreferences(
+  tools: ToolSet,
+  contextId: string | undefined,
+  askPermission: AskPermissionFn | undefined,
+): ToolSet {
   if (contextId === undefined) return tools
   const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
   const prefs = getToolPrefs(prefsContextId)
-  if (prefs.disabledDomains.length === 0 && Object.keys(prefs.toolOverrides).length === 0) return tools
-  const { enabled } = partitionToolNames(prefs, Object.keys(tools))
-  return Object.fromEntries(Object.entries(tools).filter(([name]) => enabled.has(name)))
+  const out: ToolSet = {}
+  for (const [name, t] of Object.entries(tools)) {
+    if (t === undefined) continue
+    const perm = resolveToolPermission(prefs, name)
+    if (perm === 'deny') continue
+    if (perm === 'allow') {
+      out[name] = t
+      continue
+    }
+    // perm === 'ask'
+    const extendedSchema = extendSchemaForAsk(t.inputSchema)
+    const wrappedExecute =
+      t.execute === undefined
+        ? undefined
+        : gatedExecute((input, opts) => Promise.resolve(t.execute!(input, opts)), name, askPermission)
+    out[name] = { ...t, inputSchema: extendedSchema, execute: wrappedExecute }
+  }
+  return out
 }
 
 function wrapToolSet(tools: ToolSet): ToolSet {
@@ -136,28 +156,19 @@ async function buildPluginAndMcpTools(
 }
 
 /**
- * Build a tool set for the given provider and context.
- *
- * Usage:
- * ```ts
- * await makeTools(provider, { storageContextId: 'user-1:group-1', chatUserId: 'user-1', mode: 'normal' })
- * ```
+ * Build the raw (preference-unfiltered) tool set for the given provider and context.
+ * The result may be cached by the orchestrator; per-turn preference application
+ * (including ask-gating) is done separately via `applyToolPreferences`.
  */
-export function makeTools(provider: TaskProvider): Promise<ToolSet>
-export function makeTools(provider: TaskProvider, options: MakeToolsOptions): Promise<ToolSet>
-export async function makeTools(
-  provider: TaskProvider,
-  ...args: readonly [MakeToolsOptions] | readonly []
-): Promise<ToolSet> {
-  const options = args[0]
-  const storageContextId = options === undefined ? undefined : options.storageContextId
-  const chatUserId = options === undefined ? undefined : options.chatUserId
-  const username = options === undefined ? undefined : options.username
+export async function buildToolDescriptors(provider: TaskProvider, options: MakeToolsOptions): Promise<ToolSet> {
+  const storageContextId = options.storageContextId
+  const chatUserId = options.chatUserId
+  const username = options.username
   const contextId = storageContextId
   const sharedContextId = contextId === undefined ? undefined : getConfigContextIdFromStorageContextId(contextId)
-  const mode = options === undefined || options.mode === undefined ? 'normal' : options.mode
-  const contextType = options === undefined ? undefined : options.contextType
-  const stagedDownloadFn = options === undefined ? undefined : options.stagedDownloadFn
+  const mode = options.mode ?? 'normal'
+  const contextType = options.contextType
+  const stagedDownloadFn = options.stagedDownloadFn
 
   const tools = buildTools(provider, chatUserId, contextId, mode, contextType, username, stagedDownloadFn)
   const wrappedBuiltins = wrapToolSet(tools)
@@ -178,5 +189,24 @@ export async function makeTools(
     Object.assign(mcpTools, result.extraMcpTools)
   }
 
-  return applyToolPreferences({ ...wrappedBuiltins, ...mcpTools, ...pluginTools }, contextId)
+  return { ...wrappedBuiltins, ...mcpTools, ...pluginTools }
+}
+
+/**
+ * Build a tool set for the given provider and context, with preferences applied.
+ *
+ * Usage:
+ * ```ts
+ * await makeTools(provider, { storageContextId: 'user-1:group-1', chatUserId: 'user-1', mode: 'normal' })
+ * ```
+ */
+export function makeTools(provider: TaskProvider): Promise<ToolSet>
+export function makeTools(provider: TaskProvider, options: MakeToolsOptions): Promise<ToolSet>
+export async function makeTools(
+  provider: TaskProvider,
+  ...args: readonly [MakeToolsOptions] | readonly []
+): Promise<ToolSet> {
+  const options = args[0] ?? { chatUserId: '' }
+  const descriptors = await buildToolDescriptors(provider, options)
+  return applyToolPreferences(descriptors, options.storageContextId, options.askPermission)
 }

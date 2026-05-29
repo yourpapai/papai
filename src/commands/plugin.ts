@@ -167,6 +167,18 @@ async function handleDisable(
   adminUserId: string,
   reply: ReplyFn,
 ): Promise<void> {
+  const entry = pluginRegistry.getEntry(pluginId)
+  if (entry === undefined) {
+    await reply.text(`Plugin \`${pluginId}\` not found.`)
+    return
+  }
+  if (entry.state !== 'active') {
+    await reply.text(
+      `Plugin \`${pluginId}\` is not active (state: ${entry.state}). It must be active before disabling.`,
+    )
+    return
+  }
+
   setPluginEnabledForContext(pluginId, targetContextId, false)
   const enabledPluginCount = getEnabledPluginsForContext(targetContextId).length
   log.info({ pluginId, targetContextId, adminUserId, enabledPluginCount }, 'Plugin disabled for context via command')
@@ -260,7 +272,7 @@ async function runPluginSubcommand(subcommand: string, ctx: PluginCommandContext
   }
 }
 
-export function registerPluginCommand(chat: ChatProvider, _adminUserId: string): void {
+export function registerPluginCommand(chat: ChatProvider): void {
   chat.registerCommand('plugin', async (msg, reply, auth) => {
     if (!auth.allowed) return
     if (!isAdmin(msg.user.id, msg.platformInstanceId)) {

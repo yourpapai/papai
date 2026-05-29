@@ -18,6 +18,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { clearUserCache } from '../utils/test-cache.js'
 import {
@@ -339,6 +340,18 @@ describe('/config Command', () => {
         createAuth('unauthorized-user', { allowed: false }),
       )
       expect(buttonCalls).toHaveLength(0)
+    })
+
+    test('Tools summary line shows blocked and ask counts', async () => {
+      setToolPrefs('ctx-cfg-summary', {
+        domainDefaults: {},
+        toolOverrides: { delete_task: 'deny', remove_attachment: 'ask' },
+      })
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, 'ctx-cfg-summary', true)
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('1 blocked')
+      expect(buttonCalls[0]).toContain('1 ask')
     })
 
     test('uses source instance button capabilities instead of router aggregate capabilities', async () => {

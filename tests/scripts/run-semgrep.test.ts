@@ -17,4 +17,10 @@ describe('run-semgrep script', () => {
 
     expect(source).toContain("'public'")
   })
+
+  test('excludes generated mutation sandboxes from security scans', async () => {
+    const source = await Bun.file('scripts/run-semgrep.ts').text()
+
+    expect(source).toContain("'.stryker-tmp'")
+  })
 })

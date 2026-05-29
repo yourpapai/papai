@@ -7,6 +7,8 @@ import type { InstanceConfig, PlatformInstanceType } from '../instances/types.js
 import { logger } from '../logger.js'
 import { DiscordChatProvider } from './discord/index.js'
 import { discordCapabilities, discordTraits } from './discord/metadata.js'
+import { KonturTalkChatProvider } from './kontur-talk/index.js'
+import { konturTalkCapabilities, konturTalkTraits } from './kontur-talk/metadata.js'
 import { MattermostChatProvider } from './mattermost/index.js'
 import { mattermostCapabilities, mattermostTraits } from './mattermost/metadata.js'
 import { TelegramChatProvider } from './telegram/index.js'
@@ -52,6 +54,15 @@ const platformDescriptors = [
     capabilities: discordCapabilities,
     traits: discordTraits,
   },
+  {
+    type: 'kontur-talk',
+    displayName: 'Kontur Talk',
+    source: 'builtin',
+    instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true, scope: 'instance' }],
+    contextConfigSchema: [],
+    capabilities: konturTalkCapabilities,
+    traits: konturTalkTraits,
+  },
 ] as const satisfies readonly ChatProviderDescriptor[]
 
 const instanceProviders = new Map<PlatformInstanceType, InstanceChatProviderFactory>([
@@ -67,6 +78,10 @@ const instanceProviders = new Map<PlatformInstanceType, InstanceChatProviderFact
   [
     'discord',
     (id, config): ChatProvider => new DiscordChatProvider({ token: config['token'], platformInstanceId: id }),
+  ],
+  [
+    'kontur-talk',
+    (id, config): ChatProvider => new KonturTalkChatProvider({ jwtToken: config['jwtToken'], platformInstanceId: id }),
   ],
 ])
 

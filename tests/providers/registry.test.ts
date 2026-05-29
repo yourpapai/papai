@@ -10,7 +10,6 @@ import {
   createProvider,
   getCapabilitiesForTaskInstance,
   getTaskProviderDescriptor,
-  getContributedTaskProviderType,
   getTaskProviderConfigValidator,
   listTaskProviderTypes,
   registerContributedTaskProviderType,
@@ -45,6 +44,27 @@ const entry = {
   contextConfigSchema: [] as const,
 }
 
+const makeEntry = (pluginId: string): ContributedTaskProviderEntry => ({
+  pluginId,
+  factory: (): TaskProvider => createMockProvider({ name: 'dup' }),
+  capabilities: new Set<never>(),
+  displayName: pluginId,
+  instanceConfigSchema: [],
+  contextConfigSchema: [],
+})
+
+function requireValue<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
+  return value
+}
+
+function findValue<T>(items: readonly T[], predicate: (item: T) => boolean, label: string): T {
+  return requireValue(
+    items.find((item) => predicate(item)),
+    label,
+  )
+}
+
 describe('provider registry capability lookup', () => {
   test('returns Kaneo task capabilities without requiring context credentials', () => {
     const capabilities = getCapabilitiesForTaskInstance(taskInstance('kaneo'))
@@ -71,32 +91,43 @@ describe('contributed task provider registry', () => {
   test('registers and resolves a contributed type', () => {
     mockLogger()
     registerContributedTaskProviderType('custom-tracker', entry)
-    const found = getContributedTaskProviderType('custom-tracker')
-    expect(found).toBeDefined()
-    expect(found!.pluginId).toBe('task-provider-kaneo')
+
+    const descriptor = getTaskProviderDescriptor('custom-tracker')
+    const provider = createProvider('custom-tracker', {})
+
+    expect(requireValue(descriptor, 'custom tracker descriptor').source).toEqual({ plugin: 'task-provider-kaneo' })
+    expect(provider).toBe(fakeProvider)
   })
 
-  test('first-wins: duplicate type from another plugin is silently skipped', () => {
+  test('first-wins: duplicate type from another plugin is skipped', () => {
     mockLogger()
+    const otherProvider = createMockProvider({ name: 'other-plugin-provider' })
     registerContributedTaskProviderType('custom-tracker', entry)
     expect(() =>
       registerContributedTaskProviderType('custom-tracker', {
         pluginId: 'other-plugin',
-        factory: (): TaskProvider => fakeProvider,
+        factory: (): TaskProvider => otherProvider,
         capabilities: new Set<TaskCapability>(),
         displayName: 'Other',
         instanceConfigSchema: [] as const,
         contextConfigSchema: [] as const,
       }),
     ).not.toThrow()
-    expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('task-provider-kaneo')
+
+    const descriptor = getTaskProviderDescriptor('custom-tracker')
+    const provider = createProvider('custom-tracker', {})
+
+    expect(requireValue(descriptor, 'custom tracker descriptor').source).toEqual({ plugin: 'task-provider-kaneo' })
+    expect(provider).toBe(fakeProvider)
   })
 
   test('unregister by pluginId removes its types', () => {
     mockLogger()
     registerContributedTaskProviderType('custom-tracker', entry)
     unregisterContributedTaskProviderType('task-provider-kaneo')
-    expect(getContributedTaskProviderType('custom-tracker')).toBeUndefined()
+
+    expect(getTaskProviderDescriptor('custom-tracker')).toBeUndefined()
+    expect(() => createProvider('custom-tracker', {})).toThrow('Unknown provider: custom-tracker')
   })
 
   test('rejects registering a type that shadows a built-in', () => {
@@ -153,17 +184,25 @@ describe('contributed task provider registry', () => {
 
 describe('listTaskProviderTypes (built-in catalog)', () => {
   test('built-in descriptors expose split instance and context schemas plus traits', () => {
-    const kaneo = listTaskProviderTypes().find((d) => d.type === 'kaneo')
-    const youtrack = listTaskProviderTypes().find((d) => d.type === 'youtrack')
+    const kaneo = findValue(listTaskProviderTypes(), (d) => d.type === 'kaneo', 'kaneo descriptor')
+    const youtrack = findValue(listTaskProviderTypes(), (d) => d.type === 'youtrack', 'youtrack descriptor')
 
-    expect(kaneo?.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl', 'internalUrl'])
-    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'credential')?.storageKey).toBe('kaneo_apikey')
-    expect(kaneo?.contextConfigSchema.find((f) => f.key === 'workspaceId')?.storageKey).toBe('kaneo_workspace_id')
-    expect(kaneo?.traits.has('workspace-scoped')).toBe(true)
+    const kaneoCredential = findValue(
+      kaneo.contextConfigSchema,
+      (f) => f.key === 'credential',
+      'kaneo credential field',
+    )
+    const kaneoWorkspace = findValue(kaneo.contextConfigSchema, (f) => f.key === 'workspaceId', 'kaneo workspace field')
+    const youtrackToken = findValue(youtrack.contextConfigSchema, (f) => f.key === 'token', 'youtrack token field')
 
-    expect(youtrack?.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl'])
-    expect(youtrack?.contextConfigSchema.find((f) => f.key === 'token')?.storageKey).toBe('youtrack_token')
-    expect(youtrack?.traits.has('command-language:youtrack')).toBe(true)
+    expect(kaneo.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl', 'internalUrl'])
+    expect(kaneoCredential.storageKey).toBe('kaneo_apikey')
+    expect(kaneoWorkspace.storageKey).toBe('kaneo_workspace_id')
+    expect(kaneo.traits.has('workspace-scoped')).toBe(true)
+
+    expect(youtrack.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl'])
+    expect(youtrackToken.storageKey).toBe('youtrack_token')
+    expect(youtrack.traits.has('command-language:youtrack')).toBe(true)
   })
 
   test('includes kaneo and youtrack as built-in descriptors', () => {
@@ -240,18 +279,12 @@ describe('getCapabilitiesForTaskInstance without credentials', () => {
 describe('registerContributedTaskProviderType duplicates', () => {
   test('first registration wins; the second is skipped without throwing', () => {
     mockLogger()
-    const makeEntry = (pluginId: string): ContributedTaskProviderEntry => ({
-      pluginId,
-      factory: (): TaskProvider => createMockProvider({ name: 'dup' }),
-      capabilities: new Set<never>(),
-      displayName: pluginId,
-      instanceConfigSchema: [],
-      contextConfigSchema: [],
-    })
     try {
       registerContributedTaskProviderType('dup', makeEntry('plugin-a'))
       expect(() => registerContributedTaskProviderType('dup', makeEntry('plugin-b'))).not.toThrow()
-      expect(getContributedTaskProviderType('dup')?.pluginId).toBe('plugin-a')
+      expect(requireValue(getTaskProviderDescriptor('dup'), 'duplicate descriptor').source).toEqual({
+        plugin: 'plugin-a',
+      })
     } finally {
       unregisterContributedTaskProviderType('plugin-a')
       unregisterContributedTaskProviderType('plugin-b')

@@ -117,7 +117,7 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerClearCommand(observedChat, undefined, adminUserId)
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
-  registerPluginCommand(observedChat, adminUserId)
+  registerPluginCommand(observedChat)
   registerDashboardCommand(observedChat)
   registerPluginCommands(observedChat)
 }

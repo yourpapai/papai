@@ -17,6 +17,7 @@ describe('chat registry', () => {
       token: 'secret',
     })
     const discord = createChatProviderFromConfig('discord-default', 'discord', { token: 'secret-token' })
+    const konturTalk = createChatProviderFromConfig('kontur-talk-default', 'kontur-talk', { jwtToken: 'secret-token' })
 
     expect(telegram.name).toBe('telegram')
     expect('start' in telegram).toBe(true)
@@ -24,6 +25,8 @@ describe('chat registry', () => {
     expect('start' in mattermost).toBe(true)
     expect(discord.name).toBe('discord')
     expect('start' in discord).toBe(true)
+    expect(konturTalk.name).toBe('kontur-talk')
+    expect('start' in konturTalk).toBe(true)
   })
 
   test('createChatProviderFromConfig creates telegram from encrypted-row config token', () => {
@@ -62,11 +65,28 @@ describe('chat registry', () => {
     ).toThrow('Missing mattermost instance config')
   })
 
+  test('createChatProviderFromConfig creates kontur talk from encrypted-row config jwtToken', () => {
+    const provider = createChatProviderFromConfig('kontur-talk-default', 'kontur-talk', { jwtToken: 'test-token' })
+
+    expect(provider.name).toBe('kontur-talk')
+  })
+
+  test('createChatProviderFromConfig rejects kontur talk missing JWT token', () => {
+    expect(() => createChatProviderFromConfig('kontur-talk-default', 'kontur-talk', {})).toThrow(
+      'Missing kontur-talk instance config',
+    )
+  })
+
   test('listPlatformProviderTypes exposes built-in descriptor metadata', () => {
     const descriptors = listPlatformProviderTypes()
     const mattermost = descriptors.find((descriptor) => descriptor.type === 'mattermost')
 
-    expect(descriptors.map((descriptor) => descriptor.type)).toEqual(['telegram', 'mattermost', 'discord'])
+    expect(descriptors.map((descriptor) => descriptor.type)).toEqual([
+      'telegram',
+      'mattermost',
+      'discord',
+      'kontur-talk',
+    ])
     expect(mattermost?.instanceConfigSchema.map((field) => field.key)).toEqual(['baseUrl', 'token'])
     expect(mattermost?.capabilities.has('users.resolve')).toBe(true)
     expect(mattermost?.traits.observedGroupMessages).toBe('all')

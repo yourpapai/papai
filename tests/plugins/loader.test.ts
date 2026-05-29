@@ -15,7 +15,11 @@ import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { getContributedTaskProviderType, getTaskProviderConfigValidator } from '../../src/providers/registry.js'
+import {
+  createProvider,
+  getTaskProviderConfigValidator,
+  getTaskProviderDescriptor,
+} from '../../src/providers/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
@@ -24,7 +28,16 @@ declare global {
 
 const tempDirs: string[] = []
 
-function makeManifest(id: string, overrides: Partial<PluginManifest> = {}): PluginManifest {
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  if (value === undefined || value === null) throw new Error(`${label} was unexpectedly absent`)
+  return value
+}
+
+function makeManifest(
+  ...args: readonly [id: string] | readonly [id: string, overrides: Partial<PluginManifest>]
+): PluginManifest {
+  const [id] = args
+  const overrides = args.length === 2 ? args[1] : {}
   return {
     id,
     name: 'Test Plugin',
@@ -53,7 +66,13 @@ function makeManifest(id: string, overrides: Partial<PluginManifest> = {}): Plug
   }
 }
 
-function makePlugin(id: string, entryPoint: string, manifestOverrides: Partial<PluginManifest> = {}): DiscoveredPlugin {
+function makePlugin(
+  ...args:
+    | readonly [id: string, entryPoint: string]
+    | readonly [id: string, entryPoint: string, manifestOverrides: Partial<PluginManifest>]
+): DiscoveredPlugin {
+  const [id, entryPoint] = args
+  const manifestOverrides = args.length === 3 ? args[2] : {}
   return {
     manifest: makeManifest(id, manifestOverrides),
     pluginDir: dirname(entryPoint),
@@ -100,8 +119,10 @@ describe('activatePlugins', () => {
 
     await activatePlugins([plugin])
 
-    expect(pluginRegistry.getEntry('bad-plugin')?.state).toBe('error')
-    expect(getRecentRuntimeEvents('bad-plugin', 1)[0]?.message).toContain('Import failed')
+    expect(requireValue(pluginRegistry.getEntry('bad-plugin'), 'bad plugin registry entry').state).toBe('error')
+    expect(requireValue(getRecentRuntimeEvents('bad-plugin', 1)[0], 'bad plugin runtime event').message).toContain(
+      'Import failed',
+    )
   })
 
   test('accepts default-exported factory returning plugin instance', async () => {
@@ -132,9 +153,15 @@ describe('activatePlugins', () => {
 
     await activatePlugins([plugin])
 
-    expect(pluginRegistry.getEntry('factory-plugin')?.state).toBe('active')
-    expect(contributionRegistry.getContributions('factory-plugin')?.tools).toHaveLength(1)
-    expect(getRecentRuntimeEvents('factory-plugin', 1)[0]?.eventType).toBe('activated')
+    expect(requireValue(pluginRegistry.getEntry('factory-plugin'), 'factory plugin registry entry').state).toBe(
+      'active',
+    )
+    expect(
+      requireValue(contributionRegistry.getContributions('factory-plugin'), 'factory plugin contributions').tools,
+    ).toHaveLength(1)
+    expect(requireValue(getRecentRuntimeEvents('factory-plugin', 1)[0], 'factory plugin runtime event').eventType).toBe(
+      'activated',
+    )
   })
 
   test('rejects default-exported object plugin contract', async () => {
@@ -150,8 +177,10 @@ describe('activatePlugins', () => {
 
     await activatePlugins([plugin])
 
-    expect(pluginRegistry.getEntry('object-plugin')?.state).toBe('error')
-    expect(getRecentRuntimeEvents('object-plugin', 1)[0]?.message).toContain('Invalid plugin module contract')
+    expect(requireValue(pluginRegistry.getEntry('object-plugin'), 'object plugin registry entry').state).toBe('error')
+    expect(
+      requireValue(getRecentRuntimeEvents('object-plugin', 1)[0], 'object plugin runtime event').message,
+    ).toContain('Invalid plugin module contract')
   })
 
   test('activation timeout cleans framework-owned partial contributions', async () => {
@@ -180,7 +209,7 @@ describe('activatePlugins', () => {
 
     await activatePlugins([plugin])
 
-    expect(pluginRegistry.getEntry('timeout-plugin')?.state).toBe('error')
+    expect(requireValue(pluginRegistry.getEntry('timeout-plugin'), 'timeout plugin registry entry').state).toBe('error')
     expect(contributionRegistry.getContributions('timeout-plugin')).toBeUndefined()
   })
 
@@ -209,7 +238,9 @@ describe('activatePlugins', () => {
 
     await activatePlugins([plugin])
 
-    expect(pluginRegistry.getEntry('throwing-plugin')?.state).toBe('error')
+    expect(requireValue(pluginRegistry.getEntry('throwing-plugin'), 'throwing plugin registry entry').state).toBe(
+      'error',
+    )
     expect(contributionRegistry.getContributions('throwing-plugin')).toBeUndefined()
   })
 
@@ -271,7 +302,9 @@ describe('activatePlugins', () => {
     await deactivateAllPlugins()
 
     expect(contributionRegistry.getContributions('deactivate-error-plugin')).toBeUndefined()
-    expect(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0]?.message).toContain('deactivate boom')
+    expect(
+      requireValue(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0], 'deactivate error runtime event').message,
+    ).toContain('deactivate boom')
   })
 
   test('removes contributed provider type on deactivation', async () => {
@@ -298,10 +331,14 @@ describe('activatePlugins', () => {
     approvePlugin(plugin)
 
     await activatePlugins([plugin])
-    expect(getContributedTaskProviderType('demo')?.pluginId).toBe('provider-plugin')
+    expect(requireValue(getTaskProviderDescriptor('demo'), 'demo task provider descriptor').source).toEqual({
+      plugin: 'provider-plugin',
+    })
+    expect(() => createProvider('demo', {})).not.toThrow()
 
     await deactivateAllPlugins()
-    expect(getContributedTaskProviderType('demo')).toBeUndefined()
+    expect(getTaskProviderDescriptor('demo')).toBeUndefined()
+    expect(() => createProvider('demo', {})).toThrow('Unknown provider: demo')
   })
 
   test('registers providerConfigValidator from a named plugin module export', async () => {
@@ -443,7 +480,7 @@ describe('activatePlugins', () => {
     await activatePlugins([plugin])
     await deactivateAllPlugins()
 
-    expect(getTaskInstance('demo-stop-instance')?.status).toBe('active')
+    expect(requireValue(getTaskInstance('demo-stop-instance'), 'demo stop task instance').status).toBe('active')
   })
 
   test('stops active task instances when contributed provider type is retired', async () => {
@@ -473,6 +510,6 @@ describe('activatePlugins', () => {
     await activatePlugins([plugin])
     await deactivateAllPlugins({ retireContributedProviders: true })
 
-    expect(getTaskInstance('demo-retire-instance')?.status).toBe('stopped')
+    expect(requireValue(getTaskInstance('demo-retire-instance'), 'demo retire task instance').status).toBe('stopped')
   })
 })
