@@ -21,7 +21,7 @@ export const instanceConfigSchema: z.ZodType<InstanceConfig> = z.record(z.string
 
 export const platformInstanceSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['telegram', 'mattermost', 'discord']),
+  type: z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk']),
   config: instanceConfigSchema,
 })
 

@@ -38,7 +38,7 @@ describe('handlePlatformProviderTypes', () => {
     expect(res?.status).toBe(200)
     const body = expectArray(await res?.json()).map((entry) => expectObject(entry))
 
-    expect(body.map((entry) => pick(entry, 'type'))).toEqual(['telegram', 'mattermost', 'discord'])
+    expect(body.map((entry) => pick(entry, 'type'))).toEqual(['telegram', 'mattermost', 'discord', 'kontur-talk'])
     expect(readSchemaKeys(expectObject(body.find((entry) => pick(entry, 'type') === 'mattermost')))).toEqual([
       'baseUrl',
       'token',

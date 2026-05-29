@@ -7,7 +7,7 @@ import { logger } from '../logger.js'
 import { listRecentRequests } from '../usage/recent-requests.js'
 import { RecentRequestsResponseSchema } from './admin-schemas.js'
 
-const CHAT_PROVIDERS = ['telegram', 'mattermost', 'discord'] as const
+const CHAT_PROVIDERS = ['telegram', 'mattermost', 'discord', 'kontur-talk'] as const
 const TASK_PROVIDERS = ['kaneo', 'youtrack'] as const
 
 type AdminChatProvider = (typeof CHAT_PROVIDERS)[number] | 'unknown'

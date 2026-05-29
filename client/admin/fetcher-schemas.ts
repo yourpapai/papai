@@ -202,7 +202,7 @@ export const AdminLlmSnapshotSchema = z.object({
   small_model: AdminLlmKeyStateSchema,
   embedding_model: AdminLlmKeyStateSchema,
 })
-const AdminChatProviderSchema = z.enum(['telegram', 'mattermost', 'discord', 'unknown'])
+const AdminChatProviderSchema = z.enum(['telegram', 'mattermost', 'discord', 'kontur-talk', 'unknown'])
 const AdminTaskProviderSchema = z.enum(['kaneo', 'youtrack', 'unknown'])
 export const AdminSystemSummarySchema = z.object({
   chatProvider: AdminChatProviderSchema,

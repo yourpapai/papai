@@ -122,6 +122,20 @@ describe('PlatformProviderTypeViewSchema', () => {
     expect(parsed.traits.maxMessageLength).toBe(16383)
   })
 
+  test('accepts kontur-talk type', () => {
+    const parsed = PlatformProviderTypeViewSchema.parse({
+      type: 'kontur-talk',
+      displayName: 'Kontur Talk',
+      instanceConfigSchema: [{ key: 'jwtToken', label: 'JWT Token', required: true, sensitive: true }],
+      contextConfigSchema: [],
+      capabilities: ['messages.reply-context'],
+      traits: { observedGroupMessages: 'all', maxMessageLength: 4096 },
+      source: 'builtin',
+    })
+
+    expect(parsed.type).toBe('kontur-talk')
+  })
+
   test('rejects legacy array traits', () => {
     const result = PlatformProviderTypeViewSchema.safeParse({
       type: 'mattermost',
