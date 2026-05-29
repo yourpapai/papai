@@ -161,10 +161,17 @@ export async function renderConfigForTarget(
   lines.push(...aiOutputSection.lines)
   appendPluginConfigLines(lines, targetContextId)
   const toolPrefs = getToolPrefs(targetContextId)
-  const disabledCount =
+  const blocked =
     Object.values(toolPrefs.domainDefaults).filter((v) => v === 'deny').length +
     Object.values(toolPrefs.toolOverrides).filter((v) => v === 'deny').length
-  lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
+  const ask =
+    Object.values(toolPrefs.domainDefaults).filter((v) => v === 'ask').length +
+    Object.values(toolPrefs.toolOverrides).filter((v) => v === 'ask').length
+  const toolsSummary =
+    blocked === 0 && ask === 0
+      ? 'all allowed'
+      : [blocked > 0 ? `${blocked} blocked` : '', ask > 0 ? `${ask} ask` : ''].filter(Boolean).join(', ')
+  lines.push(`\n🧰 **Tools**: ${toolsSummary}`)
 
   if (!interactiveButtons) {
     lines.push('\n⚠️ Interactive editing is not available in this chat. Use `/setup` to configure everything.')
