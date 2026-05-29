@@ -186,7 +186,7 @@ function routeAdminInstances(req: Request, url: URL, authed: AuthenticatedSettin
   return handlePlatformInstances(req, url, authed)
 }
 
-function handleProviderTypesRead(authed: AuthenticatedSettingsRequest, pathname: string): Response | null {
+function handleProviderTypesRead(authed: AuthenticatedSettingsRequest, pathname: string): Response {
   const guard = requireAdmin(authed, 'read')
   if (guard !== null) return guard
   if (pathname === '/settings/api/admin/platform-provider-types') {
@@ -203,8 +203,8 @@ export function handleAdminInstancesRoutes(req: Request, url: URL, pathname: str
     pathname === '/settings/api/admin/platform-provider-types' ||
     pathname === '/settings/api/admin/task-provider-types'
   ) {
-    const res = handleProviderTypesRead(auth.authed, pathname)
-    return Promise.resolve(res ?? settingsJson(404, { error: 'not found' }))
+    if (req.method !== 'GET') return Promise.resolve(settingsJson(405, { error: 'method not allowed' }))
+    return Promise.resolve(handleProviderTypesRead(auth.authed, pathname))
   }
 
   return routeAdminInstances(req, url, auth.authed)
