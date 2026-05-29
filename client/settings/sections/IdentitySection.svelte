@@ -43,6 +43,10 @@
   async function save(): Promise<void> {
     error = null
     status = null
+    if (providerUserId.trim() === '') {
+      error = 'Provider user ID is required.'
+      return
+    }
     try {
       await putIdentity({ providerUserId, providerUserLogin, displayName, contextId })
       status = 'Identity saved.'

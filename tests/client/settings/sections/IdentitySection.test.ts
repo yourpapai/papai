@@ -56,6 +56,37 @@ describe('IdentitySection', () => {
     const component = mount(IdentitySection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.textContent).toContain('no task instance')
+    expect(target.querySelector('[data-testid="identity-save"]')).toBeNull()
+    void unmount(component)
+  })
+
+  test('shows an error and does not call the network when provider user ID is empty', async () => {
+    setMockFetch(() =>
+      Promise.resolve(
+        json({
+          contextId: 'user:1',
+          providerName: 'kaneo',
+          mapping: null,
+        }),
+      ),
+    )
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(IdentitySection, { target, props: { contextId: 'user:1' } })
+    await drain()
+
+    let fetchCallCount = 0
+    setMockFetch(() => {
+      fetchCallCount++
+      return Promise.resolve(json({}, 200))
+    })
+
+    const saveButton = target.querySelector<HTMLButtonElement>('[data-testid="identity-save"]')!
+    saveButton.click()
+    await drain()
+
+    expect(target.textContent).toContain('Provider user ID is required.')
+    expect(fetchCallCount).toBe(0)
     void unmount(component)
   })
 
