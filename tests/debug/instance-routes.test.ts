@@ -24,7 +24,7 @@ import {
 import { getPlatformInstance, insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import type { InstanceConfig, PlatformInstance, TaskInstance } from '../../src/instances/types.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -369,7 +369,7 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(200)
     expect(start.mock.calls.length).toBeGreaterThanOrEqual(1)
-    expect(await readJson(res)).toEqual({ applied: 1 })
+    expect(await readJson(res)).toMatchObject({ applied: 1, started: [instanceId], failed: [] })
     expect(expectInstance(router, instanceId).status).toBe('active')
   })
 
@@ -403,7 +403,11 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     expect(start).toHaveBeenCalledTimes(instances.length)
     expect(maxActiveStarts).toBeLessThanOrEqual(4)
-    expect(await readJson(res)).toEqual({ applied: instances.length })
+    expect(await readJson(res)).toMatchObject({
+      applied: instances.length,
+      started: instances.map((instance) => instance.id),
+      failed: [],
+    })
   })
 
   test('apply starts stopped runtime instances whose DB rows are active', async () => {
@@ -434,6 +438,61 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     expect(start).toHaveBeenCalledTimes(1)
     expect(expectInstance(router, instanceId).status).toBe('active')
+  })
+
+  test('apply recreates active runtime instance when DB config changes', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const seenConfigs: InstanceConfig[] = []
+    const router = new ChatRouter((_id, _type, config) => {
+      seenConfigs.push(config)
+      return fakeProvider(start, stop)
+    })
+    router.addInstance('telegram-main', 'telegram', { token: 'old-secret' })
+    await router.startInstance('telegram-main')
+
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'new-secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({ recreated: ['telegram-main'], failed: [] })
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledTimes(2)
+    expect(seenConfigs).toEqual([{ token: 'old-secret' }, { token: 'new-secret' }])
+  })
+
+  test('apply removes runtime instance when DB row is no longer active', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    await router.startInstance('telegram-main')
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({ removed: ['telegram-main'], failed: [] })
+    expect(router.getInstance('telegram-main')).toBeNull()
+    expect(stop).toHaveBeenCalledTimes(1)
   })
 
   test('deleting platform instance cascades owned rows, preserves super-admins, and clears context tool caches', async () => {
