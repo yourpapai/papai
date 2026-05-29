@@ -36,9 +36,23 @@ const seed = (overrides: Partial<typeof settingsSession>): void => {
 afterEach(() => {
   restoreFetch()
   settingsSession.status = 'loading'
+  settingsSession.display = ''
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.contexts = []
+  settingsSession.activeContextId = ''
 })
 
 describe('SettingsApp', () => {
+  test('renders the loading gate when status is loading', async () => {
+    settingsSession.status = 'loading'
+    const component = mountApp()
+    await drain()
+    expect(document.body.textContent).toContain('Loading…')
+    expect(document.querySelector('#profile')).toBeNull()
+    void unmount(component)
+  })
+
   test('renders the gate message when unauthenticated', async () => {
     setMockFetch(() => Promise.resolve(new Response('{}')))
     settingsSession.status = 'unauthenticated'

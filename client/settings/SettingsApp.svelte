@@ -9,6 +9,7 @@
   import SettingsSidebar from './components/SettingsSidebar.svelte'
   import type { SidebarItem } from './components/SettingsSidebar.svelte'
   import SettingsTopBar from './components/SettingsTopBar.svelte'
+  import { untrack } from 'svelte'
   import { useScrollSpy } from './scrollspy.js'
   import { activeContext, settingsSession } from './session.svelte.js'
   import ProfileSection from './sections/ProfileSection.svelte'
@@ -27,7 +28,7 @@
   import AdminPluginsApprovalSection from './sections/admin/AdminPluginsApprovalSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
 
-  let activeId = $state('profile')
+  let activeId = $state(window.location.hash.slice(1) || 'profile')
 
   const isGroup = $derived(activeContext()?.kind === 'group')
 
@@ -59,6 +60,13 @@
   })
 
   const ctx = $derived(settingsSession.activeContextId)
+
+  $effect(() => {
+    const ids = items.map((item) => item.id)
+    untrack(() => {
+      if (ids.length > 0 && !ids.includes(activeId)) activeId = ids[0]
+    })
+  })
 
   $effect(() => {
     if (settingsSession.status !== 'ready') return
