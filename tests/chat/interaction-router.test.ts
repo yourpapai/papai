@@ -304,6 +304,29 @@ describe('routeInteraction', () => {
     expect(replies).toEqual(['Error: Wizard session not found'])
   })
 
+  test('routes perm: callbacks to handlePermissionInteraction', async () => {
+    const calls: string[] = []
+    const handled = await routeInteraction(
+      { ...interaction, callbackData: 'perm:a:abcd1234' },
+      reply,
+      createMockAuth(true),
+      {
+        handleGroupSettingsInteraction: () => Promise.resolve(false),
+        handleConfigInteraction: () => Promise.resolve(false),
+        handleWizardInteraction: () => Promise.resolve(false),
+        handlePluginInteraction: () => Promise.resolve(false),
+        handleToolToggleInteraction: () => Promise.resolve(false),
+        handlePermissionInteraction: () => {
+          calls.push('perm')
+          return Promise.resolve(true)
+        },
+      },
+    )
+
+    expect(handled).toBe(true)
+    expect(calls).toEqual(['perm'])
+  })
+
   test('returns false for unrecognized callback prefixes', async () => {
     const handled = await routeInteraction(
       { ...interaction, callbackData: 'unknown:action' },

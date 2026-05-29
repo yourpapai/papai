@@ -21,6 +21,7 @@ import {
   getWizardCallbackStorageContextId,
   parseWizardContextId,
 } from './interaction-router-support.js'
+import { handlePermissionInteraction } from './permission-interaction-handler.js'
 import { handlePluginInteraction } from './plugin-interaction-handler.js'
 import { handleToolToggleInteraction } from './tool-toggle-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
@@ -33,6 +34,7 @@ type InteractionRouteHandlers = {
   handleWizardInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handlePluginInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
   handleToolToggleInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
+  handlePermissionInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
 }
 
 export type InteractionRouteDeps = Partial<InteractionRouteHandlers>
@@ -175,6 +177,7 @@ const defaultDeps: InteractionRouteHandlers = {
   handleWizardInteraction: defaultHandleWizardInteraction,
   handlePluginInteraction,
   handleToolToggleInteraction,
+  handlePermissionInteraction,
 }
 
 function getRoutedInteraction(interaction: IncomingInteraction, auth: AuthorizationResult): IncomingInteraction {
@@ -219,6 +222,10 @@ export function routeInteraction(
 
   if (callbackData.startsWith('tgl:')) {
     return resolvedDeps.handleToolToggleInteraction(interaction, reply)
+  }
+
+  if (callbackData.startsWith('perm:')) {
+    return resolvedDeps.handlePermissionInteraction(routedInteraction, reply)
   }
 
   log.debug({ callbackData }, 'No route matched for interaction callback')
