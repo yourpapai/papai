@@ -108,11 +108,26 @@ describe('chat registry', () => {
     ).toThrow('Missing mattermost instance config')
   })
 
+  test('createChatProvider("kontur-talk") creates provider', () => {
+    process.env['KONTUR_TALK_JWT_TOKEN'] = 'test-token'
+    const provider = createChatProvider('kontur-talk', { env: process.env as Record<string, string | undefined> })
+    expect(provider.name).toBe('kontur-talk')
+  })
+
+  test('createChatProvider("kontur-talk") throws when JWT token is missing', () => {
+    expect(() => createChatProvider('kontur-talk', { env: {} })).toThrow()
+  })
+
   test('listPlatformProviderTypes exposes built-in descriptor metadata', () => {
     const descriptors = listPlatformProviderTypes()
     const mattermost = descriptors.find((descriptor) => descriptor.type === 'mattermost')
 
-    expect(descriptors.map((descriptor) => descriptor.type)).toEqual(['telegram', 'mattermost', 'discord'])
+    expect(descriptors.map((descriptor) => descriptor.type)).toEqual([
+      'telegram',
+      'mattermost',
+      'discord',
+      'kontur-talk',
+    ])
     expect(mattermost?.instanceConfigSchema.map((field) => field.key)).toEqual(['baseUrl', 'token'])
     expect(mattermost?.capabilities.has('users.resolve')).toBe(true)
     expect(mattermost?.traits.observedGroupMessages).toBe('all')
