@@ -5,7 +5,13 @@
 
 import type { ChatButton } from '../chat/types.js'
 import { getToolMetadata, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
-import { getDomainStatus, resolveToolPermission, type ToolPrefs } from '../tools/tool-preferences.js'
+import {
+  getDomainSummary,
+  resolveToolPermission,
+  type DomainSummary,
+  type Permission,
+  type ToolPrefs,
+} from '../tools/tool-preferences.js'
 
 export interface ToolMenuView {
   text: string
@@ -107,10 +113,17 @@ function groupByDomain(availableToolNames: readonly string[]): Map<ToolDomain, s
   return map
 }
 
-function statusMarker(status: 'on' | 'off' | 'partial'): string {
-  if (status === 'on') return '🟢'
-  if (status === 'off') return '⭕'
+function summaryMarker(summary: DomainSummary): string {
+  if (summary === 'allow') return '🟢'
+  if (summary === 'ask') return '❓'
+  if (summary === 'deny') return '⭕'
   return '🟡'
+}
+
+function permissionMarker(perm: Permission): string {
+  if (perm === 'allow') return '🟢'
+  if (perm === 'ask') return '❓'
+  return '⭕'
 }
 
 export function buildDomainListView(
@@ -121,7 +134,7 @@ export function buildDomainListView(
   const ctx = encodeCtx(contextId)
   const grouped = groupByDomain(availableToolNames)
   const domains = [...grouped.keys()].toSorted((a, b) => DOMAIN_LABELS[a].localeCompare(DOMAIN_LABELS[b]))
-  const lines = ['🧰 **Tools** — tap a domain to toggle it on/off, or "Edit" to pick individual tools.\n']
+  const lines = ['🧰 **Tools** — tap a domain to cycle its permission, or "Edit" to pick individual tools.\n']
   const buttons: ChatButton[] = []
   for (const domain of domains) {
     const domainToolList = grouped.get(domain)
@@ -131,14 +144,14 @@ export function buildDomainListView(
     } else {
       names = domainToolList
     }
-    const status = getDomainStatus(prefs, domain, names)
-    lines.push(`${statusMarker(status)} ${DOMAIN_LABELS[domain]}`)
+    const summary = getDomainSummary(prefs, domain, names)
+    lines.push(`${summaryMarker(summary)} ${DOMAIN_LABELS[domain]}`)
     const toggleCallback = callbackData(`tgl:dom:${domain}:${ctx}`, `tgl:d:${domainCode(domain)}:${ctx}`)
     if (toggleCallback !== null) {
       buttons.push({
-        text: `${statusMarker(status)} ${DOMAIN_LABELS[domain]}`,
+        text: `${summaryMarker(summary)} ${DOMAIN_LABELS[domain]}`,
         callbackData: toggleCallback,
-        style: status === 'off' ? 'secondary' : 'primary',
+        style: summary === 'deny' ? 'secondary' : 'primary',
       })
     }
     const openCallback = callbackData(`tgl:open:${domain}:${ctx}`, `tgl:o:${domainCode(domain)}:${ctx}`)
@@ -150,6 +163,8 @@ export function buildDomainListView(
       })
     }
   }
+  lines.push('')
+  lines.push('🟢 = always allowed   ❓ = ask each time   ⭕ = blocked')
   return { text: lines.join('\n'), buttons }
 }
 
@@ -169,19 +184,19 @@ export function buildDomainDrillView(
   }
   const sorted = [...names].toSorted()
   const allSorted = sortedToolNames(availableToolNames)
-  const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to toggle it.\n`]
+  const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to cycle its permission.\n`]
   const buttons: ChatButton[] = []
   for (const name of sorted) {
     const meta = getToolMetadata(name)
     const risk = meta === undefined ? '' : RISK_EMOJI[meta.risk]
-    const enabled = resolveToolPermission(prefs, name) !== 'deny'
-    lines.push(`${enabled ? '🟢' : '⭕'} ${risk} ${name}`)
+    const perm = resolveToolPermission(prefs, name)
+    lines.push(`${permissionMarker(perm)} ${risk} ${name}`)
     const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${allSorted.indexOf(name).toString(36)}:${ctx}`)
     if (toolCallback !== null) {
       buttons.push({
-        text: `${enabled ? '🟢' : '⭕'} ${risk} ${name}`,
+        text: `${permissionMarker(perm)} ${risk} ${name}`,
         callbackData: toolCallback,
-        style: enabled ? 'primary' : 'secondary',
+        style: perm === 'deny' ? 'secondary' : 'primary',
       })
     }
   }
