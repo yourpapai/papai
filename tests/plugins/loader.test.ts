@@ -599,6 +599,41 @@ describe('activatePlugins', () => {
     ).toContain('providerConfigValidator')
   })
 
+  test('fails activation when providerConfigValidator points at default export', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('default-validator-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('default-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['default-validator-provider'],
+      },
+      providerConfigValidator: 'default',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(
+      requireValue(pluginRegistry.getEntry('default-validator-plugin'), 'default validator registry entry').state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('default-validator-provider')).toBeUndefined()
+    expect(
+      requireValue(getRecentRuntimeEvents('default-validator-plugin', 1)[0], 'default validator runtime event').message,
+    ).toContain('providerConfigValidator')
+  })
+
   test('fails activation when providerConfigValidator is declared but no task provider type is registered', async () => {
     const entryPoint = writeTempPluginModule(`
       export async function validateForgottenProviderConfig() {

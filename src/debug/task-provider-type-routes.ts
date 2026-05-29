@@ -54,9 +54,14 @@ export const validateTaskInstanceConfig = async (
 ): Promise<Response | null> => {
   const validator = getTaskProviderConfigValidator(type)
   if (validator === undefined) return null
-  const result = await validator(config)
+  const result = await Promise.resolve()
+    .then(() => validator(config))
+    .catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error)
+      return { ok: false as const, reason }
+    })
   if (result.ok) return null
-  return jsonResponse({ error: 'invalid_task_instance_config', reason: result.reason }, { status: 400 })
+  return jsonResponse({ error: 'invalid_task_instance_config', type, reason: result.reason }, { status: 400 })
 }
 
 export const handleTaskProviderTypes = (req: Request, url: URL): Response | null => {

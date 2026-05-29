@@ -22,7 +22,6 @@ import {
   unregisterContributedTaskProviderTypes,
 } from './task-provider-lifecycle.js'
 import type { DiscoveredPlugin, PluginFactory, PluginInstance, PluginManifest } from './types.js'
-
 function isPluginFactory(value: unknown): value is PluginFactory {
   return typeof value === 'function'
 }
@@ -40,7 +39,6 @@ type ImportedPluginModule = {
   instance: PluginInstance
   namedExports: Record<string, unknown>
 }
-
 function toNamedExports(mod: unknown): Record<string, unknown> {
   if (typeof mod !== 'object' || mod === null) return {}
   return Object.fromEntries(Object.entries(mod))
@@ -68,6 +66,8 @@ function resolveProviderConfigValidator(
 ): TaskProviderConfigValidator | undefined {
   const exportName = manifest.providerConfigValidator
   if (exportName === undefined) return undefined
+  if (exportName === 'default')
+    throw new Error(`Plugin '${manifest.id}' providerConfigValidator must reference a named export, not 'default'`)
   const candidate = namedExports?.[exportName]
   if (!isTaskProviderConfigValidator(candidate)) {
     throw new Error(

@@ -956,6 +956,86 @@ describe('instance API routes', () => {
     }
   })
 
+  test('returns validator-specific 400 when the provider validator throws during create', async () => {
+    registerContributedTaskProviderType('validated-throw', {
+      pluginId: 'val-throw',
+      factory: () => createMockProvider({ name: 'validated-throw' }),
+      validateConfig: () => {
+        throw new Error('validator exploded')
+      },
+      capabilities: new Set<never>(),
+      displayName: 'Validated Throw',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'v-throw-1',
+              type: 'validated-throw',
+              config: { baseUrl: 'https://x.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-throw',
+        reason: 'validator exploded',
+      })
+      expect(getTaskInstance('v-throw-1')).toBeNull()
+    } finally {
+      unregisterContributedTaskProviderType('val-throw')
+    }
+  })
+
+  test('returns validator-specific 400 when the provider validator rejects during patch', async () => {
+    registerContributedTaskProviderType('validated-reject', {
+      pluginId: 'val-reject',
+      factory: () => createMockProvider({ name: 'validated-reject' }),
+      validateConfig: () => Promise.reject(new Error('validator rejected')),
+      capabilities: new Set<never>(),
+      displayName: 'Validated Reject',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    insertTaskInstance({
+      id: 'validated-reject-1',
+      type: 'validated-reject',
+      config: { baseUrl: 'https://old.invalid' },
+      status: 'active',
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances/validated-reject-1',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'PATCH',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ config: { baseUrl: 'https://new.invalid' } }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-reject',
+        reason: 'validator rejected',
+      })
+      expect(expectTaskInstance('validated-reject-1').config).toEqual({ baseUrl: 'https://old.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('val-reject')
+    }
+  })
+
   test('masks instance-scoped sensitive fields declared by a contributed task provider type', async () => {
     mockLogger()
     registerContributedTaskProviderType('masktest', {
