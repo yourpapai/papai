@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { buildSettingsUrl, getSettingsPublicBaseUrl } from '../../src/settings/config.js'
+import { buildSettingsUrl, buildSettingsUrlFromBase, getSettingsPublicBaseUrl } from '../../src/settings/config.js'
 
 describe('settings config', () => {
   const original = process.env['SETTINGS_PUBLIC_BASE_URL']
@@ -35,5 +35,11 @@ describe('settings config', () => {
   test('buildSettingsUrl builds an encoded /settings link', () => {
     process.env['SETTINGS_PUBLIC_BASE_URL'] = 'https://bot.example.com'
     expect(buildSettingsUrl('a b+c')).toBe('https://bot.example.com/settings?code=a%20b%2Bc')
+  })
+
+  test('buildSettingsUrlFromBase encodes the code onto the given base', () => {
+    expect(buildSettingsUrlFromBase('https://bot.example.com', 'a b+c')).toBe(
+      'https://bot.example.com/settings?code=a%20b%2Bc',
+    )
   })
 })

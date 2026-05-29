@@ -48,6 +48,8 @@
     "src/debug/turn-assembly.ts": ["exports"],
     // setPluginConfig is a test-only seam.
     "src/config.ts": ["exports"],
+    // buildSettingsUrl is a test-only seam; buildSettingsUrlFromBase is the production helper.
+    "src/settings/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
     // getContributedTaskProviderType is a test-only seam.

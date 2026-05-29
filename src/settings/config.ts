@@ -9,8 +9,12 @@ export function getSettingsPublicBaseUrl(): string | null {
   return raw.trim().replace(/\/+$/u, '')
 }
 
+export function buildSettingsUrlFromBase(base: string, code: string): string {
+  return `${base}/settings?code=${encodeURIComponent(code)}`
+}
+
 export function buildSettingsUrl(code: string): string | null {
   const base = getSettingsPublicBaseUrl()
   if (base === null) return null
-  return `${base}/settings?code=${encodeURIComponent(code)}`
+  return buildSettingsUrlFromBase(base, code)
 }
