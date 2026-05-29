@@ -15,8 +15,8 @@ import { toScopedContextId, toScopedThreadContextId } from '../../src/chat/scope
 import { buildTelegramInteraction } from '../../src/chat/telegram/interaction-helpers.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../src/chat/types.js'
 import { serializeCallbackData } from '../../src/config-editor/callback-data.js'
-import { handleEditorMessage } from '../../src/config-editor/handlers.js'
-import { createEditorSession, deleteEditorSession } from '../../src/config-editor/state.js'
+import { handleEditorCallback, handleEditorMessage, startEditor } from '../../src/config-editor/handlers.js'
+import { createEditorSession, deleteEditorSession, getEditorSession } from '../../src/config-editor/state.js'
 import { getConfig, setConfig } from '../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
@@ -403,18 +403,22 @@ describe('routeInteraction', () => {
 
   test('uses the active group target for cfg callbacks received in DM', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
-    createEditorSession({
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
+    const session = createEditorSession({
       userId: interaction.user.id,
-      storageContextId: toScopedContextId({
-        platformInstanceId: interaction.platformInstanceId,
-        nativeContextId: 'group-9',
-      }),
+      storageContextId: scopedGroupId,
       editingKey: 'timezone',
     })
 
     const buttonReplies: string[] = []
     const handled = await routeInteraction(
-      { ...interaction, callbackData: 'cfg:cancel' },
+      {
+        ...interaction,
+        callbackData: serializeCallbackData({ action: 'cancel', sessionToken: session.sessionToken }, scopedGroupId),
+      },
       {
         ...reply,
         buttons: (content: string): Promise<void> => {
@@ -431,21 +435,18 @@ describe('routeInteraction', () => {
 
   test('clears stale active DM-selected group target when cfg callback access is lost', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
 
     const db = (await import('../../src/db/drizzle.js')).getDrizzleDb()
     const { groupAdminObservations } = await import('../../src/db/schema.js')
-    db.delete(groupAdminObservations)
-      .where(
-        eq(
-          groupAdminObservations.contextId,
-          toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
-        ),
-      )
-      .run()
+    db.delete(groupAdminObservations).where(eq(groupAdminObservations.contextId, scopedGroupId)).run()
 
     const replies: string[] = []
     const handled = await routeInteraction(
-      { ...interaction, callbackData: 'cfg:cancel' },
+      { ...interaction, callbackData: serializeCallbackData({ action: 'cancel' }, scopedGroupId) },
       {
         ...reply,
         text: captureReplyText(replies),
@@ -462,16 +463,16 @@ describe('routeInteraction', () => {
 
   test('clears stale active DM-selected group target when cfg callback allowlist access is lost', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const scopedGroupId = toScopedContextId({
+      platformInstanceId: interaction.platformInstanceId,
+      nativeContextId: 'group-9',
+    })
 
-    expect(
-      removeAuthorizedGroup(
-        toScopedContextId({ platformInstanceId: interaction.platformInstanceId, nativeContextId: 'group-9' }),
-      ),
-    ).toBe(true)
+    expect(removeAuthorizedGroup(scopedGroupId)).toBe(true)
 
     const replies: string[] = []
     const handled = await routeInteraction(
-      { ...interaction, callbackData: 'cfg:cancel' },
+      { ...interaction, callbackData: serializeCallbackData({ action: 'cancel' }, scopedGroupId) },
       {
         ...reply,
         text: captureReplyText(replies),
@@ -576,6 +577,23 @@ describe('routeInteraction', () => {
     expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
   })
 
+  test('raw legacy cfg cancel callback fails closed in DM when a group target is active', async () => {
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      { ...interaction, callbackData: 'cfg:cancel' },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
   test('blocks encoded cfg callback target when admin access is removed', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
 
@@ -624,7 +642,7 @@ describe('routeInteraction', () => {
       )
       .run()
 
-    createEditorSession({
+    const session = createEditorSession({
       userId: interaction.user.id,
       storageContextId: interaction.user.id,
       editingKey: 'timezone',
@@ -634,7 +652,10 @@ describe('routeInteraction', () => {
     const handled = await routeInteraction(
       {
         ...interaction,
-        callbackData: `cfg:cancel@${Buffer.from(interaction.user.id).toString('base64url')}`,
+        callbackData: serializeCallbackData(
+          { action: 'cancel', sessionToken: session.sessionToken },
+          interaction.user.id,
+        ),
       },
       {
         ...reply,
@@ -681,9 +702,9 @@ describe('routeInteraction', () => {
   })
 
   test('prefers replaceButtons for cfg callback responses with buttons when available', async () => {
-    createEditorSession({
+    const session = createEditorSession({
       userId: interaction.user.id,
-      storageContextId: interaction.storageContextId,
+      storageContextId: interaction.user.id,
       editingKey: 'timezone',
     })
 
@@ -691,7 +712,13 @@ describe('routeInteraction', () => {
     const buttons = mock(() => Promise.resolve())
 
     const handled = await routeInteraction(
-      { ...interaction, callbackData: 'cfg:cancel' },
+      {
+        ...interaction,
+        callbackData: serializeCallbackData(
+          { action: 'cancel', sessionToken: session.sessionToken },
+          interaction.user.id,
+        ),
+      },
       {
         ...reply,
         buttons,
@@ -711,17 +738,19 @@ describe('routeInteraction', () => {
       platformInstanceId: interaction.platformInstanceId,
       nativeContextId: 'group-9',
     })
-    const session = createEditorSession({
+    createEditorSession({
       userId: interaction.user.id,
       storageContextId: scopedGroupId,
       editingKey: 'timezone',
     })
     handleEditorMessage(interaction.user.id, scopedGroupId, 'Europe/Berlin')
+    const activeSession = getEditorSession(interaction.user.id, scopedGroupId)
+    expect(activeSession).not.toBeNull()
 
     await routeInteraction(
       {
         ...interaction,
-        callbackData: serializeCallbackData({ action: 'save', key: 'timezone', sessionToken: session.sessionToken }),
+        callbackData: `cfg:save:timezone~${activeSession!.sessionToken}@${Buffer.from(scopedGroupId).toString('base64url')}`,
       },
       reply,
       createMockAuth(true),
@@ -730,6 +759,78 @@ describe('routeInteraction', () => {
     expect(getConfig(scopedGroupId, 'timezone')).toBe('Europe/Berlin')
     expect(getConfig('group-9', 'timezone')).toBeNull()
     expect(getConfig(interaction.user.id, 'timezone')).toBeNull()
+  })
+
+  test('stale same-target cancel callback with an older session token fails closed', async () => {
+    const userId = interaction.user.id
+    const storageContextId = interaction.storageContextId
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'UTC')
+    const olderSession = getEditorSession(userId, storageContextId)
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'Europe/Berlin')
+    const activeSession = getEditorSession(userId, storageContextId)
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: serializeCallbackData({ action: 'cancel', sessionToken: olderSession?.sessionToken }),
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+    expect(getEditorSession(userId, storageContextId)).toMatchObject({
+      editingKey: 'timezone',
+      pendingValue: 'Europe/Berlin',
+      sessionToken: activeSession?.sessionToken,
+    })
+
+    handleEditorCallback(userId, storageContextId, 'back', undefined, activeSession?.sessionToken)
+  })
+
+  test('stale same-target back callback with an older session token fails closed', async () => {
+    const userId = interaction.user.id
+    const storageContextId = interaction.storageContextId
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'UTC')
+    const olderSession = getEditorSession(userId, storageContextId)
+
+    startEditor(userId, storageContextId, 'timezone')
+    handleEditorMessage(userId, storageContextId, 'Europe/Berlin')
+    const activeSession = getEditorSession(userId, storageContextId)
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: serializeCallbackData({ action: 'back', sessionToken: olderSession?.sessionToken }),
+      },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+    expect(getEditorSession(userId, storageContextId)).toMatchObject({
+      editingKey: 'timezone',
+      pendingValue: 'Europe/Berlin',
+      sessionToken: activeSession?.sessionToken,
+    })
+
+    handleEditorCallback(userId, storageContextId, 'back', undefined, activeSession?.sessionToken)
   })
 
   test('updates AI output setting for encoded target context', async () => {
@@ -1119,7 +1220,7 @@ describe('routeInteraction', () => {
     const handled = await routeInteraction(
       {
         ...interaction,
-        callbackData: `cfg:edit:plugin:${pluginId}:api_token`,
+        callbackData: `cfg:edit:plugin:${pluginId}:api_token@${Buffer.from(interaction.user.id).toString('base64url')}`,
       },
       {
         ...reply,

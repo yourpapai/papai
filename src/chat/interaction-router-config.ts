@@ -77,6 +77,10 @@ async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): P
   return true
 }
 
+function isLegacyUnboundDmConfigCallback(parsed: ReturnType<typeof parseCallbackData>): boolean {
+  return parsed.targetContextId === undefined && parsed.targetTag === undefined
+}
+
 async function getDmConfigTargetContextId(
   interaction: IncomingInteraction,
   targetContextId: string,
@@ -119,6 +123,9 @@ export async function defaultHandleConfigInteraction(
 
   const parsed = parseCallbackData(callbackData)
   if (parsed.action === null) return replyUnknownConfigAction(reply, callbackData)
+  if (interaction.contextType === 'dm' && isLegacyUnboundDmConfigCallback(parsed)) {
+    return replyUnknownConfigAction(reply, callbackData)
+  }
 
   const targetContextId = await getDmConfigTargetContextId(
     interaction,
