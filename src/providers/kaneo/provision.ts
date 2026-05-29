@@ -7,11 +7,11 @@ import { z } from 'zod'
 
 import { userCachesForTesting, clearCachedTools } from '../../cache.js'
 import type { ReplyFn } from '../../chat/types.js'
-import { getConfig, setConfig } from '../../config.js'
+import { getConfig, getConfigValue, setConfig } from '../../config.js'
 import { getContextSettings } from '../../instances/context-store.js'
 import { getTaskInstance } from '../../instances/task-store.js'
 import { logger } from '../../logger.js'
-import { getKaneoWorkspace, setKaneoWorkspace } from '../../users.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from '../../types/config.js'
 
 const log = logger.child({ scope: 'kaneo:provision' })
 
@@ -230,7 +230,7 @@ export async function provisionAndConfigure(
     }
     const result = await provisionKaneoUser(kaneoInternalUrl, kaneoUrl, userId, username)
     setConfig(userId, 'kaneo_apikey', result.kaneoKey)
-    setKaneoWorkspace(userId, result.workspaceId)
+    setConfig(userId, KANEO_WORKSPACE_CONFIG_KEY, result.workspaceId)
     clearProvisionedContextToolCaches(userId)
     log.info({ userId }, 'Kaneo account provisioned and configured')
     return {
@@ -261,7 +261,7 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return
 
-  if (getKaneoWorkspace(contextId) !== null && getConfig(contextId, 'kaneo_apikey') !== null) {
+  if (getConfigValue(contextId, KANEO_WORKSPACE_CONFIG_KEY) !== null && getConfig(contextId, 'kaneo_apikey') !== null) {
     return
   }
 

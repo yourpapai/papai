@@ -11,8 +11,8 @@ import { toScopedContextId } from '../../src/chat/scoped-context.js'
 import type { ChatCapability, ChatProvider, CommandHandler, ReplyFn } from '../../src/chat/types.js'
 import { registerSetupCommand } from '../../src/commands/setup.js'
 import type { SetupCommandDeps } from '../../src/commands/setup.js'
-import { setConfig } from '../../src/config.js'
-import { setKaneoWorkspace } from '../../src/users.js'
+import { setConfig, setConfigValue } from '../../src/config.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from '../../src/types/config.js'
 import {
   createAuth,
   createDmMessage,
@@ -35,7 +35,10 @@ const startSetupForTarget = async (
 }
 
 const getConfigWithExistingApiKey = (_contextId: string, key: string): string | null => {
-  const values: Record<string, string> = { kaneo_apikey: 'existing-key' }
+  const values: Record<string, string> = {
+    kaneo_apikey: 'existing-key',
+    [KANEO_WORKSPACE_CONFIG_KEY]: 'existing-workspace',
+  }
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key]! : null
 }
 
@@ -174,7 +177,6 @@ describe('/setup command', () => {
         }),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
-      getKaneoWorkspace: () => null,
       getContextSettings: () => ({
         contextId: 'group-1',
         taskInstanceId: 'kaneo-prod',
@@ -214,7 +216,6 @@ describe('/setup command', () => {
         }),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
-      getKaneoWorkspace: () => null,
       getContextSettings: () => ({
         contextId: 'group-1',
         taskInstanceId: 'kaneo-prod',
@@ -239,7 +240,7 @@ describe('/setup command', () => {
   test('subsequent allowlisted group setup skips provisioning and starts the wizard', async () => {
     addAuthorizedGroup('group-1', 'admin-1')
     setConfig('group-1', 'kaneo_apikey', 'existing-key')
-    setKaneoWorkspace('group-1', 'existing-workspace')
+    setConfigValue('group-1', KANEO_WORKSPACE_CONFIG_KEY, 'existing-workspace')
 
     const { reply, textCalls } = createMockReply()
     let provisionCalls = 0
@@ -251,7 +252,6 @@ describe('/setup command', () => {
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: getConfigWithExistingApiKey,
-      getKaneoWorkspace: () => 'existing-workspace',
       getContextSettings: () => ({
         contextId: 'group-1',
         taskInstanceId: 'kaneo-prod',
@@ -280,7 +280,6 @@ describe('/setup command', () => {
       provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
-      getKaneoWorkspace: () => null,
       getContextSettings: () => ({
         contextId: 'group-1',
         taskInstanceId: 'kaneo-prod',
@@ -312,7 +311,6 @@ describe('/setup command', () => {
       provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => 'existing-key',
-      getKaneoWorkspace: () => 'existing-workspace',
       getContextSettings: () => ({
         contextId: SCOPED_GROUP_1,
         taskInstanceId: 'kaneo-prod',
@@ -345,7 +343,6 @@ describe('/setup command', () => {
       provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => 'existing-key',
-      getKaneoWorkspace: () => 'existing-workspace',
       getContextSettings: () => ({
         contextId: SCOPED_ADMIN_1,
         taskInstanceId: 'kaneo-prod',
@@ -374,7 +371,6 @@ describe('/setup command', () => {
       provisionAndConfigure: () => Promise.resolve({ status: 'failed', error: 'should not be called' }),
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
-      getKaneoWorkspace: () => null,
       getContextSettings: () => null,
       getTaskInstance: () => null,
       startTaskInstanceSelection: (_userId, _targetContextId, platformInstanceId) => {
@@ -410,7 +406,6 @@ describe('/setup command', () => {
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
-      getKaneoWorkspace: () => null,
       getContextSettings: (...args) => getContextSettingsImpl(...args),
       getTaskInstance: () => ({
         id: 'kaneo-prod',
@@ -454,7 +449,6 @@ describe('/setup command', () => {
       },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
-      getKaneoWorkspace: () => null,
       getContextSettings: () => ({
         contextId: 'group-1',
         taskInstanceId: 'kaneo-prod',

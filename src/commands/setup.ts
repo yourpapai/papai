@@ -17,7 +17,7 @@ import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { provisionAndConfigure, type ProvisionOutcome } from '../providers/kaneo/provision.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
-import { getKaneoWorkspace } from '../users.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from '../types/config.js'
 import { createWizard } from '../wizard/engine.js'
 
 const log = logger.child({ scope: 'commands:setup' })
@@ -45,7 +45,6 @@ function isKaneoAutoProvisionEnabled(): boolean {
 export interface SetupCommandDeps {
   isAuthorizedGroup: (groupId: string) => boolean
   getConfig: typeof getConfig
-  getKaneoWorkspace: typeof getKaneoWorkspace
   provisionAndConfigure: typeof provisionAndConfigure
   createWizard: typeof createWizard
   getContextSettings: typeof getContextSettings
@@ -56,7 +55,6 @@ export interface SetupCommandDeps {
 const defaultDeps: SetupCommandDeps = {
   isAuthorizedGroup,
   getConfig,
-  getKaneoWorkspace,
   provisionAndConfigure,
   createWizard,
   getContextSettings,
@@ -69,7 +67,7 @@ function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandD
     return true
   }
 
-  return deps.getKaneoWorkspace(targetContextId) === null
+  return deps.getConfig(targetContextId, KANEO_WORKSPACE_CONFIG_KEY) === null
 }
 
 function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {

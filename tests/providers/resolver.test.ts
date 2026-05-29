@@ -217,6 +217,57 @@ describe('TaskProviderResolver', () => {
     ])
   })
 
+  // Task 3.7 will remove the kaneo special-case branch in resolver.ts and route workspaceId
+  // through getConfig(contextId, 'kaneo_workspace_id') like every other context-scoped field.
+  // Until then, the resolver's getKaneoWorkspace dep is what supplies workspaceId; this test
+  // documents that the special-case branch is what resolves workspaceId and that the dep is
+  // consulted — not getConfig — for the kaneo workspaceId field specifically.
+  test('resolves kaneo workspaceId via getKaneoWorkspace dep (Task 3.7 will route via getConfig)', () => {
+    // getConfig always returns 'k-abc' so kaneo_apikey resolves; other keys (e.g. workspaceId)
+    // are short-circuited by the special-case branch before getConfig is reached.
+    const getConfig = mock((_contextId: string, _key: string): string | null => 'k-abc')
+    const getKaneoWorkspace = mock((_contextId: string): string | null => 'ws-from-dep')
+    const capturedProviderConfigs: Array<Record<string, string>> = []
+    const resolver = new TaskProviderResolver({
+      getContextSettings: (): ReturnType<TaskProviderResolverDeps['getContextSettings']> => ({
+        contextId: 'ctx-1',
+        taskInstanceId: 'kaneo-1',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: (): ReturnType<TaskProviderResolverDeps['getTaskInstance']> => ({
+        id: 'kaneo-1',
+        type: 'kaneo',
+        config: { baseUrl: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-28T00:00:00.000Z',
+      }),
+      getKaneoWorkspace: getKaneoWorkspace as TaskProviderResolverDeps['getKaneoWorkspace'],
+      getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
+      createProvider: (
+        type: string,
+        config: Record<string, string>,
+      ): ReturnType<TaskProviderResolverDeps['createProvider']> => {
+        capturedProviderConfigs.push(config)
+        return createMockProvider({ name: type })
+      },
+    })
+
+    const provider = resolver.resolve('ctx-1')
+
+    // Resolution succeeds
+    expect(provider).not.toBeNull()
+    // The getKaneoWorkspace dep was consulted for workspaceId (special-case branch in resolver.ts:48)
+    expect(getKaneoWorkspace).toHaveBeenCalledWith('ctx-1')
+    // getConfig is still consulted for the kaneo_apikey credential
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'kaneo_apikey')
+    // Provider was created with workspaceId sourced from getKaneoWorkspace (not getConfig)
+    expect(capturedProviderConfigs[0]).toEqual({
+      baseUrl: 'https://kaneo.invalid',
+      credential: 'k-abc',
+      workspaceId: 'ws-from-dep',
+    })
+  })
+
   test('requires plugin provider context credentials before invoking factory', () => {
     const factory = mock(() => createMockProvider({ name: resolverProviderType }))
     registerContributedTaskProviderType(resolverProviderType, {

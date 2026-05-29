@@ -12,12 +12,13 @@ import type { DiscordClientFactory } from '../../../src/chat/discord/index.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { dmTarget } from '../../../src/chat/types.js'
-import { setConfig } from '../../../src/config.js'
+import { setConfig, setConfigValue } from '../../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
 import { startGroupSettingsSelection } from '../../../src/group-settings/selector.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
-import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
+import { KANEO_WORKSPACE_CONFIG_KEY } from '../../../src/types/config.js'
+import { addUser as addScopedUser } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, seedCommonTestPlatformInstances, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
@@ -1156,7 +1157,7 @@ describe('DiscordChatProvider', () => {
       addAuthorizedDiscordGroup('group-1', 'admin-id')
       assignKaneoContext(scopedContextId('group-1'))
       setConfig(scopedContextId('group-1'), 'kaneo_apikey', 'existing-key')
-      setKaneoWorkspace(scopedContextId('group-1'), 'existing-workspace')
+      setConfigValue(scopedContextId('group-1'), KANEO_WORKSPACE_CONFIG_KEY, 'existing-workspace')
       startGroupSettingsSelection('user-1', 'setup', true, 'discord-default')
 
       const groupSelectorInteraction: ButtonInteractionLike = {
