@@ -85,8 +85,10 @@ export class DiscordChatProvider implements ChatProvider {
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
-    const platformInstanceId =
-      (config === undefined && args.length >= 3 ? args[2] : config?.platformInstanceId) ?? 'discord-default'
+    const platformInstanceId = config === undefined && args.length >= 3 ? args[2] : config?.platformInstanceId
+    if (platformInstanceId === undefined || platformInstanceId.trim() === '') {
+      throw new Error('platformInstanceId is required')
+    }
     this.token = token
     this.platformInstanceId = platformInstanceId
     this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory

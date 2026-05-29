@@ -58,7 +58,7 @@ type TelegramConstructorConfig = {
   readonly platformInstanceId?: string
 }
 const resolvePlatformInstanceId = (value: string | undefined): string => {
-  if (value === undefined) return 'telegram-default'
+  if (value === undefined || value.trim() === '') throw new Error('platformInstanceId is required')
   return value
 }
 export class TelegramChatProvider implements ChatProvider {

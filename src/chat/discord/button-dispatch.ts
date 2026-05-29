@@ -11,6 +11,13 @@ import { buildDiscordInteraction } from './interaction-helpers.js'
 import { createDiscordReplyFn } from './reply-helpers.js'
 
 const log = logger.child({ scope: 'chat:discord' })
+
+const requirePlatformInstanceId = (platformInstanceId: string | undefined): string => {
+  if (platformInstanceId === undefined || platformInstanceId.trim() === '')
+    throw new Error('platformInstanceId is required')
+  return platformInstanceId
+}
+
 type RouteButtonFallbackArgs =
   | [
       interaction: ButtonInteractionLike,
@@ -56,7 +63,7 @@ export function buildInteraction(
   reply: ReplyFn
 } | null {
   const [interaction] = args
-  const platformInstanceId = args.length === 3 ? args[2] : 'discord-default'
+  const platformInstanceId = requirePlatformInstanceId(args.length === 3 ? args[2] : undefined)
   const channel = interaction.channel
   if (channel === null) return null
 
@@ -104,7 +111,7 @@ export function createFallbackMessage(
       ]
 ): IncomingMessage {
   const [interaction, contextId, contextType, isPlatformAdmin] = args
-  const platformInstanceId = args.length === 5 ? args[4] : 'discord-default'
+  const platformInstanceId = requirePlatformInstanceId(args.length === 5 ? args[4] : undefined)
   return {
     user: {
       id: interaction.user.id,
@@ -174,7 +181,7 @@ async function executeCommand(
 
 export async function routeButtonFallback(...args: RouteButtonFallbackArgs): Promise<void> {
   const [interaction, channel, contextId, contextType, , commands, messageHandler] = args
-  const platformInstanceId = args.length === 8 ? args[7] : 'discord-default'
+  const platformInstanceId = requirePlatformInstanceId(args.length === 8 ? args[7] : undefined)
   const data = interaction.customId
 
   log.debug({ customId: data }, 'Unhandled button interaction in routeButtonFallback')

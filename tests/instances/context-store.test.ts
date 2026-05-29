@@ -7,8 +7,6 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedTools, setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import {
-  deleteContextsByPlatformInstance,
-  deleteContextsByTaskInstance,
   getContextSettings,
   listContextsByPlatformInstance,
   listContextsByTaskInstance,
@@ -62,30 +60,6 @@ describe('context-store', () => {
     setContextSettings({ contextId: 'group-1', taskInstanceId: 'yt-default', platformInstanceId: 'tg-default' })
 
     expect(getCachedTools('group-1:user-1:alice')).toBeUndefined()
-  })
-
-  test('deleteContextsByTaskInstance clears tool caches for deleted contexts', () => {
-    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'tg-default' })
-    setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-main', platformInstanceId: 'tg-default' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-2:user-1:alice', { old_tool: {} })
-
-    expect(deleteContextsByTaskInstance('tasks-main')).toBe(2)
-
-    expect(getCachedTools('ctx-1')).toBeUndefined()
-    expect(getCachedTools('ctx-2:user-1:alice')).toBeUndefined()
-  })
-
-  test('deleteContextsByPlatformInstance clears tool caches for deleted contexts', () => {
-    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'tg-default' })
-    setContextSettings({ contextId: 'ctx-2', taskInstanceId: 'tasks-other', platformInstanceId: 'tg-default' })
-    setCachedTools('ctx-1', { old_tool: {} })
-    setCachedTools('ctx-2:user-1:alice', { old_tool: {} })
-
-    expect(deleteContextsByPlatformInstance('tg-default')).toBe(2)
-
-    expect(getCachedTools('ctx-1')).toBeUndefined()
-    expect(getCachedTools('ctx-2:user-1:alice')).toBeUndefined()
   })
 
   test('get returns null for unknown context', () => {

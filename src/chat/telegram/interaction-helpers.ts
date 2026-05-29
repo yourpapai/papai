@@ -36,7 +36,7 @@ function computeStorageContextId(contextId: string, contextType: ContextType, th
 export function buildTelegramInteraction(
   ctx: TelegramInteractionContext,
   isAdmin: boolean,
-  platformInstanceId = 'telegram-default',
+  platformInstanceId: string,
 ): IncomingInteraction | null {
   const callbackData = ctx.callbackQuery?.data ?? ''
   if (callbackData === '') return null

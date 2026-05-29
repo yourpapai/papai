@@ -21,7 +21,8 @@ const resolveConfigValue = (value: string | undefined, fallback: string | undefi
 }
 
 const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId === undefined) return 'mattermost-default'
+  if (platformInstanceId === undefined || platformInstanceId.trim() === '')
+    throw new Error('platformInstanceId is required')
   return platformInstanceId
 }
 
