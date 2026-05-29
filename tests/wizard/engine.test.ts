@@ -9,14 +9,47 @@
  * appear in the user-facing wizard.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { getConfig } from '../../src/config.js'
+import { getConfig, getConfigValue } from '../../src/config.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const { createWizard, advanceStep, processWizardMessage } = await import('../../src/wizard/engine.js')
 const { validateAndSaveWizardConfig } = await import('../../src/wizard/save.js')
 const { hasActiveWizard, deleteWizardSession } = await import('../../src/wizard/state.js')
+
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' }],
+    contextConfigSchema: [
+      // label matches BUILTIN_PROMPTS fallback: '🔑 Enter your Kaneo API key:'
+      // workspaceId omitted here: resolved via getKaneoWorkspace special-case in resolver, not wizard
+      {
+        key: 'credential',
+        label: 'Kaneo API key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
+// Contributed kaneo stores credential at plugin-namespaced key, not 'kaneo_apikey'
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
 
 describe('Wizard Integration (Phase 1)', () => {
   const userId = 'test-user'
@@ -26,6 +59,11 @@ describe('Wizard Integration (Phase 1)', () => {
     mockLogger()
     await setupTestDb()
     await deleteWizardSession(userId, storageContextId)
+    registerKaneoContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
   })
 
   test('completes the kaneo two-step flow and saves the config', async () => {
@@ -42,7 +80,8 @@ describe('Wizard Integration (Phase 1)', () => {
     expect(step2.success).toBe(true)
     expect(step2.complete).toBe(true)
     expect(step2.prompt).toContain('Configuration Summary')
-    expect(step2.prompt).toContain('Kaneo API Key')
+    // contributed kaneo label is 'Kaneo API key' (from descriptor)
+    expect(step2.prompt).toContain('Kaneo API key')
     expect(step2.prompt).not.toContain('LLM API Key')
 
     const saveResult = await validateAndSaveWizardConfig(userId, storageContextId)
@@ -50,7 +89,8 @@ describe('Wizard Integration (Phase 1)', () => {
     expect(saveResult.message).toContain('Configuration saved successfully')
     expect(await hasActiveWizard(userId, storageContextId)).toBe(false)
 
-    expect(getConfig(storageContextId, 'kaneo_apikey')).toBe('kaneo-token')
+    // kaneo is now plugin-contributed; credential stored under plugin-namespaced key
+    expect(getConfigValue(storageContextId, KANEO_CREDENTIAL_KEY)).toBe('kaneo-token')
     expect(getConfig(storageContextId, 'timezone')).toBe('UTC')
   })
 
@@ -86,7 +126,8 @@ describe('Wizard Integration (Phase 1)', () => {
     expect(result.response).toContain('cancelled')
     expect(await hasActiveWizard(userId, storageContextId)).toBe(false)
 
-    expect(getConfig(userId, 'kaneo_apikey')).toBeNull()
+    // After cancel, no credential saved at the plugin-namespaced key either
+    expect(getConfigValue(userId, KANEO_CREDENTIAL_KEY)).toBeNull()
   })
 
   test('rejects empty kaneo_apikey and stays on the same step', async () => {
@@ -94,7 +135,8 @@ describe('Wizard Integration (Phase 1)', () => {
 
     const result = await advanceStep(userId, storageContextId, '')
     expect(result.success).toBe(false)
-    expect(result.prompt).toContain('API key cannot be empty')
+    // contributed kaneo uses generic required-field validator: '${field.label} cannot be empty'
+    expect(result.prompt).toContain('Kaneo API key cannot be empty')
     expect(result.prompt).toContain('Please try again')
 
     const session = await processWizardMessage(userId, storageContextId, 'valid-key')

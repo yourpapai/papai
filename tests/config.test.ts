@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test, beforeEach } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import { getAllConfig, getConfig, isConfigKey, isSensitiveKey, maskValue, setConfig } from '../src/config.js'
@@ -15,20 +15,6 @@ import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './util
 
 const USER_A = '111'
 const USER_B = '222'
-
-const assignKaneoContext = (contextId: string): void => {
-  insertTaskInstance({
-    id: `${contextId}-kaneo`,
-    type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
-    status: 'active',
-  })
-  setContextSettings({
-    contextId,
-    taskInstanceId: `${contextId}-kaneo`,
-    platformInstanceId: 'telegram-default',
-  })
-}
 
 beforeEach(() => {
   mockLogger()
@@ -137,12 +123,22 @@ describe('getAllConfig', () => {
     clearUserCache(USER_B)
   })
 
-  test('returns all set configs for user', () => {
-    assignKaneoContext(USER_A)
-    setConfig(USER_A, 'kaneo_apikey', 'key-1')
+  const assignYoutrackContext = (contextId: string): void => {
+    insertTaskInstance({
+      id: `${contextId}-youtrack`,
+      type: 'youtrack',
+      config: { url: 'https://youtrack.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId, taskInstanceId: `${contextId}-youtrack`, platformInstanceId: 'telegram-default' })
+  }
+
+  test('returns all set configs for user (youtrack builtin context)', () => {
+    assignYoutrackContext(USER_A)
+    setConfig(USER_A, 'youtrack_token', 'perm:tok-1')
     setConfig(USER_A, 'timezone', 'UTC')
     const allConfig = getAllConfig(USER_A)
-    expect(allConfig.kaneo_apikey).toBe('key-1')
+    expect(allConfig.youtrack_token).toBe('perm:tok-1')
     expect(allConfig.timezone).toBe('UTC')
   })
 
@@ -152,12 +148,12 @@ describe('getAllConfig', () => {
     expect(allConfig.timezone).toBe('Etc/GMT-5')
   })
 
-  test('does not leak config from other users', () => {
-    assignKaneoContext(USER_A)
-    setConfig(USER_A, 'kaneo_apikey', 'key-a')
-    setConfig(USER_B, 'kaneo_apikey', 'key-b')
+  test('does not leak config from other users (youtrack builtin context)', () => {
+    assignYoutrackContext(USER_A)
+    setConfig(USER_A, 'youtrack_token', 'perm:tok-a')
+    setConfig(USER_B, 'youtrack_token', 'perm:tok-b')
     const configA = getAllConfig(USER_A)
-    expect(configA.kaneo_apikey).toBe('key-a')
+    expect(configA.youtrack_token).toBe('perm:tok-a')
   })
 })
 

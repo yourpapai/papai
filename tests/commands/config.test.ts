@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ChatCapability, ChatProvider, CommandHandler } from '../../src/chat/types.js'
@@ -31,6 +31,29 @@ import {
 } from '../utils/test-helpers.js'
 
 const USER_ID = 'config-test-user'
+
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API Key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 function createRouterLikeChat(sourceProvider: ChatProvider): ChatProvider {
   const router = createMockChatWithCommandHandlers({
@@ -109,6 +132,7 @@ describe('/config Command', () => {
       await setupTestDb()
       seedCommonTestPlatformInstances()
       clearUserCache(USER_ID)
+      registerKaneoContributed()
 
       const { provider: mockChat, commandHandlers } = createMockChatWithCommandHandlers()
       registerConfigCommand(mockChat, (_userId: string) => true)
@@ -117,9 +141,14 @@ describe('/config Command', () => {
       if (handler !== undefined) configHandler = handler
     })
 
+    afterEach(() => {
+      unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    })
+
     test('shows all config keys with values and masked secrets', async () => {
       assignKaneoContext(USER_ID)
-      setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
+      // kaneo is now plugin-contributed; credential stored under plugin-namespaced key
+      setPluginConfig(USER_ID, KANEO_PLUGIN_ID, 'provider:credential', 'sk-abc1234')
       const { reply, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, true)
       expect(buttonCalls[0]).toContain('****1234')
@@ -365,6 +394,7 @@ describe('/config Command', () => {
       await setupTestDb()
       seedCommonTestPlatformInstances()
       clearUserCache(USER_ID)
+      registerKaneoContributed()
 
       const capabilities = new Set<ChatCapability>([
         'commands.menu',
@@ -384,9 +414,14 @@ describe('/config Command', () => {
       if (handler !== undefined) configHandler = handler
     })
 
+    afterEach(() => {
+      unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    })
+
     test('falls back to plain text with config output', async () => {
       assignKaneoContext(USER_ID)
-      setConfig(USER_ID, 'kaneo_apikey', 'sk-abc1234')
+      // kaneo is now plugin-contributed; credential stored under plugin-namespaced key
+      setPluginConfig(USER_ID, KANEO_PLUGIN_ID, 'provider:credential', 'sk-abc1234')
       const { reply, textCalls, buttonCalls } = createMockReply()
       await renderConfigForTarget(reply, USER_ID, false)
       expect(buttonCalls).toHaveLength(0)

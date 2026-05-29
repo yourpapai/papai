@@ -7,14 +7,44 @@
  * Tests for config-editor chat integration
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { handleConfigEditorMessage } from '../../src/chat/config-editor-integration.js'
 import type { ReplyFn } from '../../src/chat/types.js'
 import { deleteEditorSession, startEditor } from '../../src/config-editor/index.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { createMockReply, mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
+
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+// Plugin-namespaced credential key for contributed kaneo
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API Key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 describe('config-editor chat integration', () => {
   const userId = 'user123'
@@ -39,6 +69,11 @@ describe('config-editor chat integration', () => {
     await setupTestDb()
     seedCommonTestPlatformInstances()
     deleteEditorSession(userId, storageContextId)
+    registerKaneoContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
   })
 
   test('returns false when no active editor', async () => {
@@ -76,8 +111,9 @@ describe('config-editor chat integration', () => {
   })
 
   test('sets isSensitiveKey flag for sensitive key', async () => {
+    // kaneo is plugin-contributed; the credential field uses the plugin-namespaced storage key
     assignKaneoContext()
-    startEditor(userId, storageContextId, 'kaneo_apikey')
+    startEditor(userId, storageContextId, KANEO_CREDENTIAL_KEY)
     const { reply, buttonCalls } = createMockReply()
 
     const result = await handleConfigEditorMessage(userId, storageContextId, 'sk-test-api-key-12345', reply)
@@ -87,8 +123,9 @@ describe('config-editor chat integration', () => {
   })
 
   test('calls deleteMessage when available and key is sensitive', async () => {
+    // kaneo is plugin-contributed; the credential field uses the plugin-namespaced storage key
     assignKaneoContext()
-    startEditor(userId, storageContextId, 'kaneo_apikey')
+    startEditor(userId, storageContextId, KANEO_CREDENTIAL_KEY)
     const deletedIds: string[] = []
     const reply: ReplyFn = {
       text: async (): Promise<void> => {},
@@ -108,8 +145,9 @@ describe('config-editor chat integration', () => {
   })
 
   test('appends warning when deleteMessage unavailable and key is sensitive', async () => {
+    // kaneo is plugin-contributed; the credential field uses the plugin-namespaced storage key
     assignKaneoContext()
-    startEditor(userId, storageContextId, 'kaneo_apikey')
+    startEditor(userId, storageContextId, KANEO_CREDENTIAL_KEY)
     const { reply, buttonCalls } = createMockReply()
 
     const result = await handleConfigEditorMessage(userId, storageContextId, 'sk-key', reply, 'msg-123')

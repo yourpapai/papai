@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import {
   registerContributedTaskProviderType,
@@ -12,16 +12,47 @@ import {
 import { getWizardSteps, getStepByIndex, formatSummary } from '../../src/wizard/steps.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' }],
+    contextConfigSchema: [
+      // workspaceId omitted: handled by getKaneoWorkspace, not wizard
+      {
+        key: 'credential',
+        label: 'Kaneo API key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
 describe('getWizardSteps', () => {
+  beforeEach(() => {
+    registerKaneoContributed()
+  })
+
   afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
     unregisterContributedTaskProviderType('plugin-tracker')
   })
 
-  test('returns the two-step provider+timezone wizard for kaneo', () => {
+  test('returns the two-step provider+timezone wizard for kaneo (contributed)', () => {
     const steps = getWizardSteps('kaneo')
 
     expect(steps).toHaveLength(2)
-    expect(steps[0]?.key).toBe('kaneo_apikey')
+    // contributed kaneo uses plugin-namespaced storage key
+    expect(steps[0]?.key).toBe(KANEO_CREDENTIAL_KEY)
     expect(steps[1]?.key).toBe('timezone')
   })
 
@@ -34,6 +65,7 @@ describe('getWizardSteps', () => {
   })
 
   test('no LLM steps remain (credentials live in system_config)', () => {
+    // kaneo is now plugin-contributed; its credential step uses plugin-namespaced key
     const kaneoKeys: readonly string[] = getWizardSteps('kaneo').map((s) => s.key)
     const youtrackKeys: readonly string[] = getWizardSteps('youtrack').map((s) => s.key)
     expect(kaneoKeys).not.toContain('llm_apikey')
@@ -48,8 +80,9 @@ describe('getWizardSteps', () => {
     expect(youtrackKeys).not.toContain('embedding_model')
   })
 
-  test('kaneo_apikey step has correct prompt', () => {
+  test('kaneo credential step has correct prompt (contributed, uses label fallback)', () => {
     const steps = getWizardSteps('kaneo')
+    // contributed kaneo uses the label fallback: '🔑 Enter your ${field.label}:'
     expect(steps[0]?.prompt).toBe('🔑 Enter your Kaneo API key:')
   })
 
@@ -89,14 +122,23 @@ describe('getWizardSteps', () => {
 })
 
 describe('step validation', () => {
-  test('validates kaneo_apikey - accepts non-empty string', async () => {
+  beforeEach(() => {
+    registerKaneoContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  })
+
+  test('validates kaneo credential - accepts non-empty string (contributed)', async () => {
     const result = await getWizardSteps('kaneo')[0]!.validate('my-api-key')
     expect(result).toBeNull()
   })
 
-  test('validates kaneo_apikey - rejects empty string', async () => {
+  test('validates kaneo credential - rejects empty string (contributed, generic validator)', async () => {
     const result = await getWizardSteps('kaneo')[0]!.validate('')
-    expect(result).toBe('API key cannot be empty')
+    // contributed kaneo uses generic required-field validator: '${field.label} cannot be empty'
+    expect(result).toBe('Kaneo API key cannot be empty')
   })
 
   test('validates youtrack_token - accepts non-empty string', async () => {
@@ -110,22 +152,23 @@ describe('step validation', () => {
   })
 
   test('validates timezone - accepts valid IANA timezone', async () => {
-    const result = await getWizardSteps('kaneo')[1]!.validate('America/New_York')
+    // Use youtrack (builtin) for stable timezone step index tests
+    const result = await getWizardSteps('youtrack')[1]!.validate('America/New_York')
     expect(result).toBeNull()
   })
 
   test('validates timezone - accepts UTC', async () => {
-    const result = await getWizardSteps('kaneo')[1]!.validate('UTC')
+    const result = await getWizardSteps('youtrack')[1]!.validate('UTC')
     expect(result).toBeNull()
   })
 
   test('validates timezone - accepts UTC offset', async () => {
-    const result = await getWizardSteps('kaneo')[1]!.validate('UTC+5')
+    const result = await getWizardSteps('youtrack')[1]!.validate('UTC+5')
     expect(result).toBeNull()
   })
 
   test('validates timezone - rejects invalid timezone', async () => {
-    const result = await getWizardSteps('kaneo')[1]!.validate('Invalid/Timezone')
+    const result = await getWizardSteps('youtrack')[1]!.validate('Invalid/Timezone')
     expect(result).toBe(
       'Invalid timezone. Enter a valid IANA timezone like America/New_York or UTC. UTC offsets like UTC+5 are also accepted and will be saved as a standard timezone.',
     )
@@ -133,9 +176,18 @@ describe('step validation', () => {
 })
 
 describe('getStepByIndex', () => {
-  test('returns the first step for index 0 (kaneo)', () => {
+  beforeEach(() => {
+    registerKaneoContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  })
+
+  test('returns the first step for index 0 (kaneo contributed)', () => {
     const step = getStepByIndex('kaneo', 0)
-    expect(step?.key).toBe('kaneo_apikey')
+    // contributed kaneo uses plugin-namespaced storage key
+    expect(step?.key).toBe(KANEO_CREDENTIAL_KEY)
   })
 
   test('returns the second step for index 1 (youtrack)', () => {
@@ -144,27 +196,37 @@ describe('getStepByIndex', () => {
   })
 
   test('returns undefined for out-of-range index', () => {
-    const step = getStepByIndex('kaneo', 100)
+    const step = getStepByIndex('youtrack', 100)
     expect(step).toBeUndefined()
   })
 
   test('returns undefined for negative index', () => {
-    const step = getStepByIndex('kaneo', -1)
+    const step = getStepByIndex('youtrack', -1)
     expect(step).toBeUndefined()
   })
 })
 
 describe('formatSummary', () => {
-  test('formats summary for kaneo provider', () => {
+  beforeEach(() => {
+    registerKaneoContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  })
+
+  test('formats summary for kaneo provider (contributed)', () => {
+    // contributed kaneo stores credential under plugin-namespaced key
     const data = {
-      kaneo_apikey: 'my-secret-kaneo-key',
+      [KANEO_CREDENTIAL_KEY]: 'my-secret-kaneo-key',
       timezone: 'America/New_York',
     }
 
     const summary = formatSummary(data, 'kaneo')
 
     expect(summary).toContain('Configuration Summary')
-    expect(summary).toContain('Kaneo API Key: ****-key')
+    // label is 'Kaneo API key' (from descriptor)
+    expect(summary).toContain('Kaneo API key: ****-key')
     expect(summary).toContain('Timezone: America/New_York')
     expect(summary).not.toContain('LLM API Key')
     expect(summary).not.toContain('Base URL')
@@ -186,7 +248,8 @@ describe('formatSummary', () => {
 
   test('shows "Not set" for missing required values', () => {
     const summary = formatSummary({}, 'kaneo')
-    expect(summary).toContain('Kaneo API Key: Not set')
+    // label is 'Kaneo API key' (from contributed descriptor)
+    expect(summary).toContain('Kaneo API key: Not set')
     expect(summary).toContain('Timezone: Not set')
   })
 })

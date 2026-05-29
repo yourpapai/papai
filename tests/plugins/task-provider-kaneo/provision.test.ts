@@ -6,7 +6,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { isKaneoSessionCookie } from '../../../plugins/task-provider-kaneo/client.js'
+import { isKaneoSessionCookie, type KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { ALL_CAPABILITIES, KANEO_TRAITS } from '../../../plugins/task-provider-kaneo/constants.js'
+import { KaneoProvider } from '../../../plugins/task-provider-kaneo/provider.js'
 import {
   maybeProvisionKaneo,
   provisionAndConfigure,
@@ -15,7 +17,11 @@ import {
 import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
-import { createProvider } from '../../../src/providers/registry.js'
+import {
+  createProvider,
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../../src/providers/registry.js'
 import {
   mockLogger,
   restoreFetch,
@@ -23,6 +29,8 @@ import {
   setMockFetch,
   setupTestDb,
 } from '../../utils/test-helpers.js'
+
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
 
 function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
@@ -250,11 +258,33 @@ function extractCapturedHeaders(_url: string, options: RequestInit | undefined):
   return { ...headers }
 }
 
+const buildKaneoConfig = (config: Record<string, string>): KaneoConfig => {
+  const baseUrl = config['baseUrl'] ?? ''
+  const credential = config['credential'] ?? ''
+  return isKaneoSessionCookie(credential)
+    ? { apiKey: '', baseUrl, sessionCookie: credential }
+    : { apiKey: credential, baseUrl }
+}
+
 describe('provisionKaneoUser - unique email generation', () => {
   beforeEach(() => {
     mockLogger()
     // Set required environment variable
     process.env['KANEO_CLIENT_URL'] = 'https://kaneo.test'
+    // Register kaneo as contributed (no longer a builtin)
+    registerContributedTaskProviderType('kaneo', {
+      pluginId: KANEO_PLUGIN_ID,
+      factory: (config) => new KaneoProvider(buildKaneoConfig(config), config['workspaceId'] ?? ''),
+      capabilities: ALL_CAPABILITIES,
+      displayName: 'Kaneo',
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
+      traits: KANEO_TRAITS,
+    })
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
   })
 
   test('generates unique email with random suffix', async () => {

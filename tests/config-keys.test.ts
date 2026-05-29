@@ -37,11 +37,13 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-unassigned')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
-  test('returns Kaneo visible keys for an active Kaneo assignment', () => {
+  test('returns preferences only for an active Kaneo assignment (kaneo is now plugin-contributed)', () => {
+    // kaneo is no longer a builtin; its descriptor is only present when the plugin is registered.
+    // Without the plugin registered, config-keys falls back to preference fields only.
     insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['kaneo_apikey', 'timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('returns YouTrack visible keys for an active YouTrack assignment', () => {

@@ -33,6 +33,41 @@ import { addUser, listUsers } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+
+/** Register kaneo as a contributed type (it is no longer a builtin). */
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API Key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+      {
+        key: 'workspaceId',
+        label: 'Workspace ID',
+        required: true,
+        sensitive: false,
+        scope: 'context',
+        storageKey: 'kaneo_workspace_id',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
 let authCookieValue: string
 const jsonHeaders = (): Record<string, string> => ({
   Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}`,
@@ -132,12 +167,14 @@ describe('instance API routes', () => {
     setStoreDb(getTestDb().$client)
     authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
+    registerKaneoContributed()
   })
 
   afterEach(() => {
     clearRuntimeChatRouter()
     userCachesForTesting.clear()
     setStoreDb(null)
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
   })
 
   test('creates and lists masked platform instances', async () => {
@@ -720,7 +757,8 @@ describe('instance API routes', () => {
     expect(pick(assertObject(assertArray(await readJson(res))[0]), 'userId')).toBe('admin-1')
   })
 
-  test('GET /api/task-provider-types returns the built-in catalog', async () => {
+  test('GET /api/task-provider-types returns the catalog (youtrack builtin, kaneo contributed)', async () => {
+    // kaneo is registered in beforeEach as a contributed type; youtrack remains builtin
     const res = expectResponse(await route('/api/task-provider-types'))
 
     expect(res.status).toBe(200)
@@ -729,7 +767,7 @@ describe('instance API routes', () => {
     expect(types).toContain('kaneo')
     expect(types).toContain('youtrack')
     const kaneoEntry = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo'))
-    expect(pick(kaneoEntry, 'source')).toBe('builtin')
+    expect(pick(kaneoEntry, 'source')).toEqual({ plugin: KANEO_PLUGIN_ID })
     expect(Array.isArray(pick(kaneoEntry, 'capabilities'))).toBe(true)
   })
 

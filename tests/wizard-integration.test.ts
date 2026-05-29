@@ -7,13 +7,49 @@
  * Tests for wizard-integration module
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import type { ReplyFn } from '../src/chat/types.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../src/providers/registry.js'
 import { handleWizardMessage } from '../src/wizard-integration.js'
 import { createWizard } from '../src/wizard/engine.js'
 import { deleteWizardSession } from '../src/wizard/state.js'
+import { createMockProvider } from './tools/mock-provider.js'
 import { createMockReply, mockLogger, setupTestDb } from './utils/test-helpers.js'
+
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' }],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API Key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+      {
+        key: 'workspaceId',
+        label: 'Workspace ID',
+        required: true,
+        sensitive: false,
+        scope: 'context',
+        storageKey: 'kaneo_workspace_id',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 describe('wizard-integration', () => {
   const userId = 'user123'
@@ -23,6 +59,11 @@ describe('wizard-integration', () => {
     mockLogger()
     await setupTestDb()
     deleteWizardSession(userId, storageContextId)
+    registerKaneoContributed()
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
   })
 
   test('returns false when no active wizard', async () => {

@@ -33,34 +33,34 @@ const assertObject = (value: unknown): object => {
 const pick = (value: object, key: string): unknown => Reflect.get(value, key)
 
 describe('handleTaskProviderTypes', () => {
-  test('GET /api/task-provider-types returns 200 with built-in catalog containing kaneo and youtrack', async () => {
+  test('GET /api/task-provider-types returns 200 with built-in catalog containing youtrack (kaneo is plugin-contributed)', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
 
     expect(res.status).toBe(200)
     const body = assertArray(await readJson(res))
     const types = body.map((entry) => pick(assertObject(entry), 'type'))
-    expect(types).toContain('kaneo')
+    expect(types).not.toContain('kaneo')
     expect(types).toContain('youtrack')
   })
 
-  test('GET /api/task-provider-types kaneo entry has source builtin and capabilities array', async () => {
+  test('GET /api/task-provider-types youtrack entry has source builtin and capabilities array', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
-    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
-    const kaneo = assertObject(kaneoRaw)
+    const youtrackRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack')
+    const youtrack = assertObject(youtrackRaw)
 
-    expect(pick(kaneo, 'source')).toBe('builtin')
-    expect(Array.isArray(pick(kaneo, 'capabilities'))).toBe(true)
+    expect(pick(youtrack, 'source')).toBe('builtin')
+    expect(Array.isArray(pick(youtrack, 'capabilities'))).toBe(true)
   })
 
-  test('GET /api/task-provider-types kaneo entry has correct displayName, instance field key and sensitive flag', async () => {
+  test('GET /api/task-provider-types youtrack entry has correct displayName, instance field key and sensitive flag', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
-    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
-    const kaneo = assertObject(kaneoRaw)
+    const youtrackRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack')
+    const youtrack = assertObject(youtrackRaw)
 
-    expect(pick(kaneo, 'displayName')).toBe('Kaneo')
-    const firstField = assertObject(assertArray(pick(kaneo, 'instanceConfigSchema'))[0])
+    expect(pick(youtrack, 'displayName')).toBe('YouTrack')
+    const firstField = assertObject(assertArray(pick(youtrack, 'instanceConfigSchema'))[0])
     expect(pick(firstField, 'key')).toBe('baseUrl')
     expect(pick(firstField, 'sensitive')).toBe(false)
     expect(pick(firstField, 'scope')).toBeUndefined()
@@ -91,18 +91,16 @@ describe('handleTaskProviderTypes', () => {
 })
 
 describe('handleTaskProviderTypes scope filtering', () => {
-  test('separates instance-scoped and context-scoped fields in the catalog response', async () => {
+  test('separates instance-scoped and context-scoped fields in the catalog response (youtrack builtin)', async () => {
     const res = expectResponse(route('/api/task-provider-types'))
     const body = assertArray(await readJson(res))
-    const kaneoRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo')
-    const kaneo = assertObject(kaneoRaw)
-    const instanceKeys = assertArray(pick(kaneo, 'instanceConfigSchema')).map((f) => pick(assertObject(f), 'key'))
-    const contextKeys = assertArray(pick(kaneo, 'contextConfigSchema')).map((f) => pick(assertObject(f), 'key'))
+    const youtrackRaw = body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack')
+    const youtrack = assertObject(youtrackRaw)
+    const instanceKeys = assertArray(pick(youtrack, 'instanceConfigSchema')).map((f) => pick(assertObject(f), 'key'))
+    const contextKeys = assertArray(pick(youtrack, 'contextConfigSchema')).map((f) => pick(assertObject(f), 'key'))
 
     expect(instanceKeys).toContain('baseUrl')
-    expect(instanceKeys).not.toContain('credential')
-    expect(instanceKeys).not.toContain('workspaceId')
-    expect(contextKeys).toContain('credential')
-    expect(contextKeys).toContain('workspaceId')
+    expect(instanceKeys).not.toContain('token')
+    expect(contextKeys).toContain('token')
   })
 })

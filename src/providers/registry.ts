@@ -3,7 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from '../../plugins/task-provider-kaneo/provider.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { builtinDescriptorSeeds } from './builtin-descriptors.js'
@@ -30,19 +29,6 @@ const configValue = (config: Record<string, string>, key: string): string => {
   return value
 }
 
-/** Register the built-in Kaneo provider. */
-const createKaneoProvider: TaskProviderFactory = (config) => {
-  const baseUrl = configValue(config, 'baseUrl')
-  const workspaceId = configValue(config, 'workspaceId')
-  const credential = configValue(config, 'credential')
-
-  const kaneoConfig: KaneoConfig = isKaneoSessionCookie(credential)
-    ? { apiKey: '', baseUrl, sessionCookie: credential }
-    : { apiKey: credential, baseUrl }
-
-  return new KaneoProvider(kaneoConfig, workspaceId)
-}
-
 /** Register the built-in YouTrack provider. */
 const createYouTrackProvider: TaskProviderFactory = (config) => {
   const baseUrl = configValue(config, 'baseUrl')
@@ -50,10 +36,7 @@ const createYouTrackProvider: TaskProviderFactory = (config) => {
   return new YouTrackProvider({ baseUrl, token })
 }
 
-const providers = new Map<string, TaskProviderFactory>([
-  ['kaneo', createKaneoProvider],
-  ['youtrack', createYouTrackProvider],
-])
+const providers = new Map<string, TaskProviderFactory>([['youtrack', createYouTrackProvider]])
 
 export type ContributedTaskProviderEntry = {
   pluginId: string
