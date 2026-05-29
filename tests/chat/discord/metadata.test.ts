@@ -32,8 +32,8 @@ describe('discord metadata', () => {
     expect(discordTraits.maxMessageLength).toBe(2000)
   })
 
-  test('config requirements include DISCORD_BOT_TOKEN', () => {
-    const token = discordConfigRequirements.find((r) => r.key === 'DISCORD_BOT_TOKEN')
+  test('config requirements include token', () => {
+    const token = discordConfigRequirements.find((r) => r.key === 'token')
     expect(token).toBeDefined()
     expect(token?.required).toBe(true)
   })

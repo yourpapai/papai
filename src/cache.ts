@@ -167,31 +167,27 @@ export function setCachedConfig(userId: string, key: string, value: string): voi
   emitUser('cache:sync', userId, { field: 'config', operation: 'set' })
 }
 
-export function getCachedWorkspace(userId: string): string | null {
-  const cache = getOrCreateCache(userId)
+export function getCachedWorkspaceForContext(contextId: string): string | null {
+  const cache = getOrCreateCache(contextId)
   if (cache.workspaceId === null && !cache.config.has('workspace_loaded')) {
-    log.debug({ userId }, 'Loading workspace from DB into cache')
+    log.debug({ contextId }, 'Loading workspace from DB into cache')
     const row = getDrizzleDb()
       .select({ value: userConfig.value })
       .from(userConfig)
-      .where(sql`${userConfig.userId} = ${userId} AND ${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY}`)
+      .where(sql`${userConfig.userId} = ${contextId} AND ${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY}`)
       .get()
-    if (row === undefined) {
-      cache.workspaceId = null
-    } else {
-      cache.workspaceId = row.value
-    }
+    cache.workspaceId = row === undefined ? null : row.value
     cache.config.set('workspace_loaded', 'true')
-    emitUser('cache:load', userId, { field: 'workspace' })
+    emitUser('cache:load', contextId, { field: 'workspace' })
   }
   return cache.workspaceId
 }
 
-export function setCachedWorkspace(userId: string, workspaceId: string): void {
-  const cache = getOrCreateCache(userId)
+export function setCachedWorkspaceForContext(contextId: string, workspaceId: string): void {
+  const cache = getOrCreateCache(contextId)
   cache.workspaceId = workspaceId
-  syncWorkspaceToDb(userId, workspaceId)
-  emitUser('cache:sync', userId, { field: 'workspace', operation: 'set' })
+  syncWorkspaceToDb(contextId, workspaceId)
+  emitUser('cache:sync', contextId, { field: 'workspace', operation: 'set' })
 }
 
 export function getCachedTools(userId: string): unknown {

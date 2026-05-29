@@ -13,18 +13,15 @@ export type ResolvedKonturTalkConfig = {
   platformInstanceId: string
 }
 
-const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
-  if (value === undefined) return fallback
-  return value
-}
-
 const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId === undefined) return 'kontur-talk-default'
+  if (platformInstanceId === undefined || platformInstanceId.trim() === '') {
+    throw new Error('platformInstanceId is required')
+  }
   return platformInstanceId
 }
 
 export const resolveKonturTalkConfig = (config: KonturTalkConstructorConfig): ResolvedKonturTalkConfig => {
-  const jwtToken = resolveConfigValue(config.jwtToken, process.env['KONTUR_TALK_JWT_TOKEN'])
+  const jwtToken = config.jwtToken
   if (jwtToken === undefined || jwtToken.trim() === '') {
     throw new Error('KONTUR_TALK_JWT_TOKEN environment variable is required')
   }

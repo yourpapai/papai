@@ -29,8 +29,8 @@ describe('telegram metadata', () => {
     expect(telegramTraits.callbackDataMaxLength).toBe(64)
   })
 
-  test('config requirements include TELEGRAM_BOT_TOKEN', () => {
-    const token = telegramConfigRequirements.find((r) => r.key === 'TELEGRAM_BOT_TOKEN')
+  test('config requirements include token', () => {
+    const token = telegramConfigRequirements.find((r) => r.key === 'token')
     expect(token).toBeDefined()
     expect(token?.required).toBe(true)
   })

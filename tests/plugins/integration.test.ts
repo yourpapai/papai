@@ -20,7 +20,7 @@ import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { defaultTaskProviderResolver } from '../../src/providers/resolver.js'
 import { buildSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
-import { setKaneoWorkspace } from '../../src/users.js'
+import { setKaneoWorkspaceForContext } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChat,
@@ -304,7 +304,7 @@ describe('plugin lifecycle integration', () => {
       platformInstanceId: 'telegram-default',
     })
     setConfig('ctx-kaneo', 'kaneo_apikey', 'kn-key')
-    setKaneoWorkspace('ctx-kaneo', 'workspace-1')
+    setKaneoWorkspaceForContext('ctx-kaneo', 'workspace-1')
     setConfig('ctx-youtrack', 'youtrack_token', 'perm:abc')
     const router = new ChatRouter(() => createMockChat())
     router.addInstance('telegram-default', 'telegram', { token: 'x' })

@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
@@ -17,7 +17,7 @@ import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../s
 import { startGroupSettingsSelection } from '../../../src/group-settings/selector.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
-import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
+import { addUser as addScopedUser, setKaneoWorkspaceForContext } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, seedCommonTestPlatformInstances, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
@@ -80,47 +80,30 @@ function makeOnInteractionCreateRouter(
 }
 
 describe('DiscordChatProvider', () => {
-  const originalToken = process.env['DISCORD_BOT_TOKEN']
-
   beforeEach(async () => {
     mockLogger()
     mockMessageCache()
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    process.env['DISCORD_BOT_TOKEN'] = 'fake-token-123'
     process.env['ADMIN_USER_ID'] = 'admin-id'
   })
 
   type SendCapture = Partial<{ content: string; components: unknown[] }>
 
-  afterEach(() => {
-    if (originalToken === undefined) {
-      delete process.env['DISCORD_BOT_TOKEN']
-    } else {
-      process.env['DISCORD_BOT_TOKEN'] = originalToken
-    }
-  })
-
-  test('constructor throws when DISCORD_BOT_TOKEN is missing', async () => {
-    delete process.env['DISCORD_BOT_TOKEN']
+  test('constructor requires explicit token and platform instance id', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     expect(() => new DiscordChatProvider({ platformInstanceId: TEST_PLATFORM_ID })).toThrow(
       'DISCORD_BOT_TOKEN environment variable is required',
     )
-  })
-
-  test('constructor throws when DISCORD_BOT_TOKEN is whitespace only', async () => {
-    process.env['DISCORD_BOT_TOKEN'] = '   '
-    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider({ token: '   ', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
-      'DISCORD_BOT_TOKEN environment variable is required',
+    expect(() => new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: '   ' })).toThrow(
+      'platformInstanceId is required',
     )
   })
 
-  test('constructor throws when platformInstanceId is blank', async () => {
+  test('constructor rejects whitespace-only token', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: '   ' })).toThrow(
-      'platformInstanceId is required',
+    expect(() => new DiscordChatProvider({ token: '   ', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
+      'DISCORD_BOT_TOKEN environment variable is required',
     )
   })
 
@@ -194,7 +177,7 @@ describe('DiscordChatProvider', () => {
 
   test('onMessage receives constructor-provided platform instance ID', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined, 'fake-discord-token', 'discord-secondary')
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: 'discord-secondary' })
 
     const seen: IncomingMessage[] = []
     provider.onMessage((msg): Promise<void> => {
@@ -1191,7 +1174,7 @@ describe('DiscordChatProvider', () => {
       addAuthorizedDiscordGroup('group-1', 'admin-id')
       assignKaneoContext(scopedContextId('group-1'))
       setConfig(scopedContextId('group-1'), 'kaneo_apikey', 'existing-key')
-      setKaneoWorkspace(scopedContextId('group-1'), 'existing-workspace')
+      setKaneoWorkspaceForContext(scopedContextId('group-1'), 'existing-workspace')
       startGroupSettingsSelection('user-1', 'setup', true, 'discord-default')
 
       const groupSelectorInteraction: ButtonInteractionLike = {

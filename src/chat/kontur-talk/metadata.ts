@@ -13,5 +13,5 @@ export const konturTalkTraits: ChatProviderTraits = {
 }
 
 export const konturTalkConfigRequirements: readonly ChatProviderConfigRequirement[] = [
-  { key: 'KONTUR_TALK_JWT_TOKEN', label: 'Kontur Talk JWT Token', required: true },
+  { key: 'jwtToken', label: 'Kontur Talk JWT Token', required: true },
 ]

@@ -27,7 +27,7 @@ import {
   userInstructions,
   users,
 } from '../src/db/schema.js'
-import { addUser, getKaneoWorkspace, setKaneoWorkspace } from '../src/users.js'
+import { addUser, getKaneoWorkspaceForContext, setKaneoWorkspaceForContext } from '../src/users.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 function requireDefined<T>(value: T | undefined): T {
@@ -214,17 +214,17 @@ describe('cache-db', () => {
       const groupId = 'new-group-123'
       const workspaceId = 'workspace-abc'
 
-      expect(getKaneoWorkspace(groupId)).toBeNull()
+      expect(getKaneoWorkspaceForContext(groupId)).toBeNull()
 
-      setKaneoWorkspace(groupId, workspaceId)
-      expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
+      setKaneoWorkspaceForContext(groupId, workspaceId)
+      expect(getKaneoWorkspaceForContext(groupId)).toBe(workspaceId)
 
       await new Promise<void>((resolve) => {
         setTimeout(() => resolve(), 50)
       })
 
       userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspace(groupId)).toBe(workspaceId)
+      expect(getKaneoWorkspaceForContext(groupId)).toBe(workspaceId)
 
       const db = getDrizzleDb()
       const result = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
@@ -238,22 +238,22 @@ describe('cache-db', () => {
       seedPlatform('telegram-default')
       addUser({ userId: groupId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
 
-      setKaneoWorkspace(groupId, initialWorkspace)
-      expect(getKaneoWorkspace(groupId)).toBe(initialWorkspace)
+      setKaneoWorkspaceForContext(groupId, initialWorkspace)
+      expect(getKaneoWorkspaceForContext(groupId)).toBe(initialWorkspace)
 
       await new Promise<void>((resolve) => {
         setTimeout(() => resolve(), 50)
       })
 
-      setKaneoWorkspace(groupId, updatedWorkspace)
-      expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
+      setKaneoWorkspaceForContext(groupId, updatedWorkspace)
+      expect(getKaneoWorkspaceForContext(groupId)).toBe(updatedWorkspace)
 
       await new Promise<void>((resolve) => {
         setTimeout(() => resolve(), 50)
       })
 
       userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspace(groupId)).toBe(updatedWorkspace)
+      expect(getKaneoWorkspaceForContext(groupId)).toBe(updatedWorkspace)
 
       const db = getDrizzleDb()
       const userRow = db.select().from(users).where(eq(users.platformUserId, groupId)).get()

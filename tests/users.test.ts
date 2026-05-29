@@ -18,8 +18,8 @@ import {
   isDemoUser,
   resolveUserByUsername,
   listUsers,
-  getKaneoWorkspace,
-  setKaneoWorkspace,
+  getKaneoWorkspaceForContext,
+  setKaneoWorkspaceForContext,
 } from '../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
@@ -179,7 +179,7 @@ describe('removeUser', () => {
 
   test('evicts cached workspace entry when a user is removed', () => {
     addUser({ userId: 'cache-test', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
-    setKaneoWorkspace('cache-test', 'workspace-1')
+    setKaneoWorkspaceForContext('cache-test', 'workspace-1')
 
     expect(userCachesForTesting.has('cache-test')).toBe(true)
 
@@ -357,31 +357,31 @@ describe('platform-scoped authorization', () => {
   })
 })
 
-describe('getKaneoWorkspace / setKaneoWorkspace', () => {
+describe('getKaneoWorkspaceForContext / setKaneoWorkspaceForContext', () => {
   beforeEach(async () => {
     await setupTestDb()
     userCachesForTesting.clear()
   })
 
   test('returns null when no workspace is set', () => {
-    expect(getKaneoWorkspace('ws-user-1')).toBeNull()
+    expect(getKaneoWorkspaceForContext('ws-user-1')).toBeNull()
   })
 
   test('set then get returns workspace ID', () => {
-    setKaneoWorkspace('ws-user-2', 'ws-abc')
-    expect(getKaneoWorkspace('ws-user-2')).toBe('ws-abc')
+    setKaneoWorkspaceForContext('ws-user-2', 'ws-abc')
+    expect(getKaneoWorkspaceForContext('ws-user-2')).toBe('ws-abc')
   })
 
   test('overwrites previous workspace', () => {
-    setKaneoWorkspace('ws-user-3', 'ws-1')
-    setKaneoWorkspace('ws-user-3', 'ws-2')
-    expect(getKaneoWorkspace('ws-user-3')).toBe('ws-2')
+    setKaneoWorkspaceForContext('ws-user-3', 'ws-1')
+    setKaneoWorkspaceForContext('ws-user-3', 'ws-2')
+    expect(getKaneoWorkspaceForContext('ws-user-3')).toBe('ws-2')
   })
 
   test('user isolation — different users have independent workspaces', () => {
-    setKaneoWorkspace('ws-user-4', 'ws-A')
-    setKaneoWorkspace('ws-user-5', 'ws-B')
-    expect(getKaneoWorkspace('ws-user-4')).toBe('ws-A')
-    expect(getKaneoWorkspace('ws-user-5')).toBe('ws-B')
+    setKaneoWorkspaceForContext('ws-user-4', 'ws-A')
+    setKaneoWorkspaceForContext('ws-user-5', 'ws-B')
+    expect(getKaneoWorkspaceForContext('ws-user-4')).toBe('ws-A')
+    expect(getKaneoWorkspaceForContext('ws-user-5')).toBe('ws-B')
   })
 })

@@ -18,7 +18,7 @@ import {
 } from '../../src/providers/registry.js'
 import { TaskProviderResolver } from '../../src/providers/resolver.js'
 import type { TaskProviderResolverDeps } from '../../src/providers/resolver.js'
-import { setKaneoWorkspace } from '../../src/users.js'
+import { setKaneoWorkspaceForContext } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   mockLogger,
@@ -117,7 +117,7 @@ describe('TaskProviderResolver', () => {
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'kaneo_apikey', 'kn-key')
-    setKaneoWorkspace('ctx-1', 'workspace-1')
+    setKaneoWorkspaceForContext('ctx-1', 'workspace-1')
     const resolver = makeResolver()
 
     const provider = await resolver.resolve('ctx-1')
@@ -137,7 +137,7 @@ describe('TaskProviderResolver', () => {
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'kaneo_apikey', 'better-auth.session_token=abc')
-    setKaneoWorkspace('ctx-1', 'workspace-1')
+    setKaneoWorkspaceForContext('ctx-1', 'workspace-1')
     const resolver = makeResolver()
 
     const provider = await resolver.resolve('ctx-1')

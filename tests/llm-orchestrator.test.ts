@@ -145,7 +145,7 @@ import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
 import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
-import { setKaneoWorkspace } from '../src/users.js'
+import { setKaneoWorkspaceForContext } from '../src/users.js'
 
 const CTX_ID = 'ctx-1'
 
@@ -199,7 +199,7 @@ const seedConfigForContext = (ctxId: string): void => {
   assignKaneoContext(ctxId)
   setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
   setCachedConfig(ctxId, 'timezone', 'UTC')
-  setKaneoWorkspace(ctxId, 'workspace-1')
+  setKaneoWorkspaceForContext(ctxId, 'workspace-1')
 }
 
 const seedConfig = (): void => seedConfigForContext(CTX_ID)
@@ -304,7 +304,7 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: resolveMockProvider,
-        getKaneoWorkspace: () => null,
+        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => {
           maybeProvisionCalls++
           return Promise.resolve()
@@ -348,7 +348,7 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: resolveMockProvider,
-        getKaneoWorkspace: () => null,
+        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 
@@ -373,7 +373,7 @@ describe('processMessage', () => {
           resolverCalls++
           return null
         },
-        getKaneoWorkspace: () => null,
+        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 
@@ -392,7 +392,7 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: resolveMockProvider,
-        getKaneoWorkspace: () => null,
+        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 
@@ -422,7 +422,7 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        getKaneoWorkspace: () => null,
+        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 

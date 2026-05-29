@@ -26,7 +26,7 @@ import {
 } from '../../src/group-settings/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import { setKaneoWorkspace } from '../../src/users.js'
+import { setKaneoWorkspaceForContext } from '../../src/users.js'
 import { createWizardSession } from '../../src/wizard/state.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
@@ -713,7 +713,7 @@ describe('routeInteraction', () => {
     addAuthorizedGroup(scopedGroupId, 'admin-1')
     assignKaneoContext(scopedGroupId)
     setConfig(scopedGroupId, 'kaneo_apikey', 'test-kaneo-key')
-    setKaneoWorkspace(scopedGroupId, 'workspace-9')
+    setKaneoWorkspaceForContext(scopedGroupId, 'workspace-9')
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: scopedGroupId,

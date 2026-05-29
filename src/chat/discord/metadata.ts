@@ -20,5 +20,5 @@ export const discordTraits: ChatProviderTraits = {
 }
 
 export const discordConfigRequirements: readonly ChatProviderConfigRequirement[] = [
-  { key: 'DISCORD_BOT_TOKEN', label: 'Discord Bot Token', required: true },
+  { key: 'token', label: 'Discord Bot Token', required: true },
 ]

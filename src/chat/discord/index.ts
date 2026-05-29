@@ -49,10 +49,6 @@ type DiscordConstructorConfig = {
   readonly token?: string
   readonly platformInstanceId: string
 }
-type DiscordConstructorArgs =
-  | [config: DiscordConstructorConfig]
-  | [clientFactory: DiscordClientFactory | undefined, tokenOverride: string | undefined, platformInstanceId: string]
-
 export class DiscordChatProvider implements ChatProvider {
   readonly name = 'discord'
   readonly threadCapabilities: ThreadCapabilities = {
@@ -70,21 +66,18 @@ export class DiscordChatProvider implements ChatProvider {
   private messageHandler: OnMessageHandler | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | null = null
   private client: DiscordClientLike | null = null
-  constructor(...args: DiscordConstructorArgs) {
-    const config = typeof args[0] === 'object' ? args[0] : undefined
-    const clientFactory = config === undefined ? args[0] : config.clientFactory
-    const tokenOverride = config === undefined ? (args.length >= 2 ? args[1] : undefined) : config.token
-    const token = config === undefined ? (tokenOverride ?? process.env['DISCORD_BOT_TOKEN']) : config.token
+  constructor(config: DiscordConstructorConfig) {
+    const token = config.token
     if (token === undefined || token.trim() === '') {
       throw new Error('DISCORD_BOT_TOKEN environment variable is required')
     }
-    const platformInstanceId = config === undefined && args.length >= 3 ? args[2] : config?.platformInstanceId
+    const platformInstanceId = config.platformInstanceId
     if (platformInstanceId === undefined || platformInstanceId.trim() === '') {
       throw new Error('platformInstanceId is required')
     }
     this.token = token
     this.platformInstanceId = platformInstanceId
-    this.clientFactory = typeof clientFactory === 'function' ? clientFactory : defaultClientFactory
+    this.clientFactory = typeof config.clientFactory === 'function' ? config.clientFactory : defaultClientFactory
     log.debug(
       { platformInstanceId: this.platformInstanceId, tokenLength: this.token.length },
       'DiscordChatProvider constructed',

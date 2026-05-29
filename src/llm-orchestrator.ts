@@ -34,7 +34,7 @@ import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'
-import { getKaneoWorkspace } from './users.js'
+import { getKaneoWorkspaceForContext } from './users.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
@@ -48,7 +48,7 @@ const defaultDeps: LlmOrchestratorDeps = {
   buildOpenAI: (apiKey: string, baseURL: string) =>
     createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL, fetch: fetchWithoutTimeout }),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
-  getKaneoWorkspace,
+  getKaneoWorkspaceForContext,
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
 export { defaultDeps }
