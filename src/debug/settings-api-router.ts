@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
+import { handleAdminRosterPluginsRoutes } from './settings/admin/roster-plugins-routes.js'
 import { handleAdminSystemAccessRoutes } from './settings/admin/system-access-routes.js'
 import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
@@ -33,6 +34,13 @@ export function routeSettingsApi(req: Request, url: URL): Promise<Response | nul
     url.pathname === '/settings/api/admin/groups'
   ) {
     return handleAdminSystemAccessRoutes(req, url, url.pathname)
+  }
+  if (
+    url.pathname === '/settings/api/admin/admins' ||
+    url.pathname === '/settings/api/admin/plugin-approval' ||
+    url.pathname === '/settings/api/admin/announce'
+  ) {
+    return handleAdminRosterPluginsRoutes(req, url, url.pathname)
   }
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {

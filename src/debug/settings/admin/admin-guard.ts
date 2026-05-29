@@ -11,3 +11,8 @@ export function requireAdmin(authed: AuthenticatedSettingsRequest, action: 'read
   const result = requireScope(authed.principal, { action, target: { kind: 'admin' } })
   return result.ok ? null : settingsJson(403, { error: 'forbidden' })
 }
+
+export function requireSuperAdmin(authed: AuthenticatedSettingsRequest, action: 'read' | 'write'): Response | null {
+  const result = requireScope(authed.principal, { action, target: { kind: 'admin', requireSuperAdmin: true } })
+  return result.ok ? null : settingsJson(403, { error: 'forbidden' })
+}
