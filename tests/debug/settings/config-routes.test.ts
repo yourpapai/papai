@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { getConfigValue, setConfigValue } from '../../../src/config.js'
+import { getConfigValue, maskSensitiveValue, setConfigValue } from '../../../src/config.js'
 import { handleConfigRoutes } from '../../../src/debug/settings/config-routes.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
@@ -136,5 +136,36 @@ describe('settings config routes', () => {
     })
     const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
     expect(res.status).toBe(422)
+  })
+
+  test('PATCH sensitive field with masked value echoed back returns unchanged=true without overwriting stored secret', async () => {
+    // Arrange: link a kaneo instance so the sensitive `credential` field is visible.
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    insertTaskInstance({ id: 'kaneo-t3', type: 'kaneo', config: {}, status: 'active' })
+    setContextSettings({ contextId: personalConfigContextId, taskInstanceId: 'kaneo-t3', platformInstanceId: 'pi-1' })
+
+    // Seed a known plaintext value.
+    const plaintext = 'my-secret-api-key'
+    setConfigValue(personalConfigContextId, 'kaneo_apikey', plaintext)
+
+    // Compute what the GET response would return for this sensitive field.
+    const masked = maskSensitiveValue(plaintext)
+
+    // Act: PATCH the field back with the masked value (simulating SPA echo).
+    const req = new Request('https://x/settings/api/config', {
+      method: 'PATCH',
+      headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'credential', value: masked }),
+    })
+    const res = await handleConfigRoutes(req, new URL('https://x/settings/api/config'))
+
+    // Assert: 200 with unchanged flag — the real secret must NOT have been overwritten.
+    expect(res.status).toBe(200)
+    const body = PatchUnchangedResponseSchema.parse(await res.json())
+    expect(body.unchanged).toBe(true)
+    assert(
+      getConfigValue(personalConfigContextId, 'kaneo_apikey') === plaintext,
+      'stored secret must not be overwritten with the masked sentinel value',
+    )
   })
 })

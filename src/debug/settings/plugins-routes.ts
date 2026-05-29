@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { getPluginConfig, setPluginConfig } from '../../config.js'
+import { getPluginConfig, maskSensitiveValue, setPluginConfig } from '../../config.js'
 import { logger } from '../../logger.js'
 import {
   getPluginContextEligibility,
@@ -113,8 +113,12 @@ async function handleConfig(req: Request): Promise<Response> {
     (r) => r.scope === 'context' && r.key === body.data.key,
   )
   if (requirement === undefined) return settingsJson(422, { error: 'unknown plugin config key' })
-  if (requirement.sensitive && body.data.value.length === 0) {
-    return settingsJson(200, { ok: true, contextId: scope.scope.contextId, unchanged: true })
+  // Masked secrets: an empty submit or a submit equal to the masked form of the stored value means "no change".
+  if (requirement.sensitive) {
+    const current = getPluginConfig(scope.scope.contextId, body.data.pluginId, body.data.key) ?? ''
+    if (body.data.value.length === 0 || (current.length > 0 && body.data.value === maskSensitiveValue(current))) {
+      return settingsJson(200, { ok: true, contextId: scope.scope.contextId, unchanged: true })
+    }
   }
   setPluginConfig(scope.scope.contextId, body.data.pluginId, body.data.key, body.data.value)
   log.info(

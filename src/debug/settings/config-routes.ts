@@ -61,9 +61,12 @@ async function handlePatch(req: Request): Promise<Response> {
   )
   if (field === undefined) return settingsJson(422, { error: 'unknown config field' })
 
-  // Masked secrets: an empty submit means "no change".
-  if (field.sensitive && body.data.value.length === 0) {
-    return settingsJson(200, { ok: true, contextId: scope.scope.contextId, unchanged: true })
+  // Masked secrets: an empty submit or a submit equal to the masked form of the stored value means "no change".
+  if (field.sensitive) {
+    const current = getConfigValue(scope.scope.contextId, field.storageKey) ?? ''
+    if (body.data.value.length === 0 || (current.length > 0 && body.data.value === maskSensitiveValue(current))) {
+      return settingsJson(200, { ok: true, contextId: scope.scope.contextId, unchanged: true })
+    }
   }
 
   const validation = validateConfigField(field, body.data.value)

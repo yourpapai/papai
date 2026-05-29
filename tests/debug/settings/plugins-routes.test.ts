@@ -4,13 +4,16 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
+import { getPluginConfig, maskSensitiveValue, setPluginConfig } from '../../../src/config.js'
 import { handlePluginsRoutes } from '../../../src/debug/settings/plugins-routes.js'
 import { pluginRegistry } from '../../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../../src/plugins/types.js'
+import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
@@ -171,5 +174,44 @@ describe('settings plugins routes', () => {
     expect(res.status).toBe(200)
     const body = z.object({ ok: z.boolean(), unchanged: z.boolean() }).parse(await res.json())
     expect(body.unchanged).toBe(true)
+  })
+
+  test('config PATCH of a sensitive key with masked value echoed back returns unchanged=true without overwriting the stored secret', async () => {
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        configRequirements: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
+      },
+    })
+    pluginRegistry.registerDiscovered(plugin)
+
+    // Arrange: seed the plugin config with a known plaintext value.
+    const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
+    const plaintext = 'secret-plugin-token-xyz'
+    setPluginConfig(personalConfigContextId, 'test-plugin', 'token', plaintext)
+
+    // Compute the masked form that a GET response would return.
+    const masked = maskSensitiveValue(plaintext)
+
+    // Act: PATCH with the masked value (simulating SPA echoing back what it received).
+    const url = new URL('https://x/settings/api/plugins/config')
+    const res = await handlePluginsRoutes(
+      new Request(url, {
+        method: 'PATCH',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: 'test-plugin', key: 'token', value: masked }),
+      }),
+      url,
+      '/settings/api/plugins/config',
+    )
+
+    // Assert: 200 with unchanged flag — stored value must not have been overwritten.
+    expect(res.status).toBe(200)
+    const body = z.object({ ok: z.literal(true), unchanged: z.literal(true) }).parse(await res.json())
+    expect(body.unchanged).toBe(true)
+    assert(
+      getPluginConfig(personalConfigContextId, 'test-plugin', 'token') === plaintext,
+      'stored plugin secret must not be overwritten with the masked sentinel value',
+    )
   })
 })
