@@ -44,6 +44,7 @@
   }
 
   async function toggle(plugin: PluginEntry): Promise<void> {
+    error = null
     try {
       await togglePlugin({ pluginId: plugin.id, enabled: !plugin.enabled, contextId })
       await load(contextId)
@@ -53,6 +54,7 @@
   }
 
   async function saveConfig(pluginId: string, key: string): Promise<void> {
+    error = null
     try {
       await patchPluginConfig({ pluginId, key, value: drafts[draftKey(pluginId, key)] ?? '', contextId })
       drafts[draftKey(pluginId, key)] = ''
