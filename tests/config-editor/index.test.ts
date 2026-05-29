@@ -131,6 +131,43 @@ describe('config-editor public API', () => {
     expect(resolveCallbackKey(parsed.key, 'managed-group-context-with-long-id')).toBe(key)
   })
 
+  test('resolveCallbackKey fails closed when compact callback field ordering changes', () => {
+    registerContributedTaskProviderType('very-long-plugin-provider-name', {
+      pluginId: 'very-long-plugin-provider-name',
+      factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
+      capabilities: new Set(),
+      displayName: 'Long Plugin Provider',
+      configSchema: [
+        {
+          key: 'very-long-context-token-field',
+          label: 'Plugin Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+    insertTaskInstance({
+      id: 'long-plugin-prod-remap',
+      type: 'very-long-plugin-provider-name',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'managed-group-context-remap',
+      taskInstanceId: 'long-plugin-prod-remap',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
+    const data = serializeCallbackData({ action: 'edit', key }, 'managed-group-context-remap')
+    const parsed = parseCallbackData(data)
+
+    unregisterContributedTaskProviderType('very-long-plugin-provider-name')
+
+    expect(resolveCallbackKey(parsed.key, 'managed-group-context-remap')).toBeNull()
+  })
+
   test('serializeCallbackData keeps all actions within callback size limit for long contexts', () => {
     const targetContextId = 'managed-group-context-with-a-very-long-stable-storage-id'
     const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
@@ -148,8 +185,8 @@ describe('config-editor public API', () => {
   })
 
   test('compact callbacks parse without module-local token state', () => {
-    expect(parseCallbackData('cfg:e:0:abc123')).toEqual({ action: 'edit', key: '#0:abc123' })
-    expect(parseCallbackData('cfg:s:z:def456')).toEqual({ action: 'save', key: '#z:def456' })
+    expect(parseCallbackData('cfg:e:0:abc123:def456')).toEqual({ action: 'edit', key: '#0:abc123:def456' })
+    expect(parseCallbackData('cfg:s:z:def456:ghi789')).toEqual({ action: 'save', key: '#z:def456:ghi789' })
   })
 
   test('resolveCallbackKey resolves compact field indexes for a context', () => {

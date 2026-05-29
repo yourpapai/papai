@@ -20,6 +20,10 @@ function targetTag(targetContextId: string): string {
   return createHash('sha256').update(targetContextId).digest('base64url').slice(0, 8)
 }
 
+function fieldFingerprint(storageKey: string): string {
+  return createHash('sha256').update(storageKey).digest('base64url').slice(0, 6)
+}
+
 function compactCallbackData(
   raw: string,
   button: Pick<EditorButton, 'action' | 'key'>,
@@ -34,7 +38,7 @@ function compactCallbackData(
   ) {
     const fieldIndex = getConfigFieldsForContext(targetContextId).findIndex((field) => field.storageKey === button.key)
     if (fieldIndex !== -1)
-      return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}:${targetTag(targetContextId)}`
+      return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}:${targetTag(targetContextId)}:${fieldFingerprint(button.key)}`
   }
 
   const fallback = button.action === 'setup' ? 'cfg:setup' : button.action === 'cancel' ? 'cfg:cancel' : 'cfg:back'
@@ -43,6 +47,42 @@ function compactCallbackData(
 
 function appendContext(base: string, targetContextId: string | undefined): string {
   return targetContextId === undefined ? base : `${base}@${encodeContextId(targetContextId)}`
+}
+
+function splitCallbackContext(data: string): { core: string; targetContextId?: string } {
+  const atIdx = data.indexOf('@')
+  if (atIdx === -1) return { core: data }
+
+  try {
+    return {
+      core: data.slice(0, atIdx),
+      targetContextId: decodeContextId(data.slice(atIdx + 1)),
+    }
+  } catch {
+    return { core: data.slice(0, atIdx) }
+  }
+}
+
+function parseCompactCallbackKey(
+  prefix: 'cfg:e:' | 'cfg:s:',
+  action: 'edit' | 'save',
+  core: string,
+): {
+  action: 'edit' | 'save' | null
+  key: string | null
+} | null {
+  if (!core.startsWith(prefix)) return null
+
+  const [index, tag, fingerprint] = core.slice(prefix.length).split(':')
+  const isValid =
+    index !== undefined &&
+    tag !== undefined &&
+    fingerprint !== undefined &&
+    /^[0-9a-z]+$/u.test(index) &&
+    /^[A-Za-z0-9_-]+$/u.test(tag) &&
+    /^[A-Za-z0-9_-]+$/u.test(fingerprint)
+
+  return isValid ? { action, key: `#${index}:${tag}:${fingerprint}` } : { action: null, key: null }
 }
 
 export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key'>, targetContextId?: string): string {
@@ -75,35 +115,17 @@ function parseRawCallbackData(data: string): {
   key: string | null
   targetContextId?: string
 } {
-  let targetContextId: string | undefined
-  let core = data
-  const atIdx = data.indexOf('@')
-  if (atIdx !== -1) {
-    try {
-      targetContextId = decodeContextId(data.slice(atIdx + 1))
-    } catch {
-      /* invalid encoding - treat as legacy */
-    }
-    core = data.slice(0, atIdx)
-  }
+  const { core, targetContextId } = splitCallbackContext(data)
 
   if (core === 'cfg:cancel') return { action: 'cancel', key: null, targetContextId }
   if (core === 'cfg:back') return { action: 'back', key: null, targetContextId }
   if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
 
-  if (core.startsWith('cfg:e:')) {
-    const [index, tag] = core.replace('cfg:e:', '').split(':')
-    return index !== undefined && tag !== undefined && /^[0-9a-z]+$/u.test(index) && /^[A-Za-z0-9_-]+$/u.test(tag)
-      ? { action: 'edit', key: `#${index}:${tag}`, targetContextId }
-      : { action: null, key: null }
-  }
+  const compactEdit = parseCompactCallbackKey('cfg:e:', 'edit', core)
+  if (compactEdit !== null) return { ...compactEdit, targetContextId }
 
-  if (core.startsWith('cfg:s:')) {
-    const [index, tag] = core.replace('cfg:s:', '').split(':')
-    return index !== undefined && tag !== undefined && /^[0-9a-z]+$/u.test(index) && /^[A-Za-z0-9_-]+$/u.test(tag)
-      ? { action: 'save', key: `#${index}:${tag}`, targetContextId }
-      : { action: null, key: null }
-  }
+  const compactSave = parseCompactCallbackKey('cfg:s:', 'save', core)
+  if (compactSave !== null) return { ...compactSave, targetContextId }
 
   if (core.startsWith('cfg:edit:')) {
     const key = core.replace('cfg:edit:', '')
@@ -125,9 +147,12 @@ export function parseCallbackData(data: string): ReturnType<typeof parseRawCallb
 export function resolveCallbackKey(key: string | null, targetContextId: string): string | null {
   if (key === null) return null
   if (!key.startsWith('#')) return key
-  const [indexText, tag] = key.slice(1).split(':')
-  if (indexText === undefined || tag === undefined || tag !== targetTag(targetContextId)) return null
+  const [indexText, tag, fingerprint] = key.slice(1).split(':')
+  if (indexText === undefined || tag === undefined || fingerprint === undefined || tag !== targetTag(targetContextId))
+    return null
   const index = Number.parseInt(indexText, 36)
   if (!Number.isSafeInteger(index)) return null
-  return getConfigFieldsForContext(targetContextId)[index]?.storageKey ?? null
+  const storageKey = getConfigFieldsForContext(targetContextId)[index]?.storageKey
+  if (storageKey === undefined || fieldFingerprint(storageKey) !== fingerprint) return null
+  return storageKey
 }
