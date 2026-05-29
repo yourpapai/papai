@@ -197,4 +197,88 @@ describe('discoverPlugins', () => {
     expect(result.errors[0]?.directoryName).toBe('beta')
     expect(result.errors[0]?.reason).toContain('does not match directory name')
   })
+
+  test('manifest hash changes when an imported local helper changes', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'hash-imported-helper')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'hash-imported-helper',
+        name: 'Hash Imported Helper',
+        version: '1.0.0',
+        description: 'hash imported helpers',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { value } from './helper.ts'\nexport default function createPlugin(){ return { activate(){ return value } } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
+  })
+
+  test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'dynamic-import-plugin',
+      { main: 'index.ts' },
+      "export default function createPlugin(){ return { async activate(){ const name = './helper.ts'; await import(name) } } }",
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]?.reason).toContain('dynamic import')
+  })
+
+  test('accepts explicit mcp-only plugins without reading index.ts', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'mcp-only-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'mcp-only-plugin',
+        name: 'MCP Only Plugin',
+        version: '1.0.0',
+        description: 'mcp only',
+        apiVersion: 1,
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: [],
+        },
+        mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+      }),
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('mcp-only-plugin')
+    expect(result.plugins[0]?.entryPoint).toBe('')
+  })
 })

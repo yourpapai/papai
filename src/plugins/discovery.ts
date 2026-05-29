@@ -5,7 +5,7 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { logger } from '../logger.js'
 import { pluginManifestSchema } from './types.js'
@@ -33,13 +33,88 @@ function isRealDirectory(path: string): boolean {
   }
 }
 
-function computeManifestHash(manifestContent: string, entryPointContent: string): string {
-  return createHash('sha256')
-    .update(`${manifestContent.length}:`)
-    .update(manifestContent)
-    .update(`${entryPointContent.length}:`)
-    .update(entryPointContent)
-    .digest('hex')
+const STATIC_IMPORT_RE = /(?:import\s+(?:[^'";]+\s+from\s+)?|export\s+[^'";]*\s+from\s+)(['"])(\.[^'"]+)\1/gu
+const DYNAMIC_IMPORT_RE = /import\s*\(([^)]+)\)/gu
+
+function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
+  const candidate = resolve(join(dirname(fromFile), specifier))
+  const allowedPrefix = `${resolve(pluginDir)}/`
+  if (!candidate.startsWith(allowedPrefix)) {
+    throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
+  }
+
+  const candidates =
+    candidate.endsWith('.ts') || candidate.endsWith('.js')
+      ? [candidate]
+      : [`${candidate}.ts`, `${candidate}.js`, join(candidate, 'index.ts'), join(candidate, 'index.js')]
+
+  const resolvedPath = candidates.find((path) => existsSync(path))
+  if (resolvedPath === undefined) {
+    throw new Error(`Imported plugin file not found: ${specifier}`)
+  }
+
+  try {
+    const realPluginDir = realpathSync(pluginDir)
+    const realImportedPath = realpathSync(resolvedPath)
+    if (!realImportedPath.startsWith(`${realPluginDir}/`)) {
+      throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Plugin import resolves outside plugin directory:')) {
+      throw error
+    }
+  }
+
+  return resolvedPath
+}
+
+function readPluginSourceGraph(entryPoint: string, pluginDir: string): string[] {
+  const pending = [entryPoint]
+  const visited = new Set<string>()
+  const ordered: string[] = []
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === undefined || visited.has(current)) continue
+
+    visited.add(current)
+    ordered.push(current)
+
+    const source = readFileSync(current, 'utf-8')
+
+    for (const match of source.matchAll(DYNAMIC_IMPORT_RE)) {
+      const raw = match[1]?.trim()
+      if (raw === undefined) continue
+      if (!raw.startsWith("'") && !raw.startsWith('"')) {
+        throw new Error(`Unresolvable plugin dynamic import in ${current}`)
+      }
+
+      const specifier = raw.slice(1, -1)
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
+      pending.push(resolveEntryImport(current, pluginDir, specifier))
+    }
+
+    for (const match of source.matchAll(STATIC_IMPORT_RE)) {
+      const specifier = match[2]
+      if (specifier === undefined) continue
+      pending.push(resolveEntryImport(current, pluginDir, specifier))
+    }
+  }
+
+  return ordered.sort()
+}
+
+function computePluginManifestHash(manifestContent: string, sourceFiles: readonly string[]): string {
+  const hash = createHash('sha256')
+  hash.update(`${manifestContent.length}:`).update(manifestContent)
+
+  for (const filePath of sourceFiles) {
+    const content = readFileSync(filePath, 'utf-8')
+    hash.update(`${filePath.length}:`).update(filePath)
+    hash.update(`${content.length}:`).update(content)
+  }
+
+  return hash.digest('hex')
 }
 
 function resolveEntryPoint(pluginDir: string, main: string): string | null {
@@ -100,29 +175,37 @@ function parseAndValidateManifest(
   return { manifest: parseResult.data, manifestContent, rawManifest: parsed }
 }
 
-function resolveAndReadEntryPoint(
+function resolveEntrypointForDiscovery(
   pluginDir: string,
-  main: string,
+  main: string | undefined,
   isMcpOnly: boolean,
-): { entryPoint: string; entryPointContent: string } | DiscoveryError {
+): { entryPoint: string; sourceFiles: string[] } | DiscoveryError {
+  if (isMcpOnly) {
+    return { entryPoint: '', sourceFiles: [] }
+  }
+
+  if (main === undefined) {
+    return {
+      directoryName: '',
+      reason: 'Non-MCP plugin must declare a main entry point',
+    }
+  }
+
   const entryPoint = resolveEntryPoint(pluginDir, main)
-  if (entryPoint === null && !isMcpOnly) {
+  if (entryPoint === null) {
     return {
       directoryName: '',
       reason: `Entry point "${main}" resolves outside the plugin directory`,
     }
   }
 
-  if (entryPoint === null) {
-    return { entryPoint: resolve(join(pluginDir, main)), entryPointContent: '' }
-  }
-
   try {
-    return { entryPoint, entryPointContent: readFileSync(entryPoint, 'utf-8') }
+    const sourceFiles = readPluginSourceGraph(entryPoint, pluginDir)
+    return { entryPoint, sourceFiles }
   } catch (error) {
     return {
       directoryName: '',
-      reason: `Entry point file not readable: ${error instanceof Error ? error.message : String(error)}`,
+      reason: error instanceof Error ? error.message : String(error),
     }
   }
 }
@@ -149,19 +232,16 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const rawObj = typeof rawManifest === 'object' && rawManifest !== null ? rawManifest : undefined
   const isMcpOnly = rawObj !== undefined && 'mcp' in rawObj && !('main' in rawObj)
 
-  const ep = resolveAndReadEntryPoint(pluginDir, manifest.main, isMcpOnly)
+  const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main, isMcpOnly)
   if (ep !== null && 'reason' in ep) {
     return { ...ep, directoryName: dirName }
   }
 
-  const entryPoint = ep.entryPoint
-  const entryPointContent = ep.entryPointContent
-
   return {
     manifest,
     pluginDir: resolve(pluginDir),
-    entryPoint,
-    manifestHash: computeManifestHash(manifestContent, entryPointContent),
+    entryPoint: ep.entryPoint,
+    manifestHash: computePluginManifestHash(manifestContent, ep.sourceFiles),
   }
 }
 
@@ -214,6 +294,3 @@ export function discoverPlugins(pluginsDir: string): DiscoveryResult {
   log.info({ discovered: plugins.length, errors: errors.length }, 'Plugin discovery complete')
   return { plugins, errors }
 }
-
-/** Compute a hash for a manifest+entrypoint combo. Re-exported for tests. */
-export { computeManifestHash }
