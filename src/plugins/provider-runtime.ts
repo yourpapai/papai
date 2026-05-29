@@ -64,11 +64,18 @@ function resolveLocationUrl(response: Response, currentUrl: URL): URL {
   }
 }
 
+function assertHttps(url: URL): void {
+  if (url.protocol !== 'https:') {
+    throw new Error('Plugin provider httpFetch requires an https URL')
+  }
+}
+
 async function validateHop(
   url: URL,
   hostSet: ReadonlySet<string>,
   assertPublicUrl: (url: URL) => Promise<void>,
 ): Promise<void> {
+  assertHttps(url)
   if (!hostSet.has(url.hostname.toLowerCase())) {
     throw new Error(`Host '${url.hostname}' is not in the plugin providerAllowedHosts allowlist`)
   }

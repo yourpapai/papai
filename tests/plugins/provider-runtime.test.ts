@@ -48,6 +48,18 @@ describe('buildProviderRuntime.httpFetch', () => {
     expect(assertSpy).not.toHaveBeenCalled()
   })
 
+  test('rejects a plain http URL before SSRF validation or fetch', async () => {
+    mockLogger()
+    const { fetchSpy, assertSpy, ...deps } = makeDeps()
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await expect(runtime.httpFetch('http://api.kaneo.io/v1/tasks')).rejects.toThrow(
+      'Plugin provider httpFetch requires an https URL',
+    )
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(assertSpy).not.toHaveBeenCalled()
+  })
+
   test('allows an allowlisted host through the SSRF guard then fetch', async () => {
     mockLogger()
     const { fetchSpy, assertSpy, ...deps } = makeDeps()
@@ -96,6 +108,21 @@ describe('buildProviderRuntime.httpFetch', () => {
     // assertPublicUrl called for both the original URL and the redirect target
     expect(assertSpy).toHaveBeenCalledTimes(2)
     expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  test('rejects a redirect that downgrades to http before SSRF validation or second fetch', async () => {
+    mockLogger()
+    const { fetchSpy, assertSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'http://api.kaneo.io/v2/tasks' } }),
+    )
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await expect(runtime.httpFetch('https://api.kaneo.io/v1/tasks')).rejects.toThrow(
+      'Plugin provider httpFetch requires an https URL',
+    )
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(assertSpy).toHaveBeenCalledTimes(1)
   })
 
   test('rejects when redirects exceed the maximum allowed count', async () => {
