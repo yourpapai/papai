@@ -33,6 +33,9 @@ afterEach(() => {
   settingsSession.status = 'loading'
   settingsSession.contexts = []
   settingsSession.activeContextId = ''
+  settingsSession.isBotAdmin = false
+  settingsSession.isSuperAdmin = false
+  settingsSession.display = ''
   setCsrfToken('')
 })
 
@@ -69,6 +72,12 @@ describe('session store', () => {
   test('a failed bootstrap marks the session unauthenticated', async () => {
     setMockFetch(() => Promise.resolve(json({ error: 'unauthenticated' }, 401)))
     await bootstrapSession(null)
+    expect(settingsSession.status).toBe('unauthenticated')
+  })
+
+  test('a failed exchange (non-empty code + 401) marks the session unauthenticated', async () => {
+    setMockFetch(() => Promise.resolve(json({ error: 'invalid or expired code' }, 401)))
+    await bootstrapSession('SOMECODE')
     expect(settingsSession.status).toBe('unauthenticated')
   })
 
