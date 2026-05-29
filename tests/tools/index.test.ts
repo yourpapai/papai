@@ -102,7 +102,7 @@ describe('makeTools preference filtering', () => {
 
   test('removes a tool whose domain is disabled', async () => {
     const provider = createMockProvider()
-    setToolPrefs(CONTEXT, { disabledDomains: ['memo'], toolOverrides: {} })
+    setToolPrefs(CONTEXT, { domainDefaults: { memo: 'deny' }, toolOverrides: {} })
     const tools = await makeTools(provider, {
       storageContextId: CONTEXT,
       chatUserId: CONTEXT,
@@ -123,7 +123,7 @@ describe('makeTools preference filtering', () => {
       nativeContextId: 'group-1',
       threadId: 'thread-1',
     })
-    setToolPrefs(parentContextId, { disabledDomains: ['memo'], toolOverrides: {} })
+    setToolPrefs(parentContextId, { domainDefaults: { memo: 'deny' }, toolOverrides: {} })
 
     const tools = await makeTools(provider, {
       storageContextId: threadContextId,
@@ -139,7 +139,7 @@ describe('makeTools preference filtering', () => {
 
   test('honors a per-tool override that disables one tool in an enabled domain', async () => {
     const provider = createMockProvider()
-    setToolPrefs(CONTEXT, { disabledDomains: [], toolOverrides: { create_task: false } })
+    setToolPrefs(CONTEXT, { domainDefaults: {}, toolOverrides: { create_task: 'deny' } })
     const tools = await makeTools(provider, {
       storageContextId: CONTEXT,
       chatUserId: CONTEXT,
@@ -152,7 +152,7 @@ describe('makeTools preference filtering', () => {
   test('clears cached parent and thread toolsets when parent preferences change', () => {
     const { parentContextId, parentCacheKey, threadCacheKey } = seedParentThreadAndUnrelatedToolCaches()
 
-    setToolPrefs(parentContextId, { disabledDomains: ['memo'], toolOverrides: {} })
+    setToolPrefs(parentContextId, { domainDefaults: { memo: 'deny' }, toolOverrides: {} })
 
     expectParentThreadCachesCleared(parentCacheKey, threadCacheKey)
   })

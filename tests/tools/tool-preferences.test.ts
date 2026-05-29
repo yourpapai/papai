@@ -3,20 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, test } from 'bun:test'
 
 import {
   getDomainStatus,
   isToolEnabled,
   parseToolPrefs,
   partitionToolNames,
+  resolveToolPermission,
   serializeToolPrefs,
   toggleDomain,
   toggleTool,
   type ToolPrefs,
 } from '../../src/tools/tool-preferences.js'
 
-const empty: ToolPrefs = { disabledDomains: [], toolOverrides: {} }
+const empty: ToolPrefs = { domainDefaults: {}, toolOverrides: {} }
 
 describe('parseToolPrefs', () => {
   it('returns empty prefs for null', () => {
@@ -28,11 +29,11 @@ describe('parseToolPrefs', () => {
   })
 
   it('coerces missing fields and drops non-array/object shapes', () => {
-    expect(parseToolPrefs('{"disabledDomains":"web"}')).toEqual(empty)
+    expect(parseToolPrefs('{"domainDefaults":"web"}')).toEqual(empty)
   })
 
   it('round-trips a valid blob', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: { delete_task: false } }
+    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { delete_task: 'deny' } }
     expect(parseToolPrefs(serializeToolPrefs(prefs))).toEqual(prefs)
   })
 })
@@ -44,30 +45,30 @@ describe('isToolEnabled', () => {
   })
 
   it('disables every tool in a disabled domain', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: {} }
+    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: {} }
     expect(isToolEnabled(prefs, 'web_fetch')).toBe(false)
   })
 
   it('lets a per-tool override win over the domain default (off within on domain)', () => {
-    const prefs: ToolPrefs = { disabledDomains: [], toolOverrides: { delete_task: false } }
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
     expect(isToolEnabled(prefs, 'delete_task')).toBe(false)
     expect(isToolEnabled(prefs, 'create_task')).toBe(true)
   })
 
   it('lets a per-tool override win over the domain default (on within off domain)', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: { web_fetch: true } }
+    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { web_fetch: 'allow' } }
     expect(isToolEnabled(prefs, 'web_fetch')).toBe(true)
   })
 
   it('treats unknown (un-classified) tools as always enabled', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: {} }
+    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: {} }
     expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(true)
   })
 
-  it('lets an override=false disable an unclassified (plugin) tool', () => {
+  it('lets an override=deny disable an unclassified (plugin) tool', () => {
     const prefs: ToolPrefs = {
-      disabledDomains: [],
-      toolOverrides: { plugin_hello_world__greet: false },
+      domainDefaults: {},
+      toolOverrides: { plugin_hello_world__greet: 'deny' },
     }
     expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(false)
   })
@@ -75,7 +76,7 @@ describe('isToolEnabled', () => {
 
 describe('partitionToolNames', () => {
   it('splits candidate names into enabled and disabled sets', () => {
-    const prefs: ToolPrefs = { disabledDomains: [], toolOverrides: { delete_task: false } }
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
     const { enabled, disabled } = partitionToolNames(prefs, ['create_task', 'delete_task', 'web_fetch'])
     expect([...enabled].sort()).toEqual(['create_task', 'web_fetch'])
     expect([...disabled]).toEqual(['delete_task'])
@@ -88,53 +89,80 @@ describe('getDomainStatus', () => {
   })
 
   it('reports off when the whole domain is disabled and no overrides re-enable', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['task'], toolOverrides: {} }
+    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
     expect(getDomainStatus(prefs, 'task', ['create_task', 'delete_task'])).toBe('off')
   })
 
   it('reports partial when some tools in the domain differ from the rest', () => {
-    const prefs: ToolPrefs = { disabledDomains: [], toolOverrides: { delete_task: false } }
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
     expect(getDomainStatus(prefs, 'task', ['create_task', 'delete_task'])).toBe('partial')
   })
 
   it('uses the domain flag (ignoring overrides) when domainToolNames is empty', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: { web_fetch: true } }
+    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { web_fetch: 'allow' } }
     expect(getDomainStatus(prefs, 'web', [])).toBe('off')
   })
 })
 
 describe('toggleDomain', () => {
-  it('flips an on domain to off and prunes redundant overrides', () => {
-    const prefs: ToolPrefs = { disabledDomains: [], toolOverrides: { delete_task: false } }
+  it('flips an on domain to off and drops per-tool overrides within the domain', () => {
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
     const next = toggleDomain(prefs, 'task', ['create_task', 'delete_task'])
-    expect(next.disabledDomains).toContain('task')
-    // delete_task override (false) now equals the domain default (off) -> pruned
+    expect(next.domainDefaults['task']).toBe('deny')
+    // delete_task override is dropped because the domain bulk action wins
     expect(next.toolOverrides['delete_task']).toBeUndefined()
   })
 
   it('flips an off domain back to on', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['task'], toolOverrides: {} }
+    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
     const next = toggleDomain(prefs, 'task', ['create_task'])
-    expect(next.disabledDomains).not.toContain('task')
+    expect(next.domainDefaults['task']).toBe('allow')
   })
 })
 
 describe('toggleTool', () => {
   it('disables a single tool inside an on domain via an override', () => {
     const next = toggleTool(empty, 'delete_task', ['create_task', 'delete_task'])
-    expect(next.toolOverrides['delete_task']).toBe(false)
+    expect(next.toolOverrides['delete_task']).toBe('deny')
   })
 
-  it('prunes the override when it returns to matching the domain default', () => {
-    const prefs: ToolPrefs = { disabledDomains: [], toolOverrides: { delete_task: false } }
+  it('re-enables a denied tool by flipping its override to allow', () => {
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
     const next = toggleTool(prefs, 'delete_task', ['create_task', 'delete_task'])
-    expect(next.toolOverrides['delete_task']).toBeUndefined()
+    expect(next.toolOverrides['delete_task']).toBe('allow')
   })
 
-  it('removes the force-on override when toggling a tool inside a disabled domain', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: { web_fetch: true } }
+  it('removes the force-allow override when toggling a tool inside a disabled domain to deny', () => {
+    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { web_fetch: 'allow' } }
     const next = toggleTool(prefs, 'web_fetch', [])
-    expect(next.toolOverrides['web_fetch']).toBeUndefined()
-    expect(next.disabledDomains).toContain('web')
+    expect(next.toolOverrides['web_fetch']).toBe('deny')
+    expect(next.domainDefaults['web']).toBe('deny')
+  })
+})
+
+describe('resolveToolPermission', () => {
+  test('returns "allow" when nothing is set (default)', () => {
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: {} }
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('allow')
+  })
+
+  test('uses domain default when no override', () => {
+    const prefs: ToolPrefs = { domainDefaults: { task: 'ask' }, toolOverrides: {} }
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('ask')
+  })
+
+  test('per-tool override wins over domain default', () => {
+    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: { create_task: 'allow' } }
+    expect(resolveToolPermission(prefs, 'create_task')).toBe('allow')
+  })
+
+  test('unclassified tool (no metadata) ignores domainDefaults', () => {
+    const prefs: ToolPrefs = { domainDefaults: { task: 'deny' }, toolOverrides: {} }
+    expect(resolveToolPermission(prefs, 'plugin_foo__bar')).toBe('allow')
+  })
+
+  test('unclassified tool honours its own override', () => {
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { plugin_foo__bar: 'deny' } }
+    expect(resolveToolPermission(prefs, 'plugin_foo__bar')).toBe('deny')
   })
 })

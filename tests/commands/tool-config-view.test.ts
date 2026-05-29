@@ -11,7 +11,7 @@ const AVAILABLE = ['create_task', 'update_task', 'search_tasks', 'delete_task', 
 
 describe('buildDomainListView', () => {
   it('lists domains present in the available set with on status by default', () => {
-    const view = buildDomainListView('ctx', AVAILABLE, { disabledDomains: [], toolOverrides: {} })
+    const view = buildDomainListView('ctx', AVAILABLE, { domainDefaults: {}, toolOverrides: {} })
     expect(view.text).toContain('Tools')
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:dom:task:'))).toBe(true)
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:open:task:'))).toBe(true)
@@ -19,7 +19,7 @@ describe('buildDomainListView', () => {
 
   it('keeps domain callbacks within Telegram callback limits for long contexts', () => {
     const view = buildDomainListView('managed-group-context-with-realistic-long-id-12345', AVAILABLE, {
-      disabledDomains: [],
+      domainDefaults: {},
       toolOverrides: {},
     })
 
@@ -28,7 +28,7 @@ describe('buildDomainListView', () => {
 
   it('compacts oversized domain callbacks when the context still fits', () => {
     const view = buildDomainListView('managed-group-context-long-id-123456789012', AVAILABLE, {
-      disabledDomains: [],
+      domainDefaults: {},
       toolOverrides: {},
     })
 
@@ -39,8 +39,8 @@ describe('buildDomainListView', () => {
 
   it('marks a partially-disabled domain', () => {
     const view = buildDomainListView('ctx', AVAILABLE, {
-      disabledDomains: [],
-      toolOverrides: { delete_task: false },
+      domainDefaults: {},
+      toolOverrides: { delete_task: 'deny' },
     })
     const taskRow = view.text.split('\n').find((l) => l.toLowerCase().includes('task'))
     expect(taskRow).toContain('🟡')
@@ -50,7 +50,7 @@ describe('buildDomainListView', () => {
 describe('buildDomainDrillView', () => {
   it('renders per-tool buttons with risk labels for the domain', () => {
     const view = buildDomainDrillView('ctx', 'task', AVAILABLE, {
-      disabledDomains: [],
+      domainDefaults: {},
       toolOverrides: {},
     })
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:delete_task:'))).toBe(true)
@@ -60,7 +60,7 @@ describe('buildDomainDrillView', () => {
 
   it('keeps tool callbacks within Telegram callback limits for long contexts', () => {
     const view = buildDomainDrillView('managed-group-context-with-realistic-long-id-12345', 'task', AVAILABLE, {
-      disabledDomains: [],
+      domainDefaults: {},
       toolOverrides: {},
     })
 
@@ -69,7 +69,7 @@ describe('buildDomainDrillView', () => {
 
   it('compacts oversized tool callbacks when the context still fits', () => {
     const view = buildDomainDrillView('managed-group-context-long-id-123456789012', 'task', AVAILABLE, {
-      disabledDomains: [],
+      domainDefaults: {},
       toolOverrides: {},
     })
 

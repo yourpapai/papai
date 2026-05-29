@@ -5,26 +5,48 @@
 
 import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
-import { getToolMetadata, type ToolDomain } from './tool-metadata.js'
+import { getToolMetadata, TOOL_METADATA, type ToolDomain } from './tool-metadata.js'
 
 const log = logger.child({ scope: 'tools:preferences' })
 
 /** Reserved, non-user-visible config key holding the per-context tool denylist JSON. */
 export const TOOL_PREFS_CONFIG_KEY = 'tool_prefs'
 
+export type Permission = 'allow' | 'ask' | 'deny'
+
 export interface ToolPrefs {
-  /** Domains turned off wholesale. */
-  disabledDomains: ToolDomain[]
-  /** Per-tool overrides that win over the domain default. true = force on, false = force off. */
-  toolOverrides: Record<string, boolean>
+  /** Per-domain default permission. Missing entry = 'allow'. */
+  domainDefaults: Partial<Record<ToolDomain, Permission>>
+  /** Per-tool override that wins over the domain default. */
+  toolOverrides: Record<string, Permission>
 }
 
 function emptyPrefs(): ToolPrefs {
-  return { disabledDomains: [], toolOverrides: {} }
+  return { domainDefaults: {}, toolOverrides: {} }
+}
+
+const PERMISSIONS = new Set<string>(['allow', 'ask', 'deny'])
+
+export function isPermission(value: unknown): value is Permission {
+  return typeof value === 'string' && PERMISSIONS.has(value)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const TOOL_DOMAINS: ReadonlySet<string> = new Set(Object.values(TOOL_METADATA).map((m) => m.domain))
+
+function isToolDomain(value: string): value is ToolDomain {
+  return TOOL_DOMAINS.has(value)
+}
+
+export function resolveToolPermission(prefs: ToolPrefs, toolName: string): Permission {
+  const override = prefs.toolOverrides[toolName]
+  if (override !== undefined) return override
+  const meta = getToolMetadata(toolName)
+  if (meta === undefined) return 'allow'
+  return prefs.domainDefaults[meta.domain] ?? 'allow'
 }
 
 export function parseToolPrefs(raw: string | null): ToolPrefs {
@@ -32,17 +54,21 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!isPlainObject(parsed)) return emptyPrefs()
-    const disabledDomains = Array.isArray(parsed['disabledDomains'])
-      ? parsed['disabledDomains'].filter((d): d is ToolDomain => typeof d === 'string')
-      : []
-    const overridesRaw = parsed['toolOverrides']
-    const toolOverrides: Record<string, boolean> = {}
-    if (isPlainObject(overridesRaw)) {
-      for (const [name, value] of Object.entries(overridesRaw)) {
-        if (typeof value === 'boolean') toolOverrides[name] = value
+    const domainDefaults: Partial<Record<ToolDomain, Permission>> = {}
+    const defaultsRaw = parsed['domainDefaults']
+    if (isPlainObject(defaultsRaw)) {
+      for (const [key, value] of Object.entries(defaultsRaw)) {
+        if (isToolDomain(key) && isPermission(value)) domainDefaults[key] = value
       }
     }
-    return { disabledDomains, toolOverrides }
+    const toolOverrides: Record<string, Permission> = {}
+    const overridesRaw = parsed['toolOverrides']
+    if (isPlainObject(overridesRaw)) {
+      for (const [name, value] of Object.entries(overridesRaw)) {
+        if (isPermission(value)) toolOverrides[name] = value
+      }
+    }
+    return { domainDefaults, toolOverrides }
   } catch (error) {
     log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Corrupt tool_prefs; using empty prefs')
     return emptyPrefs()
@@ -50,10 +76,7 @@ export function parseToolPrefs(raw: string | null): ToolPrefs {
 }
 
 export function serializeToolPrefs(prefs: ToolPrefs): string {
-  return JSON.stringify({
-    disabledDomains: prefs.disabledDomains,
-    toolOverrides: prefs.toolOverrides,
-  })
+  return JSON.stringify({ domainDefaults: prefs.domainDefaults, toolOverrides: prefs.toolOverrides })
 }
 
 export function getToolPrefs(contextId: string): ToolPrefs {
@@ -64,21 +87,12 @@ export function getToolPrefs(contextId: string): ToolPrefs {
 export function setToolPrefs(contextId: string, prefs: ToolPrefs): void {
   setCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY, serializeToolPrefs(prefs))
   clearCachedToolsByPrefix(contextId)
-  log.info({ contextId, disabledDomains: prefs.disabledDomains.length }, 'Tool prefs updated')
+  log.info({ contextId, disabledDomains: Object.keys(prefs.domainDefaults).length }, 'Tool prefs updated')
 }
 
-/** Domain default: true (on) unless the domain is in disabledDomains. */
-function domainEnabled(prefs: ToolPrefs, domain: ToolDomain): boolean {
-  return !prefs.disabledDomains.includes(domain)
-}
-
+// Legacy boolean-shaped helper kept for callers not yet migrated.
 export function isToolEnabled(prefs: ToolPrefs, toolName: string): boolean {
-  const override = prefs.toolOverrides[toolName]
-  if (override !== undefined) return override
-  const meta = getToolMetadata(toolName)
-  // un-classified tools (e.g. plugin tools) are never grouped/disabled here
-  if (meta === undefined) return true
-  return domainEnabled(prefs, meta.domain)
+  return resolveToolPermission(prefs, toolName) !== 'deny'
 }
 
 export function partitionToolNames(
@@ -88,28 +102,23 @@ export function partitionToolNames(
   const enabled = new Set<string>()
   const disabled = new Set<string>()
   for (const name of names) {
-    if (isToolEnabled(prefs, name)) enabled.add(name)
-    else disabled.add(name)
+    if (resolveToolPermission(prefs, name) === 'deny') disabled.add(name)
+    else enabled.add(name)
   }
   return { enabled, disabled }
 }
 
 export type DomainStatus = 'on' | 'off' | 'partial'
 
-/**
- * Aggregate on/off/partial status for a domain.
- * When `domainToolNames` is empty, returns status based solely on the domain flag —
- * per-tool overrides are intentionally ignored in that fallback. Callers should pass
- * the domain's actual tool names; names outside `domain` are evaluated by their own
- * metadata and may skew the aggregate (caller-contract, not enforced).
- */
 export function getDomainStatus(
   prefs: ToolPrefs,
   domain: ToolDomain,
   domainToolNames: readonly string[],
 ): DomainStatus {
-  if (domainToolNames.length === 0) return domainEnabled(prefs, domain) ? 'on' : 'off'
-  const states = domainToolNames.map((name) => isToolEnabled(prefs, name))
+  if (domainToolNames.length === 0) {
+    return (prefs.domainDefaults[domain] ?? 'allow') === 'deny' ? 'off' : 'on'
+  }
+  const states = domainToolNames.map((name) => resolveToolPermission(prefs, name) !== 'deny')
   const allOn = states.every(Boolean)
   const allOff = states.every((s) => !s)
   if (allOn) return 'on'
@@ -117,39 +126,24 @@ export function getDomainStatus(
   return 'partial'
 }
 
-/** Remove overrides that now equal the domain default, keeping the blob minimal. */
-function pruneRedundantOverrides(prefs: ToolPrefs): ToolPrefs {
-  const toolOverrides: Record<string, boolean> = {}
-  for (const [name, value] of Object.entries(prefs.toolOverrides)) {
-    const meta = getToolMetadata(name)
-    const def = meta === undefined ? true : domainEnabled(prefs, meta.domain)
-    if (value !== def) toolOverrides[name] = value
-  }
-  return { disabledDomains: [...prefs.disabledDomains], toolOverrides }
-}
-
-/** Toggle a whole domain on/off, dropping per-tool overrides that become redundant. */
-export function toggleDomain(prefs: ToolPrefs, domain: ToolDomain, domainToolNames: readonly string[]): ToolPrefs {
-  const currentlyOn = getDomainStatus(prefs, domain, domainToolNames) !== 'off'
-  const disabledDomains = prefs.disabledDomains.filter((d) => d !== domain)
-  if (currentlyOn) disabledDomains.push(domain)
-  // Clear per-tool overrides within the domain so the bulk action wins cleanly.
-  const toolOverrides: Record<string, boolean> = {}
+// Domain toggle: flips the domain default between 'allow' and 'deny' (two-state, legacy contract).
+export function toggleDomain(prefs: ToolPrefs, domain: ToolDomain, _domainToolNames: readonly string[]): ToolPrefs {
+  const currentlyOn = (prefs.domainDefaults[domain] ?? 'allow') !== 'deny'
+  const nextDefault: Permission = currentlyOn ? 'deny' : 'allow'
+  const domainDefaults = { ...prefs.domainDefaults, [domain]: nextDefault }
+  // Drop per-tool overrides within the domain so bulk action wins cleanly.
+  const toolOverrides: Record<string, Permission> = {}
   for (const [name, value] of Object.entries(prefs.toolOverrides)) {
     const meta = getToolMetadata(name)
     if (meta !== undefined && meta.domain === domain) continue
     toolOverrides[name] = value
   }
-  return pruneRedundantOverrides({ disabledDomains, toolOverrides })
+  return { domainDefaults, toolOverrides }
 }
 
-/**
- * Toggle a single tool, expressed as an override; prunes when it matches the domain default.
- * `_domainToolNames` is accepted only for signature symmetry with `toggleDomain` (uniform
- * toggle callback) and is intentionally unused — only the tool's own domain default matters.
- */
+// Per-tool toggle: flips override between 'allow' and 'deny' (two-state, legacy contract).
 export function toggleTool(prefs: ToolPrefs, toolName: string, _domainToolNames: readonly string[]): ToolPrefs {
-  const next = !isToolEnabled(prefs, toolName)
+  const next: Permission = resolveToolPermission(prefs, toolName) === 'deny' ? 'allow' : 'deny'
   const toolOverrides = { ...prefs.toolOverrides, [toolName]: next }
-  return pruneRedundantOverrides({ disabledDomains: [...prefs.disabledDomains], toolOverrides })
+  return { domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
 }

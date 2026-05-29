@@ -162,7 +162,8 @@ export async function renderConfigForTarget(
   appendPluginConfigLines(lines, targetContextId)
   const toolPrefs = getToolPrefs(targetContextId)
   const disabledCount =
-    toolPrefs.disabledDomains.length + Object.values(toolPrefs.toolOverrides).filter((v) => !v).length
+    Object.values(toolPrefs.domainDefaults).filter((v) => v === 'deny').length +
+    Object.values(toolPrefs.toolOverrides).filter((v) => v === 'deny').length
   lines.push(`\n🧰 **Tools**: ${disabledCount === 0 ? 'all enabled' : `${disabledCount} disabled`}`)
 
   if (!interactiveButtons) {

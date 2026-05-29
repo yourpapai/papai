@@ -179,7 +179,7 @@ describe('buildSystemPrompt fragment coherence', () => {
 
   test('appends safety-net line for partially-disabled domain tools', () => {
     const contextId = 'frag-safety-net-ctx'
-    setToolPrefs(contextId, { disabledDomains: [], toolOverrides: { delete_task: false } })
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } })
     const enabled = new Set(['create_task', 'update_task', 'search_tasks', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, contextId, enabled)
     expect(prompt).toContain('Unavailable tools')

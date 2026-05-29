@@ -47,7 +47,7 @@ describe('handleToolToggleInteraction', () => {
     const { reply } = createMockReply()
     const handled = await handleToolToggleInteraction(dmInteraction(`tgl:dom:memo:${CTX}`), reply)
     expect(handled).toBe(true)
-    expect(getToolPrefs(USER).disabledDomains).toContain('memo')
+    expect(getToolPrefs(USER).domainDefaults['memo']).toBe('deny')
   })
 
   it('rejects toggling for a context the user cannot manage', async () => {
@@ -55,14 +55,14 @@ describe('handleToolToggleInteraction', () => {
     const otherCtx = Buffer.from('someone-else').toString('base64url')
     const handled = await handleToolToggleInteraction(dmInteraction(`tgl:dom:memo:${otherCtx}`), reply)
     expect(handled).toBe(true)
-    expect(getToolPrefs('someone-else').disabledDomains).not.toContain('memo')
+    expect(getToolPrefs('someone-else').domainDefaults['memo']).not.toBe('deny')
   })
 
   it('toggling a single tool off persists a false override for the user', async () => {
     const { reply } = createMockReply()
     const handled = await handleToolToggleInteraction(dmInteraction(`tgl:tool:delete_task:${CTX}`), reply)
     expect(handled).toBe(true)
-    expect(getToolPrefs(USER).toolOverrides['delete_task']).toBe(false)
+    expect(getToolPrefs(USER).toolOverrides['delete_task']).toBe('deny')
   })
 
   it('renders the drill view for tgl:open and returns handled', async () => {

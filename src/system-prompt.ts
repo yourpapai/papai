@@ -142,7 +142,7 @@ function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): s
   }
   const names = new Set<string>()
   for (const [name, value] of Object.entries(prefs.toolOverrides)) {
-    if (value) continue
+    if (value !== 'deny') continue
     const meta = getToolMetadata(name)
     if (meta !== undefined && enabledDomains.has(meta.domain) && !enabled.has(name)) names.add(name)
   }

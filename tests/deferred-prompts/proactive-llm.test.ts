@@ -523,8 +523,8 @@ describe('dispatchExecution', () => {
       // When the bug is present (uses creator context), getToolPrefs(USER_ID) is empty
       // so buildUnavailableLine returns null and the line is absent.
       setToolPrefs(deliveryStorageContextId, {
-        disabledDomains: [],
-        toolOverrides: { save_memo: false },
+        domainDefaults: {},
+        toolOverrides: { save_memo: 'deny' },
       })
 
       await dispatchExecution(
