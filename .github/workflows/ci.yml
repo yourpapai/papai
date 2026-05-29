@@ -122,7 +122,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Run paired mutation testing on changed files
-        run: bun test:mutate:changed --base=origin/${{ github.base_ref || 'master' }}
+        env:
+          BASE_REF: ${{ github.base_ref || 'master' }}
+        run: bun test:mutate:changed --base="origin/$BASE_REF"
       - name: Upload per-file mutation reports
         if: always()
         uses: actions/upload-artifact@v4
