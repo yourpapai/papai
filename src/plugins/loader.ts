@@ -3,83 +3,20 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { pathToFileURL } from 'node:url'
-
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
-import {
-  getTaskProviderDescriptor,
-  registerContributedTaskProviderType,
-  type TaskProviderConfigValidator,
-} from '../providers/registry.js'
+import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
+import { importPluginModule, resolveProviderConfigValidator, toPluginImportSpecifier } from './module-import.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
 import {
   deactivateContributedTaskProviderTypes,
   unregisterContributedTaskProviderTypes,
 } from './task-provider-lifecycle.js'
-import type { DiscoveredPlugin, PluginFactory, PluginInstance, PluginManifest } from './types.js'
-function isPluginFactory(value: unknown): value is PluginFactory {
-  return typeof value === 'function'
-}
-
-function isPluginInstance(value: unknown): value is PluginInstance {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'activate' in value &&
-    typeof (value as Record<string, unknown>)['activate'] === 'function'
-  )
-}
-
-type ImportedPluginModule = {
-  instance: PluginInstance
-  namedExports: Record<string, unknown>
-}
-function toNamedExports(mod: unknown): Record<string, unknown> {
-  if (typeof mod !== 'object' || mod === null) return {}
-  return Object.fromEntries(Object.entries(mod))
-}
-
-function isTaskProviderConfigValidator(value: unknown): value is TaskProviderConfigValidator {
-  return typeof value === 'function'
-}
-
-async function importPluginModule(entryPoint: string): Promise<ImportedPluginModule> {
-  const mod: unknown = await import(toPluginImportSpecifier(entryPoint))
-  const namedExports = toNamedExports(mod)
-  const candidate = typeof mod === 'object' && mod !== null && 'default' in mod ? mod.default : mod
-  if (!isPluginFactory(candidate))
-    throw new Error('Invalid plugin module contract: default export must be a factory function')
-  const instance = candidate()
-  if (!isPluginInstance(instance))
-    throw new Error('Invalid plugin module contract: factory must return an object with activate(ctx)')
-  return { instance, namedExports }
-}
-
-function resolveProviderConfigValidator(
-  manifest: PluginManifest,
-  namedExports: Record<string, unknown> | undefined,
-): TaskProviderConfigValidator | undefined {
-  const exportName = manifest.providerConfigValidator
-  if (exportName === undefined) return undefined
-  if (exportName === 'default')
-    throw new Error(`Plugin '${manifest.id}' providerConfigValidator must reference a named export, not 'default'`)
-  const candidate = namedExports?.[exportName]
-  if (!isTaskProviderConfigValidator(candidate)) {
-    throw new Error(
-      `Plugin '${manifest.id}' providerConfigValidator export '${exportName}' is missing or not a function`,
-    )
-  }
-  return candidate
-}
-
-function toPluginImportSpecifier(entryPoint: string): string {
-  return pathToFileURL(entryPoint).href
-}
+import type { DiscoveredPlugin, PluginInstance } from './types.js'
 
 function buildActivationTimeout(timeoutMs: number): {
   promise: Promise<never>
@@ -199,7 +136,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    const validateConfig = resolveProviderConfigValidator(manifest, importedModule?.namedExports)
+    const validateConfig = resolveProviderConfigValidator(manifest, importedModule?.moduleRecord)
     await activatePluginInstance(importedModule?.instance ?? null, activationContext, activationTimeout)
     if (
       manifest.providerConfigValidator !== undefined &&
@@ -234,6 +171,7 @@ export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void
   const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p))))
   const activated = results.filter(Boolean).length
   const failed = results.length - activated
+  activationOrder.push(...plugins.filter((_, index) => results[index] === true).map((plugin) => plugin.manifest.id))
 
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
 }

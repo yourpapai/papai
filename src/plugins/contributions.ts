@@ -43,7 +43,7 @@ export type ActivePluginContributions = {
 export type { PluginToolSetRuntime } from './tool-runtime.js'
 
 export type PluginScheduledJobDeps = Readonly<{
-  resolveTaskProvider: (contextId: string) => TaskProvider | null
+  resolveTaskProvider: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
 }>
 
 const defaultScheduledJobDeps: PluginScheduledJobDeps = {
@@ -227,7 +227,10 @@ export async function runPluginScheduledJob(...args: RunPluginScheduledJobArgs):
         return
       }
 
-      if (pluginNeedsTaskProvider(contributions.manifest) && deps.resolveTaskProvider(contextId) === null) {
+      const provider = pluginNeedsTaskProvider(contributions.manifest)
+        ? await deps.resolveTaskProvider(contextId)
+        : undefined
+      if (provider === null) {
         log.warn({ pluginId, jobName, contextId }, 'Plugin job skipping context with unresolved task provider')
         return
       }

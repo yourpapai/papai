@@ -847,6 +847,119 @@ describe('activatePlugins', () => {
     expect(() => createProvider('demo', {})).toThrow('Unknown provider: demo')
   })
 
+  test('registers providerConfigValidator from a named plugin module export', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateTrackerConfig(config) {
+        if (config.baseUrl === 'https://bad.invalid') return { ok: false, reason: 'baseUrl rejected' }
+        return { ok: true }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated-plugin-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('validated-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['validated-plugin-tracker'],
+      },
+      providerConfigValidator: 'validateTrackerConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    const validator = getTaskProviderConfigValidator('validated-plugin-tracker')
+    expect(validator).toBeDefined()
+    await expect(validator?.({ baseUrl: 'https://bad.invalid' })).resolves.toEqual({
+      ok: false,
+      reason: 'baseUrl rejected',
+    })
+  })
+
+  test('wraps malformed providerConfigValidator returns as validation failures', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateTrackerConfig() {
+        return { ok: false }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('malformed-validator-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('malformed-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['malformed-validator-tracker'],
+      },
+      providerConfigValidator: 'validateTrackerConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    const validator = getTaskProviderConfigValidator('malformed-validator-tracker')
+    expect(validator).toBeDefined()
+    await expect(validator?.({ baseUrl: 'https://bad.invalid' })).resolves.toEqual({
+      ok: false,
+      reason:
+        "Plugin 'malformed-validator-plugin' providerConfigValidator export 'validateTrackerConfig' returned an invalid result",
+    })
+  })
+
+  test('marks plugin as error when providerConfigValidator export is not a function', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export const validateTrackerConfig = 'not a function'
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('invalid-validator-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('invalid-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['invalid-validator-tracker'],
+      },
+      providerConfigValidator: 'validateTrackerConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(pluginRegistry.getEntry('invalid-validator-plugin')?.state).toBe('error')
+    expect(getRecentRuntimeEvents('invalid-validator-plugin', 1)[0]?.message).toContain(
+      "Plugin 'invalid-validator-plugin' providerConfigValidator export 'validateTrackerConfig' is missing or not a function",
+    )
+    expect(getTaskProviderConfigValidator('invalid-validator-tracker')).toBeUndefined()
+  })
+
   test('keeps active task instances when plugin runtime shuts down normally', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {

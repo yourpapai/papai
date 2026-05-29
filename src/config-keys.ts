@@ -7,7 +7,12 @@ import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
 import { pluginRegistry } from './plugins/registry.js'
 import { getTaskProviderDescriptor } from './providers/registry.js'
-import { isConfigKey, KANEO_WORKSPACE_CONFIG_KEY, type ConfigField, type ConfigKey } from './types/config.js'
+import {
+  isAllowedDynamicConfigKey,
+  KANEO_WORKSPACE_CONFIG_KEY,
+  type ConfigField,
+  type ConfigKey,
+} from './types/config.js'
 
 const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
 const PREFERENCE_FIELDS: readonly ConfigField[] = [
@@ -33,7 +38,8 @@ const storageKeyForProviderField = (
   descriptor: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>,
   field: NonNullable<ReturnType<typeof getTaskProviderDescriptor>>['contextConfigSchema'][number],
 ): string => {
-  if (descriptor.source !== 'builtin') return `plugin:${descriptor.source.plugin}:provider:${field.key}`
+  if (descriptor.source !== 'builtin')
+    return `plugin:${descriptor.source.plugin}:provider:${field.storageKey ?? field.key}`
   if (field.storageKey !== undefined) return field.storageKey
   return field.key
 }
@@ -92,9 +98,9 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
   return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS]
 }
 
-export function getConfigKeysForContext(contextId: string): readonly ConfigKey[] {
+export function getConfigKeysForContext(contextId: string): readonly string[] {
   const keys = getConfigFieldsForContext(contextId)
     .map((field) => field.storageKey)
-    .filter((key): key is ConfigKey => isConfigKey(key))
+    .filter((key) => isAllowedDynamicConfigKey(key))
   return keys.length === 0 ? PREFERENCE_KEYS : keys
 }

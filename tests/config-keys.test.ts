@@ -33,19 +33,28 @@ describe('getConfigKeysForContext', () => {
     process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
   })
 
+  afterEach(() => {
+    unregisterContributedTaskProviderType('demo-plugin')
+  })
+
   test('returns preferences only for an unassigned context', () => {
     expect(getConfigKeysForContext('ctx-unassigned')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
   test('returns Kaneo visible keys for an active Kaneo assignment', () => {
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
 
     expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['kaneo_apikey', 'timezone', 'mcp_endpoints'])
   })
 
   test('returns YouTrack visible keys for an active YouTrack assignment', () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
     expect(getConfigKeysForContext('ctx-yt')).toEqual(['youtrack_token', 'timezone', 'mcp_endpoints'])
@@ -60,7 +69,12 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('returns preferences only when assigned instance is inactive', () => {
-    insertTaskInstance({ id: 'yt-stopped', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'stopped' })
+    insertTaskInstance({
+      id: 'yt-stopped',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'stopped',
+    })
     setContextSettings({
       contextId: 'ctx-stopped',
       taskInstanceId: 'yt-stopped',
@@ -70,7 +84,14 @@ describe('getConfigKeysForContext', () => {
     expect(getConfigKeysForContext('ctx-stopped')).toEqual(['timezone', 'mcp_endpoints'])
   })
 
-  test('returns preferences only for an active contributed (non-builtin) assignment', () => {
+  test('returns dynamic provider keys for an active contributed assignment', () => {
+    registerContributedTaskProviderType('demo-tracker', {
+      pluginId: 'demo-plugin',
+      factory: () => createMockProvider({ name: 'demo-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Demo Tracker',
+      contextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
+    })
     insertTaskInstance({
       id: 'demo-prod',
       type: 'demo-tracker',
@@ -79,11 +100,15 @@ describe('getConfigKeysForContext', () => {
     })
     setContextSettings({ contextId: 'ctx-demo', taskInstanceId: 'demo-prod', platformInstanceId: 'telegram-default' })
 
-    expect(getConfigKeysForContext('ctx-demo')).toEqual(['timezone', 'mcp_endpoints'])
+    expect(getConfigKeysForContext('ctx-demo')).toEqual([
+      'plugin:demo-plugin:provider:token',
+      'timezone',
+      'mcp_endpoints',
+    ])
   })
 
   test('getAllConfig only includes keys valid for the context', () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
     setConfig('ctx-yt', 'youtrack_token', 'perm:abc')
@@ -111,7 +136,7 @@ describe('getConfigFieldsForContext', () => {
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
-      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+      contextConfigSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
     })
     insertTaskInstance({
       id: 'plugin-prod',
@@ -130,13 +155,13 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
   })
 
-  test('ignores plugin provider context storageKey and uses namespaced dynamic key', () => {
+  test('uses plugin provider context storageKey inside namespaced dynamic key', () => {
     registerContributedTaskProviderType('plugin-tracker', {
       pluginId: 'plugin-tracker',
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
-      configSchema: [
+      contextConfigSchema: [
         {
           key: 'token',
           storageKey: 'custom_token',
@@ -161,7 +186,8 @@ describe('getConfigFieldsForContext', () => {
 
     const fields = getConfigFieldsForContext('ctx-plugin')
 
-    expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:token')
+    expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:custom_token')
+    expect(fields.map((field) => field.storageKey)).not.toContain('plugin:plugin-tracker:provider:token')
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
   })
 })

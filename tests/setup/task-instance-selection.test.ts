@@ -45,7 +45,7 @@ describe('task instance setup selection', () => {
 
   test('auto-assigns the only active task instance', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
 
     const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
@@ -60,7 +60,7 @@ describe('task instance setup selection', () => {
   test('auto-assignment persists the source platform instance when multiple active platforms share a type', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
     insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
 
     const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-secondary')
 
@@ -74,8 +74,13 @@ describe('task instance setup selection', () => {
 
   test('asks the user to choose when multiple active task instances exist', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
 
     const result = startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
@@ -89,8 +94,13 @@ describe('task instance setup selection', () => {
 
   test('handles text selection by task instance id', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
     const result = handleTaskInstanceSelectionMessage('user-1', SCOPED_CTX_1, 'yt-prod')
@@ -106,8 +116,13 @@ describe('task instance setup selection', () => {
   test('manual selection persists the platform instance from the selection session', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't1' }, status: 'active' })
     insertPlatformInstance({ id: 'telegram-secondary', type: 'telegram', config: { token: 't2' }, status: 'active' })
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-secondary')
 
     const result = handleTaskInstanceSelectionMessage('user-1', SCOPED_CTX_1, 'yt-prod')
@@ -122,9 +137,19 @@ describe('task instance setup selection', () => {
 
   test('rejects text selection that is not one of the active options', () => {
     insertPlatformInstance({ id: 'telegram-default', type: 'telegram', config: { token: 't' }, status: 'active' })
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'old-prod', type: 'youtrack', config: { url: 'https://old.invalid' }, status: 'stopped' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'old-prod',
+      type: 'youtrack',
+      config: { baseUrl: 'https://old.invalid' },
+      status: 'stopped',
+    })
     startTaskInstanceSelection('user-1', SCOPED_CTX_1, 'telegram-default')
 
     const result = handleTaskInstanceSelectionMessage('user-1', SCOPED_CTX_1, 'old-prod')

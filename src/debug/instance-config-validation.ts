@@ -5,9 +5,11 @@
 
 import { listPlatformProviderTypes } from '../chat/registry.js'
 import type { InstanceConfig } from '../instances/types.js'
-import { getTaskProviderDescriptor } from '../providers/registry.js'
+import {
+  validateTaskInstanceConfigResult,
+  type TaskInstanceConfigValidationFailure,
+} from '../providers/config-validation.js'
 import { jsonResponse } from './json-response.js'
-import { validateTaskInstanceConfig } from './task-provider-type-routes.js'
 
 type InstanceConfigField = {
   readonly key: string
@@ -17,20 +19,6 @@ type InstanceConfigField = {
 type InstanceConfigValidationError = {
   readonly missing: readonly string[]
   readonly invalidUrls: readonly string[]
-}
-
-const pickInstanceScopedConfig = (type: string, config: InstanceConfig): InstanceConfig => {
-  const descriptor = getTaskProviderDescriptor(type)
-  if (descriptor === undefined) return config
-  return Object.fromEntries(
-    descriptor.instanceConfigSchema
-      .map((field) => {
-        const value = config[field.key]
-        if (value === undefined) return null
-        return [field.key, value] as const
-      })
-      .filter((entry) => entry !== null),
-  )
 }
 
 const isBlank = (value: string | undefined): boolean => {
@@ -95,34 +83,31 @@ export const validatePlatformInstanceConfig = (type: string, config: InstanceCon
   )
 }
 
-export const validateTaskDescriptorInstanceConfig = (type: string, config: InstanceConfig): Response | null => {
-  const descriptor = getTaskProviderDescriptor(type)
-  if (descriptor === undefined) return jsonResponse({ error: 'unknown_task_provider_type', type }, { status: 400 })
-  return validationResponse(
-    'invalid_task_instance_config',
-    type,
-    validateDescriptorConfig(descriptor.instanceConfigSchema, config),
+const taskInstanceConfigValidationResponse = (failure: TaskInstanceConfigValidationFailure): Response => {
+  if (failure.kind === 'unknown_task_provider') {
+    return jsonResponse({ error: 'unknown_task_provider_type', type: failure.type }, { status: 400 })
+  }
+  if (
+    failure.kind === 'task_provider_config_validator_rejected' ||
+    failure.kind === 'task_provider_config_validator_failed'
+  ) {
+    return jsonResponse(
+      { error: 'invalid_task_instance_config', type: failure.type, reason: failure.reason },
+      { status: 400 },
+    )
+  }
+  return jsonResponse(
+    {
+      error: 'invalid_task_instance_config',
+      type: failure.type,
+      ...(failure.missing.length === 0 ? {} : { missing: failure.missing }),
+      ...(failure.invalidUrls.length === 0 ? {} : { invalidUrls: failure.invalidUrls }),
+    },
+    { status: 400 },
   )
 }
 
-export const validateTaskInstanceRouteConfig = (
-  type: string,
-  config: InstanceConfig,
-): Response | Promise<Response | null> => {
-  const descriptorConfigError = validateTaskDescriptorInstanceConfig(type, config)
-  if (descriptorConfigError !== null) return descriptorConfigError
-  return Promise.resolve(validateTaskInstanceConfig(type, pickInstanceScopedConfig(type, config))).then((response) => {
-    if (response === null) return null
-    if (response.status !== 400) return response
-    return response
-      .clone()
-      .json()
-      .then((body: unknown) => {
-        if (typeof body !== 'object' || body === null || Array.isArray(body)) return response
-        const responseBody = Object.fromEntries(Object.entries(body))
-        if (responseBody['error'] !== 'invalid_task_instance_config') return response
-        if ('type' in responseBody) return response
-        return jsonResponse({ ...body, type }, { status: 400 })
-      })
-  })
-}
+export const validateTaskInstanceRouteConfig = (type: string, config: InstanceConfig): Promise<Response | null> =>
+  validateTaskInstanceConfigResult(type, config).then((failure) =>
+    failure === null ? null : taskInstanceConfigValidationResponse(failure),
+  )

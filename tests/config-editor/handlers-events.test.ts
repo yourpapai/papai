@@ -16,7 +16,12 @@ describe('config_editor events', () => {
   const storageContextId = 'ctx-1'
 
   const assignKaneoContext = (): void => {
-    insertTaskInstance({ id: 'ctx-1-kaneo', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'ctx-1-kaneo',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({
       contextId: storageContextId,
       taskInstanceId: 'ctx-1-kaneo',

@@ -9,7 +9,7 @@ import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { getPluginsForContext } from './plugins/registry.js'
 import type { TaskProvider } from './providers/types.js'
 import { getToolMetadata } from './tools/tool-metadata.js'
-import { getToolPrefs, type ToolPrefs } from './tools/tool-preferences.js'
+import { getToolPrefs, resolveToolPermission, type ToolPrefs } from './tools/tool-preferences.js'
 
 const CORE_INTRO = `You are papai, a personal assistant that helps the user manage their tasks.
 
@@ -142,7 +142,7 @@ function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): s
   }
   const names = new Set<string>()
   for (const [name, value] of Object.entries(prefs.toolOverrides)) {
-    if (value) continue
+    if (value !== 'deny') continue
     const meta = getToolMetadata(name)
     if (meta !== undefined && enabledDomains.has(meta.domain) && !enabled.has(name)) names.add(name)
   }
@@ -150,10 +150,25 @@ function buildUnavailableLine(prefs: ToolPrefs, enabled: ReadonlySet<string>): s
   return `Unavailable tools — do not use or mention: ${[...names].toSorted().join(', ')}.`
 }
 
+function buildAskToolsLine(prefs: ToolPrefs, exposed: ReadonlySet<string>): string | null {
+  const askNames = [...exposed].filter((name) => resolveToolPermission(prefs, name) === 'ask').toSorted()
+  if (askNames.length === 0) return null
+  return [
+    'Some tools require user permission before each call. Listed tools must include',
+    '`_permission_reason` (one sentence, present tense) describing why the call is needed:',
+    askNames.map((n) => `  - ${n}`).join('\n'),
+  ].join('\n')
+}
+
+interface AssembleOptions {
+  readonly askPermissionAvailable: boolean
+}
+
 function assembleSystemPrompt(
   provider: TaskProvider,
   contextId: string,
   enabledToolNames: ReadonlySet<string> | undefined,
+  options: AssembleOptions,
 ): string {
   const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [CORE_INTRO]
@@ -163,8 +178,13 @@ function assembleSystemPrompt(
   parts.push(buildOutputRules(enabledToolNames))
 
   if (enabledToolNames !== undefined) {
-    const line = buildUnavailableLine(getToolPrefs(sharedContextId), enabledToolNames)
+    const prefs = getToolPrefs(sharedContextId)
+    const line = buildUnavailableLine(prefs, enabledToolNames)
     if (line !== null) parts.push(line)
+    if (options.askPermissionAvailable) {
+      const askLine = buildAskToolsLine(prefs, enabledToolNames)
+      if (askLine !== null) parts.push(askLine)
+    }
   }
 
   const basePromptBody = parts.join('\n\n')
@@ -192,8 +212,15 @@ export function buildSystemPrompt(
 export function buildSystemPrompt(
   provider: TaskProvider,
   contextId: string,
-  ...args: readonly [ReadonlySet<string>] | readonly []
+  enabledToolNames: ReadonlySet<string>,
+  options: { askPermissionAvailable: boolean },
+): string
+export function buildSystemPrompt(
+  provider: TaskProvider,
+  contextId: string,
+  ...args: readonly [ReadonlySet<string>, { askPermissionAvailable: boolean }?] | readonly []
 ): string {
   const enabledToolNames = args[0]
-  return assembleSystemPrompt(provider, contextId, enabledToolNames)
+  const options: AssembleOptions = { askPermissionAvailable: args[1]?.askPermissionAvailable ?? true }
+  return assembleSystemPrompt(provider, contextId, enabledToolNames, options)
 }

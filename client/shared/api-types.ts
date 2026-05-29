@@ -161,7 +161,7 @@ export type AdminLlmSnapshot = {
   embedding_model: AdminLlmKeyState
 }
 
-export type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'unknown'
+export type AdminChatProvider = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk' | 'unknown'
 export type AdminTaskProvider = 'kaneo' | 'youtrack' | 'unknown'
 
 export type AdminSystemSummary = {
@@ -177,7 +177,7 @@ export type InstanceStatusView = 'pending' | 'active' | 'stopped'
 
 export type PlatformInstanceView = {
   readonly id: string
-  readonly type: 'telegram' | 'mattermost' | 'discord'
+  readonly type: 'telegram' | 'mattermost' | 'discord' | 'kontur-talk'
   readonly config: InstanceConfigView
   readonly status: InstanceStatusView
   readonly createdAt: string
@@ -224,7 +224,21 @@ export type AdminInstanceView = Readonly<
   { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
 >
 
-export type ApplyInstancesResult = { readonly applied: number }
+export type ApplyFailure = Readonly<{
+  id: string
+  action: 'remove' | 'recreate' | 'start' | 'stop'
+  error: string
+}>
+
+export type ApplyInstancesResult = Readonly<{
+  applied: number
+  started: readonly string[]
+  stopped: readonly string[]
+  removed: readonly string[]
+  recreated: readonly string[]
+  unchanged: readonly string[]
+  failed: readonly ApplyFailure[]
+}>
 
 export type AdminPluginConfigKeyState = {
   key: string

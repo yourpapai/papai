@@ -32,9 +32,9 @@ export interface ResolvedContextToolSurface {
   routing?: ResolvedToolSurfaceRouting
 }
 
-export function safeBuildProvider(contextId: string): TaskProvider | null {
+export async function safeBuildProvider(contextId: string): Promise<TaskProvider | null> {
   try {
-    return defaultTaskProviderResolver.resolve(contextId)
+    return await defaultTaskProviderResolver.resolve(contextId)
   } catch (error) {
     log.warn(
       { contextId, error: error instanceof Error ? error.message : String(error) },

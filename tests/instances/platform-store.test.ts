@@ -49,7 +49,7 @@ describe('platform-store', () => {
     insertPlatformInstance({
       id: 'b',
       type: 'mattermost',
-      config: { url: 'u', token: 't' },
+      config: { baseUrl: 'u', token: 't' },
       status: 'pending',
     })
     const rows = listPlatformInstances()

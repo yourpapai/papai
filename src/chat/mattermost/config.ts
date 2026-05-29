@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export type MattermostConstructorConfig = Partial<{
-  url: string
-  token: string
+export type MattermostConstructorConfig = Readonly<{
+  baseUrl?: string
+  token?: string
   platformInstanceId: string
 }>
 
@@ -21,13 +21,17 @@ const resolveConfigValue = (value: string | undefined, fallback: string | undefi
 }
 
 const resolvePlatformInstanceId = (platformInstanceId: string | undefined): string => {
-  if (platformInstanceId === undefined) return 'mattermost-default'
+  if (platformInstanceId === undefined || platformInstanceId.trim() === '')
+    throw new Error('platformInstanceId is required')
   return platformInstanceId
 }
 
-export const resolveMattermostConfig = (config: MattermostConstructorConfig): ResolvedMattermostConfig => {
-  const url = resolveConfigValue(config.url, process.env['MATTERMOST_URL'])
-  const token = resolveConfigValue(config.token, process.env['MATTERMOST_BOT_TOKEN'])
+export const resolveMattermostConfig = (
+  config: MattermostConstructorConfig,
+  fallbackEnv: Record<string, string | undefined> | undefined = process.env,
+): ResolvedMattermostConfig => {
+  const url = resolveConfigValue(config.baseUrl, fallbackEnv?.['MATTERMOST_URL'])
+  const token = resolveConfigValue(config.token, fallbackEnv?.['MATTERMOST_BOT_TOKEN'])
   if (url === undefined || url.trim() === '') {
     throw new Error('MATTERMOST_URL environment variable is required')
   }

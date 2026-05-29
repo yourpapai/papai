@@ -226,7 +226,7 @@ export const invokeModel = async (
   }
   const result = await deps.generateText({
     model,
-    system: buildSystemPrompt(provider, contextId, enabledToolNames),
+    system: buildSystemPrompt(provider, contextId, enabledToolNames, { askPermissionAvailable: true }),
     messages,
     tools,
     timeout: 1_200_000,

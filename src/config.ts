@@ -81,11 +81,13 @@ export function isConfigKey(key: string): key is ConfigKey {
   return isKnownConfigKey(key)
 }
 
-export function getAllConfig(userId: string): Partial<Record<ConfigKey, string>> {
+type AllConfig = Partial<Record<ConfigKey, string>> & Partial<Record<string, string>>
+
+export function getAllConfig(userId: string): AllConfig {
   log.debug({ userId }, 'getAllConfig called')
-  const result: Partial<Record<ConfigKey, string>> = {}
+  const result: AllConfig = {}
   for (const key of getConfigKeysForContext(userId)) {
-    const value = readConfigValue(key, getCachedConfig(userId, key))
+    const value = readDynamicConfigValue(key, getCachedConfig(userId, key))
     if (value !== null) {
       result[key] = value
     }

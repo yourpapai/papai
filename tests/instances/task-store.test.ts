@@ -29,17 +29,17 @@ describe('task-store', () => {
     insertTaskInstance({
       id: 'kaneo-prod',
       type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
+      config: { baseUrl: 'https://kaneo.invalid' },
       status: 'active',
     })
     const row = getTaskInstance('kaneo-prod')
     expect(row?.type).toBe('kaneo')
-    expect(row?.config).toEqual({ url: 'https://kaneo.invalid' })
+    expect(row?.config).toEqual({ baseUrl: 'https://kaneo.invalid' })
   })
 
   test('list returns all rows', () => {
-    insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'u1' }, status: 'active' })
-    insertTaskInstance({ id: 'b', type: 'youtrack', config: { url: 'u2' }, status: 'pending' })
+    insertTaskInstance({ id: 'a', type: 'kaneo', config: { baseUrl: 'u1' }, status: 'active' })
+    insertTaskInstance({ id: 'b', type: 'youtrack', config: { baseUrl: 'u2' }, status: 'pending' })
     expect(
       listTaskInstances()
         .map((r) => r.id)
@@ -48,15 +48,15 @@ describe('task-store', () => {
   })
 
   test('update sets config + status', () => {
-    insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'old' }, status: 'pending' })
-    updateTaskInstance('a', { config: { url: 'new' }, status: 'active' })
+    insertTaskInstance({ id: 'a', type: 'kaneo', config: { baseUrl: 'old' }, status: 'pending' })
+    updateTaskInstance('a', { config: { baseUrl: 'new' }, status: 'active' })
     const row = getTaskInstance('a')
-    expect(row?.config).toEqual({ url: 'new' })
+    expect(row?.config).toEqual({ baseUrl: 'new' })
     expect(row?.status).toBe('active')
   })
 
   test('delete removes the row', () => {
-    insertTaskInstance({ id: 'a', type: 'kaneo', config: { url: 'u' }, status: 'active' })
+    insertTaskInstance({ id: 'a', type: 'kaneo', config: { baseUrl: 'u' }, status: 'active' })
     deleteTaskInstance('a')
     expect(getTaskInstance('a')).toBeNull()
   })

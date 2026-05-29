@@ -20,6 +20,7 @@ import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
 } from '../../src/providers/registry.js'
+import { setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { clearUserCache } from '../utils/test-cache.js'
 import {
@@ -55,7 +56,7 @@ function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
     id: `${contextId}-kaneo`,
     type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
+    config: { baseUrl: 'https://kaneo.invalid' },
     status: 'active',
   })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
@@ -168,7 +169,12 @@ describe('/config Command', () => {
     })
 
     test('renders only config keys for the assigned task instance', async () => {
-      insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+      insertTaskInstance({
+        id: 'yt-prod',
+        type: 'youtrack',
+        config: { baseUrl: 'https://yt.invalid' },
+        status: 'active',
+      })
       setContextSettings({ contextId: USER_ID, taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
       setConfig(USER_ID, 'youtrack_token', 'perm:abc1234')
 
@@ -190,7 +196,7 @@ describe('/config Command', () => {
         factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
         capabilities: new Set(),
         displayName: 'Long Plugin Provider',
-        configSchema: [
+        contextConfigSchema: [
           {
             key: 'very-long-context-token-field',
             label: 'Plugin Token',
@@ -281,7 +287,7 @@ describe('/config Command', () => {
       insertTaskInstance({
         id: `${USER_ID}-missing-capability`,
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
       })
       setContextSettings({
@@ -443,6 +449,18 @@ describe('/config Command', () => {
         createAuth('unauthorized-user', { allowed: false }),
       )
       expect(buttonCalls).toHaveLength(0)
+    })
+
+    test('Tools summary line shows blocked and ask counts', async () => {
+      setToolPrefs('ctx-cfg-summary', {
+        domainDefaults: {},
+        toolOverrides: { delete_task: 'deny', remove_attachment: 'ask' },
+      })
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, 'ctx-cfg-summary', true)
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('1 blocked')
+      expect(buttonCalls[0]).toContain('1 ask')
     })
 
     test('uses source instance button capabilities instead of router aggregate capabilities', async () => {

@@ -110,7 +110,7 @@ function buildPluginLogger(pluginId: string): PluginLogger {
 }
 
 const toProviderConfigField = (
-  field: { key: string; label: string; required: boolean; sensitive: boolean },
+  field: { key: string; label: string; required: boolean; sensitive: boolean; storageKey?: string },
   scope: ProviderConfigField['scope'],
 ): ProviderConfigField => ({
   key: field.key,
@@ -118,6 +118,7 @@ const toProviderConfigField = (
   required: field.required,
   sensitive: field.sensitive,
   scope,
+  ...(field.storageKey === undefined ? {} : { storageKey: field.storageKey }),
 })
 
 function buildRegisterTaskProviderType(
@@ -148,7 +149,7 @@ function buildRegisterTaskProviderType(
       contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
         toProviderConfigField(field, 'context'),
       ),
-      traits: new Set(),
+      traits: new Set(manifest.providerTraits ?? []),
     }
   }
 }
@@ -173,7 +174,6 @@ function buildRegistration(
       collected.jobs = [...(collected.jobs ?? []), job]
     },
   })
-
   return Object.freeze({
     registerTool(tool: PluginTool): void {
       namedRegistrations.registerTool(tool)

@@ -27,7 +27,7 @@ import {
 import { getPlatformInstance, insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
-import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import type { InstanceConfig, PlatformInstance, TaskInstance } from '../../src/instances/types.js'
 import { activatePlugins, deactivateAllPlugins } from '../../src/plugins/loader.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
@@ -152,12 +152,22 @@ const writeTempPluginModule = (source: string): string => {
   return modulePath
 }
 
+const providerStartForToken = (
+  startsByToken: Readonly<Record<string, () => Promise<void>>>,
+  token: string | undefined,
+): (() => Promise<void>) => {
+  if (token === undefined) throw new Error('expected token config')
+  const providerStart = startsByToken[token]
+  if (providerStart === undefined) throw new Error(`expected start function for token ${token}`)
+  return providerStart
+}
+
 const seedPlatformInstance = (id: string): void => {
   insertPlatformInstance({ id, type: 'telegram', config: { token: 'secret' }, status: 'active' })
 }
 
 const seedTaskInstance = (id: string): void => {
-  insertTaskInstance({ id, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  insertTaskInstance({ id, type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
 }
 
 const fakeProvider = (start: () => Promise<void>, stop: () => Promise<void>): ChatProvider => ({
@@ -226,7 +236,7 @@ describe('instance API routes', () => {
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'token')).toBe('********')
   })
 
-  test('duplicate platform create returns instance_exists conflict', async () => {
+  test('POST /api/platform-instances maps duplicate insert failures to 409', async () => {
     insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
     const res = expectResponse(
@@ -425,7 +435,7 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(200)
     expect(start.mock.calls.length).toBeGreaterThanOrEqual(1)
-    expect(await readJson(res)).toEqual({ applied: 1 })
+    expect(await readJson(res)).toMatchObject({ applied: 1, started: [instanceId], failed: [] })
     expect(expectInstance(router, instanceId).status).toBe('active')
   })
 
@@ -459,7 +469,11 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     expect(start).toHaveBeenCalledTimes(instances.length)
     expect(maxActiveStarts).toBeLessThanOrEqual(4)
-    expect(await readJson(res)).toEqual({ applied: instances.length })
+    expect(await readJson(res)).toMatchObject({
+      applied: instances.length,
+      started: instances.map((instance) => instance.id),
+      failed: [],
+    })
   })
 
   test('apply starts stopped runtime instances whose DB rows are active', async () => {
@@ -490,6 +504,250 @@ describe('instance API routes', () => {
     expect(res.status).toBe(200)
     expect(start).toHaveBeenCalledTimes(1)
     expect(expectInstance(router, instanceId).status).toBe('active')
+  })
+
+  test('apply reports failure when starting a missing instance leaves it stopped', async () => {
+    const start = mock(() => Promise.reject(new Error('start failed')))
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      applied: 1,
+      started: [],
+      failed: [{ id: 'telegram-main', action: 'start' }],
+    })
+    expect(expectInstance(router, 'telegram-main').status).toBe('stopped')
+  })
+
+  test('apply reports failure when recreating an instance leaves replacement stopped', async () => {
+    const start = mock(() => Promise.resolve())
+    const replacementStart = mock(() => Promise.reject(new Error('replacement failed')))
+    const stop = mock(async () => {})
+    const startsByToken = { 'old-secret': start, 'new-secret': replacementStart }
+    const router = new ChatRouter((_id, _type, config) => {
+      const providerStart = providerStartForToken(startsByToken, config['token'])
+      return fakeProvider(providerStart, stop)
+    })
+    router.addInstance('telegram-main', 'telegram', { token: 'old-secret' })
+    await router.startInstance('telegram-main')
+
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'new-secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      started: [],
+      recreated: [],
+      failed: [{ id: 'telegram-main', action: 'recreate' }],
+    })
+    expect(expectInstance(router, 'telegram-main').status).toBe('stopped')
+  })
+
+  test('apply recreates active runtime instance when DB config changes', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const seenConfigs: InstanceConfig[] = []
+    const router = new ChatRouter((_id, _type, config) => {
+      seenConfigs.push(config)
+      return fakeProvider(start, stop)
+    })
+    router.addInstance('telegram-main', 'telegram', { token: 'old-secret' })
+    await router.startInstance('telegram-main')
+
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'new-secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      stopped: ['telegram-main'],
+      removed: ['telegram-main'],
+      started: ['telegram-main'],
+      recreated: ['telegram-main'],
+      failed: [],
+    })
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledTimes(2)
+    expect(seenConfigs).toEqual([{ token: 'old-secret' }, { token: 'new-secret' }])
+  })
+
+  test('apply removes runtime instance when DB row is no longer active', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    await router.startInstance('telegram-main')
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({ stopped: ['telegram-main'], removed: ['telegram-main'], failed: [] })
+    expect(router.getInstance('telegram-main')).toBeNull()
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  test('apply reports stop failure when stale runtime removal cannot stop provider', async () => {
+    const start = mock(async () => {})
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    await router.startInstance('telegram-main')
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      stopped: [],
+      removed: [],
+      failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+    })
+    expect(router.getInstance('telegram-main')).not.toBeNull()
+  })
+
+  test('apply does not replace instance when recreate cannot stop old provider', async () => {
+    const start = mock(async () => {})
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
+    const seenConfigs: InstanceConfig[] = []
+    const router = new ChatRouter((_id, _type, config) => {
+      seenConfigs.push(config)
+      return fakeProvider(start, stop)
+    })
+    router.addInstance('telegram-main', 'telegram', { token: 'old-secret' })
+    await router.startInstance('telegram-main')
+
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'new-secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      stopped: [],
+      removed: [],
+      started: [],
+      recreated: [],
+      failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+    })
+    expect(seenConfigs).toEqual([{ token: 'old-secret' }])
+  })
+
+  test('apply serializes concurrent reconciliations for the shared router', async () => {
+    let activeApplyReads = 0
+    let maxActiveApplyReads = 0
+    const start = mock(async () => {
+      await Bun.sleep(10)
+    })
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+    const deps = {
+      getRuntimeChatRouter: (): ChatRouter => router,
+      listActivePlatformInstances: (): PlatformInstance[] => {
+        activeApplyReads += 1
+        maxActiveApplyReads = Math.max(maxActiveApplyReads, activeApplyReads)
+        return [instance]
+      },
+    }
+    const first = routeWithDeps('/api/platform-instances/apply', deps, { method: 'POST', headers: jsonHeaders() })
+    const second = routeWithDeps('/api/platform-instances/apply', deps, { method: 'POST', headers: jsonHeaders() })
+    await Bun.sleep(1)
+    activeApplyReads -= 1
+    await Bun.sleep(20)
+    activeApplyReads -= 1
+
+    const responses = await Promise.all([first, second])
+
+    expect(responses.map((response) => expectResponse(response).status)).toEqual([200, 200])
+    expect(maxActiveApplyReads).toBe(1)
+  })
+
+  test('apply reports applied as the active DB instance count even when runtime removes stale rows', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('stale-telegram', 'telegram', { token: 'secret' })
+    await router.startInstance('stale-telegram')
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({ applied: 0, stopped: ['stale-telegram'], removed: ['stale-telegram'] })
   })
 
   test('deleting platform instance cascades owned rows, preserves super-admins, and clears context tool caches', async () => {
@@ -552,12 +810,16 @@ describe('instance API routes', () => {
     expect(stop).toHaveBeenCalledTimes(1)
   })
 
-  test('updates platform instance status', async () => {
+  test('updates platform instance status and clears referencing context tool cache', async () => {
     await route('/api/platform-instances', {
       method: 'POST',
       headers: jsonHeaders(),
       body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' } }),
     })
+    seedTaskInstance('tasks-main')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main/status', {
@@ -569,6 +831,8 @@ describe('instance API routes', () => {
 
     expect(res.status).toBe(200)
     expect(pick(assertObject(await readJson(res)), 'status')).toBe('stopped')
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('deletes task instance context settings before deleting the task instance', async () => {
@@ -655,14 +919,19 @@ describe('instance API routes', () => {
     })
   })
 
-  test('duplicate task create returns instance_exists conflict', async () => {
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  test('POST /api/task-instances maps duplicate insert failures to 409', async () => {
+    insertTaskInstance({
+      id: 'tasks-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
 
     const res = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://other.invalid' } }),
+        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { baseUrl: 'https://other.invalid' } }),
       }),
     )
 
@@ -700,6 +969,26 @@ describe('instance API routes', () => {
       baseUrl: 'https://new-kaneo.invalid',
       internalUrl: 'https://internal.kaneo.invalid',
     })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+  })
+
+  test('PATCH /api/platform-instances/:id clears referencing context tool cache', async () => {
+    seedPlatformInstance('telegram-main')
+    seedTaskInstance('tasks-main')
+    setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
+    setCachedTools('ctx-1', { old_tool: {} })
+    setCachedTools('ctx-other', { old_tool: {} })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ status: 'stopped' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
     expect(cachedToolsFor('ctx-1')).toBeNull()
     expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
@@ -892,6 +1181,40 @@ describe('instance API routes', () => {
     }
   })
 
+  test('rejects a task-instance create when the provider validator throws', async () => {
+    registerContributedTaskProviderType('validated-throws', {
+      pluginId: 'val-throws',
+      factory: () => createMockProvider({ name: 'validated-throws' }),
+      validateConfig: () => Promise.reject(new Error('validator unavailable')),
+      capabilities: new Set<never>(),
+      displayName: 'Validated Throws',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'v-throws-1',
+              type: 'validated-throws',
+              config: { baseUrl: 'https://bad.invalid' },
+            }),
+          },
+        ),
+      )
+      expect(res.status).toBe(400)
+      const body = assertObject(await readJson(res))
+      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
+      expect(pick(body, 'reason')).toBe('validator unavailable')
+    } finally {
+      unregisterContributedTaskProviderType('val-throws')
+    }
+  })
+
   test('PATCH /api/task-instances/:id rejects config when the contributed provider validator fails', async () => {
     registerContributedTaskProviderType('validated-patch', {
       pluginId: 'val-patch',
@@ -899,7 +1222,7 @@ describe('instance API routes', () => {
       validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
       capabilities: new Set<never>(),
       displayName: 'Validated Patch',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     insertTaskInstance({
       id: 'validated-patch-1',
@@ -939,7 +1262,7 @@ describe('instance API routes', () => {
       validateConfig: () => Promise.resolve({ ok: true as const }),
       capabilities: new Set<never>(),
       displayName: 'Validated OK',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     try {
       const res = expectResponse(
@@ -1008,7 +1331,7 @@ describe('instance API routes', () => {
       },
       capabilities: new Set<never>(),
       displayName: 'Validated Throw',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     try {
       const res = expectResponse(
@@ -1046,7 +1369,7 @@ describe('instance API routes', () => {
       validateConfig: () => Promise.reject(new Error('validator rejected')),
       capabilities: new Set<never>(),
       displayName: 'Validated Reject',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     insertTaskInstance({
       id: 'validated-reject-1',
@@ -1137,11 +1460,101 @@ describe('instance API routes', () => {
         error: 'invalid_task_instance_config',
         type: 'validated-bad-shape',
         reason:
-          'provider config validator returned an invalid result; expected { ok: true } or { ok: false, reason: string }',
+          "Plugin 'val-bad-shape' providerConfigValidator export 'validateBadShapeConfig' returned an invalid result",
       })
       expect(getTaskInstance('v-bad-shape-1')).toBeNull()
     } finally {
       await deactivateAllPlugins()
+    }
+  })
+
+  test('validates contributed instance storageKey and passes logical config to validator on create', async () => {
+    const validateConfig = mock((_config: Record<string, string>) => Promise.resolve({ ok: true as const }))
+    registerContributedTaskProviderType('storage-validated', {
+      pluginId: 'storage-val',
+      factory: () => createMockProvider({ name: 'storage-validated' }),
+      validateConfig,
+      capabilities: new Set<never>(),
+      displayName: 'Storage Validated',
+      instanceConfigSchema: [
+        {
+          key: 'baseUrl',
+          storageKey: 'tracker_url',
+          label: 'Tracker URL',
+          required: true,
+          sensitive: false,
+          scope: 'instance',
+        },
+      ],
+    })
+    try {
+      const created = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'storage-validated-1',
+              type: 'storage-validated',
+              config: { tracker_url: 'https://tracker.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(created.status).toBe(201)
+      expect(validateConfig).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid' })
+      expect(getTaskInstance('storage-validated-1')?.config).toEqual({ tracker_url: 'https://tracker.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('storage-val')
+    }
+  })
+
+  test('rejects contributed instance config when required storageKey is absent', async () => {
+    registerContributedTaskProviderType('storage-missing', {
+      pluginId: 'storage-missing-plugin',
+      factory: () => createMockProvider({ name: 'storage-missing' }),
+      capabilities: new Set<never>(),
+      displayName: 'Storage Missing',
+      instanceConfigSchema: [
+        {
+          key: 'baseUrl',
+          storageKey: 'tracker_url',
+          label: 'Tracker URL',
+          required: true,
+          sensitive: false,
+          scope: 'instance',
+        },
+      ],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'storage-missing-1',
+              type: 'storage-missing',
+              config: { baseUrl: 'https://tracker.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'storage-missing',
+        missing: ['baseUrl'],
+      })
+      expect(getTaskInstance('storage-missing-1')).toBeNull()
+    } finally {
+      unregisterContributedTaskProviderType('storage-missing-plugin')
     }
   })
 
@@ -1152,7 +1565,7 @@ describe('instance API routes', () => {
       factory: () => createMockProvider({ name: 'masktest' }),
       capabilities: new Set<never>(),
       displayName: 'Mask Test',
-      configSchema: [
+      instanceConfigSchema: [
         { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' },
         { key: 'apiSecret', label: 'Secret', required: true, sensitive: true, scope: 'instance' },
       ],
@@ -1195,6 +1608,42 @@ describe('instance API routes', () => {
       expect(pick(listedConfig, 'apiSecret')).toBe('********')
     } finally {
       unregisterContributedTaskProviderType('mask-plugin')
+    }
+  })
+
+  test('masks instance-scoped sensitive contributed fields by storageKey', async () => {
+    registerContributedTaskProviderType('storage-mask', {
+      pluginId: 'storage-mask-plugin',
+      factory: () => createMockProvider({ name: 'storage-mask' }),
+      capabilities: new Set<never>(),
+      displayName: 'Storage Mask',
+      instanceConfigSchema: [
+        {
+          key: 'apiSecret',
+          storageKey: 'credential_value',
+          label: 'Credential',
+          required: true,
+          sensitive: true,
+          scope: 'instance',
+        },
+      ],
+    })
+    try {
+      insertTaskInstance({
+        id: 'storage-mask-1',
+        type: 'storage-mask',
+        config: { credential_value: 'super-secret-value' },
+        status: 'active',
+      })
+
+      const listed = expectResponse(await route('/api/task-instances'))
+
+      const rows = assertArray(await readJson(listed))
+      const storageMaskRow = rows.find((row) => pick(assertObject(row), 'type') === 'storage-mask')
+      const listedConfig = assertObject(pick(assertObject(storageMaskRow), 'config'))
+      expect(pick(listedConfig, 'credential_value')).toBe('********')
+    } finally {
+      unregisterContributedTaskProviderType('storage-mask-plugin')
     }
   })
 })

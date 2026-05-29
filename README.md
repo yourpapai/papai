@@ -480,7 +480,6 @@ bun test:e2e
 bun test:e2e:watch
 bun test:mutate
 bun test:mutate:changed
-bun test:mutate:full
 
 # Composite checks
 bun check
@@ -534,7 +533,7 @@ Runs the Docker-backed Kaneo end-to-end suite.
 bun test:mutate:changed
 ```
 
-Runs incremental mutation testing with Stryker. Full mutation runs are also available via `bun test:mutate` and `bun test:mutate:full`.
+Runs changed-file paired mutation testing with Stryker. Full paired mutation runs are available via `bun test:mutate`.
 
 ---
 

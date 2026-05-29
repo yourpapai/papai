@@ -73,9 +73,7 @@ function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandD
 }
 
 function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
-  const baseUrl = config['baseUrl']
-  if (baseUrl !== undefined) return baseUrl
-  return config['url']
+  return config['baseUrl']
 }
 
 function getKaneoProvisionConfig(

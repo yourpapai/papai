@@ -25,7 +25,7 @@ import {
   type ProcessMessageRest,
 } from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, logProcessMessage } from './llm-orchestrator-support.js'
-import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
+import { buildLlmInvocationOpts, prepareLlmInvocation } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
@@ -173,7 +173,7 @@ type CallLlmArgs = {
 }
 
 const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: ModelMessage[] } }> => {
-  const { reply, contextId, chatUserId, username, history, userText, contextType, deps, configContextId, turnId } = args
+  const { reply, contextId, chatUserId, username, contextType, deps, configContextId, turnId } = args
   const configId = resolveConfigId(contextId, configContextId)
   if (contextType === 'dm') {
     await deps.maybeProvisionKaneo(reply, configId, username)
@@ -181,7 +181,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
-  const provider = deps.resolve(configId)
+  const provider = await deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
     await reply.text('I need /setup before I can do that.')
@@ -189,15 +189,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   }
   await maybeAutoLinkIdentity(chatUserId, username, provider)
   const { routingResult, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
-    contextId,
-    configId,
-    chatUserId,
-    username,
-    contextType,
-    provider,
-    history,
-    userText,
-    deps.stagedDownloadFn,
+    buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn),
   )
   const progressReporter = createProgressReporterForContext(reply, contextId)
   const result = await invokeModelWithTyping(reply, {
