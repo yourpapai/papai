@@ -47,11 +47,33 @@ describe('SettingsTopBar', () => {
     seed()
     const { component, target } = render()
     flushSync()
-    const select = target.querySelector<HTMLSelectElement>('[data-testid="context-switcher"]')!
+    const select = target.querySelector<HTMLSelectElement>('select')!
     select.value = 'group:7'
     select.dispatchEvent(new Event('change', { bubbles: true }))
     flushSync()
     expect(settingsSession.activeContextId).toBe('group:7')
+    void unmount(component)
+  })
+
+  test('sign out posts to the logout endpoint', async () => {
+    const calls: string[] = []
+    const recordUrl = (url: string): void => {
+      calls.push(url)
+    }
+    setMockFetch((url: string) => {
+      recordUrl(url)
+      return Promise.resolve(new Response('{}'))
+    })
+    seed()
+    const { component, target } = render()
+    flushSync()
+    const signOutBtn = Array.from(target.querySelectorAll('button')).find(
+      (btn) => btn.textContent?.trim() === 'sign out',
+    )!
+    signOutBtn.click()
+    await Promise.resolve()
+    flushSync()
+    expect(calls.some((u) => u.includes('/settings/auth/logout'))).toBe(true)
     void unmount(component)
   })
 })

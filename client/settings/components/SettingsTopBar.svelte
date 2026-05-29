@@ -6,6 +6,7 @@
 <script lang="ts">
   import Btn from '../../shared/ui/Btn.svelte'
   import Pill from '../../shared/ui/Pill.svelte'
+  import Select from '../../shared/ui/Select.svelte'
   import TopBar from '../../shared/ui/TopBar.svelte'
 
   import { logout } from '../fetchers.js'
@@ -22,17 +23,13 @@
     <div class="settings-topbar__status">
       <Pill tone="accent" dot>{#snippet children()}{settingsSession.display}{/snippet}</Pill>
       <span class="settings-topbar__spacer"></span>
-      <label class="settings-topbar__ctx">
+      <span class="settings-topbar__ctx">
         <span class="settings-topbar__lbl">context</span>
-        <select
-          data-testid="context-switcher"
+        <Select
           value={settingsSession.activeContextId}
-          onchange={(event) => setActiveContext((event.target as HTMLSelectElement).value)}>
-          {#each settingsSession.contexts as ctx (ctx.contextId)}
-            <option value={ctx.contextId}>{ctx.label}</option>
-          {/each}
-        </select>
-      </label>
+          options={settingsSession.contexts.map((ctx) => ({ value: ctx.contextId, label: ctx.label }))}
+          onChange={setActiveContext} />
+      </span>
       <Btn variant="ghost" size="sm" onClick={() => void signOut()}>
         {#snippet children()}sign out{/snippet}
       </Btn>
@@ -59,14 +56,5 @@
     color: var(--fg3);
     font-family: var(--font-mono);
     font-size: 11px;
-  }
-  .settings-topbar__ctx select {
-    background: var(--raised);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 4px 8px;
-    border-radius: 2px;
   }
 </style>
