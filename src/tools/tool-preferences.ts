@@ -25,10 +25,11 @@ function emptyPrefs(): ToolPrefs {
   return { domainDefaults: {}, toolOverrides: {} }
 }
 
-const PERMISSIONS = new Set<string>(['allow', 'ask', 'deny'])
+const PERMISSIONS: ReadonlySet<Permission> = new Set(['allow', 'ask', 'deny'])
 
+/** Returns true if value is a valid Permission string ('allow' | 'ask' | 'deny'). */
 export function isPermission(value: unknown): value is Permission {
-  return typeof value === 'string' && PERMISSIONS.has(value)
+  return typeof value === 'string' && (PERMISSIONS as ReadonlySet<string>).has(value)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -87,7 +88,7 @@ export function getToolPrefs(contextId: string): ToolPrefs {
 export function setToolPrefs(contextId: string, prefs: ToolPrefs): void {
   setCachedConfig(contextId, TOOL_PREFS_CONFIG_KEY, serializeToolPrefs(prefs))
   clearCachedToolsByPrefix(contextId)
-  log.info({ contextId, disabledDomains: Object.keys(prefs.domainDefaults).length }, 'Tool prefs updated')
+  log.info({ contextId, configuredDomains: Object.keys(prefs.domainDefaults).length }, 'Tool prefs updated')
 }
 
 // Legacy boolean-shaped helper kept for callers not yet migrated.
@@ -144,6 +145,8 @@ export function toggleDomain(prefs: ToolPrefs, domain: ToolDomain, _domainToolNa
 // Per-tool toggle: flips override between 'allow' and 'deny' (two-state, legacy contract).
 export function toggleTool(prefs: ToolPrefs, toolName: string, _domainToolNames: readonly string[]): ToolPrefs {
   const next: Permission = resolveToolPermission(prefs, toolName) === 'deny' ? 'allow' : 'deny'
+  // Pruning (remove override when it matches the domain default) is deferred to
+  // the Task 1.4 cycle implementation; the 2-state stub always writes the override.
   const toolOverrides = { ...prefs.toolOverrides, [toolName]: next }
   return { domainDefaults: { ...prefs.domainDefaults }, toolOverrides }
 }
