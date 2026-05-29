@@ -90,7 +90,10 @@ export async function handlePluginInteraction(interaction: IncomingInteraction, 
   }
   const authorization = canManageInteractionTargetContext(interaction, contextId)
   if (!authorization.allowed) {
-    await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, contextId))
+    await replyTextPreferReplace(
+      reply,
+      getMissingGroupTargetMessage(interaction.user.id, contextId, interaction.platformInstanceId),
+    )
     return true
   }
 

@@ -245,4 +245,47 @@ describe('handlePluginInteraction', () => {
     expect(textCalls[0]).toContain('no longer recognized as an admin')
     expect(getPluginContextState(pluginId, targetContextId)).toBeUndefined()
   })
+
+  test('uses native group id in unauthorized scoped-group message for plugin interactions', async () => {
+    const pluginId = 'interaction-unauthorized-scoped-group-plugin'
+    const platformInstanceId = 'telegram-default'
+    const nativeGroupId = 'group-9'
+    const targetContextId = toScopedContextId({ platformInstanceId, nativeContextId: nativeGroupId })
+    const plugin = makePlugin(pluginId)
+    registerActivePlugin(plugin)
+
+    upsertKnownGroupContext({
+      contextId: targetContextId,
+      provider: 'telegram',
+      displayName: 'Scoped Group',
+      parentName: null,
+    })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: targetContextId,
+      userId: 'admin-user',
+      username: 'alice',
+      isAdmin: true,
+    })
+    addAuthorizedGroup(targetContextId, 'admin-user')
+
+    const { removeAuthorizedGroup } = await import('../../src/authorized-groups.js')
+    expect(removeAuthorizedGroup(targetContextId)).toBe(true)
+
+    const { reply, textCalls } = createMockReply()
+    const handled = await handlePluginInteraction(
+      {
+        ...makeInteraction(`plg:disable:${pluginId}:${encodeContextId(targetContextId)}`, 'admin-user'),
+        platformInstanceId,
+      },
+      reply,
+    )
+
+    expect(handled).toBe(true)
+    expect(textCalls).toEqual([
+      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add group-9` in DM, then run /config or /setup again.',
+    ])
+    expect(textCalls[0]).not.toContain(targetContextId)
+    expect(getPluginContextState(pluginId, targetContextId)).toBeUndefined()
+  })
 })
