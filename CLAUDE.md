@@ -42,6 +42,8 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun test:mutate` — run mutation tests with Stryker
 - `bun test:mutate:changed` — run incremental mutation tests
 - `bun test:mutate:full` — force a full mutation run
+- `bun test:mutate:file <paths...>` — accurate per-file paired mutation run (ignoreStatic:false + companion tests only); fast measurement that bypasses the static-bucket artifact
+- `bun test:mutate:changed-paired` — paired mutation run over files changed vs `origin/master`; this is what CI uses
 - `bun test:e2e` — run Docker-backed E2E tests
 - `bun test:e2e:watch` — run E2E tests in watch mode
 - `bun check` — run lint/typecheck/format checks for staged files

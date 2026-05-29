@@ -101,3 +101,10 @@ When DI is not available and module evaluation order matters:
 - Track resources created outside the test client with `testClient.trackTask(...)` or the matching tracker helper when the suite uses `KaneoTestClient`.
 - The suite is in transition: many files already rely on shared preload/setup, but some older E2E files still use local `beforeAll`/`afterAll` hooks or manual cleanup. Follow the local pattern unless you are intentionally modernizing that suite.
 - Before proposing new E2E coverage, read `docs/superpowers/e2e-planning-workflow.md` and start from `docs/superpowers/templates/e2e-test-plan-template.md`.
+
+## Mutation testing
+
+For accurate per-file mutation scores that bypass the runner's static-bucket
+artifact, use `bun test:mutate:file <path>` (see `scripts/mutation/README.md`).
+The legacy `bun test:mutate` is whole-repo and intentionally lenient on
+measurement; the paired runner is what real quality work should use.
