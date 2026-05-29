@@ -106,6 +106,7 @@
     // loader (by path), so knip sees no static importer. Each new plugin adds a line.
     "plugins/synthetic-web-search/index.ts": ["exports"],
     "plugins/task-provider-kaneo/index.ts": ["exports"],
+    "plugins/task-provider-youtrack/index.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

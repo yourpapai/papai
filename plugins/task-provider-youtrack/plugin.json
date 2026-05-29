@@ -1,0 +1,21 @@
+{
+  "id": "task-provider-youtrack",
+  "name": "YouTrack",
+  "version": "1.0.0",
+  "description": "YouTrack task-tracker integration.",
+  "apiVersion": 1,
+  "permissions": ["provider.task", "identity"],
+  "contributes": {
+    "taskProviderTypes": ["youtrack"]
+  },
+  "providerCapabilities": [],
+  "providerConfigSchema": [
+    { "key": "baseUrl", "label": "YouTrack URL", "required": true, "sensitive": false, "scope": "instance" }
+  ],
+  "providerContextConfigSchema": [
+    { "key": "token", "label": "YouTrack Permanent Token", "required": true, "sensitive": true, "scope": "context" }
+  ],
+  "providerAllowedHosts": [],
+  "providerConfigValidator": "validateConfig",
+  "defaultEnabled": false
+}
