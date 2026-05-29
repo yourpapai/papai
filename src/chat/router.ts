@@ -12,6 +12,7 @@ import { logger } from '../logger.js'
 import {
   activeManagedInstances,
   capabilitiesForManagedInstance,
+  configFingerprint,
   downloadFileFromManagedInstance,
   errorMessage,
   managedInstanceOrNull,
@@ -45,14 +46,6 @@ export type { ManagedChatInstance, ManagedChatInstanceFactory, ManagedChatInstan
 
 const log = logger.child({ scope: 'chat:router' })
 const ROUTER_LIFECYCLE_CONCURRENCY = 4
-
-const stableConfigEntries = (config: InstanceConfig): readonly (readonly [string, string])[] =>
-  Object.entries(config).toSorted(([left], [right]) => left.localeCompare(right))
-
-const configFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
-  const payload = JSON.stringify({ type, config: stableConfigEntries(config) })
-  return Bun.hash(payload).toString(16)
-}
 
 export class ChatRouter implements ChatProvider {
   readonly name = 'router'

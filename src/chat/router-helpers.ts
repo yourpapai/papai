@@ -3,8 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import type { AttachmentSourceProvider } from '../attachments/types.js'
-import type { InstanceStatus } from '../instances/types.js'
+import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
 import type { ManagedChatInstance, ManagedChatInstanceSnapshot } from './router-types.js'
 import type {
   ChatCapability,
@@ -29,6 +31,14 @@ export const fallbackTraits: ChatProviderTraits = { observedGroupMessages: 'all'
 export const fallbackContextRendered: ContextRendered = {
   method: 'text',
   content: 'No active chat provider is available to render this context.',
+}
+
+const stableConfigEntries = (config: InstanceConfig): readonly (readonly [string, string])[] =>
+  Object.entries(config).toSorted(([left], [right]) => left.localeCompare(right))
+
+export const configFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
+  const payload = JSON.stringify({ type, config: stableConfigEntries(config) })
+  return createHash('sha256').update(payload).digest('hex')
 }
 
 export const activeManagedInstances = (instances: Iterable<ManagedChatInstance>): ManagedChatInstance[] =>

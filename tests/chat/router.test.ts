@@ -227,6 +227,14 @@ const makeInteraction = (platformInstanceId: string): IncomingInteraction => ({
   callbackData: 'callback',
 })
 
+const snapshotFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
+  const fingerprintRouter = new ChatRouter((_id, providerType) => makeProvider(providerType, {}))
+  fingerprintRouter.addInstance('fingerprint-test', type, config)
+  const [snapshot] = fingerprintRouter.listInstances()
+  if (snapshot === undefined) throw new Error('missing fingerprint snapshot')
+  return snapshot.configFingerprint
+}
+
 describe('ChatRouter', () => {
   let providers: Record<string, FakeProvider>
   let factory: ManagedChatInstanceFactory
@@ -432,7 +440,22 @@ describe('ChatRouter', () => {
 
     expect(snapshot).toMatchObject({ id: 'telegram-main', type: 'telegram', status: 'pending' })
     expect(snapshot?.configFingerprint).toBeString()
+    expect(snapshot?.configFingerprint).toMatch(/^[a-f0-9]{64}$/u)
     expect(JSON.stringify(snapshot)).not.toContain('secret-token')
+  })
+
+  test('config fingerprints are stable across key order', () => {
+    const left = snapshotFingerprint('telegram', { token: 'secret-token', url: 'https://example.test' })
+    const right = snapshotFingerprint('telegram', { url: 'https://example.test', token: 'secret-token' })
+
+    expect(left).toBe(right)
+  })
+
+  test('config fingerprints change when config or platform type changes', () => {
+    const baseline = snapshotFingerprint('telegram', { token: 'secret-token' })
+
+    expect(snapshotFingerprint('telegram', { token: 'rotated-token' })).not.toBe(baseline)
+    expect(snapshotFingerprint('discord', { token: 'secret-token' })).not.toBe(baseline)
   })
 
   test('isolates start failures and starts remaining instances', async () => {
