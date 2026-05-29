@@ -300,7 +300,19 @@ Optional: debug server + debug/admin clients
   any `DEBUG_TOKEN` check so the per-user settings trust domain stays strictly
   separate from the operator domain. Tables `settings_auth_codes`,
   `settings_sessions`, `settings_rate_limit` are created by migration
-  `048_settings_auth`.
+  `048_settings_auth`. The per-capability data routes live under `/settings/api/*`,
+  dispatched by `src/debug/settings-api-router.ts` to handlers in
+  `src/debug/settings/` (`config-routes.ts`, `tools-routes.ts`, `mcp-routes.ts`,
+  `plugins-routes.ts`, `identity-routes.ts`, `provision-routes.ts`,
+  `group-routes.ts`) and `src/debug/settings/admin/` for the bot-admin/super-admin
+  wrappers (`instances-routes.ts`, `system-access-routes.ts`,
+  `roster-plugins-routes.ts`; shared guard in `admin-guard.ts`). Every handler
+  authenticates the settings session, verifies the `X-Settings-CSRF` header on
+  writes, and resolves a validated `contextId` through `requireScope` before
+  delegating to the same stores the chat `/config` flow and the
+  `DEBUG_TOKEN`-gated `/api/*` + `/admin/*` handlers use. Admin routes are thin
+  wrappers (no settings cookie ever satisfies a `DEBUG_TOKEN` route). Admin
+  plugin-config view is deferred.
 
 ## Plugin System
 
