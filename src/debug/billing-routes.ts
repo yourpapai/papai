@@ -44,11 +44,6 @@ export const handleBillingSubject = (url: URL): Response => {
 export const handleAdminLlmGet = (): Response => jsonResponse(200, getAdminLlmSnapshot())
 
 export const handleAdminLlmPost = async (req: Request): Promise<Response> => {
-  const debugToken = process.env['DEBUG_TOKEN']
-  if (debugToken === undefined || debugToken === '') {
-    log.warn('admin/llm POST refused: DEBUG_TOKEN is not set in env')
-    return jsonResponse(401, { error: 'credentials API requires DEBUG_TOKEN' })
-  }
   const adminUserId = process.env['ADMIN_USER_ID']
   if (adminUserId === undefined || adminUserId === '') {
     log.error('admin/llm POST refused: ADMIN_USER_ID is not set in env')

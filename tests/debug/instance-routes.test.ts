@@ -10,6 +10,9 @@ import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ManagedChatInstance } from '../../src/chat/router.js'
 import type { ChatProvider, ContextSnapshot } from '../../src/chat/types.js'
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { handleInstanceApiRoute, handleInstanceApiRouteWithDeps } from '../../src/debug/instance-routes.js'
 import { addAdmin, listAdmins, SUPER_ADMIN_PLATFORM_ID } from '../../src/instances/admin-store.js'
@@ -18,7 +21,7 @@ import {
   listContextsByTaskInstance,
   setContextSettings,
 } from '../../src/instances/context-store.js'
-import { insertPlatformInstance } from '../../src/instances/platform-store.js'
+import { getPlatformInstance, insertPlatformInstance } from '../../src/instances/platform-store.js'
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
@@ -28,13 +31,13 @@ import {
 } from '../../src/providers/registry.js'
 import { addUser, listUsers } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
-const TOKEN = 'instance-api-token'
-const jsonHeaders = {
-  Authorization: `Bearer ${TOKEN}`,
+let authCookieValue: string
+const jsonHeaders = (): Record<string, string> => ({
+  Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}`,
   'Content-Type': 'application/json',
-} as const
+})
 
 const readJson = async (res: Response): Promise<unknown> => JSON.parse(await res.text())
 
@@ -72,9 +75,21 @@ const assertArray = (value: unknown): readonly unknown[] => {
 
 const pick = (value: object, key: string): unknown => Reflect.get(value, key)
 
+const cachedToolsFor = (key: string): unknown => {
+  const entry = userCachesForTesting.get(key)
+  if (entry === undefined) return undefined
+  return entry.tools
+}
+
 const expectInstance = (router: ChatRouter, id: string): ManagedChatInstance => {
   const instance = router.getInstance(id)
   if (instance === null) throw new Error(`expected router instance ${id}`)
+  return instance
+}
+
+const expectPlatformInstance = (id: string): PlatformInstance => {
+  const instance = getPlatformInstance(id)
+  if (instance === null) throw new Error(`expected platform instance ${id}`)
   return instance
 }
 
@@ -114,35 +129,36 @@ describe('instance API routes', () => {
     mockLogger()
     userCachesForTesting.clear()
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
-    process.env['DEBUG_TOKEN'] = TOKEN
   })
 
   afterEach(() => {
     clearRuntimeChatRouter()
     userCachesForTesting.clear()
-    delete process.env['DEBUG_TOKEN']
+    setStoreDb(null)
   })
 
   test('creates and lists masked platform instances', async () => {
     const created = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
-        headers: jsonHeaders,
-        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret', label: 'main' } }),
+        headers: jsonHeaders(),
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret', label: 'main' } }),
       }),
     )
 
     expect(created.status).toBe(201)
     const createdBody = assertObject(await readJson(created))
-    expect(pick(createdBody, 'config')).toEqual({ bot_token: '********', label: 'main' })
+    expect(pick(createdBody, 'config')).toEqual({ token: '********', label: 'main' })
 
     const listed = expectResponse(await route('/api/platform-instances'))
 
     expect(listed.status).toBe(200)
     const rows = assertArray(await readJson(listed))
     expect(rows).toHaveLength(1)
-    expect(pick(assertObject(rows[0]), 'config')).toEqual({ bot_token: '********', label: 'main' })
+    expect(pick(assertObject(rows[0]), 'config')).toEqual({ token: '********', label: 'main' })
   })
 
   test('GET /api/platform-instances masks descriptor-sensitive fields', async () => {
@@ -155,13 +171,13 @@ describe('instance API routes', () => {
   })
 
   test('duplicate platform create returns instance_exists conflict', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
     const res = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
-        headers: jsonHeaders,
-        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'other-secret' } }),
+        headers: jsonHeaders(),
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'other-secret' } }),
       }),
     )
 
@@ -170,27 +186,47 @@ describe('instance API routes', () => {
   })
 
   test('PATCH /api/platform-instances/:id updates config and status with masked config', async () => {
-    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { bot_token: 'secret' }, status: 'active' })
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'PATCH',
-        headers: jsonHeaders,
-        body: JSON.stringify({ config: { bot_token: 'new-secret', label: 'main' }, status: 'stopped' }),
+        headers: jsonHeaders(),
+        body: JSON.stringify({ config: { token: 'new-secret', label: 'main' }, status: 'stopped' }),
       }),
     )
 
     expect(res.status).toBe(200)
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
-    expect(pick(body, 'config')).toEqual({ bot_token: '********', label: 'main' })
+    expect(pick(body, 'config')).toEqual({ token: '********', label: 'main' })
+  })
+
+  test('PATCH /api/platform-instances/:id rejects invalid config and preserves the previous config', async () => {
+    insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+
+    const res = expectResponse(
+      await route('/api/platform-instances/telegram-main', {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ config: { label: 'main' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_platform_instance_config',
+      type: 'telegram',
+      missing: ['token'],
+    })
+    expect(expectPlatformInstance('telegram-main').config).toEqual({ token: 'secret' })
   })
 
   test('platform PATCH missing instance returns 404', async () => {
     const res = expectResponse(
       await route('/api/platform-instances/missing-platform', {
         method: 'PATCH',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ status: 'stopped' }),
       }),
     )
@@ -208,12 +244,52 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: '', type: 'telegram', config: { token: 'secret' } }),
       }),
     )
 
     expect(res.status).toBe(400)
+  })
+
+  test('POST /api/platform-instances rejects missing descriptor-required config', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { label: 'main' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_platform_instance_config',
+      type: 'telegram',
+      missing: ['token'],
+    })
+    expect(getPlatformInstance('telegram-main')).toBeNull()
+  })
+
+  test('POST /api/platform-instances rejects malformed descriptor URL config', async () => {
+    const res = expectResponse(
+      await route('/api/platform-instances', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          id: 'mattermost-main',
+          type: 'mattermost',
+          config: { baseUrl: 'not a url', token: 'secret' },
+        }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_platform_instance_config',
+      type: 'mattermost',
+      invalidUrls: ['baseUrl'],
+    })
+    expect(getPlatformInstance('mattermost-main')).toBeNull()
   })
 
   test('rejects writes when DEBUG_TOKEN is unset', async () => {
@@ -234,7 +310,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances/apply', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
       }),
     )
 
@@ -258,7 +334,7 @@ describe('instance API routes', () => {
             throw new Error('decrypt failed')
           },
         },
-        { method: 'POST', headers: jsonHeaders },
+        { method: 'POST', headers: jsonHeaders() },
       ),
     )
 
@@ -286,7 +362,7 @@ describe('instance API routes', () => {
         { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
         {
           method: 'POST',
-          headers: jsonHeaders,
+          headers: jsonHeaders(),
         },
       ),
     )
@@ -320,7 +396,7 @@ describe('instance API routes', () => {
       await routeWithDeps(
         '/api/platform-instances/apply',
         { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => instances },
-        { method: 'POST', headers: jsonHeaders },
+        { method: 'POST', headers: jsonHeaders() },
       ),
     )
 
@@ -351,7 +427,7 @@ describe('instance API routes', () => {
       await routeWithDeps(
         '/api/platform-instances/apply',
         { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
-        { method: 'POST', headers: jsonHeaders },
+        { method: 'POST', headers: jsonHeaders() },
       ),
     )
 
@@ -374,7 +450,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -384,9 +460,9 @@ describe('instance API routes', () => {
     expect(listAdmins().map((admin) => `${admin.platformInstanceId}:${admin.userId}`)).toEqual([
       '__super__:super-admin',
     ])
-    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-1:user-1:alice')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('deleting platform instance does not remove runtime router instance until apply', async () => {
@@ -400,7 +476,7 @@ describe('instance API routes', () => {
     const deleted = expectResponse(
       await route('/api/platform-instances/telegram-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -411,7 +487,7 @@ describe('instance API routes', () => {
     const applied = expectResponse(
       await route('/api/platform-instances/apply', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
       }),
     )
 
@@ -423,14 +499,14 @@ describe('instance API routes', () => {
   test('updates platform instance status', async () => {
     await route('/api/platform-instances', {
       method: 'POST',
-      headers: jsonHeaders,
+      headers: jsonHeaders(),
       body: JSON.stringify({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' } }),
     })
 
     const res = expectResponse(
       await route('/api/platform-instances/telegram-main/status', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ status: 'stopped' }),
       }),
     )
@@ -447,7 +523,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -466,14 +542,14 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
     expect(res.status).toBe(204)
-    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-1:user-1:alice')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-1:user-1:alice')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
   })
 
   test('lists task instances with referencing context IDs', async () => {
@@ -499,7 +575,7 @@ describe('instance API routes', () => {
     const created = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({
           id: 'tasks-main',
           type: 'kaneo',
@@ -529,7 +605,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { url: 'https://other.invalid' } }),
       }),
     )
@@ -540,7 +616,12 @@ describe('instance API routes', () => {
 
   test('PATCH /api/task-instances/:id updates config and status and clears referencing context tool cache', async () => {
     seedPlatformInstance('telegram-main')
-    insertTaskInstance({ id: 'tasks-main', type: 'kaneo', config: { api_key: 'secret' }, status: 'active' })
+    insertTaskInstance({
+      id: 'tasks-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'tasks-main', platformInstanceId: 'telegram-main' })
     setCachedTools('ctx-1', { old_tool: {} })
     setCachedTools('ctx-other', { old_tool: {} })
@@ -548,24 +629,55 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances/tasks-main', {
         method: 'PATCH',
-        headers: jsonHeaders,
-        body: JSON.stringify({ config: { api_key: 'new-secret' }, status: 'stopped' }),
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          config: { baseUrl: 'https://new-kaneo.invalid', internalUrl: 'https://internal.kaneo.invalid' },
+          status: 'stopped',
+        }),
       }),
     )
 
     expect(res.status).toBe(200)
     const body = assertObject(await readJson(res))
     expect(pick(body, 'status')).toBe('stopped')
-    expect(pick(body, 'config')).toEqual({ api_key: '********' })
-    expect(userCachesForTesting.get('ctx-1')?.tools).toBeNull()
-    expect(userCachesForTesting.get('ctx-other')?.tools).toEqual({ old_tool: {} })
+    expect(pick(body, 'config')).toEqual({
+      baseUrl: 'https://new-kaneo.invalid',
+      internalUrl: 'https://internal.kaneo.invalid',
+    })
+    expect(cachedToolsFor('ctx-1')).toBeNull()
+    expect(cachedToolsFor('ctx-other')).toEqual({ old_tool: {} })
+  })
+
+  test('PATCH /api/task-instances/:id rejects missing descriptor-required config and preserves the previous config', async () => {
+    insertTaskInstance({
+      id: 'tasks-main',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
+
+    const res = expectResponse(
+      await route('/api/task-instances/tasks-main', {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ config: { internalUrl: 'https://internal.kaneo.invalid' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_task_instance_config',
+      type: 'kaneo',
+      missing: ['baseUrl'],
+    })
+    expect(expectTaskInstance('tasks-main').config).toEqual({ baseUrl: 'https://kaneo.invalid' })
   })
 
   test('creates and deletes super-admin rows', async () => {
     const created = expectResponse(
       await route('/api/admins', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ userId: 'admin-1' }),
       }),
     )
@@ -577,7 +689,7 @@ describe('instance API routes', () => {
     const deleted = expectResponse(
       await route(`/api/admins/admin-1/${SUPER_ADMIN_PLATFORM_ID}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: jsonHeaders(),
       }),
     )
 
@@ -589,7 +701,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/admins', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ userId: 'admin-1', platformInstanceId: 'missing-platform' }),
       }),
     )
@@ -625,7 +737,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await route('/api/task-instances', {
         method: 'POST',
-        headers: jsonHeaders,
+        headers: jsonHeaders(),
         body: JSON.stringify({ id: 'mystery-1', type: 'mystery', config: { baseUrl: 'https://x.invalid' } }),
       }),
     )
@@ -634,6 +746,24 @@ describe('instance API routes', () => {
     const body = assertObject(await readJson(res))
     expect(pick(body, 'error')).toBe('unknown_task_provider_type')
     expect(pick(body, 'type')).toBe('mystery')
+  })
+
+  test('POST /api/task-instances rejects malformed descriptor URL config', async () => {
+    const res = expectResponse(
+      await route('/api/task-instances', {
+        method: 'POST',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ id: 'tasks-main', type: 'kaneo', config: { baseUrl: 'not a url' } }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await readJson(res)).toEqual({
+      error: 'invalid_task_instance_config',
+      type: 'kaneo',
+      invalidUrls: ['baseUrl'],
+    })
+    expect(getTaskInstance('tasks-main')).toBeNull()
   })
 
   test('unknown task provider masks every config field', async () => {
@@ -655,21 +785,61 @@ describe('instance API routes', () => {
       configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     try {
-      const res = await routeWithDeps(
-        '/api/task-instances',
-        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
-        {
-          method: 'POST',
-          headers: jsonHeaders,
-          body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'bad' } }),
-        },
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ id: 'v1', type: 'validated', config: { baseUrl: 'https://bad.invalid' } }),
+          },
+        ),
       )
-      expect(res?.status).toBe(400)
-      const body = assertObject(await readJson(res!))
+      expect(res.status).toBe(400)
+      const body = assertObject(await readJson(res))
       expect(pick(body, 'error')).toBe('invalid_task_instance_config')
       expect(pick(body, 'reason')).toBe('bad url')
     } finally {
       unregisterContributedTaskProviderType('val')
+    }
+  })
+
+  test('PATCH /api/task-instances/:id rejects config when the contributed provider validator fails', async () => {
+    registerContributedTaskProviderType('validated-patch', {
+      pluginId: 'val-patch',
+      factory: () => createMockProvider({ name: 'validated-patch' }),
+      validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
+      capabilities: new Set<never>(),
+      displayName: 'Validated Patch',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    insertTaskInstance({
+      id: 'validated-patch-1',
+      type: 'validated-patch',
+      config: { baseUrl: 'https://old.invalid' },
+      status: 'active',
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances/validated-patch-1',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'PATCH',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ config: { baseUrl: 'https://new.invalid' } }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      const body = assertObject(await readJson(res))
+      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
+      expect(pick(body, 'reason')).toBe('bad url')
+      expect(expectTaskInstance('validated-patch-1').config).toEqual({ baseUrl: 'https://old.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('val-patch')
     }
   })
 
@@ -683,16 +853,18 @@ describe('instance API routes', () => {
       configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     try {
-      const res = await routeWithDeps(
-        '/api/task-instances',
-        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
-        {
-          method: 'POST',
-          headers: jsonHeaders,
-          body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
-        },
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
+          },
+        ),
       )
-      expect(res?.status).toBe(201)
+      expect(res.status).toBe(201)
       const instance = getTaskInstance('v-ok-1')
       expect(instance).not.toBeNull()
     } finally {
@@ -720,7 +892,7 @@ describe('instance API routes', () => {
           { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
           {
             method: 'POST',
-            headers: jsonHeaders,
+            headers: jsonHeaders(),
             body: JSON.stringify({
               id: 'masktest-1',
               type: 'masktest',

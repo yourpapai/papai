@@ -74,6 +74,19 @@ describe('TaskProviderResolver', () => {
     expect(created).toEqual([])
   })
 
+  test('returns null when assigned task instance type is not registered', () => {
+    insertTaskInstance({ id: 'missing-provider', type: 'ghost-provider', config: {}, status: 'active' })
+    setContextSettings({
+      contextId: 'ctx-plugin-gone',
+      taskInstanceId: 'missing-provider',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const resolver = new TaskProviderResolver()
+
+    expect(resolver.resolve('ctx-plugin-gone')).toBeNull()
+  })
+
   test('builds a YouTrack provider from instance URL and per-context token', () => {
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })

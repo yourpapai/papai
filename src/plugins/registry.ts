@@ -3,9 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { ChatCapability } from '../chat/types.js'
+import { clearCachedToolsByPrefix } from '../cache.js'
 import { logger } from '../logger.js'
-import type { TaskCapability } from '../providers/types.js'
 import { checkPluginCompatibility } from './compatibility.js'
 import {
   NO_ACTIVE_INSTANCE_COMPATIBILITY_REASON,
@@ -151,22 +150,6 @@ export class PluginRegistry {
     return true
   }
 
-  evaluateCompatibility(
-    pluginId: string,
-    taskCapabilities: ReadonlySet<TaskCapability>,
-    chatCapabilities: ReadonlySet<ChatCapability>,
-  ): void {
-    const entry = this.entries.get(pluginId)
-    if (entry === undefined || entry.state !== 'approved') return
-
-    const result = checkPluginCompatibility(entry.discoveredPlugin.manifest, taskCapabilities, chatCapabilities)
-    if (!result.compatible) {
-      entry.state = 'incompatible'
-      entry.compatibilityReason = result.reason
-      log.warn({ pluginId, reason: result.reason }, 'Plugin marked incompatible')
-    }
-  }
-
   evaluateCompatibilityAcrossInstances(instances: readonly PluginCompatibilityInstance[]): void {
     const candidates = normalizeCompatibilityInstances(instances)
     for (const [pluginId, entry] of this.entries.entries()) {
@@ -246,6 +229,7 @@ export function resetPluginRegistryForTesting(): void {
 
 export function setPluginEnabledForContext(pluginId: string, contextId: string, enabled: boolean): void {
   setPluginContextEnabled(pluginId, contextId, enabled)
+  clearCachedToolsByPrefix(contextId)
 }
 
 export function isPluginActiveForContext(pluginId: string, contextId: string): boolean {

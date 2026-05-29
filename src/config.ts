@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { getCachedConfig, setCachedConfig } from './cache.js'
+import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from './cache.js'
 import { getConfigKeysForContext } from './config-keys.js'
 import { logger } from './logger.js'
 import { isAllowedDynamicConfigKey, isConfigKey as isKnownConfigKey, type ConfigKey } from './types/config.js'
@@ -12,25 +12,38 @@ import { normalizeTimezoneValue } from './utils/timezone.js'
 const log = logger.child({ scope: 'config' })
 
 const SENSITIVE_KEYS: ReadonlySet<string> = new Set(['kaneo_apikey', 'youtrack_token'])
+const TOOL_ASSEMBLY_CONFIG_KEYS: ReadonlySet<string> = new Set(['mcp_endpoints'])
+
+function clearToolCacheIfToolAssemblyConfig(contextId: string, key: string): void {
+  if (TOOL_ASSEMBLY_CONFIG_KEYS.has(key)) clearCachedToolsByPrefix(contextId)
+}
 
 function normalizeConfigValue(key: ConfigKey, value: string): string {
   if (key !== 'timezone') return value
-  return normalizeTimezoneValue(value) ?? value.trim()
+  const normalized = normalizeTimezoneValue(value)
+  if (normalized !== null) return normalized
+  return value.trim()
 }
 
 function readConfigValue(key: ConfigKey, value: string | null): string | null {
   if (value === null || key !== 'timezone') return value
-  return normalizeTimezoneValue(value) ?? value.trim()
+  const normalized = normalizeTimezoneValue(value)
+  if (normalized !== null) return normalized
+  return value.trim()
 }
 
 function normalizeDynamicConfigValue(key: string, value: string): string {
   if (key !== 'timezone') return value
-  return normalizeTimezoneValue(value) ?? value.trim()
+  const normalized = normalizeTimezoneValue(value)
+  if (normalized !== null) return normalized
+  return value.trim()
 }
 
 function readDynamicConfigValue(key: string, value: string | null): string | null {
   if (value === null || key !== 'timezone') return value
-  return normalizeTimezoneValue(value) ?? value.trim()
+  const normalized = normalizeTimezoneValue(value)
+  if (normalized !== null) return normalized
+  return value.trim()
 }
 
 export function isSensitiveKey(key: string): boolean {
@@ -40,6 +53,7 @@ export function isSensitiveKey(key: string): boolean {
 export function setConfig(userId: string, key: ConfigKey, value: string): void {
   log.debug({ userId, key }, 'setConfig called')
   setCachedConfig(userId, key, normalizeConfigValue(key, value))
+  clearToolCacheIfToolAssemblyConfig(userId, key)
   log.info({ userId, key }, 'Config key set (DB sync in background)')
 }
 
@@ -52,6 +66,7 @@ export function setConfigValue(contextId: string, key: string, value: string): v
   if (!isAllowedDynamicConfigKey(key)) throw new Error(`Invalid config key: ${key}`)
   log.debug({ contextId, key }, 'setConfigValue called')
   setCachedConfig(contextId, key, normalizeDynamicConfigValue(key, value))
+  clearToolCacheIfToolAssemblyConfig(contextId, key)
   log.info({ contextId, key }, 'Config value set (DB sync in background)')
 }
 
@@ -88,6 +103,7 @@ export function getPluginConfig(contextId: string, pluginId: string, key: string
 
 export function setPluginConfig(contextId: string, pluginId: string, key: string, value: string): void {
   setCachedConfig(contextId, getPluginConfigStorageKey(pluginId, key), value)
+  clearCachedToolsByPrefix(contextId)
 }
 
 export function maskValue(key: string, value: string): string {

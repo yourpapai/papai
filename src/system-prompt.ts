@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { getConfigContextIdFromStorageContextId } from './chat/scoped-context.js'
 import { buildInstructionsBlock } from './instructions.js'
 import { buildPluginPromptSection } from './plugins/prompt-contributions.js'
 import { getPluginsForContext } from './plugins/registry.js'
@@ -154,6 +155,7 @@ function assembleSystemPrompt(
   contextId: string,
   enabledToolNames: ReadonlySet<string> | undefined,
 ): string {
+  const sharedContextId = getConfigContextIdFromStorageContextId(contextId)
   const parts: string[] = [CORE_INTRO]
   for (const fragment of FRAGMENTS) {
     if (fragmentIncluded(fragment, enabledToolNames)) parts.push(fragment.text)
@@ -161,15 +163,17 @@ function assembleSystemPrompt(
   parts.push(buildOutputRules(enabledToolNames))
 
   if (enabledToolNames !== undefined) {
-    const line = buildUnavailableLine(getToolPrefs(contextId), enabledToolNames)
+    const line = buildUnavailableLine(getToolPrefs(sharedContextId), enabledToolNames)
     if (line !== null) parts.push(line)
   }
 
   const basePromptBody = parts.join('\n\n')
   const addendum = provider.getPromptAddendum()
-  const basePrompt = `${buildInstructionsBlock(contextId)}${addendum === '' ? basePromptBody : `${basePromptBody}\n\n${addendum}`}`
+  const basePrompt = `${buildInstructionsBlock(sharedContextId)}${
+    addendum === '' ? basePromptBody : `${basePromptBody}\n\n${addendum}`
+  }`
 
-  const activePlugins = getPluginsForContext(contextId)
+  const activePlugins = getPluginsForContext(sharedContextId)
   if (activePlugins.length === 0) return basePrompt
 
   const activePluginIds = activePlugins.map((p) => p.manifest.id)

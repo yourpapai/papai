@@ -479,12 +479,12 @@ describe('registerPluginCommand', () => {
       manifest: { ...plugin.manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
-    pluginRegistry.evaluateCompatibility(plugin.manifest.id, new Set(), new Set())
+    pluginRegistry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
 
     const output = await runPluginCommand('info incompatible-plugin')
 
     expect(output).toContain('incompatible')
-    expect(output).toContain('Required task capability missing')
+    expect(output).toContain('No active instance satisfies required capabilities')
   })
 
   test('shows runtime error diagnostics in plugin info', async () => {

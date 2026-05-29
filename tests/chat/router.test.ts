@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { ChatRouter, type ManagedChatInstance, type ManagedChatInstanceFactory } from '../../src/chat/router.js'
 import { dmTarget } from '../../src/chat/types.js'
@@ -24,6 +24,7 @@ import type {
 import { setContextSettings } from '../../src/instances/context-store.js'
 import type { InstanceConfig, PlatformInstanceType } from '../../src/instances/types.js'
 import {
+  createTrackedLoggerMock,
   mockLogger,
   seedCommonTestPlatformInstances,
   seedTestTaskInstance,
@@ -40,6 +41,8 @@ type FakeProvider = ChatProvider & {
   commandHandlers: Record<string, CommandHandler>
   setCommandsCalls: string[]
 }
+
+type RouterModule = typeof import('../../src/chat/router.js')
 
 const fakeReply: ReplyFn = {
   text: () => Promise.resolve(),
@@ -82,6 +85,26 @@ const noopPromise = (): Promise<void> => Promise.resolve()
 const callResolver = (resolve: (() => void) | undefined): void => {
   if (resolve === undefined) throw new Error('resolver missing')
   resolve()
+}
+
+const requireSetCommands = (
+  setCommandsById: Record<string, () => Promise<void>>,
+  id: string,
+): (() => Promise<void>) => {
+  const setCommands = setCommandsById[id]
+  if (setCommands === undefined) throw new Error(`missing setCommands for ${id}`)
+  return setCommands
+}
+
+const isRouterModule = (module: unknown): module is RouterModule =>
+  typeof module === 'object' && module !== null && 'ChatRouter' in module && typeof module.ChatRouter === 'function'
+
+const loadFreshRouterModule = async (): Promise<RouterModule> => {
+  const module: unknown = await import(`../../src/chat/router.js?test=${crypto.randomUUID()}`)
+  if (!isRouterModule(module)) {
+    throw new Error('Failed to load chat router module for testing')
+  }
+  return module
 }
 
 type FakeProviderOptions = Partial<{
@@ -576,7 +599,7 @@ describe('ChatRouter', () => {
     expect(groupLabel).toBe('discord:group-1')
   })
 
-  test('continues setting commands when one instance fails', async () => {
+  test('rejects setting commands when one instance fails', async () => {
     const setCommandsById: Record<string, (adminUserId: string, calls: string[]) => Promise<void>> = {
       bad: () => Promise.reject(new Error('command menu failed')),
       good: () => Promise.resolve(),
@@ -592,10 +615,48 @@ describe('ChatRouter', () => {
     router.addInstance('bad', 'telegram', {})
     router.addInstance('good', 'discord', {})
 
-    await expect(router.setCommands('admin-1')).resolves.toBeUndefined()
+    await expect(router.setCommands('admin-1')).rejects.toThrow('command menu failed')
 
     expect(getProvider('bad').setCommandsCalls).toEqual(['admin-1'])
     expect(getProvider('good').setCommandsCalls).toEqual(['admin-1'])
+  })
+
+  test('logs and rethrows synchronous command publication failures', async () => {
+    const trackedLogger = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({
+      getLogLevel: trackedLogger.getLogLevel,
+      logger: trackedLogger.logger,
+    }))
+    const routerModule = await loadFreshRouterModule()
+    const FreshChatRouter = routerModule.ChatRouter
+
+    const setCommandsById: Record<string, () => Promise<void>> = {
+      bad: () => {
+        throw new Error('sync command failure')
+      },
+      good: () => Promise.resolve(),
+    }
+
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, {
+        setCommands: () => requireSetCommands(setCommandsById, id)(),
+      })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+
+    const freshRouter = new FreshChatRouter(factory)
+    freshRouter.addInstance('bad', 'telegram', {})
+    freshRouter.addInstance('good', 'discord', {})
+
+    await expect(freshRouter.setCommands('admin-1')).rejects.toThrow('sync command failure')
+
+    expect(getProvider('bad').setCommandsCalls).toEqual(['admin-1'])
+    expect(getProvider('good').setCommandsCalls).toEqual(['admin-1'])
+    expect(trackedLogger.getCallsByLevel('warn')).toContainEqual({
+      level: 'warn',
+      args: [{ platformInstanceId: 'bad', error: 'sync command failure' }, 'failed to set chat commands'],
+    })
   })
 
   test('excludes stopped instances from aggregate metadata and command menus', async () => {

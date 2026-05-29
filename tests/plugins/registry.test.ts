@@ -187,23 +187,25 @@ describe('PluginRegistry', () => {
     expectEntryState(registry, 'test-plugin', 'approved')
   })
 
-  test('evaluateCompatibility marks incompatible when capability missing', () => {
+  test('evaluateCompatibilityAcrossInstances marks incompatible when capability missing', () => {
     const plugin = makePlugin({
       manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
-    registry.evaluateCompatibility('test-plugin', new Set(), new Set())
+    registry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
     expectEntryState(registry, 'test-plugin', 'incompatible')
   })
 
-  test('evaluateCompatibility leaves compatible plugin as approved', () => {
+  test('evaluateCompatibilityAcrossInstances leaves compatible plugin as approved', () => {
     const plugin = makePlugin({
       manifest: { ...makePlugin().manifest, requiredTaskCapabilities: ['tasks.delete'] },
     })
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
-    registry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
+    registry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(['tasks.delete']), chatCapabilities: new Set() },
+    ])
     expectEntryState(registry, 'test-plugin', 'approved')
   })
 
@@ -312,12 +314,14 @@ describe('PluginRegistry', () => {
     })
     registry.registerDiscovered(plugin)
     registry.approve('test-plugin', 'admin', 'hash-abc')
-    registry.evaluateCompatibility('test-plugin', new Set(), new Set())
+    registry.evaluateCompatibilityAcrossInstances([{ taskCapabilities: new Set(), chatCapabilities: new Set() }])
     expectEntryState(registry, 'test-plugin', 'incompatible')
 
     const restartedRegistry = new PluginRegistry()
     restartedRegistry.registerDiscovered(plugin)
-    restartedRegistry.evaluateCompatibility('test-plugin', new Set(['tasks.delete']), new Set())
+    restartedRegistry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: new Set(['tasks.delete']), chatCapabilities: new Set() },
+    ])
 
     expectEntryState(restartedRegistry, 'test-plugin', 'approved')
     expect(restartedRegistry.getApprovedCompatiblePlugins()).toHaveLength(1)

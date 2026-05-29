@@ -6,12 +6,15 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { setPluginConfig } from '../../src/config.js'
+import { setContextSettings } from '../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { getPluginContextEligibilityForEntry } from '../../src/plugins/registry-context-eligibility.js'
+import { getPluginContextEligibility, pluginRegistry } from '../../src/plugins/registry.js'
 import type { PluginRegistryEntry } from '../../src/plugins/registry.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../utils/test-helpers.js'
 
 function makePlugin(overrides?: Partial<DiscoveredPlugin>): DiscoveredPlugin {
   return {
@@ -103,5 +106,33 @@ describe('admin-scoped config eligibility', () => {
 
     const result = getPluginContextEligibilityForEntry(makeActiveEntry(plugin), 'test-plugin', 'ctx-1')
     expect(result).toEqual({ eligible: true })
+  })
+
+  test('returns capability_missing instead of throwing when assigned task provider type is unknown', () => {
+    const pluginId = 'unknown-provider-eligibility-plugin'
+    const contextId = 'ctx-unknown-provider'
+    const plugin = makePlugin({
+      manifest: {
+        ...makePlugin().manifest,
+        id: pluginId,
+        name: 'Unknown Provider Eligibility Plugin',
+        defaultEnabled: true,
+        requiredTaskCapabilities: ['workItems.list'],
+      },
+      manifestHash: 'hash-unknown-provider-eligibility',
+    })
+    insertTaskInstance({ id: 'ghost-task', type: 'ghost-provider', config: {}, status: 'active' })
+    seedTestPlatformInstance({ id: 'telegram-a' })
+    setContextSettings({ contextId, taskInstanceId: 'ghost-task', platformInstanceId: 'telegram-a' })
+
+    pluginRegistry.registerDiscovered(plugin)
+    pluginRegistry.approve(pluginId, 'admin', 'hash-unknown-provider-eligibility')
+    pluginRegistry.markActive(pluginId)
+
+    expect(getPluginContextEligibility(pluginId, contextId)).toEqual({
+      eligible: false,
+      reason: 'capability_missing',
+      missingCapabilities: ['workItems.list'],
+    })
   })
 })

@@ -49,6 +49,11 @@ export const getContextSettings = (contextId: string): ContextSettings | null =>
   return row === undefined ? null : rowToSettings(row)
 }
 
+export const listContextSettings = (): ContextSettings[] => {
+  const rows = getDrizzleDb().select().from(contextSettings).all()
+  return rows.map((row) => rowToSettings(row))
+}
+
 export const listContextsByTaskInstance = (taskInstanceId: string): ContextSettings[] => {
   const rows = getDrizzleDb()
     .select()

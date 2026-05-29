@@ -123,7 +123,9 @@ describe('plugin lifecycle integration', () => {
 
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
-    pluginRegistry.evaluateCompatibility(plugin.manifest.id, provider.capabilities, new Set())
+    pluginRegistry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: provider.capabilities, chatCapabilities: new Set() },
+    ])
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
     setPluginEnabledForContext(plugin.manifest.id, 'ctx-enabled', true)
 
@@ -186,7 +188,9 @@ describe('plugin lifecycle integration', () => {
     const plugin = discoverSinglePlugin(rootDir)
     pluginRegistry.registerDiscovered(plugin)
     pluginRegistry.approve(plugin.manifest.id, 'admin-user', plugin.manifestHash)
-    pluginRegistry.evaluateCompatibility(plugin.manifest.id, provider.capabilities, new Set())
+    pluginRegistry.evaluateCompatibilityAcrossInstances([
+      { taskCapabilities: provider.capabilities, chatCapabilities: new Set() },
+    ])
 
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
