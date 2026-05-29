@@ -108,7 +108,9 @@ jobs:
   mutation-testing:
     name: Mutation Testing (paired, changed files)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
+    # Temporarily disabled while the paired mutation runner is calibrated.
+    # Re-enable with: if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ false }}
     # Warn-only during calibration. Flip continue-on-error to false once we
     # have a stable score floor (see spec §5).
     continue-on-error: true

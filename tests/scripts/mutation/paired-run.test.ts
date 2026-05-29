@@ -106,6 +106,50 @@ describe('pairedRun', () => {
     expect(result.skipped).toEqual([])
   })
 
+  test('logs each file before and immediately after it runs', async () => {
+    const reportDir = makeReportDir()
+    const messages: string[] = []
+    const messagesSeenByStryker: string[][] = []
+    const runStryker = mock((configPath: string) => {
+      messagesSeenByStryker.push([...messages])
+      writeConfiguredReport(configPath, makeReport(['Killed']))
+    })
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: (srcFile) => `tests/${path.basename(srcFile, '.ts')}.test.ts`,
+      loadOverrides: () => ({}),
+      runStryker,
+      readReport: readStrykerReport,
+      log: (message) => {
+        messages.push(message)
+      },
+    }
+
+    await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/one.ts', 'src/two.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(messagesSeenByStryker).toEqual([
+      ['Running paired mutation 1/2: src/one.ts'],
+      [
+        'Running paired mutation 1/2: src/one.ts',
+        'src/one.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
+        'Running paired mutation 2/2: src/two.ts',
+      ],
+    ])
+    expect(messages).toEqual([
+      'Running paired mutation 1/2: src/one.ts',
+      'src/one.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
+      'Running paired mutation 2/2: src/two.ts',
+      'src/two.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
+      'Paired mutation summary: files=2 skipped=0 killed=2 survived=0 pending=0 score=1',
+    ])
+  })
+
   test('logs concise per-file and aggregate summaries', async () => {
     const reportDir = makeReportDir()
     const messages: string[] = []
@@ -131,6 +175,7 @@ describe('pairedRun', () => {
     })
 
     expect(messages).toEqual([
+      'Running paired mutation 1/1: src/foo.ts',
       'src/foo.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
       'Paired mutation summary: files=1 skipped=0 killed=1 survived=0 pending=0 score=1',
     ])
@@ -239,6 +284,37 @@ describe('pairedRun', () => {
         }),
       ),
     ).rejects.toThrow(/missing Stryker JSON report/u)
+  })
+
+  test('includes captured Stryker output when it throws without writing the report', async () => {
+    const reportDir = makeReportDir()
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: () => 'tests/foo.test.ts',
+      loadOverrides: () => ({}),
+      runStryker: mock(() => {
+        const error = new Error('Command failed: stryker run')
+        Object.defineProperties(error, {
+          stderr: { value: new TextEncoder().encode('Stryker configuration failed') },
+          stdout: { value: new TextEncoder().encode('initializing Stryker') },
+        })
+        throw error
+      }),
+      readReport: () => makeReport(['Killed']),
+      log: () => {},
+    }
+
+    await expect(
+      Promise.resolve().then(() =>
+        pairedRun({
+          projectRoot: '/repo',
+          reportDir,
+          sourceFiles: ['src/foo.ts'],
+          verbose: undefined,
+          deps,
+        }),
+      ),
+    ).rejects.toThrow(/Stryker configuration failed/u)
   })
 
   test('skips files with no companion and no override', async () => {

@@ -11,8 +11,10 @@ import { findTestFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { buildPairedConfig } from './config-builder.js'
 import type { StrykerConfig } from './config-builder.js'
 import { readJsonRecord, readStrykerReport } from './json-readers.js'
+import { appendProcessFailure } from './process-error.js'
 import { mergeReports } from './score-merger.js'
 import type { MergedScore, StrykerReport } from './score-merger.js'
+import { runStrykerWithCapturedFailure } from './stryker-run.js'
 import { loadOverrides as loadOverridesFile, resolveTestFiles } from './test-overrides.js'
 import type { OverridesMap } from './test-overrides.js'
 
@@ -156,13 +158,14 @@ const runOneFile = (
     testFiles: resolved.testFiles,
   })
   fs.rmSync(reportPath, { force: true })
-  try {
-    deps.runStryker(configPath, input.projectRoot, { verbose })
-  } catch {
-    // Stryker returns non-zero for threshold failures even when it wrote a usable report.
-  }
+  const strykerRun = runStrykerWithCapturedFailure(deps, configPath, input.projectRoot, verbose)
   if (!fs.existsSync(reportPath)) {
-    throw new Error(`missing Stryker JSON report for ${srcFile}: ${reportPath}`)
+    const message = `missing Stryker JSON report for ${srcFile}: ${reportPath}`
+    throw new Error(
+      strykerRun.kind === 'ok'
+        ? message
+        : appendProcessFailure(message, 'Stryker failed before writing the report', strykerRun.error),
+    )
   }
   const report = deps.readReport(reportPath)
   return {
@@ -193,15 +196,17 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const overrides = deps.loadOverrides(input.projectRoot)
   fs.mkdirSync(input.reportDir, { recursive: true })
 
-  const results = sourceFiles.map((srcFile) => runOneFile(srcFile, input, deps, base, overrides, verbose))
+  const results = sourceFiles.map((srcFile, index) => {
+    deps.log(`Running paired mutation ${index + 1}/${sourceFiles.length}: ${srcFile}`)
+    const result = runOneFile(srcFile, input, deps, base, overrides, verbose)
+    if (!isSkippedFile(result)) deps.log(formatFileSummary(result))
+    return result
+  })
   const completed = results.filter((result): result is CompletedFileRun => !isSkippedFile(result))
   const perFile = completed.map(({ report: _report, ...result }) => result)
   const skipped = results.filter((result) => isSkippedFile(result))
   const merged = mergeReports(completed.map((result) => result.report))
 
-  perFile.forEach((result) => {
-    deps.log(formatFileSummary(result))
-  })
   deps.log(
     `Paired mutation summary: files=${perFile.length} skipped=${skipped.length} killed=${merged.killed} survived=${merged.survived} pending=${merged.pending} score=${merged.score}`,
   )
