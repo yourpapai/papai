@@ -27,12 +27,17 @@ const jsonResponse = (status: number, body: unknown, extraHeaders: Record<string
     headers: { 'Content-Type': 'application/json', ...extraHeaders },
   })
 
-/** Best-effort client IP for rate-limiting; trusts the reverse proxy's first XFF hop. */
+/**
+ * Best-effort client IP for rate-limiting. Behind the reverse-proxy deployment
+ * model the trusted proxy appends the real client IP as the LAST X-Forwarded-For
+ * hop; the leftmost hops are client-controllable and must not be trusted.
+ */
 function clientIp(req: Request): string {
   const xff = req.headers.get('X-Forwarded-For')
   if (xff !== null && xff.length > 0) {
-    const first = xff.split(',')[0]
-    if (first !== undefined && first.trim() !== '') return first.trim()
+    const hops = xff.split(',')
+    const last = hops.at(-1)?.trim()
+    if (last !== undefined && last !== '') return last
   }
   return 'unknown'
 }

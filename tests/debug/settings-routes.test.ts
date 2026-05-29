@@ -130,4 +130,21 @@ describe('settings routes', () => {
     expect(ok.status).toBe(200)
     expect(ok.headers.get('Set-Cookie')).toContain('Max-Age=0')
   })
+
+  test('exchange returns 429 with Retry-After once the quota is exhausted', async () => {
+    for (let i = 0; i < 10; i += 1) {
+      await handleSettingsExchange(exchangeRequest('bogus'), 1000)
+    }
+    const res = await handleSettingsExchange(exchangeRequest('bogus'), 1000)
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).not.toBeNull()
+  })
+
+  test('exchange rejects a replayed (already-consumed) code with 401', async () => {
+    const code = issueAuthCode(principal, 1000)
+    const first = await handleSettingsExchange(exchangeRequest(code), 2000)
+    expect(first.status).toBe(200)
+    const replay = await handleSettingsExchange(exchangeRequest(code), 3000)
+    expect(replay.status).toBe(401)
+  })
 })
