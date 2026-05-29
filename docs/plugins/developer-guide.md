@@ -56,27 +56,27 @@ Required fields: `id`, `name`, `version`, `description`, and `apiVersion`.
 
 Supported optional fields:
 
-| Field                           | Description                                                                                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main`                          | Entry point path, defaulting to `index.ts`.                                                                                                       |
-| `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
-| `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
-| `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
-| `contributes.jobs`              | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
-| `contributes.configKeys`        | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
-| `contributes.taskProviderTypes` | At most one plugin-owned task provider type. Requires `provider.task`.                                                                            |
-| `providerCapabilities`          | Task capabilities exposed by the contributed provider type.                                                                                       |
-| `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                  |
-| `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                        |
-| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`.                                                                                         |
-| `providerConfigValidator`       | Optional exported validator function name for provider instance config, invoked before task-instance writes using only instance-scoped fields.    |
-| `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                        |
-| `permissions`                   | Permission claims checked by framework facades.                                                                                                   |
-| `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
-| `requiredTaskCapabilities`      | Task provider capabilities required before activation and per-context eligibility.                                                                |
-| `requiredChatCapabilities`      | Chat platform capabilities required before activation and per-context eligibility.                                                                |
-| `configRequirements`            | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                               |
-| `activationTimeoutMs`           | Activation timeout in milliseconds, between `100` and `10000`.                                                                                    |
+| Field                           | Description                                                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                          | Entry point path for non-MCP-only plugins.                                                                                                          |
+| `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                          |
+| `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                     |
+| `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.    |
+| `contributes.jobs`              | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`.   |
+| `contributes.configKeys`        | Plugin-owned context config keys shown by docs and admin UX.                                                                                        |
+| `contributes.taskProviderTypes` | At most one plugin-owned task provider type. Requires `provider.task`.                                                                              |
+| `providerCapabilities`          | Task capabilities exposed by the contributed provider type.                                                                                         |
+| `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                    |
+| `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                          |
+| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`. Available to `http` plugins and contributed task-provider plugins.                        |
+| `providerConfigValidator`       | Optional exported validator function name for contributed task provider instance config, invoked before task-instance writes using instance fields. |
+| `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                          |
+| `permissions`                   | Permission claims checked by framework facades.                                                                                                     |
+| `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                        |
+| `requiredTaskCapabilities`      | Task provider capabilities required before activation and per-context eligibility.                                                                  |
+| `requiredChatCapabilities`      | Chat platform capabilities required before activation and per-context eligibility.                                                                  |
+| `configRequirements`            | Context-specific config fields that gate tool/prompt/job eligibility when required.                                                                 |
+| `activationTimeoutMs`           | Activation timeout in milliseconds, between `100` and `10000`.                                                                                      |
 
 The manifest `id` must match the directory name. The entry point must stay inside the plugin directory and must be a relative `.ts` or `.js` path without `..` components.
 

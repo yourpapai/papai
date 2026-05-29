@@ -232,6 +232,22 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 
+  test('accepts providerAllowedHosts for http-only plugins', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'http-host-allowlist',
+      name: 'HTTP Host Allowlist',
+      version: '1.0.0',
+      description: 'http-only provider runtime host allowlist',
+      apiVersion: 1,
+      main: 'index.ts',
+      permissions: ['http'],
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      providerAllowedHosts: ['example.com'],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
   test('accepts explicit mcp-only manifests without main', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'mcp-only-schema',
