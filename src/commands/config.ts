@@ -46,11 +46,26 @@ function formatConfigLine(field: ConfigField, value: string | undefined): string
   return `${emoji} ${field.label}: ${field.sensitive ? maskSensitiveValue(value) : maskValue(field.storageKey, value)}`
 }
 
+function getPluginFieldParts(storageKey: string): { pluginId: string; key: string } | null {
+  const match = /^plugin:([^:]+):(.+)$/u.exec(storageKey)
+  if (match === null) return null
+  const [, pluginId, key] = match
+  if (pluginId === undefined || key === undefined) return null
+  return { pluginId, key }
+}
+
+function getFieldValue(targetContextId: string, field: ConfigField): string | null {
+  if (field.kind !== 'plugin-context') return getConfigValue(targetContextId, field.storageKey)
+  const parts = getPluginFieldParts(field.storageKey)
+  if (parts === null) return null
+  return getPluginConfig(targetContextId, parts.pluginId, parts.key)
+}
+
 function buildConfigButtons(fields: readonly ConfigField[], targetContextId: string): ChatButton[] {
   const buttons: ChatButton[] = fields.map((field) => ({
     text: `${getFieldEmoji(field)} ${field.label}`,
     callbackData: serializeCallbackData({ action: 'edit', key: field.storageKey }, targetContextId),
-    style: getConfigValue(targetContextId, field.storageKey) === null ? 'secondary' : 'primary',
+    style: getFieldValue(targetContextId, field) === null ? 'secondary' : 'primary',
   }))
   buttons.push({
     text: '🔄 Full Setup',
@@ -165,7 +180,7 @@ export async function renderConfigForTarget(
   const lines = ['⚙️ **Current Configuration**\n']
 
   fields.forEach((field) => {
-    lines.push(formatConfigLine(field, getConfigValue(targetContextId, field.storageKey) ?? undefined))
+    lines.push(formatConfigLine(field, getFieldValue(targetContextId, field) ?? undefined))
   })
   const aiOutputSection = buildAiOutputConfigSection(targetContextId)
   lines.push(...aiOutputSection.lines)

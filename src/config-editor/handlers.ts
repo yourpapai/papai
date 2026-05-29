@@ -9,7 +9,15 @@
  */
 
 import { getConfigFieldsForContext } from '../config-keys.js'
-import { getConfigValue, isSensitiveKey, maskSensitiveValue, maskValue, setConfigValue } from '../config.js'
+import {
+  getConfigValue,
+  getPluginConfig,
+  isSensitiveKey,
+  maskSensitiveValue,
+  maskValue,
+  setConfigValue,
+  setPluginConfig,
+} from '../config.js'
 import { emitUser } from '../debug/event-bus.js'
 import { logger } from '../logger.js'
 import type { ConfigField } from '../types/config.js'
@@ -39,6 +47,21 @@ function formatConfigLine(field: ConfigField, value: string | undefined): string
   return `${emoji} ${field.label}: ${field.sensitive ? maskSensitiveValue(value) : value}`
 }
 
+function getPluginFieldParts(storageKey: string): { pluginId: string; key: string } | null {
+  const match = /^plugin:([^:]+):(.+)$/u.exec(storageKey)
+  if (match === null) return null
+  const [, pluginId, key] = match
+  if (pluginId === undefined || key === undefined) return null
+  return { pluginId, key }
+}
+
+function getStoredFieldValue(storageContextId: string, field: ConfigField): string | null {
+  if (field.kind !== 'plugin-context') return getConfigValue(storageContextId, field.storageKey)
+  const parts = getPluginFieldParts(field.storageKey)
+  if (parts === null) return null
+  return getPluginConfig(storageContextId, parts.pluginId, parts.key)
+}
+
 /**
  * Build the config list view with edit buttons
  */
@@ -49,7 +72,7 @@ function buildConfigList(storageContextId: string): { text: string; buttons: Edi
   const configFields = getConfigFieldsForContext(storageContextId)
 
   for (const field of configFields) {
-    const value = getConfigValue(storageContextId, field.storageKey)
+    const value = getStoredFieldValue(storageContextId, field)
 
     lines.push(formatConfigLine(field, value ?? undefined))
     buttons.push({
@@ -76,7 +99,7 @@ export function startEditor(userId: string, storageContextId: string, key: strin
 
   createEditorSession({ userId, storageContextId, editingKey: key })
 
-  const currentValue = getConfigValue(storageContextId, key)
+  const currentValue = getStoredFieldValue(storageContextId, field)
   const emoji = getFieldEmoji(field)
 
   let valueDisplay: string
@@ -120,7 +143,16 @@ function handleSaveAction(userId: string, storageContextId: string): EditorProce
     return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
   }
 
-  setConfigValue(storageContextId, session.editingKey, session.pendingValue)
+  if (field.kind === 'plugin-context') {
+    const parts = getPluginFieldParts(session.editingKey)
+    if (parts === null) {
+      deleteEditorSession(userId, storageContextId)
+      return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
+    }
+    setPluginConfig(storageContextId, parts.pluginId, parts.key, session.pendingValue)
+  } else {
+    setConfigValue(storageContextId, session.editingKey, session.pendingValue)
+  }
   deleteEditorSession(userId, storageContextId)
 
   log.info({ userId, storageContextId, key: session.editingKey }, 'Config value saved')

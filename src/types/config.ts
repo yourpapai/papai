@@ -28,7 +28,7 @@ export type ConfigField = {
   readonly label: string
   readonly required: boolean
   readonly sensitive: boolean
-  readonly kind: 'preference' | 'provider-context'
+  readonly kind: 'preference' | 'provider-context' | 'plugin-context'
 }
 
 // All valid config keys (not filtered by provider)

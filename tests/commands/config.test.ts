@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 
 import type { ChatCapability, ChatProvider, CommandHandler } from '../../src/chat/types.js'
 import { registerConfigCommand, renderConfigForTarget } from '../../src/commands/config.js'
+import { serializeCallbackData } from '../../src/config-editor/index.js'
 import { setConfig, setPluginConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -375,6 +376,53 @@ describe('/config Command', () => {
       expect(buttonCalls[0]).toContain('API Token')
       expect(buttonCalls[0]).toContain('****1234')
       expect(buttonCalls[0]).not.toContain('secret-token-1234')
+    })
+
+    test('renders active plugin-owned context config as editable config fields', async () => {
+      const pluginId = 'config-render-editable-plugin'
+      const buttonTexts: string[] = []
+      const callbackData: string[] = []
+      registerActivePlugin(
+        makePlugin(pluginId, {
+          name: 'Editable Config Plugin',
+          contributes: {
+            tools: [],
+            promptFragments: [],
+            commands: [],
+            jobs: [],
+            configKeys: ['api_token'],
+            taskProviderTypes: [],
+          },
+          configRequirements: [
+            { key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' },
+          ],
+        }),
+      )
+      setPluginConfig(USER_ID, pluginId, 'api_token', 'secret-token-1234')
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(
+        {
+          ...reply,
+          buttons: (content, options): Promise<void> => {
+            buttonCalls.push(content)
+            assert.ok(options.buttons !== undefined, 'expected options.buttons to be defined')
+            buttonTexts.push(...options.buttons.map((button) => button.text))
+            callbackData.push(...options.buttons.map((button) => button.callbackData))
+            return Promise.resolve()
+          },
+        },
+        USER_ID,
+        true,
+      )
+
+      assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
+      expect(buttonCalls[0]).toContain('🔐 API Token: ****1234')
+      expect(buttonCalls[0]).not.toContain('secret-token-1234')
+      expect(buttonTexts).toContain('🔐 API Token')
+      expect(callbackData).toContain(
+        serializeCallbackData({ action: 'edit', key: `plugin:${pluginId}:api_token` }, USER_ID),
+      )
     })
 
     test('starts with a personal/group selector in DM', async () => {

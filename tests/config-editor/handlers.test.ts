@@ -7,9 +7,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { handleEditorCallback, handleEditorMessage, startEditor } from '../../src/config-editor/handlers.js'
 import { getEditorSession } from '../../src/config-editor/state.js'
-import { getConfigValue } from '../../src/config.js'
+import { getConfigValue, getPluginConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
+import { pluginRegistry } from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -18,6 +21,43 @@ import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
 
 const USER_ID = 'config-editor-test-user'
+
+function registerActivePlugin(pluginId: string): void {
+  const plugin: DiscoveredPlugin = {
+    manifest: {
+      id: pluginId,
+      name: 'Config Editor Plugin',
+      version: '1.0.0',
+      description: 'Plugin config editor test',
+      apiVersion: PLUGIN_API_VERSION,
+      main: 'index.ts',
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: ['api_token'],
+        taskProviderTypes: [],
+      },
+      permissions: [],
+      defaultEnabled: true,
+      activationTimeoutMs: 5000,
+      requiredTaskCapabilities: [],
+      requiredChatCapabilities: [],
+      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' }],
+      providerCapabilities: [],
+      providerConfigSchema: [],
+      providerAllowedHosts: [],
+    },
+    pluginDir: `/tmp/${pluginId}`,
+    entryPoint: `/tmp/${pluginId}/index.ts`,
+    manifestHash: `hash-${pluginId}`,
+  }
+
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+  pluginRegistry.markActive(plugin.manifest.id)
+}
 
 describe('config-editor back action', () => {
   beforeEach(async () => {
@@ -73,5 +113,21 @@ describe('config-editor back action', () => {
     expect(pending.response).toContain('****oken')
     expect(saved.response).toBe('✅ **Plugin Token** saved successfully.')
     expect(getConfigValue(USER_ID, key)).toBe('secret-token')
+  })
+
+  test('saves plugin-owned context config through plugin config storage', () => {
+    const pluginId = 'config-editor-plugin-context'
+    registerActivePlugin(pluginId)
+
+    const key = `plugin:${pluginId}:api_token`
+    const started = startEditor(USER_ID, USER_ID, key)
+    const pending = handleEditorMessage(USER_ID, USER_ID, 'secret-token')
+    const saved = handleEditorCallback(USER_ID, USER_ID, 'save', key)
+
+    expect(started.response).toContain('API Token')
+    expect(pending.response).toContain('****oken')
+    expect(saved.response).toBe('✅ **API Token** saved successfully.')
+    expect(getPluginConfig(USER_ID, pluginId, 'api_token')).toBe('secret-token')
+    expect(getConfigValue(USER_ID, key)).toBeNull()
   })
 })
