@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, gt } from 'drizzle-orm'
 
 import { getDrizzleDb } from '../db/drizzle.js'
 import { settingsSessions } from '../db/schema.js'
@@ -89,11 +89,14 @@ export function rotateSessionCsrf(sessionId: string, nowMs: number = Date.now())
   const updated = db
     .update(settingsSessions)
     .set({ csrfTokenHash: hashToken(csrfToken), expiresAt: nowMs + SESSION_TTL_MS })
-    .where(eq(settingsSessions.sessionIdHash, sessionIdHash))
+    .where(and(eq(settingsSessions.sessionIdHash, sessionIdHash), gt(settingsSessions.expiresAt, nowMs)))
     .returning({ sessionIdHash: settingsSessions.sessionIdHash })
     .get()
 
-  if (updated === undefined) return null
+  if (updated === undefined) {
+    log.warn({}, 'CSRF rotation rejected: session missing or expired')
+    return null
+  }
   return csrfToken
 }
 

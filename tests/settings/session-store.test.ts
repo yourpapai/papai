@@ -54,6 +54,12 @@ describe('settings session store', () => {
     expect(session?.csrfTokenHash).toBe(hashToken(rotated!))
   })
 
+  test('rotateSessionCsrf returns null for an expired session and does not revive it', () => {
+    const created = createSession(principal, 1000)
+    expect(rotateSessionCsrf(created.sessionId, 1000 + SESSION_TTL_MS + 1)).toBeNull()
+    expect(getSession(created.sessionId, 1000 + SESSION_TTL_MS + 2)).toBeNull()
+  })
+
   test('deleteSession removes the session', () => {
     const created = createSession(principal, 1000)
     deleteSession(created.sessionId)
