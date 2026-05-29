@@ -48,6 +48,11 @@
     "src/debug/turn-assembly.ts": ["exports"],
     // setPluginConfig is a test-only seam.
     "src/config.ts": ["exports"],
+    // TRANSITIONAL (task-provider-plugin Phase 3): setKaneoWorkspace lost its last
+    // production caller in Task 3.1 (provision.ts retargeted to user_config) but is
+    // deleted only in Task 3.10 (after the resolver special-case is removed in 3.7).
+    // getKaneoWorkspace is still used by the resolver until then. Remove this entry in Task 3.10.
+    "src/users.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.

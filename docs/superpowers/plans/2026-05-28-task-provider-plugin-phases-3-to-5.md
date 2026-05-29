@@ -1310,6 +1310,8 @@ In `src/users.ts`, delete `getKaneoWorkspace`, `setKaneoWorkspace`, and the `get
 
 In `src/cache.ts`, delete `getCachedWorkspace`, `setCachedWorkspace`, and the workspace cache table reference if it's a cache-only table. Leave the `users.kaneo_workspace_id` DB column alone — its drop is a follow-on migration outside this plan.
 
+**Also remove the transitional knip ignore** added during the resync: delete the `"src/users.ts": ["exports"]` entry (and its comment) from `knip.jsonc`. It was added because `setKaneoWorkspace` went unused-in-production after Task 3.1 but could not be deleted until now. After this task `bun knip` must pass without it.
+
 - [ ] **Step 3: Run the full suite to confirm nothing else broke**
 
 Run: `bun test`
