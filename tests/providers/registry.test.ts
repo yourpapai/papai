@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 import type { TaskInstance } from '../../src/instances/types.js'
 import {
@@ -260,9 +260,12 @@ describe('registerContributedTaskProviderType duplicates', () => {
 })
 
 describe('getTaskProviderConfigValidator', () => {
-  test('returns the validator function for a contributed type that declares one', async () => {
+  test('returns a validator that delegates to the contributed validator', async () => {
     mockLogger()
-    const validator = (): Promise<{ ok: true }> => Promise.resolve({ ok: true })
+    const validator = mock((config: Record<string, string>): Promise<{ ok: true }> => {
+      expect(config).toEqual({ baseUrl: 'https://ok.invalid' })
+      return Promise.resolve({ ok: true })
+    })
     registerContributedTaskProviderType('validated-reg', {
       pluginId: 'validator-plugin',
       factory: () => createMockProvider({ name: 'validated-reg' }),
@@ -273,11 +276,38 @@ describe('getTaskProviderConfigValidator', () => {
     })
     try {
       const resolved = getTaskProviderConfigValidator('validated-reg')
-      expect(resolved).toBe(validator)
+      expect(resolved).toBeDefined()
       const result = await resolved!({ baseUrl: 'https://ok.invalid' })
+      expect(validator).toHaveBeenCalledTimes(1)
       expect(result).toEqual({ ok: true })
     } finally {
       unregisterContributedTaskProviderType('validator-plugin')
+    }
+  })
+
+  test('returns a validation failure when a contributed validator returns an invalid result', async () => {
+    mockLogger()
+    const validator = mock((): Promise<{ ok: false; reason: string }> => Promise.resolve({ ok: false, reason: '' }))
+    registerContributedTaskProviderType('invalid-validator-reg', {
+      pluginId: 'invalid-validator-plugin',
+      factory: () => createMockProvider({ name: 'invalid-validator-reg' }),
+      validateConfig: validator,
+      capabilities: new Set<never>(),
+      displayName: 'Invalid Validator Reg',
+      configSchema: [],
+    })
+    try {
+      const resolved = getTaskProviderConfigValidator('invalid-validator-reg')
+      expect(resolved).toBeDefined()
+      const result = await resolved!({ baseUrl: 'https://bad.invalid' })
+
+      expect(validator).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({
+        ok: false,
+        reason: 'Contributed task provider validator returned an invalid result',
+      })
+    } finally {
+      unregisterContributedTaskProviderType('invalid-validator-plugin')
     }
   })
 
