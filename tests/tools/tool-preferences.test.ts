@@ -7,7 +7,6 @@ import { describe, expect, it, test } from 'bun:test'
 
 import {
   getDomainStatus,
-  isToolEnabled,
   parseToolPrefs,
   partitionToolNames,
   resolveToolPermission,
@@ -38,31 +37,31 @@ describe('parseToolPrefs', () => {
   })
 })
 
-describe('isToolEnabled', () => {
+describe('resolveToolPermission (enabled/disabled semantics)', () => {
   it('defaults every tool to enabled with empty prefs', () => {
-    expect(isToolEnabled(empty, 'web_fetch')).toBe(true)
-    expect(isToolEnabled(empty, 'delete_task')).toBe(true)
+    expect(resolveToolPermission(empty, 'web_fetch')).not.toBe('deny')
+    expect(resolveToolPermission(empty, 'delete_task')).not.toBe('deny')
   })
 
   it('disables every tool in a disabled domain', () => {
     const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: {} }
-    expect(isToolEnabled(prefs, 'web_fetch')).toBe(false)
+    expect(resolveToolPermission(prefs, 'web_fetch')).toBe('deny')
   })
 
   it('lets a per-tool override win over the domain default (off within on domain)', () => {
     const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
-    expect(isToolEnabled(prefs, 'delete_task')).toBe(false)
-    expect(isToolEnabled(prefs, 'create_task')).toBe(true)
+    expect(resolveToolPermission(prefs, 'delete_task')).toBe('deny')
+    expect(resolveToolPermission(prefs, 'create_task')).not.toBe('deny')
   })
 
   it('lets a per-tool override win over the domain default (on within off domain)', () => {
     const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: { web_fetch: 'allow' } }
-    expect(isToolEnabled(prefs, 'web_fetch')).toBe(true)
+    expect(resolveToolPermission(prefs, 'web_fetch')).toBe('allow')
   })
 
   it('treats unknown (un-classified) tools as always enabled', () => {
     const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: {} }
-    expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(true)
+    expect(resolveToolPermission(prefs, 'plugin_hello_world__greet')).not.toBe('deny')
   })
 
   it('lets an override=deny disable an unclassified (plugin) tool', () => {
@@ -70,16 +69,16 @@ describe('isToolEnabled', () => {
       domainDefaults: {},
       toolOverrides: { plugin_hello_world__greet: 'deny' },
     }
-    expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(false)
+    expect(resolveToolPermission(prefs, 'plugin_hello_world__greet')).toBe('deny')
   })
 })
 
-describe('partitionToolNames', () => {
-  it('splits candidate names into enabled and disabled sets', () => {
+describe('partitionToolNames (legacy)', () => {
+  it('splits candidate names into exposed and denied sets', () => {
     const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } }
-    const { enabled, disabled } = partitionToolNames(prefs, ['create_task', 'delete_task', 'web_fetch'])
-    expect([...enabled].sort()).toEqual(['create_task', 'web_fetch'])
-    expect([...disabled]).toEqual(['delete_task'])
+    const { exposed, denied } = partitionToolNames(prefs, ['create_task', 'delete_task', 'web_fetch'])
+    expect([...exposed].sort()).toEqual(['create_task', 'web_fetch'])
+    expect([...denied]).toEqual(['delete_task'])
   })
 })
 
@@ -137,6 +136,26 @@ describe('toggleTool', () => {
     const next = toggleTool(prefs, 'web_fetch', [])
     expect(next.toolOverrides['web_fetch']).toBe('deny')
     expect(next.domainDefaults['web']).toBe('deny')
+  })
+})
+
+describe('serializeToolPrefs new shape', () => {
+  test('round-trips through parse/serialize', () => {
+    const prefs: ToolPrefs = {
+      domainDefaults: { task: 'ask', project: 'deny' },
+      toolOverrides: { delete_task: 'allow' },
+    }
+    const round = parseToolPrefs(serializeToolPrefs(prefs))
+    expect(round).toEqual(prefs)
+  })
+})
+
+describe('partitionToolNames', () => {
+  test('separates deny from allow/ask', () => {
+    const prefs: ToolPrefs = { domainDefaults: {}, toolOverrides: { delete_task: 'deny', create_task: 'ask' } }
+    const { exposed, denied } = partitionToolNames(prefs, ['create_task', 'delete_task', 'list_tasks'])
+    expect(exposed).toEqual(new Set(['create_task', 'list_tasks']))
+    expect(denied).toEqual(new Set(['delete_task']))
   })
 })
 

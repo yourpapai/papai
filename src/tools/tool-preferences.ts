@@ -115,22 +115,17 @@ export function setToolPrefs(contextId: string, prefs: ToolPrefs): void {
   log.info({ contextId, configuredDomains: Object.keys(prefs.domainDefaults).length }, 'Tool prefs updated')
 }
 
-// Legacy boolean-shaped helper kept for callers not yet migrated.
-export function isToolEnabled(prefs: ToolPrefs, toolName: string): boolean {
-  return resolveToolPermission(prefs, toolName) !== 'deny'
-}
-
 export function partitionToolNames(
   prefs: ToolPrefs,
   names: readonly string[],
-): { enabled: Set<string>; disabled: Set<string> } {
-  const enabled = new Set<string>()
-  const disabled = new Set<string>()
+): { exposed: Set<string>; denied: Set<string> } {
+  const exposed = new Set<string>()
+  const denied = new Set<string>()
   for (const name of names) {
-    if (resolveToolPermission(prefs, name) === 'deny') disabled.add(name)
-    else enabled.add(name)
+    if (resolveToolPermission(prefs, name) === 'deny') denied.add(name)
+    else exposed.add(name)
   }
-  return { enabled, disabled }
+  return { exposed, denied }
 }
 
 export type DomainStatus = 'on' | 'off' | 'partial'

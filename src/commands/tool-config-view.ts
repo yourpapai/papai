@@ -5,7 +5,7 @@
 
 import type { ChatButton } from '../chat/types.js'
 import { getToolMetadata, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
-import { getDomainStatus, isToolEnabled, type ToolPrefs } from '../tools/tool-preferences.js'
+import { getDomainStatus, resolveToolPermission, type ToolPrefs } from '../tools/tool-preferences.js'
 
 export interface ToolMenuView {
   text: string
@@ -174,7 +174,7 @@ export function buildDomainDrillView(
   for (const name of sorted) {
     const meta = getToolMetadata(name)
     const risk = meta === undefined ? '' : RISK_EMOJI[meta.risk]
-    const enabled = isToolEnabled(prefs, name)
+    const enabled = resolveToolPermission(prefs, name) !== 'deny'
     lines.push(`${enabled ? '🟢' : '⭕'} ${risk} ${name}`)
     const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${allSorted.indexOf(name).toString(36)}:${ctx}`)
     if (toolCallback !== null) {

@@ -25,8 +25,8 @@ function applyToolPreferences(tools: ToolSet, contextId: string | undefined): To
   const prefsContextId = getConfigContextIdFromStorageContextId(contextId)
   const prefs = getToolPrefs(prefsContextId)
   if (Object.keys(prefs.domainDefaults).length === 0 && Object.keys(prefs.toolOverrides).length === 0) return tools
-  const { enabled } = partitionToolNames(prefs, Object.keys(tools))
-  return Object.fromEntries(Object.entries(tools).filter(([name]) => enabled.has(name)))
+  const { exposed } = partitionToolNames(prefs, Object.keys(tools))
+  return Object.fromEntries(Object.entries(tools).filter(([name]) => exposed.has(name)))
 }
 
 function wrapToolSet(tools: ToolSet): ToolSet {
