@@ -131,4 +131,45 @@ describe('config-editor back action', () => {
     const reopened = startEditor(USER_ID, USER_ID, key)
     expect(reopened.response).toContain('Current value: ****oken')
   })
+
+  test('opening editor for a second field replaces the active session', () => {
+    const userId = 'config-editor-replace-user'
+    const storageContextId = 'config-editor-replace-context'
+    const pluginId = 'config-editor-replace-plugin'
+    const key = `plugin:${pluginId}:api_token`
+
+    registerActivePlugin(pluginId)
+
+    startEditor(userId, storageContextId, 'timezone')
+    const result = startEditor(userId, storageContextId, key)
+
+    expect(result.response).toContain('Edit API Token')
+    expect(getEditorSession(userId, storageContextId)).toMatchObject({ editingKey: key })
+
+    handleEditorCallback(userId, storageContextId, 'back')
+  })
+
+  test('stale save callback for the previous field does not save the current field session', () => {
+    const userId = 'config-editor-stale-save-user'
+    const storageContextId = 'config-editor-stale-save-context'
+    const pluginId = 'config-editor-stale-save-plugin'
+    const key = `plugin:${pluginId}:api_token`
+
+    registerActivePlugin(pluginId)
+
+    startEditor(userId, storageContextId, 'timezone')
+    startEditor(userId, storageContextId, key)
+    handleEditorMessage(userId, storageContextId, 'new-api-token')
+
+    const saveResult = handleEditorCallback(userId, storageContextId, 'save', 'timezone')
+
+    expect(saveResult).toEqual({ handled: false })
+    expect(getPluginConfig(storageContextId, pluginId, 'api_token')).toBeNull()
+    expect(getEditorSession(userId, storageContextId)).toMatchObject({
+      editingKey: key,
+      pendingValue: 'new-api-token',
+    })
+
+    handleEditorCallback(userId, storageContextId, 'back')
+  })
 })

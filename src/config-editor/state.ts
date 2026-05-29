@@ -26,16 +26,14 @@ const createSessionKey = (userId: string, storageContextId: string): string => `
 
 /**
  * Create and store a new config editor session
- * Returns existing session if one already exists for this user/context
+ * Replaces any existing session for this user/context
  */
 export const createEditorSession = (params: CreateEditorSessionParams): ConfigEditorSession => {
   const { userId, storageContextId, editingKey, originalMessageId } = params
   const key = createSessionKey(userId, storageContextId)
 
-  const existingSession = activeSessions.get(key)
-  if (existingSession !== undefined) {
-    log.warn({ userId, storageContextId }, 'Editor session already exists, returning existing')
-    return existingSession
+  if (activeSessions.has(key)) {
+    log.warn({ userId, storageContextId, editingKey }, 'Editor session already exists, replacing existing')
   }
 
   const session: ConfigEditorSession = {

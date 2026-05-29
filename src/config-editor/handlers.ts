@@ -131,9 +131,13 @@ export function startEditor(userId: string, storageContextId: string, key: strin
   }
 }
 
-function handleSaveAction(userId: string, storageContextId: string): EditorProcessResult {
+function handleSaveAction(userId: string, storageContextId: string, key?: string): EditorProcessResult {
   const session = getEditorSession(userId, storageContextId)
   if (session === null || session.pendingValue === undefined) {
+    return { handled: false }
+  }
+
+  if (key !== undefined && key !== session.editingKey) {
     return { handled: false }
   }
 
@@ -205,7 +209,7 @@ export function handleEditorCallback(
     case 'edit':
       return key === undefined ? { handled: false } : startEditor(userId, storageContextId, key)
     case 'save':
-      return handleSaveAction(userId, storageContextId)
+      return handleSaveAction(userId, storageContextId, key)
     case 'cancel':
       return handleCancelAction(userId, storageContextId)
     case 'back':
