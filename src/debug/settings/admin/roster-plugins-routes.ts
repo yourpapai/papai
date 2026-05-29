@@ -9,7 +9,7 @@ import { broadcastMessage } from '../../../commands/announce-broadcast.js'
 import { addAdmin, listAdmins, removeAdmin } from '../../../instances/admin-store.js'
 import { logger } from '../../../logger.js'
 import { pluginRegistry } from '../../../plugins/registry.js'
-import { getPluginAdminState, upsertPluginAdminState } from '../../../plugins/store.js'
+import { getPluginAdminState } from '../../../plugins/store.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
 import { getRuntimeChatRouter } from '../../chat-router-runtime.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
@@ -43,6 +43,7 @@ async function handleRoster(req: Request, authed: AuthenticatedSettingsRequest):
     return settingsJson(200, { ok: true })
   }
   removeAdmin(body.data.userId, body.data.platformInstanceId)
+  log.info({ platformInstanceId: body.data.platformInstanceId }, 'Settings SA removed admin')
   return settingsJson(200, { ok: true })
 }
 
@@ -63,12 +64,9 @@ async function handlePluginApproval(req: Request, authed: AuthenticatedSettingsR
   if (entry === undefined) return settingsJson(422, { error: 'unknown plugin' })
 
   if (body.data.action === 'approve') {
-    upsertPluginAdminState(body.data.pluginId, 'approved', {
-      approvedBy: authed.principal.platformUserId,
-      approvedManifestHash: entry.discoveredPlugin.manifestHash,
-    })
+    pluginRegistry.approve(body.data.pluginId, authed.principal.platformUserId, entry.discoveredPlugin.manifestHash)
   } else {
-    upsertPluginAdminState(body.data.pluginId, 'rejected', { approvedBy: null, approvedManifestHash: null })
+    pluginRegistry.reject(body.data.pluginId)
   }
   log.info({ pluginId: body.data.pluginId, action: body.data.action }, 'Settings SA changed plugin approval')
   return settingsJson(200, { ok: true, state: getPluginAdminState(body.data.pluginId)?.state ?? null })
