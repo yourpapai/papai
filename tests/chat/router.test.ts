@@ -83,11 +83,6 @@ const defaultThreadCapabilities: ThreadCapabilities = {
 
 const noopPromise = (): Promise<void> => Promise.resolve()
 
-const callResolver = (resolve: (() => void) | undefined): void => {
-  if (resolve === undefined) throw new Error('resolver missing')
-  resolve()
-}
-
 const requireSetCommands = (
   setCommandsById: Record<string, () => Promise<void>>,
   id: string,
@@ -340,13 +335,10 @@ describe('ChatRouter', () => {
     expect(getProvider('stopped-main').sent).toEqual([])
   })
 
-  test('marks instance inactive before awaiting stop to refuse racing sends', async () => {
-    let resolveStop: (() => void) | undefined
-    const stopPromise = new Promise<void>((resolve) => {
-      resolveStop = resolve
-    })
+  test('keeps instance active until stop succeeds and preserves state when stop fails', async () => {
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {
-      const fakeProvider = makeProvider(type, { stop: () => stopPromise })
+      const fakeProvider = makeProvider(type, { stop })
       providers[id] = fakeProvider
       return fakeProvider
     }
@@ -354,13 +346,26 @@ describe('ChatRouter', () => {
     router.addInstance('telegram-main', 'telegram', {})
     await router.startInstance('telegram-main')
 
-    const stopping = router.stopInstance('telegram-main')
-    const delivered = await router.sendMessage('telegram-main', dmTarget('user-1'), 'racing')
-    callResolver(resolveStop)
-    await stopping
+    await expect(router.stopInstance('telegram-main')).rejects.toThrow('stop failed')
 
-    expect(delivered).toBe(false)
-    expect(getProvider('telegram-main').sent).toEqual([])
+    expect(router.isInstanceActive('telegram-main')).toBe(true)
+  })
+
+  test('startInstance is a no-op for already active instances', async () => {
+    const start = mock(async () => {})
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, { start })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+
+    await router.startInstance('telegram-main')
+    await router.startInstance('telegram-main')
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(router.isInstanceActive('telegram-main')).toBe(true)
   })
 
   test('propagates delegated provider send refusal', async () => {
@@ -514,7 +519,7 @@ describe('ChatRouter', () => {
     expect(instanceStatus('good')).toBe('stopped')
   })
 
-  test('removes instances even when provider stop fails', async () => {
+  test('removeInstanceStrict preserves instance when provider stop fails', async () => {
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {
       const fakeProvider = makeProvider(type, { stop: () => Promise.reject(new Error(`stop ${id}`)) })
       providers[id] = fakeProvider
@@ -523,9 +528,9 @@ describe('ChatRouter', () => {
     router = new ChatRouter(factory)
     router.addInstance('telegram-main', 'telegram', {})
 
-    await expect(router.removeInstance('telegram-main')).resolves.toBeUndefined()
+    await expect(router.removeInstanceStrict('telegram-main')).rejects.toThrow('stop telegram-main')
 
-    expect(router.getInstance('telegram-main')).toBeNull()
+    expect(router.getInstance('telegram-main')).not.toBeNull()
   })
 
   test('exposes metadata and delegates per-instance operations', async () => {

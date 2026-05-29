@@ -87,19 +87,6 @@ export class ChatRouter implements ChatProvider {
     return instance
   }
 
-  async removeInstance(id: string): Promise<void> {
-    const instance = this.instances.get(id)
-    if (instance === undefined) return
-    instance.status = 'stopped'
-    try {
-      await instance.provider.stop()
-    } catch (error) {
-      log.warn({ platformInstanceId: id, error: errorMessage(error) }, 'failed to stop chat instance during removal')
-    } finally {
-      this.instances.delete(id)
-    }
-  }
-
   async removeInstanceStrict(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) return
@@ -124,6 +111,10 @@ export class ChatRouter implements ChatProvider {
       log.warn({ platformInstanceId: id }, 'cannot start unknown chat instance')
       return
     }
+    if (instance.status === 'active') {
+      log.debug({ platformInstanceId: id }, 'chat instance already active')
+      return
+    }
 
     try {
       await instance.provider.start()
@@ -140,9 +131,13 @@ export class ChatRouter implements ChatProvider {
       log.warn({ platformInstanceId: id }, 'cannot stop unknown chat instance')
       return
     }
+    if (instance.status === 'stopped') {
+      log.debug({ platformInstanceId: id }, 'chat instance already stopped')
+      return
+    }
 
-    instance.status = 'stopped'
     await instance.provider.stop()
+    instance.status = 'stopped'
   }
 
   async start(): Promise<void> {

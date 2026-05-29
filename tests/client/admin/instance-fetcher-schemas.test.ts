@@ -22,6 +22,7 @@ describe('ApplyInstancesResultSchema', () => {
       started: ['telegram-main'],
       stopped: ['discord-old'],
       removed: ['discord-old'],
+      removedDetails: [{ id: 'discord-old', desiredStatus: 'stopped' }],
       recreated: ['mattermost-main'],
       unchanged: ['telegram-secondary'],
       failed: [{ id: 'telegram-bad', action: 'stop', error: 'boom' }],

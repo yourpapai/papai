@@ -100,6 +100,9 @@ export const ApplyInstancesResultSchema = z.object({
   started: z.array(z.string()),
   stopped: z.array(z.string()),
   removed: z.array(z.string()),
+  removedDetails: z
+    .array(z.object({ id: z.string(), desiredStatus: z.enum(['pending', 'stopped']).nullable() }))
+    .default([]),
   recreated: z.array(z.string()),
   unchanged: z.array(z.string()),
   failed: z.array(ApplyFailureSchema),

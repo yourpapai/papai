@@ -355,7 +355,7 @@ describe('instance API routes', () => {
         '/api/platform-instances/apply',
         {
           getRuntimeChatRouter: () => router,
-          listActivePlatformInstances: () => {
+          listPlatformInstances: () => {
             throw new Error('decrypt failed')
           },
         },
@@ -384,7 +384,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [instance] },
         {
           method: 'POST',
           headers: jsonHeaders(),
@@ -420,7 +420,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => instances },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => instances },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -455,7 +455,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [instance] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -480,7 +480,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [instance] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -517,7 +517,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [instance] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -553,7 +553,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [instance] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -581,7 +581,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -602,7 +602,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -611,7 +611,7 @@ describe('instance API routes', () => {
     expect(await readJson(res)).toMatchObject({
       stopped: [],
       removed: [],
-      failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+      failed: [{ id: 'telegram-main', action: 'remove', error: 'stop failed' }],
     })
     expect(router.getInstance('telegram-main')).not.toBeNull()
   })
@@ -638,7 +638,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [instance] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -649,7 +649,7 @@ describe('instance API routes', () => {
       removed: [],
       started: [],
       recreated: [],
-      failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+      failed: [{ id: 'telegram-main', action: 'remove', error: 'stop failed' }],
     })
     expect(seenConfigs).toEqual([{ token: 'old-secret' }])
   })
@@ -671,7 +671,7 @@ describe('instance API routes', () => {
     }
     const deps = {
       getRuntimeChatRouter: (): ChatRouter => router,
-      listActivePlatformInstances: (): PlatformInstance[] => {
+      listPlatformInstances: (): PlatformInstance[] => {
         activeApplyReads += 1
         maxActiveApplyReads = Math.max(maxActiveApplyReads, activeApplyReads)
         return [instance]
@@ -700,7 +700,7 @@ describe('instance API routes', () => {
     const res = expectResponse(
       await routeWithDeps(
         '/api/platform-instances/apply',
-        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [] },
         { method: 'POST', headers: jsonHeaders() },
       ),
     )
@@ -767,6 +767,59 @@ describe('instance API routes', () => {
     expect(applied.status).toBe(200)
     expect(router.getInstance('telegram-main')).toBeNull()
     expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  test('apply reports pending desired status when removing runtime instance', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    await router.startInstance('telegram-main')
+    const pending: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'secret' },
+      status: 'pending',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [pending] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      removed: ['telegram-main'],
+      removedDetails: [{ id: 'telegram-main', desiredStatus: 'pending' }],
+      failed: [],
+    })
+  })
+
+  test('apply reports remove action when runtime removal fails', async () => {
+    const start = mock(async () => {})
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    await router.startInstance('telegram-main')
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listPlatformInstances: () => [] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      stopped: [],
+      removed: [],
+      failed: [{ id: 'telegram-main', action: 'remove', error: 'stop failed' }],
+    })
   })
 
   test('updates platform instance status and clears referencing context tool cache', async () => {
@@ -1107,7 +1160,7 @@ describe('instance API routes', () => {
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'POST',
             headers: jsonHeaders(),
@@ -1137,7 +1190,7 @@ describe('instance API routes', () => {
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'POST',
             headers: jsonHeaders(),
@@ -1177,7 +1230,7 @@ describe('instance API routes', () => {
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances/validated-patch-1',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'PATCH',
             headers: jsonHeaders(),
@@ -1209,7 +1262,7 @@ describe('instance API routes', () => {
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'POST',
             headers: jsonHeaders(),
@@ -1248,7 +1301,7 @@ describe('instance API routes', () => {
       const created = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'POST',
             headers: jsonHeaders(),
@@ -1290,7 +1343,7 @@ describe('instance API routes', () => {
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'POST',
             headers: jsonHeaders(),
@@ -1332,7 +1385,7 @@ describe('instance API routes', () => {
       const created = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
-          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
           {
             method: 'POST',
             headers: jsonHeaders(),
@@ -1353,7 +1406,7 @@ describe('instance API routes', () => {
       const listed = expectResponse(
         await routeWithDeps('/api/task-instances', {
           getRuntimeChatRouter: () => null,
-          listActivePlatformInstances: () => [],
+          listPlatformInstances: () => [],
         }),
       )
 

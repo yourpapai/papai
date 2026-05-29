@@ -13,7 +13,7 @@ import { jsonResponse } from './json-response.js'
 
 export type InstanceApiDeps = {
   readonly getRuntimeChatRouter: () => ChatRouter | null
-  readonly listActivePlatformInstances: () => PlatformInstance[]
+  readonly listPlatformInstances: () => PlatformInstance[]
 }
 
 const INSTANCE_APPLY_CONCURRENCY = 4
@@ -27,10 +27,16 @@ type ApplyFailure = Readonly<{
   error: string
 }>
 
+type RemovedDetail = Readonly<{
+  id: string
+  desiredStatus: 'pending' | 'stopped' | null
+}>
+
 type ApplyResultPatch = Readonly<{
   started?: readonly string[]
   stopped?: readonly string[]
   removed?: readonly string[]
+  removedDetails?: readonly RemovedDetail[]
   recreated?: readonly string[]
   unchanged?: readonly string[]
   failed?: readonly ApplyFailure[]
@@ -41,6 +47,7 @@ export type ApplyInstancesResult = Readonly<{
   started: readonly string[]
   stopped: readonly string[]
   removed: readonly string[]
+  removedDetails: readonly RemovedDetail[]
   recreated: readonly string[]
   unchanged: readonly string[]
   failed: readonly ApplyFailure[]
@@ -125,17 +132,22 @@ const mergeApplyResult = (applied: number, patches: readonly ApplyResultPatch[])
   started: patches.flatMap((patch) => patch.started ?? []),
   stopped: patches.flatMap((patch) => patch.stopped ?? []),
   removed: patches.flatMap((patch) => patch.removed ?? []),
+  removedDetails: patches.flatMap((patch) => patch.removedDetails ?? []),
   recreated: patches.flatMap((patch) => patch.recreated ?? []),
   unchanged: patches.flatMap((patch) => patch.unchanged ?? []),
   failed: patches.flatMap((patch) => patch.failed ?? []),
 })
 
-const removeRuntimeInstance = async (router: ChatRouter, id: string): Promise<ApplyResultPatch> => {
+const removeRuntimeInstance = async (
+  router: ChatRouter,
+  id: string,
+  desiredStatus: RemovedDetail['desiredStatus'],
+): Promise<ApplyResultPatch> => {
   try {
     await router.removeInstanceStrict(id)
-    return { stopped: [id], removed: [id] }
+    return { stopped: [id], removed: [id], removedDetails: [{ id, desiredStatus }] }
   } catch (error) {
-    return failedPatch(id, 'stop', error)
+    return failedPatch(id, 'remove', error)
   }
 }
 
@@ -156,7 +168,7 @@ const startMissingInstance = async (router: ChatRouter, instance: PlatformInstan
 }
 
 const recreateInstance = async (router: ChatRouter, instance: PlatformInstance): Promise<ApplyResultPatch> => {
-  const removed = await removeRuntimeInstance(router, instance.id)
+  const removed = await removeRuntimeInstance(router, instance.id, null)
   if ((removed.failed ?? []).length > 0) return removed
 
   try {
@@ -207,14 +219,20 @@ const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Respon
   const router = deps.getRuntimeChatRouter()
   if (router === null) return jsonResponse({ error: 'router not initialised' }, { status: 503 })
 
-  const activeInstances = deps.listActivePlatformInstances()
+  const desiredInstances = deps.listPlatformInstances()
+  const desiredById = new Map(desiredInstances.map((instance) => [instance.id, instance]))
+  const activeInstances = desiredInstances.filter((instance) => instance.status === 'active')
   const activeIds = new Set(activeInstances.map((instance) => instance.id))
   const runtimeIdsToRemove = router
     .listInstances()
     .map((instance) => instance.id)
     .filter((id) => !activeIds.has(id))
   const limit = pLimit(INSTANCE_APPLY_CONCURRENCY)
-  const removePatches = runtimeIdsToRemove.map((id) => limit(removeRuntimeInstance, router, id))
+  const removePatches = runtimeIdsToRemove.map((id) => {
+    const desired = desiredById.get(id)
+    const desiredStatus = desired === undefined ? null : desired.status === 'active' ? null : desired.status
+    return limit(removeRuntimeInstance, router, id, desiredStatus)
+  })
   const activePatches = activeInstances.map((instance) => limit(reconcileActiveInstance, router, instance))
   const patches = await Promise.all([...removePatches, ...activePatches])
 

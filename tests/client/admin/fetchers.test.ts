@@ -46,6 +46,7 @@ const applyResult = {
   started: ['telegram-main'],
   stopped: [],
   removed: [],
+  removedDetails: [],
   recreated: [],
   unchanged: [],
   failed: [],

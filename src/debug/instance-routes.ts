@@ -11,7 +11,7 @@ import {
   deletePlatformInstance,
   getPlatformInstance,
   insertPlatformInstance,
-  listActivePlatformInstances,
+  listPlatformInstances,
   listPlatformInstancesSafe,
   updatePlatformInstance,
 } from '../instances/platform-store.js'
@@ -51,7 +51,7 @@ const log = logger.child({ scope: 'debug:instance-routes' })
 
 const defaultDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
-  listActivePlatformInstances,
+  listPlatformInstances,
 }
 
 const INSTANCE_ROUTE_MASK = '********'
