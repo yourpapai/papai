@@ -2,12 +2,14 @@
 
 ## Built-In vs Plugin Providers
 
-`createProvider` resolves task providers through two paths:
+`createProvider` resolves task providers exclusively through the plugin-contributed registry. There are no built-in task provider factories; **`builtinDescriptorSeeds`** is empty.
 
-1. **Plugin-contributed** (preferred): providers registered via `ctx.registration.registerTaskProviderType()` in an approved, active plugin. After Phase 3 of the task-provider migration, Kaneo is exclusively a plugin-contributed provider at `plugins/task-provider-kaneo/`. There is no built-in factory or descriptor for Kaneo in `src/providers/`.
-2. **Built-in**: YouTrack remains a built-in provider until Phase 4.
+Both first-party providers are plugin-contributed:
 
-`plugins/task-provider-kaneo/` is the canonical reference implementation for a provider plugin.
+- **Kaneo**: `plugins/task-provider-kaneo/` — canonical reference implementation.
+- **YouTrack**: `plugins/task-provider-youtrack/` — second provider-plugin example with a simpler config schema (instance **`baseUrl`**, context **`token`**).
+
+Providers are registered via `ctx.registration.registerTaskProviderType()` in an approved, active plugin. `createProvider` resolves only through the contributed registry.
 
 ## Interface
 

@@ -162,9 +162,9 @@ Chat-provider bootstrap requirements:
 
 `CHAT_PROVIDER` is used only by first-run env bootstrap when the platform instance table is empty. After bootstrap, platform instance selection is read from `context_settings`, platform instance base config lives in `platform_instances`, and per-context credentials stay in `user_config`.
 
-Task instances are no longer env-bootstrapped (Phase 3 of the task-provider→plugin migration). Create task instances via `/admin#instances`, then run `/plugin approve task-provider-kaneo` (DM, super admin) after deploying.
+Task instances are no longer env-bootstrapped (Phases 3–4 of the task-provider→plugin migration). Create task instances via `/admin#instances`, then run `/plugin approve task-provider-kaneo` or `/plugin approve task-provider-youtrack` (DM, super admin) after deploying.
 
-**Removed env vars (Phase 3 of the task-provider→plugin migration):** `TASK_PROVIDER`, `KANEO_CLIENT_URL`, and `KANEO_INTERNAL_URL` are no longer read at first-run bootstrap. Create task instances via `/admin#instances`, then run `/plugin approve task-provider-kaneo` after deploying. (YouTrack follows in Phase 4.)
+**Removed env vars (Phases 3–4 of the task-provider→plugin migration):** `TASK_PROVIDER`, `KANEO_CLIENT_URL`, `KANEO_INTERNAL_URL`, and `YOUTRACK_URL` are no longer read at first-run bootstrap. Create task instances via `/admin#instances`, then approve the relevant plugin after deploying.
 
 Optional but important runtime flags include:
 
@@ -241,7 +241,7 @@ LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`,
 Provider-specific per-user runtime keys:
 
 - Kaneo (plugin-namespaced, after migration `048_namespace_kaneo_config`): `plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`
-- YouTrack: `youtrack_token`
+- YouTrack (plugin-namespaced, Phase 4): `plugin:task-provider-youtrack:provider:token`
 
 ## Architecture
 
@@ -276,7 +276,7 @@ Optional: debug server + debug/admin clients
 - `src/group-settings/` — DM selection of personal vs group settings target
 - `src/identity/` — chat-to-provider identity mapping and “me” resolution
 - `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
-- `src/providers/` — YouTrack normalized provider implementation (built-in until Phase 4); Kaneo is now a first-party plugin at `plugins/task-provider-kaneo/`
+- `src/providers/` — shared normalized provider types and utilities; both Kaneo (`plugins/task-provider-kaneo/`) and YouTrack (`plugins/task-provider-youtrack/`) are now first-party plugin-contributed providers
 - `src/web/` — safe public HTTP(S) fetch, extraction, distillation, rate limiting, cache
 - `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side. The Instances section at `/admin#instances` is backed by `src/debug/instance-routes.ts` and manages platform instances, task instances, and admin assignments.
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
