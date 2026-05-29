@@ -73,7 +73,7 @@ Incremental mode addresses the performance concern for day-to-day use. The `repo
 - All tests run per mutant with the same `bun run test` invocation used in CI, ensuring mutation results are reproducible
 - TypeScript checker eliminates compile-error mutants before test execution, reducing noise
 - Incremental caching makes local re-runs fast; only changed-file mutants are re-tested
-- Three scripts (`test:mutate`, `test:mutate:changed`, `test:mutate:full`) give developers clear options for different workflows
+- Mutation scripts (`test:mutate`, `test:mutate:changed`, `test:mutate:file`) give developers clear options for different workflows
 - HTML report (`reports/mutation.html`) uploaded as a CI artifact provides a browsable per-file and per-mutant breakdown
 - `thresholds.break` provides a hard CI gate that blocks score regression
 
@@ -91,7 +91,7 @@ Incremental mode addresses the performance concern for day-to-day use. The `repo
 Evidence:
 
 - `stryker.config.json` — configuration file present at project root with command runner, TypeScript checker, full `mutate` glob list, incremental mode, and reporter configuration
-- `package.json` — `test:mutate`, `test:mutate:changed`, and `test:mutate:full` scripts present; `@stryker-mutator/core@^9.6.0` and `@stryker-mutator/typescript-checker@^9.6.0` in `devDependencies`
+- `package.json` — `test:mutate`, `test:mutate:changed`, and `test:mutate:file` scripts present; `@stryker-mutator/core@^9.6.0` and `@stryker-mutator/typescript-checker@^9.6.0` in `devDependencies`
 - `.gitignore` lines 41–42 — `.stryker-tmp/` and `reports/` entries present
 - `knip.jsonc` line 29 — `"ignoreDependencies": ["@stryker-mutator/typescript-checker"]` present, suppressing the false-positive unused-dependency warning for the runtime-loaded checker plugin
 - `.github/workflows/ci.yml` lines 75–104 — `mutation-testing` job present with Bun 1.3.11, `actions/cache` for incremental file, `bun run test:mutate` step, and HTML artifact upload with 14-day retention
