@@ -12,6 +12,7 @@ import * as schema from './schema.js'
 const DB_PATH = process.env['DB_PATH'] ?? 'papai.db'
 
 let dbInstance: ReturnType<typeof drizzle<typeof schema>> | undefined
+let sqliteInstance: Database | undefined
 
 export const getDrizzleDb = (): ReturnType<typeof drizzle<typeof schema>> => {
   if (dbInstance === undefined) {
@@ -19,15 +20,20 @@ export const getDrizzleDb = (): ReturnType<typeof drizzle<typeof schema>> => {
     // WAL mode and foreign keys are set in existing getDb, keep for compatibility
     sqlite.run('PRAGMA journal_mode=WAL')
     sqlite.run('PRAGMA foreign_keys=ON')
+    sqliteInstance = sqlite
     dbInstance = drizzle(sqlite, { schema })
   }
   return dbInstance
 }
 
 export const closeDrizzleDb = (): void => {
-  if (dbInstance !== undefined) {
-    dbInstance = undefined
+  if (sqliteInstance !== undefined) {
+    sqliteInstance.close()
+    sqliteInstance = undefined
+  } else if (dbInstance !== undefined && '$client' in dbInstance) {
+    dbInstance.$client.close()
   }
+  dbInstance = undefined
 }
 
 /**
@@ -36,6 +42,7 @@ export const closeDrizzleDb = (): void => {
  */
 export const resetDrizzleDbForTesting = (): void => {
   dbInstance = undefined
+  sqliteInstance = undefined
 }
 
 /**
@@ -44,4 +51,5 @@ export const resetDrizzleDbForTesting = (): void => {
  */
 export const setDrizzleDbForTesting = (db: ReturnType<typeof drizzle<typeof schema>>): void => {
   dbInstance = db
+  sqliteInstance = db.$client
 }

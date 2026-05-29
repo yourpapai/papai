@@ -90,11 +90,24 @@ interface ParsedEnv {
   adminUserId: string | undefined
 }
 
+type CompleteParsedEnv = Readonly<{
+  chatType: PlatformInstanceType
+  taskType: BuiltinTaskType
+  adminUserId: string
+}>
+
 const parseEnv = (): ParsedEnv => ({
   chatType: parsePlatformType(getTrimmedEnv('CHAT_PROVIDER')),
   taskType: parseTaskType(getTrimmedEnv('TASK_PROVIDER')),
   adminUserId: getTrimmedEnv('ADMIN_USER_ID'),
 })
+
+const completeParsedEnv = (parsed: ParsedEnv): CompleteParsedEnv => {
+  if (parsed.chatType === null || parsed.taskType === null || parsed.adminUserId === undefined) {
+    throw new Error('internal bootstrap invariant violated: parsed env is incomplete after missing check')
+  }
+  return { chatType: parsed.chatType, taskType: parsed.taskType, adminUserId: parsed.adminUserId }
+}
 
 const collectMissing = (parsed: ParsedEnv): string[] => {
   const missing: string[] = []
@@ -169,15 +182,15 @@ export const bootstrapInstancesFromEnv = (): BootstrapResult => {
     return { bootstrapped: false, reason: 'partial-env', missing }
   }
 
-  // Narrowing for the type checker: all three are non-null because missing is empty.
-  if (parsed.chatType === null || parsed.taskType === null || parsed.adminUserId === undefined) {
-    return { bootstrapped: false, reason: 'partial-env', missing }
-  }
-
-  const { platformInstanceId, taskInstanceId } = seedInstances(parsed.chatType, parsed.taskType, parsed.adminUserId)
+  const complete = completeParsedEnv(parsed)
+  const { platformInstanceId, taskInstanceId } = seedInstances(
+    complete.chatType,
+    complete.taskType,
+    complete.adminUserId,
+  )
 
   log.info(
-    { platformInstanceId, taskInstanceId, adminUserId: parsed.adminUserId },
+    { platformInstanceId, taskInstanceId, adminUserId: complete.adminUserId },
     'Bootstrapped from environment variables. DB is now the source of truth.',
   )
   return { bootstrapped: true, platformInstanceId, taskInstanceId }

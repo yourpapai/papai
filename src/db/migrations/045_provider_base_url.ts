@@ -7,9 +7,11 @@ import type { Database } from 'bun:sqlite'
 
 import { decryptInstanceConfig, encryptInstanceConfig } from '../../instances/encryption.js'
 import type { InstanceConfig } from '../../instances/types.js'
+import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
 
 type InstanceConfigRow = Readonly<{ id: string; config: string }>
+const log = logger.child({ scope: 'migration:045' })
 
 const withBaseUrlBackfill = (config: InstanceConfig): InstanceConfig => {
   if (config['baseUrl'] !== undefined || config['url'] === undefined) return config
@@ -31,5 +33,6 @@ export const migration045ProviderBaseUrl: Migration = {
   up(db) {
     backfillBaseUrl(db, 'platform_instances')
     backfillBaseUrl(db, 'task_instances')
+    log.info('migration 045: provider baseUrl backfill complete')
   },
 }
