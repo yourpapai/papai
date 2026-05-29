@@ -6,7 +6,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { authenticate, requireCsrf, resolveContextScope, settingsJson } from '../../../src/debug/settings/respond.js'
+import {
+  authenticate,
+  parseJsonBody,
+  requireCsrf,
+  resolveContextScope,
+  settingsJson,
+} from '../../../src/debug/settings/respond.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession } from './helpers.js'
@@ -52,6 +58,35 @@ describe('settings respond helpers', () => {
       out.authed,
     )
     expect(blocked?.status).toBe(403)
+  })
+
+  test('parseJsonBody returns ok with parsed value', async () => {
+    const req = new Request('https://x', { method: 'POST', body: '{"foo":1}' })
+    const result = await parseJsonBody(req)
+    expect(result.ok).toBe(true)
+    assert(result.ok)
+    expect(result.value).toEqual({ foo: 1 })
+  })
+
+  test('parseJsonBody returns 400 on malformed JSON', async () => {
+    const req = new Request('https://x', { method: 'POST', body: 'not-json' })
+    const result = await parseJsonBody(req)
+    expect(result.ok).toBe(false)
+    assert(!result.ok)
+    expect(result.response.status).toBe(400)
+  })
+
+  test('requireCsrf returns null when CSRF header is present and valid', async () => {
+    const session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
+    const req = new Request('https://x/settings/api/config', { method: 'PATCH', headers: authHeaders(session, true) })
+    const out = authenticate(req)
+    expect(out.ok).toBe(true)
+    assert(out.ok)
+    const blocked = requireCsrf(
+      new Request('https://x/settings/api/config', { method: 'PATCH', headers: authHeaders(session, true) }),
+      out.authed,
+    )
+    expect(blocked).toBeNull()
   })
 
   test('resolveContextScope falls back to personal when contextId is omitted', async () => {
