@@ -8,12 +8,18 @@ import { z } from 'zod'
 
 import { configFingerprint, errorMessage } from '../chat/router-helpers.js'
 import type { ChatRouter } from '../chat/router.js'
-import type { InstanceConfig, PlatformInstance } from '../instances/types.js'
+import type {
+  InstanceConfig,
+  InstanceDecodeFailure,
+  InstanceDecodeResult,
+  PlatformInstance,
+} from '../instances/types.js'
 import { jsonResponse } from './json-response.js'
 
 export type InstanceApiDeps = {
   readonly getRuntimeChatRouter: () => ChatRouter | null
   readonly listPlatformInstances: () => PlatformInstance[]
+  readonly listPlatformInstancesSafe?: () => InstanceDecodeResult<PlatformInstance>
 }
 
 const INSTANCE_APPLY_CONCURRENCY = 4
@@ -51,7 +57,13 @@ export type ApplyInstancesResult = Readonly<{
   recreated: readonly string[]
   unchanged: readonly string[]
   failed: readonly ApplyFailure[]
+  unreadable: readonly InstanceDecodeFailure[]
 }>
+
+const listDesiredPlatformInstances = (deps: InstanceApiDeps): InstanceDecodeResult<PlatformInstance> => {
+  if (deps.listPlatformInstancesSafe !== undefined) return deps.listPlatformInstancesSafe()
+  return { instances: deps.listPlatformInstances(), failures: [] }
+}
 
 const INSTANCE_API_PREFIXES = [
   '/api/admins',
@@ -136,6 +148,7 @@ const mergeApplyResult = (applied: number, patches: readonly ApplyResultPatch[])
   recreated: patches.flatMap((patch) => patch.recreated ?? []),
   unchanged: patches.flatMap((patch) => patch.unchanged ?? []),
   failed: patches.flatMap((patch) => patch.failed ?? []),
+  unreadable: [],
 })
 
 const removeRuntimeInstance = async (
@@ -219,7 +232,8 @@ const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Respon
   const router = deps.getRuntimeChatRouter()
   if (router === null) return jsonResponse({ error: 'router not initialised' }, { status: 503 })
 
-  const desiredInstances = deps.listPlatformInstances()
+  const desiredResult = listDesiredPlatformInstances(deps)
+  const desiredInstances = desiredResult.instances
   const desiredById = new Map(desiredInstances.map((instance) => [instance.id, instance]))
   const activeInstances = desiredInstances.filter((instance) => instance.status === 'active')
   const activeIds = new Set(activeInstances.map((instance) => instance.id))
@@ -236,7 +250,7 @@ const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Respon
   const activePatches = activeInstances.map((instance) => limit(reconcileActiveInstance, router, instance))
   const patches = await Promise.all([...removePatches, ...activePatches])
 
-  return jsonResponse(mergeApplyResult(activeInstances.length, patches))
+  return jsonResponse({ ...mergeApplyResult(activeInstances.length, patches), unreadable: desiredResult.failures })
 }
 
 export const applyPlatformInstances = (deps: InstanceApiDeps): Promise<Response> =>

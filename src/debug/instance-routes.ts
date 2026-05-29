@@ -52,6 +52,7 @@ const log = logger.child({ scope: 'debug:instance-routes' })
 const defaultDeps: InstanceApiDeps = {
   getRuntimeChatRouter,
   listPlatformInstances,
+  listPlatformInstancesSafe,
 }
 
 const INSTANCE_ROUTE_MASK = '********'

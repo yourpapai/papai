@@ -367,6 +367,35 @@ describe('instance API routes', () => {
     expect(await readJson(res)).toEqual({ error: 'config unreadable' })
   })
 
+  test('apply skips unreadable desired platform rows and still reconciles readable rows', async () => {
+    const start = mock(async () => {})
+    const stop = mock(async () => {})
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    setRuntimeChatRouter(router)
+    insertPlatformInstance({ id: 'good', type: 'telegram', config: { token: 'good-secret' }, status: 'active' })
+    getTestDb()
+      .$client.query(`INSERT INTO platform_instances (id, type, config, status) VALUES (?, ?, ?, ?)`)
+      .run('bad', 'telegram', 'not-base64', 'active')
+
+    const res = expectResponse(
+      await route('/api/platform-instances/apply', {
+        method: 'POST',
+        headers: jsonHeaders(),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(await readJson(res)).toMatchObject({
+      applied: 1,
+      started: ['good'],
+      failed: [],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram' }],
+    })
+    expect(expectInstance(router, 'good').status).toBe('active')
+    expect(router.getInstance('bad')).toBeNull()
+  })
+
   test('apply starts active DB platform instances missing from the runtime router and returns applied count', async () => {
     const start = mock(async () => {})
     const stop = mock(async () => {})

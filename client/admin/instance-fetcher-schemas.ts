@@ -106,4 +106,5 @@ export const ApplyInstancesResultSchema = z.object({
   recreated: z.array(z.string()),
   unchanged: z.array(z.string()),
   failed: z.array(ApplyFailureSchema),
+  unreadable: z.array(InstanceDecodeFailureSchema).default([]),
 })

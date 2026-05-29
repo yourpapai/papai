@@ -45,6 +45,21 @@ describe('ApplyInstancesResultSchema', () => {
     expect(result.success).toBe(true)
     expect(result.data?.removedDetails).toEqual([])
   })
+
+  test('ApplyInstancesResultSchema accepts unreadable diagnostics', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('TaskInstanceViewSchema', () => {

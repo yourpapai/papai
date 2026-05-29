@@ -230,6 +230,13 @@ export type ApplyFailure = Readonly<{
   error: string
 }>
 
+export type InstanceDecodeFailure = Readonly<{
+  table: 'platform_instances' | 'task_instances'
+  id: string
+  type: string
+  error: string
+}>
+
 export type ApplyInstancesResult = Readonly<{
   applied: number
   started: readonly string[]
@@ -239,6 +246,7 @@ export type ApplyInstancesResult = Readonly<{
   recreated: readonly string[]
   unchanged: readonly string[]
   failed: readonly ApplyFailure[]
+  unreadable?: readonly InstanceDecodeFailure[]
 }>
 
 export type AdminPluginConfigKeyState = {
