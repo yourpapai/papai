@@ -55,7 +55,7 @@ const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
 type TelegramConstructorConfig = {
   readonly token?: string
-  readonly platformInstanceId?: string
+  readonly platformInstanceId: string
 }
 const resolvePlatformInstanceId = (value: string | undefined): string => {
   if (value === undefined || value.trim() === '') throw new Error('platformInstanceId is required')
@@ -77,9 +77,7 @@ export class TelegramChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(
-    ...args: [] | [TelegramConstructorConfig] | [string | undefined] | [string | undefined, string | undefined]
-  ) {
+  constructor(...args: [TelegramConstructorConfig] | [string | undefined, string]) {
     const config = typeof args[0] === 'object' ? args[0] : undefined
     const tokenOverride = typeof args[0] === 'string' || args[0] === undefined ? args[0] : undefined
     const token = config === undefined ? (tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']) : config.token

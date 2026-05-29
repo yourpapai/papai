@@ -47,18 +47,11 @@ type OnMessageHandler = (msg: IncomingMessage, reply: ReplyFn) => Promise<void>
 type DiscordConstructorConfig = {
   readonly clientFactory?: DiscordClientFactory
   readonly token?: string
-  readonly platformInstanceId?: string
+  readonly platformInstanceId: string
 }
 type DiscordConstructorArgs =
-  | []
   | [config: DiscordConstructorConfig]
-  | [clientFactory: DiscordClientFactory | undefined]
-  | [clientFactory: DiscordClientFactory | undefined, tokenOverride: string | undefined]
-  | [
-      clientFactory: DiscordClientFactory | undefined,
-      tokenOverride: string | undefined,
-      platformInstanceId: string | undefined,
-    ]
+  | [clientFactory: DiscordClientFactory | undefined, tokenOverride: string | undefined, platformInstanceId: string]
 
 export class DiscordChatProvider implements ChatProvider {
   readonly name = 'discord'

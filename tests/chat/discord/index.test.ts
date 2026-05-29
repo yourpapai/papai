@@ -117,9 +117,11 @@ describe('DiscordChatProvider', () => {
     )
   })
 
-  test('constructor throws when platformInstanceId is missing', async () => {
+  test('constructor throws when platformInstanceId is blank', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider({ token: 'fake-discord-token' })).toThrow('platformInstanceId is required')
+    expect(() => new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: '   ' })).toThrow(
+      'platformInstanceId is required',
+    )
   })
 
   test('constructor succeeds with a non-empty token and exposes name="discord"', async () => {

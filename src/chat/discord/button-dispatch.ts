@@ -18,26 +18,16 @@ const requirePlatformInstanceId = (platformInstanceId: string | undefined): stri
   return platformInstanceId
 }
 
-type RouteButtonFallbackArgs =
-  | [
-      interaction: ButtonInteractionLike,
-      channel: NonNullable<ButtonInteractionLike['channel']>,
-      contextId: string,
-      contextType: 'dm' | 'group',
-      _adminUserId: string,
-      commands: Map<string, CommandHandler>,
-      messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
-    ]
-  | [
-      interaction: ButtonInteractionLike,
-      channel: NonNullable<ButtonInteractionLike['channel']>,
-      contextId: string,
-      contextType: 'dm' | 'group',
-      _adminUserId: string,
-      commands: Map<string, CommandHandler>,
-      messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
-      platformInstanceId: string,
-    ]
+type RouteButtonFallbackArgs = [
+  interaction: ButtonInteractionLike,
+  channel: NonNullable<ButtonInteractionLike['channel']>,
+  contextId: string,
+  contextType: 'dm' | 'group',
+  _adminUserId: string,
+  commands: Map<string, CommandHandler>,
+  messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
+  platformInstanceId: string,
+]
 
 export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promise<void> {
   try {
@@ -54,16 +44,15 @@ export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promis
 }
 
 export function buildInteraction(
-  ...args:
-    | [interaction: ButtonInteractionLike, _adminUserId: string]
-    | [interaction: ButtonInteractionLike, _adminUserId: string, platformInstanceId: string]
+  interaction: ButtonInteractionLike,
+  _adminUserId: string,
+  platformInstanceId: string,
 ): {
   incoming: IncomingInteraction
   channel: NonNullable<ButtonInteractionLike['channel']>
   reply: ReplyFn
 } | null {
-  const [interaction] = args
-  const platformInstanceId = requirePlatformInstanceId(args.length === 3 ? args[2] : undefined)
+  const resolvedPlatformInstanceId = requirePlatformInstanceId(platformInstanceId)
   const channel = interaction.channel
   if (channel === null) return null
 
@@ -77,7 +66,7 @@ export function buildInteraction(
       message: interaction.message,
     },
     isAdmin,
-    platformInstanceId,
+    resolvedPlatformInstanceId,
   )
 
   if (incomingInteraction === null) return null
@@ -100,18 +89,13 @@ function supportsEditableMessage(
 }
 
 export function createFallbackMessage(
-  ...args:
-    | [interaction: ButtonInteractionLike, contextId: string, contextType: 'dm' | 'group', isPlatformAdmin: boolean]
-    | [
-        interaction: ButtonInteractionLike,
-        contextId: string,
-        contextType: 'dm' | 'group',
-        isPlatformAdmin: boolean,
-        platformInstanceId: string,
-      ]
+  interaction: ButtonInteractionLike,
+  contextId: string,
+  contextType: 'dm' | 'group',
+  isPlatformAdmin: boolean,
+  platformInstanceId: string,
 ): IncomingMessage {
-  const [interaction, contextId, contextType, isPlatformAdmin] = args
-  const platformInstanceId = requirePlatformInstanceId(args.length === 5 ? args[4] : undefined)
+  const resolvedPlatformInstanceId = requirePlatformInstanceId(platformInstanceId)
   return {
     user: {
       id: interaction.user.id,
@@ -122,7 +106,7 @@ export function createFallbackMessage(
     contextType,
     isMentioned: true,
     text: interaction.customId,
-    platformInstanceId,
+    platformInstanceId: resolvedPlatformInstanceId,
     messageId: interaction.message.id,
   }
 }
@@ -180,14 +164,14 @@ async function executeCommand(
 }
 
 export async function routeButtonFallback(...args: RouteButtonFallbackArgs): Promise<void> {
-  const [interaction, channel, contextId, contextType, , commands, messageHandler] = args
-  const platformInstanceId = requirePlatformInstanceId(args.length === 8 ? args[7] : undefined)
+  const [interaction, channel, contextId, contextType, , commands, messageHandler, platformInstanceId] = args
+  const resolvedPlatformInstanceId = requirePlatformInstanceId(platformInstanceId)
   const data = interaction.customId
 
   log.debug({ customId: data }, 'Unhandled button interaction in routeButtonFallback')
 
   const isPlatformAdmin = interaction.user.isAdmin === true
-  const mapped = createFallbackMessage(interaction, contextId, contextType, isPlatformAdmin, platformInstanceId)
+  const mapped = createFallbackMessage(interaction, contextId, contextType, isPlatformAdmin, resolvedPlatformInstanceId)
   const reply = createDiscordReplyFn({
     channel,
     replyToMessageId: undefined,

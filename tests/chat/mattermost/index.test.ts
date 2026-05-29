@@ -200,7 +200,11 @@ describe('MattermostChatProvider', () => {
 
   test('constructor rejects legacy url config without MATTERMOST_URL env', () => {
     delete process.env['MATTERMOST_URL']
-    const legacyConfig: Record<string, string> = { url: 'https://legacy.invalid', token: 'cfg-token' }
+    const legacyConfig = {
+      url: 'https://legacy.invalid',
+      token: 'cfg-token',
+      platformInstanceId: TEST_PLATFORM_ID,
+    }
 
     expect(() => new MattermostChatProvider(legacyConfig)).toThrow('MATTERMOST_URL environment variable is required')
   })

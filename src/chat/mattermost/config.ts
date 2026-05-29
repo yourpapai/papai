@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-export type MattermostConstructorConfig = Partial<{
-  baseUrl: string
-  token: string
+export type MattermostConstructorConfig = Readonly<{
+  baseUrl?: string
+  token?: string
   platformInstanceId: string
 }>
 
