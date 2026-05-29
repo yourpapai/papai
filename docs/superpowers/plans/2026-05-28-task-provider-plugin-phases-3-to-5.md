@@ -26,8 +26,12 @@ See LICENSE in the project root for details.
 1. **No env-driven task-instance bootstrap.** `TASK_PROVIDER`, `KANEO_CLIENT_URL`, `KANEO_INTERNAL_URL`, `YOUTRACK_URL` are removed from bootstrap. `BootstrapResult` loses `taskInstanceId`. Operators create task instances in `/admin#instances`.
 2. **No auto-approval seed.** Operators run `/plugin approve task-provider-kaneo` (and `/plugin approve task-provider-youtrack`) once after upgrade. A startup `WARN` lists pending approvals so the requirement is visible.
 3. **Phase 5 retires both vestigial fields.** `TaskProvider.configRequirements` (interface) and `TaskProviderTypeDescriptor.configSchema` + `legacyConfigSchema` (descriptor compat) — in one cleanup pass after Phases 3 + 4 land.
-4. **Kaneo workspaceId — single source of truth = `user_config[kaneo_workspace_id]`.** Phase 3's first task migrates all readers and writers off `getKaneoWorkspace`/`setKaneoWorkspace`/`users.kaneo_workspace_id` so the resolver's special-case branch can be deleted cleanly. The DB column survives this plan (drop is a follow-on migration).
+4. **Kaneo workspaceId — consolidated to `user_config[kaneo_workspace_id]` in Task 3.1, then renamed to the namespaced plugin key (see decision 6).** Task 3.1 (DONE) collapsed the `users.kaneo_workspace_id` dual-store into the single flat key. That flat key is an **intermediate**: the Phase 3 data migration (Task 3.6a) renames it to `plugin:task-provider-kaneo:provider:workspaceId`. The `users.kaneo_workspace_id` DB column survives this plan (drop is a follow-on migration).
 5. **First-party trust.** Migrated providers do **not** request the `http` permission, declare `providerAllowedHosts: []`, and keep their existing `client.ts` fetch path. `ctx.providerRuntime.httpFetch` is for a future third-party trust tier.
+6. **Provider config keys are plugin-namespaced; existing credentials are migrated (architecture decision, 2026-05-29 resync).** The shipped Phase 1/2 resolver (`src/providers/resolver.ts:37-40`) and setup wizard (`src/wizard/steps.ts:37-44`) already store **plugin-contributed** provider config under `plugin:<pluginId>:provider:<fieldKey>`, ignoring any `storageKey`. Migrated providers keep that namespacing — **no `storageKey` aliasing is added**. A one-time SQLite migration per phase renames existing flat credentials to the namespaced keys and lands in the **same phase as that provider's builtin→plugin cutover**: Kaneo keys (`kaneo_apikey`, `kaneo_workspace_id`) in Phase 3 **after** the builtin descriptor is removed; `youtrack_token` in Phase 4 — **never earlier**, or the still-builtin YouTrack (which reads the flat key via its descriptor `storageKey`) breaks. The plugin manifest schema is extended (Task 3.1a) only to accept **camelCase provider field keys** (`baseUrl`, `internalUrl`, `workspaceId`) so existing instance config (persisted under `baseUrl`) and the moved factory code keep resolving; `storageKey` is **not** added to the manifest schema. Namespaced storage keys, by `field.key`:
+   - Kaneo: `plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`
+   - YouTrack: `plugin:task-provider-youtrack:provider:token`
+   - Instance fields (`baseUrl`, `internalUrl`) are read directly from `task_instances.config[field.key]` and are **not** namespaced or migrated.
 
 **Repo conventions:**
 
@@ -129,6 +133,14 @@ tests/plugins/task-provider-kaneo/     (moved from tests/providers/kaneo/)
 - `tests/e2e/bun-test-setup.ts` — approve `task-provider-kaneo` (and Phase 4: `task-provider-youtrack`).
 - `CLAUDE.md`, `src/providers/CLAUDE.md`, `docs/plugins/developer-guide.md` — text updates.
 
+**Resync additions (decision 6 — namespaced keys + camelCase manifest support):**
+
+- `src/plugins/types.ts` — **new** `providerFieldKeySchema` (camelCase); provider instance/context requirement schemas override `key` (Task 3.1a).
+- `src/db/migrations/048_namespace_kaneo_config.ts` — **new**; renames `kaneo_apikey`/`kaneo_workspace_id` → `plugin:task-provider-kaneo:provider:credential`/`…:workspaceId` (Task 3.6a).
+- `src/db/index.ts` — register migration 048.
+- `src/types/config.ts` — **new** namespaced-key constants for Kaneo (Task 3.6a).
+- `src/wizard/steps.ts`, `src/commands/setup.ts`, `plugins/task-provider-kaneo/provision.ts` — re-point Kaneo flat-key readers/writers to the namespaced keys (Task 3.6a).
+
 ### Phase 4 creates / modifies
 
 Same shape as Phase 3 applied to YouTrack. No workspace dual-store concern; no bootstrap rewrite (Phase 3 already removed all task-instance bootstrap paths).
@@ -148,6 +160,8 @@ Same shape as Phase 3 applied to YouTrack. No workspace dual-store concern; no b
 # Phase 3 — Kaneo Migration
 
 ## Task 3.1: Audit and migrate Kaneo workspaceId storage to `user_config`
+
+> ✅ **DONE** (commit `35a8ece5`, verified 2026-05-29 resync). All steps below are complete: readers in `llm-orchestrator(-types).ts`/`setup.ts` and the `provision.ts` writer+reader were retargeted to `user_config[kaneo_workspace_id]`; `getKaneoWorkspace`/`setKaneoWorkspace`/cache helpers retained for later deletion (Task 3.10); resolver untouched (Task 3.7). **Note:** under the resync's decision 6, this flat key is an intermediate — Task 3.6a renames it to the namespaced `plugin:task-provider-kaneo:provider:workspaceId`. The regression test added here documents the still-live special-case path; Task 3.7 inverts it.
 
 **Decision (spec §3.6):** `user_config[kaneo_workspace_id]` becomes the single source of truth. All readers/writers move off `getKaneoWorkspace`/`setKaneoWorkspace`/`getCachedWorkspace`/`setCachedWorkspace` and off `users.kaneo_workspace_id`.
 
@@ -284,6 +298,98 @@ git commit -m "refactor(kaneo): single-source workspaceId in user_config"
 
 ---
 
+## Task 3.1a: Extend the plugin manifest schema to accept camelCase provider field keys
+
+**Why (resync decision 6):** `configRequirementBaseSchema.key` uses `configKeySchema` = `/^[a-z][a-z0-9_]*$/` (snake_case only). The migrated providers need field keys `baseUrl`, `internalUrl`, `workspaceId` (camelCase) so the resolver reads existing instance config (persisted under `baseUrl`) and the moved factory keeps reading `config.baseUrl`/`config.workspaceId`. This task relaxes **only** the provider field-key schemas, leaving `configKeys`/`pluginConfigRequirementSchema` snake_case.
+
+**Files:**
+
+- Modify: `src/plugins/types.ts`
+- Test: `tests/plugins/types.test.ts` (extend if present; otherwise create `tests/plugins/provider-manifest-schema.test.ts`)
+
+- [ ] **Step 1: Write the failing test**
+
+Assert that a manifest declaring camelCase provider field keys parses:
+
+```typescript
+import { pluginManifestSchema } from '../../src/plugins/types.js'
+
+test('provider config field keys accept camelCase', () => {
+  const result = pluginManifestSchema.safeParse({
+    id: 'task-provider-kaneo',
+    name: 'Kaneo',
+    version: '1.0.0',
+    description: 'x',
+    apiVersion: 1,
+    permissions: ['provider.task'],
+    contributes: { taskProviderTypes: ['kaneo'] },
+    providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    providerContextConfigSchema: [
+      { key: 'workspaceId', label: 'Workspace', required: true, sensitive: false, scope: 'context' },
+    ],
+  })
+  expect(result.success).toBe(true)
+})
+
+test('plugin configKeys still reject camelCase', () => {
+  const result = pluginManifestSchema.safeParse({
+    id: 'x',
+    name: 'x',
+    version: '1.0.0',
+    description: 'x',
+    apiVersion: 1,
+    contributes: { configKeys: ['camelCase'] },
+  })
+  expect(result.success).toBe(false)
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `bun test tests/plugins/types.test.ts` (or the new file). Expected: FAIL — `baseUrl`/`workspaceId` rejected by the snake_case regex.
+
+- [ ] **Step 3: Implement**
+
+In `src/plugins/types.ts`, add next to `configKeySchema` (~line 129):
+
+```typescript
+const providerFieldKeySchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/u, 'Provider field key must be alphanumeric starting with a letter')
+```
+
+Change the two provider requirement schemas (currently `configRequirementBaseSchema.extend({ scope: ... })` at ~lines 170-176) to also override the key:
+
+```typescript
+const providerInstanceConfigRequirementSchema = configRequirementBaseSchema.extend({
+  key: providerFieldKeySchema,
+  scope: z.literal('instance').optional().default('instance'),
+})
+const providerContextConfigRequirementSchema = configRequirementBaseSchema.extend({
+  key: providerFieldKeySchema,
+  scope: z.literal('context').optional().default('context'),
+})
+```
+
+Leave `configKeySchema`, `pluginConfigRequirementSchema`, and `pluginContributesSchema.configKeys` unchanged.
+
+- [ ] **Step 4: Run tests**
+
+Run: `bun test tests/plugins/`. Expected: PASS.
+
+- [ ] **Step 5: Gate + commit**
+
+Run `bun lint`, `bun typecheck`, `bun format:check`, then:
+
+```bash
+git add src/plugins/types.ts tests/plugins/
+git commit -m "feat(plugins): accept camelCase provider field keys in manifest schema"
+```
+
+---
+
 ## Task 3.2: Scaffold `plugins/task-provider-kaneo/` skeleton
 
 **Files:**
@@ -329,14 +435,17 @@ describe('task-provider-kaneo manifest', () => {
     expect(keys).toContain('internalUrl')
   })
 
-  test('declares context-scoped credential and workspaceId with storageKey aliases', () => {
-    const credential = manifest.providerConfigSchema.find((field: { key: string }) => field.key === 'credential')
-    expect(credential).toMatchObject({ scope: 'context', sensitive: true, storageKey: 'kaneo_apikey' })
-    const workspace = manifest.providerConfigSchema.find((field: { key: string }) => field.key === 'workspaceId')
-    expect(workspace).toMatchObject({ scope: 'context', storageKey: 'kaneo_workspace_id' })
+  test('declares context-scoped credential and workspaceId (no storageKey — keys are namespaced)', () => {
+    const credential = manifest.providerContextConfigSchema.find((field: { key: string }) => field.key === 'credential')
+    expect(credential).toMatchObject({ scope: 'context', sensitive: true })
+    expect(credential).not.toHaveProperty('storageKey')
+    const workspace = manifest.providerContextConfigSchema.find((field: { key: string }) => field.key === 'workspaceId')
+    expect(workspace).toMatchObject({ scope: 'context' })
   })
 })
 ```
+
+> **Resync note (decision 6):** context fields live in `providerContextConfigSchema`, **not** `providerConfigSchema` (which is instance-only). There is **no** `storageKey` — the resolver/wizard derive the storage key as `plugin:task-provider-kaneo:provider:<key>` from `field.key`. The runtime storage keys are therefore `plugin:task-provider-kaneo:provider:credential` and `plugin:task-provider-kaneo:provider:workspaceId`; existing flat `kaneo_apikey`/`kaneo_workspace_id` rows are renamed by the Task 3.6a migration.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -361,23 +470,11 @@ Create `plugins/task-provider-kaneo/plugin.json`:
   "providerCapabilities": [],
   "providerConfigSchema": [
     { "key": "baseUrl", "label": "Kaneo URL", "required": true, "sensitive": false, "scope": "instance" },
-    { "key": "internalUrl", "label": "Kaneo Internal URL", "required": false, "sensitive": false, "scope": "instance" },
-    {
-      "key": "credential",
-      "label": "Kaneo API Key",
-      "required": true,
-      "sensitive": true,
-      "scope": "context",
-      "storageKey": "kaneo_apikey"
-    },
-    {
-      "key": "workspaceId",
-      "label": "Workspace ID",
-      "required": true,
-      "sensitive": false,
-      "scope": "context",
-      "storageKey": "kaneo_workspace_id"
-    }
+    { "key": "internalUrl", "label": "Kaneo Internal URL", "required": false, "sensitive": false, "scope": "instance" }
+  ],
+  "providerContextConfigSchema": [
+    { "key": "credential", "label": "Kaneo API Key", "required": true, "sensitive": true, "scope": "context" },
+    { "key": "workspaceId", "label": "Workspace ID", "required": true, "sensitive": false, "scope": "context" }
   ],
   "providerAllowedHosts": [],
   "providerConfigValidator": "validateConfig",
@@ -385,6 +482,8 @@ Create `plugins/task-provider-kaneo/plugin.json`:
 }
 ```
 
+> **Resync note (decision 6):** instance fields go in `providerConfigSchema`, context fields in `providerContextConfigSchema` (matching the shipped Zod schema). camelCase keys (`baseUrl`, `internalUrl`, `workspaceId`) require Task 3.1a. **No `storageKey`** — the resolver/wizard namespace context keys as `plugin:task-provider-kaneo:provider:<key>`.
+>
 > `providerCapabilities` is `[]` here because the canonical capability set (`ALL_CAPABILITIES`) lives in TS constants and must match `builtinDescriptorSeeds[kaneo].capabilities` exactly. Task 3.5 populates this array from the same source-of-truth list to avoid drift.
 
 - [ ] **Step 4: Create the entry-point shell**
@@ -822,6 +921,92 @@ git commit -m "refactor(providers): drop inline kaneo factory and built-in descr
 
 ---
 
+## Task 3.6a: Migrate Kaneo credentials to namespaced keys; re-point provision/wizard/setup readers
+
+**Why (resync decision 6):** once Kaneo is plugin-contributed, the resolver and wizard read/write its context config under `plugin:task-provider-kaneo:provider:<key>`. Existing rows use the flat `kaneo_apikey`/`kaneo_workspace_id` keys (consolidated in Task 3.1), and `provision.ts`/`wizard`/`setup` still read/write those flats. This task renames the data and retargets every remaining flat-key reader/writer **for Kaneo only** (YouTrack's `youtrack_token` stays flat until Phase 4, because its builtin descriptor still reads it).
+
+**Ordering:** lands in Phase 3 **after** Task 3.6 (builtin descriptor removed) and pairs with Task 3.7 (resolver special-case removal). Both must ship in the same PR/deploy.
+
+**Namespaced keys (single source — define as shared constants, do not scatter string literals):**
+
+- `plugin:task-provider-kaneo:provider:credential` (was `kaneo_apikey`)
+- `plugin:task-provider-kaneo:provider:workspaceId` (was `kaneo_workspace_id`)
+
+**Files:**
+
+- Create: `src/db/migrations/048_namespace_kaneo_config.ts`
+- Modify: `src/db/index.ts` (register migration 048)
+- Create or modify: a small shared constants module for the two namespaced keys (e.g. add `KANEO_PLUGIN_CREDENTIAL_KEY`, `KANEO_PLUGIN_WORKSPACE_KEY` to `src/types/config.ts`, or co-locate in the plugin and import).
+- Modify: `plugins/task-provider-kaneo/provision.ts` (moved in Task 3.3) — writes + reads use the namespaced keys.
+- Modify: `src/wizard/steps.ts:61` — the auto-provisioned-workspace exclusion compares `field.storageKey` to `KANEO_WORKSPACE_CONFIG_KEY`; retarget to the namespaced workspace key (or exclude by `field.key === 'workspaceId'` for the kaneo descriptor).
+- Modify: `src/commands/setup.ts` — `isFirstTimeKaneoGroupSetup` reads the workspace key via `deps.getConfig(...)`; retarget to the namespaced workspace key.
+- Test: `tests/db/migrations/048_namespace_kaneo_config.test.ts` (create), plus updates to `tests/commands/setup.test.ts`, `tests/wizard/*` and `tests/plugins/task-provider-kaneo/provision.test.ts`.
+
+- [ ] **Step 1: Audit every flat-key reader/writer (Kaneo)**
+
+```bash
+grep -rn "kaneo_apikey\|kaneo_workspace_id\|KANEO_WORKSPACE_CONFIG_KEY" src/ plugins/ | grep -v "048_namespace_kaneo_config"
+```
+
+Expected non-test sites to retarget: `plugins/task-provider-kaneo/provision.ts` (apikey + workspaceId read/write), `src/wizard/steps.ts:61`, `src/commands/setup.ts`. The migration file itself and YouTrack code are out of scope. If a site appears that isn't listed here, stop and update this task.
+
+- [ ] **Step 2: Write the failing migration test**
+
+Create `tests/db/migrations/048_namespace_kaneo_config.test.ts` asserting that pre-seeded `user_config` rows with `key='kaneo_apikey'` / `key='kaneo_workspace_id'` are renamed to the namespaced keys (value preserved, primary key `(user_id, key)` respected, idempotent re-run safe). Use the migration-test idiom from existing `tests/db/migrations/*` (or `tests/` DB helpers).
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `bun test tests/db/migrations/048_namespace_kaneo_config.test.ts`. Expected: FAIL — migration does not exist.
+
+- [ ] **Step 4: Implement the migration**
+
+Create `src/db/migrations/048_namespace_kaneo_config.ts` (template: `042_user_workspace_config_backfill.ts`). `user_config` columns are `(user_id, key, value)`; PK is `(user_id, key)`:
+
+```typescript
+import type { Migration } from '../migrate.js'
+
+export const migration048NamespaceKaneoConfig: Migration = {
+  id: '048_namespace_kaneo_config',
+  up(db) {
+    db.run(
+      `UPDATE OR IGNORE user_config SET key = 'plugin:task-provider-kaneo:provider:credential' WHERE key = 'kaneo_apikey'`,
+    )
+    db.run(
+      `UPDATE OR IGNORE user_config SET key = 'plugin:task-provider-kaneo:provider:workspaceId' WHERE key = 'kaneo_workspace_id'`,
+    )
+  },
+}
+```
+
+Register it in `src/db/index.ts` (import + add to the migrations array, in ascending order after 047). Confirm `validateOrder` passes.
+
+- [ ] **Step 5: Retarget the flat-key readers/writers**
+
+Define the two namespaced-key constants once and import them. Then:
+
+- `plugins/task-provider-kaneo/provision.ts`: change every `kaneo_apikey`/`kaneo_workspace_id` read/write (incl. the Task 3.1 `setConfig(userId, KANEO_WORKSPACE_CONFIG_KEY, …)` write and the `getConfigValue(contextId, KANEO_WORKSPACE_CONFIG_KEY)` read) to the namespaced keys via `setConfigValue`/`getConfigValue` (namespaced keys are arbitrary strings, not typed `ConfigKey`).
+- `src/wizard/steps.ts:61`: retarget the exclusion filter. **This is functional** — it excludes the auto-provisioned workspace field from wizard prompts; if not retargeted, the wizard would start prompting users for the workspaceId.
+- `src/commands/setup.ts`: retarget the `isFirstTimeKaneoGroupSetup` read. **Functional** — drives the first-time-setup branch.
+
+> The other flat-key lookups in `src/wizard/steps.ts` (`validateField` line 94, `BUILTIN_PROMPTS`, `displayLabelForKey`) are **cosmetic/validation** keyed by `field.storageKey`; under namespacing they fall back gracefully (generic prompt, generic non-empty validation, default label). Masking still works via `field.sensitive`. Retargeting them is optional polish, not required for correctness — do not let them block this task.
+
+- [ ] **Step 6: Update affected tests** to seed/assert the namespaced keys.
+
+- [ ] **Step 7: Run tests**
+
+Run: `bun test tests/db/migrations/048_namespace_kaneo_config.test.ts tests/commands/setup.test.ts tests/plugins/task-provider-kaneo/ tests/wizard/`. Expected: PASS.
+
+- [ ] **Step 8: Gate + commit**
+
+Run `bun lint`, `bun typecheck`, `bun format:check`, then:
+
+```bash
+git add src/db/migrations/048_namespace_kaneo_config.ts src/db/index.ts src/types/config.ts src/wizard/steps.ts src/commands/setup.ts plugins/task-provider-kaneo/provision.ts tests/
+git commit -m "feat(kaneo): migrate context credentials to plugin-namespaced config keys"
+```
+
+---
+
 ## Task 3.7: Remove the resolver's kaneo-`workspaceId` special-case
 
 **Files:**
@@ -829,10 +1014,19 @@ git commit -m "refactor(providers): drop inline kaneo factory and built-in descr
 - Modify: `src/providers/resolver.ts`
 - Modify: `tests/providers/resolver.test.ts`
 
-- [ ] **Step 1: The regression test from Task 3.1 Step 2 already covers this**
+- [ ] **Step 1: Invert the Task 3.1 regression test (now the generic namespaced path)**
 
-Run: `bun test tests/providers/resolver.test.ts -t "workspaceId from user_config"`
-Expected: still PASS today (Task 3.1 retargeted the writers). After this task, the path is exercised by the generic descriptor-driven branch instead of the special case.
+The regression test added in Task 3.1 documents the still-live special-case (`getKaneoWorkspace` dep). After this task the special-case is gone and the workspaceId flows through `storageKeyForField`, which for a **plugin-contributed** kaneo descriptor (`source !== 'builtin'`) returns `plugin:task-provider-kaneo:provider:workspaceId` (resync decision 6 — the migration in Task 3.6a renamed the data accordingly).
+
+Rewrite the test in `tests/providers/resolver.test.ts` to:
+
+- construct/register a plugin-contributed kaneo descriptor (`source: { plugin: 'task-provider-kaneo' }`) — mock `getTaskProviderDescriptor` in deps or register via `registerContributedTaskProviderType` and unregister in `finally`;
+- assert `resolve(...)` calls `getConfig(contextId, 'plugin:task-provider-kaneo:provider:workspaceId')` and `getConfig(contextId, 'plugin:task-provider-kaneo:provider:credential')`;
+- assert the provider receives `config.workspaceId === '<value from that namespaced key>'`;
+- remove the obsolete `getKaneoWorkspace`-dep assertions.
+
+Run: `bun test tests/providers/resolver.test.ts`
+Expected: FAIL until Step 2 deletes the special-case and the `getKaneoWorkspace` dep.
 
 - [ ] **Step 2: Delete the special-case branch**
 
@@ -1323,6 +1517,10 @@ grep -n "descriptor.type === 'kaneo'" src/providers/resolver.ts && echo "FAIL: s
 grep -nE "TASK_PROVIDER|KANEO_CLIENT_URL|YOUTRACK_URL" src/instances/bootstrap.ts && echo "FAIL" || echo "OK"
 # Workspace dual-store is single-sourced.
 grep -rn "getKaneoWorkspace\|setKaneoWorkspace" src/ tests/ plugins/ && echo "FAIL: residual workspace helpers" || echo "OK"
+# Kaneo credentials are namespaced (resync decision 6): no flat kaneo key reads/writes outside the migration.
+grep -rn "kaneo_apikey\|kaneo_workspace_id" src/ plugins/ | grep -v "048_namespace_kaneo_config" | grep -v "types/config.ts" && echo "FAIL: residual flat kaneo keys" || echo "OK"
+# The namespaced migration is registered.
+grep -n "048_namespace_kaneo_config" src/db/index.ts && echo "OK" || echo "FAIL: migration not registered"
 ```
 
 All checks should print `OK`.
@@ -1348,7 +1546,7 @@ Phase 4 mirrors Phase 3 with three simplifications: no workspaceId dual-store, n
 
 - [ ] **Step 1: Write the failing manifest test**
 
-Mirror Task 3.2 Step 1, adjusting expectations for YouTrack: `taskProviderTypes: ['youtrack']`, instance-scoped `baseUrl` only, context-scoped `token` with `storageKey: 'youtrack_token'`.
+Mirror Task 3.2 Step 1, adjusting expectations for YouTrack: `taskProviderTypes: ['youtrack']`, instance-scoped `baseUrl` only in `providerConfigSchema`, context-scoped `token` in `providerContextConfigSchema` (no `storageKey` — the runtime key is `plugin:task-provider-youtrack:provider:token`).
 
 - [ ] **Step 2: Create the manifest**
 
@@ -1365,21 +1563,18 @@ Mirror Task 3.2 Step 1, adjusting expectations for YouTrack: `taskProviderTypes:
   },
   "providerCapabilities": [],
   "providerConfigSchema": [
-    { "key": "baseUrl", "label": "YouTrack URL", "required": true, "sensitive": false, "scope": "instance" },
-    {
-      "key": "token",
-      "label": "YouTrack Permanent Token",
-      "required": true,
-      "sensitive": true,
-      "scope": "context",
-      "storageKey": "youtrack_token"
-    }
+    { "key": "baseUrl", "label": "YouTrack URL", "required": true, "sensitive": false, "scope": "instance" }
+  ],
+  "providerContextConfigSchema": [
+    { "key": "token", "label": "YouTrack Permanent Token", "required": true, "sensitive": true, "scope": "context" }
   ],
   "providerAllowedHosts": [],
   "providerConfigValidator": "validateConfig",
   "defaultEnabled": false
 }
 ```
+
+> **Resync note (decision 6):** instance field in `providerConfigSchema`, context field in `providerContextConfigSchema`, **no `storageKey`**. camelCase `baseUrl` requires Task 3.1a (landed in Phase 3). The runtime storage key is `plugin:task-provider-youtrack:provider:token`; the flat `youtrack_token` rows are renamed by the Phase 4 migration (Task 4.5a).
 
 - [ ] **Step 3: Create the entry-point and validator shells**
 
@@ -1499,6 +1694,58 @@ Mirror Task 3.6 for YouTrack:
 ```bash
 git add src/providers/registry.ts src/providers/builtin-descriptors.ts tests/providers/registry.test.ts
 git commit -m "refactor(providers): drop inline youtrack factory and built-in descriptor"
+```
+
+---
+
+## Task 4.5a: Migrate YouTrack credentials to namespaced keys
+
+**Why (resync decision 6):** mirrors Task 3.6a for YouTrack. This migration **must not** land before Task 4.5 removes the YouTrack builtin descriptor — while YouTrack is still a builtin, its descriptor reads the flat `youtrack_token` via `storageKey`, so renaming the key early would break it.
+
+**Runtime key:** `plugin:task-provider-youtrack:provider:token` (was `youtrack_token`).
+
+YouTrack has no auto-provisioning writer (the token is user-entered through the wizard, which namespaces it automatically once YouTrack is plugin-contributed), so this task is mostly the data rename plus an audit for any hardcoded flat-key reader.
+
+**Files:**
+
+- Create: `src/db/migrations/049_namespace_youtrack_config.ts`
+- Modify: `src/db/index.ts` (register migration 049, ascending after 048)
+- Test: `tests/db/migrations/049_namespace_youtrack_config.test.ts`
+
+- [ ] **Step 1: Audit hardcoded `youtrack_token` readers/writers**
+
+```bash
+grep -rn "youtrack_token" src/ plugins/ | grep -v "049_namespace_youtrack_config"
+```
+
+Expected: only graceful-degradation wizard lookups (`src/wizard/steps.ts` `validateField`/`BUILTIN_PROMPTS`/`displayLabelForKey`, which fall back harmlessly when the storage key is namespaced) and `src/types/config.ts` (`TaskProviderConfigKey`). If a **functional** reader appears (one whose miss would break resolution or setup), retarget it and note it here.
+
+- [ ] **Step 2: Write the failing migration test** — mirror Task 3.6a Step 2 for `youtrack_token` → `plugin:task-provider-youtrack:provider:token`.
+
+- [ ] **Step 3: Run test, verify it fails.**
+
+- [ ] **Step 4: Implement the migration**
+
+```typescript
+import type { Migration } from '../migrate.js'
+
+export const migration049NamespaceYoutrackConfig: Migration = {
+  id: '049_namespace_youtrack_config',
+  up(db) {
+    db.run(
+      `UPDATE OR IGNORE user_config SET key = 'plugin:task-provider-youtrack:provider:token' WHERE key = 'youtrack_token'`,
+    )
+  },
+}
+```
+
+Register in `src/db/index.ts`.
+
+- [ ] **Step 5: Run tests, gate, commit**
+
+```bash
+git add src/db/migrations/049_namespace_youtrack_config.ts src/db/index.ts tests/
+git commit -m "feat(youtrack): migrate context token to plugin-namespaced config key"
 ```
 
 ---
@@ -1843,3 +2090,17 @@ The release notes for the version that ships these phases must include:
 - **Type consistency:** `ContributedTaskProviderEntry` field names (`instanceConfigSchema`, `contextConfigSchema`) match the prerequisites code; `getTaskProviderDescriptor` / `getContributedTaskProviderType` / `unregisterContributedTaskProviderType` are spelled as in `src/providers/registry.ts`.
 - **TDD throughout:** every task starts with a failing test and ends with a verifying run. The bulk-move tasks (3.3, 3.4, 4.2, 4.3) lean on the existing Kaneo/YouTrack test suites as the verification harness rather than authoring new tests for the moves themselves — appropriate for mechanical refactors.
 - **Open audit (spec §3.6):** captured as Task 3.1 with a documented grep-snapshot step (`/tmp/kaneo-workspace-audit.txt`) that surfaces every caller before retargeting begins; finishes with a grep-guard in Task 3.10.
+
+---
+
+## Drift Log
+
+| Date       | Category                  | Item                                                                                                                                                                                                                             | Decision                                                                                                                                                                                                                                                                                               |
+| ---------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-05-29 | In-plan, accurate         | Task 3.1 — all 9 files, commit `35a8ece5`                                                                                                                                                                                        | Marked ✅ DONE (status banner). Verified against diff `64db128b..35a8ece5`. Resolver untouched; helpers retained for Task 3.10.                                                                                                                                                                        |
+| 2026-05-29 | Out-of-plan, on-goal      | Plugin manifest schema rejects camelCase provider field keys (`configKeySchema` snake_case); blocks Task 3.2 manifest                                                                                                            | User approved (re-sync). Added **Task 3.1a** to relax provider field-key schema only.                                                                                                                                                                                                                  |
+| 2026-05-29 | In-plan, stale approach   | Task 3.2 / 4.1 manifests used a unified `providerConfigSchema` with `storageKey`; shipped schema is split (`providerConfigSchema` instance + `providerContextConfigSchema` context) and ignores `storageKey`                     | Rewrote both manifests + manifest tests to split shape, camelCase keys, **no `storageKey`**.                                                                                                                                                                                                           |
+| 2026-05-29 | In-plan, divergent (arch) | Resolver (`resolver.ts:37-40`) & wizard (`steps.ts:37-44`) namespace plugin provider config keys as `plugin:<id>:provider:<key>`, breaking reads of existing flat keys; spec §3.6 assumed flat `getConfig('kaneo_workspace_id')` | **User decision (AskUserQuestion, 2026-05-29): namespaced keys + data migration** (chose this over storageKey-aliasing). Added decision 6; added migration **Task 3.6a** (Kaneo, mig `048`) and **Task 4.5a** (YouTrack, mig `049`); rewrote Task 3.7's regression test to assert the namespaced path. |
+| 2026-05-29 | In-plan, partial          | Task 3.7 Step 1 referenced a test name (`workspaceId from user_config`) that the Task 3.1 implementer named differently, and assumed flat-key assertion                                                                          | Rewrote Task 3.7 Step 1 to invert the Task 3.1 regression test toward the namespaced generic path.                                                                                                                                                                                                     |
+
+**Consequences of the namespaced-keys + migration decision (vs the storageKey-aliasing alternative):** more files touched (two new migrations, provision/wizard/setup re-points), the rename runs against **live `user_config` data**, and the rename **must be sequenced per phase** (Kaneo in Phase 3 after its builtin is removed; YouTrack in Phase 4 — never earlier). The Task 3.1 flat key is now an intermediate that Task 3.6a renames. These are encoded in decision 6 and Tasks 3.1a / 3.6a / 4.5a.
