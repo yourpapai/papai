@@ -430,7 +430,7 @@ function setupContextTaskAssignment(contextId: string, ...args: [] | [platformIn
       insertTaskInstance({
         id: taskInstanceId,
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
       })
     }
@@ -884,7 +884,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       insertTaskInstance({
         id: taskInstanceId,
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
       })
       setContextSettings({
@@ -926,7 +926,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
       insertTaskInstance({
         id: 'dm-source-task',
         type: 'youtrack',
-        config: { url: 'https://yt.invalid' },
+        config: { baseUrl: 'https://yt.invalid' },
         status: 'active',
       })
 

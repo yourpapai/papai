@@ -161,17 +161,20 @@ describe('/setup command', () => {
     addAuthorizedGroup('group-1', 'admin-1')
 
     const { reply, textCalls } = createMockReply()
+    const provisionConfigs: Array<{ publicUrl: string | undefined; internalUrl: string | undefined }> = []
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: () =>
-        Promise.resolve({
+      provisionAndConfigure: (_userId, _username, config) => {
+        provisionConfigs.push(config)
+        return Promise.resolve({
           status: 'provisioned',
           email: 'group-1-a1b2c3d4@pap.ai',
           password: 'pw-1',
           kaneoUrl: 'https://kaneo.test',
           apiKey: 'key-1',
           workspaceId: 'ws-1',
-        }),
+        })
+      },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
@@ -183,7 +186,7 @@ describe('/setup command', () => {
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
@@ -195,23 +198,27 @@ describe('/setup command', () => {
     expect(textCalls.some((text) => text.includes('group Kaneo account has been created'))).toBe(true)
     expect(textCalls.some((text) => text.includes('Run /setup again when you are ready to continue'))).toBe(true)
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(false)
+    expect(provisionConfigs).toEqual([{ publicUrl: 'https://kaneo.invalid', internalUrl: undefined }])
   })
 
   test('first-time allowlisted group setup with auto-provision disabled continues into wizard', async () => {
     process.env['KANEO_AUTO_PROVISION'] = 'false'
 
     const { reply, textCalls } = createMockReply()
+    const provisionConfigs: Array<{ publicUrl: string | undefined; internalUrl: string | undefined }> = []
     const deps: SetupCommandDeps = {
       isAuthorizedGroup: () => true,
-      provisionAndConfigure: () =>
-        Promise.resolve({
+      provisionAndConfigure: (_userId, _username, config) => {
+        provisionConfigs.push(config)
+        return Promise.resolve({
           status: 'provisioned',
           email: 'group-1-a1b2c3d4@pap.ai',
           password: 'pw-1',
           kaneoUrl: 'https://kaneo.test',
           apiKey: 'key-1',
           workspaceId: 'ws-1',
-        }),
+        })
+      },
       createWizard: () => ({ success: true, prompt: 'wizard-started' }),
       getConfig: () => null,
       getKaneoWorkspace: () => null,
@@ -223,7 +230,7 @@ describe('/setup command', () => {
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
@@ -234,6 +241,7 @@ describe('/setup command', () => {
 
     expect(textCalls.some((text) => text.includes('Continuing with the setup process now.'))).toBe(true)
     expect(textCalls.some((text) => text.includes('wizard-started'))).toBe(true)
+    expect(provisionConfigs).toEqual([{ publicUrl: 'https://kaneo.invalid', internalUrl: undefined }])
   })
 
   test('subsequent allowlisted group setup skips provisioning and starts the wizard', async () => {
@@ -260,7 +268,7 @@ describe('/setup command', () => {
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
@@ -289,7 +297,7 @@ describe('/setup command', () => {
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
@@ -321,7 +329,7 @@ describe('/setup command', () => {
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),
@@ -354,7 +362,7 @@ describe('/setup command', () => {
       getTaskInstance: () => ({
         id: 'kaneo-prod',
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
         createdAt: '2026-05-23T00:00:00.000Z',
       }),

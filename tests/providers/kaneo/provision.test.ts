@@ -28,7 +28,7 @@ function assignKaneoContext(contextId: string): void {
   insertTaskInstance({
     id: `${contextId}-kaneo`,
     type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
+    config: { baseUrl: 'https://kaneo.invalid' },
     status: 'active',
   })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
@@ -38,7 +38,7 @@ function assignYouTrackContext(contextId: string): void {
   insertTaskInstance({
     id: `${contextId}-yt`,
     type: 'youtrack',
-    config: { url: 'https://yt.invalid' },
+    config: { baseUrl: 'https://yt.invalid' },
     status: 'active',
   })
   setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
@@ -491,7 +491,7 @@ describe('maybeProvisionKaneo', () => {
       id: 'kaneo-team-a',
       type: 'kaneo',
       status: 'active',
-      config: { url: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
+      config: { baseUrl: 'https://kaneo.public.invalid', internalUrl: 'https://kaneo.internal.invalid' },
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-team-a', platformInstanceId: 'telegram-default' })
     const requestedUrls: string[] = []
@@ -517,7 +517,7 @@ describe('maybeProvisionKaneo', () => {
       id: 'kaneo-missing-url',
       type: 'kaneo',
       status: 'active',
-      config: { url: '   ' },
+      config: { baseUrl: '   ' },
     })
     setContextSettings({
       contextId: 'ctx-missing-url',

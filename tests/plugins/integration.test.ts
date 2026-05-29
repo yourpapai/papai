@@ -290,8 +290,13 @@ describe('plugin lifecycle integration', () => {
     ])
     await activatePlugins(pluginRegistry.getApprovedCompatiblePlugins())
 
-    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
-    insertTaskInstance({ id: 'youtrack-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'youtrack-a',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-default' })
     setContextSettings({
       contextId: 'ctx-youtrack',

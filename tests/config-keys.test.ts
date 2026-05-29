@@ -42,14 +42,19 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('returns Kaneo visible keys for an active Kaneo assignment', () => {
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-kaneo', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
 
     expect(getConfigKeysForContext('ctx-kaneo')).toEqual(['kaneo_apikey', 'timezone', 'mcp_endpoints'])
   })
 
   test('returns YouTrack visible keys for an active YouTrack assignment', () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
 
     expect(getConfigKeysForContext('ctx-yt')).toEqual(['youtrack_token', 'timezone', 'mcp_endpoints'])
@@ -64,7 +69,12 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('returns preferences only when assigned instance is inactive', () => {
-    insertTaskInstance({ id: 'yt-stopped', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'stopped' })
+    insertTaskInstance({
+      id: 'yt-stopped',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'stopped',
+    })
     setContextSettings({
       contextId: 'ctx-stopped',
       taskInstanceId: 'yt-stopped',
@@ -98,7 +108,7 @@ describe('getConfigKeysForContext', () => {
   })
 
   test('getAllConfig only includes keys valid for the context', () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
     setConfig('ctx-yt', 'youtrack_token', 'perm:abc')

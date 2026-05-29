@@ -69,7 +69,12 @@ describe('TaskProviderResolver', () => {
   })
 
   test('returns null when assigned task instance is not active', async () => {
-    insertTaskInstance({ id: 'yt-stopped', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'stopped' })
+    insertTaskInstance({
+      id: 'yt-stopped',
+      type: 'youtrack',
+      config: { baseUrl: 'https://yt.invalid' },
+      status: 'stopped',
+    })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-stopped', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'youtrack_token', 'perm:abc')
     const resolver = makeResolver()

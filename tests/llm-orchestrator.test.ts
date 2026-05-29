@@ -174,7 +174,7 @@ const assignKaneoContext = (contextId: string): void => {
     insertTaskInstance({
       id: taskInstanceId,
       type: 'kaneo',
-      config: { url: 'https://kaneo.invalid' },
+      config: { baseUrl: 'https://kaneo.invalid' },
       status: 'active',
     })
   }
@@ -187,7 +187,7 @@ const assignYouTrackContext = (contextId: string): void => {
     insertTaskInstance({
       id: taskInstanceId,
       type: 'youtrack',
-      config: { url: 'https://yt.invalid' },
+      config: { baseUrl: 'https://yt.invalid' },
       status: 'active',
     })
   }
@@ -408,7 +408,7 @@ describe('processMessage', () => {
       insertTaskInstance({
         id: 'yt-prod-null',
         type: 'youtrack',
-        config: { url: 'https://yt.invalid' },
+        config: { baseUrl: 'https://yt.invalid' },
         status: 'active',
       })
       setContextSettings({

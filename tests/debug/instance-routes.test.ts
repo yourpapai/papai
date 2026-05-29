@@ -114,7 +114,7 @@ const seedPlatformInstance = (id: string): void => {
 }
 
 const seedTaskInstance = (id: string): void => {
-  insertTaskInstance({ id, type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  insertTaskInstance({ id, type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
 }
 
 const fakeProvider = (start: () => Promise<void>, stop: () => Promise<void>): ChatProvider => ({
