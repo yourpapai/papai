@@ -23,6 +23,7 @@ export type ToolDomain =
   | 'identity'
   | 'time'
   | 'mcp'
+  | 'plugin'
 
 export type ToolOperation = 'read' | 'create' | 'update' | 'delete' | 'manage'
 
@@ -164,6 +165,11 @@ export function getToolMetadata(toolName: string): ToolClassification | undefine
   // MCP tools: mcp_<server-id>__<tool_name>
   if (toolName.startsWith('mcp_')) {
     return { domain: 'mcp', operation: 'read', risk: 'open-world' }
+  }
+
+  // Plugin tools: plugin_<plugin-id>__<tool_name>
+  if (toolName.startsWith('plugin_')) {
+    return { domain: 'plugin', operation: 'read', risk: 'open-world' }
   }
 
   return undefined

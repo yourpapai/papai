@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import { getToolMetadata } from '../../src/tools/tool-metadata.js'
 import {
   getDomainStatus,
   isToolEnabled,
@@ -59,12 +60,28 @@ describe('isToolEnabled', () => {
     expect(isToolEnabled(prefs, 'web_fetch')).toBe(true)
   })
 
-  it('treats unknown (un-classified) tools as always enabled', () => {
-    const prefs: ToolPrefs = { disabledDomains: ['web'], toolOverrides: {} }
+  it('classifies plugin tools into the plugin domain', () => {
+    expect(getToolMetadata('plugin_hello_world__greet')).toEqual({
+      domain: 'plugin',
+      operation: 'read',
+      risk: 'open-world',
+    })
+  })
+
+  it('disables plugin tools when the plugin domain is disabled', () => {
+    const prefs: ToolPrefs = { disabledDomains: ['plugin'], toolOverrides: {} }
+    expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(false)
+  })
+
+  it('lets a per-tool override re-enable a plugin tool inside a disabled plugin domain', () => {
+    const prefs: ToolPrefs = {
+      disabledDomains: ['plugin'],
+      toolOverrides: { plugin_hello_world__greet: true },
+    }
     expect(isToolEnabled(prefs, 'plugin_hello_world__greet')).toBe(true)
   })
 
-  it('lets an override=false disable an unclassified (plugin) tool', () => {
+  it('lets an override=false disable a plugin tool when the plugin domain stays enabled', () => {
     const prefs: ToolPrefs = {
       disabledDomains: [],
       toolOverrides: { plugin_hello_world__greet: false },

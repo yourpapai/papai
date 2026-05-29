@@ -36,6 +36,7 @@ const DOMAIN_LABELS: Record<ToolDomain, string> = {
   identity: 'Identity',
   time: 'Time',
   mcp: 'MCP tools',
+  plugin: 'Plugin tools',
 }
 
 const RISK_EMOJI: Record<ToolRisk, string> = {
@@ -65,6 +66,8 @@ const DOMAIN_CODES: readonly ToolDomain[] = [
   'web',
   'identity',
   'time',
+  'mcp',
+  'plugin',
 ]
 
 function callbackData(raw: string, compact: string): string | null {
