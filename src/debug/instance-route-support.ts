@@ -17,6 +17,7 @@ export type InstanceApiDeps = {
 }
 
 const INSTANCE_APPLY_CONCURRENCY = 4
+const instanceApplyLock = pLimit(1)
 
 type ApplyFailureAction = 'remove' | 'recreate' | 'start'
 
@@ -101,6 +102,8 @@ const failedPatch = (id: string, action: ApplyFailureAction, error: unknown): Ap
   failed: [{ id, action, error: errorMessage(error) }],
 })
 
+const notActiveAfterStartError = (id: string): Error => new Error(`chat instance did not become active: ${id}`)
+
 const mergeApplyResult = (applied: number, patches: readonly ApplyResultPatch[]): ApplyInstancesResult => ({
   applied,
   started: patches.flatMap((patch) => patch.started ?? []),
@@ -114,17 +117,23 @@ const mergeApplyResult = (applied: number, patches: readonly ApplyResultPatch[])
 const removeRuntimeInstance = async (router: ChatRouter, id: string): Promise<ApplyResultPatch> => {
   try {
     await router.removeInstance(id)
-    return { stopped: [id], removed: [id] }
+    return { removed: [id] }
   } catch (error) {
     return failedPatch(id, 'remove', error)
   }
+}
+
+const startedPatch = (router: ChatRouter, id: string, action: ApplyFailureAction): ApplyResultPatch => {
+  const runtimeInstance = router.getInstance(id)
+  if (runtimeInstance !== null && runtimeInstance.status === 'active') return { started: [id] }
+  return failedPatch(id, action, notActiveAfterStartError(id))
 }
 
 const startMissingInstance = async (router: ChatRouter, instance: PlatformInstance): Promise<ApplyResultPatch> => {
   try {
     router.addInstance(instance.id, instance.type, instance.config)
     await router.startInstance(instance.id)
-    return { started: [instance.id] }
+    return startedPatch(router, instance.id, 'start')
   } catch (error) {
     return failedPatch(instance.id, 'start', error)
   }
@@ -135,7 +144,11 @@ const recreateInstance = async (router: ChatRouter, instance: PlatformInstance):
     await router.removeInstance(instance.id)
     router.addInstance(instance.id, instance.type, instance.config)
     await router.startInstance(instance.id)
-    return { started: [instance.id], stopped: [instance.id], removed: [instance.id], recreated: [instance.id] }
+    const runtimeInstance = router.getInstance(instance.id)
+    if (runtimeInstance !== null && runtimeInstance.status === 'active') {
+      return { started: [instance.id], removed: [instance.id], recreated: [instance.id] }
+    }
+    return failedPatch(instance.id, 'recreate', notActiveAfterStartError(instance.id))
   } catch (error) {
     return failedPatch(instance.id, 'recreate', error)
   }
@@ -144,7 +157,7 @@ const recreateInstance = async (router: ChatRouter, instance: PlatformInstance):
 const startStoppedInstance = async (router: ChatRouter, instance: PlatformInstance): Promise<ApplyResultPatch> => {
   try {
     await router.startInstance(instance.id)
-    return { started: [instance.id] }
+    return startedPatch(router, instance.id, 'start')
   } catch (error) {
     return failedPatch(instance.id, 'start', error)
   }
@@ -163,7 +176,7 @@ const reconcileActiveInstance = (router: ChatRouter, instance: PlatformInstance)
   return Promise.resolve({ unchanged: [instance.id] })
 }
 
-export const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Response> => {
+const reconcilePlatformInstances = async (deps: InstanceApiDeps): Promise<Response> => {
   const router = deps.getRuntimeChatRouter()
   if (router === null) return jsonResponse({ error: 'router not initialised' }, { status: 503 })
 
@@ -180,6 +193,9 @@ export const applyPlatformInstances = async (deps: InstanceApiDeps): Promise<Res
 
   return jsonResponse(mergeApplyResult(activeInstances.length, patches))
 }
+
+export const applyPlatformInstances = (deps: InstanceApiDeps): Promise<Response> =>
+  instanceApplyLock(reconcilePlatformInstances, deps)
 
 const parseJson = async (req: Request): Promise<unknown> => {
   try {

@@ -39,6 +39,16 @@ const admin = {
   createdAt: '2026-05-24T00:02:00.000Z',
 } as const
 
+const applyResult = {
+  applied: 1,
+  started: ['telegram-main'],
+  stopped: [],
+  removed: [],
+  recreated: [],
+  unchanged: [],
+  failed: [],
+} as const
+
 type RecordedCall = { readonly method: string; readonly url: string; readonly body: string | null }
 
 const originalConfirm = window.confirm
@@ -140,7 +150,7 @@ const responseFor = (method: string, url: string): Response => {
       },
     ])
   if (method === 'POST' && url === '/api/platform-instances') return jsonResponse(platformInstance)
-  if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse({ applied: 1 })
+  if (method === 'POST' && url === '/api/platform-instances/apply') return jsonResponse(applyResult)
   if (method === 'PATCH' && url === '/api/platform-instances/telegram-main')
     return jsonResponse(stoppedPlatformInstance)
   if (method === 'DELETE' && url === '/api/platform-instances/telegram-main') return jsonResponse({ ok: true })

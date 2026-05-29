@@ -116,7 +116,18 @@ describe('instance API schemas', () => {
   })
 
   test('accepts apply result payloads', () => {
-    expect(ApplyInstancesResultSchema.parse({ applied: 2 }).applied).toBe(2)
+    const parsed = ApplyInstancesResultSchema.parse({
+      applied: 2,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: ['discord-old'],
+      recreated: ['mattermost-main'],
+      unchanged: ['telegram-secondary'],
+      failed: [{ id: 'telegram-bad', action: 'start', error: 'failed to start' }],
+    })
+
+    expect(parsed.applied).toBe(2)
+    expect(parsed.failed[0]?.action).toBe('start')
   })
 
   test('rejects unknown platform and status enums; task type is open string', () => {
