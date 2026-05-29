@@ -207,13 +207,27 @@ describe('TaskProviderResolver', () => {
           { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
         ],
         contextConfigSchema: [
-          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'context' as const },
+          {
+            key: 'apiToken',
+            storageKey: 'metadata_token',
+            label: 'API Token',
+            required: true,
+            sensitive: true,
+            scope: 'context' as const,
+          },
         ],
         capabilities: new Set(),
         traits: new Set(),
         configSchema: [
           { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
-          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'context' as const },
+          {
+            key: 'apiToken',
+            storageKey: 'metadata_token',
+            label: 'API Token',
+            required: true,
+            sensitive: true,
+            scope: 'context' as const,
+          },
         ],
       }),
       getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
@@ -227,7 +241,8 @@ describe('TaskProviderResolver', () => {
     const provider = await resolver.resolve('ctx-1')
 
     expect(provider).not.toBeNull()
-    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:test-plugin:provider:apiToken')
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:test-plugin:provider:metadata_token')
+    expect(getConfig).not.toHaveBeenCalledWith('ctx-1', 'plugin:test-plugin:provider:apiToken')
     expect(created).toEqual([
       { name: 'custom-tracker', config: { baseUrl: 'https://custom.invalid', apiToken: 'tok-123' } },
     ])

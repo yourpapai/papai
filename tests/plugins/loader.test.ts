@@ -343,6 +343,44 @@ describe('activatePlugins', () => {
     })
   })
 
+  test('wraps malformed providerConfigValidator returns as validation failures', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateTrackerConfig() {
+        return { ok: false }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('malformed-validator-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('malformed-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['malformed-validator-tracker'],
+      },
+      providerConfigValidator: 'validateTrackerConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    const validator = getTaskProviderConfigValidator('malformed-validator-tracker')
+    expect(validator).toBeDefined()
+    await expect(validator?.({ baseUrl: 'https://bad.invalid' })).resolves.toEqual({
+      ok: false,
+      reason: "Provider config validator export 'validateTrackerConfig' returned an invalid result",
+    })
+  })
+
   test('marks plugin as error when providerConfigValidator export is not a function', async () => {
     const entryPoint = writeTempPluginModule(`
       export const validateTrackerConfig = 'not a function'

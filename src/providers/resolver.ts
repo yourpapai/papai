@@ -38,7 +38,8 @@ const defaultDeps: TaskProviderResolverDeps = {
 }
 
 const storageKeyForField = (descriptor: TaskProviderTypeDescriptor, field: ProviderConfigField): string => {
-  if (descriptor.source !== 'builtin') return `plugin:${descriptor.source.plugin}:provider:${field.key}`
+  if (descriptor.source !== 'builtin')
+    return `plugin:${descriptor.source.plugin}:provider:${field.storageKey ?? field.key}`
   return field.storageKey ?? field.key
 }
 

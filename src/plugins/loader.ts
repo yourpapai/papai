@@ -4,6 +4,7 @@
 // See LICENSE in the project root for details.
 
 import pLimit from 'p-limit'
+import { z } from 'zod'
 
 import { logger } from '../logger.js'
 import type { TaskProviderConfigValidator } from '../providers/registry.js'
@@ -24,6 +25,13 @@ type ImportedPluginModule = Readonly<{
   moduleRecord: PluginModuleRecord
 }>
 
+type UnknownProviderConfigValidator = (config: Record<string, string>) => unknown
+
+const providerConfigValidatorResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }),
+  z.object({ ok: z.literal(false), reason: z.string().min(1) }),
+])
+
 function isPluginFactory(value: unknown): value is PluginFactory {
   return typeof value === 'function'
 }
@@ -37,7 +45,7 @@ function isPluginInstance(value: unknown): value is PluginInstance {
   )
 }
 
-function isTaskProviderConfigValidator(value: unknown): value is TaskProviderConfigValidator {
+function isUnknownProviderConfigValidator(value: unknown): value is UnknownProviderConfigValidator {
   return typeof value === 'function'
 }
 
@@ -66,10 +74,17 @@ function resolveProviderConfigValidator(
 ): TaskProviderConfigValidator | undefined {
   if (exportName === undefined) return undefined
   const candidate = moduleRecord[exportName]
-  if (!isTaskProviderConfigValidator(candidate)) {
+  if (!isUnknownProviderConfigValidator(candidate)) {
     throw new Error(`Provider config validator export '${exportName}' is not a function`)
   }
-  return candidate
+  return async (config) => {
+    const result = providerConfigValidatorResultSchema.safeParse(await candidate(config))
+    if (result.success) return result.data
+    return {
+      ok: false,
+      reason: `Provider config validator export '${exportName}' returned an invalid result`,
+    }
+  }
 }
 
 function buildActivationTimeout(timeoutMs: number): {
