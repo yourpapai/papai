@@ -11,10 +11,20 @@
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
+    // First-party plugin entry points are loaded dynamically by the plugin loader,
+    // so they have no static importer; declare them as entries.
+    "plugins/*/index.ts!",
   ],
 
-  // All source files (production only)
-  "project": ["src/**/*.ts!", "client/**/*.ts!", "review-loop/src/**/*.ts!", "scripts/behavior-audit/**/*.ts!"],
+  // All source files (production only). plugins/** is included so knip tracks
+  // plugin->src usage (e.g. clearCachedTools, consumed only by a provider plugin).
+  "project": [
+    "src/**/*.ts!",
+    "client/**/*.ts!",
+    "review-loop/src/**/*.ts!",
+    "scripts/behavior-audit/**/*.ts!",
+    "plugins/**/*.ts!",
+  ],
 
   // All issue types treated as hard errors
   "rules": {
@@ -97,6 +107,10 @@
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
+    // Plugin entry-point default exports are imported dynamically by the plugin
+    // loader (by path), so knip sees no static importer. Each new plugin adds a line.
+    "plugins/synthetic-web-search/index.ts": ["exports"],
+    "plugins/task-provider-kaneo/index.ts": ["exports"],
   },
 
   // Report unused exports even in entry files
