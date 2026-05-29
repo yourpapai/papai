@@ -5,8 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { listTaskLabels } from '../../../src/providers/kaneo/list-task-labels.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { listTaskLabels } from '../../../plugins/task-provider-kaneo/list-task-labels.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 function getRequestMethod(options: RequestInit): string {

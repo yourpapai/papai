@@ -6,6 +6,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
+import { maybeProvisionKaneo } from '../plugins/task-provider-kaneo/provision.js'
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
@@ -30,7 +31,6 @@ import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-ty
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
-import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'

@@ -3,10 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from '../../plugins/task-provider-kaneo/provider.js'
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { builtinDescriptorSeeds } from './builtin-descriptors.js'
-import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
 import { YouTrackProvider } from './youtrack/index.js'

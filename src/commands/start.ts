@@ -3,9 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { maybeProvisionKaneo } from '../../plugins/task-provider-kaneo/provision.js'
 import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
 import { logger } from '../logger.js'
-import { maybeProvisionKaneo } from '../providers/kaneo/provision.js'
 import { addUser, isAuthorized } from '../users.js'
 
 const log = logger.child({ scope: 'commands:start' })

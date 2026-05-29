@@ -5,8 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { KaneoConfig } from '../../../../src/providers/kaneo/client.js'
-import { kaneoUpdateComment } from '../../../../src/providers/kaneo/operations/comments.js'
+import type { KaneoConfig } from '../../../../plugins/task-provider-kaneo/client.js'
+import { kaneoUpdateComment } from '../../../../plugins/task-provider-kaneo/operations/comments.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 function getRequestMethod(options: RequestInit): string {

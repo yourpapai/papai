@@ -6,8 +6,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { LabelResource } from '../../../src/providers/kaneo/label-resource.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { LabelResource } from '../../../plugins/task-provider-kaneo/label-resource.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 // ---------------------------------------------------------------------------

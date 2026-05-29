@@ -6,11 +6,11 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { KaneoClassifiedError } from '../../../plugins/task-provider-kaneo/classify-error.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import type { TaskStatusDeps } from '../../../plugins/task-provider-kaneo/task-status.js'
+import { validateStatus } from '../../../plugins/task-provider-kaneo/task-status.js'
 import { getUserMessage } from '../../../src/errors.js'
-import { KaneoClassifiedError } from '../../../src/providers/kaneo/classify-error.js'
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import type { TaskStatusDeps } from '../../../src/providers/kaneo/task-status.js'
-import { validateStatus } from '../../../src/providers/kaneo/task-status.js'
 import { mockLogger } from '../../utils/test-helpers.js'
 
 type ColumnEntry = { id: string; name: string; order: number }

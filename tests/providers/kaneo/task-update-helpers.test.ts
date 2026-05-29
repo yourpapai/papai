@@ -5,9 +5,9 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import type { TaskStatusDeps } from '../../../src/providers/kaneo/task-status.js'
-import { performUpdate } from '../../../src/providers/kaneo/task-update-helpers.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import type { TaskStatusDeps } from '../../../plugins/task-provider-kaneo/task-status.js'
+import { performUpdate } from '../../../plugins/task-provider-kaneo/task-update-helpers.js'
 import { createMockColumn, createMockTask, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type RequestRecord = { url: string; method: string; body?: unknown }

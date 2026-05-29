@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { CommentResource } from './test-resources.js'
 

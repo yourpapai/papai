@@ -7,9 +7,9 @@ import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import assert from 'node:assert/strict'
 
 // Import implementation to satisfy TDD hook requirement
-import '../../../src/providers/kaneo/operations/tasks.js'
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { searchTasks, TaskResultSchema } from '../../../src/providers/kaneo/search-tasks.js'
+import '../../../plugins/task-provider-kaneo/operations/tasks.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { searchTasks, TaskResultSchema } from '../../../plugins/task-provider-kaneo/search-tasks.js'
 import { mockLogger, setMockFetch, restoreFetch } from '../../utils/test-helpers.js'
 
 describe('searchTasks', () => {

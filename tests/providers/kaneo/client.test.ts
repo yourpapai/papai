@@ -8,9 +8,9 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { kaneoFetch } from '../../../src/providers/kaneo/client.js'
-import { KaneoApiError, KaneoValidationError } from '../../../src/providers/kaneo/errors.js'
-import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
+import { kaneoFetch } from '../../../plugins/task-provider-kaneo/client.js'
+import { KaneoApiError, KaneoValidationError } from '../../../plugins/task-provider-kaneo/errors.js'
+import { TaskSchema as KaneoTaskResponseSchema } from '../../../plugins/task-provider-kaneo/schemas/create-task.js'
 import { restoreFetch, setMockFetch, createMockTask } from '../../utils/test-helpers.js'
 import { EmptyResponseSchema } from './test-resources.js'
 

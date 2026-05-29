@@ -6,15 +6,15 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
-import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
-import { setContextSettings } from '../../../src/instances/context-store.js'
-import { insertTaskInstance } from '../../../src/instances/task-store.js'
-import { isKaneoSessionCookie } from '../../../src/providers/kaneo/client.js'
+import { isKaneoSessionCookie } from '../../../plugins/task-provider-kaneo/client.js'
 import {
   maybeProvisionKaneo,
   provisionAndConfigure,
   provisionKaneoUser,
-} from '../../../src/providers/kaneo/provision.js'
+} from '../../../plugins/task-provider-kaneo/provision.js'
+import { userCachesForTesting, getCachedTools, setCachedTools } from '../../../src/cache.js'
+import { setContextSettings } from '../../../src/instances/context-store.js'
+import { insertTaskInstance } from '../../../src/instances/task-store.js'
 import { createProvider } from '../../../src/providers/registry.js'
 import {
   mockLogger,

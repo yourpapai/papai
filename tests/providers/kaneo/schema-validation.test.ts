@@ -8,14 +8,17 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { ColumnCompatSchema as KaneoColumnSchema } from '../../../src/providers/kaneo/schemas/api-compat.js'
-import { CreateCommentResponseSchema } from '../../../src/providers/kaneo/schemas/create-comment.js'
-import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../src/providers/kaneo/schemas/create-label.js'
-import { TaskSchema as KaneoTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
-import { TaskSchema as CreateTaskResponseSchema } from '../../../src/providers/kaneo/schemas/create-task.js'
-import { GetProjectResponseSchema as KaneoProjectFullSchema } from '../../../src/providers/kaneo/schemas/get-project.js'
-import { ActivityItemSchema, GlobalSearchResponseSchema } from '../../../src/providers/kaneo/schemas/global-search.js'
-import { ListTasksResponseSchema } from '../../../src/providers/kaneo/schemas/list-tasks.js'
+import { ColumnCompatSchema as KaneoColumnSchema } from '../../../plugins/task-provider-kaneo/schemas/api-compat.js'
+import { CreateCommentResponseSchema } from '../../../plugins/task-provider-kaneo/schemas/create-comment.js'
+import { CreateLabelResponseSchema as KaneoLabelSchema } from '../../../plugins/task-provider-kaneo/schemas/create-label.js'
+import { TaskSchema as KaneoTaskResponseSchema } from '../../../plugins/task-provider-kaneo/schemas/create-task.js'
+import { TaskSchema as CreateTaskResponseSchema } from '../../../plugins/task-provider-kaneo/schemas/create-task.js'
+import { GetProjectResponseSchema as KaneoProjectFullSchema } from '../../../plugins/task-provider-kaneo/schemas/get-project.js'
+import {
+  ActivityItemSchema,
+  GlobalSearchResponseSchema,
+} from '../../../plugins/task-provider-kaneo/schemas/global-search.js'
+import { ListTasksResponseSchema } from '../../../plugins/task-provider-kaneo/schemas/list-tasks.js'
 import {
   createMockActivity,
   createMockColumn,

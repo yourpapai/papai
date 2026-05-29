@@ -5,15 +5,15 @@
 
 import { z } from 'zod'
 
+import { classifyKaneoError } from '../../../plugins/task-provider-kaneo/classify-error.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { kaneoFetch } from '../../../plugins/task-provider-kaneo/client.js'
+import { ColumnResource } from '../../../plugins/task-provider-kaneo/column-resource.js'
+import { CommentResource } from '../../../plugins/task-provider-kaneo/comment-resource.js'
+import { LabelResource } from '../../../plugins/task-provider-kaneo/label-resource.js'
+import { ProjectResource } from '../../../plugins/task-provider-kaneo/project-resource.js'
+import { TaskResource } from '../../../plugins/task-provider-kaneo/task-resource.js'
 import { providerError } from '../../../src/errors.js'
-import { classifyKaneoError } from '../../../src/providers/kaneo/classify-error.js'
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { kaneoFetch } from '../../../src/providers/kaneo/client.js'
-import { ColumnResource } from '../../../src/providers/kaneo/column-resource.js'
-import { CommentResource } from '../../../src/providers/kaneo/comment-resource.js'
-import { LabelResource } from '../../../src/providers/kaneo/label-resource.js'
-import { ProjectResource } from '../../../src/providers/kaneo/project-resource.js'
-import { TaskResource } from '../../../src/providers/kaneo/task-resource.js'
 
 export const EmptyResponseSchema = z.unknown()
 

@@ -11,7 +11,7 @@ import {
   kaneoListStatuses,
   kaneoReorderStatuses,
   kaneoUpdateStatus,
-} from '../../../../src/providers/kaneo/operations/statuses.js'
+} from '../../../../plugins/task-provider-kaneo/operations/statuses.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 describe('kaneo statuses operations', () => {

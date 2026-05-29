@@ -5,9 +5,9 @@
 
 import { describe, expect, test } from 'bun:test'
 
+import { classifyKaneoError, KaneoClassifiedError } from '../../../plugins/task-provider-kaneo/classify-error.js'
+import { KaneoApiError, KaneoValidationError } from '../../../plugins/task-provider-kaneo/errors.js'
 import { providerError } from '../../../src/errors.js'
-import { classifyKaneoError, KaneoClassifiedError } from '../../../src/providers/kaneo/classify-error.js'
-import { KaneoApiError, KaneoValidationError } from '../../../src/providers/kaneo/errors.js'
 
 describe('classifyKaneoError', () => {
   test('returns authFailed for 401', () => {

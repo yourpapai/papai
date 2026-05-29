@@ -5,10 +5,10 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { addTaskRelation } from '../../../src/providers/kaneo/task-relations.js'
-import { removeTaskRelation } from '../../../src/providers/kaneo/task-relations.js'
-import { updateTaskRelation } from '../../../src/providers/kaneo/task-relations.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { addTaskRelation } from '../../../plugins/task-provider-kaneo/task-relations.js'
+import { removeTaskRelation } from '../../../plugins/task-provider-kaneo/task-relations.js'
+import { updateTaskRelation } from '../../../plugins/task-provider-kaneo/task-relations.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 function parseBody(options: RequestInit): unknown {

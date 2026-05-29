@@ -7,12 +7,12 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 setDefaultTimeout(10000)
 
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createColumn } from '../../src/providers/kaneo/create-column.js'
-import { deleteColumn } from '../../src/providers/kaneo/delete-column.js'
-import { listColumns } from '../../src/providers/kaneo/list-columns.js'
-import { reorderColumns } from '../../src/providers/kaneo/reorder-columns.js'
-import { updateColumn } from '../../src/providers/kaneo/update-column.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createColumn } from '../../plugins/task-provider-kaneo/create-column.js'
+import { deleteColumn } from '../../plugins/task-provider-kaneo/delete-column.js'
+import { listColumns } from '../../plugins/task-provider-kaneo/list-columns.js'
+import { reorderColumns } from '../../plugins/task-provider-kaneo/reorder-columns.js'
+import { updateColumn } from '../../plugins/task-provider-kaneo/update-column.js'
 import { createTestClient, type KaneoTestClient } from './kaneo-test-client.js'
 
 describe('E2E: Column Management', () => {

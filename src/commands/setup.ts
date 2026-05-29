@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { provisionAndConfigure, type ProvisionOutcome } from '../../plugins/task-provider-kaneo/provision.js'
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
 import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
@@ -15,7 +16,6 @@ import { getTaskInstance } from '../instances/task-store.js'
 import { isBuiltinTaskType } from '../instances/types.js'
 import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { provisionAndConfigure, type ProvisionOutcome } from '../providers/kaneo/provision.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
 import { KANEO_WORKSPACE_CONFIG_KEY } from '../types/config.js'
 import { createWizard } from '../wizard/engine.js'

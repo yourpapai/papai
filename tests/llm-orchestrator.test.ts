@@ -28,7 +28,7 @@ import {
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
 const realOpenAICompatible = await import('@ai-sdk/openai-compatible')
-const realProvisionMod = await import('../src/providers/kaneo/provision.js')
+const realProvisionMod = await import('../plugins/task-provider-kaneo/provision.js')
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const getToolNames = (tools: GenerateTextArgs['tools']): string[] => (tools === undefined ? [] : Object.keys(tools))
@@ -128,6 +128,7 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
+import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
   AI_OUTPUT_DETAIL_LEVEL_KEY,
   AI_REASONING_VISIBILITY_KEY,
@@ -141,7 +142,6 @@ import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
-import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
 import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
@@ -246,7 +246,7 @@ describe('processMessage', () => {
     // Register mocks
     mockLogger()
 
-    void mock.module('../src/providers/kaneo/provision.js', () => ({
+    void mock.module('../plugins/task-provider-kaneo/provision.js', () => ({
       provisionAndConfigure: (): Promise<{ status: string }> => Promise.resolve({ status: 'already_configured' }),
       maybeProvisionKaneo: realProvisionMod.maybeProvisionKaneo,
     }))

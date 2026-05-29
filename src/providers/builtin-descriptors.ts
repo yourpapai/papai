@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { ALL_CAPABILITIES, KANEO_TRAITS } from './kaneo/constants.js'
+import { ALL_CAPABILITIES, KANEO_TRAITS } from '../../plugins/task-provider-kaneo/constants.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProviderTrait } from './types.js'
 import { YOUTRACK_CAPABILITIES, YOUTRACK_TRAITS } from './youtrack/constants.js'

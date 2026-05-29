@@ -5,8 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import type { KaneoConfig } from '../../../../src/providers/kaneo/client.js'
-import { kaneoListLabels, kaneoListTaskLabels } from '../../../../src/providers/kaneo/operations/labels.js'
+import type { KaneoConfig } from '../../../../plugins/task-provider-kaneo/client.js'
+import { kaneoListLabels, kaneoListTaskLabels } from '../../../../plugins/task-provider-kaneo/operations/labels.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
 describe('kaneo label operations', () => {

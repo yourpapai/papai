@@ -5,9 +5,9 @@
 
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 
-import type { KaneoConfig } from '../../../../src/providers/kaneo/client.js'
-import { mapGlobalSearchTaskResults } from '../../../../src/providers/kaneo/mappers.js'
-import { kaneoSearchTasks } from '../../../../src/providers/kaneo/operations/tasks.js'
+import type { KaneoConfig } from '../../../../plugins/task-provider-kaneo/client.js'
+import { mapGlobalSearchTaskResults } from '../../../../plugins/task-provider-kaneo/mappers.js'
+import { kaneoSearchTasks } from '../../../../plugins/task-provider-kaneo/operations/tasks.js'
 import { mockLogger, setMockFetch, restoreFetch } from '../../../utils/test-helpers.js'
 
 describe('kaneoSearchTasks', () => {

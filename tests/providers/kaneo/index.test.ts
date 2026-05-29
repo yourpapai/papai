@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 
 import { z } from 'zod'
 
-import { KaneoProvider } from '../../../src/providers/kaneo/index.js'
+import { KaneoProvider } from '../../../plugins/task-provider-kaneo/provider.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 const RequestBodySchema = z.record(z.string(), z.unknown())

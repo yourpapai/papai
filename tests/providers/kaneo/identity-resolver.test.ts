@@ -5,8 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import { createKaneoIdentityResolver } from '../../../src/providers/kaneo/identity-resolver.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import { createKaneoIdentityResolver } from '../../../plugins/task-provider-kaneo/identity-resolver.js'
 import type { IdentityUser } from '../../../src/providers/types.js'
 import { mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 

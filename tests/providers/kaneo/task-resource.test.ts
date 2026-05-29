@@ -6,9 +6,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 // Import implementation to satisfy TDD hook requirement
-import '../../../src/providers/kaneo/task-resource.js'
-import type { KaneoConfig } from '../../../src/providers/kaneo/client.js'
-import type { TaskStatusDeps } from '../../../src/providers/kaneo/task-status.js'
+import '../../../plugins/task-provider-kaneo/task-resource.js'
+import type { KaneoConfig } from '../../../plugins/task-provider-kaneo/client.js'
+import type { TaskStatusDeps } from '../../../plugins/task-provider-kaneo/task-status.js'
 import { createMockColumn, createMockTask, mockLogger, restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 import { TaskResource } from './test-resources.js'
 
