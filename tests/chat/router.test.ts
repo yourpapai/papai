@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { compareConfigKeyOrder } from '../../src/chat/router-helpers.js'
 import { ChatRouter, type ManagedChatInstance, type ManagedChatInstanceFactory } from '../../src/chat/router.js'
 import { dmTarget } from '../../src/chat/types.js'
 import type {
@@ -449,6 +450,10 @@ describe('ChatRouter', () => {
     const right = snapshotFingerprint('telegram', { url: 'https://example.test', token: 'secret-token' })
 
     expect(left).toBe(right)
+  })
+
+  test('config fingerprint sorting uses code point key order', () => {
+    expect(['z', 'ä'].toSorted(compareConfigKeyOrder)).toEqual(['z', 'ä'])
   })
 
   test('config fingerprints change when config or platform type changes', () => {

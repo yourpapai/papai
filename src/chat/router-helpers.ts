@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createHash } from 'node:crypto'
+import { createHmac, randomBytes } from 'node:crypto'
 
 import type { AttachmentSourceProvider } from '../attachments/types.js'
 import type { InstanceConfig, InstanceStatus, PlatformInstanceType } from '../instances/types.js'
@@ -33,12 +33,20 @@ export const fallbackContextRendered: ContextRendered = {
   content: 'No active chat provider is available to render this context.',
 }
 
+const configFingerprintKey = randomBytes(32)
+
+export const compareConfigKeyOrder = (left: string, right: string): number => {
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
+}
+
 const stableConfigEntries = (config: InstanceConfig): readonly (readonly [string, string])[] =>
-  Object.entries(config).toSorted(([left], [right]) => left.localeCompare(right))
+  Object.entries(config).toSorted(([left], [right]) => compareConfigKeyOrder(left, right))
 
 export const configFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
   const payload = JSON.stringify({ type, config: stableConfigEntries(config) })
-  return createHash('sha256').update(payload).digest('hex')
+  return createHmac('sha256', configFingerprintKey).update(payload).digest('hex')
 }
 
 export const activeManagedInstances = (instances: Iterable<ManagedChatInstance>): ManagedChatInstance[] =>
