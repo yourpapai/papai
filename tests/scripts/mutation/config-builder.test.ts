@@ -82,6 +82,17 @@ describe('buildPairedConfig', () => {
     expect(cfg.jsonReporter.fileName).toBe('reports/paired/foo.json')
     expect(cfg.thresholds.break).toBe(0)
     expect(cfg.htmlReporter).toBeUndefined()
+    expect(cfg['incrementalFile']).toBeUndefined()
+  })
+
+  test('preserves base threshold bands while breaking at 0', () => {
+    const cfg = buildPairedConfig({
+      base: { ...BASE, thresholds: { high: 95, low: 75, break: 50 } },
+      srcFile: 'src/foo.ts',
+      testFiles: ['tests/foo.test.ts'],
+      reportPath: 'reports/paired/foo.json',
+    })
+    expect(cfg.thresholds).toEqual({ high: 95, low: 75, break: 0 })
   })
 
   test('preserves checkers, tsconfig, plugins, and ignorePatterns', () => {

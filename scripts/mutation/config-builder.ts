@@ -49,6 +49,7 @@ export function buildPairedConfig(input: BuildPairedConfigInput): PairedStrykerC
   }
 
   const baseBun = base.bun ?? {}
+  const baseThresholds = base.thresholds ?? { high: 80, low: 60, break: 0 }
   const next: PairedStrykerConfig = {
     ...base,
     mutate: [srcFile],
@@ -57,7 +58,7 @@ export function buildPairedConfig(input: BuildPairedConfigInput): PairedStrykerC
     incremental: false,
     reporters: ['clear-text', 'json'],
     jsonReporter: { fileName: reportPath },
-    thresholds: { high: 80, low: 60, break: 0 },
+    thresholds: { ...baseThresholds, break: 0 },
   }
   // The HTML reporter only makes sense for the whole-repo run.
   delete (next as Record<string, unknown>)['htmlReporter']
