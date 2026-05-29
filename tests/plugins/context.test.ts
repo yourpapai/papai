@@ -16,7 +16,13 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const stubProviderFactory = (): TaskProvider => createMockProvider()
 
-function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
+function requireValue<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
+  return value
+}
+
+function makeManifest(...args: readonly [] | readonly [overrides: Partial<PluginManifest>]): PluginManifest {
+  const overrides = args.length === 1 ? args[0] : {}
   return {
     id: 'test-plugin',
     name: 'Test Plugin',
@@ -205,7 +211,9 @@ describe('buildPluginContext', () => {
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
       ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
-      expect(getTaskProviderDescriptor('custom-tracker')?.source).toEqual({ plugin: 'test-plugin' })
+      expect(requireValue(getTaskProviderDescriptor('custom-tracker'), 'custom tracker descriptor').source).toEqual({
+        plugin: 'test-plugin',
+      })
     })
 
     test('registers provider context config schema from manifest', () => {
@@ -224,9 +232,9 @@ describe('buildPluginContext', () => {
 
       ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
 
-      const descriptor = getTaskProviderDescriptor('custom-tracker')
-      expect(descriptor?.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
-      expect(descriptor?.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
+      const descriptor = requireValue(getTaskProviderDescriptor('custom-tracker'), 'custom tracker descriptor')
+      expect(descriptor.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
+      expect(descriptor.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
     })
 
     test('throws without provider.task permission', () => {

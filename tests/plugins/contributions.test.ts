@@ -62,6 +62,11 @@ function getRuntimeOverrides(args: MakeRuntimeArgs): Partial<PluginToolSetRuntim
   return args[0]
 }
 
+function requireValue<T>(value: T | undefined, label: string): T {
+  if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
+  return value
+}
+
 function makeManifest(...args: MakeManifestArgs): PluginManifest {
   const overrides = getManifestOverrides(args)
   const base: PluginManifest = {
@@ -955,8 +960,9 @@ describe('buildPluginToolSet', () => {
     expect(Object.keys(firstTools)).toHaveLength(0)
     expect(Object.keys(secondTools)).toHaveLength(0)
     expect(events).toHaveLength(1)
-    expect(events[0]?.eventType).toBe('skipped')
-    expect(events[0]?.message).toBe(
+    const event = requireValue(events[0], 'collision runtime event')
+    expect(event.eventType).toBe('skipped')
+    expect(event.message).toBe(
       "Tool contribution 'plugin_test_plugin__my_tool' skipped because the name already exists",
     )
   })
