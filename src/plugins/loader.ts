@@ -68,14 +68,12 @@ function resolveProviderConfigValidator(
 ): TaskProviderConfigValidator | undefined {
   const exportName = manifest.providerConfigValidator
   if (exportName === undefined) return undefined
-
   const candidate = namedExports?.[exportName]
   if (!isTaskProviderConfigValidator(candidate)) {
     throw new Error(
       `Plugin '${manifest.id}' providerConfigValidator export '${exportName}' is missing or not a function`,
     )
   }
-
   return candidate
 }
 
@@ -103,11 +101,7 @@ function buildActivationTimeout(timeoutMs: number): {
 
 const log = logger.child({ scope: 'plugins:loader' })
 const PLUGIN_LIFECYCLE_CONCURRENCY = 1
-
-/** Default system context ID used during plugin activation (non-user-specific). */
 const SYSTEM_CONTEXT_ID = '__system__'
-
-/** Activation order for deterministic reverse deactivation. */
 const activationOrder: string[] = []
 const activeInstances = new Map<string, PluginInstance>()
 
@@ -207,6 +201,14 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   try {
     const validateConfig = resolveProviderConfigValidator(manifest, importedModule?.namedExports)
     await activatePluginInstance(importedModule?.instance ?? null, activationContext, activationTimeout)
+    if (
+      manifest.providerConfigValidator !== undefined &&
+      activationContext.collected.taskProviderRegistration === undefined
+    ) {
+      throw new Error(
+        `Plugin '${manifest.id}' declares providerConfigValidator but did not register task provider type '${manifest.contributes.taskProviderTypes[0] ?? 'unknown'}'`,
+      )
+    }
     if (activationContext.collected.taskProviderRegistration !== undefined) {
       activationContext.collected.taskProviderRegistration.validateConfig = validateConfig
     }
@@ -278,7 +280,6 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
   }
 }
 
-/** Deactivate all active plugins in reverse activation order. */
 export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
   const toDeactivate = [...activationOrder].reverse()
   if (toDeactivate.length === 0) return
@@ -292,7 +293,6 @@ export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions 
   log.info('All plugins deactivated')
 }
 
-/** Get currently active plugin IDs. */
 export function getActivatedPluginIds(): string[] {
   return [...activationOrder]
 }

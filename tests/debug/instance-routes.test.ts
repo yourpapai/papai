@@ -877,9 +877,11 @@ describe('instance API routes', () => {
         ),
       )
       expect(res.status).toBe(400)
-      const body = assertObject(await readJson(res))
-      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
-      expect(pick(body, 'reason')).toBe('bad url')
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated',
+        reason: 'bad url',
+      })
     } finally {
       await deactivateAllPlugins()
     }
@@ -914,9 +916,11 @@ describe('instance API routes', () => {
       )
 
       expect(res.status).toBe(400)
-      const body = assertObject(await readJson(res))
-      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
-      expect(pick(body, 'reason')).toBe('bad url')
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-patch',
+        reason: 'bad url',
+      })
       expect(expectTaskInstance('validated-patch-1').config).toEqual({ baseUrl: 'https://old.invalid' })
     } finally {
       unregisterContributedTaskProviderType('val-patch')

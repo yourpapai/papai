@@ -97,5 +97,18 @@ export const validateTaskInstanceRouteConfig = (
 ): Response | Promise<Response | null> => {
   const descriptorConfigError = validateTaskDescriptorInstanceConfig(type, config)
   if (descriptorConfigError !== null) return descriptorConfigError
-  return validateTaskInstanceConfig(type, config)
+  return Promise.resolve(validateTaskInstanceConfig(type, config)).then((response) => {
+    if (response === null) return null
+    if (response.status !== 400) return response
+    return response
+      .clone()
+      .json()
+      .then((body: unknown) => {
+        if (typeof body !== 'object' || body === null || Array.isArray(body)) return response
+        const responseBody = Object.fromEntries(Object.entries(body))
+        if (responseBody['error'] !== 'invalid_task_instance_config') return response
+        if ('type' in responseBody) return response
+        return jsonResponse({ ...body, type }, { status: 400 })
+      })
+  })
 }

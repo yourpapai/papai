@@ -599,6 +599,49 @@ describe('activatePlugins', () => {
     ).toContain('providerConfigValidator')
   })
 
+  test('fails activation when providerConfigValidator is declared but no task provider type is registered', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateForgottenProviderConfig() {
+        return { ok: true }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate() {},
+        }
+      }
+    `)
+    const plugin = makePlugin('validator-without-provider-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['forgotten-provider'],
+      },
+      providerConfigValidator: 'validateForgottenProviderConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(
+      requireValue(
+        pluginRegistry.getEntry('validator-without-provider-plugin'),
+        'validator without provider registry entry',
+      ).state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('forgotten-provider')).toBeUndefined()
+    expect(
+      requireValue(
+        getRecentRuntimeEvents('validator-without-provider-plugin', 1)[0],
+        'validator without provider runtime event',
+      ).message,
+    ).toContain('providerConfigValidator')
+  })
+
   test('activation failure cleans framework-owned partial contributions', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
