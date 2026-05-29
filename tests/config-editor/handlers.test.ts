@@ -215,4 +215,54 @@ describe('config-editor back action', () => {
     expect(getConfigValue(storageContextId, 'timezone')).toBe('Europe/Berlin')
     expect(getEditorSession(userId, storageContextId)).toBeNull()
   })
+
+  test('same-session stale save callback for an older pending value is rejected', () => {
+    const userId = 'config-editor-stale-pending-value-user'
+    const storageContextId = 'config-editor-stale-pending-value-context'
+
+    startEditor(userId, storageContextId, 'timezone')
+
+    const firstPending = handleEditorMessage(userId, storageContextId, 'UTC')
+    const firstSaveButton = firstPending.buttons?.find((button) => button.action === 'save')
+    const firstSessionToken = getEditorSession(userId, storageContextId)?.sessionToken
+
+    const secondPending = handleEditorMessage(userId, storageContextId, 'Europe/Berlin')
+    const secondSaveButton = secondPending.buttons?.find((button) => button.action === 'save')
+    const secondSessionToken = getEditorSession(userId, storageContextId)?.sessionToken
+
+    const staleResult = handleEditorCallback(
+      userId,
+      storageContextId,
+      'save',
+      firstSaveButton?.key,
+      firstSaveButton?.sessionToken,
+    )
+
+    expect(firstSaveButton).toBeDefined()
+    expect(secondSaveButton).toBeDefined()
+    expect(firstSessionToken).toBeDefined()
+    expect(secondSessionToken).toBeDefined()
+    expect(firstSaveButton?.sessionToken).not.toBe(secondSaveButton?.sessionToken)
+    expect(firstSessionToken).not.toBe(secondSessionToken)
+    expect(staleResult).toEqual({ handled: false })
+    expect(getConfigValue(storageContextId, 'timezone')).toBeNull()
+    expect(getEditorSession(userId, storageContextId)).toMatchObject({
+      editingKey: 'timezone',
+      pendingValue: 'Europe/Berlin',
+      sessionToken: secondSaveButton?.sessionToken,
+    })
+
+    const currentResult = handleEditorCallback(
+      userId,
+      storageContextId,
+      'save',
+      secondSaveButton?.key,
+      secondSaveButton?.sessionToken,
+    )
+
+    expect(currentResult.handled).toBe(true)
+    expect(currentResult.response).toBe('✅ **Timezone** saved successfully.')
+    expect(getConfigValue(storageContextId, 'timezone')).toBe('Europe/Berlin')
+    expect(getEditorSession(userId, storageContextId)).toBeNull()
+  })
 })

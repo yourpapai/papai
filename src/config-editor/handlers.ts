@@ -29,6 +29,13 @@ export { parseCallbackData, serializeCallbackData } from './callback-data.js'
 
 const log = logger.child({ scope: 'config-editor:handlers' })
 
+function buildCancelBackButtons(): EditorButton[] {
+  return [
+    { text: '❌ Cancel', action: 'cancel', style: 'danger' },
+    { text: '⬅️ Back', action: 'back', style: 'secondary' },
+  ]
+}
+
 function getFieldEmoji(field: ConfigField): string {
   if (field.storageKey === 'timezone') return '🌍'
   if (field.storageKey === 'mcp_endpoints') return '🔌'
@@ -124,10 +131,7 @@ export function startEditor(userId: string, storageContextId: string, key: strin
   return {
     handled: true,
     response: lines.join('\n'),
-    buttons: [
-      { text: '❌ Cancel', action: 'cancel', style: 'danger' },
-      { text: '⬅️ Back', action: 'back', style: 'secondary' },
-    ],
+    buttons: buildCancelBackButtons(),
   }
 }
 
@@ -260,21 +264,23 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
     return { handled: true, response: `Config key "${session.editingKey}" is not valid for this context.` }
   }
 
-  // Validate the input
   const validation = validateConfigField(field, text)
   if (!validation.valid) {
     return {
       handled: true,
       response: `❌ **${validation.error}**\n\nPlease enter a valid value for ${field.label}:`,
-      buttons: [
-        { text: '❌ Cancel', action: 'cancel', style: 'danger' },
-        { text: '⬅️ Back', action: 'back', style: 'secondary' },
-      ],
+      buttons: buildCancelBackButtons(),
     }
   }
 
-  // Store pending value
-  updateEditorSession(userId, storageContextId, { pendingValue: text.trim() })
+  updateEditorSession(userId, storageContextId, {
+    pendingValue: text.trim(),
+    rotateSessionToken: true,
+  })
+  const updatedSession = getEditorSession(userId, storageContextId)
+  if (updatedSession === null) {
+    return { handled: false }
+  }
 
   const emoji = getFieldEmoji(field)
   const sensitiveKey = field.sensitive || isSensitiveKey(session.editingKey)
@@ -288,7 +294,7 @@ export function handleEditorMessage(userId: string, storageContextId: string, te
   return {
     handled: true,
     response: `✏️ **${field.label}**\n\nNew value: \`${maskedOrRaw}\`\n\nSave this value?`,
-    buttons: buildSaveConfirmationButtons(session.editingKey, session.sessionToken, emoji),
+    buttons: buildSaveConfirmationButtons(session.editingKey, updatedSession.sessionToken, emoji),
     isSensitiveKey: sensitiveKey,
   }
 }

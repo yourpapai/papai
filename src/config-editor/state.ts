@@ -88,6 +88,7 @@ export const hasActiveEditor = (userId: string, storageContextId: string): boole
 export interface EditorSessionUpdate {
   pendingValue?: string
   originalMessageId?: string
+  rotateSessionToken?: boolean
 }
 
 /**
@@ -105,6 +106,10 @@ export const updateEditorSession = (userId: string, storageContextId: string, up
 
   if (update.pendingValue !== undefined) {
     session.pendingValue = update.pendingValue
+  }
+
+  if (update.rotateSessionToken === true) {
+    session.sessionToken = createSessionToken()
   }
 
   if (update.originalMessageId !== undefined) {
