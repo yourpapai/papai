@@ -30,14 +30,9 @@
   async function load(id: string): Promise<void> {
     error = null
     loading = true
+    expanded = {}
     try {
-      const result = await fetchTools(id)
-      domains = result.domains
-      for (const d of result.domains) {
-        if (!(d.domain in expanded)) {
-          expanded[d.domain] = true
-        }
-      }
+      domains = (await fetchTools(id)).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -46,18 +41,18 @@
   }
 
   async function onToggleDomain(domain: string): Promise<void> {
+    error = null
     try {
-      const result = await toggleTool({ kind: 'domain', domain, contextId })
-      domains = result.domains
+      domains = (await toggleTool({ kind: 'domain', domain, contextId })).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
   }
 
   async function onToggleTool(tool: string): Promise<void> {
+    error = null
     try {
-      const result = await toggleTool({ kind: 'tool', tool, contextId })
-      domains = result.domains
+      domains = (await toggleTool({ kind: 'tool', tool, contextId })).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -79,11 +74,9 @@
 
   {#if error !== null}
     <p class="status-error">{error}</p>
-  {:else if loading}
-    <p class="placeholder">Loading…</p>
-  {:else if domains.length === 0}
-    <p class="placeholder">No togglable tools for this context.</p>
-  {:else}
+  {/if}
+
+  {#if domains.length > 0}
     <div class="settings-tools">
       {#each domains as domain (domain.domain)}
         <div class="settings-tools__domain">
@@ -91,6 +84,8 @@
             <button
               type="button"
               class="settings-tools__expand"
+              data-testid={`domain-expand-${domain.domain}`}
+              aria-expanded={expanded[domain.domain] === true}
               onclick={() => (expanded[domain.domain] = !expanded[domain.domain])}>
               {expanded[domain.domain] ? '▾' : '▸'} {domain.domain}
             </button>
@@ -121,6 +116,10 @@
         </div>
       {/each}
     </div>
+  {:else if loading}
+    <p class="placeholder">Loading…</p>
+  {:else if error === null}
+    <p class="placeholder">No togglable tools for this context.</p>
   {/if}
 </section>
 

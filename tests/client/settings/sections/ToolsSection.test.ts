@@ -41,6 +41,11 @@ const captureToggleMock = (url: string, init: RequestInit): Promise<Response> =>
   return Promise.resolve(json(toolsPayload))
 }
 
+const errorToggleMock = (url: string, _init: RequestInit): Promise<Response> => {
+  if (url.includes('/tools/toggle')) return Promise.resolve(new Response('Internal Server Error', { status: 500 }))
+  return Promise.resolve(json(toolsPayload))
+}
+
 afterEach(() => {
   capturedBody = ''
   restoreFetch()
@@ -55,6 +60,9 @@ describe('ToolsSection', () => {
     const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
     await drain()
     expect(target.textContent).toContain('task')
+    expect(target.querySelector('[data-testid="domain-toggle-task"]')).not.toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
+    flushSync()
     expect(target.textContent).toContain('create_task')
     expect(target.textContent).toContain('destructive')
     void unmount(component)
@@ -67,9 +75,38 @@ describe('ToolsSection', () => {
     const target = document.querySelector<HTMLElement>('#root')!
     const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
     await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
+    flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="tool-toggle-create_task"]')!.click()
     await drain()
     expect(capturedBody).toBe(JSON.stringify({ kind: 'tool', tool: 'create_task', contextId: 'user:1' }))
+    void unmount(component)
+  })
+
+  test('toggling a domain posts kind=domain', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')!.click()
+    await drain()
+    expect(capturedBody).toBe(JSON.stringify({ kind: 'domain', domain: 'task', contextId: 'user:1' }))
+    void unmount(component)
+  })
+
+  test('a failed toggle keeps the domain list visible and shows an error', async () => {
+    setCsrfToken('c')
+    setMockFetch(errorToggleMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="domain-toggle-task"]')).not.toBeNull()
     void unmount(component)
   })
 })
