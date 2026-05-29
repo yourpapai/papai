@@ -102,6 +102,44 @@ function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnTyp
   }
 }
 
+async function activatePluginInstance(
+  instance: PluginInstance | null,
+  ctx: ReturnType<typeof buildPluginContext>['ctx'],
+  activationTimeout: ReturnType<typeof buildActivationTimeout>,
+): Promise<void> {
+  if (instance === null) return
+  await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
+}
+
+function finalizeSuccessfulActivation(
+  plugin: DiscoveredPlugin,
+  activationContext: ReturnType<typeof buildPluginContext>,
+  instance: PluginInstance | null,
+): void {
+  const { manifest } = plugin
+  const { collected } = activationContext
+
+  commitTaskProviderRegistration(plugin, activationContext)
+  contributionRegistry.register(manifest.id, collected, manifest)
+  if (instance !== null) {
+    activeInstances.set(manifest.id, instance)
+  }
+  pluginRegistry.markActive(manifest.id)
+  activationOrder.push(manifest.id)
+  recordRuntimeEvent(manifest.id, 'activated')
+  log.info({ pluginId: manifest.id }, 'Plugin activated successfully')
+}
+
+function handleActivationFailure(pluginId: string, msg: string): false {
+  log.error({ pluginId, error: msg }, 'Plugin activation failed')
+  activeInstances.delete(pluginId)
+  contributionRegistry.deregister(pluginId)
+  deactivateContributedTaskProviderTypes(pluginId)
+  pluginRegistry.markError(pluginId, `Activation failed: ${msg}`)
+  recordRuntimeEvent(pluginId, 'error', `Activation failed: ${msg}`)
+  return false
+}
+
 async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   const { manifest, entryPoint } = plugin
 
@@ -120,35 +158,18 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   if (entryPoint !== '' && instance === null) return false
 
   const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
-  const { ctx, collected } = activationContext
+  const { ctx } = activationContext
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    if (instance !== null) {
-      await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
-    }
-
-    commitTaskProviderRegistration(plugin, activationContext)
-
-    contributionRegistry.register(manifest.id, collected, manifest)
-    if (instance !== null) {
-      activeInstances.set(manifest.id, instance)
-    }
-    pluginRegistry.markActive(manifest.id)
-    activationOrder.push(manifest.id)
-    recordRuntimeEvent(manifest.id, 'activated')
-    log.info({ pluginId: manifest.id }, 'Plugin activated successfully')
+    await activatePluginInstance(instance, ctx, activationTimeout)
+    finalizeSuccessfulActivation(plugin, activationContext, instance)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    log.error({ pluginId: manifest.id, error: msg }, 'Plugin activation failed')
-    activeInstances.delete(manifest.id)
-    contributionRegistry.deregister(manifest.id)
-    deactivateContributedTaskProviderTypes(manifest.id)
-    pluginRegistry.markError(manifest.id, `Activation failed: ${msg}`)
-    recordRuntimeEvent(manifest.id, 'error', `Activation failed: ${msg}`)
-    return false
+    return handleActivationFailure(manifest.id, msg)
   } finally {
+    activationContext.closeRegistration()
     activationTimeout.cancel()
   }
 }

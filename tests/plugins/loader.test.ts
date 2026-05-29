@@ -26,6 +26,7 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
   var papaiDeactivateOrder: string[] | undefined
+  var papaiLateRegistrationError: string | undefined
 }
 
 const tempDirs: string[] = []
@@ -172,6 +173,56 @@ describe('activatePlugins', () => {
     )
   })
 
+  test('late registration after successful activation is rejected', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            setTimeout(() => {
+              try {
+                ctx.registration.registerTool({
+                  name: 'registered_tool',
+                  description: 'Registered tool',
+                  execute: async () => 'late',
+                })
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            }, 50)
+            ctx.registration.registerTool({
+              name: 'registered_tool',
+              description: 'Registered tool',
+              execute: async () => 'ok',
+            })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('late-success-plugin', entryPoint, {
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100)
+    })
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(
+      requireValue(contributionRegistry.getContributions('late-success-plugin'), 'late success plugin contributions')
+        .tools,
+    ).toHaveLength(1)
+  })
+
   test('marks explicit mcp-only plugins active without importing an entry point', async () => {
     const plugin = makePlugin('mcp-only-plugin', '', {
       main: '',
@@ -240,11 +291,16 @@ describe('activatePlugins', () => {
 
   test('timeout plugin does not publish late provider registration after activation failure', async () => {
     const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
       export default function createPlugin() {
         return {
           activate(ctx) {
             setTimeout(() => {
-              ctx.registration.registerTaskProviderType('late-timeout-provider', () => ({}))
+              try {
+                ctx.registration.registerTaskProviderType('late-timeout-provider', () => ({}))
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
             }, 150)
             return new Promise(() => {})
           },
@@ -273,6 +329,48 @@ describe('activatePlugins', () => {
     expect(
       requireValue(pluginRegistry.getEntry('late-timeout-plugin'), 'late timeout plugin registry entry').state,
     ).toBe('error')
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(getTaskProviderDescriptor('late-timeout-provider')).toBeUndefined()
+  })
+
+  test('late registration after activation timeout is rejected', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            setTimeout(() => {
+              try {
+                ctx.registration.registerTaskProviderType('late-timeout-provider', () => ({}))
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            }, 150)
+            return new Promise(() => {})
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('late-timeout-rejection-plugin', entryPoint, {
+      activationTimeoutMs: 100,
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['late-timeout-provider'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200)
+    })
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
     expect(getTaskProviderDescriptor('late-timeout-provider')).toBeUndefined()
   })
 
