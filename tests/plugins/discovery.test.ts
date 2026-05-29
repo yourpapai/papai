@@ -240,6 +240,41 @@ describe('discoverPlugins', () => {
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
+  test('manifest hash changes when a side-effect import target changes', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'hash-side-effect-import')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'hash-side-effect-import',
+        name: 'Hash Side Effect Import',
+        version: '1.0.0',
+        description: 'hash side effect imports',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'setup.ts'), 'globalThis.__sideEffect = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import './setup.ts'\nexport default function createPlugin(){ return { activate() {} } }\n",
+      'utf-8',
+    )
+
+    const first = discoverPlugins(root)
+    expect(first.errors).toEqual([])
+    const firstHash = first.plugins[0]?.manifestHash
+    expect(typeof firstHash).toBe('string')
+
+    writeFileSync(join(pluginDir, 'setup.ts'), 'globalThis.__sideEffect = 2\n', 'utf-8')
+
+    const second = discoverPlugins(root)
+    expect(second.errors).toEqual([])
+    expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
+  })
+
   test('manifest hash is stable across different plugin root paths', () => {
     const firstRoot = makeTempDir()
     const secondRoot = makeTempDir()
@@ -314,6 +349,23 @@ describe('discoverPlugins', () => {
     expect(result.errors).toEqual([])
     expect(result.plugins).toHaveLength(1)
     expect(result.plugins[0]?.manifest.id).toBe('literal-dynamic-import-plugin')
+  })
+
+  test('resolves comment-bearing literal dynamic imports', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'comment-dynamic-import-plugin',
+      { main: 'index.ts' },
+      "export default function createPlugin(){ return { async activate(){ const first = await import(/*comment*/'./helper.ts'); const second = await import /*comment*/ ('./helper.ts'); return first.value + second.value } } }",
+    )
+    writeFileSync(join(root, 'comment-dynamic-import-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('comment-dynamic-import-plugin')
   })
 
   test('accepts explicit mcp-only plugins without reading index.ts', () => {

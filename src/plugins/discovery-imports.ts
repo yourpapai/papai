@@ -34,11 +34,31 @@ function readQuotedText(source: string, startIndex: number): { value: string; en
   return null
 }
 
-function skipWhitespace(source: string, startIndex: number): number {
+function skipTrivia(source: string, startIndex: number): number {
   let index = startIndex
-  while (WHITESPACE_SET.has(source[index] ?? '')) {
-    index += 1
+
+  while (index < source.length) {
+    if (WHITESPACE_SET.has(source[index] ?? '')) {
+      index += 1
+      continue
+    }
+
+    if (source.startsWith('/*', index)) {
+      const commentEnd = source.indexOf('*/', index + 2)
+      if (commentEnd === -1) return index
+      index = commentEnd + 2
+      continue
+    }
+
+    if (source.startsWith('//', index)) {
+      const newlineIndex = source.indexOf('\n', index + 2)
+      index = newlineIndex === -1 ? source.length : newlineIndex + 1
+      continue
+    }
+
+    break
   }
+
   return index
 }
 
@@ -46,6 +66,12 @@ export function readLiteralDynamicImports(source: string): string[] {
   const specifiers: string[] = []
 
   for (let index = 0; index < source.length; ) {
+    const nextTriviaIndex = skipTrivia(source, index)
+    if (nextTriviaIndex !== index) {
+      index = nextTriviaIndex
+      continue
+    }
+
     const quoted = readQuotedText(source, index)
     if (quoted !== null) {
       index = quoted.endIndex
@@ -57,20 +83,20 @@ export function readLiteralDynamicImports(source: string): string[] {
       continue
     }
 
-    let cursor = skipWhitespace(source, index + 'import'.length)
+    let cursor = skipTrivia(source, index + 'import'.length)
     if (source[cursor] !== '(') {
       index += 1
       continue
     }
 
-    cursor = skipWhitespace(source, cursor + 1)
+    cursor = skipTrivia(source, cursor + 1)
 
     const argument = readQuotedText(source, cursor)
     if (argument === null) {
       throw new Error('Unresolvable plugin dynamic import in source')
     }
 
-    cursor = skipWhitespace(source, argument.endIndex)
+    cursor = skipTrivia(source, argument.endIndex)
     if (source[cursor] !== ')') {
       throw new Error('Unresolvable plugin dynamic import in source')
     }
