@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { untrack } from 'svelte'
+
   import type { ConfigField } from '../fetcher-schemas.js'
   import { patchConfig } from '../fetchers.js'
 
@@ -23,13 +25,23 @@
 
   const editorOpen = $derived(!field.sensitive || replacing)
 
+  $effect(() => {
+    // Re-sync local edit state when the field prop changes (parent re-fetch / context switch).
+    const sensitive = field.sensitive
+    const value = field.value
+    void field.key
+    untrack(() => {
+      draft = sensitive ? '' : value
+      replacing = false
+    })
+  })
+
   async function save(): Promise<void> {
     error = null
     saving = true
     try {
       await patchConfig({ key: field.key, value: draft, contextId })
       replacing = false
-      if (!field.sensitive) draft = field.value
       onSaved()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)

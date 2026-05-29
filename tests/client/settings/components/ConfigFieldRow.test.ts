@@ -91,4 +91,72 @@ describe('ConfigFieldRow', () => {
     expect(target.querySelector('[data-testid="cfg-replace-kaneo_apikey"]')).not.toBeNull()
     void unmount(component)
   })
+
+  test('replacing a sensitive field PATCHes the new value', async () => {
+    setCsrfToken('c')
+    let body = ''
+    setMockFetch((_url, init) => {
+      body = bodyString(init)
+      return Promise.resolve(json({ ok: true, contextId: 'user:1' }))
+    })
+    let saved = false
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'kaneo_apikey',
+        storageKey: 'kaneo_apikey',
+        label: 'Kaneo API Key',
+        required: false,
+        sensitive: true,
+        kind: 'provider-context',
+        hasValue: true,
+        value: '****1234',
+      },
+      onSaved: () => {
+        saved = true
+      },
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-replace-kaneo_apikey"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-kaneo_apikey"]')!
+    input.value = 'my-secret-value'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-save-kaneo_apikey"]')!.click()
+    await drain()
+    expect(body).toBe(JSON.stringify({ key: 'kaneo_apikey', value: 'my-secret-value', contextId: 'user:1' }))
+    expect(saved).toBe(true)
+    void unmount(component)
+  })
+
+  test('cancel resets the sensitive replace editor', () => {
+    setMockFetch(() => Promise.resolve(json({})))
+    const { component, target } = render({
+      contextId: 'user:1',
+      field: {
+        key: 'kaneo_apikey',
+        storageKey: 'kaneo_apikey',
+        label: 'Kaneo API Key',
+        required: false,
+        sensitive: true,
+        kind: 'provider-context',
+        hasValue: true,
+        value: '****1234',
+      },
+      onSaved: () => undefined,
+    })
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-replace-kaneo_apikey"]')!.click()
+    flushSync()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="cfg-input-kaneo_apikey"]')!
+    input.value = 'partial-typing'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="cfg-cancel-kaneo_apikey"]')!.click()
+    flushSync()
+    expect(target.textContent).toContain('****1234')
+    expect(target.querySelector('[data-testid="cfg-input-kaneo_apikey"]')).toBeNull()
+    void unmount(component)
+  })
 })
