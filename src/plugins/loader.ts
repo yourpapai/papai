@@ -75,23 +75,30 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
-  const instance = await importPluginModule(entryPoint).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err)
-    log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
-    pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
-    recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
-    return null
-  })
-  if (instance === null) return false
+  const instance =
+    manifest.mcp !== undefined && entryPoint === ''
+      ? null
+      : await importPluginModule(entryPoint).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
+          pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
+          recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
+          return null
+        })
+  if (entryPoint !== '' && instance === null) return false
 
   const { ctx, collected } = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
+    if (instance !== null) {
+      await Promise.race([Promise.resolve(instance.activate(ctx)), activationTimeout.promise])
+    }
 
     contributionRegistry.register(manifest.id, collected, manifest)
-    activeInstances.set(manifest.id, instance)
+    if (instance !== null) {
+      activeInstances.set(manifest.id, instance)
+    }
     pluginRegistry.markActive(manifest.id)
     activationOrder.push(manifest.id)
     recordRuntimeEvent(manifest.id, 'activated')

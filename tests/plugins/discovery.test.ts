@@ -233,6 +233,33 @@ describe('discoverPlugins', () => {
     expect(second.plugins[0]?.manifestHash).not.toBe(firstHash)
   })
 
+  test('manifest hash is stable across different plugin root paths', () => {
+    const firstRoot = makeTempDir()
+    const secondRoot = makeTempDir()
+
+    writePlugin(
+      firstRoot,
+      'stable-hash-plugin',
+      { main: 'index.ts' },
+      "import { value } from './helper.ts'\nexport default function createPlugin(){ return { activate(){ return value } } }\n",
+    )
+    writePlugin(
+      secondRoot,
+      'stable-hash-plugin',
+      { main: 'index.ts' },
+      "import { value } from './helper.ts'\nexport default function createPlugin(){ return { activate(){ return value } } }\n",
+    )
+    writeFileSync(join(firstRoot, 'stable-hash-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(join(secondRoot, 'stable-hash-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
+
+    const first = discoverPlugins(firstRoot)
+    const second = discoverPlugins(secondRoot)
+
+    expect(first.errors).toEqual([])
+    expect(second.errors).toEqual([])
+    expect(first.plugins[0]?.manifestHash).toBe(second.plugins[0]?.manifestHash)
+  })
+
   test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', () => {
     const root = makeTempDir()
     writePlugin(

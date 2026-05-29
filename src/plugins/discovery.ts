@@ -5,7 +5,7 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
 import { pluginManifestSchema } from './types.js'
@@ -108,9 +108,12 @@ function computePluginManifestHash(manifestContent: string, sourceFiles: readonl
   const hash = createHash('sha256')
   hash.update(`${manifestContent.length}:`).update(manifestContent)
 
+  const sourceRoot = sourceFiles[0] === undefined ? '' : dirname(sourceFiles[0])
+
   for (const filePath of sourceFiles) {
     const content = readFileSync(filePath, 'utf-8')
-    hash.update(`${filePath.length}:`).update(filePath)
+    const relativeFilePath = sourceRoot === '' ? filePath : relative(sourceRoot, filePath).split(sep).join('/')
+    hash.update(`${relativeFilePath.length}:`).update(relativeFilePath)
     hash.update(`${content.length}:`).update(content)
   }
 

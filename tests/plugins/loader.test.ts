@@ -160,6 +160,23 @@ describe('activatePlugins', () => {
     )
   })
 
+  test('marks explicit mcp-only plugins active without importing an entry point', async () => {
+    const plugin = makePlugin('mcp-only-plugin', '', {
+      main: '',
+      mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(requireValue(pluginRegistry.getEntry('mcp-only-plugin'), 'mcp-only plugin registry entry').state).toBe(
+      'active',
+    )
+    expect(
+      requireValue(getRecentRuntimeEvents('mcp-only-plugin', 1)[0], 'mcp-only plugin runtime event').eventType,
+    ).toBe('activated')
+  })
+
   test('rejects default-exported object plugin contract', async () => {
     const entryPoint = writeTempPluginModule(`
       export default {
