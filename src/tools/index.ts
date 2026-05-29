@@ -40,8 +40,10 @@ export function applyToolPreferences(
     }
     // perm === 'ask'
     const extendedSchema = extendSchemaForAsk(t.inputSchema)
-    const boundExecute = t.execute === undefined ? undefined : wrapToolExecution(t.execute.bind(t), name)
-    const wrappedExecute = boundExecute === undefined ? undefined : gatedExecute(boundExecute, name, askPermission)
+    const wrappedExecute =
+      t.execute === undefined
+        ? undefined
+        : gatedExecute((input, opts) => Promise.resolve(t.execute!(input, opts)), name, askPermission)
     out[name] = { ...t, inputSchema: extendedSchema, execute: wrappedExecute }
   }
   return out
