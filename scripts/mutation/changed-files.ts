@@ -10,14 +10,14 @@ import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
 
 export interface ChangedFilesDeps {
-  readonly git: (args: readonly string[]) => string
+  readonly runGit: (args: readonly string[]) => string
   readonly isGateableImpl: (relPath: string, projectRoot: string) => boolean
 }
 
 export interface SelectInput {
   readonly baseRef: string
   readonly projectRoot: string
-  readonly deps?: ChangedFilesDeps
+  readonly deps: ChangedFilesDeps | undefined
 }
 
 type ChangedFilesCliArgs =
@@ -35,7 +35,7 @@ const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
 const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
 const defaultDeps: ChangedFilesDeps = {
-  git: (args) =>
+  runGit: (args) =>
     execFileSync('git', [...args], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -43,21 +43,21 @@ const defaultDeps: ChangedFilesDeps = {
   isGateableImpl: isGateableImplFile,
 }
 
-const resolveDeps = (deps: ChangedFilesDeps | undefined): ChangedFilesDeps => deps ?? defaultDeps
+const resolveDeps = (deps: ChangedFilesDeps | undefined): ChangedFilesDeps => {
+  if (deps === undefined) return defaultDeps
+  return deps
+}
 
 export const selectChangedMutationTargets = (input: SelectInput): string[] => {
   const deps = resolveDeps(input.deps)
-  const output = deps.git(['diff', '--name-only', `${input.baseRef}...HEAD`])
-  return [
-    ...new Set(
-      output
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean),
-    ),
-  ]
+  const output = deps.runGit(['diff', '--name-only', `${input.baseRef}...HEAD`])
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
     .filter((relPath) => deps.isGateableImpl(relPath, input.projectRoot))
-    .sort()
+    .filter((relPath, index, paths) => paths.indexOf(relPath) === index)
+    .toSorted()
 }
 
 const parseThreshold = (text: string | undefined): ChangedFilesCliArgs | number => {
@@ -80,10 +80,12 @@ const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs 
   const thresholdArgs = argv.filter((arg) => arg.startsWith('--threshold='))
   if (thresholdArgs.length > 1) return { kind: 'usageError', reason: 'threshold must be provided at most once' }
 
-  const baseRef = baseArgs[0]?.slice('--base='.length) ?? DEFAULT_BASE_REF
+  const baseArg = baseArgs[0]
+  const baseRef = baseArg === undefined ? DEFAULT_BASE_REF : baseArg.slice('--base='.length)
   if (baseRef === '') return { kind: 'usageError', reason: 'base must not be empty' }
 
-  const threshold = parseThreshold(thresholdArgs[0]?.slice('--threshold='.length))
+  const thresholdArg = thresholdArgs[0]
+  const threshold = parseThreshold(thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length))
   if (typeof threshold !== 'number') return threshold
 
   return { kind: 'ok', baseRef, threshold }
@@ -101,6 +103,7 @@ const main = async (bun: BunLike): Promise<number> => {
   const targets = selectChangedMutationTargets({
     baseRef: parsed.baseRef,
     projectRoot,
+    deps: undefined,
   })
   if (targets.length === 0) {
     console.log(`No changed mutation targets vs ${parsed.baseRef}; nothing to measure.`)

@@ -8,7 +8,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import { selectChangedMutationTargets, type ChangedFilesDeps } from '../../../scripts/mutation/changed-files.js'
 
 const makeDeps = (gitOutput: string, isGateableImpl: ChangedFilesDeps['isGateableImpl']): ChangedFilesDeps => ({
-  git: mock(() => gitOutput),
+  runGit: mock(() => gitOutput),
   isGateableImpl,
 })
 
@@ -56,10 +56,26 @@ describe('selectChangedMutationTargets', () => {
     expect(isGateableImpl).toHaveBeenCalledWith('docs/guide.md', '/repo')
   })
 
+  test('passes duplicate paths through the gateable predicate before deduping results', () => {
+    const isGateableImpl = mock((relPath: string) => relPath === 'src/impl.ts')
+    const deps = makeDeps(['src/impl.ts', 'src/impl.ts'].join('\n'), isGateableImpl)
+
+    const result = selectChangedMutationTargets({
+      baseRef: 'origin/master',
+      projectRoot: '/repo',
+      deps,
+    })
+
+    expect(result).toEqual(['src/impl.ts'])
+    expect(isGateableImpl).toHaveBeenCalledTimes(2)
+    expect(isGateableImpl).toHaveBeenNthCalledWith(1, 'src/impl.ts', '/repo')
+    expect(isGateableImpl).toHaveBeenNthCalledWith(2, 'src/impl.ts', '/repo')
+  })
+
   test("passes git args ['diff', '--name-only', 'origin/master...HEAD']", () => {
-    const git = mock(() => 'src/impl.ts\n')
+    const runGit = mock(() => 'src/impl.ts\n')
     const deps: ChangedFilesDeps = {
-      git,
+      runGit,
       isGateableImpl: () => true,
     }
 
@@ -69,6 +85,6 @@ describe('selectChangedMutationTargets', () => {
       deps,
     })
 
-    expect(git).toHaveBeenCalledWith(['diff', '--name-only', 'origin/master...HEAD'])
+    expect(runGit).toHaveBeenCalledWith(['diff', '--name-only', 'origin/master...HEAD'])
   })
 })
