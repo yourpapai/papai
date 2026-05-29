@@ -66,10 +66,14 @@ async function handleToggle(req: Request): Promise<Response> {
   const scope = resolveContextScope(auth.authed.principal, 'write', body.data.contextId)
   if (!scope.ok) return scope.response
 
-  if (pluginRegistry.getEntry(body.data.pluginId) === undefined) {
+  const registryEntry = pluginRegistry.getEntry(body.data.pluginId)
+  if (registryEntry === undefined) {
     return settingsJson(422, { error: 'unknown plugin' })
   }
   if (body.data.enabled) {
+    if (registryEntry.state !== 'active') {
+      return settingsJson(422, { error: 'plugin not active' })
+    }
     const eligibility = getPluginContextEligibility(body.data.pluginId, scope.scope.contextId)
     if (!eligibility.eligible && eligibility.reason === 'config_missing') {
       return settingsJson(422, { error: 'plugin config missing', missingKeys: eligibility.missingKeys })
