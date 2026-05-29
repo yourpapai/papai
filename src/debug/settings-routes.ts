@@ -14,6 +14,7 @@ import { consumeSettingsQuota } from '../settings/rate-limit.js'
 import { authenticateSettingsRequest, verifyCsrf } from '../settings/request-auth.js'
 import { requireScope } from '../settings/scope-guard.js'
 import { createSession, deleteSession, rotateSessionCsrf } from '../settings/session-store.js'
+import { listUsers } from '../users.js'
 
 const log = logger.child({ scope: 'debug-server:settings-routes' })
 
@@ -41,6 +42,13 @@ function clientIp(req: Request): string {
     if (last !== undefined && last !== '') return last
   }
   return 'unknown'
+}
+
+/** Best-effort display name: the authorized username, else the platform user id. */
+function principalDisplay(platformInstanceId: string, platformUserId: string): string {
+  const match = listUsers(platformInstanceId).find((u) => u.platform_user_id === platformUserId)
+  const username = match?.username
+  return username !== null && username !== undefined && username.length > 0 ? username : platformUserId
 }
 
 export async function handleSettingsExchange(req: Request, nowMs: number = Date.now()): Promise<Response> {
@@ -71,6 +79,7 @@ export async function handleSettingsExchange(req: Request, nowMs: number = Date.
     200,
     {
       csrfToken: created.csrfToken,
+      display: principalDisplay(authPrincipal.platformInstanceId, authPrincipal.platformUserId),
       principal: { isBotAdmin: resolved.isBotAdmin, isSuperAdmin: resolved.isSuperAdmin },
       contexts: listAvailableContexts(resolved),
     },
@@ -93,6 +102,7 @@ export function handleSettingsBootstrap(req: Request, nowMs: number = Date.now()
 
   return jsonResponse(200, {
     csrfToken,
+    display: principalDisplay(authed.principal.platformInstanceId, authed.principal.platformUserId),
     principal: { isBotAdmin: authed.principal.isBotAdmin, isSuperAdmin: authed.principal.isSuperAdmin },
     contexts: listAvailableContexts(authed.principal),
   })

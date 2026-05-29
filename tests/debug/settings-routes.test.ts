@@ -168,4 +168,17 @@ describe('settings routes', () => {
     const replay = await handleSettingsExchange(exchangeRequest(code), 3000)
     expect(replay.status).toBe(401)
   })
+
+  test('bootstrap returns a display string for the principal', async () => {
+    addUser({ userId: 'u-2', platformInstanceId: 'pi-1', addedBy: 'admin', username: 'alice' })
+    const code = issueAuthCode({ platformInstanceId: 'pi-1', platformUserId: 'u-2' }, 1000)
+    const exchanged = await handleSettingsExchange(exchangeRequest(code), 2000)
+    const sid = cookieFrom(exchanged)
+    const res = handleSettingsBootstrap(
+      new Request('https://x/settings/api/session', { headers: { Cookie: `${SESSION_COOKIE_NAME}=${sid}` } }),
+      3000,
+    )
+    const body = await readJson(res)
+    expect(pickString(body, 'display')).toBe('alice')
+  })
 })

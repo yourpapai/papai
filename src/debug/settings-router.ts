@@ -30,6 +30,9 @@ export function routeSettingsPaths(req: Request, url: URL): Promise<Response | n
   if (url.pathname === '/settings/api/session') {
     return Promise.resolve(req.method === 'GET' ? handleSettingsBootstrap(req) : methodNotAllowed())
   }
+  if (url.pathname === '/settings/api/bootstrap') {
+    return Promise.resolve(req.method === 'GET' ? handleSettingsBootstrap(req) : methodNotAllowed())
+  }
 
   if (url.pathname.startsWith('/settings/api/')) {
     return routeSettingsApi(req, url).then((res) => res ?? new Response('Not found', { status: 404 }))
