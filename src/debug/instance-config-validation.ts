@@ -19,6 +19,20 @@ type InstanceConfigValidationError = {
   readonly invalidUrls: readonly string[]
 }
 
+const pickInstanceScopedConfig = (type: string, config: InstanceConfig): InstanceConfig => {
+  const descriptor = getTaskProviderDescriptor(type)
+  if (descriptor === undefined) return config
+  return Object.fromEntries(
+    descriptor.instanceConfigSchema
+      .map((field) => {
+        const value = config[field.key]
+        if (value === undefined) return null
+        return [field.key, value] as const
+      })
+      .filter((entry) => entry !== null),
+  )
+}
+
 const isBlank = (value: string | undefined): boolean => {
   if (value === undefined) return true
   return value.trim() === ''
@@ -97,7 +111,7 @@ export const validateTaskInstanceRouteConfig = (
 ): Response | Promise<Response | null> => {
   const descriptorConfigError = validateTaskDescriptorInstanceConfig(type, config)
   if (descriptorConfigError !== null) return descriptorConfigError
-  return Promise.resolve(validateTaskInstanceConfig(type, config)).then((response) => {
+  return Promise.resolve(validateTaskInstanceConfig(type, pickInstanceScopedConfig(type, config))).then((response) => {
     if (response === null) return null
     if (response.status !== 400) return response
     return response

@@ -107,6 +107,11 @@ const expectTaskInstance = (id: string): TaskInstance => {
   return instance
 }
 
+const expectConfigValue = (value: Record<string, string> | null, label: string): Record<string, string> => {
+  if (value === null) throw new Error(`expected ${label}`)
+  return value
+}
+
 const makePluginManifest = (id: string, overrides: Partial<PluginManifest> = {}): PluginManifest => ({
   id,
   name: 'Test Plugin',
@@ -953,6 +958,44 @@ describe('instance API routes', () => {
       expect(instance).not.toBeNull()
     } finally {
       unregisterContributedTaskProviderType('val-ok')
+    }
+  })
+
+  test('passes only instance-scoped descriptor fields to the provider validator', async () => {
+    let seenConfig: Record<string, string> | null = null
+    registerContributedTaskProviderType('validated-instance-fields', {
+      pluginId: 'val-instance-fields',
+      factory: () => createMockProvider({ name: 'validated-instance-fields' }),
+      validateConfig: (config) => {
+        seenConfig = config
+        return Promise.resolve({ ok: true as const })
+      },
+      capabilities: new Set<never>(),
+      displayName: 'Validated Instance Fields',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [{ key: 'apiToken', label: 'Token', required: false, sensitive: true, scope: 'context' }],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'validated-instance-fields-1',
+              type: 'validated-instance-fields',
+              config: { baseUrl: 'https://ok.invalid', apiToken: 'context-secret', extra: 'ignored' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(201)
+      expect(expectConfigValue(seenConfig, 'validator config')).toEqual({ baseUrl: 'https://ok.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('val-instance-fields')
     }
   })
 

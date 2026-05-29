@@ -69,7 +69,7 @@ Supported optional fields:
 | `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                  |
 | `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                        |
 | `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`.                                                                                         |
-| `providerConfigValidator`       | Optional exported validator function name for provider instance and context config.                                                               |
+| `providerConfigValidator`       | Optional exported validator function name for provider instance config, invoked before task-instance writes using only instance-scoped fields.    |
 | `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                        |
 | `permissions`                   | Permission claims checked by framework facades.                                                                                                   |
 | `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
