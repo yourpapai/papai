@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
-
 import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   AdminGroupsResponseSchema,
@@ -24,7 +22,11 @@ import {
   ProviderTypesResponseSchema,
   ProvisionResultSchema,
   ToolsResponseSchema,
+  type AdminGroupsResponse,
+  type AdminInstancesResponse,
+  type AdminRosterResponse,
   type AdminSystemResponse,
+  type AdminUsersResponse,
   type AnnounceResult,
   type BootstrapData,
   type ConfigResponse,
@@ -35,15 +37,10 @@ import {
   type McpResponse,
   type PluginApprovalResult,
   type PluginsResponse,
+  type ProviderTypesResponse,
   type ProvisionResult,
   type ToolsResponse,
 } from './fetcher-schemas.js'
-
-type AdminGroupsResponse = z.infer<typeof AdminGroupsResponseSchema>
-type AdminInstancesResponse = z.infer<typeof AdminInstancesResponseSchema>
-type AdminRosterResponse = z.infer<typeof AdminRosterResponseSchema>
-type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>
-type ProviderTypesResponse = z.infer<typeof ProviderTypesResponseSchema>
 
 const CSRF_HEADER = 'X-Settings-CSRF'
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])

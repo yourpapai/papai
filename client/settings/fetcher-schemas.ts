@@ -157,6 +157,7 @@ export const AdminInstanceRowSchema = z
   .loose()
 export const AdminInstancesResponseSchema = z.object({ instances: z.array(AdminInstanceRowSchema) })
 export type AdminInstanceRow = z.infer<typeof AdminInstanceRowSchema>
+export type AdminInstancesResponse = z.infer<typeof AdminInstancesResponseSchema>
 
 export const ProviderTypeFieldSchema = z.object({
   key: z.string(),
@@ -173,6 +174,7 @@ export const ProviderTypeSchema = z
   .loose()
 export const ProviderTypesResponseSchema = z.object({ providerTypes: z.array(ProviderTypeSchema) })
 export type ProviderType = z.infer<typeof ProviderTypeSchema>
+export type ProviderTypesResponse = z.infer<typeof ProviderTypesResponseSchema>
 
 export const AdminLlmKeyStateSchema = z.object({
   value: z.string().nullable(),
@@ -191,12 +193,14 @@ export const AdminUserRowSchema = z
   .loose()
 export const AdminUsersResponseSchema = z.object({ users: z.array(AdminUserRowSchema) })
 export type AdminUserRow = z.infer<typeof AdminUserRowSchema>
+export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>
 
 export const AdminGroupRowSchema = z
   .object({ group_id: z.string(), added_by: z.string(), added_at: z.string() })
   .loose()
 export const AdminGroupsResponseSchema = z.object({ groups: z.array(AdminGroupRowSchema) })
 export type AdminGroupRow = z.infer<typeof AdminGroupRowSchema>
+export type AdminGroupsResponse = z.infer<typeof AdminGroupsResponseSchema>
 
 export const AdminRosterRowSchema = z
   .object({
@@ -207,6 +211,7 @@ export const AdminRosterRowSchema = z
   .loose()
 export const AdminRosterResponseSchema = z.object({ admins: z.array(AdminRosterRowSchema) })
 export type AdminRosterRow = z.infer<typeof AdminRosterRowSchema>
+export type AdminRosterResponse = z.infer<typeof AdminRosterResponseSchema>
 
 export const PluginApprovalResultSchema = z.object({ ok: z.boolean(), state: z.string().nullable() })
 export type PluginApprovalResult = z.infer<typeof PluginApprovalResultSchema>
