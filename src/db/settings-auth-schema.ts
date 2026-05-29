@@ -44,3 +44,4 @@ export const settingsRateLimit = sqliteTable(
 
 export type SettingsAuthCodeRow = typeof settingsAuthCodes.$inferSelect
 export type SettingsSessionRow = typeof settingsSessions.$inferSelect
+export type SettingsRateLimitRow = typeof settingsRateLimit.$inferSelect
