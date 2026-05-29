@@ -76,7 +76,7 @@
     {/if}
   </section>
 
-  <p class="admin-system__note">POST /admin/llm requires DEBUG_TOKEN</p>
+  <p class="admin-system__note">POST /admin/llm requires an active dashboard session</p>
   <CredentialsForm snapshot={adminLlm} onRefresh={loadAdmin} />
 </section>
 

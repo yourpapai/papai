@@ -6,6 +6,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { systemConfig } from '../../src/db/schema.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
@@ -19,7 +22,6 @@ import {
 } from '../utils/test-helpers.js'
 
 const TEST_PORT = 19112
-const TOKEN = 'admin-route-token'
 const ADMIN = 'admin-1'
 
 const readJson = async (res: Response): Promise<object> => {
@@ -36,44 +38,46 @@ const pickObject = (obj: object, key: string): object => {
   return v
 }
 
-const authHeaders: HeadersInit = {
-  Authorization: `Bearer ${TOKEN}`,
+let authCookieValue: string
+const authHeaders = (): HeadersInit => ({
+  Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}`,
   'Content-Type': 'application/json',
-}
+})
 
 describe('debug-server admin/llm routes', () => {
   beforeAll(async () => {
     mockLogger()
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
     process.env['DEBUG_HOSTNAME'] = 'localhost'
-    process.env['DEBUG_TOKEN'] = TOKEN
     process.env['ADMIN_USER_ID'] = ADMIN
     startDebugServer('test-admin', getLogLevel())
   })
 
   beforeEach(async () => {
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     resetSystemConfigCacheForTesting()
-    process.env['DEBUG_TOKEN'] = TOKEN
     process.env['ADMIN_USER_ID'] = ADMIN
   })
 
   afterEach(() => {
-    process.env['DEBUG_TOKEN'] = TOKEN
     process.env['ADMIN_USER_ID'] = ADMIN
   })
 
   afterAll(() => {
     stopDebugServer()
+    setStoreDb(null)
     delete process.env['DEBUG_PORT']
     delete process.env['DEBUG_HOSTNAME']
-    delete process.env['DEBUG_TOKEN']
     delete process.env['ADMIN_USER_ID']
   })
 
-  test('GET /admin/llm requires the bearer token', async () => {
+  test('GET /admin/llm without session cookie returns 401', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`)
     expect(res.status).toBe(401)
     await res.body?.cancel()
@@ -82,7 +86,7 @@ describe('debug-server admin/llm routes', () => {
   test('GET /admin/llm returns the snapshot with llm_apikey masked', async () => {
     setSystemConfig('llm_apikey', 'sk-abcd1234', ADMIN)
     setSystemConfig('main_model', 'gpt-9', ADMIN)
-    const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const body = await readJson(res)
     const apikey = pickObject(body, 'llm_apikey')
@@ -97,7 +101,7 @@ describe('debug-server admin/llm routes', () => {
   test('POST /admin/llm with valid body persists and returns 200', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
       method: 'POST',
-      headers: authHeaders,
+      headers: authHeaders(),
       body: JSON.stringify({ key: 'main_model', value: 'gpt-6' }),
     })
     expect(res.status).toBe(200)
@@ -118,7 +122,7 @@ describe('debug-server admin/llm routes', () => {
   test('POST /admin/llm rejects unknown key with 400', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
       method: 'POST',
-      headers: authHeaders,
+      headers: authHeaders(),
       body: JSON.stringify({ key: 'unknown', value: 'x' }),
     })
     expect(res.status).toBe(400)
@@ -128,7 +132,7 @@ describe('debug-server admin/llm routes', () => {
   test('POST /admin/llm rejects empty value with 400', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
       method: 'POST',
-      headers: authHeaders,
+      headers: authHeaders(),
       body: JSON.stringify({ key: 'main_model', value: '' }),
     })
     expect(res.status).toBe(400)
@@ -138,25 +142,14 @@ describe('debug-server admin/llm routes', () => {
   test('POST /admin/llm rejects malformed JSON with 400', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
       method: 'POST',
-      headers: authHeaders,
+      headers: authHeaders(),
       body: 'not-json',
     })
     expect(res.status).toBe(400)
     await res.body?.cancel()
   })
 
-  test('POST /admin/llm requires the bearer token', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'main_model', value: 'gpt-6' }),
-    })
-    expect(res.status).toBe(401)
-    await res.body?.cancel()
-  })
-
-  test('POST /admin/llm refuses with 401 when DEBUG_TOKEN is unset in env', async () => {
-    delete process.env['DEBUG_TOKEN']
+  test('POST /admin/llm without session cookie returns 401', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -170,7 +163,7 @@ describe('debug-server admin/llm routes', () => {
     delete process.env['ADMIN_USER_ID']
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/llm`, {
       method: 'POST',
-      headers: authHeaders,
+      headers: authHeaders(),
       body: JSON.stringify({ key: 'main_model', value: 'gpt-6' }),
     })
     expect(res.status).toBe(503)

@@ -15,6 +15,7 @@ export type CommandRegistration =
   | 'registerClearCommand'
   | 'registerConfigCommand'
   | 'registerContextCommand'
+  | 'registerDashboardCommand'
   | 'registerGroupCommand'
   | 'registerHelpCommand'
   | 'registerPluginCommand'
@@ -154,6 +155,17 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     name: 'plugin',
     description: 'Manage plugins',
     registration: 'registerPluginCommand',
+    telegram: {
+      publishInDmUser: false,
+      publishInDmAdmin: true,
+      publishInGroupUser: false,
+      publishInGroupAdmin: false,
+    },
+  },
+  {
+    name: 'dashboard',
+    description: 'Issue a one-time dashboard sign-in link',
+    registration: 'registerDashboardCommand',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,

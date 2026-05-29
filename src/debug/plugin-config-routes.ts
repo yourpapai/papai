@@ -40,11 +40,6 @@ export const handleAdminPluginConfigGet = (): Response => {
 }
 
 export const handleAdminPluginConfigPost = async (req: Request): Promise<Response> => {
-  const debugToken = process.env['DEBUG_TOKEN']
-  if (debugToken === undefined || debugToken === '') {
-    log.warn('admin/plugin-config POST refused: DEBUG_TOKEN is not set in env')
-    return jsonResponse(401, { error: 'credentials API requires DEBUG_TOKEN' })
-  }
   const adminUserId = process.env['ADMIN_USER_ID']
   if (adminUserId === undefined || adminUserId === '') {
     log.error('admin/plugin-config POST refused: ADMIN_USER_ID is not set in env')

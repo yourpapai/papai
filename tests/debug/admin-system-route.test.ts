@@ -6,16 +6,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { SESSION_COOKIE_NAME } from '../../src/dashboard-auth/cookie.js'
+import { mintSession } from '../../src/dashboard-auth/index.js'
+import { setStoreDb } from '../../src/dashboard-auth/store.js'
 import { startDebugServer, stopDebugServer } from '../../src/debug/server.js'
 import { getLogLevel } from '../../src/logger.js'
-import { mockLogger, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
+import { getTestDb, mockLogger, restoreFetch, setupTestDb } from '../utils/test-helpers.js'
 
 const TEST_PORT = 19118
-const TOKEN = 'system-route-token'
 
-const authHeaders: HeadersInit = {
-  Authorization: `Bearer ${TOKEN}`,
-}
+let authCookieValue: string
+const authHeaders = (): HeadersInit => ({ Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}` })
 
 const pick = (obj: object, key: string): unknown => Reflect.get(obj, key)
 
@@ -33,15 +34,18 @@ describe('debug-server admin/system route', () => {
   beforeAll(async () => {
     mockLogger()
     await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     restoreFetch()
     process.env['DEBUG_PORT'] = String(TEST_PORT)
     process.env['DEBUG_HOSTNAME'] = 'localhost'
-    process.env['DEBUG_TOKEN'] = TOKEN
     startDebugServer('test-admin', getLogLevel())
   })
 
-  beforeEach(() => {
-    process.env['DEBUG_TOKEN'] = TOKEN
+  beforeEach(async () => {
+    await setupTestDb()
+    setStoreDb(getTestDb().$client)
+    authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     process.env['CHAT_PROVIDER'] = 'telegram'
     process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['DEBUG_SERVER'] = 'true'
@@ -52,9 +56,9 @@ describe('debug-server admin/system route', () => {
 
   afterAll(() => {
     stopDebugServer()
+    setStoreDb(null)
     delete process.env['DEBUG_PORT']
     delete process.env['DEBUG_HOSTNAME']
-    delete process.env['DEBUG_TOKEN']
     delete process.env['CHAT_PROVIDER']
     delete process.env['TASK_PROVIDER']
     delete process.env['DEBUG_SERVER']
@@ -63,14 +67,14 @@ describe('debug-server admin/system route', () => {
     delete process.env['LLM_API_KEY']
   })
 
-  test('GET /admin/system requires the bearer token', async () => {
+  test('GET /admin/system without session cookie returns 401', async () => {
     const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`)
     expect(res.status).toBe(401)
     await cancelBody(res.body)
   })
 
   test('GET /admin/system returns only safe system summary fields', async () => {
-    const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const text = await res.text()
     expect(text).not.toContain('secret-token-value')
@@ -88,7 +92,7 @@ describe('debug-server admin/system route', () => {
     process.env['CHAT_PROVIDER'] = 'custom-chat-secret'
     process.env['TASK_PROVIDER'] = 'custom-task-secret'
 
-    const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`, { headers: authHeaders })
+    const res = await fetch(`http://localhost:${TEST_PORT}/admin/system`, { headers: authHeaders() })
     expect(res.status).toBe(200)
     const text = await res.text()
     expect(text).not.toContain('custom-chat-secret')

@@ -39,6 +39,7 @@ describe('command catalog', () => {
       'users',
       'announce',
       'plugin',
+      'dashboard',
     ])
 
     expect(telegramVisibility).toEqual({
@@ -114,6 +115,12 @@ describe('command catalog', () => {
         publishInGroupUser: false,
         publishInGroupAdmin: false,
       },
+      dashboard: {
+        publishInDmUser: false,
+        publishInDmAdmin: true,
+        publishInGroupUser: false,
+        publishInGroupAdmin: false,
+      },
     })
 
     expect(registrations).toEqual({
@@ -129,6 +136,7 @@ describe('command catalog', () => {
       users: 'registerAdminCommands',
       announce: 'registerAdminCommands',
       plugin: 'registerPluginCommand',
+      dashboard: 'registerDashboardCommand',
     })
 
     for (const entry of entries) {

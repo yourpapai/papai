@@ -197,6 +197,7 @@ describe('registerTelegramCommands', () => {
       { command: 'users', description: 'List authorized users' },
       { command: 'announce', description: 'Send announcement to all authorized users' },
       { command: 'plugin', description: 'Manage plugins' },
+      { command: 'dashboard', description: 'Issue a one-time dashboard sign-in link' },
     ])
     expect(adminDmCall[1]).toEqual({ scope: { type: 'chat', chat_id: 12345 } })
 
