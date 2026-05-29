@@ -105,6 +105,19 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(true)
   })
 
+  test('rejects Windows-style parent traversal main paths', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'windows-parent-traversal-main',
+      name: 'Windows Parent Traversal Main',
+      version: '1.0.0',
+      description: 'windows parent traversal',
+      apiVersion: 1,
+      main: '..\\outside.ts',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   test('rejects configKeys without matching context-scoped config requirement', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'bad-config-keys',
@@ -164,6 +177,22 @@ describe('pluginManifestSchema strict validation', () => {
 
     expect(result.success).toBe(true)
     expect(result.data?.main).toBeUndefined()
+  })
+
+  test('rejects mcp-only manifests without main when provider-only metadata is present', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'mcp-only-provider-metadata',
+      name: 'MCP Only Provider Metadata',
+      version: '1.0.0',
+      description: 'mcp only with provider metadata',
+      apiVersion: 1,
+      contributes: { tools: [], promptFragments: [], commands: [], jobs: [], configKeys: [], taskProviderTypes: [] },
+      permissions: ['provider.task'],
+      providerAllowedHosts: ['example.com'],
+      mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+    })
+
+    expect(result.success).toBe(false)
   })
 
   test('rejects mcp manifests that also declare runtime contributions without main', () => {

@@ -32,6 +32,7 @@ export function isValidMainPath(path: string): boolean {
   if (path.startsWith('/')) return false
   if (win32.isAbsolute(path)) return false
   if (posix.normalize(path).split('/').includes('..')) return false
+  if (win32.normalize(path).split('\\').includes('..')) return false
   return path.endsWith('.ts') || path.endsWith('.js')
 }
 
@@ -63,7 +64,13 @@ export function hasRequiredMainForManifest(m: ManifestValidationInput): boolean 
     m.contributes.commands.length +
     m.contributes.jobs.length +
     m.contributes.taskProviderTypes.length
-  const isMcpOnly = m.mcp !== undefined && runtimeContributionCount === 0 && m.providerConfigValidator === undefined
+  const hasProviderMetadata =
+    m.providerCapabilities.length > 0 ||
+    m.providerConfigSchema.length > 0 ||
+    (m.providerContextConfigSchema?.length ?? 0) > 0 ||
+    m.providerAllowedHosts.length > 0 ||
+    m.providerConfigValidator !== undefined
+  const isMcpOnly = m.mcp !== undefined && runtimeContributionCount === 0 && !hasProviderMetadata
 
   if (isMcpOnly) return m.main === undefined
   return m.main !== undefined
