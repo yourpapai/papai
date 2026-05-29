@@ -25,8 +25,13 @@ const membersPayload = {
 }
 
 let capturedPostBody: string | undefined
+let capturedDeleteBody: string | undefined
 
 const capturePostMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/members') && init.method === 'DELETE') {
+    capturedDeleteBody = typeof init.body === 'string' ? init.body : undefined
+    return Promise.resolve(json({ ok: true, contextId: 'group:7' }))
+  }
   if (url.includes('/group/members') && init.method !== undefined && init.method !== 'GET') {
     capturedPostBody = typeof init.body === 'string' ? init.body : undefined
     return Promise.resolve(json({ ok: true, contextId: 'group:7' }))
@@ -34,8 +39,16 @@ const capturePostMock = (url: string, init: RequestInit): Promise<Response> => {
   return Promise.resolve(json(membersPayload))
 }
 
+const postErrorMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/group/members') && init.method === 'POST') {
+    return Promise.resolve(new Response('Server Error', { status: 500 }))
+  }
+  return Promise.resolve(json(membersPayload))
+}
+
 afterEach(() => {
   capturedPostBody = undefined
+  capturedDeleteBody = undefined
   restoreFetch()
   setCsrfToken('')
 })
@@ -65,6 +78,37 @@ describe('MembersSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="member-add"]')!.click()
     await drain()
     expect(capturedPostBody).toBe(JSON.stringify({ userId: '99', contextId: 'group:7' }))
+    void unmount(component)
+  })
+
+  test('removing a member sends a DELETE with userId + contextId', async () => {
+    setCsrfToken('c')
+    setMockFetch(capturePostMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="member-remove-42"]')!.click()
+    await drain()
+    expect(capturedDeleteBody).toBe(JSON.stringify({ userId: '42', contextId: 'group:7' }))
+    void unmount(component)
+  })
+
+  test('a failed add keeps the list visible and shows an error', async () => {
+    setCsrfToken('c')
+    setMockFetch(postErrorMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(MembersSection, { target, props: { contextId: 'group:7' } })
+    await drain()
+    const input = target.querySelector<HTMLInputElement>('[data-testid="member-add-input"]')!
+    input.value = '99'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    target.querySelector<HTMLButtonElement>('[data-testid="member-add"]')!.click()
+    await drain()
+    expect(target.querySelector('.status-error')).not.toBeNull()
+    expect(target.querySelector('[data-testid="member-remove-42"]')).not.toBeNull()
     void unmount(component)
   })
 })

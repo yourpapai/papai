@@ -31,6 +31,7 @@
   }
 
   async function add(): Promise<void> {
+    error = null
     const userId = newUserId.trim()
     if (userId === '') return
     try {
@@ -43,6 +44,7 @@
   }
 
   async function remove(userId: string): Promise<void> {
+    error = null
     try {
       await removeGroupMember({ userId, contextId })
       await load(contextId)
