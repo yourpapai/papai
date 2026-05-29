@@ -23,6 +23,23 @@ export type DiscoveryResult = {
   errors: DiscoveryError[]
 }
 
+export function isPathInsideDirectory(
+  directoryPath: string,
+  candidatePath: string,
+  pathOps: {
+    isAbsolute(path: string): boolean
+    relative(from: string, to: string): string
+    resolve(...paths: string[]): string
+    sep: string
+  } = { isAbsolute: (path) => resolve(path) === path, relative, resolve, sep },
+): boolean {
+  const relativePath = pathOps.relative(pathOps.resolve(directoryPath), pathOps.resolve(candidatePath))
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith(`..${pathOps.sep}`) && relativePath !== '..' && !pathOps.isAbsolute(relativePath))
+  )
+}
+
 function isRealDirectory(path: string): boolean {
   try {
     const stat = lstatSync(path)
@@ -38,8 +55,7 @@ const DYNAMIC_IMPORT_RE = /import\s*\(([^)]+)\)/gu
 
 function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
   const candidate = resolve(join(dirname(fromFile), specifier))
-  const allowedPrefix = `${resolve(pluginDir)}/`
-  if (!candidate.startsWith(allowedPrefix)) {
+  if (!isPathInsideDirectory(pluginDir, candidate)) {
     throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
   }
 
@@ -49,14 +65,12 @@ function resolveEntryImport(fromFile: string, pluginDir: string, specifier: stri
       : [`${candidate}.ts`, `${candidate}.js`, join(candidate, 'index.ts'), join(candidate, 'index.js')]
 
   const resolvedPath = candidates.find((path) => existsSync(path))
-  if (resolvedPath === undefined) {
-    throw new Error(`Imported plugin file not found: ${specifier}`)
-  }
+  if (resolvedPath === undefined) throw new Error(`Imported plugin file not found: ${specifier}`)
 
   try {
     const realPluginDir = realpathSync(pluginDir)
     const realImportedPath = realpathSync(resolvedPath)
-    if (!realImportedPath.startsWith(`${realPluginDir}/`)) {
+    if (!isPathInsideDirectory(realPluginDir, realImportedPath)) {
       throw new Error(`Plugin import resolves outside plugin directory: ${specifier}`)
     }
   } catch (error) {
@@ -122,14 +136,13 @@ function computePluginManifestHash(manifestContent: string, sourceFiles: readonl
 
 function resolveEntryPoint(pluginDir: string, main: string): string | null {
   const resolved = resolve(join(pluginDir, main))
-  // Ensure the entry point stays inside the plugin directory (not above or at the dir itself)
-  if (!resolved.startsWith(resolve(pluginDir) + '/')) {
+  if (!isPathInsideDirectory(pluginDir, resolved)) {
     return null
   }
   try {
     const realPluginDir = realpathSync(pluginDir)
     const realEntryPoint = realpathSync(resolved)
-    if (!realEntryPoint.startsWith(realPluginDir + '/')) return null
+    if (!isPathInsideDirectory(realPluginDir, realEntryPoint)) return null
   } catch {
     return resolved
   }
@@ -183,24 +196,12 @@ function resolveEntrypointForDiscovery(
   main: string | undefined,
   isMcpOnly: boolean,
 ): { entryPoint: string; sourceFiles: string[] } | DiscoveryError {
-  if (isMcpOnly) {
-    return { entryPoint: '', sourceFiles: [] }
-  }
-
-  if (main === undefined) {
-    return {
-      directoryName: '',
-      reason: 'Non-MCP plugin must declare a main entry point',
-    }
-  }
+  if (isMcpOnly) return { entryPoint: '', sourceFiles: [] }
+  if (main === undefined) return { directoryName: '', reason: 'Non-MCP plugin must declare a main entry point' }
 
   const entryPoint = resolveEntryPoint(pluginDir, main)
-  if (entryPoint === null) {
-    return {
-      directoryName: '',
-      reason: `Entry point "${main}" resolves outside the plugin directory`,
-    }
-  }
+  if (entryPoint === null)
+    return { directoryName: '', reason: `Entry point "${main}" resolves outside the plugin directory` }
 
   try {
     const sourceFiles = readPluginSourceGraph(entryPoint, pluginDir)
@@ -236,9 +237,7 @@ function discoverOne(pluginsRootDir: string, dirName: string): DiscoveredPlugin 
   const isMcpOnly = rawObj !== undefined && 'mcp' in rawObj && !('main' in rawObj)
 
   const ep = resolveEntrypointForDiscovery(pluginDir, manifest.main, isMcpOnly)
-  if (ep !== null && 'reason' in ep) {
-    return { ...ep, directoryName: dirName }
-  }
+  if ('reason' in ep) return { ...ep, directoryName: dirName }
 
   return {
     manifest,

@@ -6,9 +6,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 
-import { discoverPlugins } from '../../src/plugins/discovery.js'
+import { discoverPlugins, isPathInsideDirectory } from '../../src/plugins/discovery.js'
 
 const tempDirs: string[] = []
 
@@ -196,6 +196,12 @@ describe('discoverPlugins', () => {
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.directoryName).toBe('beta')
     expect(result.errors[0]?.reason).toContain('does not match directory name')
+  })
+
+  test('treats Windows-style containment checks portably', () => {
+    expect(isPathInsideDirectory('C:\\plugins\\demo', 'C:\\plugins\\demo\\index.ts', win32)).toBe(true)
+    expect(isPathInsideDirectory('C:\\plugins\\demo', 'C:\\plugins\\demo-two\\index.ts', win32)).toBe(false)
+    expect(isPathInsideDirectory('C:\\plugins\\demo', 'C:\\plugins\\demo\\..\\escape.ts', win32)).toBe(false)
   })
 
   test('manifest hash changes when an imported local helper changes', () => {
