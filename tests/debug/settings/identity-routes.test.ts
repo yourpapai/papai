@@ -63,11 +63,54 @@ describe('settings identity routes', () => {
     expect(res.status).toBe(401)
   })
 
-  test('DELETE clears the mapping', async () => {
-    const res = await handleIdentityRoutes(
+  test('DELETE after PUT clears the mapping (providerUserId becomes null)', async () => {
+    const put = await handleIdentityRoutes(
+      new Request('https://x/settings/api/identity', {
+        method: 'PUT',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerUserId: 'kaneo-42' }),
+      }),
+      new URL('https://x/settings/api/identity'),
+    )
+    expect(put.status).toBe(200)
+
+    const del = await handleIdentityRoutes(
       new Request('https://x/settings/api/identity', { method: 'DELETE', headers: authHeaders(session, true) }),
       new URL('https://x/settings/api/identity'),
     )
-    expect(res.status).toBe(200)
+    expect(del.status).toBe(200)
+
+    const get = await handleIdentityRoutes(
+      new Request('https://x/settings/api/identity', { headers: authHeaders(session) }),
+      new URL('https://x/settings/api/identity'),
+    )
+    expect(get.status).toBe(200)
+    const body = z
+      .object({ mapping: z.object({ providerUserId: z.string().nullable() }).nullable() })
+      .parse(await get.json())
+    expect(body.mapping?.providerUserId).toBeNull()
+  })
+
+  test('PUT without CSRF is 403', async () => {
+    const res = await handleIdentityRoutes(
+      new Request('https://x/settings/api/identity', {
+        method: 'PUT',
+        headers: { ...authHeaders(session), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerUserId: 'kaneo-99' }),
+      }),
+      new URL('https://x/settings/api/identity'),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  test('GET without a configured task instance returns 422', async () => {
+    addUser({ userId: 'u-2', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
+    const session2 = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-2' })
+
+    const res = await handleIdentityRoutes(
+      new Request('https://x/settings/api/identity', { headers: authHeaders(session2) }),
+      new URL('https://x/settings/api/identity'),
+    )
+    expect(res.status).toBe(422)
   })
 })
