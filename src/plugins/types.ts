@@ -132,6 +132,15 @@ const configKeySchema = z
   .max(64)
   .regex(/^[a-z][a-z0-9_]*$/u, 'Config key must be snake_case starting with a letter')
 
+const providerFieldKeySchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[a-z][a-zA-Z0-9_]*$/u,
+    'Provider field key must start with a lowercase letter and contain only letters, digits, or underscores',
+  )
+
 const providerTypeSchema = z
   .string()
   .min(1)
@@ -168,10 +177,12 @@ const pluginConfigRequirementSchema = configRequirementBaseSchema.extend({
 })
 
 const providerInstanceConfigRequirementSchema = configRequirementBaseSchema.extend({
+  key: providerFieldKeySchema,
   scope: z.literal('instance').optional().default('instance'),
 })
 
 const providerContextConfigRequirementSchema = configRequirementBaseSchema.extend({
+  key: providerFieldKeySchema,
   scope: z.literal('context').optional().default('context'),
 })
 

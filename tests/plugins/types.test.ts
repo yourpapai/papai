@@ -239,6 +239,51 @@ describe('pluginManifestSchema', () => {
     })
   })
 
+  describe('provider config field key validation', () => {
+    test('provider config field keys accept camelCase', () => {
+      const result = pluginManifestSchema.safeParse({
+        id: 'task-provider-kaneo',
+        name: 'Kaneo',
+        version: '1.0.0',
+        description: 'x',
+        apiVersion: 1,
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['kaneo'] },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+        providerContextConfigSchema: [
+          { key: 'workspaceId', label: 'Workspace', required: true, sensitive: false, scope: 'context' },
+        ],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('plugin configKeys still reject camelCase', () => {
+      const result = pluginManifestSchema.safeParse({
+        id: 'hello-world',
+        name: 'x',
+        version: '1.0.0',
+        description: 'x',
+        apiVersion: 1,
+        contributes: { configKeys: ['camelCase'] },
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test.each(['1url', 'base-url', '_key', 'BaseUrl', ''])('rejects invalid provider config field key "%s"', (key) => {
+      const result = pluginManifestSchema.safeParse({
+        id: 'task-provider-kaneo',
+        name: 'Kaneo',
+        version: '1.0.0',
+        description: 'x',
+        apiVersion: 1,
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['kaneo'] },
+        providerConfigSchema: [{ key, label: 'Label', required: true, sensitive: false, scope: 'instance' }],
+      })
+      expect(result.success).toBe(false)
+    })
+  })
+
   test('accepts a full featured manifest', () => {
     const result = pluginManifestSchema.safeParse({
       ...baseManifest,
