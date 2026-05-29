@@ -49,6 +49,14 @@ const approvalErrorMock = (url: string, init: RequestInit): Promise<Response> =>
   return Promise.resolve(json(pluginsPayload))
 }
 
+const captureRejectionMock = (url: string, init: RequestInit): Promise<Response> => {
+  if (url.includes('/admin/plugin-approval') && init.method === 'POST') {
+    capturedApprovalBody = typeof init.body === 'string' ? init.body : undefined
+    return Promise.resolve(json({ ok: true, state: 'rejected' }))
+  }
+  return Promise.resolve(json(pluginsPayload))
+}
+
 afterEach(() => {
   capturedApprovalBody = undefined
   restoreFetch()
@@ -67,6 +75,23 @@ describe('AdminPluginsApprovalSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="plugin-approve-hello-world"]')!.click()
     await drain()
     expect(capturedApprovalBody).toBe(JSON.stringify({ pluginId: 'hello-world', action: 'approve' }))
+    void unmount(component)
+  })
+
+  test('rejecting a plugin posts action=reject and shows the status', async () => {
+    setCsrfToken('c')
+    setMockFetch(captureRejectionMock)
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(AdminPluginsApprovalSection, { target, props: { catalogContextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="plugin-reject-hello-world"]')!.click()
+    await drain()
+    await drain()
+    expect(capturedApprovalBody).toBe(JSON.stringify({ pluginId: 'hello-world', action: 'reject' }))
+    const statusEl = target.querySelector('.status-success')
+    expect(statusEl).not.toBeNull()
+    expect(statusEl!.textContent).toContain('rejected')
     void unmount(component)
   })
 
