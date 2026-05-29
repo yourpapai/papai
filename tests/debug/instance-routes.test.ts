@@ -544,7 +544,13 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(await readJson(res)).toMatchObject({ recreated: ['telegram-main'], failed: [] })
+    expect(await readJson(res)).toMatchObject({
+      stopped: ['telegram-main'],
+      removed: ['telegram-main'],
+      started: ['telegram-main'],
+      recreated: ['telegram-main'],
+      failed: [],
+    })
     expect(stop).toHaveBeenCalledTimes(1)
     expect(start).toHaveBeenCalledTimes(2)
     expect(seenConfigs).toEqual([{ token: 'old-secret' }, { token: 'new-secret' }])
@@ -566,9 +572,71 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(await readJson(res)).toMatchObject({ removed: ['telegram-main'], failed: [] })
+    expect(await readJson(res)).toMatchObject({ stopped: ['telegram-main'], removed: ['telegram-main'], failed: [] })
     expect(router.getInstance('telegram-main')).toBeNull()
     expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  test('apply reports stop failure when stale runtime removal cannot stop provider', async () => {
+    const start = mock(async () => {})
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
+    const router = new ChatRouter(() => fakeProvider(start, stop))
+    router.addInstance('telegram-main', 'telegram', { token: 'secret' })
+    await router.startInstance('telegram-main')
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      stopped: [],
+      removed: [],
+      failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+    })
+    expect(router.getInstance('telegram-main')).not.toBeNull()
+  })
+
+  test('apply does not replace instance when recreate cannot stop old provider', async () => {
+    const start = mock(async () => {})
+    const stop = mock(() => Promise.reject(new Error('stop failed')))
+    const seenConfigs: InstanceConfig[] = []
+    const router = new ChatRouter((_id, _type, config) => {
+      seenConfigs.push(config)
+      return fakeProvider(start, stop)
+    })
+    router.addInstance('telegram-main', 'telegram', { token: 'old-secret' })
+    await router.startInstance('telegram-main')
+
+    const instance: PlatformInstance = {
+      id: 'telegram-main',
+      type: 'telegram',
+      config: { token: 'new-secret' },
+      status: 'active',
+      createdAt: '2026-05-29 00:00:00',
+    }
+
+    const res = expectResponse(
+      await routeWithDeps(
+        '/api/platform-instances/apply',
+        { getRuntimeChatRouter: () => router, listActivePlatformInstances: () => [instance] },
+        { method: 'POST', headers: jsonHeaders() },
+      ),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      stopped: [],
+      removed: [],
+      started: [],
+      recreated: [],
+      failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+    })
+    expect(seenConfigs).toEqual([{ token: 'old-secret' }])
   })
 
   test('apply serializes concurrent reconciliations for the shared router', async () => {
@@ -623,7 +691,7 @@ describe('instance API routes', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(await readJson(res)).toMatchObject({ applied: 0, removed: ['stale-telegram'] })
+    expect(await readJson(res)).toMatchObject({ applied: 0, stopped: ['stale-telegram'], removed: ['stale-telegram'] })
   })
 
   test('deleting platform instance cascades owned rows, preserves super-admins, and clears context tool caches', async () => {

@@ -19,7 +19,7 @@ export type InstanceApiDeps = {
 const INSTANCE_APPLY_CONCURRENCY = 4
 const instanceApplyLock = pLimit(1)
 
-type ApplyFailureAction = 'remove' | 'recreate' | 'start'
+type ApplyFailureAction = 'remove' | 'recreate' | 'start' | 'stop'
 
 type ApplyFailure = Readonly<{
   id: string
@@ -116,10 +116,10 @@ const mergeApplyResult = (applied: number, patches: readonly ApplyResultPatch[])
 
 const removeRuntimeInstance = async (router: ChatRouter, id: string): Promise<ApplyResultPatch> => {
   try {
-    await router.removeInstance(id)
-    return { removed: [id] }
+    await router.removeInstanceStrict(id)
+    return { stopped: [id], removed: [id] }
   } catch (error) {
-    return failedPatch(id, 'remove', error)
+    return failedPatch(id, 'stop', error)
   }
 }
 
@@ -140,17 +140,28 @@ const startMissingInstance = async (router: ChatRouter, instance: PlatformInstan
 }
 
 const recreateInstance = async (router: ChatRouter, instance: PlatformInstance): Promise<ApplyResultPatch> => {
+  const removed = await removeRuntimeInstance(router, instance.id)
+  if ((removed.failed ?? []).length > 0) return removed
+
   try {
-    await router.removeInstance(instance.id)
     router.addInstance(instance.id, instance.type, instance.config)
     await router.startInstance(instance.id)
     const runtimeInstance = router.getInstance(instance.id)
     if (runtimeInstance !== null && runtimeInstance.status === 'active') {
-      return { started: [instance.id], removed: [instance.id], recreated: [instance.id] }
+      return {
+        stopped: removed.stopped,
+        removed: removed.removed,
+        started: [instance.id],
+        recreated: [instance.id],
+      }
     }
-    return failedPatch(instance.id, 'recreate', notActiveAfterStartError(instance.id))
+    return {
+      stopped: removed.stopped,
+      removed: removed.removed,
+      ...failedPatch(instance.id, 'recreate', notActiveAfterStartError(instance.id)),
+    }
   } catch (error) {
-    return failedPatch(instance.id, 'recreate', error)
+    return { stopped: removed.stopped, removed: removed.removed, ...failedPatch(instance.id, 'recreate', error) }
   }
 }
 

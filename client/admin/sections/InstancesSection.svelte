@@ -62,6 +62,11 @@
     status = { kind: 'error', message: err instanceof Error ? err.message : String(err) }
   }
 
+  const applyFailureMessage = (result: Awaited<ReturnType<typeof applyPlatformInstances>>): string => {
+    const details = result.failed.map((failure) => `${failure.id} ${failure.action} failed: ${failure.error}`).join('; ')
+    return `Failed to apply ${result.applied} platform ${result.applied === 1 ? 'change' : 'changes'}: ${details}`
+  }
+
   function confirmDestructive(message: string): boolean {
     return window.confirm(message)
   }
@@ -178,6 +183,10 @@
   async function applyPlatforms(): Promise<void> {
     try {
       const result = await applyPlatformInstances()
+      if (result.failed.length > 0) {
+        setError(new Error(applyFailureMessage(result)))
+        return
+      }
       platformDirty = false
       await loadPlatformInstances()
       setSuccess(`Applied ${result.applied} platform ${result.applied === 1 ? 'change' : 'changes'}.`)

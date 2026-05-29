@@ -226,7 +226,7 @@ export type AdminInstanceView = Readonly<
 
 export type ApplyFailure = Readonly<{
   id: string
-  action: 'remove' | 'recreate' | 'start'
+  action: 'remove' | 'recreate' | 'start' | 'stop'
   error: string
 }>
 

@@ -68,7 +68,7 @@ export const AdminInstanceViewSchema = z.object({
 
 export const ApplyFailureSchema = z.object({
   id: z.string(),
-  action: z.enum(['remove', 'recreate', 'start']),
+  action: z.enum(['remove', 'recreate', 'start', 'stop']),
   error: z.string(),
 })
 

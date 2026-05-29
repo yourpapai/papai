@@ -123,11 +123,11 @@ describe('instance API schemas', () => {
       removed: ['discord-old'],
       recreated: ['mattermost-main'],
       unchanged: ['telegram-secondary'],
-      failed: [{ id: 'telegram-bad', action: 'start', error: 'failed to start' }],
+      failed: [{ id: 'telegram-bad', action: 'stop', error: 'failed to stop' }],
     })
 
     expect(parsed.applied).toBe(2)
-    expect(parsed.failed[0]?.action).toBe('start')
+    expect(parsed.failed[0]?.action).toBe('stop')
   })
 
   test('rejects unknown platform and status enums; task type is open string', () => {
