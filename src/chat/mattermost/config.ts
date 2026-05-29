@@ -5,7 +5,6 @@
 
 export type MattermostConstructorConfig = Partial<{
   baseUrl: string
-  url: string
   token: string
   platformInstanceId: string
 }>
@@ -30,8 +29,7 @@ export const resolveMattermostConfig = (
   config: MattermostConstructorConfig,
   fallbackEnv: Record<string, string | undefined> | undefined = process.env,
 ): ResolvedMattermostConfig => {
-  const configuredUrl = resolveConfigValue(config.baseUrl, config.url)
-  const url = resolveConfigValue(configuredUrl, fallbackEnv?.['MATTERMOST_URL'])
+  const url = resolveConfigValue(config.baseUrl, fallbackEnv?.['MATTERMOST_URL'])
   const token = resolveConfigValue(config.token, fallbackEnv?.['MATTERMOST_BOT_TOKEN'])
   if (url === undefined || url.trim() === '') {
     throw new Error('MATTERMOST_URL environment variable is required')

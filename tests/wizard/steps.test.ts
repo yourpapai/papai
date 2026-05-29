@@ -78,7 +78,7 @@ describe('getWizardSteps', () => {
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
-      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+      contextConfigSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
     })
 
     const steps = getWizardSteps('plugin-tracker')

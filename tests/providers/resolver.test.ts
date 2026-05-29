@@ -91,8 +91,8 @@ describe('TaskProviderResolver', () => {
     expect(await resolver.resolve('ctx-plugin-gone')).toBeNull()
   })
 
-  test('builds a YouTrack provider from instance URL and per-context token', async () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+  test('builds a YouTrack provider from instance baseUrl and per-context token', async () => {
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'youtrack_token', 'perm:abc')
     const resolver = makeResolver()
@@ -103,8 +103,13 @@ describe('TaskProviderResolver', () => {
     expect(created).toEqual([{ name: 'youtrack', config: { baseUrl: 'https://yt.invalid', token: 'perm:abc' } }])
   })
 
-  test('builds a Kaneo provider from instance URL, API key, and workspace ID', async () => {
-    insertTaskInstance({ id: 'kaneo-prod', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+  test('builds a Kaneo provider from instance baseUrl, API key, and workspace ID', async () => {
+    insertTaskInstance({
+      id: 'kaneo-prod',
+      type: 'kaneo',
+      config: { baseUrl: 'https://kaneo.invalid' },
+      status: 'active',
+    })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
     setConfig('ctx-1', 'kaneo_apikey', 'kn-key')
     setKaneoWorkspace('ctx-1', 'workspace-1')
@@ -146,7 +151,7 @@ describe('TaskProviderResolver', () => {
   })
 
   test('returns null when provider credentials are missing', async () => {
-    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     const resolver = makeResolver()
 
@@ -213,7 +218,6 @@ describe('TaskProviderResolver', () => {
         contextConfigSchema: [],
         capabilities: new Set(),
         traits: new Set(),
-        configSchema: [],
       }),
     }
 
@@ -303,17 +307,6 @@ describe('TaskProviderResolver', () => {
         ],
         capabilities: new Set(),
         traits: new Set(),
-        configSchema: [
-          { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
-          {
-            key: 'apiToken',
-            storageKey: 'metadata_token',
-            label: 'API Token',
-            required: true,
-            sensitive: true,
-            scope: 'context' as const,
-          },
-        ],
       }),
       getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
       createProvider: (name, config) => {
@@ -373,6 +366,25 @@ describe('TaskProviderResolver', () => {
     } finally {
       unregisterContributedTaskProviderType(resolverPluginId)
     }
+  })
+
+  test('does not resolve a required baseUrl from a legacy url key', async () => {
+    insertTaskInstance({
+      id: 'yt-legacy-url',
+      type: 'youtrack',
+      config: { url: 'https://yt.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-legacy-url',
+      taskInstanceId: 'yt-legacy-url',
+      platformInstanceId: 'telegram-default',
+    })
+    setConfig('ctx-legacy-url', 'youtrack_token', 'perm:abc')
+    const resolver = makeResolver()
+
+    expect(await resolver.resolve('ctx-legacy-url')).toBeNull()
+    expect(created).toEqual([])
   })
 
   test('returns null when contributed provider validator rejects resolved config', async () => {

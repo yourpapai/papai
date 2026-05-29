@@ -190,10 +190,20 @@ describe('MattermostChatProvider', () => {
     process.env['MATTERMOST_BOT_TOKEN'] = 'test-token'
   })
 
-  test('constructor accepts legacy url config without MATTERMOST_URL env', () => {
+  test('constructor rejects legacy url config without MATTERMOST_URL env', () => {
+    delete process.env['MATTERMOST_URL']
+    const legacyConfig: Record<string, string> = { url: 'https://legacy.invalid', token: 'cfg-token' }
+
+    expect(() => new MattermostChatProvider(legacyConfig)).toThrow('MATTERMOST_URL environment variable is required')
+  })
+
+  test('constructor accepts baseUrl config without MATTERMOST_URL env', () => {
     delete process.env['MATTERMOST_URL']
 
-    const constructedProvider = new MattermostChatProvider({ url: 'https://legacy.invalid', token: 'cfg-token' })
+    const constructedProvider = new MattermostChatProvider({
+      baseUrl: 'https://configured.invalid',
+      token: 'cfg-token',
+    })
 
     expect(constructedProvider.name).toBe('mattermost')
   })

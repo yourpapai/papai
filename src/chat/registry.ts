@@ -122,16 +122,6 @@ const missingConfigMessage = (type: PlatformInstanceType): string => `Missing ${
 
 const isBlank = (value: string | undefined): boolean => value === undefined || value.trim() === ''
 
-const normalizeMattermostInstanceConfig = (config: InstanceConfig): InstanceConfig => ({
-  ...config,
-  ...(isBlank(config['baseUrl']) && !isBlank(config['url']) ? { baseUrl: config['url'] } : {}),
-})
-
-const normalizeInstanceConfig = (type: PlatformInstanceType, config: InstanceConfig): InstanceConfig => {
-  if (type === 'mattermost') return normalizeMattermostInstanceConfig(config)
-  return config
-}
-
 const isMissingInstanceConfig = (type: PlatformInstanceType, config: InstanceConfig): boolean => {
   const descriptor = platformDescriptors.find((candidate) => candidate.type === type)
   if (descriptor === undefined) return true
@@ -144,10 +134,9 @@ export function createChatProviderFromConfig(
   config: InstanceConfig,
 ): ChatProvider {
   const factory = instanceProviders.get(type)
-  const normalizedConfig = normalizeInstanceConfig(type, config)
-  if (factory === undefined || isMissingInstanceConfig(type, normalizedConfig)) {
+  if (factory === undefined || isMissingInstanceConfig(type, config)) {
     log.error({ type, id }, 'Invalid chat provider instance config')
     throw new Error(missingConfigMessage(type))
   }
-  return factory(id, normalizedConfig)
+  return factory(id, config)
 }

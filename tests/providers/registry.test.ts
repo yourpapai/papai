@@ -25,18 +25,24 @@ import { mockLogger } from '../utils/test-helpers.js'
 const taskInstance = (type: TaskInstance['type']): TaskInstance => ({
   id: `${type}-default`,
   type,
-  config: { url: `https://${type}.invalid` },
+  config: { baseUrl: `https://${type}.invalid` },
   status: 'active',
   createdAt: 'now',
 })
 
 const fakeProvider: TaskProvider = createMockProvider()
+const requireDescriptor = <T>(descriptor: T | undefined): T => {
+  if (descriptor === undefined) throw new Error('Expected provider descriptor')
+  return descriptor
+}
+
 const entry = {
   pluginId: 'task-provider-kaneo',
   factory: (): TaskProvider => fakeProvider,
   capabilities: new Set<TaskCapability>(),
   displayName: 'Kaneo (Plugin)',
-  configSchema: [] as const,
+  instanceConfigSchema: [] as const,
+  contextConfigSchema: [] as const,
 }
 
 describe('provider registry capability lookup', () => {
@@ -79,7 +85,8 @@ describe('contributed task provider registry', () => {
         factory: (): TaskProvider => fakeProvider,
         capabilities: new Set<TaskCapability>(),
         displayName: 'Other',
-        configSchema: [] as const,
+        instanceConfigSchema: [] as const,
+        contextConfigSchema: [] as const,
       }),
     ).not.toThrow()
     expect(getContributedTaskProviderType('custom-tracker')?.pluginId).toBe('task-provider-kaneo')
@@ -98,24 +105,28 @@ describe('contributed task provider registry', () => {
     expect(() => registerContributedTaskProviderType('youtrack', entry)).toThrow()
   })
 
-  test('listTaskProviderTypes includes contributed descriptors with displayName and configSchema', () => {
+  test('listTaskProviderTypes includes contributed descriptors with displayName and split config schemas', () => {
     mockLogger()
     registerContributedTaskProviderType('demo-tracker', {
       pluginId: 'task-provider-demo',
       factory: () => createMockProvider(),
       capabilities: new Set<TaskCapability>(['comments.read']),
       displayName: 'Demo Tracker',
-      configSchema: [{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }],
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [],
     })
 
-    const descriptor = listTaskProviderTypes().find((d) => d.type === 'demo-tracker')
-    expect(descriptor).toBeDefined()
-    expect(descriptor?.displayName).toBe('Demo Tracker')
-    expect(descriptor?.source).toEqual({ plugin: 'task-provider-demo' })
-    expect(descriptor?.configSchema).toEqual([
+    const descriptor = requireDescriptor(listTaskProviderTypes().find((d) => d.type === 'demo-tracker'))
+    expect(descriptor.displayName).toBe('Demo Tracker')
+    expect(descriptor.source).toEqual({ plugin: 'task-provider-demo' })
+    expect('configSchema' in descriptor).toBe(false)
+    expect(descriptor.instanceConfigSchema).toEqual([
       { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
     ])
-    expect(descriptor?.capabilities.has('comments.read')).toBe(true)
+    expect(descriptor.contextConfigSchema).toEqual([])
+    expect(descriptor.capabilities.has('comments.read')).toBe(true)
   })
 
   test('createProvider normalizes contributed runtime traits from descriptor traits', () => {
@@ -127,7 +138,8 @@ describe('contributed task provider registry', () => {
       capabilities: new Set<TaskCapability>(['tasks.commands']),
       displayName: 'Traited Tracker',
       traits,
-      configSchema: [] as const,
+      instanceConfigSchema: [] as const,
+      contextConfigSchema: [] as const,
     })
 
     const descriptor = getTaskProviderDescriptor('traited-tracker')
@@ -159,19 +171,19 @@ describe('listTaskProviderTypes (built-in catalog)', () => {
 
     expect(types).toHaveLength(2)
 
-    const kaneo = types.find((descriptor) => descriptor.type === 'kaneo')
-    const youtrack = types.find((descriptor) => descriptor.type === 'youtrack')
+    const kaneo = requireDescriptor(types.find((descriptor) => descriptor.type === 'kaneo'))
+    const youtrack = requireDescriptor(types.find((descriptor) => descriptor.type === 'youtrack'))
 
-    expect(kaneo).toBeDefined()
-    expect(kaneo?.source).toBe('builtin')
-    expect(kaneo?.displayName).toBe('Kaneo')
-    expect(kaneo?.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
-    expect(kaneo?.capabilities.size).toBeGreaterThan(0)
+    expect(kaneo.source).toBe('builtin')
+    expect(kaneo.displayName).toBe('Kaneo')
+    expect(kaneo.instanceConfigSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
+    expect('configSchema' in kaneo).toBe(false)
+    expect(kaneo.capabilities.size).toBeGreaterThan(0)
 
-    expect(youtrack).toBeDefined()
-    expect(youtrack?.source).toBe('builtin')
-    expect(youtrack?.displayName).toBe('YouTrack')
-    expect(youtrack?.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
+    expect(youtrack.source).toBe('builtin')
+    expect(youtrack.displayName).toBe('YouTrack')
+    expect(youtrack.instanceConfigSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
+    expect('configSchema' in youtrack).toBe(false)
   })
 
   test('built-in provider runtime traits equal descriptor traits', () => {
@@ -198,7 +210,7 @@ describe('listTaskProviderTypes (built-in catalog)', () => {
 describe('listTaskProviderTypes built-in scopes', () => {
   test('kaneo declares instance baseUrl and context credential + workspaceId', () => {
     const kaneo = listTaskProviderTypes().find((d) => d.type === 'kaneo')
-    expect(kaneo?.configSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
+    expect(kaneo?.instanceConfigSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
     expect(kaneo?.contextConfigSchema.find((f) => f.key === 'credential')?.scope).toBe('context')
     expect(kaneo?.contextConfigSchema.find((f) => f.key === 'credential')?.sensitive).toBe(true)
     expect(kaneo?.contextConfigSchema.find((f) => f.key === 'workspaceId')?.scope).toBe('context')
@@ -206,7 +218,7 @@ describe('listTaskProviderTypes built-in scopes', () => {
 
   test('youtrack declares instance baseUrl and context token', () => {
     const yt = listTaskProviderTypes().find((d) => d.type === 'youtrack')
-    expect(yt?.configSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
+    expect(yt?.instanceConfigSchema.find((f) => f.key === 'baseUrl')?.scope).toBe('instance')
     expect(yt?.contextConfigSchema.find((f) => f.key === 'token')?.scope).toBe('context')
     expect(yt?.contextConfigSchema.find((f) => f.key === 'token')?.sensitive).toBe(true)
   })
@@ -233,7 +245,8 @@ describe('registerContributedTaskProviderType duplicates', () => {
       factory: (): TaskProvider => createMockProvider({ name: 'dup' }),
       capabilities: new Set<never>(),
       displayName: pluginId,
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       registerContributedTaskProviderType('dup', makeEntry('plugin-a'))
@@ -253,7 +266,8 @@ describe('registerContributedTaskProviderType duplicates', () => {
         factory: () => createMockProvider({ name: 'kaneo' }),
         capabilities: new Set<never>(),
         displayName: 'evil',
-        configSchema: [] as const,
+        instanceConfigSchema: [] as const,
+        contextConfigSchema: [] as const,
       }),
     ).toThrow()
   })
@@ -272,7 +286,8 @@ describe('getTaskProviderConfigValidator', () => {
       validateConfig: validator,
       capabilities: new Set<never>(),
       displayName: 'Validated Reg',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('validated-reg')
@@ -294,7 +309,8 @@ describe('getTaskProviderConfigValidator', () => {
       validateConfig: validator,
       capabilities: new Set<never>(),
       displayName: 'Invalid Validator Reg',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('invalid-validator-reg')
@@ -323,7 +339,8 @@ describe('getTaskProviderConfigValidator', () => {
       factory: () => createMockProvider({ name: 'no-validator' }),
       capabilities: new Set<never>(),
       displayName: 'No Validator',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('no-validator')

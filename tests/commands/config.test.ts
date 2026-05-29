@@ -188,7 +188,7 @@ describe('/config Command', () => {
         factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
         capabilities: new Set(),
         displayName: 'Long Plugin Provider',
-        configSchema: [
+        contextConfigSchema: [
           {
             key: 'very-long-context-token-field',
             label: 'Plugin Token',

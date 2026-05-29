@@ -54,11 +54,7 @@ const readContextScopedField = (
 }
 
 const readInstanceScopedField = (instance: TaskInstance, field: ProviderConfigField): string | undefined => {
-  const value = instance.config[field.storageKey ?? field.key]
-  if (value !== undefined) return value
-  // Back-compat: some instances persist the URL under the legacy `url` key.
-  if (field.key === 'baseUrl') return instance.config['url']
-  return undefined
+  return instance.config[field.storageKey ?? field.key]
 }
 
 const buildConfigFromDescriptor = (

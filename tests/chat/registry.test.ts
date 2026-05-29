@@ -99,13 +99,13 @@ describe('chat registry', () => {
     expect(provider.name).toBe('mattermost')
   })
 
-  test('createChatProviderFromConfig creates mattermost from persisted legacy url and token', () => {
-    const provider = createChatProviderFromConfig('mattermost-main', 'mattermost', {
-      url: 'https://mm.invalid',
-      token: 'secret',
-    })
-
-    expect(provider.name).toBe('mattermost')
+  test('createChatProviderFromConfig rejects mattermost persisted legacy url without baseUrl', () => {
+    expect(() =>
+      createChatProviderFromConfig('mattermost-main', 'mattermost', {
+        url: 'https://mm.invalid',
+        token: 'secret',
+      }),
+    ).toThrow('Missing mattermost instance config')
   })
 
   test('createChatProviderFromConfig rejects missing config values before adapter construction', () => {
