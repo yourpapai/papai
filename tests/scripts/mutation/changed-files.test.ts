@@ -5,7 +5,11 @@
 
 import { describe, expect, mock, test } from 'bun:test'
 
-import { selectChangedMutationTargets, type ChangedFilesDeps } from '../../../scripts/mutation/changed-files.js'
+import {
+  parseChangedFilesCliArgs,
+  selectChangedMutationTargets,
+  type ChangedFilesDeps,
+} from '../../../scripts/mutation/changed-files.js'
 
 const makeDeps = (gitOutput: string, isGateableImpl: ChangedFilesDeps['isGateableImpl']): ChangedFilesDeps => ({
   runGit: mock(() => gitOutput),
@@ -72,7 +76,7 @@ describe('selectChangedMutationTargets', () => {
     expect(isGateableImpl).toHaveBeenNthCalledWith(2, 'src/impl.ts', '/repo')
   })
 
-  test("passes git args ['diff', '--name-only', 'origin/master...HEAD']", () => {
+  test("passes git args ['diff', '--name-only', '--diff-filter=ACMRT', 'origin/master...HEAD']", () => {
     const runGit = mock(() => 'src/impl.ts\n')
     const deps: ChangedFilesDeps = {
       runGit,
@@ -85,6 +89,22 @@ describe('selectChangedMutationTargets', () => {
       deps,
     })
 
-    expect(runGit).toHaveBeenCalledWith(['diff', '--name-only', 'origin/master...HEAD'])
+    expect(runGit).toHaveBeenCalledWith(['diff', '--name-only', '--diff-filter=ACMRT', 'origin/master...HEAD'])
+  })
+})
+
+describe('parseChangedFilesCliArgs', () => {
+  test('rejects unexpected positional arguments', () => {
+    expect(parseChangedFilesCliArgs(['src/impl.ts'])).toEqual({
+      kind: 'usageError',
+      reason: 'unexpected positional argument src/impl.ts',
+    })
+  })
+
+  test('rejects unknown flags', () => {
+    expect(parseChangedFilesCliArgs(['--unknown'])).toEqual({
+      kind: 'usageError',
+      reason: 'unknown argument --unknown',
+    })
   })
 })

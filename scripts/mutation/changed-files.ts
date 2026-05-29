@@ -50,7 +50,7 @@ const resolveDeps = (deps: ChangedFilesDeps | undefined): ChangedFilesDeps => {
 
 export const selectChangedMutationTargets = (input: SelectInput): string[] => {
   const deps = resolveDeps(input.deps)
-  const output = deps.runGit(['diff', '--name-only', `${input.baseRef}...HEAD`])
+  const output = deps.runGit(['diff', '--name-only', '--diff-filter=ACMRT', `${input.baseRef}...HEAD`])
   return output
     .split('\n')
     .map((line) => line.trim())
@@ -69,11 +69,15 @@ const parseThreshold = (text: string | undefined): ChangedFilesCliArgs | number 
   return threshold
 }
 
-const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
+export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
   const unknownArg = argv.find(
     (arg) => arg.startsWith('-') && !arg.startsWith('--base=') && !arg.startsWith('--threshold='),
   )
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
+  const positionalArg = argv.find((arg) => !arg.startsWith('--base=') && !arg.startsWith('--threshold='))
+  if (positionalArg !== undefined) {
+    return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
+  }
 
   const baseArgs = argv.filter((arg) => arg.startsWith('--base='))
   if (baseArgs.length > 1) return { kind: 'usageError', reason: 'base must be provided at most once' }
