@@ -87,6 +87,7 @@ describe('TaskProviderSection', () => {
     await drain()
     expect(target.textContent).toContain('a@b.c')
     expect(target.textContent).toContain('p@ss')
+    expect(target.textContent).toContain('https://k')
     void unmount(component)
   })
 })

@@ -4,6 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
+  import { untrack } from 'svelte'
+
   import ConfigFieldRow from '../components/ConfigFieldRow.svelte'
   import type { ConfigField, ProvisionResult } from '../fetcher-schemas.js'
   import { fetchConfig, provisionKaneo } from '../fetchers.js'
@@ -51,6 +53,14 @@
 
   $effect(() => {
     void load(contextId)
+  })
+
+  $effect(() => {
+    void contextId // track context changes
+    untrack(() => {
+      provisioned = null
+      provisionError = null
+    })
   })
 </script>
 
