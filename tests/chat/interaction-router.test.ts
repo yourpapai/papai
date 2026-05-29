@@ -486,6 +486,96 @@ describe('routeInteraction', () => {
     expect(getActiveGroupSettingsTarget(interaction.user.id)).toBeNull()
   })
 
+  test('compact cfg cancel callback fails closed after DM target selection changes', async () => {
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const originalTarget = 'managed-group-context-with-a-very-long-stable-storage-id'
+    const callbackData = serializeCallbackData({ action: 'cancel' }, originalTarget)
+
+    createGroupSettingsSession({
+      userId: interaction.user.id,
+      platformInstanceId: interaction.platformInstanceId,
+      command: 'config',
+      stage: 'active',
+      targetContextId: toScopedContextId({
+        platformInstanceId: interaction.platformInstanceId,
+        nativeContextId: 'group-9',
+      }),
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      { ...interaction, callbackData },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
+  test('compact cfg back callback fails closed after DM target selection changes', async () => {
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const originalTarget = 'managed-group-context-with-a-very-long-stable-storage-id'
+    const callbackData = serializeCallbackData({ action: 'back' }, originalTarget)
+
+    createGroupSettingsSession({
+      userId: interaction.user.id,
+      platformInstanceId: interaction.platformInstanceId,
+      command: 'config',
+      stage: 'active',
+      targetContextId: toScopedContextId({
+        platformInstanceId: interaction.platformInstanceId,
+        nativeContextId: 'group-9',
+      }),
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      { ...interaction, callbackData },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
+  test('compact cfg setup callback fails closed after DM target selection changes', async () => {
+    setupAuthorizedGroupForUser(interaction.user.id, 'config')
+    const originalTarget = 'managed-group-context-with-a-very-long-stable-storage-id'
+    const callbackData = serializeCallbackData({ action: 'setup' }, originalTarget)
+
+    createGroupSettingsSession({
+      userId: interaction.user.id,
+      platformInstanceId: interaction.platformInstanceId,
+      command: 'config',
+      stage: 'active',
+      targetContextId: toScopedContextId({
+        platformInstanceId: interaction.platformInstanceId,
+        nativeContextId: 'group-9',
+      }),
+    })
+
+    const replies: string[] = []
+    const handled = await routeInteraction(
+      { ...interaction, callbackData },
+      {
+        ...reply,
+        text: captureReplyText(replies),
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
   test('blocks encoded cfg callback target when admin access is removed', async () => {
     setupAuthorizedGroupForUser(interaction.user.id, 'config')
 

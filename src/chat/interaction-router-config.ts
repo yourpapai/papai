@@ -5,6 +5,7 @@
 
 import {
   handleEditorCallback,
+  matchesCallbackTargetTag,
   parseCallbackData,
   resolveCallbackKey,
   serializeCallbackData,
@@ -126,6 +127,9 @@ export async function defaultHandleConfigInteraction(
     reply,
   )
   if (targetContextId === true) return true
+  if (!matchesCallbackTargetTag(parsed.targetTag, targetContextId)) {
+    return replyUnknownConfigAction(reply, callbackData)
+  }
 
   log.debug(
     { userId: user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },

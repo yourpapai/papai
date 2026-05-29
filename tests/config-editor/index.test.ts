@@ -184,6 +184,22 @@ describe('config-editor public API', () => {
     expect(data.every((callbackData) => Buffer.byteLength(callbackData, 'utf8') <= 64)).toBe(true)
   })
 
+  test('compact non-field callbacks keep a target binding tag', () => {
+    const targetContextId = 'managed-group-context-with-a-very-long-stable-storage-id'
+    const actions = ['cancel', 'back', 'setup'] as const
+
+    for (const action of actions) {
+      const data = serializeCallbackData({ action }, targetContextId)
+      const parsed = parseCallbackData(data)
+
+      expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+      expect(parsed.action).toBe(action)
+      expect(parsed.key).toBeNull()
+      expect(parsed.targetContextId).toBeUndefined()
+      expect(parsed.targetTag).toBeString()
+    }
+  })
+
   test('compact callbacks parse without module-local token state', () => {
     expect(parseCallbackData('cfg:e:0:abc123:def456')).toEqual({ action: 'edit', key: '#0:abc123:def456' })
     expect(parseCallbackData('cfg:s:z:def456:ghi789')).toEqual({ action: 'save', key: '#z:def456:ghi789' })

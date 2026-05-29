@@ -16,6 +16,12 @@ const decodeContextId = (encoded: string): string => Buffer.from(encoded, 'base6
 
 const INVALID_CALLBACK_DATA = 'cfg:invalid'
 
+const COMPACT_ACTIONS = {
+  cancel: 'c',
+  back: 'b',
+  setup: 'u',
+} as const
+
 function targetTag(targetContextId: string): string {
   return createHash('sha256').update(targetContextId).digest('base64url').slice(0, 8)
 }
@@ -39,6 +45,13 @@ function compactCallbackData(
     const fieldIndex = getConfigFieldsForContext(targetContextId).findIndex((field) => field.storageKey === button.key)
     if (fieldIndex !== -1)
       return `cfg:${button.action === 'edit' ? 'e' : 's'}:${fieldIndex.toString(36)}:${targetTag(targetContextId)}:${fieldFingerprint(button.key)}`
+  }
+
+  if (
+    (button.action === 'cancel' || button.action === 'back' || button.action === 'setup') &&
+    targetContextId !== undefined
+  ) {
+    return `cfg:${COMPACT_ACTIONS[button.action]}:${targetTag(targetContextId)}`
   }
 
   const fallback = button.action === 'setup' ? 'cfg:setup' : button.action === 'cancel' ? 'cfg:cancel' : 'cfg:back'
@@ -85,6 +98,24 @@ function parseCompactCallbackKey(
   return isValid ? { action, key: `#${index}:${tag}:${fingerprint}` } : { action: null, key: null }
 }
 
+function parseCompactActionTag(core: string): {
+  action: 'cancel' | 'back' | 'setup' | null
+  key: null
+  targetTag?: string
+} | null {
+  const match = /^cfg:([cbu]):([A-Za-z0-9_-]+)$/u.exec(core)
+  if (match === null) return null
+  const [, compactAction, compactTargetTag] = match
+  if (compactAction === undefined || compactTargetTag === undefined) return { action: null, key: null }
+  const action =
+    compactAction === 'c' ? 'cancel' : compactAction === 'b' ? 'back' : compactAction === 'u' ? 'setup' : null
+  return {
+    action,
+    key: null,
+    targetTag: compactTargetTag,
+  }
+}
+
 export function serializeCallbackData(button: Pick<EditorButton, 'action' | 'key'>, targetContextId?: string): string {
   switch (button.action) {
     case 'edit':
@@ -114,12 +145,16 @@ function parseRawCallbackData(data: string): {
   action: 'edit' | 'save' | 'cancel' | 'back' | 'setup' | null
   key: string | null
   targetContextId?: string
+  targetTag?: string
 } {
   const { core, targetContextId } = splitCallbackContext(data)
 
   if (core === 'cfg:cancel') return { action: 'cancel', key: null, targetContextId }
   if (core === 'cfg:back') return { action: 'back', key: null, targetContextId }
   if (core === 'cfg:setup') return { action: 'setup', key: null, targetContextId }
+
+  const compactAction = parseCompactActionTag(core)
+  if (compactAction !== null) return { ...compactAction, targetContextId }
 
   const compactEdit = parseCompactCallbackKey('cfg:e:', 'edit', core)
   if (compactEdit !== null) return { ...compactEdit, targetContextId }
@@ -142,6 +177,11 @@ function parseRawCallbackData(data: string): {
 
 export function parseCallbackData(data: string): ReturnType<typeof parseRawCallbackData> {
   return parseRawCallbackData(data)
+}
+
+export function matchesCallbackTargetTag(tag: string | undefined, targetContextId: string): boolean {
+  if (tag === undefined) return true
+  return tag === targetTag(targetContextId)
 }
 
 export function resolveCallbackKey(key: string | null, targetContextId: string): string | null {
