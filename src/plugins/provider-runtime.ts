@@ -108,6 +108,21 @@ function stripRequestBodyHeaders(headers: HeadersInit | undefined): HeadersInit 
   return nextHeaders
 }
 
+function stripAuthorizationHeader(headers: HeadersInit | undefined): HeadersInit | undefined {
+  if (headers === undefined) {
+    return undefined
+  }
+
+  const nextHeaders = new Headers(headers)
+  nextHeaders.delete('Authorization')
+
+  return nextHeaders
+}
+
+function isSameOrigin(fromUrl: URL, toUrl: URL): boolean {
+  return fromUrl.origin === toUrl.origin
+}
+
 function buildRedirectFetchInit(fetchInit: RequestInit, status: number): RequestInit {
   const method = getMethod(fetchInit).toUpperCase()
   const shouldRewriteToGet =
@@ -120,6 +135,14 @@ function buildRedirectFetchInit(fetchInit: RequestInit, status: number): Request
 
   const { body: _ignoredBody, headers, ...rest } = fetchInit
   return { ...rest, headers: stripRequestBodyHeaders(headers), method: 'GET' }
+}
+
+function sanitizeRedirectFetchInit(fetchInit: RequestInit, currentUrl: URL, redirectUrl: URL): RequestInit {
+  if (isSameOrigin(currentUrl, redirectUrl)) {
+    return fetchInit
+  }
+
+  return { ...fetchInit, headers: stripAuthorizationHeader(fetchInit.headers) }
 }
 
 async function fetchWithRedirects(
@@ -151,7 +174,7 @@ async function fetchWithRedirects(
   // plugin manifest already trusts.
   return fetchWithRedirects(
     redirectUrl,
-    buildRedirectFetchInit(fetchInit, response.status),
+    sanitizeRedirectFetchInit(buildRedirectFetchInit(fetchInit, response.status), currentUrl, redirectUrl),
     hostSet,
     deps,
     logger,

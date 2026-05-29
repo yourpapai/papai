@@ -117,6 +117,40 @@ describe('buildProviderRuntime.httpFetch', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
+  test('strips Authorization on redirect to the same hostname with a different port', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.kaneo.io:8443/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      headers: { authorization: 'Bearer secret' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'authorization')).toBeNull()
+  })
+
+  test('keeps Authorization on same-origin redirect', async () => {
+    mockLogger()
+    const { fetchSpy, ...deps } = makeDeps()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://api.kaneo.io/v2/tasks' } }),
+    )
+    fetchSpy.mockResolvedValueOnce(new Response('ok'))
+    const runtime = buildProviderRuntime(['api.kaneo.io'], makeLogger(), deps)
+
+    await runtime.httpFetch('https://api.kaneo.io/v1/tasks', {
+      headers: { authorization: 'Bearer secret' },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(getHeaderValue(fetchSpy.mock.calls[1]?.[1]?.headers, 'authorization')).toBe('Bearer secret')
+  })
+
   test('rejects a redirect that downgrades to http before SSRF validation or second fetch', async () => {
     mockLogger()
     const { fetchSpy, assertSpy, ...deps } = makeDeps()
