@@ -15,7 +15,7 @@ import { listManageableGroups } from '../group-settings/access.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
 import { getToolMetadata, TOOL_METADATA, type ToolDomain } from '../tools/tool-metadata.js'
-import { getToolPrefs, setToolPrefs, toggleDomain, toggleTool } from '../tools/tool-preferences.js'
+import { cycleDomain, cycleTool, getToolPrefs, setToolPrefs } from '../tools/tool-preferences.js'
 import { buildTools } from '../tools/tools-builder.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
 import type { IncomingInteraction, ReplyFn } from './types.js'
@@ -102,8 +102,8 @@ async function handleDomainAction(
       return true
     }
     const domainNames = filterByDomain(names, resolvedMiddle)
-    setToolPrefs(contextId, toggleDomain(getToolPrefs(contextId), resolvedMiddle, domainNames))
-    log.info({ contextId, domain: resolvedMiddle, userId }, 'Tool domain toggled')
+    setToolPrefs(contextId, cycleDomain(getToolPrefs(contextId), resolvedMiddle, domainNames))
+    log.info({ contextId, domain: resolvedMiddle, userId }, 'Tool domain cycled')
     await renderView(reply, buildDomainListView(contextId, names, getToolPrefs(contextId)))
     return true
   }
@@ -113,9 +113,8 @@ async function handleDomainAction(
       await replyTextPreferReplace(reply, 'Unknown tool.')
       return true
     }
-    const domainNames = filterByDomain(names, meta.domain)
-    setToolPrefs(contextId, toggleTool(getToolPrefs(contextId), resolvedMiddle, domainNames))
-    log.info({ contextId, tool: resolvedMiddle, userId }, 'Tool toggled')
+    setToolPrefs(contextId, cycleTool(getToolPrefs(contextId), resolvedMiddle))
+    log.info({ contextId, tool: resolvedMiddle, userId }, 'Tool cycled')
     await renderView(reply, buildDomainDrillView(contextId, meta.domain, names, getToolPrefs(contextId)))
     return true
   }

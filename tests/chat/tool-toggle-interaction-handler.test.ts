@@ -3,12 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, test } from 'bun:test'
 
 import { userCachesForTesting } from '../../src/cache.js'
 import { handleToolToggleInteraction } from '../../src/chat/tool-toggle-interaction-handler.js'
 import type { IncomingInteraction } from '../../src/chat/types.js'
-import { getToolPrefs } from '../../src/tools/tool-preferences.js'
+import { getToolPrefs, resolveToolPermission } from '../../src/tools/tool-preferences.js'
 import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const USER = 'tgl-user-1'
@@ -43,10 +43,18 @@ describe('handleToolToggleInteraction', () => {
     expect(handled).toBe(false)
   })
 
-  it('toggling a domain off persists a disabled domain for the user', async () => {
+  it('tapping a domain once cycles it from allow to ask', async () => {
     const { reply } = createMockReply()
     const handled = await handleToolToggleInteraction(dmInteraction(`tgl:dom:memo:${CTX}`), reply)
     expect(handled).toBe(true)
+    expect(getToolPrefs(USER).domainDefaults['memo']).toBe('ask')
+  })
+
+  it('tapping a domain twice cycles it from allow to ask to deny', async () => {
+    const { reply: reply1 } = createMockReply()
+    await handleToolToggleInteraction(dmInteraction(`tgl:dom:memo:${CTX}`), reply1)
+    const { reply: reply2 } = createMockReply()
+    await handleToolToggleInteraction(dmInteraction(`tgl:dom:memo:${CTX}`), reply2)
     expect(getToolPrefs(USER).domainDefaults['memo']).toBe('deny')
   })
 
@@ -58,11 +66,28 @@ describe('handleToolToggleInteraction', () => {
     expect(getToolPrefs('someone-else').domainDefaults['memo']).not.toBe('deny')
   })
 
-  it('toggling a single tool off persists a false override for the user', async () => {
+  it('tapping a single tool once cycles it from allow to ask', async () => {
     const { reply } = createMockReply()
     const handled = await handleToolToggleInteraction(dmInteraction(`tgl:tool:delete_task:${CTX}`), reply)
     expect(handled).toBe(true)
-    expect(getToolPrefs(USER).toolOverrides['delete_task']).toBe('deny')
+    expect(getToolPrefs(USER).toolOverrides['delete_task']).toBe('ask')
+  })
+
+  test('three taps cycle a tool through allow → ask → deny → allow', async () => {
+    const prefs0 = getToolPrefs(USER)
+    expect(resolveToolPermission(prefs0, 'delete_task')).toBe('allow')
+
+    const { reply: r1 } = createMockReply()
+    await handleToolToggleInteraction(dmInteraction(`tgl:tool:delete_task:${CTX}`), r1)
+    expect(resolveToolPermission(getToolPrefs(USER), 'delete_task')).toBe('ask')
+
+    const { reply: r2 } = createMockReply()
+    await handleToolToggleInteraction(dmInteraction(`tgl:tool:delete_task:${CTX}`), r2)
+    expect(resolveToolPermission(getToolPrefs(USER), 'delete_task')).toBe('deny')
+
+    const { reply: r3 } = createMockReply()
+    await handleToolToggleInteraction(dmInteraction(`tgl:tool:delete_task:${CTX}`), r3)
+    expect(resolveToolPermission(getToolPrefs(USER), 'delete_task')).toBe('allow')
   })
 
   it('renders the drill view for tgl:open and returns handled', async () => {
