@@ -3,6 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { handleAdminInstancesRoutes } from './settings/admin/instances-routes.js'
 import { handleConfigRoutes } from './settings/config-routes.js'
 import { handleGroupRoutes } from './settings/group-routes.js'
 import { handleIdentityRoutes } from './settings/identity-routes.js'
@@ -17,6 +18,14 @@ import { handleToolsRoutes } from './settings/tools-routes.js'
  * to the 404 handler. Never consults DEBUG_TOKEN.
  */
 export function routeSettingsApi(req: Request, url: URL): Promise<Response | null> {
+  if (
+    url.pathname.startsWith('/settings/api/admin/platform-instances') ||
+    url.pathname.startsWith('/settings/api/admin/task-instances') ||
+    url.pathname === '/settings/api/admin/platform-provider-types' ||
+    url.pathname === '/settings/api/admin/task-provider-types'
+  ) {
+    return handleAdminInstancesRoutes(req, url, url.pathname)
+  }
   if (url.pathname === '/settings/api/config') return handleConfigRoutes(req, url)
   if (url.pathname === '/settings/api/tools' || url.pathname === '/settings/api/tools/toggle') {
     return handleToolsRoutes(req, url, url.pathname)
