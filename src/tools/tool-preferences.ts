@@ -52,18 +52,18 @@ function isStringRecord(value: unknown): value is Record<string, unknown> {
 
 function parseDomainDefaults(parsed: Record<string, unknown>): Partial<Record<ToolDomain, Permission>> {
   const out: Partial<Record<ToolDomain, Permission>> = {}
-  // New shape: domainDefaults: { task: 'ask' }
-  const newShape = parsed['domainDefaults']
-  if (isStringRecord(newShape)) {
-    for (const [key, value] of Object.entries(newShape)) {
-      if (isToolDomain(key) && isPermission(value)) out[key] = value
-    }
-  }
   // Legacy: disabledDomains: ['task']  → domainDefaults: { task: 'deny' }
   const legacy = parsed['disabledDomains']
   if (Array.isArray(legacy)) {
     for (const item of legacy) {
       if (typeof item === 'string' && isToolDomain(item)) out[item] = 'deny'
+    }
+  }
+  // New shape wins over legacy on conflict.
+  const newShape = parsed['domainDefaults']
+  if (isStringRecord(newShape)) {
+    for (const [key, value] of Object.entries(newShape)) {
+      if (isToolDomain(key) && isPermission(value)) out[key] = value
     }
   }
   return out

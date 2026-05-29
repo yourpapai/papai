@@ -201,4 +201,14 @@ describe('parseToolPrefs legacy migration', () => {
     expect(parseToolPrefs(null)).toEqual({ domainDefaults: {}, toolOverrides: {} })
     expect(parseToolPrefs('')).toEqual({ domainDefaults: {}, toolOverrides: {} })
   })
+
+  test('new-shape wins over legacy disabledDomains on conflict', () => {
+    const mixed = JSON.stringify({
+      disabledDomains: ['task'],
+      domainDefaults: { task: 'ask' },
+      toolOverrides: {},
+    })
+    const prefs = parseToolPrefs(mixed)
+    expect(prefs.domainDefaults).toEqual({ task: 'ask' })
+  })
 })
