@@ -861,7 +861,8 @@ describe('instance API routes', () => {
       validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
       capabilities: new Set<never>(),
       displayName: 'Validated',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [],
     })
     try {
       const res = expectResponse(
@@ -891,7 +892,8 @@ describe('instance API routes', () => {
       validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
       capabilities: new Set<never>(),
       displayName: 'Validated Patch',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [],
     })
     insertTaskInstance({
       id: 'validated-patch-1',
@@ -929,7 +931,8 @@ describe('instance API routes', () => {
       validateConfig: () => Promise.resolve({ ok: true as const }),
       capabilities: new Set<never>(),
       displayName: 'Validated OK',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [],
     })
     try {
       const res = expectResponse(
@@ -958,10 +961,11 @@ describe('instance API routes', () => {
       factory: () => createMockProvider({ name: 'masktest' }),
       capabilities: new Set<never>(),
       displayName: 'Mask Test',
-      configSchema: [
+      instanceConfigSchema: [
         { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' },
         { key: 'apiSecret', label: 'Secret', required: true, sensitive: true, scope: 'instance' },
       ],
+      contextConfigSchema: [],
     })
 
     try {

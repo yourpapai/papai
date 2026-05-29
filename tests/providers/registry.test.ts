@@ -35,7 +35,8 @@ const entry = {
   factory: (): TaskProvider => fakeProvider,
   capabilities: new Set<TaskCapability>(),
   displayName: 'Kaneo (Plugin)',
-  configSchema: [] as const,
+  instanceConfigSchema: [] as const,
+  contextConfigSchema: [] as const,
 }
 
 describe('provider registry capability lookup', () => {
@@ -73,7 +74,8 @@ describe('contributed task provider registry', () => {
         factory: (): TaskProvider => otherProvider,
         capabilities: new Set<TaskCapability>(),
         displayName: 'Other',
-        configSchema: [] as const,
+        instanceConfigSchema: [] as const,
+        contextConfigSchema: [] as const,
       }),
     ).not.toThrow()
 
@@ -107,21 +109,24 @@ describe('contributed task provider registry', () => {
     expect(types).not.toContain('kaneo')
   })
 
-  test('listTaskProviderTypes includes contributed descriptors with displayName and configSchema', () => {
+  test('listTaskProviderTypes includes contributed descriptors with displayName and instanceConfigSchema', () => {
     mockLogger()
     registerContributedTaskProviderType('demo-tracker', {
       pluginId: 'task-provider-demo',
       factory: () => createMockProvider(),
       capabilities: new Set<TaskCapability>(['comments.read']),
       displayName: 'Demo Tracker',
-      configSchema: [{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }],
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [],
     })
 
     const descriptor = listTaskProviderTypes().find((d) => d.type === 'demo-tracker')
     expect(descriptor).toBeDefined()
     expect(descriptor?.displayName).toBe('Demo Tracker')
     expect(descriptor?.source).toEqual({ plugin: 'task-provider-demo' })
-    expect(descriptor?.configSchema).toEqual([
+    expect(descriptor?.instanceConfigSchema).toEqual([
       { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
     ])
     expect(descriptor?.capabilities.has('comments.read')).toBe(true)
@@ -136,7 +141,8 @@ describe('contributed task provider registry', () => {
       capabilities: new Set<TaskCapability>(['tasks.commands']),
       displayName: 'Traited Tracker',
       traits,
-      configSchema: [] as const,
+      instanceConfigSchema: [] as const,
+      contextConfigSchema: [] as const,
     })
 
     const descriptor = getTaskProviderDescriptor('traited-tracker')
@@ -196,7 +202,8 @@ describe('registerContributedTaskProviderType duplicates', () => {
       factory: (): TaskProvider => createMockProvider({ name: 'dup' }),
       capabilities: new Set<never>(),
       displayName: pluginId,
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       registerContributedTaskProviderType('dup', makeEntry('plugin-a'))
@@ -216,7 +223,8 @@ describe('registerContributedTaskProviderType duplicates', () => {
         factory: () => createMockProvider({ name: 'youtrack' }),
         capabilities: new Set<never>(),
         displayName: 'YouTrack',
-        configSchema: [] as const,
+        instanceConfigSchema: [] as const,
+        contextConfigSchema: [] as const,
       }),
     ).not.toThrow()
     unregisterContributedTaskProviderType('task-provider-youtrack')
@@ -233,7 +241,8 @@ describe('getTaskProviderConfigValidator', () => {
       validateConfig: validator,
       capabilities: new Set<never>(),
       displayName: 'Validated Reg',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('validated-reg')
@@ -257,7 +266,8 @@ describe('getTaskProviderConfigValidator', () => {
       factory: () => createMockProvider({ name: 'no-validator' }),
       capabilities: new Set<never>(),
       displayName: 'No Validator',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('no-validator')

@@ -267,10 +267,6 @@ describe('TaskProviderResolver', () => {
         ],
         capabilities: new Set(),
         traits: new Set(),
-        configSchema: [
-          { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' as const },
-          { key: 'apiToken', label: 'API Token', required: true, sensitive: true, scope: 'context' as const },
-        ],
       }),
       getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
       createProvider: (name, config) => {

@@ -148,7 +148,8 @@ describe('getConfigFieldsForContext', () => {
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
-      configSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
+      instanceConfigSchema: [],
+      contextConfigSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
     })
     insertTaskInstance({
       id: 'plugin-prod',
@@ -173,7 +174,8 @@ describe('getConfigFieldsForContext', () => {
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
-      configSchema: [
+      instanceConfigSchema: [],
+      contextConfigSchema: [
         {
           key: 'token',
           storageKey: 'custom_token',
