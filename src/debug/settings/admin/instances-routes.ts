@@ -23,15 +23,10 @@ import type { TaskInstance } from '../../../instances/types.js'
 import { logger } from '../../../logger.js'
 import { listTaskProviderTypes } from '../../../providers/registry.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
-import { requireScope } from '../../../settings/scope-guard.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
+import { requireAdmin } from './admin-guard.js'
 
 const log = logger.child({ scope: 'debug-server:settings-admin-instances' })
-
-function requireAdmin(authed: AuthenticatedSettingsRequest, action: 'read' | 'write'): Response | null {
-  const result = requireScope(authed.principal, { action, target: { kind: 'admin' } })
-  return result.ok ? null : settingsJson(403, { error: 'forbidden' })
-}
 
 const maskTask = (i: TaskInstance): unknown => ({ ...i, config: maskConfig(i.config) })
 

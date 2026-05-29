@@ -8,21 +8,19 @@ import { z } from 'zod'
 import { addAuthorizedGroup, listAuthorizedGroups, removeAuthorizedGroup } from '../../../authorized-groups.js'
 import { logger } from '../../../logger.js'
 import type { AuthenticatedSettingsRequest } from '../../../settings/request-auth.js'
-import { requireScope } from '../../../settings/scope-guard.js'
 import { addUser, listUsers, removeUser } from '../../../users.js'
 import { applyAdminLlmUpdate, getAdminLlmSnapshot } from '../../admin-llm.js'
 import { authenticate, parseJsonBody, requireCsrf, settingsJson } from '../respond.js'
+import { requireAdmin } from './admin-guard.js'
 
 const log = logger.child({ scope: 'debug-server:settings-admin-system' })
 
-function requireAdmin(authed: AuthenticatedSettingsRequest, action: 'read' | 'write'): Response | null {
-  const result = requireScope(authed.principal, { action, target: { kind: 'admin' } })
-  return result.ok ? null : settingsJson(403, { error: 'forbidden' })
-}
-
 const UserBodySchema = z.object({ userId: z.string().min(1), username: z.string().optional() })
 const GroupBodySchema = z.object({ groupId: z.string().min(1) })
-const LlmBodySchema = z.object({ key: z.string().min(1), value: z.string() })
+const LlmBodySchema = z.object({
+  key: z.enum(['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model']),
+  value: z.string(),
+})
 
 async function handleSystem(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
   if (req.method === 'GET') {
@@ -56,6 +54,9 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
     if (guard !== null) return guard
     return settingsJson(200, { users: listUsers(authed.principal.platformInstanceId) })
   }
+  if (req.method !== 'POST' && req.method !== 'DELETE') {
+    return settingsJson(405, { error: 'method not allowed' })
+  }
   const guard = requireAdmin(authed, 'write')
   if (guard !== null) return guard
   const csrf = requireCsrf(req, authed)
@@ -75,11 +76,8 @@ async function handleUsers(req: Request, authed: AuthenticatedSettingsRequest): 
     log.info({ platformInstanceId: authed.principal.platformInstanceId }, 'Settings admin added user')
     return settingsJson(200, { ok: true })
   }
-  if (req.method === 'DELETE') {
-    const removed = removeUser(body.data.userId, authed.principal.platformInstanceId)
-    return settingsJson(200, { ok: removed })
-  }
-  return settingsJson(405, { error: 'method not allowed' })
+  const removed = removeUser(body.data.userId, authed.principal.platformInstanceId)
+  return settingsJson(200, { ok: removed })
 }
 
 async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest): Promise<Response> {
@@ -87,6 +85,9 @@ async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest):
     const guard = requireAdmin(authed, 'read')
     if (guard !== null) return guard
     return settingsJson(200, { groups: listAuthorizedGroups() })
+  }
+  if (req.method !== 'POST' && req.method !== 'DELETE') {
+    return settingsJson(405, { error: 'method not allowed' })
   }
   const guard = requireAdmin(authed, 'write')
   if (guard !== null) return guard
@@ -101,10 +102,7 @@ async function handleGroups(req: Request, authed: AuthenticatedSettingsRequest):
     addAuthorizedGroup(body.data.groupId, authed.principal.platformUserId)
     return settingsJson(200, { ok: true })
   }
-  if (req.method === 'DELETE') {
-    return settingsJson(200, { ok: removeAuthorizedGroup(body.data.groupId) })
-  }
-  return settingsJson(405, { error: 'method not allowed' })
+  return settingsJson(200, { ok: removeAuthorizedGroup(body.data.groupId) })
 }
 
 export function handleAdminSystemAccessRoutes(req: Request, _url: URL, pathname: string): Promise<Response> {
