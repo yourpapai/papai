@@ -120,6 +120,24 @@ describe('pluginManifestSchema strict validation', () => {
     expect(result.success).toBe(false)
   })
 
+  test('rejects provider-only fields without provider.task permission', () => {
+    const result = pluginManifestSchema.safeParse({
+      id: 'provider-fields-without-permission',
+      name: 'Provider Fields Without Permission',
+      version: '1.0.0',
+      description: 'provider fields without permission',
+      apiVersion: 1,
+      main: 'index.ts',
+      providerCapabilities: ['tasks.delete'],
+      providerConfigSchema: [{ key: 'base_url', label: 'Base URL', required: true }],
+      providerContextConfigSchema: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true }],
+      providerAllowedHosts: ['example.com'],
+      providerConfigValidator: 'validateConfig',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   test('accepts explicit mcp-only manifests without main', () => {
     const result = pluginManifestSchema.safeParse({
       id: 'mcp-only-schema',

@@ -8,6 +8,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from '
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { logger } from '../logger.js'
+import { readLiteralDynamicImports } from './discovery-imports.js'
 import { pluginManifestSchema } from './types.js'
 import type { DiscoveredPlugin } from './types.js'
 
@@ -51,12 +52,6 @@ function isRealDirectory(path: string): boolean {
 }
 
 const STATIC_IMPORT_RE = /(?:import\s+(?:[^'";]+\s+from\s+)?|export\s+[^'";]*\s+from\s+)(['"])(\.[^'"]+)\1/gu
-const DYNAMIC_IMPORT_RE = /import\s*\(([^)]+)\)/gu
-const STRING_LITERAL_RE = /(['"`])(?:\\.|(?!\1)[^\\])*\1/gu
-
-function stripStringLiterals(source: string): string {
-  return source.replaceAll(STRING_LITERAL_RE, (match) => ' '.repeat(match.length))
-}
 
 function resolveEntryImport(fromFile: string, pluginDir: string, specifier: string): string {
   const candidate = resolve(join(dirname(fromFile), specifier))
@@ -100,23 +95,20 @@ function readPluginSourceGraph(entryPoint: string, pluginDir: string): string[] 
     ordered.push(current)
 
     const source = readFileSync(current, 'utf-8')
-    const sourceWithoutStrings = stripStringLiterals(source)
 
-    for (const match of sourceWithoutStrings.matchAll(DYNAMIC_IMPORT_RE)) {
-      const raw = match[1]?.trim()
-      if (raw === undefined) continue
-      if (!raw.startsWith("'") && !raw.startsWith('"')) {
-        throw new Error(`Unresolvable plugin dynamic import in ${current}`)
+    try {
+      for (const specifier of readLiteralDynamicImports(source)) {
+        if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
+        pending.push(resolveEntryImport(current, pluginDir, specifier))
       }
-
-      const specifier = raw.slice(1, -1)
-      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
-      pending.push(resolveEntryImport(current, pluginDir, specifier))
+    } catch {
+      throw new Error(`Unresolvable plugin dynamic import in ${current}`)
     }
 
     for (const match of source.matchAll(STATIC_IMPORT_RE)) {
       const specifier = match[2]
       if (specifier === undefined) continue
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
       pending.push(resolveEntryImport(current, pluginDir, specifier))
     }
   }

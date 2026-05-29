@@ -299,6 +299,23 @@ describe('discoverPlugins', () => {
     expect(result.plugins[0]?.manifest.id).toBe('quoted-import-text-plugin')
   })
 
+  test('resolves deterministic literal dynamic imports', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'literal-dynamic-import-plugin',
+      { main: 'index.ts' },
+      "export default function createPlugin(){ return { async activate(){ const mod = await import('./helper.ts'); return mod.value } } }",
+    )
+    writeFileSync(join(root, 'literal-dynamic-import-plugin', 'helper.ts'), 'export const value = 1\n', 'utf-8')
+
+    const result = discoverPlugins(root)
+
+    expect(result.errors).toEqual([])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]?.manifest.id).toBe('literal-dynamic-import-plugin')
+  })
+
   test('accepts explicit mcp-only plugins without reading index.ts', () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'mcp-only-plugin')
