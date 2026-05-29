@@ -3,15 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import pLimit from 'p-limit'
-
 import type { ChatProvider, CommandHandler, IncomingMessage, ReplyFn } from '../chat/types.js'
-import { dmTarget } from '../chat/types.js'
 import { isAdmin, isSuperAdmin } from '../instances/admin-store.js'
 import { logger } from '../logger.js'
 import { addUser, listUsers, removeUser } from '../users.js'
-
-const MAX_CONCURRENT_SENDS = 5
+import { broadcastMessage } from './announce-broadcast.js'
 
 const log = logger.child({ scope: 'admin' })
 
@@ -197,34 +193,14 @@ async function handleAnnounce(chat: ChatProvider, reply: ReplyFn, msg: IncomingM
     return
   }
 
-  const users = listUsers(msg.platformInstanceId).filter((u) => !u.platform_user_id.startsWith('placeholder-'))
-  if (users.length === 0) {
+  const { totalUsers, successCount, failCount } = await broadcastMessage(chat, msg.platformInstanceId, message)
+
+  if (totalUsers === 0) {
     await reply.text('No authorized users to announce to.')
     return
   }
 
-  const limit = pLimit(MAX_CONCURRENT_SENDS)
-  const results = await Promise.allSettled(
-    users.map((user) =>
-      limit(async () => {
-        const result = await chat.sendMessage(msg.platformInstanceId, dmTarget(user.platform_user_id), message)
-        return result !== false
-      }),
-    ),
-  )
-
-  const successCount = results.filter((r) => r.status === 'fulfilled' && r.value).length
-  const failCount = results.length - successCount
-
-  // Log individual failures at warn level
-  results.forEach((result) => {
-    if (result.status === 'rejected') {
-      const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason)
-      log.warn({ userId: msg.user.id, error: errorMsg }, 'Failed to send announcement')
-    }
-  })
-
-  log.info({ userId: msg.user.id, successCount, failCount, totalUsers: users.length }, '/announce command executed')
+  log.info({ userId: msg.user.id, successCount, failCount, totalUsers }, '/announce command executed')
 
   if (failCount === 0) {
     await reply.text(`Announcement sent to ${successCount} user(s).`)
