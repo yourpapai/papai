@@ -63,6 +63,8 @@ type BunLike = {
 
 const DEFAULT_REPORT_DIR = 'reports/paired'
 const STRYKER_TIMEOUT_MS = 30 * 60 * 1000
+const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
+const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -221,10 +223,13 @@ export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs
   }
   const thresholdArg = thresholdArgs[0]
   const thresholdText = thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length)
-  const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
   if (thresholdText === '') {
     return { kind: 'usageError', reason: 'threshold must be a finite number' }
   }
+  if (thresholdText !== undefined && !THRESHOLD_DECIMAL_PATTERN.test(thresholdText)) {
+    return { kind: 'usageError', reason: THRESHOLD_RANGE_ERROR }
+  }
+  const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
   if (!Number.isFinite(threshold)) {
     return { kind: 'usageError', reason: 'threshold must be a finite number' }
   }

@@ -283,7 +283,7 @@ describe('parsePairedRunCliArgs', () => {
   test('treats invalid threshold values as usage errors', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=not-a-number'])).toEqual({
       kind: 'usageError',
-      reason: 'threshold must be a finite number',
+      reason: 'threshold must be a decimal number between 0 and 1',
     })
   })
 
@@ -291,6 +291,38 @@ describe('parsePairedRunCliArgs', () => {
     expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold='])).toEqual({
       kind: 'usageError',
       reason: 'threshold must be a finite number',
+    })
+  })
+
+  test('rejects whitespace threshold values', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold= '])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a decimal number between 0 and 1',
+    })
+  })
+
+  test('rejects negative threshold values', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=-0.1'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a decimal number between 0 and 1',
+    })
+  })
+
+  test('rejects threshold values greater than 1', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=1.1'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a decimal number between 0 and 1',
+    })
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=75'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a decimal number between 0 and 1',
+    })
+  })
+
+  test('rejects hexadecimal threshold values', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=0x1'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a decimal number between 0 and 1',
     })
   })
 
