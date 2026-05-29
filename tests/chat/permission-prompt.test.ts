@@ -99,4 +99,36 @@ describe('askPermissionViaChat', () => {
     expect(call.body).toContain('delete_task')
     expect(call.body).toContain('cleanup')
   })
+
+  test('reason markdown control characters are escaped', async () => {
+    const { reply, getButtonCall } = makeReply()
+    void askPermissionViaChat(reply, 'ctx-1', {
+      toolName: 'delete_task',
+      reason: '*click here* [tap](https://attacker.example) `code` _italic_',
+    })
+    await tickAsync()
+    const body = getButtonCall()!.body
+    // Each disruptive char must be backslash-escaped so the markdown lexer treats it as literal text.
+    expect(body).toContain('\\*click here\\*')
+    expect(body).toContain('\\[tap\\]\\(https://attacker.example\\)')
+    expect(body).toContain('\\`code\\`')
+    expect(body).toContain('\\_italic\\_')
+    // Raw unescaped sequences must not appear in the interpolated section.
+    expect(body).not.toContain('*click here*')
+    expect(body).not.toContain('[tap](')
+  })
+
+  test('reason without special characters is unchanged', async () => {
+    const { reply, getButtonCall } = makeReply()
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 't', reason: 'plain text reason' })
+    await tickAsync()
+    expect(getButtonCall()!.body).toContain('plain text reason')
+  })
+
+  test('tool name backticks in template still render as code span', async () => {
+    const { reply, getButtonCall } = makeReply()
+    void askPermissionViaChat(reply, 'ctx-1', { toolName: 'delete_task', reason: 'no markdown' })
+    await tickAsync()
+    expect(getButtonCall()!.body).toContain('`delete_task`')
+  })
 })

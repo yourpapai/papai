@@ -27,8 +27,17 @@ function generateRequestId(): string {
   return randomBytes(6).toString('base64url')
 }
 
+// CommonMark inline-disruptive punctuation. Backslash-escaping these neutralizes
+// LLM-supplied reasons that attempt (accidentally or adversarially) to inject
+// bold, italics, code spans, or links into the permission prompt.
+const MARKDOWN_ESCAPE_PATTERN = /[\\`*_~[\]()]/gu
+
+function escapeMarkdown(text: string): string {
+  return text.replace(MARKDOWN_ESCAPE_PATTERN, (ch) => `\\${ch}`)
+}
+
 function formatPrompt(toolName: string, reason: string): string {
-  return `🔐 Run \`${toolName}\`?\n\n${reason}`
+  return `🔐 Run \`${toolName}\`?\n\n${escapeMarkdown(reason)}`
 }
 
 export async function askPermissionViaChat(
