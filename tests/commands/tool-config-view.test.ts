@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import { buildDomainListView, buildDomainDrillView } from '../../src/commands/tool-config-view.js'
+import { buildDomainListView, buildDomainDrillView, resolveToolNameCode } from '../../src/commands/tool-config-view.js'
 
 const AVAILABLE = ['create_task', 'update_task', 'search_tasks', 'delete_task', 'web_fetch', 'get_current_time']
 const AVAILABLE_WITH_PLUGIN = [...AVAILABLE, 'plugin_hello_world__greet']
@@ -79,15 +79,21 @@ describe('buildDomainDrillView', () => {
     expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
   })
 
-  it('compacts oversized tool callbacks when the context still fits', () => {
+  it('drops tool buttons when even compact callbacks cannot fit the context id', () => {
     const view = buildDomainDrillView('managed-group-context-long-id-123456789012', 'task', AVAILABLE, {
       disabledDomains: [],
       toolOverrides: {},
     })
 
-    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:t:'))).toBe(true)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:t:'))).toBe(false)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:'))).toBe(false)
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:b:'))).toBe(true)
     expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
+  it('resolves compact tool callbacks by encoded tool name, not by list order', () => {
+    expect(resolveToolNameCode('delete_task', ['create_task', 'delete_task'])).toBe('delete_task')
+    expect(resolveToolNameCode('delete_task', ['delete_task', 'create_task'])).toBe('delete_task')
   })
 
   it('renders plugin tools in the plugin drill view', () => {

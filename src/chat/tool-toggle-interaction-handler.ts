@@ -14,10 +14,11 @@ import {
 } from '../commands/tool-config-view.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
+import type { TaskProvider } from '../providers/types.js'
 import { getToolMetadata, TOOL_DOMAINS, type ToolDomain } from '../tools/tool-metadata.js'
 import { getToolPrefs, setToolPrefs, toggleDomain, toggleTool } from '../tools/tool-preferences.js'
-import { buildTools } from '../tools/tools-builder.js'
 import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
+import { availableToolNamesWithProvider } from './tool-toggle-live-tools.js'
 import type { IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:tool-toggle-interaction' })
@@ -36,11 +37,12 @@ function decodeContextId(encoded: string): string | null {
   }
 }
 
-function availableToolNames(targetContextId: string, actorUserId: string, contextType: 'dm' | 'group'): string[] {
-  const provider = safeBuildProvider(targetContextId)
-  if (provider === null) return []
-  const tools = buildTools(provider, actorUserId, targetContextId, 'normal', contextType)
-  return Object.keys(tools).filter((name) => getToolMetadata(name) !== undefined)
+type ToolToggleDeps = Readonly<{
+  resolveProvider: (targetContextId: string) => TaskProvider | null
+}>
+
+const defaultDeps: ToolToggleDeps = {
+  resolveProvider: safeBuildProvider,
 }
 
 async function renderView(reply: ReplyFn, view: ToolMenuView): Promise<void> {
@@ -116,7 +118,11 @@ async function handleDomainAction(
   return false
 }
 
-export async function handleToolToggleInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
+export async function handleToolToggleInteraction(
+  interaction: IncomingInteraction,
+  reply: ReplyFn,
+  deps: ToolToggleDeps = defaultDeps,
+): Promise<boolean> {
   const { callbackData } = interaction
   if (!callbackData.startsWith('tgl:')) return false
 
@@ -142,7 +148,12 @@ export async function handleToolToggleInteraction(interaction: IncomingInteracti
     return true
   }
 
-  const names = availableToolNames(contextId, interaction.user.id, interaction.contextType)
+  const names = await availableToolNamesWithProvider(
+    interaction,
+    contextId,
+    interaction.user.id,
+    deps.resolveProvider(contextId),
+  )
   const handled = await handleDomainAction(action, middle, contextId, names, interaction.user.id, reply)
   if (handled) return true
 
