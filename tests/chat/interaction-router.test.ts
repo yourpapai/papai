@@ -26,6 +26,9 @@ import {
 } from '../../src/group-settings/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
+import { pluginRegistry } from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { setKaneoWorkspace } from '../../src/users.js'
 import { createWizardSession } from '../../src/wizard/state.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
@@ -102,11 +105,49 @@ function assignKaneoContext(contextId: string): void {
   setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
 }
 
+function registerActivePlugin(pluginId: string): void {
+  const plugin: DiscoveredPlugin = {
+    manifest: {
+      id: pluginId,
+      name: 'Interaction Router Config Plugin',
+      version: '1.0.0',
+      description: 'Plugin-owned config callback regression test',
+      apiVersion: PLUGIN_API_VERSION,
+      main: 'index.ts',
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: ['api_token'],
+        taskProviderTypes: [],
+      },
+      permissions: [],
+      defaultEnabled: true,
+      activationTimeoutMs: 5000,
+      requiredTaskCapabilities: [],
+      requiredChatCapabilities: [],
+      configRequirements: [{ key: 'api_token', label: 'API Token', required: true, sensitive: true, scope: 'context' }],
+      providerCapabilities: [],
+      providerConfigSchema: [],
+      providerAllowedHosts: [],
+    },
+    pluginDir: `/tmp/${pluginId}`,
+    entryPoint: `/tmp/${pluginId}/index.ts`,
+    manifestHash: `hash-${pluginId}`,
+  }
+
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+  pluginRegistry.markActive(plugin.manifest.id)
+}
+
 describe('routeInteraction', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
     seedCommonTestPlatformInstances()
+    pluginRegistry.clearForTesting()
     deleteWizardSession(interaction.user.id, interaction.contextId)
     deleteEditorSession(interaction.user.id, interaction.contextId)
     deleteEditorSession(
@@ -968,6 +1009,32 @@ describe('routeInteraction', () => {
 
     expect(handled).toBe(true)
     expect(replies).toEqual(['This action is no longer valid. Please start over with /config.'])
+  })
+
+  test('opens plugin-owned context config editor through shared cfg callback path', async () => {
+    const pluginId = 'interaction-router-plugin-context'
+    registerActivePlugin(pluginId)
+    const buttonReplies: string[] = []
+
+    const handled = await routeInteraction(
+      {
+        ...interaction,
+        callbackData: `cfg:edit:plugin:${pluginId}:api_token`,
+      },
+      {
+        ...reply,
+        buttons: (content: string): Promise<void> => {
+          buttonReplies.push(content)
+          return Promise.resolve()
+        },
+      },
+      createMockAuth(true),
+    )
+
+    expect(handled).toBe(true)
+    expect(buttonReplies).toHaveLength(1)
+    expect(buttonReplies[0]).toContain('Edit API Token')
+    expect(buttonReplies[0]).toContain('Current value: (not set)')
   })
 
   test('replies with error when config editor callback cannot be handled', async () => {

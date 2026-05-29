@@ -49,7 +49,8 @@ export function isConfigKey(key: string): key is ConfigKey {
 }
 
 const PLUGIN_PROVIDER_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:provider:[A-Za-z0-9][A-Za-z0-9_.-]*$/u
+const PLUGIN_CONTEXT_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:[a-z][a-z0-9_]*$/u
 
 export function isAllowedDynamicConfigKey(key: string): boolean {
-  return isConfigKey(key) || PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key)
+  return isConfigKey(key) || PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key) || PLUGIN_CONTEXT_CONFIG_KEY_PATTERN.test(key)
 }
