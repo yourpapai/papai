@@ -18,8 +18,8 @@ describe('MIGRATIONS list', () => {
     expect(ids).toContain('040_platform_instances')
   })
 
-  test('048 is the last migration', () => {
+  test('049 is the last migration', () => {
     const lastMigration = requireDefined(MIGRATIONS.at(-1))
-    expect(lastMigration.id).toBe('048_namespace_kaneo_config')
+    expect(lastMigration.id).toBe('049_namespace_youtrack_config')
   })
 })
