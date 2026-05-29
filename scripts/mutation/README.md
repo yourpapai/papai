@@ -19,15 +19,20 @@ set is tiny, the accurate mode is cheap.
 ## Commands
 
 ```bash
+# Measure the full configured Stryker mutate scope:
+bun test:mutate
+bun test:mutate:full
+
 # Measure specific files on demand:
 bun test:mutate:file src/providers/kaneo/label-resource.ts src/tools/update-status.ts
 
 # Measure everything changed vs origin/master (also used by CI):
-bun test:mutate:changed-paired
+bun test:mutate:changed
 
 # Optional threshold (exit 1 below it):
+bun test:mutate --threshold=0.6
 bun test:mutate:file src/foo.ts --threshold=0.6
-bun test:mutate:changed-paired --base=origin/master --threshold=0.6
+bun test:mutate:changed --base=origin/master --threshold=0.6
 ```
 
 Per-file Stryker JSON reports land in `reports/paired/`.
@@ -55,10 +60,12 @@ exists), e.g.:
 A file with no companion **and** no override is skipped with a warning — fix it
 by either adding a companion test or registering the cross-cutting tests above.
 
-## Relationship to the existing scripts
+## Command mapping
 
-- `bun test:mutate` / `:changed` / `:full` — the legacy whole-repo runs against
-  the broken `ignoreStatic: true` config. Kept for now as informational data,
-  not as a quality gate.
-- `bun test:mutate:file` / `:changed-paired` — the accurate runs from this
-  tool. The CI gate uses `:changed-paired`.
+- `bun test:mutate` / `:full` — accurate full paired run over the configured
+  `stryker.config.json` `mutate` scope.
+- `bun test:mutate:changed` — accurate paired run over files changed vs the
+  selected base branch. The CI gate uses this command.
+- `bun test:mutate:file` — accurate paired run for explicitly listed files.
+- `bun test:mutate:changed-paired` — descriptive alias for
+  `bun test:mutate:changed`.

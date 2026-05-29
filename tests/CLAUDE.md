@@ -104,7 +104,7 @@ When DI is not available and module evaluation order matters:
 
 ## Mutation testing
 
-For accurate per-file mutation scores that bypass the runner's static-bucket
-artifact, use `bun test:mutate:file <path>` (see `scripts/mutation/README.md`).
-The legacy `bun test:mutate` is whole-repo and intentionally lenient on
-measurement; the paired runner is what real quality work should use.
+For accurate mutation scores that bypass the runner's static-bucket artifact,
+use `bun test:mutate:file <path>` for focused work, `bun test:mutate:changed`
+for changed files, and `bun test:mutate` for the configured full mutate scope
+(see `scripts/mutation/README.md`).
