@@ -6,7 +6,7 @@
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
 import { getTaskProviderDescriptor } from './providers/registry.js'
-import { isConfigKey, KANEO_WORKSPACE_CONFIG_KEY, type ConfigField, type ConfigKey } from './types/config.js'
+import { isConfigKey, KANEO_PLUGIN_WORKSPACE_KEY, type ConfigField, type ConfigKey } from './types/config.js'
 
 const PREFERENCE_KEYS: readonly ConfigKey[] = ['timezone', 'mcp_endpoints']
 const PREFERENCE_FIELDS: readonly ConfigField[] = [
@@ -63,7 +63,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
         kind: 'provider-context',
       }),
     )
-    .filter((field) => field.storageKey !== KANEO_WORKSPACE_CONFIG_KEY)
+    .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 
   return [...providerFields, ...PREFERENCE_FIELDS]
 }

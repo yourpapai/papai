@@ -8,7 +8,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memorySummary, memoryFacts, userConfig, userInstructions } from './db/schema.js'
 import { logger } from './logger.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from './types/config.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from './types/config.js'
 
 const log = logger.child({ scope: 'cache-db' })
 
@@ -127,7 +127,7 @@ export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
     try {
       const db = getDrizzleDb()
       db.insert(userConfig)
-        .values({ userId, key: KANEO_WORKSPACE_CONFIG_KEY, value: workspaceId })
+        .values({ userId, key: KANEO_PLUGIN_WORKSPACE_KEY, value: workspaceId })
         .onConflictDoUpdate({
           target: [userConfig.userId, userConfig.key],
           set: { value: workspaceId },

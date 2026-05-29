@@ -149,7 +149,7 @@ import {
 import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from '../src/types/config.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../src/types/config.js'
 
 const CTX_ID = 'ctx-1'
 
@@ -205,12 +205,10 @@ const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
 /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
 const seedConfigForContext = (ctxId: string): void => {
   assignKaneoContext(ctxId)
-  // kaneo is now plugin-contributed; resolver looks for plugin-namespaced key
+  // kaneo is now plugin-contributed; resolver and maybeProvisionKaneo both use plugin-namespaced keys
   setConfigValue(ctxId, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
-  // also store at legacy kaneo_apikey key so maybeProvisionKaneo (which checks 'kaneo_apikey') sees it configured
-  setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
   setCachedConfig(ctxId, 'timezone', 'UTC')
-  setConfigValue(ctxId, KANEO_WORKSPACE_CONFIG_KEY, 'workspace-1')
+  setConfigValue(ctxId, KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
 }
 
 const seedConfig = (): void => seedConfigForContext(CTX_ID)
@@ -402,7 +400,7 @@ describe('processMessage', () => {
     test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
       const freshCtx = 'missing-kaneo-workspace'
       assignKaneoContext(freshCtx)
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+      setConfigValue(freshCtx, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
       let resolverCalls = 0
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),

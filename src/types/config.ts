@@ -12,6 +12,12 @@
 export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
 export const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id' satisfies TaskProviderConfigKey
 
+// Plugin-namespaced config keys for the task-provider-kaneo plugin.
+// These are plain string constants (not ConfigKey union members) used after
+// migration 048 renames the flat keys in user_config.
+export const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
+
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
 

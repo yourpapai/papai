@@ -260,7 +260,9 @@ describe('cache-db', () => {
       const configRow = db
         .select()
         .from(userConfig)
-        .where(and(eq(userConfig.userId, groupId), eq(userConfig.key, 'kaneo_workspace_id')))
+        .where(
+          and(eq(userConfig.userId, groupId), eq(userConfig.key, 'plugin:task-provider-kaneo:provider:workspaceId')),
+        )
         .get()
 
       expect(requireDefined(userRow).kaneoWorkspaceId).toBeNull()
