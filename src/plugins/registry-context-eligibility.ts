@@ -68,7 +68,6 @@ const safeTaskCapabilities = (
 const emptyChatCapabilities = (): ReadonlySet<ChatCapability> => new Set<ChatCapability>()
 
 function getTaskCapabilitiesForContext(settings: ReturnType<typeof getContextSettings>): ReadonlySet<TaskCapability> {
-  if (settings === null) return emptyTaskCapabilities()
   const taskInstance = getTaskInstance(settings.taskInstanceId)
   return taskInstance === null || taskInstance.status !== 'active'
     ? emptyTaskCapabilities()
