@@ -8,7 +8,11 @@ import { pathToFileURL } from 'node:url'
 import pLimit from 'p-limit'
 
 import { logger } from '../logger.js'
-import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
+import {
+  getTaskProviderDescriptor,
+  registerContributedTaskProviderType,
+  type TaskProviderConfigValidator,
+} from '../providers/registry.js'
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
 import { pluginRegistry } from './registry.js'
@@ -17,7 +21,7 @@ import {
   deactivateContributedTaskProviderTypes,
   unregisterContributedTaskProviderTypes,
 } from './task-provider-lifecycle.js'
-import type { DiscoveredPlugin, PluginFactory, PluginInstance } from './types.js'
+import type { DiscoveredPlugin, PluginFactory, PluginInstance, PluginManifest } from './types.js'
 
 function isPluginFactory(value: unknown): value is PluginFactory {
   return typeof value === 'function'
@@ -32,15 +36,47 @@ function isPluginInstance(value: unknown): value is PluginInstance {
   )
 }
 
-async function importPluginModule(entryPoint: string): Promise<PluginInstance> {
+type ImportedPluginModule = {
+  instance: PluginInstance
+  namedExports: Record<string, unknown>
+}
+
+function toNamedExports(mod: unknown): Record<string, unknown> {
+  if (typeof mod !== 'object' || mod === null) return {}
+  return Object.fromEntries(Object.entries(mod))
+}
+
+function isTaskProviderConfigValidator(value: unknown): value is TaskProviderConfigValidator {
+  return typeof value === 'function'
+}
+
+async function importPluginModule(entryPoint: string): Promise<ImportedPluginModule> {
   const mod: unknown = await import(toPluginImportSpecifier(entryPoint))
+  const namedExports = toNamedExports(mod)
   const candidate = typeof mod === 'object' && mod !== null && 'default' in mod ? mod.default : mod
   if (!isPluginFactory(candidate))
     throw new Error('Invalid plugin module contract: default export must be a factory function')
   const instance = candidate()
   if (!isPluginInstance(instance))
     throw new Error('Invalid plugin module contract: factory must return an object with activate(ctx)')
-  return instance
+  return { instance, namedExports }
+}
+
+function resolveProviderConfigValidator(
+  manifest: PluginManifest,
+  namedExports: Record<string, unknown> | undefined,
+): TaskProviderConfigValidator | undefined {
+  const exportName = manifest.providerConfigValidator
+  if (exportName === undefined) return undefined
+
+  const candidate = namedExports?.[exportName]
+  if (!isTaskProviderConfigValidator(candidate)) {
+    throw new Error(
+      `Plugin '${manifest.id}' providerConfigValidator export '${exportName}' is missing or not a function`,
+    )
+  }
+
+  return candidate
 }
 
 function toPluginImportSpecifier(entryPoint: string): string {
@@ -85,6 +121,7 @@ function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnTyp
   registerContributedTaskProviderType(type, {
     pluginId: manifest.id,
     factory: entry.factory,
+    validateConfig: entry.validateConfig,
     capabilities: entry.capabilities,
     displayName: entry.displayName,
     instanceConfigSchema: entry.instanceConfigSchema,
@@ -152,7 +189,7 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
-  const instance =
+  const importedModule =
     manifest.mcp !== undefined && entryPoint === ''
       ? null
       : await importPluginModule(entryPoint).catch((err: unknown) => {
@@ -162,14 +199,18 @@ async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
           recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
           return null
         })
-  if (entryPoint !== '' && instance === null) return false
+  if (entryPoint !== '' && importedModule === null) return false
 
   const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    await activatePluginInstance(instance, activationContext, activationTimeout)
-    finalizeSuccessfulActivation(plugin, activationContext, instance)
+    const validateConfig = resolveProviderConfigValidator(manifest, importedModule?.namedExports)
+    await activatePluginInstance(importedModule?.instance ?? null, activationContext, activationTimeout)
+    if (activationContext.collected.taskProviderRegistration !== undefined) {
+      activationContext.collected.taskProviderRegistration.validateConfig = validateConfig
+    }
+    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

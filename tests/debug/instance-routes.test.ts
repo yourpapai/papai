@@ -5,6 +5,9 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
@@ -25,6 +28,10 @@ import { getPlatformInstance, insertPlatformInstance } from '../../src/instances
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import { activatePlugins, deactivateAllPlugins } from '../../src/plugins/loader.js'
+import { pluginRegistry } from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -34,6 +41,7 @@ import { createMockProvider } from '../tools/mock-provider.js'
 import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 let authCookieValue: string
+const tempDirs: string[] = []
 const jsonHeaders = (): Record<string, string> => ({
   Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}`,
   'Content-Type': 'application/json',
@@ -99,6 +107,46 @@ const expectTaskInstance = (id: string): TaskInstance => {
   return instance
 }
 
+const makePluginManifest = (id: string, overrides: Partial<PluginManifest> = {}): PluginManifest => ({
+  id,
+  name: 'Test Plugin',
+  version: '1.0.0',
+  description: 'A test plugin',
+  apiVersion: PLUGIN_API_VERSION,
+  main: 'index.ts',
+  contributes: {
+    tools: [],
+    promptFragments: [],
+    commands: [],
+    jobs: [],
+    configKeys: [],
+    taskProviderTypes: [],
+  },
+  permissions: [],
+  defaultEnabled: false,
+  activationTimeoutMs: 5000,
+  requiredTaskCapabilities: [],
+  requiredChatCapabilities: [],
+  configRequirements: [],
+  providerCapabilities: [],
+  providerConfigSchema: [],
+  providerAllowedHosts: [],
+  ...overrides,
+})
+
+const approvePlugin = (plugin: DiscoveredPlugin): void => {
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+}
+
+const writeTempPluginModule = (source: string): string => {
+  const dir = mkdtempSync(join(tmpdir(), 'papai-instance-routes-plugin-'))
+  tempDirs.push(dir)
+  const modulePath = join(dir, 'index.mjs')
+  writeFileSync(modulePath, source)
+  return modulePath
+}
+
 const seedPlatformInstance = (id: string): void => {
   insertPlatformInstance({ id, type: 'telegram', config: { token: 'secret' }, status: 'active' })
 }
@@ -129,15 +177,18 @@ describe('instance API routes', () => {
     mockLogger()
     userCachesForTesting.clear()
     await setupTestDb()
+    await deactivateAllPlugins()
     setStoreDb(getTestDb().$client)
     authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await deactivateAllPlugins()
     clearRuntimeChatRouter()
     userCachesForTesting.clear()
     setStoreDb(null)
+    tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
   })
 
   test('creates and lists masked platform instances', async () => {
@@ -775,16 +826,45 @@ describe('instance API routes', () => {
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'publicish')).toBe('********')
   })
 
-  test('rejects a task-instance create when the provider validator fails', async () => {
-    registerContributedTaskProviderType('validated', {
-      pluginId: 'val',
-      factory: () => createMockProvider({ name: 'validated' }),
-      validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
-      capabilities: new Set<never>(),
-      displayName: 'Validated',
-      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
-    })
+  test('rejects a task-instance create when an activated plugin provider validator fails', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateValidatedConfig(config) {
+        return config.baseUrl === 'https://ok.invalid'
+          ? { ok: true }
+          : { ok: false, reason: 'bad url' }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated', () => ({ name: 'validated-provider' }))
+          },
+        }
+      }
+    `)
+    const plugin: DiscoveredPlugin = {
+      manifest: makePluginManifest('val', {
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['validated'],
+        },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+        providerConfigValidator: 'validateValidatedConfig',
+      }),
+      pluginDir: tmpdir(),
+      entryPoint,
+      manifestHash: 'hash-val',
+    }
+    approvePlugin(plugin)
+
     try {
+      await activatePlugins([plugin])
+
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
@@ -801,7 +881,7 @@ describe('instance API routes', () => {
       expect(pick(body, 'error')).toBe('invalid_task_instance_config')
       expect(pick(body, 'reason')).toBe('bad url')
     } finally {
-      unregisterContributedTaskProviderType('val')
+      await deactivateAllPlugins()
     }
   })
 

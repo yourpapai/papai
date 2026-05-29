@@ -21,7 +21,11 @@ import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { createProvider, getTaskProviderDescriptor } from '../../src/providers/registry.js'
+import {
+  createProvider,
+  getTaskProviderConfigValidator,
+  getTaskProviderDescriptor,
+} from '../../src/providers/registry.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
@@ -479,6 +483,120 @@ describe('activatePlugins', () => {
         'second duplicate plugin registry entry',
       ).state,
     ).toBe('error')
+  })
+
+  test('resolves manifest-owned provider config validator named export during activation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateDemoConfig(config) {
+        return config.baseUrl === 'https://ok.invalid'
+          ? { ok: true }
+          : { ok: false, reason: 'baseUrl rejected' }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('validated-provider-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['validated-provider'],
+      },
+      providerConfigValidator: 'validateDemoConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    const validator = requireValue(
+      getTaskProviderConfigValidator('validated-provider'),
+      'validated-provider config validator',
+    )
+    await expect(validator({ baseUrl: 'https://bad.invalid' })).resolves.toEqual({
+      ok: false,
+      reason: 'baseUrl rejected',
+    })
+  })
+
+  test('fails activation when manifest-owned provider config validator export is missing', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('missing-validator-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('missing-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['missing-validator-provider'],
+      },
+      providerConfigValidator: 'validateMissingConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(
+      requireValue(pluginRegistry.getEntry('missing-validator-plugin'), 'missing validator registry entry').state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('missing-validator-provider')).toBeUndefined()
+    expect(
+      requireValue(getRecentRuntimeEvents('missing-validator-plugin', 1)[0], 'missing validator runtime event').message,
+    ).toContain('providerConfigValidator')
+  })
+
+  test('fails activation when manifest-owned provider config validator export is not a function', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export const validateBadConfig = 'not-a-function'
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('bad-validator-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('bad-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['bad-validator-provider'],
+      },
+      providerConfigValidator: 'validateBadConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(requireValue(pluginRegistry.getEntry('bad-validator-plugin'), 'bad validator registry entry').state).toBe(
+      'error',
+    )
+    expect(getTaskProviderDescriptor('bad-validator-provider')).toBeUndefined()
+    expect(
+      requireValue(getRecentRuntimeEvents('bad-validator-plugin', 1)[0], 'bad validator runtime event').message,
+    ).toContain('providerConfigValidator')
   })
 
   test('activation failure cleans framework-owned partial contributions', async () => {
