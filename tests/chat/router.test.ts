@@ -351,6 +351,37 @@ describe('ChatRouter', () => {
     expect(router.isInstanceActive('telegram-main')).toBe(true)
   })
 
+  test('refuses routed sends while stop is in flight and preserves active state if stop fails', async () => {
+    let releaseStop: (() => void) | undefined
+    const stop = mock(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseStop = resolve
+        }),
+    )
+    factory = (id: string, type: PlatformInstanceType): ChatProvider => {
+      const fakeProvider = makeProvider(type, { stop })
+      providers[id] = fakeProvider
+      return fakeProvider
+    }
+    router = new ChatRouter(factory)
+    router.addInstance('telegram-main', 'telegram', {})
+    await router.startInstance('telegram-main')
+
+    const stopping = router.stopInstance('telegram-main')
+    const deliveredWhileStopping = await router.sendMessage('telegram-main', dmTarget('user-1'), 'racing')
+
+    expect(deliveredWhileStopping).toBe(false)
+    expect(getProvider('telegram-main').sent).toEqual([])
+    expect(router.isInstanceActive('telegram-main')).toBe(false)
+
+    expect(releaseStop).toBeFunction()
+    releaseStop?.()
+    await stopping
+
+    expect(router.getInstance('telegram-main')?.status).toBe('stopped')
+  })
+
   test('startInstance is a no-op for already active instances', async () => {
     const start = mock(async () => {})
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {

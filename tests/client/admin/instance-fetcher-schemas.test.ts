@@ -30,6 +30,21 @@ describe('ApplyInstancesResultSchema', () => {
 
     expect(result.success).toBe(true)
   })
+
+  test('ApplyInstancesResultSchema defaults missing removedDetails for legacy payloads', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.data?.removedDetails).toEqual([])
+  })
 })
 
 describe('TaskInstanceViewSchema', () => {

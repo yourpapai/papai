@@ -235,7 +235,7 @@ export type ApplyInstancesResult = Readonly<{
   started: readonly string[]
   stopped: readonly string[]
   removed: readonly string[]
-  removedDetails: readonly { readonly id: string; readonly desiredStatus: 'pending' | 'stopped' | null }[]
+  removedDetails?: readonly { readonly id: string; readonly desiredStatus: 'pending' | 'stopped' | null }[]
   recreated: readonly string[]
   unchanged: readonly string[]
   failed: readonly ApplyFailure[]
