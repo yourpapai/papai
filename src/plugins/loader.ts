@@ -4,88 +4,19 @@
 // See LICENSE in the project root for details.
 
 import pLimit from 'p-limit'
-import { z } from 'zod'
 
 import { logger } from '../logger.js'
-import type { TaskProviderConfigValidator } from '../providers/registry.js'
-import { buildPluginContext } from './context.js'
+import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
+import { buildPluginContext, runWithClosedRegistration } from './context.js'
 import { contributionRegistry } from './contributions.js'
+import { importPluginModule, resolveProviderConfigValidator, toPluginImportSpecifier } from './module-import.js'
 import { pluginRegistry } from './registry.js'
 import { recordRuntimeEvent } from './store.js'
 import {
   deactivateContributedTaskProviderTypes,
   unregisterContributedTaskProviderTypes,
 } from './task-provider-lifecycle.js'
-import type { DiscoveredPlugin, PluginFactory, PluginInstance } from './types.js'
-
-type PluginModuleRecord = Record<string, unknown> & { readonly default?: unknown }
-
-type ImportedPluginModule = Readonly<{
-  instance: PluginInstance
-  moduleRecord: PluginModuleRecord
-}>
-
-type UnknownProviderConfigValidator = (config: Record<string, string>) => unknown
-
-const providerConfigValidatorResultSchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true) }),
-  z.object({ ok: z.literal(false), reason: z.string().min(1) }),
-])
-
-function isPluginFactory(value: unknown): value is PluginFactory {
-  return typeof value === 'function'
-}
-
-function isPluginInstance(value: unknown): value is PluginInstance {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'activate' in value &&
-    typeof (value as Record<string, unknown>)['activate'] === 'function'
-  )
-}
-
-function isUnknownProviderConfigValidator(value: unknown): value is UnknownProviderConfigValidator {
-  return typeof value === 'function'
-}
-
-const isPluginModuleRecord = (value: unknown): value is PluginModuleRecord =>
-  typeof value === 'object' && value !== null
-
-async function importPluginModule(entryPoint: string): Promise<ImportedPluginModule> {
-  const mod: unknown = await import(entryPoint)
-  if (!isPluginModuleRecord(mod)) {
-    throw new Error('Invalid plugin module contract: module import must return an object')
-  }
-  const candidate = 'default' in mod ? mod.default : mod
-  if (!isPluginFactory(candidate)) {
-    throw new Error('Invalid plugin module contract: default export must be a factory function')
-  }
-  const instance = candidate()
-  if (!isPluginInstance(instance)) {
-    throw new Error('Invalid plugin module contract: factory must return an object with activate(ctx)')
-  }
-  return { instance, moduleRecord: mod }
-}
-
-function resolveProviderConfigValidator(
-  exportName: string | undefined,
-  moduleRecord: PluginModuleRecord,
-): TaskProviderConfigValidator | undefined {
-  if (exportName === undefined) return undefined
-  const candidate = moduleRecord[exportName]
-  if (!isUnknownProviderConfigValidator(candidate)) {
-    throw new Error(`Provider config validator export '${exportName}' is not a function`)
-  }
-  return async (config) => {
-    const result = providerConfigValidatorResultSchema.safeParse(await candidate(config))
-    if (result.success) return result.data
-    return {
-      ok: false,
-      reason: `Provider config validator export '${exportName}' returned an invalid result`,
-    }
-  }
-}
+import type { DiscoveredPlugin, PluginInstance } from './types.js'
 
 function buildActivationTimeout(timeoutMs: number): {
   promise: Promise<never>
@@ -106,56 +37,125 @@ function buildActivationTimeout(timeoutMs: number): {
 }
 
 const log = logger.child({ scope: 'plugins:loader' })
-const PLUGIN_LIFECYCLE_CONCURRENCY = 4
-
-/** Default system context ID used during plugin activation (non-user-specific). */
+const PLUGIN_LIFECYCLE_CONCURRENCY = 1
 const SYSTEM_CONTEXT_ID = '__system__'
-
-/** Activation order for deterministic reverse deactivation. */
 const activationOrder: string[] = []
 const activeInstances = new Map<string, PluginInstance>()
+
+function commitTaskProviderRegistration(plugin: DiscoveredPlugin, ctx: ReturnType<typeof buildPluginContext>): void {
+  const registration = ctx.collected.taskProviderRegistration
+  if (registration === undefined) return
+
+  const { manifest } = plugin
+  const { type, ...entry } = registration
+  const before = getTaskProviderDescriptor(type)
+  registerContributedTaskProviderType(type, {
+    pluginId: manifest.id,
+    factory: entry.factory,
+    validateConfig: entry.validateConfig,
+    capabilities: entry.capabilities,
+    displayName: entry.displayName,
+    instanceConfigSchema: entry.instanceConfigSchema,
+    contextConfigSchema: entry.contextConfigSchema,
+    traits: entry.traits,
+  })
+  const after = getTaskProviderDescriptor(type)
+  if (
+    before !== undefined ||
+    after?.source === undefined ||
+    after.source === 'builtin' ||
+    after.source.plugin !== manifest.id
+  ) {
+    throw new Error(`Task provider type '${type}' could not be registered for plugin '${manifest.id}'`)
+  }
+}
+
+async function activatePluginInstance(
+  instance: PluginInstance | null,
+  activationContext: ReturnType<typeof buildPluginContext>,
+  activationTimeout: ReturnType<typeof buildActivationTimeout>,
+): Promise<void> {
+  if (instance === null) return
+  await Promise.race([
+    runWithClosedRegistration(activationContext, (ctx) => instance.activate(ctx)),
+    activationTimeout.promise,
+  ])
+}
+
+function finalizeSuccessfulActivation(
+  plugin: DiscoveredPlugin,
+  activationContext: ReturnType<typeof buildPluginContext>,
+  instance: PluginInstance | null,
+): void {
+  const { manifest } = plugin
+  const { collected } = activationContext
+
+  commitTaskProviderRegistration(plugin, activationContext)
+  contributionRegistry.register(manifest.id, collected, manifest)
+  if (instance !== null) {
+    activeInstances.set(manifest.id, instance)
+  }
+  pluginRegistry.markActive(manifest.id)
+  activationOrder.push(manifest.id)
+  recordRuntimeEvent(manifest.id, 'activated')
+  log.info({ pluginId: manifest.id }, 'Plugin activated successfully')
+}
+
+function closeActivationRegistration(activationContext: ReturnType<typeof buildPluginContext>): void {
+  activationContext.closeRegistration()
+}
+
+function handleActivationFailure(pluginId: string, msg: string): false {
+  log.error({ pluginId, error: msg }, 'Plugin activation failed')
+  activeInstances.delete(pluginId)
+  contributionRegistry.deregister(pluginId)
+  deactivateContributedTaskProviderTypes(pluginId)
+  pluginRegistry.markError(pluginId, `Activation failed: ${msg}`)
+  recordRuntimeEvent(pluginId, 'error', `Activation failed: ${msg}`)
+  return false
+}
 
 async function activateOne(plugin: DiscoveredPlugin): Promise<boolean> {
   const { manifest, entryPoint } = plugin
 
   log.info({ pluginId: manifest.id, entryPoint }, 'Activating plugin')
 
-  const imported = await importPluginModule(entryPoint).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err)
-    log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
-    pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
-    recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
-    return null
-  })
-  if (imported === null) return false
+  const importedModule =
+    manifest.mcp !== undefined && entryPoint === ''
+      ? null
+      : await importPluginModule(entryPoint).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.error({ pluginId: manifest.id, error: msg }, 'Failed to import plugin entry point')
+          pluginRegistry.markError(manifest.id, `Import failed: ${msg}`)
+          recordRuntimeEvent(manifest.id, 'error', `Import failed: ${msg}`)
+          return null
+        })
+  if (entryPoint !== '' && importedModule === null) return false
 
+  const activationContext = buildPluginContext(manifest, SYSTEM_CONTEXT_ID)
   const activationTimeout = buildActivationTimeout(manifest.activationTimeoutMs)
 
   try {
-    const providerConfigValidator = resolveProviderConfigValidator(
-      manifest.providerConfigValidator,
-      imported.moduleRecord,
-    )
-    const { ctx, collected } = buildPluginContext(manifest, SYSTEM_CONTEXT_ID, { providerConfigValidator })
-
-    await Promise.race([Promise.resolve(imported.instance.activate(ctx)), activationTimeout.promise])
-
-    contributionRegistry.register(manifest.id, collected, manifest)
-    activeInstances.set(manifest.id, imported.instance)
-    pluginRegistry.markActive(manifest.id)
-    recordRuntimeEvent(manifest.id, 'activated')
-    log.info({ pluginId: manifest.id }, 'Plugin activated successfully')
+    const validateConfig = resolveProviderConfigValidator(manifest, importedModule?.moduleRecord)
+    await activatePluginInstance(importedModule?.instance ?? null, activationContext, activationTimeout)
+    if (
+      manifest.providerConfigValidator !== undefined &&
+      activationContext.collected.taskProviderRegistration === undefined
+    ) {
+      throw new Error(
+        `Plugin '${manifest.id}' declares providerConfigValidator but did not register task provider type '${manifest.contributes.taskProviderTypes[0] ?? 'unknown'}'`,
+      )
+    }
+    if (activationContext.collected.taskProviderRegistration !== undefined) {
+      activationContext.collected.taskProviderRegistration.validateConfig = validateConfig
+    }
+    finalizeSuccessfulActivation(plugin, activationContext, importedModule?.instance ?? null)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    log.error({ pluginId: manifest.id, error: msg }, 'Plugin activation failed')
-    activeInstances.delete(manifest.id)
-    contributionRegistry.deregister(manifest.id)
-    deactivateContributedTaskProviderTypes(manifest.id)
-    pluginRegistry.markError(manifest.id, `Activation failed: ${msg}`)
-    recordRuntimeEvent(manifest.id, 'error', `Activation failed: ${msg}`)
-    return false
+    return handleActivationFailure(manifest.id, msg)
   } finally {
+    closeActivationRegistration(activationContext)
     activationTimeout.cancel()
   }
 }
@@ -196,7 +196,9 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
 
   try {
     if (instance !== undefined && typeof instance.deactivate === 'function') {
-      const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID)
+      const { ctx } = buildPluginContext(entry.discoveredPlugin.manifest, SYSTEM_CONTEXT_ID, {
+        registrationInitiallyOpen: false,
+      })
       await Promise.resolve(instance.deactivate(ctx))
     }
     activeInstances.delete(pluginId)
@@ -211,11 +213,11 @@ async function deactivateOne(pluginId: string, options: DeactivateAllPluginsOpti
     activeInstances.delete(pluginId)
     contributionRegistry.deregister(pluginId)
     cleanupContributedTaskProviderTypes(pluginId, options)
+    pluginRegistry.markDeactivated(pluginId)
     recordRuntimeEvent(pluginId, 'error', `Deactivation error: ${msg}`)
   }
 }
 
-/** Deactivate all active plugins in reverse activation order. */
 export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions = {}): Promise<void> {
   const toDeactivate = [...activationOrder].reverse()
   if (toDeactivate.length === 0) return
@@ -229,7 +231,8 @@ export async function deactivateAllPlugins(options: DeactivateAllPluginsOptions 
   log.info('All plugins deactivated')
 }
 
-/** Get currently active plugin IDs. */
 export function getActivatedPluginIds(): string[] {
   return [...activationOrder]
 }
+
+export { toPluginImportSpecifier }

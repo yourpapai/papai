@@ -12,9 +12,10 @@ import { getConfigFieldsForContext } from '../config-keys.js'
 import { getConfigValue, getPluginConfig, maskSensitiveValue, maskValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
+import { getMissingRequiredPluginRequirements } from '../plugins/registry-context-eligibility.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
-import { getPluginContextState } from '../plugins/store.js'
+import { getPluginAdminConfig, getPluginContextState } from '../plugins/store.js'
 import { getToolPrefs } from '../tools/tool-preferences.js'
 import type { ConfigField } from '../types/config.js'
 
@@ -45,11 +46,26 @@ function formatConfigLine(field: ConfigField, value: string | undefined): string
   return `${emoji} ${field.label}: ${field.sensitive ? maskSensitiveValue(value) : maskValue(field.storageKey, value)}`
 }
 
+function getPluginFieldParts(storageKey: string): { pluginId: string; key: string } | null {
+  const match = /^plugin:([^:]+):(.+)$/u.exec(storageKey)
+  if (match === null) return null
+  const [, pluginId, key] = match
+  if (pluginId === undefined || key === undefined) return null
+  return { pluginId, key }
+}
+
+function getFieldValue(targetContextId: string, field: ConfigField): string | null {
+  if (field.kind !== 'plugin-context') return getConfigValue(targetContextId, field.storageKey)
+  const parts = getPluginFieldParts(field.storageKey)
+  if (parts === null) return null
+  return getPluginConfig(targetContextId, parts.pluginId, parts.key)
+}
+
 function buildConfigButtons(fields: readonly ConfigField[], targetContextId: string): ChatButton[] {
   const buttons: ChatButton[] = fields.map((field) => ({
     text: `${getFieldEmoji(field)} ${field.label}`,
     callbackData: serializeCallbackData({ action: 'edit', key: field.storageKey }, targetContextId),
-    style: getConfigValue(targetContextId, field.storageKey) === null ? 'secondary' : 'primary',
+    style: getFieldValue(targetContextId, field) === null ? 'secondary' : 'primary',
   }))
   buttons.push({
     text: '🔄 Full Setup',
@@ -91,15 +107,25 @@ function formatPluginStatus(entry: PluginRegistryEntry, targetContextId: string)
 
 function pluginButtonCallback(entry: PluginRegistryEntry, targetContextId: string): string {
   const pluginId = entry.discoveredPlugin.manifest.id
-  const enabled = isPluginActiveForContext(pluginId, targetContextId)
-  return `plg:${enabled ? 'disable' : 'enable'}:${pluginId}:${encodePluginContextId(targetContextId)}`
+  const selected = isPluginSelectedForContext(entry, targetContextId)
+  return `plg:${selected ? 'disable' : 'enable'}:${pluginId}:${encodePluginContextId(targetContextId)}`
 }
 
 function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntry, targetContextId: string): void {
+  const missingKeys = new Set(
+    getMissingRequiredPluginRequirements(entry.discoveredPlugin, targetContextId).map((requirement) => requirement.key),
+  )
   for (const requirement of entry.discoveredPlugin.manifest.configRequirements) {
-    const value = getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
+    const value =
+      requirement.scope === 'admin'
+        ? (getPluginAdminConfig(entry.discoveredPlugin.manifest.id, requirement.key) ?? null)
+        : getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
     const displayedValue =
-      value === null || value === '' ? '*(not set)*' : requirement.sensitive ? maskPluginConfigValue(value) : value
+      missingKeys.has(requirement.key) || value === null || value === ''
+        ? '*(not set)*'
+        : requirement.sensitive
+          ? maskPluginConfigValue(value)
+          : value
     lines.push(`  - ${requirement.label} (${requirement.required ? 'required' : 'optional'}): ${displayedValue}`)
   }
 }
@@ -126,12 +152,11 @@ function buildPluginButtons(targetContextId: string): ChatButton[] {
     .getAllEntries()
     .filter((entry) => entry.state === 'active')
     .map((entry) => {
-      const pluginId = entry.discoveredPlugin.manifest.id
-      const enabled = isPluginActiveForContext(pluginId, targetContextId)
+      const selected = isPluginSelectedForContext(entry, targetContextId)
       return {
-        text: `${enabled ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
+        text: `${selected ? 'Disable' : 'Enable'} ${entry.discoveredPlugin.manifest.name}`,
         callbackData: pluginButtonCallback(entry, targetContextId),
-        style: enabled ? ('danger' as const) : ('primary' as const),
+        style: selected ? ('danger' as const) : ('primary' as const),
       }
     })
     .filter((button) => isSafeCallbackData(button.callbackData))
@@ -155,7 +180,7 @@ export async function renderConfigForTarget(
   const lines = ['⚙️ **Current Configuration**\n']
 
   fields.forEach((field) => {
-    lines.push(formatConfigLine(field, getConfigValue(targetContextId, field.storageKey) ?? undefined))
+    lines.push(formatConfigLine(field, getFieldValue(targetContextId, field) ?? undefined))
   })
   const aiOutputSection = buildAiOutputConfigSection(targetContextId)
   lines.push(...aiOutputSection.lines)

@@ -97,7 +97,7 @@ const createValidatedProvider = async (
   config: Record<string, string>,
   deps: TaskProviderResolverDeps,
 ): Promise<TaskProvider | null> => {
-  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps, 'logical')
+  const validationFailure = await validateTaskInstanceConfigResult(instance.type, config, deps, 'logical', 'resolved')
   if (validationFailure !== null) {
     log.warn(
       { contextId, taskInstanceId: instance.id, taskProvider: instance.type, validationFailure },

@@ -7,10 +7,16 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { getTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import { contributionRegistry } from '../../src/plugins/contributions.js'
-import { activatePlugins, deactivateAllPlugins, getActivatedPluginIds } from '../../src/plugins/loader.js'
+import {
+  activatePlugins,
+  deactivateAllPlugins,
+  getActivatedPluginIds,
+  toPluginImportSpecifier,
+} from '../../src/plugins/loader.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
@@ -24,6 +30,7 @@ import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 declare global {
   var papaiDeactivateOrder: string[] | undefined
+  var papaiLateRegistrationError: string | undefined
 }
 
 const tempDirs: string[] = []
@@ -125,6 +132,12 @@ describe('activatePlugins', () => {
     )
   })
 
+  test('converts entry point paths to portable file URLs before import', () => {
+    const entryPoint = '/tmp/plugin entry.mjs'
+
+    expect(toPluginImportSpecifier(entryPoint)).toBe(pathToFileURL(entryPoint).href)
+  })
+
   test('accepts default-exported factory returning plugin instance', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
@@ -162,6 +175,122 @@ describe('activatePlugins', () => {
     expect(requireValue(getRecentRuntimeEvents('factory-plugin', 1)[0], 'factory plugin runtime event').eventType).toBe(
       'activated',
     )
+  })
+
+  test('late registration after successful activation is rejected', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            setTimeout(() => {
+              try {
+                ctx.registration.registerTool({
+                  name: 'registered_tool',
+                  description: 'Registered tool',
+                  execute: async () => 'late',
+                })
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            }, 50)
+            ctx.registration.registerTool({
+              name: 'registered_tool',
+              description: 'Registered tool',
+              execute: async () => 'ok',
+            })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('late-success-plugin', entryPoint, {
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100)
+    })
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(
+      requireValue(contributionRegistry.getContributions('late-success-plugin'), 'late success plugin contributions')
+        .tools,
+    ).toHaveLength(1)
+  })
+
+  test('microtask registration queued at activation tail is rejected before publish', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTool({
+              name: 'registered_tool',
+              description: 'Registered tool',
+              execute: async () => 'ok',
+            })
+            queueMicrotask(() => {
+              try {
+                ctx.registration.registerTool({
+                  name: 'registered_tool',
+                  description: 'Registered tool',
+                  execute: async () => 'microtask',
+                })
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('microtask-success-plugin', entryPoint, {
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(
+      requireValue(
+        contributionRegistry.getContributions('microtask-success-plugin'),
+        'microtask success plugin contributions',
+      ).tools,
+    ).toHaveLength(1)
+  })
+
+  test('marks explicit mcp-only plugins active without importing an entry point', async () => {
+    const plugin = makePlugin('mcp-only-plugin', '', {
+      main: '',
+      mcp: { transport: 'streamable-http', url: 'https://mcp.example.com' },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(requireValue(pluginRegistry.getEntry('mcp-only-plugin'), 'mcp-only plugin registry entry').state).toBe(
+      'active',
+    )
+    expect(
+      requireValue(getRecentRuntimeEvents('mcp-only-plugin', 1)[0], 'mcp-only plugin runtime event').eventType,
+    ).toBe('activated')
   })
 
   test('rejects default-exported object plugin contract', async () => {
@@ -211,6 +340,341 @@ describe('activatePlugins', () => {
 
     expect(requireValue(pluginRegistry.getEntry('timeout-plugin'), 'timeout plugin registry entry').state).toBe('error')
     expect(contributionRegistry.getContributions('timeout-plugin')).toBeUndefined()
+  })
+
+  test('timeout plugin does not publish late provider registration after activation failure', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            setTimeout(() => {
+              try {
+                ctx.registration.registerTaskProviderType('late-timeout-provider', () => ({}))
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            }, 150)
+            return new Promise(() => {})
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('late-timeout-plugin', entryPoint, {
+      activationTimeoutMs: 100,
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['late-timeout-provider'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200)
+    })
+
+    expect(
+      requireValue(pluginRegistry.getEntry('late-timeout-plugin'), 'late timeout plugin registry entry').state,
+    ).toBe('error')
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(getTaskProviderDescriptor('late-timeout-provider')).toBeUndefined()
+  })
+
+  test('late registration after activation timeout is rejected', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            setTimeout(() => {
+              try {
+                ctx.registration.registerTaskProviderType('late-timeout-provider', () => ({}))
+              } catch (error) {
+                globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+              }
+            }, 150)
+            return new Promise(() => {})
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('late-timeout-rejection-plugin', entryPoint, {
+      activationTimeoutMs: 100,
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['late-timeout-provider'],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200)
+    })
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(getTaskProviderDescriptor('late-timeout-provider')).toBeUndefined()
+  })
+
+  test('duplicate contributed provider type fails later plugin activation', async () => {
+    const firstEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('duplicate-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const secondEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('duplicate-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const firstPlugin = makePlugin('first-duplicate-provider-plugin', firstEntry, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['duplicate-provider'],
+      },
+    })
+    const secondPlugin = makePlugin('second-duplicate-provider-plugin', secondEntry, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['duplicate-provider'],
+      },
+    })
+    approvePlugin(firstPlugin)
+    approvePlugin(secondPlugin)
+
+    await activatePlugins([firstPlugin, secondPlugin])
+
+    expect(
+      requireValue(pluginRegistry.getEntry('first-duplicate-provider-plugin'), 'first duplicate plugin registry entry')
+        .state,
+    ).toBe('active')
+    expect(
+      requireValue(
+        pluginRegistry.getEntry('second-duplicate-provider-plugin'),
+        'second duplicate plugin registry entry',
+      ).state,
+    ).toBe('error')
+  })
+
+  test('resolves manifest-owned provider config validator named export during activation', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateDemoConfig(config) {
+        return config.baseUrl === 'https://ok.invalid'
+          ? { ok: true }
+          : { ok: false, reason: 'baseUrl rejected' }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('validated-provider-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['validated-provider'],
+      },
+      providerConfigValidator: 'validateDemoConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    const validator = requireValue(
+      getTaskProviderConfigValidator('validated-provider'),
+      'validated-provider config validator',
+    )
+    await expect(validator({ baseUrl: 'https://bad.invalid' })).resolves.toEqual({
+      ok: false,
+      reason: 'baseUrl rejected',
+    })
+  })
+
+  test('fails activation when manifest-owned provider config validator export is missing', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('missing-validator-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('missing-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['missing-validator-provider'],
+      },
+      providerConfigValidator: 'validateMissingConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(
+      requireValue(pluginRegistry.getEntry('missing-validator-plugin'), 'missing validator registry entry').state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('missing-validator-provider')).toBeUndefined()
+    expect(
+      requireValue(getRecentRuntimeEvents('missing-validator-plugin', 1)[0], 'missing validator runtime event').message,
+    ).toContain('providerConfigValidator')
+  })
+
+  test('fails activation when manifest-owned provider config validator export is not a function', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export const validateBadConfig = 'not-a-function'
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('bad-validator-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('bad-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['bad-validator-provider'],
+      },
+      providerConfigValidator: 'validateBadConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(requireValue(pluginRegistry.getEntry('bad-validator-plugin'), 'bad validator registry entry').state).toBe(
+      'error',
+    )
+    expect(getTaskProviderDescriptor('bad-validator-provider')).toBeUndefined()
+    expect(
+      requireValue(getRecentRuntimeEvents('bad-validator-plugin', 1)[0], 'bad validator runtime event').message,
+    ).toContain('providerConfigValidator')
+  })
+
+  test('fails activation when providerConfigValidator points at default export', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('default-validator-provider', () => ({}))
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('default-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['default-validator-provider'],
+      },
+      providerConfigValidator: 'default',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(
+      requireValue(pluginRegistry.getEntry('default-validator-plugin'), 'default validator registry entry').state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('default-validator-provider')).toBeUndefined()
+    expect(
+      requireValue(getRecentRuntimeEvents('default-validator-plugin', 1)[0], 'default validator runtime event').message,
+    ).toContain('providerConfigValidator')
+  })
+
+  test('fails activation when providerConfigValidator is declared but no task provider type is registered', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateForgottenProviderConfig() {
+        return { ok: true }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate() {},
+        }
+      }
+    `)
+    const plugin = makePlugin('validator-without-provider-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['forgotten-provider'],
+      },
+      providerConfigValidator: 'validateForgottenProviderConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    expect(
+      requireValue(
+        pluginRegistry.getEntry('validator-without-provider-plugin'),
+        'validator without provider registry entry',
+      ).state,
+    ).toBe('error')
+    expect(getTaskProviderDescriptor('forgotten-provider')).toBeUndefined()
+    expect(
+      requireValue(
+        getRecentRuntimeEvents('validator-without-provider-plugin', 1)[0],
+        'validator without provider runtime event',
+      ).message,
+    ).toContain('providerConfigValidator')
   })
 
   test('activation failure cleans framework-owned partial contributions', async () => {
@@ -303,8 +767,50 @@ describe('activatePlugins', () => {
 
     expect(contributionRegistry.getContributions('deactivate-error-plugin')).toBeUndefined()
     expect(
+      requireValue(pluginRegistry.getEntry('deactivate-error-plugin'), 'deactivate error registry entry').state,
+    ).toBe('approved')
+    expect(
       requireValue(getRecentRuntimeEvents('deactivate-error-plugin', 1)[0], 'deactivate error runtime event').message,
     ).toContain('deactivate boom')
+  })
+
+  test('deactivate context rejects registration attempts', async () => {
+    const entryPoint = writeTempPluginModule(`
+      globalThis.papaiLateRegistrationError = undefined
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate(ctx) {
+            try {
+              ctx.registration.registerTool({
+                name: 'registered_tool',
+                description: 'Registered tool',
+                execute: async () => 'late',
+              })
+            } catch (error) {
+              globalThis.papaiLateRegistrationError = error instanceof Error ? error.message : String(error)
+            }
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('deactivate-registration-plugin', entryPoint, {
+      contributes: {
+        tools: ['registered_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiLateRegistrationError).toBe('Plugin registration is only allowed during activation')
+    expect(contributionRegistry.getContributions('deactivate-registration-plugin')).toBeUndefined()
   })
 
   test('removes contributed provider type on deactivation', async () => {
@@ -312,7 +818,7 @@ describe('activatePlugins', () => {
       export default function createPlugin() {
         return {
           activate(ctx) {
-            ctx.registration.registerTaskProviderType('demo', { factory: () => ({}) })
+            ctx.registration.registerTaskProviderType('demo', () => ({}))
           },
         }
       }
@@ -414,7 +920,8 @@ describe('activatePlugins', () => {
     expect(validator).toBeDefined()
     await expect(validator?.({ baseUrl: 'https://bad.invalid' })).resolves.toEqual({
       ok: false,
-      reason: "Provider config validator export 'validateTrackerConfig' returned an invalid result",
+      reason:
+        "Plugin 'malformed-validator-plugin' providerConfigValidator export 'validateTrackerConfig' returned an invalid result",
     })
   })
 
@@ -448,7 +955,7 @@ describe('activatePlugins', () => {
 
     expect(pluginRegistry.getEntry('invalid-validator-plugin')?.state).toBe('error')
     expect(getRecentRuntimeEvents('invalid-validator-plugin', 1)[0]?.message).toContain(
-      "Provider config validator export 'validateTrackerConfig' is not a function",
+      "Plugin 'invalid-validator-plugin' providerConfigValidator export 'validateTrackerConfig' is missing or not a function",
     )
     expect(getTaskProviderConfigValidator('invalid-validator-tracker')).toBeUndefined()
   })
@@ -458,7 +965,7 @@ describe('activatePlugins', () => {
       export default function createPlugin() {
         return {
           activate(ctx) {
-            ctx.registration.registerTaskProviderType('demo-stop', { factory: () => ({}) })
+            ctx.registration.registerTaskProviderType('demo-stop', () => ({}))
           },
         }
       }
@@ -488,7 +995,7 @@ describe('activatePlugins', () => {
       export default function createPlugin() {
         return {
           activate(ctx) {
-            ctx.registration.registerTaskProviderType('demo-retire', { factory: () => ({}) })
+            ctx.registration.registerTaskProviderType('demo-retire', () => ({}))
           },
         }
       }

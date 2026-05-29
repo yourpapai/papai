@@ -83,6 +83,32 @@ describe('config-editor public API', () => {
     expect(serializeCallbackData({ action: 'save', key: 'timezone' })).toBe('cfg:save:timezone')
   })
 
+  test('save callbacks round-trip a session token when provided', () => {
+    const data = serializeCallbackData({ action: 'save', key: 'timezone', sessionToken: 'abc123' }, 'group-9')
+
+    expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+
+    const parsed = parseCallbackData(data)
+    expect(parsed.action).toBe('save')
+    expect(parsed.key).toBe('timezone')
+    expect(parsed.sessionToken).toBe('abc123')
+    expect(parsed.targetContextId).toBe('group-9')
+  })
+
+  test('cancel and back callbacks round-trip a session token when provided', () => {
+    for (const action of ['cancel', 'back'] as const) {
+      const data = serializeCallbackData({ action, sessionToken: 'abc123' }, 'group-9')
+
+      expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+
+      const parsed = parseCallbackData(data)
+      expect(parsed.action).toBe(action)
+      expect(parsed.key).toBeNull()
+      expect(parsed.sessionToken).toBe('abc123')
+      expect(parsed.targetContextId).toBe('group-9')
+    }
+  })
+
   test('serializeCallbackData encodes targetContextId when provided', () => {
     const data = serializeCallbackData({ action: 'edit', key: 'timezone' }, 'group-9')
     expect(data).toContain('cfg:edit:timezone@')
@@ -131,12 +157,49 @@ describe('config-editor public API', () => {
     expect(resolveCallbackKey(parsed.key, 'managed-group-context-with-long-id')).toBe(key)
   })
 
+  test('resolveCallbackKey fails closed when compact callback field ordering changes', () => {
+    registerContributedTaskProviderType('very-long-plugin-provider-name', {
+      pluginId: 'very-long-plugin-provider-name',
+      factory: () => createMockProvider({ name: 'very-long-plugin-provider-name' }),
+      capabilities: new Set(),
+      displayName: 'Long Plugin Provider',
+      contextConfigSchema: [
+        {
+          key: 'very-long-context-token-field',
+          label: 'Plugin Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+    insertTaskInstance({
+      id: 'long-plugin-prod-remap',
+      type: 'very-long-plugin-provider-name',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'managed-group-context-remap',
+      taskInstanceId: 'long-plugin-prod-remap',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
+    const data = serializeCallbackData({ action: 'edit', key }, 'managed-group-context-remap')
+    const parsed = parseCallbackData(data)
+
+    unregisterContributedTaskProviderType('very-long-plugin-provider-name')
+
+    expect(resolveCallbackKey(parsed.key, 'managed-group-context-remap')).toBeNull()
+  })
+
   test('serializeCallbackData keeps all actions within callback size limit for long contexts', () => {
     const targetContextId = 'managed-group-context-with-a-very-long-stable-storage-id'
     const key = 'plugin:very-long-plugin-provider-name:provider:very-long-context-token-field'
     const actions = [
       { action: 'edit' as const, key },
-      { action: 'save' as const, key },
+      { action: 'save' as const, key, sessionToken: 'abc123' },
       { action: 'cancel' as const },
       { action: 'back' as const },
       { action: 'setup' as const },
@@ -147,9 +210,25 @@ describe('config-editor public API', () => {
     expect(data.every((callbackData) => Buffer.byteLength(callbackData, 'utf8') <= 64)).toBe(true)
   })
 
+  test('compact non-field callbacks keep a target binding tag', () => {
+    const targetContextId = 'managed-group-context-with-a-very-long-stable-storage-id'
+    const actions = ['cancel', 'back', 'setup'] as const
+
+    for (const action of actions) {
+      const data = serializeCallbackData({ action }, targetContextId)
+      const parsed = parseCallbackData(data)
+
+      expect(Buffer.byteLength(data, 'utf8')).toBeLessThanOrEqual(64)
+      expect(parsed.action).toBe(action)
+      expect(parsed.key).toBeNull()
+      expect(parsed.targetContextId).toBeUndefined()
+      expect(parsed.targetTag).toBeString()
+    }
+  })
+
   test('compact callbacks parse without module-local token state', () => {
-    expect(parseCallbackData('cfg:e:0:abc123')).toEqual({ action: 'edit', key: '#0:abc123' })
-    expect(parseCallbackData('cfg:s:z:def456')).toEqual({ action: 'save', key: '#z:def456' })
+    expect(parseCallbackData('cfg:e:0:abc123:def456')).toEqual({ action: 'edit', key: '#0:abc123:def456' })
+    expect(parseCallbackData('cfg:s:z:def456:ghi789')).toEqual({ action: 'save', key: '#z:def456:ghi789' })
   })
 
   test('resolveCallbackKey resolves compact field indexes for a context', () => {

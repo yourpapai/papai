@@ -4,11 +4,10 @@
 // See LICENSE in the project root for details.
 
 import { canManageInteractionTargetContext } from '../commands/plugin-auth.js'
-import { getPluginConfig } from '../config.js'
 import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
+import { getMissingRequiredPluginRequirements } from '../plugins/registry-context-eligibility.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../plugins/registry.js'
-import type { PluginRegistryEntry } from '../plugins/registry.js'
 import { replyTextPreferReplace } from './interaction-router-replies.js'
 import type { IncomingInteraction, ReplyFn } from './types.js'
 
@@ -20,16 +19,6 @@ function decodeContextId(encoded: string): string | null {
   } catch {
     return null
   }
-}
-
-function getMissingRequiredConfigLabels(entry: PluginRegistryEntry, contextId: string): readonly string[] {
-  return entry.discoveredPlugin.manifest.configRequirements
-    .filter((requirement) => requirement.required)
-    .filter((requirement) => {
-      const value = getPluginConfig(contextId, entry.discoveredPlugin.manifest.id, requirement.key)
-      return value === null || value.trim() === ''
-    })
-    .map((requirement) => requirement.label)
 }
 
 async function handleEnablePlugin(
@@ -44,7 +33,9 @@ async function handleEnablePlugin(
     return
   }
 
-  const missingLabels = getMissingRequiredConfigLabels(entry, contextId)
+  const missingLabels = getMissingRequiredPluginRequirements(entry.discoveredPlugin, contextId).map(
+    (requirement) => requirement.label,
+  )
   if (missingLabels.length > 0) {
     await replyTextPreferReplace(
       reply,
@@ -99,7 +90,10 @@ export async function handlePluginInteraction(interaction: IncomingInteraction, 
   }
   const authorization = canManageInteractionTargetContext(interaction, contextId)
   if (!authorization.allowed) {
-    await replyTextPreferReplace(reply, getMissingGroupTargetMessage(interaction.user.id, contextId))
+    await replyTextPreferReplace(
+      reply,
+      getMissingGroupTargetMessage(interaction.user.id, contextId, interaction.platformInstanceId),
+    )
     return true
   }
 

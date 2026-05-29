@@ -8,6 +8,12 @@ import { z } from 'zod'
 import type { ChatCapability } from '../chat/types.js'
 import { mcpPluginConfigSchema } from '../mcp/types.js'
 import type { TaskCapability, TaskProviderTrait } from '../providers/types.js'
+import {
+  hasMatchingContextConfigKeys,
+  hasProviderManifestPermission,
+  hasRequiredMainForManifest,
+  isValidMainPath,
+} from './manifest-validation.js'
 
 export type {
   PluginCommand,
@@ -153,7 +159,7 @@ const providerHostSchema = z
     'Provider allowed host must be a valid hostname',
   )
 
-const pluginContributesSchema = z.object({
+const pluginContributesSchema = z.strictObject({
   tools: z.array(toolNameSchema).optional().default([]),
   promptFragments: z.array(z.string().min(1).max(64)).optional().default([]),
   commands: z.array(commandNameSchema).optional().default([]),
@@ -162,7 +168,7 @@ const pluginContributesSchema = z.object({
   taskProviderTypes: z.array(providerTypeSchema).max(1).optional().default([]),
 })
 
-const configRequirementBaseSchema = z.object({
+const configRequirementBaseSchema = z.strictObject({
   key: configKeySchema,
   label: z.string().min(1),
   required: z.boolean(),
@@ -185,17 +191,9 @@ const providerContextConfigRequirementSchema = configRequirementBaseSchema.exten
   scope: z.literal('context').optional().default('context'),
 })
 
-const mainPathSchema = z.string().refine(
-  (v) => {
-    if (v.startsWith('/')) return false
-    if (v.includes('..')) return false
-    if (!v.endsWith('.ts') && !v.endsWith('.js')) return false
-    return true
-  },
-  {
-    message: 'main must be a relative .ts or .js path without ".." components',
-  },
-)
+const mainPathSchema = z.string().refine(isValidMainPath, {
+  message: 'main must be a relative .ts or .js path without ".." components',
+})
 
 const taskCapabilityTuple = TASK_CAPABILITY_VALUES
 const taskProviderTraitTuple = [
@@ -210,13 +208,15 @@ const permissionTuple = PLUGIN_PERMISSIONS
 
 /** Zod schema for a plugin manifest (plugin.json). */
 export const pluginManifestSchema = z
-  .object({
+  .strictObject({
     id: pluginIdSchema,
     name: z.string().min(1).max(128),
-    version: z.string().regex(/^\d+\.\d+\.\d+/u, 'version must be semver (major.minor.patch)'),
+    version: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$/u, 'version must be semver (major.minor.patch)'),
     description: z.string().min(1).max(512),
     apiVersion: z.literal(PLUGIN_API_VERSION),
-    main: mainPathSchema.optional().default('index.ts'),
+    main: mainPathSchema.optional(),
     contributes: pluginContributesSchema.optional().default({
       tools: [],
       promptFragments: [],
@@ -252,8 +252,20 @@ export const pluginManifestSchema = z
     path: ['permissions'],
   })
   .refine((m) => m.providerConfigValidator === undefined || m.contributes.taskProviderTypes.length > 0, {
-    message: 'Declaring providerConfigValidator requires a contributed task provider type',
+    message: 'providerConfigValidator requires contributes.taskProviderTypes',
     path: ['providerConfigValidator'],
+  })
+  .refine(hasProviderManifestPermission, {
+    message: "Provider-only manifest fields require the 'provider.task' permission",
+    path: ['permissions'],
+  })
+  .refine(hasMatchingContextConfigKeys, {
+    message: 'Every contributes.configKeys entry must match a context-scoped configRequirements entry',
+    path: ['contributes', 'configKeys'],
+  })
+  .refine(hasRequiredMainForManifest, {
+    message: 'main is required unless the manifest is an explicit MCP-only plugin',
+    path: ['main'],
   })
 
 type ParsedPluginManifest = z.output<typeof pluginManifestSchema>

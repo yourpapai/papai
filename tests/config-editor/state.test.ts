@@ -42,7 +42,7 @@ describe('config-editor state', () => {
       expect(session.startedAt).toBeInstanceOf(Date)
     })
 
-    test('returns existing session if one already exists', () => {
+    test('replaces an existing session for the same user and context', () => {
       const first = createEditorSession({
         userId,
         storageContextId,
@@ -55,8 +55,9 @@ describe('config-editor state', () => {
         editingKey: 'timezone',
       })
 
-      expect(second).toBe(first)
-      expect(second.editingKey).toBe('kaneo_apikey')
+      expect(second).not.toBe(first)
+      expect(second.editingKey).toBe('timezone')
+      expect(getEditorSession(userId, storageContextId)).toBe(second)
     })
 
     test('stores optional fields when provided', () => {
