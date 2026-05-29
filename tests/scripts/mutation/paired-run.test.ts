@@ -8,9 +8,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { pairedRun } from '../../../scripts/mutation/paired-run.js'
+import { pairedRun, parsePairedRunCliArgs, resolvePairedRunExitCode } from '../../../scripts/mutation/paired-run.js'
 import type { PairedRunDeps } from '../../../scripts/mutation/paired-run.js'
 import type { StrykerReport } from '../../../scripts/mutation/score-merger.js'
+import type { MergedScore } from '../../../scripts/mutation/score-merger.js'
 
 const makeReport = (statuses: readonly string[]): StrykerReport => ({
   files: {
@@ -19,6 +20,20 @@ const makeReport = (statuses: readonly string[]): StrykerReport => ({
 })
 
 const makeReportDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'paired-run-'))
+
+const ZERO_SCORE = {
+  killed: 0,
+  survived: 0,
+  noCoverage: 0,
+  timeout: 0,
+  compileError: 0,
+  ignored: 0,
+  runtimeError: 0,
+  pending: 0,
+  total: 0,
+  scored: 0,
+  score: 0,
+} as const satisfies MergedScore
 
 describe('pairedRun', () => {
   test('runs Stryker once per source file and returns merged score', async () => {
@@ -108,5 +123,20 @@ describe('pairedRun', () => {
       ignoreStatic: false,
       bun: { testFiles: ['tests/foo.test.ts'] },
     })
+  })
+})
+
+describe('parsePairedRunCliArgs', () => {
+  test('treats invalid threshold values as usage errors', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold=not-a-number'])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a finite number',
+    })
+  })
+})
+
+describe('resolvePairedRunExitCode', () => {
+  test('fails when a zero-score run is below a positive threshold', () => {
+    expect(resolvePairedRunExitCode(ZERO_SCORE, 0.1)).toBe(1)
   })
 })

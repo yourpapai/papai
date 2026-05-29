@@ -50,6 +50,10 @@ export interface PairedRunResult {
   readonly skipped: readonly SkippedFile[]
 }
 
+export type PairedRunCliArgs =
+  | { readonly kind: 'ok'; readonly sourceFiles: readonly string[]; readonly threshold: number }
+  | { readonly kind: 'usageError'; readonly reason: string }
+
 type CompletedFileRun = PairedRunFileResult & { readonly report: StrykerReport }
 
 type BunLike = {
@@ -189,18 +193,29 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   return Promise.resolve({ merged, perFile, skipped })
 }
 
-const parseCliArgs = (
-  argv: readonly string[],
-): { readonly sourceFiles: readonly string[]; readonly threshold: number } => {
+export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
   const thresholdArg = argv.find((arg) => arg.startsWith('--threshold='))
+  const threshold = thresholdArg === undefined ? 0 : Number(thresholdArg.slice('--threshold='.length))
+  if (!Number.isFinite(threshold)) {
+    return { kind: 'usageError', reason: 'threshold must be a finite number' }
+  }
   return {
+    kind: 'ok',
     sourceFiles: argv.filter((arg) => !arg.startsWith('--threshold=')),
-    threshold: thresholdArg === undefined ? 0 : Number(thresholdArg.slice('--threshold='.length)),
+    threshold,
   }
 }
 
+export const resolvePairedRunExitCode = (merged: MergedScore, threshold: number): number =>
+  merged.score < threshold ? 1 : 0
+
 const main = async (bun: BunLike): Promise<number> => {
-  const { sourceFiles, threshold } = parseCliArgs(bun.argv.slice(2))
+  const parsed = parsePairedRunCliArgs(bun.argv.slice(2))
+  if (parsed.kind === 'usageError') {
+    console.error(parsed.reason)
+    return 2
+  }
+  const { sourceFiles, threshold } = parsed
   if (sourceFiles.length === 0) {
     console.error('Usage: bun scripts/mutation/paired-run.ts <src...> [--threshold=N]')
     return 2
@@ -213,7 +228,7 @@ const main = async (bun: BunLike): Promise<number> => {
     sourceFiles,
   })
 
-  if (result.merged.scored > 0 && result.merged.score < threshold) {
+  if (resolvePairedRunExitCode(result.merged, threshold) === 1) {
     console.error(`Mutation score ${result.merged.score} is below threshold ${threshold}`)
     return 1
   }
