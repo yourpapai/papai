@@ -853,14 +853,16 @@ describe('instance API routes', () => {
       configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
     })
     try {
-      const res = await routeWithDeps(
-        '/api/task-instances',
-        { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
-        {
-          method: 'POST',
-          headers: jsonHeaders(),
-          body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
-        },
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ id: 'v-ok-1', type: 'validated-ok', config: { baseUrl: 'https://ok.invalid' } }),
+          },
+        ),
       )
       expect(res.status).toBe(201)
       const instance = getTaskInstance('v-ok-1')
