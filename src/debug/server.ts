@@ -106,7 +106,7 @@ function handleLogs(url: URL): Response {
 
 let server: ReturnType<typeof Bun.serve> | null = null
 
-function handleClientFile(prefix: 'debug' | 'admin', pathname: string): Response {
+function handleClientFile(prefix: 'debug' | 'admin' | 'settings', pathname: string): Response {
   if (pathname === `/${prefix}`) {
     return new Response(Bun.file(path.join(PUBLIC_DIR, `${prefix}.html`)))
   }
@@ -186,8 +186,22 @@ function routeProtectedPaths(req: Request, url: URL): Response | Promise<Respons
   return null
 }
 
+/**
+ * Public static serving for the settings SPA shell + assets. These are reachable
+ * without DEBUG_TOKEN (the shell is public; the data behind it is settings-session
+ * gated). Returns null for every non-static path so callers fall through.
+ */
+export function routeSettingsStatic(pathname: string): Response | null {
+  if (pathname === '/settings' || pathname === '/settings.js' || pathname === '/settings.css') {
+    return handleClientFile('settings', pathname)
+  }
+  return null
+}
+
 async function routeRequest(req: Request): Promise<Response> {
   const url = new URL(req.url)
+  const settingsStatic = routeSettingsStatic(url.pathname)
+  if (settingsStatic !== null) return settingsStatic
   // Settings trust domain: session-cookie auth only, never DEBUG_TOKEN.
   if (isSettingsPath(url.pathname)) {
     return (await routeSettingsPaths(req, url)) ?? new Response('Not found', { status: 404 })
