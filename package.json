@@ -43,7 +43,6 @@
     "test:coverage": "bun test --coverage",
     "test:mutate": "bun scripts/mutation/all-files.ts",
     "test:mutate:changed": "bun scripts/mutation/changed-files.ts",
-    "test:mutate:full": "bun scripts/mutation/all-files.ts",
     "test:mutate:file": "bun scripts/mutation/paired-run.ts",
     "test:mutate:changed-paired": "bun scripts/mutation/changed-files.ts",
     "test:e2e": "bun test --preload ./tests/e2e/bun-test-setup.ts --path-ignore-patterns '' tests/e2e/e2e.test.ts",

@@ -78,7 +78,7 @@ describe('buildPairedConfig', () => {
       reportPath: 'reports/paired/foo.json',
     })
     expect(cfg.incremental).toBe(false)
-    expect(cfg.reporters).toEqual(['clear-text', 'json'])
+    expect(cfg.reporters).toEqual(['json'])
     expect(cfg.jsonReporter.fileName).toBe('reports/paired/foo.json')
     expect(cfg.thresholds.break).toBe(0)
     expect(cfg.htmlReporter).toBeUndefined()

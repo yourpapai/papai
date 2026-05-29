@@ -10,6 +10,7 @@ import path from 'node:path'
 import { findTestFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { buildPairedConfig } from './config-builder.js'
 import type { StrykerConfig } from './config-builder.js'
+import { readJsonRecord, readStrykerReport } from './json-readers.js'
 import { mergeReports } from './score-merger.js'
 import type { MergedScore, StrykerReport } from './score-merger.js'
 import { loadOverrides as loadOverridesFile, resolveTestFiles } from './test-overrides.js'
@@ -19,7 +20,7 @@ export interface PairedRunDeps {
   readonly readBaseConfig: (projectRoot: string) => StrykerConfig
   readonly resolveCompanion: (srcFile: string, projectRoot: string) => string | null
   readonly loadOverrides: (projectRoot: string) => OverridesMap
-  readonly runStryker: (configPath: string, projectRoot: string) => void
+  readonly runStryker: (configPath: string, projectRoot: string, options: PairedRunStrykerOptions) => void
   readonly readReport: (reportPath: string) => StrykerReport
   readonly log: (message: string) => void
 }
@@ -28,7 +29,12 @@ export interface PairedRunInput {
   readonly projectRoot: string
   readonly reportDir: string
   readonly sourceFiles: readonly string[]
+  readonly verbose: boolean | undefined
   readonly deps: PairedRunDeps | undefined
+}
+
+export interface PairedRunStrykerOptions {
+  readonly verbose: boolean
 }
 
 export interface SkippedFile {
@@ -51,7 +57,12 @@ export interface PairedRunResult {
 }
 
 export type PairedRunCliArgs =
-  | { readonly kind: 'ok'; readonly sourceFiles: readonly string[]; readonly threshold: number }
+  | {
+      readonly kind: 'ok'
+      readonly sourceFiles: readonly string[]
+      readonly threshold: number
+      readonly verbose: boolean
+    }
   | { readonly kind: 'usageError'; readonly reason: string }
 
 type CompletedFileRun = PairedRunFileResult & { readonly report: StrykerReport }
@@ -66,24 +77,6 @@ const STRYKER_TIMEOUT_MS = 30 * 60 * 1000
 const THRESHOLD_DECIMAL_PATTERN = /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u
 const THRESHOLD_RANGE_ERROR = 'threshold must be a decimal number between 0 and 1'
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-
-const readJsonRecord = (filePath: string): Record<string, unknown> => {
-  const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'))
-  if (!isRecord(parsed)) {
-    throw new Error(`${filePath} must contain a JSON object`)
-  }
-  return parsed
-}
-
-const isStrykerReport = (value: unknown): value is StrykerReport => {
-  if (!isRecord(value)) return false
-  const files = value['files']
-  if (files === undefined) return true
-  return isRecord(files)
-}
-
 const defaultDeps: PairedRunDeps = {
   readBaseConfig: (projectRoot) => {
     const configPath = path.join(projectRoot, 'stryker.config.json')
@@ -91,20 +84,15 @@ const defaultDeps: PairedRunDeps = {
   },
   resolveCompanion: (srcFile, projectRoot) => findTestFile(path.join(projectRoot, srcFile), projectRoot),
   loadOverrides: (projectRoot) => loadOverridesFile(path.join(projectRoot, 'scripts/mutation/overrides.json')),
-  runStryker: (configPath, projectRoot) => {
+  runStryker: (configPath, projectRoot, options) => {
     execFileSync(path.join(projectRoot, 'node_modules/.bin/stryker'), ['run', configPath], {
       cwd: projectRoot,
-      stdio: 'inherit',
+      stdio: options.verbose ? 'inherit' : 'pipe',
       timeout: STRYKER_TIMEOUT_MS,
+      maxBuffer: 20 * 1024 * 1024,
     })
   },
-  readReport: (reportPath) => {
-    const parsed: unknown = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
-    if (!isStrykerReport(parsed)) {
-      throw new Error(`${reportPath} must contain a Stryker JSON report object`)
-    }
-    return parsed
-  },
+  readReport: readStrykerReport,
   log: (message) => {
     console.log(message)
   },
@@ -151,6 +139,7 @@ const runOneFile = (
   deps: PairedRunDeps,
   base: StrykerConfig,
   overrides: OverridesMap,
+  verbose: boolean,
 ): CompletedFileRun | SkippedFile => {
   const resolved = resolveTestFiles({
     srcFile,
@@ -168,7 +157,7 @@ const runOneFile = (
   })
   fs.rmSync(reportPath, { force: true })
   try {
-    deps.runStryker(configPath, input.projectRoot)
+    deps.runStryker(configPath, input.projectRoot, { verbose })
   } catch {
     // Stryker returns non-zero for threshold failures even when it wrote a usable report.
   }
@@ -188,6 +177,9 @@ const runOneFile = (
 
 const isSkippedFile = (result: CompletedFileRun | SkippedFile): result is SkippedFile => !('reportPath' in result)
 
+const formatFileSummary = (result: PairedRunFileResult): string =>
+  `${result.sourceFile}: killed=${result.merged.killed} survived=${result.merged.survived} noCoverage=${result.merged.noCoverage} pending=${result.merged.pending} score=${result.merged.score}`
+
 const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
   if (deps === undefined) return defaultDeps
   return deps
@@ -195,17 +187,21 @@ const resolveDeps = (deps: PairedRunDeps | undefined): PairedRunDeps => {
 
 export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
   const deps = resolveDeps(input.deps)
+  const verbose = input.verbose === true
   const sourceFiles = input.sourceFiles.map((filePath) => toProjectRelativePath(filePath, input.projectRoot))
   const base = deps.readBaseConfig(input.projectRoot)
   const overrides = deps.loadOverrides(input.projectRoot)
   fs.mkdirSync(input.reportDir, { recursive: true })
 
-  const results = sourceFiles.map((srcFile) => runOneFile(srcFile, input, deps, base, overrides))
+  const results = sourceFiles.map((srcFile) => runOneFile(srcFile, input, deps, base, overrides, verbose))
   const completed = results.filter((result): result is CompletedFileRun => !isSkippedFile(result))
   const perFile = completed.map(({ report: _report, ...result }) => result)
   const skipped = results.filter((result) => isSkippedFile(result))
   const merged = mergeReports(completed.map((result) => result.report))
 
+  perFile.forEach((result) => {
+    deps.log(formatFileSummary(result))
+  })
   deps.log(
     `Paired mutation summary: files=${perFile.length} skipped=${skipped.length} killed=${merged.killed} survived=${merged.survived} pending=${merged.pending} score=${merged.score}`,
   )
@@ -213,7 +209,7 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
 }
 
 export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
-  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold='))
+  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold=') && arg !== '--verbose')
   if (unknownArg !== undefined) {
     return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
   }
@@ -233,10 +229,12 @@ export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs
   if (!Number.isFinite(threshold)) {
     return { kind: 'usageError', reason: 'threshold must be a finite number' }
   }
+  const verbose = argv.includes('--verbose')
   return {
     kind: 'ok',
-    sourceFiles: argv.filter((arg) => !arg.startsWith('--threshold=')),
+    sourceFiles: argv.filter((arg) => !arg.startsWith('--threshold=') && arg !== '--verbose'),
     threshold,
+    verbose,
   }
 }
 
@@ -254,9 +252,9 @@ const main = async (bun: BunLike): Promise<number> => {
     if (usageExitCode === null) return 2
     return usageExitCode
   }
-  const { sourceFiles, threshold } = parsed
+  const { sourceFiles, threshold, verbose } = parsed
   if (usageExitCode !== null) {
-    console.error('Usage: bun scripts/mutation/paired-run.ts <src...> [--threshold=N]')
+    console.error('Usage: bun scripts/mutation/paired-run.ts <src...> [--threshold=N] [--verbose]')
     return usageExitCode
   }
 
@@ -265,6 +263,7 @@ const main = async (bun: BunLike): Promise<number> => {
     projectRoot,
     reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
     sourceFiles,
+    verbose,
     deps: undefined,
   })
 

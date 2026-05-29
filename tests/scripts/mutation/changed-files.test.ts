@@ -6,9 +6,11 @@
 import { describe, expect, mock, test } from 'bun:test'
 
 import {
+  changedFilesRun,
   parseChangedFilesCliArgs,
   selectChangedMutationTargets,
   type ChangedFilesDeps,
+  type ChangedFilesRunDeps,
 } from '../../../scripts/mutation/changed-files.js'
 
 const makeDeps = (gitOutput: string, isGateableImpl: ChangedFilesDeps['isGateableImpl']): ChangedFilesDeps => ({
@@ -94,6 +96,19 @@ describe('selectChangedMutationTargets', () => {
 })
 
 describe('parseChangedFilesCliArgs', () => {
+  test('returns defaults for no args', () => {
+    expect(parseChangedFilesCliArgs([])).toEqual({ kind: 'ok', baseRef: 'origin/master', threshold: 0, verbose: false })
+  })
+
+  test('parses verbose mode', () => {
+    expect(parseChangedFilesCliArgs(['--verbose'])).toEqual({
+      kind: 'ok',
+      baseRef: 'origin/master',
+      threshold: 0,
+      verbose: true,
+    })
+  })
+
   test('rejects unexpected positional arguments', () => {
     expect(parseChangedFilesCliArgs(['src/impl.ts'])).toEqual({
       kind: 'usageError',
@@ -105,6 +120,51 @@ describe('parseChangedFilesCliArgs', () => {
     expect(parseChangedFilesCliArgs(['--unknown'])).toEqual({
       kind: 'usageError',
       reason: 'unknown argument --unknown',
+    })
+  })
+})
+
+describe('changedFilesRun', () => {
+  test('passes verbose mode to pairedRun', async () => {
+    const runPaired = mock(() =>
+      Promise.resolve({
+        merged: {
+          killed: 0,
+          survived: 0,
+          noCoverage: 0,
+          timeout: 0,
+          compileError: 0,
+          ignored: 0,
+          runtimeError: 0,
+          pending: 0,
+          total: 0,
+          scored: 0,
+          score: 0,
+        },
+        perFile: [],
+        skipped: [],
+      }),
+    )
+    const deps: ChangedFilesRunDeps = {
+      selectTargets: mock(() => ['src/impl.ts']),
+      runPaired,
+      log: mock(() => {}),
+    }
+
+    await changedFilesRun({
+      projectRoot: '/repo',
+      reportDir: '/repo/reports/paired',
+      baseRef: 'origin/master',
+      verbose: true,
+      deps,
+    })
+
+    expect(runPaired).toHaveBeenCalledWith({
+      projectRoot: '/repo',
+      reportDir: '/repo/reports/paired',
+      sourceFiles: ['src/impl.ts'],
+      verbose: true,
+      deps: undefined,
     })
   })
 })

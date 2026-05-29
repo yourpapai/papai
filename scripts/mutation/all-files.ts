@@ -27,11 +27,12 @@ export interface SelectAllMutationTargetsInput {
 export interface AllFilesRunInput {
   readonly projectRoot: string
   readonly reportDir: string
+  readonly verbose: boolean | undefined
   readonly deps: AllFilesDeps | undefined
 }
 
 export type AllFilesCliArgs =
-  | { readonly kind: 'ok'; readonly threshold: number }
+  | { readonly kind: 'ok'; readonly threshold: number; readonly verbose: boolean }
   | { readonly kind: 'usageError'; readonly reason: string }
 
 type BunLike = {
@@ -119,15 +120,16 @@ export const allFilesRun = (input: AllFilesRunInput): Promise<PairedRunResult> =
     projectRoot: input.projectRoot,
     reportDir: input.reportDir,
     sourceFiles,
+    verbose: input.verbose === true,
     deps: undefined,
   })
 }
 
 export const parseAllFilesCliArgs = (argv: readonly string[]): AllFilesCliArgs => {
-  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold='))
+  const unknownArg = argv.find((arg) => arg.startsWith('-') && !arg.startsWith('--threshold=') && arg !== '--verbose')
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
 
-  const positionalArg = argv.find((arg) => !arg.startsWith('--threshold='))
+  const positionalArg = argv.find((arg) => !arg.startsWith('--threshold=') && arg !== '--verbose')
   if (positionalArg !== undefined)
     return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
 
@@ -143,14 +145,14 @@ export const parseAllFilesCliArgs = (argv: readonly string[]): AllFilesCliArgs =
   const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
   if (!Number.isFinite(threshold)) return { kind: 'usageError', reason: 'threshold must be a finite number' }
 
-  return { kind: 'ok', threshold }
+  return { kind: 'ok', threshold, verbose: argv.includes('--verbose') }
 }
 
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseAllFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    console.error('Usage: bun scripts/mutation/all-files.ts [--threshold=N]')
+    console.error('Usage: bun scripts/mutation/all-files.ts [--threshold=N] [--verbose]')
     return 2
   }
 
@@ -158,6 +160,7 @@ const main = async (bun: BunLike): Promise<number> => {
   const result = await allFilesRun({
     projectRoot,
     reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
+    verbose: parsed.verbose,
     deps: undefined,
   })
 

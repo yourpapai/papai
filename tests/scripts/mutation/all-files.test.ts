@@ -57,11 +57,15 @@ describe('selectAllMutationTargets', () => {
 
 describe('parseAllFilesCliArgs', () => {
   test('returns defaults for no args', () => {
-    expect(parseAllFilesCliArgs([])).toEqual({ kind: 'ok', threshold: 0 })
+    expect(parseAllFilesCliArgs([])).toEqual({ kind: 'ok', threshold: 0, verbose: false })
   })
 
   test('accepts a fractional threshold', () => {
-    expect(parseAllFilesCliArgs(['--threshold=0.75'])).toEqual({ kind: 'ok', threshold: 0.75 })
+    expect(parseAllFilesCliArgs(['--threshold=0.75'])).toEqual({ kind: 'ok', threshold: 0.75, verbose: false })
+  })
+
+  test('accepts verbose mode', () => {
+    expect(parseAllFilesCliArgs(['--verbose'])).toEqual({ kind: 'ok', threshold: 0, verbose: true })
   })
 
   test('rejects unknown and positional arguments', () => {
@@ -114,6 +118,7 @@ describe('allFilesRun', () => {
     const result = await allFilesRun({
       projectRoot: '/repo',
       reportDir: '/repo/reports/paired',
+      verbose: undefined,
       deps,
     })
 
@@ -121,6 +126,7 @@ describe('allFilesRun', () => {
       projectRoot: '/repo',
       reportDir: '/repo/reports/paired',
       sourceFiles: ['src/config.ts', 'src/providers/kaneo/label-resource.ts', 'src/tools/update-status.ts'],
+      verbose: false,
       deps: undefined,
     })
     expect(result.merged.score).toBe(0.5)

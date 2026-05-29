@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import { isGateableImplFile } from '../../.hooks/tdd/test-resolver.mjs'
 import { pairedRun, resolvePairedRunExitCode } from './paired-run.js'
+import type { PairedRunInput, PairedRunResult } from './paired-run.js'
 
 export interface ChangedFilesDeps {
   readonly runGit: (args: readonly string[]) => string
@@ -21,8 +22,22 @@ export interface SelectInput {
 }
 
 type ChangedFilesCliArgs =
-  | { readonly kind: 'ok'; readonly baseRef: string; readonly threshold: number }
+  | { readonly kind: 'ok'; readonly baseRef: string; readonly threshold: number; readonly verbose: boolean }
   | { readonly kind: 'usageError'; readonly reason: string }
+
+export interface ChangedFilesRunDeps {
+  readonly selectTargets: (baseRef: string, projectRoot: string) => readonly string[]
+  readonly runPaired: (input: PairedRunInput) => Promise<PairedRunResult>
+  readonly log: (message: string) => void
+}
+
+export interface ChangedFilesRunInput {
+  readonly projectRoot: string
+  readonly reportDir: string
+  readonly baseRef: string
+  readonly verbose: boolean | undefined
+  readonly deps: ChangedFilesRunDeps | undefined
+}
 
 type BunLike = {
   readonly argv: readonly string[]
@@ -41,6 +56,14 @@ const defaultDeps: ChangedFilesDeps = {
       stdio: ['ignore', 'pipe', 'pipe'],
     }),
   isGateableImpl: isGateableImplFile,
+}
+
+const defaultRunDeps: ChangedFilesRunDeps = {
+  selectTargets: (baseRef, projectRoot) => selectChangedMutationTargets({ baseRef, projectRoot, deps: undefined }),
+  runPaired: pairedRun,
+  log: (message) => {
+    console.log(message)
+  },
 }
 
 const resolveDeps = (deps: ChangedFilesDeps | undefined): ChangedFilesDeps => {
@@ -69,12 +92,20 @@ const parseThreshold = (text: string | undefined): ChangedFilesCliArgs | number 
   return threshold
 }
 
+const resolveRunDeps = (deps: ChangedFilesRunDeps | undefined): ChangedFilesRunDeps => {
+  if (deps === undefined) return defaultRunDeps
+  return deps
+}
+
 export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesCliArgs => {
   const unknownArg = argv.find(
-    (arg) => arg.startsWith('-') && !arg.startsWith('--base=') && !arg.startsWith('--threshold='),
+    (arg) =>
+      arg.startsWith('-') && !arg.startsWith('--base=') && !arg.startsWith('--threshold=') && arg !== '--verbose',
   )
   if (unknownArg !== undefined) return { kind: 'usageError', reason: `unknown argument ${unknownArg}` }
-  const positionalArg = argv.find((arg) => !arg.startsWith('--base=') && !arg.startsWith('--threshold='))
+  const positionalArg = argv.find(
+    (arg) => !arg.startsWith('--base=') && !arg.startsWith('--threshold=') && arg !== '--verbose',
+  )
   if (positionalArg !== undefined) {
     return { kind: 'usageError', reason: `unexpected positional argument ${positionalArg}` }
   }
@@ -92,38 +123,49 @@ export const parseChangedFilesCliArgs = (argv: readonly string[]): ChangedFilesC
   const threshold = parseThreshold(thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length))
   if (typeof threshold !== 'number') return threshold
 
-  return { kind: 'ok', baseRef, threshold }
+  return { kind: 'ok', baseRef, threshold, verbose: argv.includes('--verbose') }
+}
+
+export const changedFilesRun = (input: ChangedFilesRunInput): Promise<PairedRunResult | null> => {
+  const deps = resolveRunDeps(input.deps)
+  const targets = deps.selectTargets(input.baseRef, input.projectRoot)
+  if (targets.length === 0) {
+    deps.log(`No changed mutation targets vs ${input.baseRef}; nothing to measure.`)
+    return Promise.resolve(null)
+  }
+
+  deps.log(`Changed mutation targets vs ${input.baseRef}:`)
+  targets.forEach((target) => {
+    deps.log(`- ${target}`)
+  })
+  return deps.runPaired({
+    projectRoot: input.projectRoot,
+    reportDir: input.reportDir,
+    sourceFiles: targets,
+    verbose: input.verbose === true,
+    deps: undefined,
+  })
 }
 
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parseChangedFilesCliArgs(bun.argv.slice(2))
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    console.error('Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N]')
+    console.error('Usage: bun scripts/mutation/changed-files.ts [--base=REF] [--threshold=N] [--verbose]')
     return 2
   }
 
   const projectRoot = process.cwd()
-  const targets = selectChangedMutationTargets({
-    baseRef: parsed.baseRef,
-    projectRoot,
-    deps: undefined,
-  })
-  if (targets.length === 0) {
-    console.log(`No changed mutation targets vs ${parsed.baseRef}; nothing to measure.`)
-    return 0
-  }
-
-  console.log(`Changed mutation targets vs ${parsed.baseRef}:`)
-  targets.forEach((target) => {
-    console.log(`- ${target}`)
-  })
-  const result = await pairedRun({
+  const result = await changedFilesRun({
     projectRoot,
     reportDir: path.join(projectRoot, DEFAULT_REPORT_DIR),
-    sourceFiles: targets,
+    baseRef: parsed.baseRef,
+    verbose: parsed.verbose,
     deps: undefined,
   })
+  if (result === null) {
+    return 0
+  }
 
   if (resolvePairedRunExitCode(result.merged, parsed.threshold) === 1) {
     console.error(`Mutation score ${result.merged.score} is below threshold ${parsed.threshold}`)

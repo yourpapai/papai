@@ -41,7 +41,6 @@ All scripts can be run as `bun <script>` or `bun run <script>`.
 - `bun test:coverage` — run unit tests with coverage
 - `bun test:mutate` — accurate full paired mutation run over the configured Stryker mutate scope
 - `bun test:mutate:changed` — accurate paired mutation run over files changed vs `origin/master`; this is what CI uses
-- `bun test:mutate:full` — same full paired mutation run as `bun test:mutate`
 - `bun test:mutate:file <paths...>` — accurate per-file paired mutation run (ignoreStatic:false + companion tests only); fast measurement that bypasses the static-bucket artifact
 - `bun test:mutate:changed-paired` — descriptive alias for `bun test:mutate:changed`
 - `bun test:e2e` — run Docker-backed E2E tests

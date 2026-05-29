@@ -56,7 +56,7 @@ export function buildPairedConfig(input: BuildPairedConfigInput): PairedStrykerC
     bun: { ...baseBun, testFiles: [...testFiles] },
     ignoreStatic: false,
     incremental: false,
-    reporters: ['clear-text', 'json'],
+    reporters: ['json'],
     jsonReporter: { fileName: reportPath },
     thresholds: { ...baseThresholds, break: 0 },
   }

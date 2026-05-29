@@ -95,6 +95,7 @@ describe('pairedRun', () => {
       projectRoot: '/repo',
       reportDir,
       sourceFiles: ['src/one.ts', 'src/two.ts'],
+      verbose: undefined,
       deps,
     })
 
@@ -103,6 +104,36 @@ describe('pairedRun', () => {
     expect(result.merged.survived).toBe(2)
     expect(result.merged.score).toBe(0.5)
     expect(result.skipped).toEqual([])
+  })
+
+  test('logs concise per-file and aggregate summaries', async () => {
+    const reportDir = makeReportDir()
+    const messages: string[] = []
+    const deps: PairedRunDeps = {
+      readBaseConfig: () => ({}),
+      resolveCompanion: (srcFile) => `tests/${path.basename(srcFile, '.ts')}.test.ts`,
+      loadOverrides: () => ({}),
+      runStryker: (configPath: string) => {
+        writeConfiguredReport(configPath, makeReport(['Killed']))
+      },
+      readReport: readStrykerReport,
+      log: (message) => {
+        messages.push(message)
+      },
+    }
+
+    await pairedRun({
+      projectRoot: '/repo',
+      reportDir,
+      sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
+      deps,
+    })
+
+    expect(messages).toEqual([
+      'src/foo.ts: killed=1 survived=0 noCoverage=0 pending=0 score=1',
+      'Paired mutation summary: files=1 skipped=0 killed=1 survived=0 pending=0 score=1',
+    ])
   })
 
   test('removes stale reports before running Stryker', async () => {
@@ -126,6 +157,7 @@ describe('pairedRun', () => {
       projectRoot: '/repo',
       reportDir,
       sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
       deps,
     })
 
@@ -150,6 +182,7 @@ describe('pairedRun', () => {
           projectRoot: '/repo',
           reportDir,
           sourceFiles: ['src/foo.ts'],
+          verbose: undefined,
           deps,
         }),
       ),
@@ -174,6 +207,7 @@ describe('pairedRun', () => {
       projectRoot: '/repo',
       reportDir,
       sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
       deps,
     })
 
@@ -200,6 +234,7 @@ describe('pairedRun', () => {
           projectRoot: '/repo',
           reportDir,
           sourceFiles: ['src/foo.ts'],
+          verbose: undefined,
           deps,
         }),
       ),
@@ -221,6 +256,7 @@ describe('pairedRun', () => {
       projectRoot: '/repo',
       reportDir,
       sourceFiles: ['src/no-companion.ts'],
+      verbose: undefined,
       deps,
     })
 
@@ -254,6 +290,7 @@ describe('pairedRun', () => {
       projectRoot: '/repo',
       reportDir,
       sourceFiles: ['src/foo.ts'],
+      verbose: undefined,
       deps,
     })
 
@@ -277,6 +314,16 @@ describe('parsePairedRunCliArgs', () => {
       kind: 'ok',
       sourceFiles: ['src/foo.ts', 'src/bar.ts'],
       threshold: 0.75,
+      verbose: false,
+    })
+  })
+
+  test('parses verbose mode', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--verbose'])).toEqual({
+      kind: 'ok',
+      sourceFiles: ['src/foo.ts'],
+      threshold: 0,
+      verbose: true,
     })
   })
 

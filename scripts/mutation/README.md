@@ -21,7 +21,6 @@ set is tiny, the accurate mode is cheap.
 ```bash
 # Measure the full configured Stryker mutate scope:
 bun test:mutate
-bun test:mutate:full
 
 # Measure specific files on demand:
 bun test:mutate:file src/providers/kaneo/label-resource.ts src/tools/update-status.ts
@@ -33,9 +32,14 @@ bun test:mutate:changed
 bun test:mutate --threshold=0.6
 bun test:mutate:file src/foo.ts --threshold=0.6
 bun test:mutate:changed --base=origin/master --threshold=0.6
+
+# Show raw Stryker output while still writing paired JSON reports:
+bun test:mutate:file src/foo.ts --verbose
 ```
 
-Per-file Stryker JSON reports land in `reports/paired/`.
+Default output is concise: paired runs hide raw Stryker reporter chatter and
+print per-file plus aggregate summaries from JSON. Add `--verbose` to stream raw
+Stryker output. Per-file Stryker JSON reports land in `reports/paired/`.
 
 ## Companion-test resolution
 
@@ -62,7 +66,7 @@ by either adding a companion test or registering the cross-cutting tests above.
 
 ## Command mapping
 
-- `bun test:mutate` / `:full` — accurate full paired run over the configured
+- `bun test:mutate` — accurate full paired run over the configured
   `stryker.config.json` `mutate` scope.
 - `bun test:mutate:changed` — accurate paired run over files changed vs the
   selected base branch. The CI gate uses this command.
