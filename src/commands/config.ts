@@ -12,9 +12,10 @@ import { getConfigFieldsForContext } from '../config-keys.js'
 import { getConfigValue, getPluginConfig, maskSensitiveValue, maskValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { logger } from '../logger.js'
+import { getMissingRequiredPluginRequirements } from '../plugins/registry-context-eligibility.js'
 import { getPluginContextEligibility, isPluginActiveForContext, pluginRegistry } from '../plugins/registry.js'
 import type { PluginRegistryEntry } from '../plugins/registry.js'
-import { getPluginContextState } from '../plugins/store.js'
+import { getPluginAdminConfig, getPluginContextState } from '../plugins/store.js'
 import { getToolPrefs } from '../tools/tool-preferences.js'
 import type { ConfigField } from '../types/config.js'
 
@@ -96,10 +97,20 @@ function pluginButtonCallback(entry: PluginRegistryEntry, targetContextId: strin
 }
 
 function appendPluginRequirementLines(lines: string[], entry: PluginRegistryEntry, targetContextId: string): void {
+  const missingKeys = new Set(
+    getMissingRequiredPluginRequirements(entry.discoveredPlugin, targetContextId).map((requirement) => requirement.key),
+  )
   for (const requirement of entry.discoveredPlugin.manifest.configRequirements) {
-    const value = getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
+    const value =
+      requirement.scope === 'admin'
+        ? (getPluginAdminConfig(entry.discoveredPlugin.manifest.id, requirement.key) ?? null)
+        : getPluginConfig(targetContextId, entry.discoveredPlugin.manifest.id, requirement.key)
     const displayedValue =
-      value === null || value === '' ? '*(not set)*' : requirement.sensitive ? maskPluginConfigValue(value) : value
+      missingKeys.has(requirement.key) || value === null || value === ''
+        ? '*(not set)*'
+        : requirement.sensitive
+          ? maskPluginConfigValue(value)
+          : value
     lines.push(`  - ${requirement.label} (${requirement.required ? 'required' : 'optional'}): ${displayedValue}`)
   }
 }

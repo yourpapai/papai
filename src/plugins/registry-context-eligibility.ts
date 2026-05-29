@@ -20,7 +20,15 @@ export type PluginContextEligibility =
   | { eligible: false; reason: 'config_missing'; missingKeys: readonly string[] }
   | { eligible: false; reason: 'capability_missing'; missingCapabilities: readonly string[] }
 
-function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
+export type MissingPluginRequirement = {
+  key: string
+  label: string
+}
+
+export function getMissingRequiredPluginRequirements(
+  plugin: DiscoveredPlugin,
+  contextId: string,
+): readonly MissingPluginRequirement[] {
   return plugin.manifest.configRequirements
     .filter((requirement) => requirement.required)
     .filter((requirement) => {
@@ -33,7 +41,11 @@ function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: strin
       if (value === null) return true
       return value.trim() === ''
     })
-    .map((requirement) => requirement.key)
+    .map((requirement) => ({ key: requirement.key, label: requirement.label }))
+}
+
+function getMissingRequiredConfigKeys(plugin: DiscoveredPlugin, contextId: string): readonly string[] {
+  return getMissingRequiredPluginRequirements(plugin, contextId).map((requirement) => requirement.key)
 }
 
 const missingFromSet = <Capability extends string>(

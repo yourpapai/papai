@@ -12,6 +12,7 @@ import { setConfig, setPluginConfig } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
+import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
@@ -293,6 +294,25 @@ describe('/config Command', () => {
 
       assert.ok(buttonCalls[0] !== undefined, 'expected buttonCalls[0] to be defined')
       expect(buttonCalls[0]).toContain('unavailable (missing capability: workItems.list)')
+    })
+
+    test('plugin rows treat admin-scoped required config as satisfied when admin config exists', async () => {
+      const pluginId = 'config-admin-scope-plugin'
+      registerActivePlugin(
+        makePlugin(pluginId, {
+          name: 'Admin Scoped Config Plugin',
+          defaultEnabled: true,
+          configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+        }),
+      )
+      setPluginAdminConfig(pluginId, 'api_key', 'configured', 'admin-user')
+
+      const { reply, buttonCalls } = createMockReply()
+      await renderConfigForTarget(reply, USER_ID, true)
+
+      expect(buttonCalls[0]).toContain('Admin Scoped Config Plugin')
+      expect(buttonCalls[0]).not.toContain('unavailable (missing config)')
+      expect(buttonCalls[0]).not.toContain('API Key (required): *(not set)*')
     })
 
     test('masks sensitive plugin config values in config output', async () => {
