@@ -8,7 +8,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { pairedRun, parsePairedRunCliArgs, resolvePairedRunExitCode } from '../../../scripts/mutation/paired-run.js'
+import {
+  pairedRun,
+  parsePairedRunCliArgs,
+  resolvePairedRunCliUsageExitCode,
+  resolvePairedRunExitCode,
+} from '../../../scripts/mutation/paired-run.js'
 import type { PairedRunDeps } from '../../../scripts/mutation/paired-run.js'
 import type { StrykerReport } from '../../../scripts/mutation/score-merger.js'
 import type { MergedScore } from '../../../scripts/mutation/score-merger.js'
@@ -133,10 +138,33 @@ describe('parsePairedRunCliArgs', () => {
       reason: 'threshold must be a finite number',
     })
   })
+
+  test('treats empty threshold values as usage errors', () => {
+    expect(parsePairedRunCliArgs(['src/foo.ts', '--threshold='])).toEqual({
+      kind: 'usageError',
+      reason: 'threshold must be a finite number',
+    })
+  })
 })
 
 describe('resolvePairedRunExitCode', () => {
+  test('returns 0 when score meets threshold', () => {
+    expect(resolvePairedRunExitCode({ ...ZERO_SCORE, score: 0.75, scored: 4, total: 4 }, 0.75)).toBe(0)
+  })
+
+  test('returns 1 when score is below threshold', () => {
+    expect(resolvePairedRunExitCode({ ...ZERO_SCORE, score: 0.74, scored: 4, total: 4 }, 0.75)).toBe(1)
+  })
+
   test('fails when a zero-score run is below a positive threshold', () => {
     expect(resolvePairedRunExitCode(ZERO_SCORE, 0.1)).toBe(1)
+  })
+})
+
+describe('resolvePairedRunCliUsageExitCode', () => {
+  test('returns 2 for usage-error CLI parse results', () => {
+    expect(resolvePairedRunCliUsageExitCode({ kind: 'usageError', reason: 'threshold must be a finite number' })).toBe(
+      2,
+    )
   })
 })

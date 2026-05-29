@@ -195,7 +195,11 @@ export const pairedRun = (input: PairedRunInput): Promise<PairedRunResult> => {
 
 export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs => {
   const thresholdArg = argv.find((arg) => arg.startsWith('--threshold='))
-  const threshold = thresholdArg === undefined ? 0 : Number(thresholdArg.slice('--threshold='.length))
+  const thresholdText = thresholdArg === undefined ? undefined : thresholdArg.slice('--threshold='.length)
+  const threshold = thresholdText === undefined ? 0 : Number(thresholdText)
+  if (thresholdText === '') {
+    return { kind: 'usageError', reason: 'threshold must be a finite number' }
+  }
   if (!Number.isFinite(threshold)) {
     return { kind: 'usageError', reason: 'threshold must be a finite number' }
   }
@@ -206,19 +210,23 @@ export const parsePairedRunCliArgs = (argv: readonly string[]): PairedRunCliArgs
   }
 }
 
+export const resolvePairedRunCliUsageExitCode = (parsed: PairedRunCliArgs): number | null =>
+  parsed.kind === 'usageError' || parsed.sourceFiles.length === 0 ? 2 : null
+
 export const resolvePairedRunExitCode = (merged: MergedScore, threshold: number): number =>
   merged.score < threshold ? 1 : 0
 
 const main = async (bun: BunLike): Promise<number> => {
   const parsed = parsePairedRunCliArgs(bun.argv.slice(2))
+  const usageExitCode = resolvePairedRunCliUsageExitCode(parsed)
   if (parsed.kind === 'usageError') {
     console.error(parsed.reason)
-    return 2
+    return usageExitCode ?? 2
   }
   const { sourceFiles, threshold } = parsed
-  if (sourceFiles.length === 0) {
+  if (usageExitCode !== null) {
     console.error('Usage: bun scripts/mutation/paired-run.ts <src...> [--threshold=N]')
-    return 2
+    return usageExitCode
   }
 
   const projectRoot = process.cwd()
