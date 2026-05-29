@@ -318,4 +318,84 @@ describe('TaskProviderResolver', () => {
       unregisterContributedTaskProviderType(resolverPluginId)
     }
   })
+
+  test('returns null when contributed provider validator throws', async () => {
+    const factory = mock(() => createMockProvider({ name: resolverProviderType }))
+    const validateConfig = mock((_config: Record<string, string>) => {
+      throw new Error('validator exploded')
+    })
+    registerContributedTaskProviderType(resolverProviderType, {
+      pluginId: resolverPluginId,
+      factory,
+      validateConfig,
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Base URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
+      traits: new Set(),
+    })
+    try {
+      insertTaskInstance({
+        id: 'resolver-plugin-throws',
+        type: resolverProviderType,
+        config: { baseUrl: 'https://tracker.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: 'ctx-resolver-plugin',
+        taskInstanceId: 'resolver-plugin-throws',
+        platformInstanceId: 'telegram-default',
+      })
+      setConfigValue('ctx-resolver-plugin', `plugin:${resolverPluginId}:provider:token`, 'secret-token')
+
+      const provider = await new TaskProviderResolver().resolve('ctx-resolver-plugin')
+
+      expect(provider).toBeNull()
+      expect(validateConfig).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid', token: 'secret-token' })
+      expect(factory).not.toHaveBeenCalled()
+    } finally {
+      unregisterContributedTaskProviderType(resolverPluginId)
+    }
+  })
+
+  test('returns null when contributed provider validator rejects', async () => {
+    const factory = mock(() => createMockProvider({ name: resolverProviderType }))
+    const validateConfig = mock((_config: Record<string, string>) => Promise.reject(new Error('validator rejected')))
+    registerContributedTaskProviderType(resolverProviderType, {
+      pluginId: resolverPluginId,
+      factory,
+      validateConfig,
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Base URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true, scope: 'context' }],
+      traits: new Set(),
+    })
+    try {
+      insertTaskInstance({
+        id: 'resolver-plugin-rejects',
+        type: resolverProviderType,
+        config: { baseUrl: 'https://tracker.invalid' },
+        status: 'active',
+      })
+      setContextSettings({
+        contextId: 'ctx-resolver-plugin',
+        taskInstanceId: 'resolver-plugin-rejects',
+        platformInstanceId: 'telegram-default',
+      })
+      setConfigValue('ctx-resolver-plugin', `plugin:${resolverPluginId}:provider:token`, 'secret-token')
+
+      const provider = await new TaskProviderResolver().resolve('ctx-resolver-plugin')
+
+      expect(provider).toBeNull()
+      expect(validateConfig).toHaveBeenCalledWith({ baseUrl: 'https://tracker.invalid', token: 'secret-token' })
+      expect(factory).not.toHaveBeenCalled()
+    } finally {
+      unregisterContributedTaskProviderType(resolverPluginId)
+    }
+  })
 })

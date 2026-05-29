@@ -21,6 +21,7 @@ export type TaskInstanceConfigValidationFailure =
       readonly invalidUrls: readonly string[]
     }
   | { readonly kind: 'task_provider_config_validator_rejected'; readonly type: string; readonly reason: string }
+  | { readonly kind: 'task_provider_config_validator_failed'; readonly type: string; readonly reason: string }
 
 export type TaskInstanceConfigValidationDeps = Readonly<{
   getTaskProviderDescriptor: (type: string) => TaskProviderTypeDescriptor | undefined
@@ -47,6 +48,8 @@ const isHttpUrl = (value: string): boolean => {
     return false
   }
 }
+
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const validateDescriptorConfig = (
   fields: readonly ProviderConfigField[],
@@ -81,7 +84,16 @@ export const validateTaskInstanceConfigResult = async (
 
   const validator = deps.getTaskProviderConfigValidator(type)
   if (validator === undefined) return null
-  const result = await validator(config)
+  const result = await Promise.resolve()
+    .then(() => validator(config))
+    .catch((error: unknown) => ({
+      ok: false as const,
+      reason: errorMessage(error),
+      validatorFailed: true as const,
+    }))
+  if ('validatorFailed' in result) {
+    return { kind: 'task_provider_config_validator_failed', type, reason: result.reason }
+  }
   if (result.ok) return null
   return { kind: 'task_provider_config_validator_rejected', type, reason: result.reason }
 }

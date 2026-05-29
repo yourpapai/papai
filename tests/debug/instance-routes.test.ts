@@ -1094,6 +1094,40 @@ describe('instance API routes', () => {
     }
   })
 
+  test('rejects a task-instance create when the provider validator throws', async () => {
+    registerContributedTaskProviderType('validated-throws', {
+      pluginId: 'val-throws',
+      factory: () => createMockProvider({ name: 'validated-throws' }),
+      validateConfig: () => Promise.reject(new Error('validator unavailable')),
+      capabilities: new Set<never>(),
+      displayName: 'Validated Throws',
+      configSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listActivePlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'v-throws-1',
+              type: 'validated-throws',
+              config: { baseUrl: 'https://bad.invalid' },
+            }),
+          },
+        ),
+      )
+      expect(res.status).toBe(400)
+      const body = assertObject(await readJson(res))
+      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
+      expect(pick(body, 'reason')).toBe('validator unavailable')
+    } finally {
+      unregisterContributedTaskProviderType('val-throws')
+    }
+  })
+
   test('PATCH /api/task-instances/:id rejects config when the contributed provider validator fails', async () => {
     registerContributedTaskProviderType('validated-patch', {
       pluginId: 'val-patch',

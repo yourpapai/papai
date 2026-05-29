@@ -87,7 +87,10 @@ const taskInstanceConfigValidationResponse = (failure: TaskInstanceConfigValidat
   if (failure.kind === 'unknown_task_provider') {
     return jsonResponse({ error: 'unknown_task_provider_type', type: failure.type }, { status: 400 })
   }
-  if (failure.kind === 'task_provider_config_validator_rejected') {
+  if (
+    failure.kind === 'task_provider_config_validator_rejected' ||
+    failure.kind === 'task_provider_config_validator_failed'
+  ) {
     return jsonResponse({ error: 'invalid_task_instance_config', reason: failure.reason }, { status: 400 })
   }
   return jsonResponse(
