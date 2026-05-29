@@ -52,8 +52,12 @@ describe('AdminAnnounceSection', () => {
     target.querySelector<HTMLButtonElement>('[data-testid="announce-send"]')!.click()
     await drain()
     expect(capturedBody).toBe(JSON.stringify({ message: 'hello all' }))
-    expect(target.textContent).toContain('2')
-    expect(target.textContent).toContain('1')
+    const resultEl = target.querySelector<HTMLElement>('[data-testid="announce-result"]')!
+    expect(resultEl).not.toBeNull()
+    expect(resultEl.textContent).toContain('3')
+    expect(resultEl.textContent).toContain('2')
+    expect(resultEl.textContent).toContain('1')
+    expect(target.querySelector<HTMLTextAreaElement>('[data-testid="announce-message"]')!.value).toBe('')
     void unmount(component)
   })
 
@@ -70,8 +74,10 @@ describe('AdminAnnounceSection', () => {
     flushSync()
     target.querySelector<HTMLButtonElement>('[data-testid="announce-send"]')!.click()
     await drain()
-    expect(target.querySelector('.status-error')).not.toBeNull()
-    expect(target.querySelector('[data-testid="announce-message"]')).not.toBeNull()
+    const errorEl = target.querySelector<HTMLElement>('.status-error')!
+    expect(errorEl).not.toBeNull()
+    expect(errorEl.textContent).toContain('server error')
+    expect(target.querySelector<HTMLTextAreaElement>('[data-testid="announce-message"]')!.value).toBe('broadcast this')
     void unmount(component)
   })
 })
