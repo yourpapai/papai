@@ -12,14 +12,14 @@ import {
   getPlatformInstance,
   insertPlatformInstance,
   listActivePlatformInstances,
-  listPlatformInstances,
+  listPlatformInstancesSafe,
   updatePlatformInstance,
 } from '../instances/platform-store.js'
 import {
   deleteTaskInstance,
   getTaskInstance,
   insertTaskInstance,
-  listTaskInstances,
+  listTaskInstancesSafe,
   updateTaskInstance,
 } from '../instances/task-store.js'
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
@@ -55,6 +55,11 @@ const defaultDeps: InstanceApiDeps = {
 }
 
 const INSTANCE_ROUTE_MASK = '********'
+
+const instanceListResponse = (instances: readonly unknown[], unreadable: readonly unknown[]): Response => {
+  if (unreadable.length === 0) return jsonResponse(instances)
+  return jsonResponse({ instances, unreadable })
+}
 
 const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
   const descriptor = listPlatformProviderTypes().find((candidate) => candidate.type === type)
@@ -125,25 +130,37 @@ const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Re
   return instance === null ? textResponse('Not found', 404) : jsonResponse(maskedPlatformInstance(instance))
 }
 
-const handlePlatformInstances = async (req: Request, url: URL, deps: InstanceApiDeps): Promise<Response | null> => {
+const handlePlatformCreate = async (req: Request): Promise<Response> => {
+  const body = await parseBody(req, platformInstanceSchema)
+  if (body instanceof Response) return body
+  if (getPlatformInstance(body.id) !== null) return instanceExistsError(body.id)
+  const configError = validatePlatformInstanceConfig(body.type, body.config)
+  if (configError !== null) return configError
+  const conflict = insertOrConflict(body.id, () => {
+    insertPlatformInstance({ ...body, status: 'active' })
+  })
+  if (conflict !== null) return conflict
+  const instance = getPlatformInstance(body.id)
+  return jsonResponse(instance === null ? null : maskedPlatformInstance(instance), { status: 201 })
+}
+
+const handlePlatformInstances = (
+  req: Request,
+  url: URL,
+  deps: InstanceApiDeps,
+): Response | Promise<Response | null> | null => {
   const parts = splitPath(url)
 
   if (url.pathname === '/api/platform-instances' && req.method === 'GET') {
-    return jsonResponse(listPlatformInstances().map((instance) => maskedPlatformInstance(instance)))
+    const result = listPlatformInstancesSafe()
+    return instanceListResponse(
+      result.instances.map((instance) => maskedPlatformInstance(instance)),
+      result.failures,
+    )
   }
 
   if (url.pathname === '/api/platform-instances' && req.method === 'POST') {
-    const body = await parseBody(req, platformInstanceSchema)
-    if (body instanceof Response) return body
-    if (getPlatformInstance(body.id) !== null) return instanceExistsError(body.id)
-    const configError = validatePlatformInstanceConfig(body.type, body.config)
-    if (configError !== null) return configError
-    const conflict = insertOrConflict(body.id, () => {
-      insertPlatformInstance({ ...body, status: 'active' })
-    })
-    if (conflict !== null) return conflict
-    const instance = getPlatformInstance(body.id)
-    return jsonResponse(instance === null ? null : maskedPlatformInstance(instance), { status: 201 })
+    return handlePlatformCreate(req)
   }
 
   if (url.pathname === '/api/platform-instances/apply' && req.method === 'POST') {
@@ -194,7 +211,11 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
   const parts = splitPath(url)
 
   if (url.pathname === '/api/task-instances' && req.method === 'GET') {
-    return jsonResponse(listTaskInstances().map((instance) => taskInstanceView(instance)))
+    const result = listTaskInstancesSafe()
+    return instanceListResponse(
+      result.instances.map((instance) => taskInstanceView(instance)),
+      result.failures,
+    )
   }
 
   if (url.pathname === '/api/task-instances' && req.method === 'POST') {

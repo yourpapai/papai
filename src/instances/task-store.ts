@@ -9,7 +9,14 @@ import { getDrizzleDb } from '../db/drizzle.js'
 import { taskInstances } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { decryptInstanceConfig, encryptInstanceConfig } from './encryption.js'
-import type { InstanceConfig, InstanceStatus, TaskInstance, TaskInstanceType } from './types.js'
+import type {
+  InstanceConfig,
+  InstanceDecodeFailure,
+  InstanceDecodeResult,
+  InstanceStatus,
+  TaskInstance,
+  TaskInstanceType,
+} from './types.js'
 
 const log = logger.child({ scope: 'instances:task-store' })
 
@@ -41,6 +48,27 @@ const rowToInstance = (row: typeof taskInstances.$inferSelect): TaskInstance => 
   createdAt: row.createdAt,
 })
 
+const decodeFailure = (row: typeof taskInstances.$inferSelect, error: unknown): InstanceDecodeFailure => ({
+  table: 'task_instances',
+  id: row.id,
+  type: row.type,
+  error: error instanceof Error ? error.message : String(error),
+})
+
+const rowsToInstancesSafe = (
+  rows: readonly (typeof taskInstances.$inferSelect)[],
+): InstanceDecodeResult<TaskInstance> =>
+  rows.reduce<InstanceDecodeResult<TaskInstance>>(
+    (result, row) => {
+      try {
+        return { ...result, instances: [...result.instances, rowToInstance(row)] }
+      } catch (error) {
+        return { ...result, failures: [...result.failures, decodeFailure(row, error)] }
+      }
+    },
+    { instances: [], failures: [] },
+  )
+
 export const insertTaskInstance = (input: InsertTaskInstanceInput): void => {
   getDrizzleDb()
     .insert(taskInstances)
@@ -62,6 +90,11 @@ export const getTaskInstance = (id: string): TaskInstance | null => {
 export const listTaskInstances = (): TaskInstance[] => {
   const rows = getDrizzleDb().select().from(taskInstances).all()
   return rows.map((row) => rowToInstance(row))
+}
+
+export const listTaskInstancesSafe = (): InstanceDecodeResult<TaskInstance> => {
+  const rows = getDrizzleDb().select().from(taskInstances).all()
+  return rowsToInstancesSafe(rows)
 }
 
 export const updateTaskInstance = (id: string, patch: UpdateTaskInstanceInput): void => {

@@ -9,7 +9,14 @@ import { getDrizzleDb } from '../db/drizzle.js'
 import { platformInstances } from '../db/schema.js'
 import { logger } from '../logger.js'
 import { decryptInstanceConfig, encryptInstanceConfig } from './encryption.js'
-import type { InstanceConfig, InstanceStatus, PlatformInstance, PlatformInstanceType } from './types.js'
+import type {
+  InstanceConfig,
+  InstanceDecodeFailure,
+  InstanceDecodeResult,
+  InstanceStatus,
+  PlatformInstance,
+  PlatformInstanceType,
+} from './types.js'
 
 const log = logger.child({ scope: 'instances:platform-store' })
 
@@ -48,6 +55,27 @@ const rowToInstance = (row: typeof platformInstances.$inferSelect): PlatformInst
   createdAt: row.createdAt,
 })
 
+const decodeFailure = (row: typeof platformInstances.$inferSelect, error: unknown): InstanceDecodeFailure => ({
+  table: 'platform_instances',
+  id: row.id,
+  type: row.type,
+  error: error instanceof Error ? error.message : String(error),
+})
+
+const rowsToInstancesSafe = (
+  rows: readonly (typeof platformInstances.$inferSelect)[],
+): InstanceDecodeResult<PlatformInstance> =>
+  rows.reduce<InstanceDecodeResult<PlatformInstance>>(
+    (result, row) => {
+      try {
+        return { ...result, instances: [...result.instances, rowToInstance(row)] }
+      } catch (error) {
+        return { ...result, failures: [...result.failures, decodeFailure(row, error)] }
+      }
+    },
+    { instances: [], failures: [] },
+  )
+
 export const insertPlatformInstance = (input: InsertPlatformInstanceInput): void => {
   getDrizzleDb()
     .insert(platformInstances)
@@ -71,8 +99,21 @@ export const listPlatformInstances = (): PlatformInstance[] => {
   return rows.map((row) => rowToInstance(row))
 }
 
+export const listPlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstance> => {
+  const rows = getDrizzleDb().select().from(platformInstances).all()
+  return rowsToInstancesSafe(rows)
+}
+
 export const listActivePlatformInstances = (): PlatformInstance[] =>
   listPlatformInstances().filter((instance) => instance.status === 'active')
+
+export const listActivePlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstance> => {
+  const result = listPlatformInstancesSafe()
+  return {
+    instances: result.instances.filter((instance) => instance.status === 'active'),
+    failures: result.failures,
+  }
+}
 
 export const updatePlatformInstance = (id: string, patch: UpdatePlatformInstanceInput): void => {
   const set: Partial<typeof platformInstances.$inferInsert> = {}

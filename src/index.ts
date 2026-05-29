@@ -16,7 +16,7 @@ import { closeMigrationDbInstance, initDb } from './db/index.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from './debug/chat-router-runtime.js'
 import { startPollers, stopPollers } from './deferred-prompts/poller.js'
 import { bootstrapInstancesFromEnv } from './instances/bootstrap.js'
-import { listActivePlatformInstances } from './instances/platform-store.js'
+import { listActivePlatformInstancesSafe } from './instances/platform-store.js'
 import { listTaskInstances } from './instances/task-store.js'
 import { logger } from './logger.js'
 import { initializeMessageCache } from './message-cache/index.js'
@@ -74,9 +74,12 @@ initializeMessageCache()
 
 const adminUserId = process.env['ADMIN_USER_ID']!
 
-const activePlatformInstances = listActivePlatformInstances()
+const activePlatformResult = listActivePlatformInstancesSafe()
+for (const failure of activePlatformResult.failures) {
+  log.warn(failure, 'Skipping unreadable active platform instance during startup')
+}
 const chatProvider = new ChatRouter((id, type, config) => createChatProviderFromConfig(id, type, config))
-for (const instance of activePlatformInstances) {
+for (const instance of activePlatformResult.instances) {
   try {
     chatProvider.addInstance(instance.id, instance.type, instance.config)
   } catch (error) {
@@ -122,7 +125,7 @@ try {
   const compatibilityInstances = collectStartupCompatibilityInstances(
     chatProvider,
     listTaskInstances(),
-    activePlatformInstances,
+    activePlatformResult.instances,
   )
   pluginRegistry.evaluateCompatibilityAcrossInstances(compatibilityInstances)
 } catch (error) {
@@ -143,7 +146,7 @@ await chatProvider.start()
 
 void registerCommandMenuIfSupported(chatProvider, adminUserId)
 
-const [firstActivePlatformInstance] = activePlatformInstances
+const [firstActivePlatformInstance] = activePlatformResult.instances
 const announcementPlatformInstanceId =
   firstActivePlatformInstance === undefined ? undefined : firstActivePlatformInstance.id
 if (announcementPlatformInstanceId === undefined) {

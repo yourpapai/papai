@@ -28,6 +28,18 @@ export interface TaskInstance {
   createdAt: string
 }
 
+export type InstanceDecodeFailure = Readonly<{
+  table: 'platform_instances' | 'task_instances'
+  id: string
+  type: string
+  error: string
+}>
+
+export type InstanceDecodeResult<T> = Readonly<{
+  instances: T[]
+  failures: InstanceDecodeFailure[]
+}>
+
 export interface ContextSettings {
   contextId: string
   taskInstanceId: string

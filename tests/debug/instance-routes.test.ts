@@ -180,6 +180,21 @@ describe('instance API routes', () => {
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'token')).toBe('********')
   })
 
+  test('GET /api/platform-instances returns readable rows plus unreadable diagnostics', async () => {
+    insertPlatformInstance({ id: 'good', type: 'telegram', config: { token: 'secret' }, status: 'active' })
+    getTestDb()
+      .$client.query(`INSERT INTO platform_instances (id, type, config, status) VALUES (?, ?, ?, ?)`)
+      .run('bad', 'telegram', 'not-base64', 'active')
+
+    const res = expectResponse(await route('/api/platform-instances'))
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      instances: [{ id: 'good', type: 'telegram', config: { token: '********' }, status: 'active' }],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram' }],
+    })
+  })
+
   test('POST /api/platform-instances maps duplicate insert failures to 409', async () => {
     insertPlatformInstance({ id: 'telegram-main', type: 'telegram', config: { token: 'secret' }, status: 'active' })
 
@@ -829,6 +844,21 @@ describe('instance API routes', () => {
     const row = assertObject(assertArray(await readJson(res))[0])
     expect(pick(row, 'referencingContextIds')).toEqual(['ctx-1', 'ctx-2'])
     expect(pick(row, 'referencingContextCount')).toBe(2)
+  })
+
+  test('GET /api/task-instances returns readable rows plus unreadable diagnostics', async () => {
+    insertTaskInstance({ id: 'good', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
+    getTestDb()
+      .$client.query(`INSERT INTO task_instances (id, type, config, status) VALUES (?, ?, ?, ?)`)
+      .run('bad', 'kaneo', 'not-base64', 'active')
+
+    const res = expectResponse(await route('/api/task-instances'))
+
+    expect(res.status).toBe(200)
+    expect(await readJson(res)).toMatchObject({
+      instances: [{ id: 'good', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' }],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo' }],
+    })
   })
 
   test('creates and lists task instances with descriptor-driven masking', async () => {
