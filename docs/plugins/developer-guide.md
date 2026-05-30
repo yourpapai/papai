@@ -220,6 +220,91 @@ bun check:full
 bun security
 ```
 
+## Provider Plugins (worked example: Kaneo)
+
+A plugin may contribute one task provider type by declaring `contributes.taskProviderTypes` in its manifest. The Kaneo plugin at `plugins/task-provider-kaneo/` is the canonical first-party example.
+
+### Manifest shape
+
+Provider plugin manifests split config into two schemas:
+
+- **`providerConfigSchema`** — instance-scoped fields stored in `task_instances.config` (e.g. `baseUrl`, `internalUrl`). Validated by `validateConfig` at instance creation.
+- **`providerContextConfigSchema`** — context-scoped fields stored per-user in `user_config` under the `plugin:<id>:provider:<fieldKey>` namespace (e.g. `plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`). Not available at instance-config validation time.
+
+Keys are **camelCase** and there is no `storageKey` property. Set `providerAllowedHosts: []` when the plugin uses the instance `baseUrl` dynamically rather than a fixed allowlist.
+
+Abbreviated manifest for reference:
+
+```json
+{
+  "id": "task-provider-kaneo",
+  "permissions": ["provider.task", "identity"],
+  "contributes": { "taskProviderTypes": ["kaneo"] },
+  "providerCapabilities": ["comments.create", "labels.list", "projects.list"],
+  "providerConfigSchema": [
+    { "key": "baseUrl", "label": "Kaneo URL", "required": true, "sensitive": false, "scope": "instance" },
+    { "key": "internalUrl", "label": "Kaneo Internal URL", "required": false, "sensitive": false, "scope": "instance" }
+  ],
+  "providerContextConfigSchema": [
+    { "key": "credential", "label": "Kaneo API Key", "required": true, "sensitive": true, "scope": "context" },
+    { "key": "workspaceId", "label": "Workspace ID", "required": true, "sensitive": false, "scope": "context" }
+  ],
+  "providerAllowedHosts": [],
+  "providerConfigValidator": "validateConfig"
+}
+```
+
+### Entry-point factory
+
+Import types from the `papai/plugin-types` alias and register via `ctx.registration.registerTaskProviderType`:
+
+```typescript
+import type { PluginContext, TaskProvider } from 'papai/plugin-types'
+import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
+
+const factory: PluginFactory = (): PluginInstance => ({
+  activate(ctx: PluginContext): void {
+    ctx.registration.registerTaskProviderType('kaneo', {
+      factory: (config): TaskProvider => new KaneoProvider(buildConfig(config), config['workspaceId'] ?? ''),
+      validateConfig,
+    })
+  },
+})
+
+export default factory
+```
+
+### `validateConfig` contract
+
+`validateConfig` receives only the **instance-scoped** config (fields from `providerConfigSchema`). Context-scoped fields such as `credential` and `workspaceId` are not available here — they live per-user in `user_config` and are injected at request time. Validate URL shape and required instance fields only; credential validation happens during `/setup`.
+
+```typescript
+export function validateConfig(config: Record<string, string>): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const baseUrl = config['baseUrl']?.trim() ?? ''
+  if (!baseUrl) return Promise.resolve({ ok: false, reason: 'baseUrl is required' })
+  // ... URL shape check ...
+  return Promise.resolve({ ok: true })
+}
+```
+
+### Context config namespace
+
+Context-scoped provider config (fields from `providerContextConfigSchema`) is stored under the namespaced key pattern:
+
+```
+plugin:<plugin-id>:provider:<fieldKey>
+```
+
+For Kaneo: `plugin:task-provider-kaneo:provider:credential` and `plugin:task-provider-kaneo:provider:workspaceId`. Migration `048_namespace_kaneo_config` renamed the legacy flat `kaneo_apikey` and `kaneo_workspace_id` rows to this namespace.
+
+### Operator workflow
+
+1. Create a task instance in `/admin#instances` (fills `providerConfigSchema` fields).
+2. Run `/plugin approve task-provider-kaneo` (DM, super admin) and restart. Until approved, affected contexts won't resolve and `/admin#instances` shows an "unresolved" label; a startup `WARN` lists pending approvals.
+3. Users configure context-scoped fields (`credential`, `workspaceId`) via `/setup`.
+
+See `plugins/task-provider-kaneo/` for the complete source. The YouTrack plugin at `plugins/task-provider-youtrack/` is a second provider-plugin example with a simpler config schema: one instance field (**`baseUrl`**) and one context credential (**`token`**).
+
 ## Example Plugin
 
 See [`docs/plugins/examples/hello-world/`](./examples/hello-world/) for a complete example covering tools, prompt fragments, commands, jobs, and context config metadata.

@@ -3,14 +3,51 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
 import { ChatRouter } from '../../src/chat/router.js'
 import type { ChatCapability, ChatProvider } from '../../src/chat/types.js'
 import type { PlatformInstance, TaskInstance } from '../../src/instances/types.js'
 import type { PluginCompatibilityInstance } from '../../src/plugins/registry.js'
 import { collectStartupCompatibilityInstances } from '../../src/plugins/startup-compatibility.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
+import type { TaskCapability } from '../../src/providers/task-capability.js'
+import { createMockProvider } from '../tools/mock-provider.js'
 import { createMockChat } from '../utils/test-helpers.js'
+
+// Register kaneo and youtrack as contributed for these tests (neither is a builtin).
+// Kaneo has 'comments.read' capability but not 'workItems.list' (that's YouTrack only).
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+beforeAll(() => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set<TaskCapability>(['comments.read']),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [],
+    contextConfigSchema: [],
+    traits: new Set(),
+  })
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set<TaskCapability>(['workItems.list', 'comments.read']),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [],
+    contextConfigSchema: [],
+    traits: new Set(),
+  })
+})
+
+afterAll(() => {
+  unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+})
 
 const platformInstance = (id: string, status: PlatformInstance['status']): PlatformInstance => ({
   id,

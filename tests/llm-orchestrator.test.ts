@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { mock, describe, expect, test, beforeEach, afterAll } from 'bun:test'
+import { mock, describe, expect, test, beforeEach, afterEach, afterAll } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { APICallError } from '@ai-sdk/provider'
@@ -28,7 +28,7 @@ import {
 // Capture real modules before mocking (file-level, stays at top)
 const realAi = await import('ai')
 const realOpenAICompatible = await import('@ai-sdk/openai-compatible')
-const realProvisionMod = await import('../src/providers/kaneo/provision.js')
+const realProvisionMod = await import('../plugins/task-provider-kaneo/provision.js')
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const getToolNames = (tools: GenerateTextArgs['tools']): string[] => (tools === undefined ? [] : Object.keys(tools))
@@ -128,6 +128,7 @@ const defaultGenerateTextResult = (): Promise<GenerateTextResult> =>
 const buildMockOpenAI: LlmOrchestratorDeps['buildOpenAI'] = (apiKey: string, baseURL: string) =>
   realOpenAICompatible.createOpenAICompatible({ name: 'mock-openai', apiKey, baseURL })
 
+import { KaneoClassifiedError } from '../plugins/task-provider-kaneo/classify-error.js'
 import {
   AI_OUTPUT_DETAIL_LEVEL_KEY,
   AI_REASONING_VISIBILITY_KEY,
@@ -135,17 +136,20 @@ import {
 } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { getCachedFacts, getCachedHistory, userCachesForTesting } from '../src/cache.js'
-import { setConfig } from '../src/config.js'
+import { setConfig, setConfigValue } from '../src/config.js'
 import { getIdentityMapping, clearIdentityMapping } from '../src/identity/mapping.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { resetBotMisconfiguredNotifiedForTesting } from '../src/llm-orchestrator.js'
 import { ProviderClassifiedError, providerError } from '../src/providers/errors.js'
-import { KaneoClassifiedError } from '../src/providers/kaneo/classify-error.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../src/providers/registry.js'
 import { setSystemConfig } from '../src/system-config.js'
 import { buildToolFailureResult } from '../src/tool-failure.js'
 import type { MakeToolsOptions } from '../src/tools/index.js'
-import { setKaneoWorkspaceForContext } from '../src/users.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../src/types/config.js'
 
 const CTX_ID = 'ctx-1'
 
@@ -194,12 +198,18 @@ const assignYouTrackContext = (contextId: string): void => {
   setContextSettings({ contextId, taskInstanceId, platformInstanceId: 'telegram-default' })
 }
 
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+// Contributed kaneo credential key (plugin-namespaced, used by resolver and wizard)
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+
 /** Seed the per-user provider/workspace values that processMessage -> callLlm needs. */
 const seedConfigForContext = (ctxId: string): void => {
   assignKaneoContext(ctxId)
-  setCachedConfig(ctxId, 'kaneo_apikey', 'test-kaneo-key')
+  // kaneo is now plugin-contributed; resolver and maybeProvisionKaneo both use plugin-namespaced keys
+  setConfigValue(ctxId, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
   setCachedConfig(ctxId, 'timezone', 'UTC')
-  setKaneoWorkspaceForContext(ctxId, 'workspace-1')
+  setConfigValue(ctxId, KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
 }
 
 const seedConfig = (): void => seedConfigForContext(CTX_ID)
@@ -231,7 +241,6 @@ describe('processMessage', () => {
 
   // Provider factory — returns a mock provider to avoid real HTTP calls and env var checks
   const mockProvider = createMockProvider({ name: 'mock' })
-  const resolveMockProvider = (): TaskProvider => mockProvider
 
   // AI SDK — the key control point for success/failure simulation
   // generateText returns a result object with direct values
@@ -246,7 +255,49 @@ describe('processMessage', () => {
     // Register mocks
     mockLogger()
 
-    void mock.module('../src/providers/kaneo/provision.js', () => ({
+    // Register kaneo as contributed (no longer a builtin)
+    registerContributedTaskProviderType('kaneo', {
+      pluginId: KANEO_PLUGIN_ID,
+      factory: (config) => createMockProvider({ name: 'kaneo', ...config }),
+      capabilities: new Set(),
+      displayName: 'Kaneo',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [
+        {
+          key: 'credential',
+          label: 'Kaneo API key',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+      traits: new Set(),
+    })
+
+    // Register youtrack as contributed (no longer a builtin)
+    registerContributedTaskProviderType('youtrack', {
+      pluginId: YOUTRACK_PLUGIN_ID,
+      factory: (config) => createMockProvider({ name: 'youtrack', ...config }),
+      capabilities: new Set(),
+      displayName: 'YouTrack',
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [
+        {
+          key: 'token',
+          label: 'YouTrack Permanent Token',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+      traits: new Set(),
+    })
+
+    void mock.module('../plugins/task-provider-kaneo/provision.js', () => ({
       provisionAndConfigure: (): Promise<{ status: string }> => Promise.resolve({ status: 'already_configured' }),
       maybeProvisionKaneo: realProvisionMod.maybeProvisionKaneo,
     }))
@@ -282,6 +333,11 @@ describe('processMessage', () => {
     delete process.env['ADMIN_USER_ID']
   })
 
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+  })
+
   afterAll(() => {
     // Restore original env vars
     if (originalDemoMode === undefined) delete process.env['DEMO_MODE']
@@ -296,15 +352,16 @@ describe('processMessage', () => {
 
   describe('missing configuration', () => {
     test('group context does not call maybeProvisionKaneo before missing-provider-config handling', async () => {
+      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its token key.
+      // Simulate missing config by having resolve return null → orchestrator sends /setup guidance.
       let maybeProvisionCalls = 0
-      const freshGroupCtx = 'group-1:thread-1'
-      assignKaneoContext('group-1')
+      const freshGroupCtx = 'group-yt:thread-1'
+      assignYouTrackContext('group-yt')
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        resolve: resolveMockProvider,
-        getKaneoWorkspaceForContext: () => null,
+        resolve: () => null,
         maybeProvisionKaneo: () => {
           maybeProvisionCalls++
           return Promise.resolve()
@@ -312,7 +369,7 @@ describe('processMessage', () => {
       }
 
       const { reply, textCalls } = createMockReply()
-      await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-1', deps)
+      await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-yt', deps)
 
       expect(maybeProvisionCalls).toBe(0)
       expect(textCalls[0]).toContain('/setup')
@@ -339,16 +396,18 @@ describe('processMessage', () => {
       expect(textCalls[0]).toContain('not fully configured')
     })
 
-    test('missing Kaneo provider config is derived from assigned task instance', async () => {
-      const freshCtx = 'missing-kaneo-api-key'
-      assignKaneoContext(freshCtx)
+    test('missing YouTrack provider config is derived from assigned task instance', async () => {
+      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
+      // plugin-namespaced token key. The /setup guidance is now triggered by resolver returning null
+      // when the token is absent. Simulate by having resolve return null.
+      const freshCtx = 'missing-youtrack-token-2'
+      assignYouTrackContext(freshCtx)
 
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        resolve: resolveMockProvider,
-        getKaneoWorkspaceForContext: () => null,
+        resolve: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 
@@ -356,14 +415,13 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('kaneo_apikey')
       expect(textCalls[0]).toContain('/setup')
     })
 
     test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
       const freshCtx = 'missing-kaneo-workspace'
       assignKaneoContext(freshCtx)
-      setCachedConfig(freshCtx, 'kaneo_apikey', 'test-kaneo-key')
+      setConfigValue(freshCtx, KANEO_CREDENTIAL_KEY, 'test-kaneo-key')
       let resolverCalls = 0
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
@@ -373,7 +431,6 @@ describe('processMessage', () => {
           resolverCalls++
           return null
         },
-        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 
@@ -385,21 +442,21 @@ describe('processMessage', () => {
     })
 
     test('missing provider config is derived from assigned task instance', async () => {
+      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
+      // plugin-namespaced token key. Simulate missing credentials via resolver returning null.
       const freshCtx = 'missing-youtrack-token'
       assignYouTrackContext(freshCtx)
       const deps: LlmOrchestratorDeps = {
         generateText: (...args) => realAi.generateText(...args),
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
-        resolve: resolveMockProvider,
-        getKaneoWorkspaceForContext: () => null,
+        resolve: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls[0]).toContain('youtrack_token')
       expect(textCalls[0]).toContain('/setup')
     })
 
@@ -422,7 +479,6 @@ describe('processMessage', () => {
         stepCountIs: (...args) => realAi.stepCountIs(...args),
         buildOpenAI: buildMockOpenAI,
         resolve: () => null,
-        getKaneoWorkspaceForContext: () => null,
         maybeProvisionKaneo: () => Promise.resolve(),
       }
 

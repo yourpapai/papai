@@ -53,5 +53,5 @@ export interface AdminRecord {
 }
 
 export type BootstrapResult =
-  | { bootstrapped: true; platformInstanceId: string; taskInstanceId: string }
+  | { bootstrapped: true; platformInstanceId: string }
   | { bootstrapped: false; reason: 'no-env' | 'already-bootstrapped' | 'partial-env'; missing?: string[] }

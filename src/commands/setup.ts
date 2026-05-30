@@ -3,21 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { provisionAndConfigure, type ProvisionOutcome } from '../../plugins/task-provider-kaneo/provision.js'
 import { isAuthorizedGroup } from '../authorized-groups.js'
 import { supportsInteractiveButtons, supportsMessageDeletion } from '../chat/capabilities.js'
 import { getNativeContextId, toScopedContextId } from '../chat/scoped-context.js'
 import { resolveSourceChatProvider } from '../chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, CommandHandler, ReplyFn } from '../chat/types.js'
-import { getConfig } from '../config.js'
+import { getConfigValue } from '../config.js'
 import { startGroupSettingsSelection } from '../group-settings/selector.js'
 import { getContextSettings } from '../instances/context-store.js'
 import { getTaskInstance } from '../instances/task-store.js'
 import { isBuiltinTaskType } from '../instances/types.js'
 import type { TaskInstanceType } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { provisionAndConfigure, type ProvisionOutcome } from '../providers/kaneo/provision.js'
 import { startTaskInstanceSelection } from '../setup/task-instance-selection.js'
-import { getKaneoWorkspaceForContext } from '../users.js'
+import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../types/config.js'
 import { createWizard } from '../wizard/engine.js'
 
 const log = logger.child({ scope: 'commands:setup' })
@@ -44,8 +44,7 @@ function isKaneoAutoProvisionEnabled(): boolean {
 
 export interface SetupCommandDeps {
   isAuthorizedGroup: (groupId: string) => boolean
-  getConfig: typeof getConfig
-  getKaneoWorkspaceForContext: typeof getKaneoWorkspaceForContext
+  getConfigValue: (contextId: string, key: string) => string | null
   provisionAndConfigure: typeof provisionAndConfigure
   createWizard: typeof createWizard
   getContextSettings: typeof getContextSettings
@@ -55,8 +54,7 @@ export interface SetupCommandDeps {
 
 const defaultDeps: SetupCommandDeps = {
   isAuthorizedGroup,
-  getConfig,
-  getKaneoWorkspaceForContext,
+  getConfigValue,
   provisionAndConfigure,
   createWizard,
   getContextSettings,
@@ -65,11 +63,11 @@ const defaultDeps: SetupCommandDeps = {
 }
 
 function isFirstTimeKaneoGroupSetup(targetContextId: string, deps: SetupCommandDeps): boolean {
-  if (deps.getConfig(targetContextId, 'kaneo_apikey') === null) {
+  if (deps.getConfigValue(targetContextId, KANEO_PLUGIN_CREDENTIAL_KEY) === null) {
     return true
   }
 
-  return deps.getKaneoWorkspaceForContext(targetContextId) === null
+  return deps.getConfigValue(targetContextId, KANEO_PLUGIN_WORKSPACE_KEY) === null
 }
 
 function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {

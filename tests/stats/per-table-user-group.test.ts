@@ -42,7 +42,10 @@ describe('userBlockForSubject', () => {
         addedBy: 'admin',
       })
       .run()
-    getDrizzleDb().insert(userConfig).values({ userId: 'u1', key: 'kaneo_workspace_id', value: 'ws-1' }).run()
+    getDrizzleDb()
+      .insert(userConfig)
+      .values({ userId: 'u1', key: 'plugin:task-provider-kaneo:provider:workspaceId', value: 'ws-1' })
+      .run()
 
     const result = userBlockForSubject('u1')
 
@@ -76,7 +79,7 @@ describe('userBlockForSubject', () => {
       .run()
     getDrizzleDb()
       .insert(userConfig)
-      .values({ userId: scopedUserId, key: 'kaneo_workspace_id', value: 'ws-scoped' })
+      .values({ userId: scopedUserId, key: 'plugin:task-provider-kaneo:provider:workspaceId', value: 'ws-scoped' })
       .run()
 
     const result = userBlockForSubject(scopedUserId)

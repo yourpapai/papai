@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { setConfig, setConfigValue } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
@@ -18,7 +18,6 @@ import {
 } from '../../src/providers/registry.js'
 import { TaskProviderResolver } from '../../src/providers/resolver.js'
 import type { TaskProviderResolverDeps } from '../../src/providers/resolver.js'
-import { setKaneoWorkspaceForContext } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   mockLogger,
@@ -26,6 +25,62 @@ import {
   seedTestTaskInstance,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+/** Minimal kaneo contributed descriptor for resolver tests that need the kaneo config schema. */
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: (config) => createMockProvider({ name: 'youtrack', ...config }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: (config) => createMockProvider({ name: 'kaneo', ...config }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API Key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+      },
+      {
+        key: 'workspaceId',
+        label: 'Workspace ID',
+        required: true,
+        sensitive: false,
+        scope: 'context',
+      },
+    ],
+    traits: new Set(),
+  })
+}
 
 describe('TaskProviderResolver', () => {
   const created: Array<{ name: string; config: Record<string, string> }> = []
@@ -49,6 +104,11 @@ describe('TaskProviderResolver', () => {
     process.env['INSTANCE_CONFIG_KEY'] = '4'.repeat(64)
     created.length = 0
     unregisterContributedTaskProviderType(resolverPluginId)
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
   })
 
   test('returns null when context has no assignment', async () => {
@@ -97,9 +157,12 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a YouTrack provider from instance baseUrl and per-context token', async () => {
+    // youtrack is now plugin-contributed; register it so the resolver knows its config schema
+    registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-1', 'youtrack_token', 'perm:abc')
+    // youtrack token is sourced via plugin-namespaced key (contributed provider path)
+    setConfigValue('ctx-1', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
     const resolver = makeResolver()
 
     const provider = await resolver.resolve('ctx-1')
@@ -109,6 +172,8 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a Kaneo provider from instance baseUrl, API key, and workspace ID', async () => {
+    // kaneo is plugin-contributed; credential and workspaceId are stored under plugin-namespaced keys
+    registerKaneoContributed()
     insertTaskInstance({
       id: 'kaneo-prod',
       type: 'kaneo',
@@ -116,8 +181,8 @@ describe('TaskProviderResolver', () => {
       status: 'active',
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-1', 'kaneo_apikey', 'kn-key')
-    setKaneoWorkspaceForContext('ctx-1', 'workspace-1')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:credential', 'kn-key')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId', 'workspace-1')
     const resolver = makeResolver()
 
     const provider = await resolver.resolve('ctx-1')
@@ -129,6 +194,8 @@ describe('TaskProviderResolver', () => {
   })
 
   test('builds a Kaneo provider with session cookie credentials', async () => {
+    // kaneo is plugin-contributed; credential and workspaceId are stored under plugin-namespaced keys
+    registerKaneoContributed()
     insertTaskInstance({
       id: 'kaneo-prod',
       type: 'kaneo',
@@ -136,8 +203,8 @@ describe('TaskProviderResolver', () => {
       status: 'active',
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'kaneo-prod', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-1', 'kaneo_apikey', 'better-auth.session_token=abc')
-    setKaneoWorkspaceForContext('ctx-1', 'workspace-1')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:credential', 'better-auth.session_token=abc')
+    setConfigValue('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId', 'workspace-1')
     const resolver = makeResolver()
 
     const provider = await resolver.resolve('ctx-1')
@@ -156,6 +223,8 @@ describe('TaskProviderResolver', () => {
   })
 
   test('returns null when provider credentials are missing', async () => {
+    // youtrack is now plugin-contributed; register it so the resolver knows token is required
+    registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
     const resolver = makeResolver()
@@ -242,12 +311,14 @@ describe('TaskProviderResolver', () => {
   })
 
   test('admin-style task config validation does not require context-scoped fields', async () => {
+    registerYouTrackContributed()
     const failure = await validateTaskInstanceConfigResult('youtrack', { baseUrl: 'https://yt.invalid' })
 
     expect(failure).toBeNull()
   })
 
   test('effective task config validation requires context-scoped fields', async () => {
+    registerYouTrackContributed()
     const { validateEffectiveTaskProviderConfigResult } = await import('../../src/providers/config-validation.js')
 
     const failure = await validateEffectiveTaskProviderConfigResult('youtrack', { baseUrl: 'https://yt.invalid' })
@@ -348,6 +419,56 @@ describe('TaskProviderResolver', () => {
     expect(created).toEqual([
       { name: 'custom-tracker', config: { baseUrl: 'https://custom.invalid', apiToken: 'tok-123' } },
     ])
+  })
+
+  // Task 3.7: kaneo workspaceId now routes through getConfig via the generic plugin-namespaced path.
+  // The getKaneoWorkspace special-case branch has been removed from the resolver.
+  test('resolves kaneo workspaceId via plugin-namespaced getConfig key (not getKaneoWorkspace)', async () => {
+    registerKaneoContributed()
+    // contextConfigSchema lists credential first, then workspaceId — use mockReturnValueOnce in that order
+    const getConfig = mock((_contextId: string, _key: string): string | null => null)
+    // first call: credential
+    getConfig.mockReturnValueOnce('k-abc')
+    // second call: workspaceId
+    getConfig.mockReturnValueOnce('ws-from-config')
+    const capturedProviderConfigs: Array<Record<string, string>> = []
+    const resolver = new TaskProviderResolver({
+      getContextSettings: (): ReturnType<TaskProviderResolverDeps['getContextSettings']> => ({
+        contextId: 'ctx-1',
+        taskInstanceId: 'kaneo-1',
+        platformInstanceId: 'telegram-default',
+      }),
+      getTaskInstance: (): ReturnType<TaskProviderResolverDeps['getTaskInstance']> => ({
+        id: 'kaneo-1',
+        type: 'kaneo',
+        config: { baseUrl: 'https://kaneo.invalid' },
+        status: 'active',
+        createdAt: '2026-05-28T00:00:00.000Z',
+      }),
+      getConfig: getConfig as TaskProviderResolverDeps['getConfig'],
+      createProvider: (
+        type: string,
+        config: Record<string, string>,
+      ): ReturnType<TaskProviderResolverDeps['createProvider']> => {
+        capturedProviderConfigs.push(config)
+        return createMockProvider({ name: type })
+      },
+    })
+
+    const provider = await resolver.resolve('ctx-1')
+
+    // Resolution succeeds
+    expect(provider).not.toBeNull()
+    // getConfig is consulted for the credential field using the plugin-contributed storage key path
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:task-provider-kaneo:provider:credential')
+    // getConfig is also consulted for workspaceId via the plugin-namespaced key (no special-case branch)
+    expect(getConfig).toHaveBeenCalledWith('ctx-1', 'plugin:task-provider-kaneo:provider:workspaceId')
+    // Provider was created with workspaceId sourced from getConfig (not getKaneoWorkspace)
+    expect(capturedProviderConfigs[0]).toEqual({
+      baseUrl: 'https://kaneo.invalid',
+      credential: 'k-abc',
+      workspaceId: 'ws-from-config',
+    })
   })
 
   test('requires plugin provider context credentials before invoking factory', async () => {

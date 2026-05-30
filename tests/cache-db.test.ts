@@ -14,20 +14,9 @@ import {
   syncHistoryToDb,
   syncInstructionToDb,
   syncSummaryToDb,
-  syncWorkspaceToDb,
 } from '../src/cache-db.js'
-import { userCachesForTesting } from '../src/cache.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
-import {
-  conversationHistory,
-  memoryFacts,
-  memorySummary,
-  platformInstances,
-  userConfig,
-  userInstructions,
-  users,
-} from '../src/db/schema.js'
-import { addUser, getKaneoWorkspaceForContext, setKaneoWorkspaceForContext } from '../src/users.js'
+import { conversationHistory, memoryFacts, memorySummary, userConfig, userInstructions } from '../src/db/schema.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
 
 function requireDefined<T>(value: T | undefined): T {
@@ -35,19 +24,10 @@ function requireDefined<T>(value: T | undefined): T {
   return value
 }
 
-const seedPlatform = (id: string): void => {
-  getDrizzleDb()
-    .insert(platformInstances)
-    .values({ id, type: id.startsWith('discord') ? 'discord' : 'telegram', config: '{}', status: 'active' })
-    .onConflictDoNothing()
-    .run()
-}
-
 describe('cache-db', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
-    userCachesForTesting.clear()
   })
 
   describe('syncHistoryToDb', () => {
@@ -206,98 +186,6 @@ describe('cache-db', () => {
         .get()
 
       expect(requireDefined(result).value).toBe('updated_value')
-    })
-  })
-
-  describe('syncWorkspaceToDb', () => {
-    test('does not create a users row when syncing workspace for an unknown context', async () => {
-      const groupId = 'new-group-123'
-      const workspaceId = 'workspace-abc'
-
-      expect(getKaneoWorkspaceForContext(groupId)).toBeNull()
-
-      setKaneoWorkspaceForContext(groupId, workspaceId)
-      expect(getKaneoWorkspaceForContext(groupId)).toBe(workspaceId)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspaceForContext(groupId)).toBe(workspaceId)
-
-      const db = getDrizzleDb()
-      const result = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
-      expect(result).toBeUndefined()
-    })
-
-    test('syncs workspace for an existing scoped user when the user id is unambiguous', async () => {
-      const groupId = 'existing-group-456'
-      const initialWorkspace = 'workspace-initial'
-      const updatedWorkspace = 'workspace-updated'
-      seedPlatform('telegram-default')
-      addUser({ userId: groupId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
-
-      setKaneoWorkspaceForContext(groupId, initialWorkspace)
-      expect(getKaneoWorkspaceForContext(groupId)).toBe(initialWorkspace)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      setKaneoWorkspaceForContext(groupId, updatedWorkspace)
-      expect(getKaneoWorkspaceForContext(groupId)).toBe(updatedWorkspace)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      userCachesForTesting.delete(groupId)
-      expect(getKaneoWorkspaceForContext(groupId)).toBe(updatedWorkspace)
-
-      const db = getDrizzleDb()
-      const userRow = db.select().from(users).where(eq(users.platformUserId, groupId)).get()
-      const configRow = db
-        .select()
-        .from(userConfig)
-        .where(and(eq(userConfig.userId, groupId), eq(userConfig.key, 'kaneo_workspace_id')))
-        .get()
-
-      expect(requireDefined(userRow).kaneoWorkspaceId).toBeNull()
-      expect(requireDefined(configRow).value).toBe(updatedWorkspace)
-    })
-
-    test('does not update workspace when a user id exists on multiple platform instances', async () => {
-      const userId = 'ambiguous-workspace-user'
-      seedPlatform('telegram-default')
-      seedPlatform('discord-default')
-      addUser({ userId, platformInstanceId: 'telegram-default', addedBy: 'admin' })
-      addUser({ userId, platformInstanceId: 'discord-default', addedBy: 'admin' })
-
-      syncWorkspaceToDb(userId, 'workspace-ambiguous')
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const rows = getDrizzleDb().select().from(users).where(eq(users.platformUserId, userId)).all()
-      expect(rows.map((row) => row.kaneoWorkspaceId)).toEqual([null, null])
-    })
-
-    test('directly calls syncWorkspaceToDb for new user without manufacturing a users row', async () => {
-      const userId = 'direct-user-123'
-      const workspaceId = 'workspace-direct'
-
-      syncWorkspaceToDb(userId, workspaceId)
-
-      await new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), 50)
-      })
-
-      const db = getDrizzleDb()
-      const result = db.select().from(users).where(eq(users.platformUserId, userId)).get()
-
-      expect(result).toBeUndefined()
     })
   })
 

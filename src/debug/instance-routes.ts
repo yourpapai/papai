@@ -3,10 +3,8 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { listPlatformProviderTypes } from '../chat/registry.js'
 import { authenticate } from '../dashboard-auth/index.js'
 import { listContextsByPlatformInstance, listContextsByTaskInstance } from '../instances/context-store.js'
-import { maskConfig, providerSensitiveKeys, unknownProviderSensitiveKeys } from '../instances/encryption.js'
 import {
   deletePlatformInstance,
   getPlatformInstance,
@@ -23,9 +21,7 @@ import {
   updateTaskInstance,
 } from '../instances/task-store.js'
 import { clearToolCachesForContexts } from '../instances/tool-cache-invalidation.js'
-import type { InstanceConfig, PlatformInstance, TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
-import { getTaskProviderDescriptor } from '../providers/registry.js'
 import { getRuntimeChatRouter } from './chat-router-runtime.js'
 import { handleAdmins } from './instance-admin-routes.js'
 import { validatePlatformInstanceConfig, validateTaskInstanceRouteConfig } from './instance-config-validation.js'
@@ -43,6 +39,12 @@ import {
   taskInstanceSchema,
   textResponse,
 } from './instance-route-support.js'
+import {
+  instanceListResponse,
+  maskedPlatformInstance,
+  maskedTaskInstance,
+  taskInstanceView,
+} from './instance-route-views.js'
 import { jsonResponse } from './json-response.js'
 import { handlePlatformProviderTypes } from './platform-provider-type-routes.js'
 import { handleTaskProviderTypes } from './task-provider-type-routes.js'
@@ -55,60 +57,17 @@ const defaultDeps: InstanceApiDeps = {
   listPlatformInstancesSafe,
 }
 
-const INSTANCE_ROUTE_MASK = '********'
+const platformReferencingContextIds = (instanceId: string): string[] =>
+  listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
 
-const instanceListResponse = (instances: readonly unknown[], unreadable: readonly unknown[]): Response => {
-  if (unreadable.length === 0) return jsonResponse(instances)
-  return jsonResponse({ instances, unreadable })
-}
-
-const platformInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
-  const descriptor = listPlatformProviderTypes().find((candidate) => candidate.type === type)
-  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
-  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
-}
-
-const maskedPlatformInstance = (instance: PlatformInstance): PlatformInstance => ({
-  ...instance,
-  config: maskConfig(
-    instance.config,
-    platformInstanceSensitiveKeys(instance.type, instance.config),
-    INSTANCE_ROUTE_MASK,
-  ),
-})
-
-// Defense-in-depth: mask a task-instance config key if its provider descriptor declares it
-// instance-scoped sensitive, OR its name looks secret-bearing. The pattern arm covers arbitrary
-// keys operators can now write in-place via PATCH, which the descriptor schema does not constrain.
-const taskInstanceSensitiveKeys = (type: string, config: InstanceConfig): ReadonlySet<string> => {
-  const descriptor = getTaskProviderDescriptor(type)
-  if (descriptor === undefined) return unknownProviderSensitiveKeys(config)
-  return providerSensitiveKeys(config, descriptor.instanceConfigSchema)
-}
-
-const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
-  ...instance,
-  config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config), INSTANCE_ROUTE_MASK),
-})
-
-const taskInstanceView = (
-  instance: TaskInstance,
-): TaskInstance & { readonly referencingContextCount: number; readonly referencingContextIds: readonly string[] } => {
-  const referencingContextIds = listContextsByTaskInstance(instance.id)
-    .map((context) => context.contextId)
-    .toSorted((a, b) => a.localeCompare(b))
-  return {
-    ...maskedTaskInstance(instance),
-    referencingContextCount: referencingContextIds.length,
-    referencingContextIds,
-  }
-}
+const taskReferencingContextIds = (taskInstanceId: string): string[] =>
+  listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
 
 const handlePlatformStatusUpdate = async (req: Request, instanceId: string): Promise<Response> => {
   if (getPlatformInstance(instanceId) === null) return textResponse('Not found', 404)
   const body = await parseBody(req, statusSchema)
   if (body instanceof Response) return body
-  const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
+  const referencingContextIds = platformReferencingContextIds(instanceId)
   updatePlatformInstance(instanceId, { config: undefined, status: body.status })
   clearToolCachesForContexts(referencingContextIds)
   const instance = getPlatformInstance(instanceId)
@@ -124,7 +83,7 @@ const handlePlatformPatch = async (req: Request, instanceId: string): Promise<Re
     const configError = validatePlatformInstanceConfig(existing.type, body.config)
     if (configError !== null) return configError
   }
-  const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
+  const referencingContextIds = platformReferencingContextIds(instanceId)
   updatePlatformInstance(instanceId, { config: body.config, status: body.status })
   clearToolCachesForContexts(referencingContextIds)
   const instance = getPlatformInstance(instanceId)
@@ -185,7 +144,7 @@ const handlePlatformInstances = (
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const instanceId = parts[2]
     if (instanceId === undefined) return textResponse('Not found', 404)
-    const referencingContextIds = listContextsByPlatformInstance(instanceId).map((context) => context.contextId)
+    const referencingContextIds = platformReferencingContextIds(instanceId)
     deletePlatformInstance(instanceId)
     clearToolCachesForContexts(referencingContextIds)
     return new Response(null, { status: 204 })
@@ -234,7 +193,7 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
       const configError = await validateTaskInstanceRouteConfig(existing.type, body.config)
       if (configError !== null) return configError
     }
-    const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
+    const referencingContextIds = taskReferencingContextIds(taskInstanceId)
     updateTaskInstance(taskInstanceId, { config: body.config, status: body.status })
     clearToolCachesForContexts(referencingContextIds)
     const instance = getTaskInstance(taskInstanceId)
@@ -245,7 +204,7 @@ const handleTaskInstances = async (req: Request, url: URL): Promise<Response | n
     if (req.method !== 'DELETE') return textResponse('Method not allowed', 405)
     const taskInstanceId = parts[2]
     if (taskInstanceId === undefined) return textResponse('Not found', 404)
-    const referencingContextIds = listContextsByTaskInstance(taskInstanceId).map((context) => context.contextId)
+    const referencingContextIds = taskReferencingContextIds(taskInstanceId)
     deleteTaskInstance(taskInstanceId)
     clearToolCachesForContexts(referencingContextIds)
     return new Response(null, { status: 204 })
@@ -267,13 +226,15 @@ const routeInstanceApi = (
   return null
 }
 
+const isMutationRequest = (method: string): boolean => method === 'POST' || method === 'PATCH' || method === 'DELETE'
+
 export const handleInstanceApiRouteWithDeps = async (
   req: Request,
   url: URL,
   deps: InstanceApiDeps,
 ): Promise<Response | null> => {
   if (!isInstanceApiPath(url.pathname)) return null
-  if ((req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE') && authenticate(req) === null) {
+  if (isMutationRequest(req.method) && authenticate(req) === null) {
     return textResponse('Unauthorized', 401)
   }
 

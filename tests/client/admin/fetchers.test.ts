@@ -50,6 +50,12 @@ type ExpectedApplyInstancesResult = Readonly<{
     readonly action: 'remove' | 'recreate' | 'start' | 'stop'
     readonly error: string
   }[]
+  unreadable?: readonly {
+    readonly table: 'platform_instances' | 'task_instances'
+    readonly id: string
+    readonly type: string
+    readonly error: string
+  }[]
 }>
 type PlatformStatusInput = Parameters<typeof setPlatformInstanceStatus>[1]
 const adminInstanceViewContract: Expect<Equal<AdminInstanceView, ExpectedAdminInstanceView>> = true
@@ -65,6 +71,7 @@ const applyResult = {
   recreated: [],
   unchanged: [],
   failed: [],
+  unreadable: [],
 } as const
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
@@ -378,6 +385,7 @@ describe('instance API fetchers', () => {
     config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
     status: 'active',
     createdAt: '2026-05-24T00:00:00.000Z',
+    unresolvedReason: null,
   } as const
 
   test('fetchPlatformInstances GETs and validates /api/platform-instances', async () => {

@@ -10,8 +10,8 @@
  * eliminating the overhead of restarting containers for each test file.
  */
 
+import { provisionAndConfigure } from '../../plugins/task-provider-kaneo/provision.js'
 import { logger } from '../../src/logger.js'
-import { provisionAndConfigure } from '../../src/providers/kaneo/provision.js'
 import { startKaneoServer, stopKaneoServer } from './docker-lifecycle.js'
 
 const log = logger.child({ scope: 'e2e:global-setup' })

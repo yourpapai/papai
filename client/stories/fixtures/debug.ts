@@ -16,7 +16,6 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
     factsCount: 3,
     summary: 'User is planning a sprint and asked for task triage.',
     configKeys: ['timezone', 'kaneo_apikey'],
-    workspaceId: 'ws-demo',
     ...overrides,
   }
 }
@@ -87,7 +86,7 @@ export function makeDashboardState(overrides: Partial<DashboardState> = {}): Das
     stats: { startedAt: FIXED_TS, totalMessages: 42, totalLlmCalls: 30, totalToolCalls: 18 },
     sessions: new Map([
       ['tg:1001', makeSession()],
-      ['tg:2', makeSession({ userId: 'tg:2', summary: null, workspaceId: null })],
+      ['tg:2', makeSession({ userId: 'tg:2', summary: null })],
     ]),
     wizards: new Map([['tg:3', makeWizard({ userId: 'tg:3' })]]),
     scheduler: { running: true, tickCount: 12 },

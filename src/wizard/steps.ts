@@ -5,7 +5,7 @@
 
 import { maskSensitiveValue, maskValue } from '../config.js'
 import { getTaskProviderDescriptor } from '../providers/registry.js'
-import { KANEO_WORKSPACE_CONFIG_KEY, type ConfigField } from '../types/config.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY, type ConfigField } from '../types/config.js'
 import { normalizeTimezone } from '../utils/timezone.js'
 import type { WizardStep } from './types.js'
 
@@ -60,7 +60,7 @@ function providerFields(taskProvider: string): ConfigField[] {
         kind: 'provider-context',
       }),
     )
-    .filter((field) => field.storageKey !== KANEO_WORKSPACE_CONFIG_KEY)
+    .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 }
 
 function createStep(field: ConfigField, isOptional?: boolean): WizardStep {

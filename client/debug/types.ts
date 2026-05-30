@@ -12,7 +12,6 @@ export type SessionDetail = {
   factsCount: number
   summary: string | null
   configKeys: string[]
-  workspaceId: string | null
   hasTools?: boolean
   instructionsCount?: number
   facts?: Array<{ identifier: string; title: string; url: string; lastSeen: string }>

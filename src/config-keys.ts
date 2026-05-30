@@ -9,7 +9,7 @@ import { pluginRegistry } from './plugins/registry.js'
 import { getTaskProviderDescriptor } from './providers/registry.js'
 import {
   isAllowedDynamicConfigKey,
-  KANEO_WORKSPACE_CONFIG_KEY,
+  KANEO_PLUGIN_WORKSPACE_KEY,
   type ConfigField,
   type ConfigKey,
 } from './types/config.js'
@@ -93,7 +93,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
         kind: 'provider-context',
       }),
     )
-    .filter((field) => field.storageKey !== KANEO_WORKSPACE_CONFIG_KEY)
+    .filter((field) => field.storageKey !== KANEO_PLUGIN_WORKSPACE_KEY)
 
   return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS]
 }

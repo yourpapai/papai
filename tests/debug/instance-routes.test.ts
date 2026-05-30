@@ -40,6 +40,66 @@ import { addUser, listUsers } from '../../src/users.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+
+/** Register youtrack as a contributed type (it is no longer a builtin). */
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'youtrack_token',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
+/** Register kaneo as a contributed type (it is no longer a builtin). */
+const registerKaneoContributed = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'kaneo' }),
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' },
+      { key: 'internalUrl', label: 'Kaneo Internal URL', required: false, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API Key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+        storageKey: 'kaneo_apikey',
+      },
+      {
+        key: 'workspaceId',
+        label: 'Workspace ID',
+        required: true,
+        sensitive: false,
+        scope: 'context',
+        storageKey: 'kaneo_workspace_id',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
 let authCookieValue: string
 const tempDirs: string[] = []
 const jsonHeaders = (): Record<string, string> => ({
@@ -198,6 +258,8 @@ describe('instance API routes', () => {
     setStoreDb(getTestDb().$client)
     authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
+    registerKaneoContributed()
+    registerYouTrackContributed()
   })
 
   afterEach(async () => {
@@ -205,6 +267,8 @@ describe('instance API routes', () => {
     clearRuntimeChatRouter()
     userCachesForTesting.clear()
     setStoreDb(null)
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
     tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
   })
 
@@ -1179,7 +1243,8 @@ describe('instance API routes', () => {
     expect(pick(assertObject(assertArray(await readJson(res))[0]), 'userId')).toBe('admin-1')
   })
 
-  test('GET /api/task-provider-types returns the built-in catalog', async () => {
+  test('GET /api/task-provider-types returns the catalog (both kaneo and youtrack are plugin-contributed)', async () => {
+    // both kaneo and youtrack are registered in beforeEach as contributed types
     const res = expectResponse(await route('/api/task-provider-types'))
 
     expect(res.status).toBe(200)
@@ -1188,8 +1253,10 @@ describe('instance API routes', () => {
     expect(types).toContain('kaneo')
     expect(types).toContain('youtrack')
     const kaneoEntry = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'kaneo'))
-    expect(pick(kaneoEntry, 'source')).toBe('builtin')
+    expect(pick(kaneoEntry, 'source')).toEqual({ plugin: KANEO_PLUGIN_ID })
     expect(Array.isArray(pick(kaneoEntry, 'capabilities'))).toBe(true)
+    const youtrackEntry = assertObject(body.find((entry) => pick(assertObject(entry), 'type') === 'youtrack'))
+    expect(pick(youtrackEntry, 'source')).toEqual({ plugin: YOUTRACK_PLUGIN_ID })
   })
 
   test('POST /api/task-instances rejects an unknown provider type', async () => {
@@ -1232,6 +1299,18 @@ describe('instance API routes', () => {
 
     const body = assertArray(await readJson(res))
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'publicish')).toBe('********')
+  })
+
+  test('GET /api/task-instances marks rows whose provider plugin is not active', async () => {
+    insertTaskInstance({ id: 'no-plugin-1', type: 'no-such-provider', config: { url: 'x' }, status: 'active' })
+
+    const res = expectResponse(await route('/api/task-instances'))
+
+    const body = assertArray(await readJson(res))
+    const row = assertObject(body.find((entry) => pick(assertObject(entry), 'id') === 'no-plugin-1'))
+    const unresolvedReason = pick(row, 'unresolvedReason')
+    expect(typeof unresolvedReason).toBe('string')
+    expect(String(unresolvedReason)).toContain('not active')
   })
 
   test('rejects a task-instance create when an activated plugin provider validator fails', async () => {
@@ -1337,6 +1416,7 @@ describe('instance API routes', () => {
       capabilities: new Set<never>(),
       displayName: 'Validated Patch',
       instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [],
     })
     insertTaskInstance({
       id: 'validated-patch-1',
@@ -1377,6 +1457,7 @@ describe('instance API routes', () => {
       capabilities: new Set<never>(),
       displayName: 'Validated OK',
       instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [],
     })
     try {
       const res = expectResponse(
@@ -1683,6 +1764,7 @@ describe('instance API routes', () => {
         { key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' },
         { key: 'apiSecret', label: 'Secret', required: true, sensitive: true, scope: 'instance' },
       ],
+      contextConfigSchema: [],
     })
 
     try {

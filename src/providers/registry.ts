@@ -6,10 +6,8 @@
 import type { TaskInstance } from '../instances/types.js'
 import { logger } from '../logger.js'
 import { builtinDescriptorSeeds } from './builtin-descriptors.js'
-import { isKaneoSessionCookie, KaneoProvider, type KaneoConfig } from './kaneo/index.js'
 import type { TaskCapability } from './task-capability.js'
 import type { ProviderConfigField, TaskProvider, TaskProviderTrait } from './types.js'
-import { YouTrackProvider } from './youtrack/index.js'
 
 const log = logger.child({ scope: 'provider:registry' })
 
@@ -21,36 +19,14 @@ export type TaskProviderConfigValidator = (
 
 type TaskProviderConfigValidatorResult = Awaited<ReturnType<TaskProviderConfigValidator>>
 
-const configValue = (config: Record<string, string>, key: string): string => {
-  const value = config[key]
-  if (value === undefined) return ''
-  return value
-}
-
-/** Register the built-in Kaneo provider. */
-const createKaneoProvider: TaskProviderFactory = (config) => {
-  const baseUrl = configValue(config, 'baseUrl')
-  const workspaceId = configValue(config, 'workspaceId')
-  const credential = configValue(config, 'credential')
-
-  const kaneoConfig: KaneoConfig = isKaneoSessionCookie(credential)
-    ? { apiKey: '', baseUrl, sessionCookie: credential }
-    : { apiKey: credential, baseUrl }
-
-  return new KaneoProvider(kaneoConfig, workspaceId)
-}
-
-/** Register the built-in YouTrack provider. */
-const createYouTrackProvider: TaskProviderFactory = (config) => {
-  const baseUrl = configValue(config, 'baseUrl')
-  const token = configValue(config, 'token')
-  return new YouTrackProvider({ baseUrl, token })
-}
-
-const providers = new Map<string, TaskProviderFactory>([
-  ['kaneo', createKaneoProvider],
-  ['youtrack', createYouTrackProvider],
-])
+/**
+ * Built-in provider factory map.
+ *
+ * All task providers (Kaneo, YouTrack) are now plugin-contributed exclusively.
+ * This map is intentionally empty; it is still checked in registerContributedTaskProviderType
+ * to guard against future accidental built-in registrations.
+ */
+const providers = new Map<string, TaskProviderFactory>()
 
 export type ContributedTaskProviderEntry = {
   pluginId: string
@@ -191,7 +167,6 @@ export type TaskProviderTypeDescriptor = {
   capabilities: ReadonlySet<TaskCapability>
   traits: ReadonlySet<TaskProviderTrait>
 }
-
 const normalizeConfigField = (field: ProviderConfigField): ProviderConfigField => ({
   key: field.key,
   label: field.label,

@@ -17,7 +17,7 @@ import {
   userInstructions,
   userConfig,
 } from '../db/schema.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from '../types/config.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../types/config.js'
 import type { IdentityMixStats, StorageFootprint, SurfaceMixStats } from './types.js'
 
 type StorageGlobalOptions = Readonly<{ dbFileSize: () => number }>
@@ -70,7 +70,7 @@ export function identityMixGlobal(): IdentityMixStats {
   const kaneoRow = getDrizzleDb()
     .select({ c: sql<number>`count(*)`.as('c') })
     .from(userConfig)
-    .where(sql`${userConfig.key} = ${KANEO_WORKSPACE_CONFIG_KEY} and ${userConfig.value} != ''`)
+    .where(sql`${userConfig.key} = ${KANEO_PLUGIN_WORKSPACE_KEY} and ${userConfig.value} != ''`)
     .all()
 
   const firstKaneoRow = kaneoRow[0]

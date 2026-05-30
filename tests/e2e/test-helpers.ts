@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
 import { getE2EConfig } from './global-setup.js'
 
 /**

@@ -269,4 +269,103 @@ describe('index.ts startup', () => {
     expect(evaluatedCompatibilityInstances).toBeGreaterThan(0)
     expect(warnedUnreadableTaskMessage(warnCalls)).toBe(true)
   })
+
+  test('startup health warnings do not require strict task-instance listing mocks', async () => {
+    const originalAdminUserId = process.env['ADMIN_USER_ID']
+    process.env['ADMIN_USER_ID'] = 'admin-1'
+    let compatibilityEvaluated = false
+
+    void mock.module('../src/announcements.js', () => ({ announceNewVersion: (): void => {} }))
+    void mock.module('../src/attachments/index.js', () => ({ isS3Configured: (): boolean => false }))
+    void mock.module('../src/attachments/staged-download.js', () => ({
+      createStagedDownloader: (): (() => Promise<null>) => () => Promise.resolve(null),
+    }))
+    void mock.module('../src/bot.js', () => ({ setupBot: (): void => {} }))
+    void mock.module('../src/chat/registry.js', () => ({
+      createChatProviderFromConfig: (): unknown => ({
+        name: 'mock',
+        threadCapabilities: { supportsThreads: false, canCreateThreads: false, threadScope: 'message' },
+        capabilities: new Set(['messages.buttons']),
+        traits: { observedGroupMessages: 'all' },
+        configRequirements: [],
+        registerCommand: (): void => {},
+        onMessage: (): void => {},
+        sendMessage: (): Promise<void> => Promise.resolve(),
+        renderContext: (): unknown => ({ method: 'text', content: 'mock' }),
+        start: (): Promise<void> => Promise.resolve(),
+        stop: (): Promise<void> => Promise.resolve(),
+      }),
+    }))
+    void mock.module('../src/chat/startup.js', () => ({ registerCommandMenuIfSupported: (): void => {} }))
+    void mock.module('../src/chat/telegram/index.js', () => ({ getTelegramFileFetcher: (): undefined => undefined }))
+    void mock.module('../src/chat/mattermost/index.js', () => ({
+      getMattermostFileFetcher: (): undefined => undefined,
+    }))
+    void mock.module('../src/db/index.js', () => ({ initDb: (): void => {}, closeMigrationDbInstance: (): void => {} }))
+    void mock.module('../src/db/drizzle.js', () => ({ closeDrizzleDb: (): void => {} }))
+    void mock.module('../src/debug/chat-router-runtime.js', () => ({
+      setRuntimeChatRouter: (): void => {},
+      clearRuntimeChatRouter: (): void => {},
+    }))
+    void mock.module('../src/deferred-prompts/poller.js', () => ({
+      startPollers: (): void => {},
+      stopPollers: (): void => {},
+    }))
+    void mock.module('../src/instances/bootstrap.js', () => ({
+      bootstrapInstancesFromEnv: (): unknown => ({ bootstrapped: false, reason: 'already-bootstrapped' }),
+    }))
+    void mock.module('../src/instances/platform-store.js', () => ({
+      listActivePlatformInstancesSafe: (): unknown => ({
+        instances: [{ id: 'telegram-a', type: 'telegram', config: { token: 'x' }, status: 'active', createdAt: 'now' }],
+        failures: [],
+      }),
+    }))
+    void mock.module('../src/instances/task-store.js', () => ({
+      listTaskInstancesSafe: (): unknown => ({
+        instances: [],
+        failures: [],
+      }),
+    }))
+    void mock.module('../src/message-cache/index.js', () => ({ initializeMessageCache: (): void => {} }))
+    void mock.module('../src/message-queue/index.js', () => ({
+      flushOnShutdown: (): Promise<void> => Promise.resolve(),
+    }))
+    void mock.module('../src/plugins/discovery.js', () => ({
+      discoverPlugins: (): unknown => ({ plugins: [], errors: [] }),
+    }))
+    void mock.module('../src/plugins/loader.js', () => ({
+      activatePlugins: (): Promise<void> => Promise.resolve(),
+      deactivateAllPlugins: (): Promise<void> => Promise.resolve(),
+      getActivatedPluginIds: (): unknown[] => [],
+    }))
+    void mock.module('../src/plugins/registry.js', () => ({
+      syncRegistryFromDb: (): void => {},
+      pluginRegistry: {
+        evaluateCompatibilityAcrossInstances: (): void => {
+          compatibilityEvaluated = true
+        },
+        getApprovedCompatiblePlugins: (): unknown[] => [],
+      },
+    }))
+    void mock.module('../src/providers/resolver.js', () => ({
+      defaultTaskProviderResolver: { resolve: (): null => null },
+    }))
+    void mock.module('../src/scheduler-instance.js', () => ({
+      scheduler: { startAll: (): void => {}, stopAll: (): void => {} },
+    }))
+    void mock.module('../src/scheduler.js', () => ({ startScheduler: (): void => {}, stopScheduler: (): void => {} }))
+    void mock.module('../src/system-config.js', () => ({
+      seedSystemConfigFromEnv: (): void => {},
+      missingSystemConfigKeys: (): string[] => [],
+    }))
+    void mock.module('../src/usage/index.js', () => ({ initUsageRecorder: (): void => {} }))
+
+    try {
+      await import(`../src/index.ts?startup-health-safe=${Date.now()}`)
+    } finally {
+      restoreAdminUserId(originalAdminUserId)
+    }
+
+    expect(compatibilityEvaluated).toBe(true)
+  })
 })

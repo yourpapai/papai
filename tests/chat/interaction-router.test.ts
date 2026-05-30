@@ -17,7 +17,7 @@ import type { AuthorizationResult, IncomingInteraction, ReplyFn } from '../../sr
 import { serializeCallbackData } from '../../src/config-editor/callback-data.js'
 import { handleEditorCallback, handleEditorMessage, startEditor } from '../../src/config-editor/handlers.js'
 import { createEditorSession, deleteEditorSession, getEditorSession } from '../../src/config-editor/state.js'
-import { getConfig, setConfig } from '../../src/config.js'
+import { getConfig, setConfigValue } from '../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import {
   createGroupSettingsSession,
@@ -29,7 +29,7 @@ import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
-import { setKaneoWorkspaceForContext } from '../../src/users.js'
+import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
 import { createWizardSession } from '../../src/wizard/state.js'
 import { deleteWizardSession } from '../../src/wizard/state.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
@@ -956,8 +956,8 @@ describe('routeInteraction', () => {
     })
     addAuthorizedGroup(scopedGroupId, 'admin-1')
     assignKaneoContext(scopedGroupId)
-    setConfig(scopedGroupId, 'kaneo_apikey', 'test-kaneo-key')
-    setKaneoWorkspaceForContext(scopedGroupId, 'workspace-9')
+    setConfigValue(scopedGroupId, KANEO_PLUGIN_CREDENTIAL_KEY, 'test-kaneo-key')
+    setConfigValue(scopedGroupId, KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-9')
     upsertGroupAdminObservation({
       provider: 'telegram',
       contextId: scopedGroupId,

@@ -39,6 +39,7 @@ export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
   type: z.string(),
   referencingContextIds: z.array(z.string()).optional(),
   referencingContextCount: z.number().optional(),
+  unresolvedReason: z.string().nullable(),
 })
 
 export const TaskInstanceListResponseSchema = z.union([
