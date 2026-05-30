@@ -18,7 +18,12 @@ export type DispatchGroupSelectorDeps = {
 }
 
 const defaultDeps: DispatchGroupSelectorDeps = {
-  renderConfigForTarget: (_reply, _targetContextId, _interactiveButtons) => Promise.resolve(),
+  renderConfigForTarget: (_reply, _targetContextId, _interactiveButtons) => {
+    // In-chat config rendering was retired (Task 2.1). The group-settings selector
+    // dispatch path that reached this is removed across Phase 2/3; a throwing stub
+    // ensures any stale-session invocation fails loudly instead of silently dropping the reply.
+    throw new Error('In-chat config rendering is retired; use the settings web UI via /config')
+  },
   startSetupForTarget,
 }
 

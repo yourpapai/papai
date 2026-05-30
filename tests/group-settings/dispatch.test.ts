@@ -145,4 +145,15 @@ describe('dispatchGroupSelectorResult', () => {
     expect(reply.text).not.toHaveBeenCalled()
     expect(reply.buttons).not.toHaveBeenCalled()
   })
+
+  test('default renderConfigForTarget throws when config continuation is dispatched without deps override', async () => {
+    const result: GroupSettingsSelectorResult = {
+      handled: true,
+      continueWith: { command: 'config', targetContextId: SCOPED_CTX_1 },
+    }
+    const reply = makeReply()
+    await expect(dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source')).rejects.toThrow(
+      'In-chat config rendering is retired; use the settings web UI via /config',
+    )
+  })
 })
