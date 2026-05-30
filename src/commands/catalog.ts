@@ -50,7 +50,7 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
   },
   {
     name: 'config',
-    description: 'View or edit current configuration',
+    description: 'Open your settings in the web UI',
     registration: 'registerConfigCommand',
     telegram: {
       publishInDmUser: true,
