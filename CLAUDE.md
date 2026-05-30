@@ -10,7 +10,7 @@ Notable current behaviors:
 
 - Telegram and Mattermost group contexts are thread-aware via thread-scoped storage context IDs; Discord group contexts are not thread-scoped today
 - chat startup runs through `ChatRouter`, which manages DB-backed platform instances and tags incoming messages/interactions with `platformInstanceId`
-- `/setup` and `/config` are DM-driven and can target either personal settings or a managed group
+- `/config` is the settings launcher: in DM it issues a single-use link to the settings web UI; `SETTINGS_PUBLIC_BASE_URL` must be set for this to function — all configuration (personal, group, admin, plugins, identity, instances, system LLM, announce) happens in that web UI
 - the bot supports incoming files, file-to-task relay, identity mapping, memo search, recurring tasks, deferred prompts, and public web fetching
 - an optional local debug server serves separate `client/debug/` and `client/admin/` clients for live observability and operator/admin workflows
 
@@ -174,9 +174,10 @@ Optional but important runtime flags include:
 - `LOG_LEVEL`
 - `DEMO_MODE`
 - `KANEO_INTERNAL_URL` for internal bot-to-Kaneo traffic
-- `SETTINGS_PUBLIC_BASE_URL` — external base URL (e.g. `https://bot.example.com`)
+- `SETTINGS_PUBLIC_BASE_URL` — **required** external base URL (e.g. `https://bot.example.com`)
   used to build single-use settings links and scope the `Secure` settings
-  session cookie. When unset, `/config` falls back to the legacy in-chat flow.
+  session cookie. When unset, `/config` replies asking the admin to configure
+  this variable; there is no fallback in-chat configuration flow.
 
 When `DEBUG_SERVER=true`, the dashboard requires a session cookie minted via the bot. DM `/dashboard` to receive a one-time sign-in link (TTL 5 min). Sessions last `DASHBOARD_SESSION_TTL_SECONDS` (default 8h). See `docs/deployment/dashboard-access.md` for recommended deployment patterns.
 
@@ -219,7 +220,7 @@ aggregate-shaped data only:
 
 Any leak of content from these routes is a release-blocking defect.
 
-The remaining credentials live in the per-user config store and are managed through `/setup` and `/config`, not through a `/set` command.
+The remaining credentials live in the per-user config store and are managed through the settings web UI (reached via `/config`), not through a `/set` command.
 
 ### File Attachments (S3-compatible Object Storage)
 
@@ -235,10 +236,10 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 | `S3_PREFIX`            | No       | Optional key prefix inside the bucket                                 |
 | `S3_FORCE_PATH_STYLE`  | No       | Set to `true` for MinIO                                               |
 
-Common runtime config keys (per-user, set via `/setup` or `/config`):
+Common runtime config keys (per-user, managed through the settings web UI):
 
 - `timezone`
-- `mcp_endpoints` — JSON array of external MCP server endpoints (`{ id, url (https only), label?, headers?, enabled, toolFilter? }`) whose tools are merged into the context's tool set. Registered as a preference key in `src/config-keys.ts`; editable as a free-text value through `/config`.
+- `mcp_endpoints` — JSON array of external MCP server endpoints (`{ id, url (https only), label?, headers?, enabled, toolFilter? }`) whose tools are merged into the context's tool set. Registered as a preference key in `src/config-keys.ts`; editable in the settings web UI.
 
 LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`,
 `embedding_model`) are admin-owned and live in `system_config`, not in
@@ -256,7 +257,6 @@ User (Telegram/Mattermost/Discord)
   -> ChatRouter
   -> source ChatProvider instance
   -> bot.ts
-     -> group-settings selector / config editor / setup wizard interception
      -> message queue + reply-context enrichment + file relay
      -> llm-orchestrator.ts
         -> await makeTools(provider, { storageContextId, chatUserId, mode, contextType })
@@ -269,17 +269,17 @@ Optional: debug server + debug/admin clients
 ### Main Modules
 
 - `src/index.ts` — startup, env validation, DB initialization, instance bootstrap, chat router startup, scheduler/poller start, optional debug server start
-- `src/bot.ts` — command registration, auth checks, interception flow, queueing, interaction routing
+- `src/bot.ts` — command registration, auth checks, queueing, interaction routing; non-command text goes straight to the LLM queue with no message interception
 - `src/chat/types.ts` — `ChatProvider`, `ReplyFn`, `IncomingMessage`, `IncomingInteraction`, context-rendering types
 - `src/chat/registry.ts` — chat provider registry (`telegram`, `mattermost`, `discord`)
 - `src/chat/router.ts` — `ChatRouter` runtime fan-out over active platform instances; tags incoming messages/interactions with `platformInstanceId` and routes proactive sends back to the source instance
 - `src/chat/startup.ts` — command-menu registration when supported by provider capabilities
-- `src/chat/interaction-router.ts` — config-editor, group-selector, and wizard callback routing
+- `src/chat/interaction-router.ts` — interaction entry point retained as a safe sink; all config-flow callback routes (`gsel:`/`cfg:`/`wizard_`/`plg:`/`tgl:`) were retired with the move to the settings web UI; the router now only authorizes the actor and otherwise matches nothing
 - `src/config.ts` — per-user config store
 - `src/conversation.ts` / `src/history.ts` / `src/memory.ts` — history, summary, and fact management
 - `src/attachments/` — durable attachment workspace: ingest, S3 blob store, metadata, manifest, and resolver
 - `src/message-queue/` — message coalescing and orderly orchestrator dispatch
-- `src/group-settings/` — DM selection of personal vs group settings target
+- `src/group-settings/` — personal vs group settings target resolution, used by the settings web UI
 - `src/identity/` — chat-to-provider identity mapping and “me” resolution
 - `src/tools/` — context-aware, capability-gated tool assembly and tool wrappers
 - `src/providers/` — Kaneo and YouTrack normalized provider implementations
@@ -287,7 +287,7 @@ Optional: debug server + debug/admin clients
 - `src/debug/`, `client/debug/`, and `client/admin/` — optional debug server plus split `/debug` and `/admin` UIs. `/debug` is the engineer-facing live observability surface. `/admin` is the operator-facing configuration and durable-records surface. Billing at `/admin#billing` reads from `src/debug/billing.ts` and decorates subjects with `resolveSubjectDisplayNames` in `src/debug/subject-display-name.ts` (DM names from `users.username`, group names from `known_group_contexts.displayName` with `:threadId` suffix stripped). The credentials form lives in the System section at `/admin#system`; `src/debug/admin-llm.ts` serves `GET`/`POST /admin/llm`, writes through `setSystemConfig()`, and masks `llm_apikey` values server-side. The Instances section at `/admin#instances` is backed by `src/debug/instance-routes.ts` and manages platform instances, task instances, and admin assignments.
 - `src/usage/` — LLM and tool-call usage recorders + read helpers. Subscribes to the in-process event bus and writes one row per LLM turn into `llm_usage_events` (Phase 2) and one row per tool execution into `tool_call_events` (Phase 4). `event_id` on both tables is a deterministic SHA-256 hash so the recorder is safe to move to a queue/retry path later. Both tables carry inert outbox columns (`forwarded_at`, `forward_attempts`, `forward_error`) for a future metering-vendor forwarder.
 - `src/stats/` — anonymous DB-wide statistics: per-subject and global aggregate queries fed straight from SQLite via Drizzle. The orchestrator (`src/stats/index.ts`) exposes `getSubjectStats()` and `getGlobalStats()`, caches the global view for 60s, and is consumed by the admin Stats surface at `/admin#stats` through `/stats/*`. These routes require an active dashboard session. All free-form, high-cardinality identifiers (rrule patterns, web-fetch hostnames) are keyed-hashed using the `stats_anonymity_salt` row in `system_config`; see the anonymity contract under "Required Environment Variables".
-- `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. The `/plugin` admin command (DM, bot-admin only) manages discovery, approval, rejection, and per-context enable/disable. See `docs/plugins/developer-guide.md`.
+- `src/plugins/` — trusted local plugin system. Discovers plugin packages under `plugins/<plugin-id>/`, validates `plugin.json` against a Zod manifest schema, persists admin approval and per-context opt-in to SQLite (migration `039_plugins`), and activates approved plugins on startup through a frozen `PluginContext` facade. Plugins contribute tools, prompt fragments, commands, and scheduled jobs via `ctx.registration.*`; eligible contributions are merged into the live tool set, system prompt, command registry, and scheduler per context. Plugin management (discovery, approval, rejection, per-context enable/disable) is done in the settings web UI admin area. See `docs/plugins/developer-guide.md`.
 - `src/instances/` — DB-backed platform and task instance data model: AES-256-GCM encryption helper (`encryption.ts`), per-table CRUD stores (`platform-store.ts`, `task-store.ts`, `context-store.ts`, `admin-store.ts`), and one-shot env→DB bootstrap (`bootstrap.ts`). After migration `040_platform_instances`, the DB is the source of truth for chat/task provider instance configuration; env vars are only consulted when the instance tables are empty. `INSTANCE_CONFIG_KEY` controls the at-rest encryption key. Runtime task-provider construction goes through `TaskProviderResolver`, and chat startup goes through `ChatRouter`.
 - `src/mcp/` — Model Context Protocol adapter. Connects to external MCP servers and exposes their tools to the LLM as Vercel AI SDK tools. Two sources: per-context user endpoints from the `mcp_endpoints` config key (`user-endpoints.ts`) and plugin-declared servers from a manifest's `mcp` field (`plugin-endpoints.ts`). `McpConnectionPool`/`mcpPool` (`client-pool.ts`) pools connections with retry and idle eviction; `convertMcpToolsToToolSet()` (`tool-adapter.ts`) wraps remote tools. `makeTools()` merges these tools and swallows all MCP failures so a dead server never breaks the pipeline. Only `streamable-http` is runtime-supported; `stdio` is schema-reserved. See `src/mcp/CLAUDE.md`.
 - `src/settings/` — settings web UI access model: one-time auth-code issuance
@@ -309,7 +309,7 @@ Optional: debug server + debug/admin clients
   `roster-plugins-routes.ts`; shared guard in `admin-guard.ts`). Every handler
   authenticates the settings session, verifies the `X-Settings-CSRF` header on
   writes, and resolves a validated `contextId` through `requireScope` before
-  delegating to the same stores the chat `/config` flow and the
+  delegating to the same stores the settings web UI and the
   `DEBUG_TOKEN`-gated `/api/*` + `/admin/*` handlers use. Admin routes are thin
   wrappers (no settings cookie ever satisfies a `DEBUG_TOKEN` route). Admin
   plugin-config view is deferred.
@@ -328,9 +328,9 @@ Trusted, repository-local first-party plugins only — no sandbox, no marketplac
 ### Lifecycle
 
 1. **Discover** — startup scans `plugins/`, hashes manifest + entry point content, and records each plugin in `plugin_admin_state` with state `discovered`.
-2. **Approve** — bot admin runs `/plugin approve <id>` (DM-only). Approval is keyed to the manifest hash; any change to manifest or entry source clears approval and reverts the plugin to `discovered`.
+2. **Approve** — bot admin approves the plugin in the settings web UI admin area. Approval is keyed to the manifest hash; any change to manifest or entry source clears approval and reverts the plugin to `discovered`.
 3. **Activate** — on next startup, approved plugins are imported with a per-plugin activation timeout (`activationTimeoutMs`, 100–10000ms, default 5000) and bounded `p-limit` concurrency. Activation failures are isolated; `plugin_runtime_events` records `activated`/`deactivated`/`error` rows.
-4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group `contextId` via `/plugin enable <id> [context-id]`, the `plg:` inline buttons in `/config`, or `defaultEnabled: true` in the manifest. Per-context state lives in `plugin_context_state`.
+4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group `contextId` via the settings web UI admin area or `defaultEnabled: true` in the manifest. Per-context state lives in `plugin_context_state`.
 5. **Eligibility** — `getPluginContextEligibility(pluginId, contextId)` returns `inactive`, `disabled`, `config_missing`, `capability_missing`, or `eligible`. Missing required `configRequirements` or missing capabilities on the context's assigned platform/task instance is per-context only; it hides the plugin's tools and prompt fragments for that context without breaking activation globally.
 
 ### Storage
@@ -342,7 +342,7 @@ Migration `039_plugins` creates four SQLite tables:
 | `plugin_admin_state`    | Per-plugin admin approval, state, approving admin, approved/last-seen manifest hash, compatibility note. |
 | `plugin_context_state`  | Per-(plugin, context) enable flag.                                                                       |
 | `plugin_kv`             | Per-(plugin, context, key) string KV, gated by the `storage` permission.                                 |
-| `plugin_runtime_events` | Recent runtime events (activation, deactivation, error) for diagnostics in `/plugin info`.               |
+| `plugin_runtime_events` | Recent runtime events (activation, deactivation, error) for diagnostics in the settings web UI.          |
 
 Runtime state values (`active`, `incompatible`, `config_missing`, `error`) are recomputed in memory; only approval-related state is persisted.
 
@@ -371,9 +371,9 @@ Plugins never receive a raw `TaskProvider`, `ChatProvider`, DB handle, or `proce
 
 `storage`, `scheduler`, `commands`, `chat.send`, `tasks.read`, `tasks.write`, `provider.task`, `identity`, and `http`. Runtime gating exists for storage, task reads/writes, provider HTTP runtime, contributed task-provider registration, and identity facade exposure. Raw chat sending, raw provider access, raw DB access, and arbitrary unallowlisted network access are not exposed.
 
-### Admin Command
+### Admin Interface
 
-`/plugin` is DM-only and bot-admin-only. Subcommands: `list`, `info <id>`, `approve <id>`, `reject <id>`, `enable <id> [context-id]`, `disable <id> [context-id]`. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly.
+The `/plugin` chat command has been retired. Plugin management (discover, approve, reject, per-context enable/disable) is now done entirely in the settings web UI admin area. Approve/reject take effect on next startup; enable/disable take effect on the next tool/prompt assembly. The plugin runtime (`src/plugins/**`) and the admin plugin management UI still exist; only the chat command is gone.
 
 ## Available Tools
 
@@ -420,7 +420,7 @@ tools. Preferences are an opt-out denylist (default: all enabled) stored as JSON
 reserved `tool_prefs` config key and applied as the final filter in `makeTools()`. The
 system prompt (`src/system-prompt.ts`) is composed from tool-gated fragments so it never
 instructs the agent to use a disabled tool, and appends an "Unavailable tools" line for
-partially-disabled domains. Managed via the "🧰 Tools" section of `/config`.
+partially-disabled domains. Managed via the Tools section of the settings web UI.
 
 ### MCP-Sourced Tools
 
@@ -473,7 +473,7 @@ Detailed conventions live in path-scoped `CLAUDE.md` files:
 | ------------------------- | ---------------------------------------------------------------------- |
 | `src/providers/CLAUDE.md` | normalized provider interface, capabilities, provider-layer rules      |
 | `src/tools/CLAUDE.md`     | tool assembly, execution wrapping, confirmations, context gating       |
-| `src/commands/CLAUDE.md`  | command handler rules and DM/group setup flow                          |
+| `src/commands/CLAUDE.md`  | command handler rules and current command surface                      |
 | `src/chat/CLAUDE.md`      | chat provider interface, capabilities, context rendering, interactions |
 | `src/mcp/CLAUDE.md`       | external MCP server adapter, connection pooling, tool namespacing      |
 | `tests/CLAUDE.md`         | helpers, mocks, mock reset, E2E test guidance                          |

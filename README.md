@@ -40,7 +40,7 @@
 
 Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, or Discord, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
 
-The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal settings remain user-scoped, while DM `/setup` and `/config` can also target shared group settings for groups the user manages. Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
+The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal and group settings are managed in the settings web UI launched via `/config` (requires `SETTINGS_PUBLIC_BASE_URL`). Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
 
 ---
 
@@ -136,13 +136,12 @@ Start the bot:
 bun start
 ```
 
-Then configure runtime settings in chat:
+Then configure runtime settings:
 
-1. DM the bot and run `/setup`
-2. Complete the wizard for personal settings (task provider credentials, timezone)
-3. Use `/config` later to review or edit settings
-
-For groups, run `/setup` or `/config` in DM and choose either personal settings or one of the groups you manage.
+1. Ensure `SETTINGS_PUBLIC_BASE_URL` is set to the bot's public base URL (e.g. `https://bot.example.com`)
+2. DM the bot and run `/config` to receive a single-use link to the settings web UI
+3. Complete personal settings (task provider credentials, timezone) in the web UI
+4. For group settings, open `/config` in DM and select the group context in the web UI
 
 > LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
 
@@ -161,7 +160,6 @@ flowchart TD
     Router --> CP3[Discord Instance]
     User[User<br>Telegram / Mattermost / Discord] -->|Message or interaction| Router
     Router -->|IncomingMessage / IncomingInteraction + platformInstanceId| Bot[bot.ts]
-    Bot -->|intercepts setup/config/group-selector flows| Intercept[Wizard + Config Editor + Group Settings]
     Bot -->|queued prompt + reply context + attachment ids| Queue[Message Queue + Attachment Workspace]
     Queue --> LLM[LLM Orchestrator]
     LLM --> Tools[Capability-gated Tool Registry]
@@ -177,7 +175,7 @@ flowchart TD
 | Path                                               | Responsibility                                                                             |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `src/index.ts`                                     | Entry point, env validation, startup, scheduler and optional debug server wiring           |
-| `src/bot.ts`                                       | Platform-agnostic message handling, interception, queueing, and interaction routing        |
+| `src/bot.ts`                                       | Platform-agnostic message handling, queueing, and interaction routing                      |
 | `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`   |
 | `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                             |
 | `src/tools/`                                       | Context-aware, capability-gated tool assembly                                              |
@@ -186,7 +184,7 @@ flowchart TD
 | `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                      |
 | `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
 | `src/message-queue/`                               | Message coalescing and orderly LLM dispatch                                                |
-| `src/group-settings/`                              | DM-driven selection of personal vs group configuration targets                             |
+| `src/group-settings/`                              | Personal vs group configuration target resolution used by the settings web UI              |
 | `src/web/`                                         | Safe fetch, extraction, distillation, caching, and rate limiting for `web_fetch`           |
 | `src/plugins/`                                     | Trusted local plugin system: discovery, manifest validation, approval, lifecycle, KV       |
 | `src/mcp/`                                         | External MCP server adapter: connection pooling, tool namespacing, user + plugin endpoints |
@@ -330,17 +328,16 @@ Required when the bot needs to receive, persist, or attach files to tasks.
 
 ### Runtime Configuration
 
-Use the bot’s DM-based configuration flow:
+Use the settings web UI to configure the bot. Launch it via `/config` in DM:
 
-| Command    | Description                                                            |
-| ---------- | ---------------------------------------------------------------------- |
-| `/setup`   | Run the guided configuration wizard                                    |
-| `/config`  | View current settings and edit fields interactively where supported    |
-| `/clear`   | Clear conversation history, summary, and facts for the current context |
-| `/context` | View the current LLM context window for this conversation              |
-| `/plugin`  | DM, bot-admin only: discover, approve, reject, and enable plugins      |
+| Command      | Description                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| `/config`    | Issues a single-use link to the settings web UI (requires `SETTINGS_PUBLIC_BASE_URL` to be set) |
+| `/clear`     | Clear conversation history, summary, and facts for the current context                          |
+| `/context`   | View the current LLM context window for this conversation                                       |
+| `/dashboard` | DM, bot-admin only: receive a sign-in link to the operator debug/admin UI                       |
 
-Runtime keys shown by `/setup` and `/config` include:
+Settings managed in the web UI include:
 
 | Key              | Description                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------------ |
@@ -349,9 +346,9 @@ Runtime keys shown by `/setup` and `/config` include:
 | `timezone`       | User timezone for local date/time interpretation                                                 |
 | `mcp_endpoints`  | JSON array of external MCP server endpoints whose tools are merged into the context (HTTPS only) |
 
-LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
+LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through the user settings web UI.
 
-Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates `<provider>-default` instance rows from `CHAT_PROVIDER`, `TASK_PROVIDER`, and provider-specific env vars only when the instance tables are empty. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences remain in `/setup` and `/config`.
+Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates `<provider>-default` instance rows from `CHAT_PROVIDER`, `TASK_PROVIDER`, and provider-specific env vars only when the instance tables are empty. After that, manage instance lifecycle and admin assignment through `/admin#instances` (or the admin section of the settings web UI); per-context credentials and preferences are managed in the settings web UI.
 
 ---
 
@@ -396,14 +393,13 @@ Add the bot to a Telegram group, Mattermost channel, or Discord server/channel.
 Typical flow:
 
 1. Add the bot to the group or channel
-2. A group admin authorizes members with `/group adduser <@username>` or an explicit user ID
-3. Group admins configure group settings from DM using `/setup` or `/config`
-4. Members interact in-group, usually by mention where the platform requires it
+2. A group admin opens the settings web UI via `/config` in DM and authorizes members and configures group settings there
+3. Members interact in-group, usually by mention where the platform requires it
 
 Important behavior:
 
 - Telegram and Mattermost can observe regular group messages; Discord group use is mention-driven.
-- Group configuration is DM-only. `/setup` and `/config` in groups redirect admins to DM.
+- Group configuration is done in the settings web UI (launched via `/config` in DM).
 - Thread contexts are isolated. In Telegram forum topics and Mattermost threads, the bot stores thread-scoped history separately from the main group chat.
 - In thread-scoped group contexts, the bot can use `lookup_group_history` to search the main group discussion when needed.
 
@@ -425,9 +421,9 @@ plugins/
 ### Lifecycle
 
 1. **Discover** — startup scans `plugins/` and records each package in `plugin_admin_state` as `discovered`. The manifest + entry source are hashed for integrity.
-2. **Approve** — bot admin runs `/plugin approve <plugin-id>` in DM. Any subsequent change to the manifest or entry source clears approval and requires re-approval.
+2. **Approve** — bot admin approves the plugin in the settings web UI admin area. Any subsequent change to the manifest or entry source clears approval and requires re-approval.
 3. **Activate** — on the next startup, approved plugins are imported with a per-plugin activation timeout. Failures are isolated and recorded to `plugin_runtime_events`.
-4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group context via `/plugin enable`, the `plg:` buttons in `/config`, or `defaultEnabled: true` in the manifest.
+4. **Enable per context** — once active, a plugin must be enabled for a personal or managed-group context via the settings web UI admin area or `defaultEnabled: true` in the manifest.
 
 ### Contribution Surface
 
