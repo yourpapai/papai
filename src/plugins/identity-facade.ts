@@ -15,6 +15,8 @@ export type PluginIdentityFacade = {
   recordClaim(providerUserId: string, providerLogin: string, displayName?: string): void
 }
 
+export type PluginIdentityLookupFacade = Pick<PluginIdentityFacade, 'lookupForChatUser'>
+
 export interface IdentityFacadeDeps {
   getIdentityMapping: typeof defaultGetIdentityMapping
   setIdentityMapping: typeof defaultSetIdentityMapping
@@ -54,6 +56,27 @@ export function buildIdentityFacade(
         matchMethod: 'manual_nl',
         confidence: 100,
       })
+    },
+  })
+}
+
+export function buildIdentityLookupFacade(
+  providerName: string,
+  deps: IdentityFacadeDeps = defaultDeps,
+): PluginIdentityLookupFacade {
+  return Object.freeze({
+    lookupForChatUser(
+      targetChatUserId: string,
+    ): { providerUserId: string; providerLogin: string; verified: boolean } | null {
+      const mapping = deps.getIdentityMapping(targetChatUserId, providerName)
+      if (mapping === null || mapping.providerUserId === null || mapping.providerUserLogin === null) {
+        return null
+      }
+      return {
+        providerUserId: mapping.providerUserId,
+        providerLogin: mapping.providerUserLogin,
+        verified: mapping.matchMethod === 'auto',
+      }
     },
   })
 }

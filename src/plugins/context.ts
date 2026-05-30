@@ -6,7 +6,7 @@
 import { logger } from '../logger.js'
 import type { TaskProviderFactory } from '../providers/registry.js'
 import type { ProviderConfigField } from '../providers/types.js'
-import { buildIdentityFacade, type PluginIdentityFacade } from './identity-facade.js'
+import { buildIdentityLookupFacade, type PluginIdentityLookupFacade } from './identity-facade.js'
 import { buildPermissions, type PluginPermissionSet } from './permission-set.js'
 import { buildProviderRuntime, type PluginProviderRuntime } from './provider-runtime.js'
 import { buildActivationGuard, buildNamedRegistrationHandlers, type ActivationGuard } from './registration-support.js'
@@ -60,7 +60,7 @@ export type PluginContext = {
   /** Present only when the 'provider.task' or 'http' permission is held. */
   readonly providerRuntime?: PluginProviderRuntime
   /** Present only when 'identity' is held and the plugin declares one task provider type. */
-  readonly identity?: PluginIdentityFacade
+  readonly identity?: PluginIdentityLookupFacade
   readonly adminConfig: PluginAdminConfig
 }
 
@@ -228,7 +228,7 @@ export function buildPluginContext(
   const [declaredProviderType] = declaredTypes
   const identity =
     permissions.has('identity') && declaredTypes.length === 1 && declaredProviderType !== undefined
-      ? buildIdentityFacade(declaredProviderType, contextId)
+      ? buildIdentityLookupFacade(declaredProviderType)
       : undefined
 
   const ctx: PluginContext = Object.freeze({

@@ -424,6 +424,25 @@ describe('buildPluginContext', () => {
       expect(ctx.identity).toBeDefined()
     })
 
+    test('activation identity facade does not expose recordClaim', () => {
+      const manifest = makeManifest({
+        permissions: ['identity', 'provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['kaneo'],
+        },
+      })
+
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+
+      expect(ctx.identity).toBeDefined()
+      expect('recordClaim' in ctx.identity!).toBe(false)
+    })
+
     test('absent without identity permission', () => {
       const { ctx } = buildPluginContext(makeManifest({ permissions: ['storage'] }), 'ctx-1')
       expect(ctx.identity).toBeUndefined()
