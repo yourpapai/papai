@@ -46,8 +46,14 @@ export function requireScope(principal: SettingsPrincipal, request: ScopeRequest
   if (target.kind === 'group') {
     // The reserved system sentinel is never a valid group target.
     if (target.contextId === ADMIN_SYSTEM_CONTEXT_ID) return DENY
+    // A principal may only act on a contextId that is in their manageableGroups.
+    // For bot admins, manageableGroups already includes all authorized groups for the
+    // platform instance (appended by appendAuthorizedFallbackGroups in access.ts), so
+    // the isBotAdmin bypass is redundant for legitimate group management and only serves
+    // to (wrongly) authorize arbitrary non-group contextIds such as another user's
+    // personal config context. Removing it closes that authorization gap.
     const manageable = principal.manageableGroups.some((g) => g.contextId === target.contextId)
-    if (manageable || principal.isBotAdmin) {
+    if (manageable) {
       return { ok: true, contextId: getConfigContextIdFromStorageContextId(target.contextId) }
     }
     return DENY

@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
+import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import {
   authenticate,
   parseJsonBody,
@@ -13,6 +14,7 @@ import {
   resolveContextScope,
   settingsJson,
 } from '../../../src/debug/settings/respond.js'
+import { addAdmin } from '../../../src/instances/admin-store.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession } from './helpers.js'
@@ -98,5 +100,25 @@ describe('settings respond helpers', () => {
     expect(scope.ok).toBe(true)
     assert(scope.ok)
     expect(scope.scope.kind).toBe('personal')
+  })
+
+  test("resolveContextScope: bot admin cannot access another user's personal context via group branch", async () => {
+    // Register bot admin user and victim user on the same platform instance.
+    addUser({ userId: 'admin-u', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
+    addAdmin('admin-u', 'pi-1')
+    addUser({ userId: 'victim-u', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
+
+    const victimPersonalCtx = toScopedContextId({ platformInstanceId: 'pi-1', nativeContextId: 'victim-u' })
+    const session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'admin-u' })
+    const out = authenticate(new Request('https://x', { headers: authHeaders(session) }))
+    expect(out.ok).toBe(true)
+    assert(out.ok)
+
+    // The admin's own personalConfigContextId differs from victimPersonalCtx, so
+    // resolveContextScope will route this into the group branch and must deny it.
+    const scope = resolveContextScope(out.authed.principal, 'read', victimPersonalCtx)
+    expect(scope.ok).toBe(false)
+    assert(!scope.ok)
+    expect(scope.response.status).toBe(403)
   })
 })

@@ -55,12 +55,40 @@ describe('requireScope', () => {
     expect(result).toEqual({ ok: true, contextId: 'group-ctx-1' })
   })
 
-  test('group: allowed for a bot admin even without managing it', () => {
-    const result = requireScope(principal({ isBotAdmin: true }), {
+  test('group: bot admin can manage a group that IS in their manageableGroups', () => {
+    const result = requireScope(principal({ isBotAdmin: true, manageableGroups: [group] }), {
       action: 'write',
       target: { kind: 'group', contextId: 'group-ctx-1' },
     })
     expect(result).toEqual({ ok: true, contextId: 'group-ctx-1' })
+  })
+
+  test('group: bot admin is denied access to a contextId not in their manageableGroups', () => {
+    // Bug: isBotAdmin bypass currently allows this — it must be denied.
+    const result = requireScope(principal({ isBotAdmin: true, manageableGroups: [] }), {
+      action: 'write',
+      target: { kind: 'group', contextId: 'group-ctx-1' },
+    })
+    expect(result).toEqual({ ok: false, status: 403 })
+  })
+
+  test("group: bot admin is denied access to another user's personal config context via the group branch", () => {
+    // A foreign personal config contextId is not in manageableGroups. The bot-admin bypass
+    // must not allow reaching it. This is the core authorization gap being fixed.
+    const foreignPersonalCtx = 'personal-ctx-of-another-user'
+    const result = requireScope(principal({ isBotAdmin: true, manageableGroups: [] }), {
+      action: 'write',
+      target: { kind: 'group', contextId: foreignPersonalCtx },
+    })
+    expect(result).toEqual({ ok: false, status: 403 })
+  })
+
+  test('group: regular user is denied access to a group not in their manageableGroups', () => {
+    const result = requireScope(principal({ isBotAdmin: false, manageableGroups: [] }), {
+      action: 'read',
+      target: { kind: 'group', contextId: 'group-ctx-1' },
+    })
+    expect(result).toEqual({ ok: false, status: 403 })
   })
 
   test('admin: denied for a non-admin', () => {
