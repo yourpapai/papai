@@ -134,7 +134,9 @@ let botMisconfiguredNotified = false
 const replyBotMisconfigured = async (reply: ReplyFn, contextId: string): Promise<void> => {
   const missing = missingSystemConfigKeys()
   log.error({ contextId, missing }, 'system_config is incomplete; bot cannot serve this turn')
-  await reply.text('⚠️ The bot is not fully configured. The administrator has been notified.')
+  await reply.text(
+    '⚠️ The bot is not fully configured. Ask the administrator to run /config and complete setup in the web UI.',
+  )
   if (!botMisconfiguredNotified) {
     botMisconfiguredNotified = true
     log.warn({ missing }, 'admin notification suppressed for subsequent turns in this process')

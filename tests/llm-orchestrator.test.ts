@@ -326,7 +326,7 @@ describe('processMessage', () => {
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
       expect(textCalls[0]).toContain('not fully configured')
-      expect(textCalls[0]).not.toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('bot-misconfigured path does not send typing', async () => {
@@ -337,6 +337,7 @@ describe('processMessage', () => {
 
       expect(typingCalls).toHaveLength(0)
       expect(textCalls[0]).toContain('not fully configured')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('missing Kaneo provider config is derived from assigned task instance', async () => {
