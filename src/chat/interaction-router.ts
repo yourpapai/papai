@@ -3,224 +3,25 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { parseAiOutputCallbackData } from '../ai-output-config-ui.js'
-import { dispatchGroupSelectorResult } from '../group-settings/dispatch.js'
-import { handleGroupSettingsSelectorCallback } from '../group-settings/selector.js'
-import { getMissingGroupTargetMessage } from '../group-settings/target-validation.js'
 import { logger } from '../logger.js'
-import { cancelWizard, getNextPrompt } from '../wizard/engine.js'
-import { validateAndSaveWizardConfig } from '../wizard/save.js'
-import { getWizardSession, hasActiveWizard, resetWizardSession } from '../wizard/state.js'
-import { handleAiOutputConfigInteraction } from './ai-output-config-interaction.js'
-import { defaultHandleConfigInteraction as handleConfigEditorInteraction } from './interaction-router-config.js'
-import { replyButtonsPreferReplace, replyTextPreferReplace } from './interaction-router-replies.js'
-import {
-  getResponseText,
-  getTargetContextId,
-  getValidatedDmCallbackTargetContextId,
-  getWizardCallbackStorageContextId,
-  parseWizardContextId,
-} from './interaction-router-support.js'
-import { handlePluginInteraction } from './plugin-interaction-handler.js'
-import { handleToolToggleInteraction } from './tool-toggle-interaction-handler.js'
 import type { AuthorizationResult, IncomingInteraction, ReplyFn } from './types.js'
 
 const log = logger.child({ scope: 'chat:interaction-router' })
 
-type InteractionRouteHandlers = {
-  handleGroupSettingsInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
-  handleConfigInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
-  handleWizardInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
-  handlePluginInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
-  handleToolToggleInteraction: (interaction: IncomingInteraction, reply: ReplyFn) => Promise<boolean>
-}
-
-export type InteractionRouteDeps = Partial<InteractionRouteHandlers>
-function defaultHandleGroupSettingsInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
-  const result = handleGroupSettingsSelectorCallback(
-    interaction.user.id,
-    interaction.callbackData,
-    interaction.platformInstanceId,
-  )
-  return dispatchGroupSelectorResult(result, reply, interaction.user.id, interaction.platformInstanceId)
-}
-
-async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): Promise<true> {
-  log.warn({ callbackData }, 'Unknown config editor callback data')
-  await replyTextPreferReplace(reply, 'This action is no longer valid. Please start over with /config.')
-  return true
-}
-
-function defaultHandleConfigInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
-  const { callbackData } = interaction
-  if (!callbackData.startsWith('cfg:')) return Promise.resolve(false)
-
-  const aiOutputCallback = parseAiOutputCallbackData(callbackData)
-  if (aiOutputCallback !== null) {
-    return handleAiOutputConfigInteraction(interaction, reply, aiOutputCallback, replyUnknownConfigAction)
-  }
-
-  return handleConfigEditorInteraction(interaction, reply)
-}
-
-async function replyWithWizardButtons(
-  reply: ReplyFn,
-  response: string | undefined,
-  buttons: Array<{ text: string; action: string }> | undefined,
-  targetContextId: string | undefined,
-): Promise<void> {
-  const contextSuffix = targetContextId === undefined ? '' : `@${Buffer.from(targetContextId).toString('base64url')}`
-  if (buttons !== undefined && buttons.length > 0) {
-    const content = getResponseText(response)
-    await replyButtonsPreferReplace(
-      reply,
-      content,
-      buttons.map((button) => ({
-        text: button.text,
-        callbackData: `wizard_${button.action}${contextSuffix}`,
-      })),
-    )
-    return
-  }
-
-  const content = getResponseText(response)
-  await replyTextPreferReplace(reply, content)
-}
-
-async function handleWizardEdit(userId: string, storageContextId: string, reply: ReplyFn): Promise<boolean> {
-  const session = getWizardSession(userId, storageContextId)
-  if (session === null) {
-    await replyTextPreferReplace(reply, 'No active setup session. Type /setup to start.')
-    return true
-  }
-
-  resetWizardSession(userId, storageContextId)
-  await reply.text(`🔧 Editing configuration from the beginning...\n\n${getNextPrompt(userId, storageContextId)}`)
-  return true
-}
-
-async function getDmWizardStorageContextId(
-  interaction: IncomingInteraction,
-  callbackContextId: string | undefined,
-  callbackData: string,
-  reply: ReplyFn,
-): Promise<string | null> {
-  let storageContextId = getTargetContextId(callbackContextId, interaction)
-  if (interaction.contextType !== 'dm' || callbackContextId === undefined) return storageContextId
-
-  const validatedTargetContextId = getValidatedDmCallbackTargetContextId(
-    interaction.user.id,
-    storageContextId,
-    interaction.platformInstanceId,
-  )
-  if (validatedTargetContextId === null) {
-    await replyTextPreferReplace(
-      reply,
-      getMissingGroupTargetMessage(interaction.user.id, storageContextId, interaction.platformInstanceId),
-    )
-    return null
-  }
-  storageContextId = getWizardCallbackStorageContextId(
-    interaction.user.id,
-    storageContextId,
-    validatedTargetContextId,
-    callbackData,
-  )
-  return storageContextId
-}
-
-async function defaultHandleWizardInteraction(interaction: IncomingInteraction, reply: ReplyFn): Promise<boolean> {
-  const { callbackData, user } = interaction
-  if (!callbackData.startsWith('wizard_')) return false
-
-  const userId = user.id
-  const { action, targetContextId: callbackContextId } = parseWizardContextId(callbackData)
-  const storageContextId = await getDmWizardStorageContextId(interaction, callbackContextId, action, reply)
-  if (storageContextId === null) return true
-
-  switch (action) {
-    case 'wizard_confirm': {
-      const result = await validateAndSaveWizardConfig(userId, storageContextId)
-      await replyWithWizardButtons(reply, result.message, result.buttons, storageContextId)
-      return true
-    }
-    case 'wizard_cancel': {
-      if (!hasActiveWizard(userId, storageContextId)) {
-        await replyTextPreferReplace(reply, 'No active setup session. Type /setup to start.')
-        return true
-      }
-      cancelWizard(userId, storageContextId)
-      await reply.text('❌ Wizard cancelled. Type /setup to restart.')
-      return true
-    }
-    case 'wizard_restart': {
-      if (!hasActiveWizard(userId, storageContextId)) {
-        await replyTextPreferReplace(reply, 'No active setup session. Type /setup to start.')
-        return true
-      }
-      cancelWizard(userId, storageContextId)
-      await reply.text('Restarting wizard... Type /setup to begin.')
-      return true
-    }
-    case 'wizard_edit':
-      return handleWizardEdit(userId, storageContextId, reply)
-    default:
-      return false
-  }
-}
-
-const defaultDeps: InteractionRouteHandlers = {
-  handleGroupSettingsInteraction: defaultHandleGroupSettingsInteraction,
-  handleConfigInteraction: defaultHandleConfigInteraction,
-  handleWizardInteraction: defaultHandleWizardInteraction,
-  handlePluginInteraction,
-  handleToolToggleInteraction,
-}
-
-function getRoutedInteraction(interaction: IncomingInteraction, auth: AuthorizationResult): IncomingInteraction {
-  return { ...interaction, storageContextId: auth.storageContextId }
-}
-
+/**
+ * Interactive chat callbacks were retired with the move to the settings web UI.
+ * No callback prefixes are produced anymore; this router authorizes the actor and
+ * otherwise matches nothing. Kept as the single interaction entry point so adapters
+ * that still emit interaction events have a safe sink.
+ */
 export function routeInteraction(
   interaction: IncomingInteraction,
   reply: ReplyFn,
   auth: AuthorizationResult,
-  ...rest: [] | [InteractionRouteDeps]
 ): Promise<boolean> {
-  const deps = rest[0]
-  let resolvedDeps: InteractionRouteHandlers = defaultDeps
-  if (deps !== undefined) {
-    resolvedDeps = { ...defaultDeps, ...deps }
-  }
   if (!auth.allowed) {
     return reply.text('You are not authorized to use this bot.').then(() => true)
   }
-  const routedInteraction = getRoutedInteraction(interaction, auth)
-  const { callbackData } = routedInteraction
-
-  if (callbackData.startsWith('gsel:')) {
-    return resolvedDeps.handleGroupSettingsInteraction(routedInteraction, reply)
-  }
-
-  if (callbackData.startsWith('cfg:')) {
-    if (callbackData.startsWith('cfg:ai:') && routedInteraction.contextType === 'group' && !auth.isGroupAdmin) {
-      return reply.text('Only group admins can change AI output visibility for this group.').then(() => true)
-    }
-    return resolvedDeps.handleConfigInteraction(routedInteraction, reply)
-  }
-
-  if (callbackData.startsWith('wizard_')) {
-    return resolvedDeps.handleWizardInteraction(routedInteraction, reply)
-  }
-
-  if (callbackData.startsWith('plg:')) {
-    return resolvedDeps.handlePluginInteraction(routedInteraction, reply)
-  }
-
-  if (callbackData.startsWith('tgl:')) {
-    return resolvedDeps.handleToolToggleInteraction(routedInteraction, reply)
-  }
-
-  log.debug({ callbackData }, 'No route matched for interaction callback')
+  log.debug({ callbackData: interaction.callbackData }, 'No route matched for interaction callback')
   return Promise.resolve(false)
 }
