@@ -3,19 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { parseCheckOutput } from './parse-check-output.mjs'
 
 export function formatCheckResult(failures) {
-  const lines = failures.map(({ check, files }) => {
-    if (files.length === 0) {
-      return `- ${check}: issues found (no file paths detected)`
-    }
-    const label = files.length === 1 ? 'file' : 'files'
-    return `- ${check}: ${files.length} ${label} (${files.join(', ')})`
-  })
-
-  return (
-    '`bun check:full` found issues. Fix before stopping:\n\n' +
-    lines.join('\n') +
-    '\n\nRun `bun check:full` for details.'
-  )
+  return failures.map(({ check }) => `- ${check} -> rerun: bun run ${check}`).join('\n')
 }
 
 export function checkFull(ctx) {
