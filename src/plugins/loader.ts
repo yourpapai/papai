@@ -3,8 +3,6 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import pLimit from 'p-limit'
-
 import { logger } from '../logger.js'
 import { getTaskProviderDescriptor, registerContributedTaskProviderType } from '../providers/registry.js'
 import { buildPluginContext, runWithClosedRegistration } from './context.js'
@@ -37,7 +35,6 @@ function buildActivationTimeout(timeoutMs: number): {
 }
 
 const log = logger.child({ scope: 'plugins:loader' })
-const PLUGIN_LIFECYCLE_CONCURRENCY = 1
 const SYSTEM_CONTEXT_ID = '__system__'
 const activationOrder: string[] = []
 const activeInstances = new Map<string, PluginInstance>()
@@ -167,11 +164,17 @@ export async function activatePlugins(plugins: DiscoveredPlugin[]): Promise<void
     return
   }
 
-  const limit = pLimit(PLUGIN_LIFECYCLE_CONCURRENCY)
-  const results = await Promise.all(plugins.map((p) => limit(() => activateOne(p))))
-  const activated = results.filter(Boolean).length
-  const failed = results.length - activated
-  activationOrder.push(...plugins.filter((_, index) => results[index] === true).map((plugin) => plugin.manifest.id))
+  let activated = 0
+  let failed = 0
+
+  await plugins.reduce(
+    (chain, plugin) =>
+      chain.then(async () => {
+        if (await activateOne(plugin)) activated += 1
+        else failed += 1
+      }),
+    Promise.resolve(),
+  )
 
   log.info({ activated, failed, total: plugins.length }, 'Plugin activation complete')
 }

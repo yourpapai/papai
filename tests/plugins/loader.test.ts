@@ -739,6 +739,47 @@ describe('activatePlugins', () => {
     expect(globalThis.papaiDeactivateOrder).toEqual(['second-plugin', 'first-plugin'])
   })
 
+  test('records each activated plugin only once', async () => {
+    const firstEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return { activate() {} }
+      }
+    `)
+    const secondEntry = writeTempPluginModule(`
+      export default function createPlugin() {
+        return { activate() {} }
+      }
+    `)
+    const first = makePlugin('once-a', firstEntry)
+    const second = makePlugin('once-b', secondEntry)
+    approvePlugin(first)
+    approvePlugin(second)
+
+    await activatePlugins([first, second])
+
+    expect(getActivatedPluginIds()).toEqual(['once-a', 'once-b'])
+  })
+
+  test('deactivates each plugin only once even after multiple activations', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export default function createPlugin() {
+        return {
+          activate() {},
+          deactivate() {
+            globalThis.papaiDeactivateOrder = [...(globalThis.papaiDeactivateOrder ?? []), 'single-pass']
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('single-pass', entryPoint)
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+    await deactivateAllPlugins()
+
+    expect(globalThis.papaiDeactivateOrder).toEqual(['single-pass'])
+  })
+
   test('deactivation error still cleans framework-owned contributions', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
