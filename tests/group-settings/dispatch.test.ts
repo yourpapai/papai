@@ -156,4 +156,15 @@ describe('dispatchGroupSelectorResult', () => {
       'In-chat config rendering is retired; use the settings web UI via /config',
     )
   })
+
+  test('default startSetupForTarget throws when setup continuation is dispatched without deps override', async () => {
+    const result: GroupSettingsSelectorResult = {
+      handled: true,
+      continueWith: { command: 'setup', targetContextId: SCOPED_CTX_2 },
+    }
+    const reply = makeReply()
+    await expect(dispatchGroupSelectorResult(result, reply, 'user-1', 'telegram-source')).rejects.toThrow(
+      '/setup is retired; use the settings web UI via /config',
+    )
+  })
 })

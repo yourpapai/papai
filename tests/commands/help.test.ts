@@ -61,13 +61,12 @@ describe('help command', () => {
     expect(capturedText).toContain('/group add <group-id>')
     expect(capturedText).toContain('/group remove <group-id>')
     expect(capturedText).toContain('/groups')
-    expect(capturedText).toContain('/setup')
     expect(capturedText).toContain('/config')
     expect(capturedText).toContain('/clear')
     expect(capturedText).toContain('/context')
   })
 
-  test('DM help explains that /setup and /config can target personal or group settings', async () => {
+  test('DM help shows /config and core commands for non-admin users', async () => {
     const dmMsg = createDmMessage('user1', '/help')
 
     const auth = {
@@ -80,7 +79,7 @@ describe('help command', () => {
     await lastHandler!(dmMsg, mockReply, auth)
 
     expect(capturedText).toContain('/help')
-    expect(capturedText).toContain('/setup — Interactive configuration wizard for personal or group settings')
+    expect(capturedText).not.toContain('/setup')
     expect(capturedText).toContain('/config — View or edit personal settings, or choose a group to configure from DM')
     expect(capturedText).toContain('/clear')
     expect(capturedText).toContain('/context')
@@ -107,6 +106,7 @@ describe('help command', () => {
     // Not shown to regular members
     expect(capturedText).not.toContain('/setup')
     expect(capturedText).not.toContain('Admin commands:')
+    expect(capturedText).not.toContain('/config')
   })
 
   test('Group admin help no longer advertises in-group /setup or /config', async () => {
@@ -123,7 +123,7 @@ describe('help command', () => {
 
     expect(capturedText).toContain('Group settings are configured in DM with the bot')
     expect(capturedText).toContain('The group must be authorized before it can use the bot in the group chat.')
-    expect(capturedText).not.toContain('/setup — Interactive configuration wizard')
+    expect(capturedText).not.toContain('/setup')
     expect(capturedText).not.toContain('/config — View group configuration')
     expect(capturedText).toContain('/clear')
     expect(capturedText).toContain('Admin commands:')

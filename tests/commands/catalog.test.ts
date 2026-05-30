@@ -29,7 +29,6 @@ describe('command catalog', () => {
     expect(names).toEqual([
       'help',
       'start',
-      'setup',
       'config',
       'context',
       'clear',
@@ -50,12 +49,6 @@ describe('command catalog', () => {
         publishInGroupAdmin: true,
       },
       start: {
-        publishInDmUser: true,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      setup: {
         publishInDmUser: true,
         publishInDmAdmin: true,
         publishInGroupUser: false,
@@ -126,7 +119,6 @@ describe('command catalog', () => {
     expect(registrations).toEqual({
       help: 'registerHelpCommand',
       start: 'registerStartCommand',
-      setup: 'registerSetupCommand',
       config: 'registerConfigCommand',
       context: 'registerContextCommand',
       clear: 'registerClearCommand',

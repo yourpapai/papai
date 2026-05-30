@@ -11,8 +11,6 @@ import { getPollerSnapshot } from '../../src/deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../../src/message-cache/cache.js'
 import { getPendingWritesCount, getIsFlushScheduled } from '../../src/message-cache/persistence.js'
 import { getSchedulerSnapshot } from '../../src/scheduler.js'
-import { getWizardSnapshots, createWizardSession, deleteWizardSession } from '../../src/wizard/state.js'
-
 describe('message-cache persistence accessors', () => {
   test('getPendingWritesCount returns a number', () => {
     const count = getPendingWritesCount()
@@ -80,41 +78,6 @@ describe('getPollerSnapshot', () => {
     const snap = getPollerSnapshot()
     expect(snap.scheduledRunning).toBe(false)
     expect(snap.alertsRunning).toBe(false)
-  })
-})
-
-describe('getWizardSnapshots', () => {
-  test('returns empty array when no sessions exist', () => {
-    const snaps = getWizardSnapshots('nonexistent-user')
-    expect(snaps).toEqual([])
-  })
-
-  test('returns only sessions for requested userId', () => {
-    createWizardSession({
-      userId: 'admin-1',
-      storageContextId: 'admin-1',
-      totalSteps: 5,
-      taskProvider: 'kaneo',
-    })
-    createWizardSession({
-      userId: 'other-user',
-      storageContextId: 'other-user',
-      totalSteps: 5,
-      taskProvider: 'kaneo',
-    })
-
-    const snaps = getWizardSnapshots('admin-1')
-    expect(snaps).toHaveLength(1)
-    expect(snaps[0]!.userId).toBe('admin-1')
-    expect(snaps[0]!).toHaveProperty('currentStep')
-    expect(snaps[0]!).toHaveProperty('totalSteps')
-    expect(snaps[0]!).toHaveProperty('taskProvider')
-    expect(snaps[0]!).toHaveProperty('skippedSteps')
-    expect(snaps[0]!).toHaveProperty('dataKeys')
-    expect(snaps[0]!).not.toHaveProperty('data')
-
-    deleteWizardSession('admin-1', 'admin-1')
-    deleteWizardSession('other-user', 'other-user')
   })
 })
 

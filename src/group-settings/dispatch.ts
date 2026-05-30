@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import type { ReplyFn } from '../chat/types.js'
-import { startSetupForTarget } from '../commands/setup.js'
 import type { GroupSettingsSelectorResult } from './types.js'
 
 export type DispatchGroupSelectorDeps = {
@@ -24,7 +23,10 @@ const defaultDeps: DispatchGroupSelectorDeps = {
     // ensures any stale-session invocation fails loudly instead of silently dropping the reply.
     throw new Error('In-chat config rendering is retired; use the settings web UI via /config')
   },
-  startSetupForTarget,
+  startSetupForTarget: (_userId, _reply, _targetContextId, _platformInstanceId) => {
+    // /setup command was retired (Task 3.1). Any stale-session invocation fails loudly.
+    throw new Error('/setup is retired; use the settings web UI via /config')
+  },
 }
 
 /**

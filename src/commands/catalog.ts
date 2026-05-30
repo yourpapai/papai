@@ -19,7 +19,6 @@ export type CommandRegistration =
   | 'registerGroupCommand'
   | 'registerHelpCommand'
   | 'registerPluginCommand'
-  | 'registerSetupCommand'
   | 'registerStartCommand'
 
 export type CommandCatalogEntry = {
@@ -45,17 +44,6 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     name: 'start',
     description: 'Show welcome and getting-started guidance',
     registration: 'registerStartCommand',
-    telegram: {
-      publishInDmUser: true,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'setup',
-    description: 'Interactive configuration wizard',
-    registration: 'registerSetupCommand',
     telegram: {
       publishInDmUser: true,
       publishInDmAdmin: true,

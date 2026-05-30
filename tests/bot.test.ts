@@ -44,7 +44,6 @@ import {
   isAuthorized as isAuthorizedScoped,
   removeUser as removeScopedUser,
 } from '../src/users.js'
-import { cancelWizard } from '../src/wizard/index.js'
 import {
   createAuth,
   createDmMessage,
@@ -1091,8 +1090,6 @@ describe('Bot Authorization Gate (setupBot)', () => {
   })
 
   test('replies with authorization hint for unauthorized mentioned group user', async () => {
-    cancelWizard('unknown-group-user', 'group-auth')
-
     const messageHandler = getMessageHandler()
     expect(messageHandler).not.toBeNull()
 
@@ -1108,7 +1105,6 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
   test('replies with member-level hint for unauthorized user in allowlisted mentioned group', async () => {
     addAuthorizedGroupForPlatform('group-auth', ADMIN_ID)
-    cancelWizard('unknown-group-user', 'group-auth')
 
     const messageHandler = getMessageHandler()
     expect(messageHandler).not.toBeNull()

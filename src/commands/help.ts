@@ -13,7 +13,6 @@ const DM_USER_HELP = [
   '',
   'Commands:',
   '/help — Show this message',
-  '/setup — Interactive configuration wizard for personal or group settings',
   '/config — View or edit personal settings, or choose a group to configure from DM',
   '/clear — Clear conversation history and memory',
   '/context — Show current memory context (summary and known entities)',
