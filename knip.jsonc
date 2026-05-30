@@ -60,6 +60,8 @@
     "src/config.ts": ["exports"],
     // resetPluginRegistryForTesting is a test-only seam.
     "src/plugins/registry.ts": ["exports"],
+    // resetContributionCollisionStateForTesting is a test-only seam.
+    "src/plugins/contributions.ts": ["exports"],
     // systemConfigCacheForTesting is a test-only seam.
     "src/system-config.ts": ["exports"],
     // resetStatsSaltCacheForTesting is a test-only seam.

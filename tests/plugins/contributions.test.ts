@@ -15,6 +15,7 @@ import {
   contributionRegistry,
   namespacedJobName,
   namespacedToolName,
+  resetContributionCollisionStateForTesting,
   runPluginScheduledJob,
   sanitizePluginId,
   type PluginScheduledJobDeps,
@@ -171,11 +172,13 @@ describe('PluginContributionRegistry', () => {
     mockLogger()
     await setupTestDb()
     resetPluginRegistryForTesting()
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
   })
 
   afterEach(() => {
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
     contributionRegistry.deregister('other-plugin')
     resetPluginRegistryForTesting()
@@ -682,6 +685,7 @@ describe('PluginContributionRegistry', () => {
             name: 'sync',
             intervalMs: 60_000,
             execute: async (runtime): Promise<void> => {
+              expect(runtime.pluginId).toBe('test-plugin')
               await runtime.taskProvider!.searchTasks({ query: 'jobs-can-read' })
             },
           },
@@ -860,10 +864,12 @@ describe('buildPluginToolSet', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
   afterEach(() => {
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
@@ -1106,10 +1112,12 @@ describe('buildPluginPromptSection', () => {
   beforeEach(async () => {
     mockLogger()
     await setupTestDb()
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
   afterEach(() => {
+    resetContributionCollisionStateForTesting()
     contributionRegistry.deregister('test-plugin')
   })
 
