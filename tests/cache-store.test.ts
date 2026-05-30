@@ -14,7 +14,6 @@ const makeMinimalUserCache = (): UserCache => ({
   facts: [],
   instructions: null,
   config: new Map(),
-  workspaceId: null,
   tools: undefined,
   lastAccessed: Date.now(),
 })

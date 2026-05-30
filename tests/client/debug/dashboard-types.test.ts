@@ -97,7 +97,6 @@ describe('dashboard-types', () => {
       factsCount: 2,
       summary: 'Test summary',
       configKeys: ['key1'],
-      workspaceId: 'ws-123',
       facts: [
         {
           identifier: 'fact-1',

@@ -8,7 +8,6 @@ import { and, eq, sql } from 'drizzle-orm'
 import { getDrizzleDb } from './db/drizzle.js'
 import { conversationHistory, memorySummary, memoryFacts, userConfig, userInstructions } from './db/schema.js'
 import { logger } from './logger.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from './types/config.js'
 
 const log = logger.child({ scope: 'cache-db' })
 
@@ -117,27 +116,6 @@ export function syncConfigToDb(userId: string, key: string, value: string): void
       log.error(
         { userId, key, error: error instanceof Error ? error.message : String(error) },
         'Failed to sync config to DB',
-      )
-    }
-  })
-}
-
-export function syncWorkspaceToDb(userId: string, workspaceId: string): void {
-  queueMicrotask(() => {
-    try {
-      const db = getDrizzleDb()
-      db.insert(userConfig)
-        .values({ userId, key: KANEO_WORKSPACE_CONFIG_KEY, value: workspaceId })
-        .onConflictDoUpdate({
-          target: [userConfig.userId, userConfig.key],
-          set: { value: workspaceId },
-        })
-        .run()
-      log.debug({ userId }, 'Workspace synced to config')
-    } catch (error) {
-      log.error(
-        { userId, error: error instanceof Error ? error.message : String(error) },
-        'Failed to sync workspace to DB',
       )
     }
   })

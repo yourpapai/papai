@@ -15,7 +15,6 @@ import type {
   Label,
   ListTasksParams,
   Project,
-  ProviderConfigRequirement,
   RelationType,
   SavedQuery,
   SetTaskVisibilityParams,
@@ -44,7 +43,6 @@ export type {
   ListTasksParams,
   Project,
   ProviderConfigField,
-  ProviderConfigRequirement,
   RelationType,
   SavedQuery,
   Sprint,
@@ -85,8 +83,6 @@ export interface TaskProvider {
   readonly capabilities: ReadonlySet<TaskCapability>
   /** Behavioral traits this provider supports beyond generic capabilities. */
   readonly traits: ReadonlySet<TaskProviderTrait>
-  /** Config keys this provider needs (shown in /config, validated by /setup). */
-  readonly configRequirements: readonly ProviderConfigRequirement[]
   /** Which user identifier this provider prefers for assignee/watcher operations. */
   readonly preferredUserIdentifier: 'id' | 'login'
 

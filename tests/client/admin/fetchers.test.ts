@@ -361,6 +361,7 @@ describe('instance API fetchers', () => {
     config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
     status: 'active',
     createdAt: '2026-05-24T00:00:00.000Z',
+    unresolvedReason: null,
   } as const
 
   test('fetchPlatformInstances GETs and validates /api/platform-instances', async () => {

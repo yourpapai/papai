@@ -115,10 +115,10 @@ describe('identityMixGlobal', () => {
     getDrizzleDb()
       .insert(userConfig)
       .values([
-        { userId: 'u1', key: 'kaneo_workspace_id', value: 'w1' },
-        { userId: 'u2', key: 'kaneo_workspace_id', value: 'w2' },
+        { userId: 'u1', key: 'plugin:task-provider-kaneo:provider:workspaceId', value: 'w1' },
+        { userId: 'u2', key: 'plugin:task-provider-kaneo:provider:workspaceId', value: 'w2' },
         { userId: 'u3', key: 'timezone', value: 'UTC' },
-        { userId: 'u4', key: 'kaneo_workspace_id', value: '' },
+        { userId: 'u4', key: 'plugin:task-provider-kaneo:provider:workspaceId', value: '' },
       ])
       .run()
 

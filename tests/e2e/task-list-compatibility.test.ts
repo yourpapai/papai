@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 
 import { z } from 'zod'
 
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createTask } from '../../src/providers/kaneo/create-task.js'
-import { listTasks } from '../../src/providers/kaneo/list-tasks.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
+import { listTasks } from '../../plugins/task-provider-kaneo/list-tasks.js'
 import { getCurrentKaneoUserId, kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 

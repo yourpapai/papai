@@ -3,13 +3,13 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ChatRouter } from '../../src/chat/router.js'
-import { setConfig, setPluginConfig } from '../../src/config.js'
+import { setConfigValue, setPluginConfig } from '../../src/config.js'
 import { clearRuntimeChatRouter, setRuntimeChatRouter } from '../../src/debug/chat-router-runtime.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
@@ -17,10 +17,15 @@ import { discoverPlugins } from '../../src/plugins/discovery.js'
 import { activatePlugins, deactivateAllPlugins } from '../../src/plugins/loader.js'
 import { pluginRegistry, setPluginEnabledForContext } from '../../src/plugins/registry.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../src/providers/registry.js'
 import { defaultTaskProviderResolver } from '../../src/providers/resolver.js'
+import type { TaskCapability } from '../../src/providers/task-capability.js'
 import { buildSystemPrompt } from '../../src/system-prompt.js'
 import { makeTools } from '../../src/tools/index.js'
-import { setKaneoWorkspace } from '../../src/users.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
   createMockChat,
@@ -29,6 +34,58 @@ import {
   seedCommonTestPlatformInstances,
   setupTestDb,
 } from '../utils/test-helpers.js'
+
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+const KANEO_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+const YOUTRACK_TOKEN_KEY = 'plugin:task-provider-youtrack:provider:token'
+
+// Register kaneo and youtrack as contributed (neither is a builtin) for the full test suite lifetime.
+beforeAll(() => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: (config) => createMockProvider({ name: 'kaneo', ...config }),
+    // kaneo has capabilities but NOT workItems.list (that's YouTrack-specific)
+    capabilities: new Set<TaskCapability>(['comments.read', 'comments.create']),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [{ key: 'baseUrl', label: 'Kaneo URL', required: true, sensitive: false, scope: 'instance' }],
+    contextConfigSchema: [
+      {
+        key: 'credential',
+        label: 'Kaneo API key',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+      },
+    ],
+    traits: new Set(),
+  })
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: (config) => createMockProvider({ name: 'youtrack', ...config }),
+    // youtrack has workItems.list which triggers requiredTaskCapabilities checks
+    capabilities: new Set<TaskCapability>(['workItems.list', 'comments.read']),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+      },
+    ],
+    traits: new Set(),
+  })
+})
+
+afterAll(() => {
+  unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
+  unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+})
 
 type TempPluginOptions = {
   readonly pluginId: string
@@ -303,9 +360,11 @@ describe('plugin lifecycle integration', () => {
       taskInstanceId: 'youtrack-a',
       platformInstanceId: 'telegram-default',
     })
-    setConfig('ctx-kaneo', 'kaneo_apikey', 'kn-key')
-    setKaneoWorkspace('ctx-kaneo', 'workspace-1')
-    setConfig('ctx-youtrack', 'youtrack_token', 'perm:abc')
+    // kaneo is now plugin-contributed; resolver looks for plugin-namespaced credential key
+    setConfigValue('ctx-kaneo', KANEO_CREDENTIAL_KEY, 'kn-key')
+    setConfigValue('ctx-kaneo', KANEO_PLUGIN_WORKSPACE_KEY, 'workspace-1')
+    // youtrack is now plugin-contributed; resolver looks for plugin-namespaced token key
+    setConfigValue('ctx-youtrack', YOUTRACK_TOKEN_KEY, 'perm:abc')
     const router = new ChatRouter(() => createMockChat())
     router.addInstance('telegram-default', 'telegram', { token: 'x' })
     setRuntimeChatRouter(router)

@@ -9,9 +9,9 @@ import { z } from 'zod'
 
 setDefaultTimeout(10000)
 
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createTask } from '../../src/providers/kaneo/create-task.js'
-import { searchTasks } from '../../src/providers/kaneo/search-tasks.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
+import { searchTasks } from '../../plugins/task-provider-kaneo/search-tasks.js'
 import { getCurrentKaneoUserId, kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 

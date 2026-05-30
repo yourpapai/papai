@@ -26,6 +26,7 @@ const taskInstance = {
   createdAt: '2026-05-24T00:01:00.000Z',
   referencingContextIds: ['ctx-1', 'ctx-2'],
   referencingContextCount: 2,
+  unresolvedReason: null,
 } as const
 
 const stoppedPlatformInstance = {
@@ -175,6 +176,17 @@ const installFetch = (calls: RecordedCall[]): void => {
     const body = typeof init.body === 'string' ? init.body : null
     calls.push({ method, url, body })
     return Promise.resolve(responseFor(method, url))
+  })
+}
+
+const installFetchOverridingTaskInstances = (taskInstancesPayload: unknown): void => {
+  const overrides: Record<string, Response> = {
+    'GET /api/task-instances': jsonResponse(taskInstancesPayload),
+  }
+  setMockFetch((url, init) => {
+    const method = methodFor(init)
+    const key = `${method} ${url}`
+    return Promise.resolve(overrides[key] ?? responseFor(method, url))
   })
 }
 
@@ -585,6 +597,31 @@ describe('InstancesSection', () => {
     await drain()
 
     expect(target.querySelector('[data-testid="task-config-apiKey"]')).not.toBeNull()
+
+    void unmount(component)
+  })
+
+  test('shows unresolved label when a task instance has no active provider plugin', async () => {
+    const unresolvedReason = "Provider plugin for type 'no-plugin' is not active. Run /plugin approve."
+    const unresolvedTaskInstance = {
+      id: 'no-plugin-main',
+      type: 'no-plugin',
+      status: 'active',
+      config: {},
+      createdAt: '2026-05-29T00:00:00.000Z',
+      referencingContextIds: [],
+      referencingContextCount: 0,
+      unresolvedReason,
+    }
+
+    installFetchOverridingTaskInstances([unresolvedTaskInstance])
+
+    const { target, component } = render()
+    await drain()
+
+    const label = target.querySelector('[data-testid="task-instance-unresolved-no-plugin-main"]')
+    expect(label).not.toBeNull()
+    expect(label?.textContent).toContain('not active')
 
     void unmount(component)
   })

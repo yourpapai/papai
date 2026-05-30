@@ -85,9 +85,18 @@ const maskedTaskInstance = (instance: TaskInstance): TaskInstance => ({
   config: maskConfig(instance.config, taskInstanceSensitiveKeys(instance.type, instance.config), INSTANCE_ROUTE_MASK),
 })
 
+const unresolvedReasonFor = (instance: TaskInstance): string | null =>
+  getTaskProviderDescriptor(instance.type) === undefined
+    ? `Provider plugin for type '${instance.type}' is not active. Run /plugin approve.`
+    : null
+
 const taskInstanceView = (
   instance: TaskInstance,
-): TaskInstance & { readonly referencingContextCount: number; readonly referencingContextIds: readonly string[] } => {
+): TaskInstance & {
+  readonly referencingContextCount: number
+  readonly referencingContextIds: readonly string[]
+  readonly unresolvedReason: string | null
+} => {
   const referencingContextIds = listContextsByTaskInstance(instance.id)
     .map((context) => context.contextId)
     .toSorted((a, b) => a.localeCompare(b))
@@ -95,6 +104,7 @@ const taskInstanceView = (
     ...maskedTaskInstance(instance),
     referencingContextCount: referencingContextIds.length,
     referencingContextIds,
+    unresolvedReason: unresolvedReasonFor(instance),
   }
 }
 

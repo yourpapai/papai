@@ -5,7 +5,7 @@
 
 import { and, eq, inArray, or } from 'drizzle-orm'
 
-import { evictUser, getCachedWorkspace, setCachedWorkspace } from './cache.js'
+import { evictUser } from './cache.js'
 import { toScopedContextId } from './chat/scoped-context.js'
 import { getDrizzleDb } from './db/drizzle.js'
 import { recurringTaskOccurrences, recurringTasks, users } from './db/schema.js'
@@ -171,15 +171,4 @@ export function isDemoUser(userId: string, platformInstanceId: string): boolean 
     .where(and(eq(users.platformUserId, userId), eq(users.platformInstanceId, platformInstanceId)))
     .get()
   return row === undefined ? false : row.addedBy === 'demo-auto'
-}
-
-export function getKaneoWorkspace(userId: string): string | null {
-  log.debug('getKaneoWorkspace called')
-  return getCachedWorkspace(userId)
-}
-
-export function setKaneoWorkspace(userId: string, workspaceId: string): void {
-  log.debug('setKaneoWorkspace called')
-  setCachedWorkspace(userId, workspaceId)
-  log.info('Kaneo workspace ID stored (DB sync in background)')
 }

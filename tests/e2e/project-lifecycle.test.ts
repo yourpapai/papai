@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 setDefaultTimeout(10000)
 
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { listColumns } from '../../src/providers/kaneo/list-columns.js'
-import { listProjects } from '../../src/providers/kaneo/list-projects.js'
-import { updateProject } from '../../src/providers/kaneo/update-project.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { listColumns } from '../../plugins/task-provider-kaneo/list-columns.js'
+import { listProjects } from '../../plugins/task-provider-kaneo/list-projects.js'
+import { updateProject } from '../../plugins/task-provider-kaneo/update-project.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 
 describe('E2E: Project Lifecycle', () => {

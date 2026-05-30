@@ -11,13 +11,34 @@
  * before any test files run.
  */
 
+import { initDb } from '../../src/db/index.js'
+import { discoverPlugins } from '../../src/plugins/discovery.js'
+import { activatePlugins } from '../../src/plugins/loader.js'
+import { pluginRegistry, syncRegistryFromDb } from '../../src/plugins/registry.js'
 import { getE2EConfig, cleanupE2E } from './global-setup.js'
 
 // Track if we've already set up hooks to avoid duplicates
 let hooksRegistered = false
 
+async function approveAndActivateProviderPlugins(): Promise<void> {
+  initDb()
+  const { plugins: discoveredPlugins } = discoverPlugins('plugins')
+  syncRegistryFromDb(discoveredPlugins)
+  const kaneoEntry = pluginRegistry.getEntry('task-provider-kaneo')
+  if (kaneoEntry !== undefined) {
+    pluginRegistry.approve('task-provider-kaneo', 'e2e-setup', kaneoEntry.discoveredPlugin.manifestHash)
+  }
+  const youtrackEntry = pluginRegistry.getEntry('task-provider-youtrack')
+  if (youtrackEntry !== undefined) {
+    pluginRegistry.approve('task-provider-youtrack', 'e2e-setup', youtrackEntry.discoveredPlugin.manifestHash)
+  }
+  const toActivate = pluginRegistry.getApprovedCompatiblePlugins()
+  await activatePlugins(toActivate)
+}
+
 async function globalSetup(): Promise<void> {
   console.log('🚀 Starting global E2E setup...')
+  await approveAndActivateProviderPlugins()
   await getE2EConfig()
   console.log('✅ Global E2E setup complete')
 }

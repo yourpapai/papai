@@ -93,12 +93,16 @@ describe('/dashboard command', () => {
   })
 
   test('replies with a fallback message when issueClaim fails', async () => {
-    db.close()
-    setStoreDb(null)
+    // Deterministically force issueClaim to fail by injecting a DB with no dashboard
+    // tables. setStoreDb(null) would make store.ts db() fall back to the global
+    // getDrizzleDb(), whose state depends on test ordering and is not reliably broken.
+    const tablelessDb = new Database(':memory:')
+    setStoreDb(tablelessDb)
     const { reply, textCalls } = createMockReply()
     const msg = createDmMessage('u1')
     const auth = createAuth('u1', { allowed: true, isBotAdmin: true })
     await lastHandler!(msg, reply, auth)
     expect(textCalls.join('\n')).toMatch(/could not issue|try again/iu)
+    tablelessDb.close()
   })
 })

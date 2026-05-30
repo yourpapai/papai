@@ -95,6 +95,7 @@ describe('config-editor back action', () => {
       factory: () => createMockProvider({ name: 'plugin-tracker' }),
       capabilities: new Set(),
       displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
       contextConfigSchema: [{ key: 'token', label: 'Plugin Token', required: true, sensitive: true, scope: 'context' }],
     })
     insertTaskInstance({

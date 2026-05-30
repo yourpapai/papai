@@ -111,7 +111,6 @@ export function createMockProvider(overrides: Partial<TaskProvider> = {}): TaskP
     supportsCustomFields: false,
     capabilities: ALL_CAPABILITIES,
     traits: NO_TRAITS,
-    configRequirements: [],
     preferredUserIdentifier: 'id',
     createTask: mock(() =>
       Promise.resolve({
