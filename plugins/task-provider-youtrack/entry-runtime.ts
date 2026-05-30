@@ -3,7 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-type TaskProviderLike = import('../../src/providers/types.js').TaskProvider
+type TaskProviderLike = {
+  readonly name: string
+}
 type YouTrackProviderModule = typeof import('./provider.js')
 
 const requireModule = import.meta.require

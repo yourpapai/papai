@@ -4,7 +4,7 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, describe, expect, spyOn, test } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, win32 } from 'node:path'
 
@@ -92,6 +92,24 @@ describe('discoverPlugins', () => {
     expect(pluginIds.includes('task-provider-kaneo')).toBe(true)
     expect(pluginIds.includes('task-provider-youtrack')).toBe(true)
     expect(pluginIds.includes('synthetic-web-search')).toBe(true)
+  })
+
+  test('built-in strict entry files do not reference src framework types directly', () => {
+    const repoRoot = process.cwd()
+    const files = [
+      'plugins/task-provider-kaneo/index.ts',
+      'plugins/task-provider-kaneo/entry-runtime.ts',
+      'plugins/task-provider-youtrack/index.ts',
+      'plugins/task-provider-youtrack/entry-runtime.ts',
+      'plugins/synthetic-web-search/index.ts',
+    ]
+
+    for (const relativePath of files) {
+      const source = readFileSync(join(repoRoot, relativePath), 'utf-8')
+      expect(source.includes('src/')).toBe(false)
+      expect(source.includes("import('../../src/")).toBe(false)
+      expect(source.includes('import("../../src/')).toBe(false)
+    }
   })
 
   test('reports invalid plugin.json as discovery error without throwing', () => {

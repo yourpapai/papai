@@ -5,9 +5,45 @@
 
 import { getZod } from './zod-runtime'
 
-type PluginContextLike = import('../../src/plugins/context.js').PluginContext
-type PluginToolRuntimeContextLike = import('../../src/plugins/types.js').PluginToolRuntimeContext
-type PluginFactoryLike = import('../../src/plugins/types.js').PluginFactory
+type PluginToolLike = {
+  name: string
+  description: string
+  inputSchema?: typeof searchInputSchema
+  execute: (
+    input: unknown,
+    runtimeContext: PluginToolRuntimeContextLike,
+    options: { abortSignal?: AbortSignal },
+  ) => Promise<unknown>
+}
+
+type PluginContextLike = {
+  log: {
+    info(data: Record<string, unknown>, message: string): void
+  }
+  providerRuntime?: {
+    httpFetch?: (url: string, init?: RequestInit) => Promise<Response>
+  }
+  registration: {
+    registerTool(tool: PluginToolLike): void
+    registerPromptFragment(fragment: { name: string; content: string | (() => string) }): void
+  }
+}
+
+type PluginToolRuntimeContextLike = {
+  chatUserId: string
+  storageContextId: string
+  adminConfig: {
+    get(key: string): string | undefined
+  }
+  rateLimit: {
+    check(actorId: string): { allowed: boolean; retryAfterSec?: number }
+  }
+}
+
+type PluginFactoryLike = () => {
+  activate(ctx: PluginContextLike): void
+  deactivate?(ctx: PluginContextLike): void
+}
 
 const API_ENDPOINT = 'https://api.synthetic.new/v2/search'
 

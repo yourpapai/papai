@@ -3,9 +3,21 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-type PluginContextLike = import('../../src/plugins/context.js').PluginContext
-type PluginFactoryLike = import('../../src/plugins/types.js').PluginFactory
-type TaskProviderLike = import('../../src/providers/types.js').TaskProvider
+type TaskProviderLike = {
+  readonly name: string
+}
+
+type PluginContextLike = {
+  registration: {
+    registerTaskProviderType(type: string, factory: (config: Record<string, string>) => TaskProviderLike): void
+  }
+}
+
+type PluginInstanceLike = {
+  activate(ctx: PluginContextLike): void
+}
+
+type PluginFactoryLike = () => PluginInstanceLike
 
 import { createKaneoProvider } from './entry-runtime'
 

@@ -10,7 +10,9 @@ type KaneoConfig = {
   sessionCookie: string
 }>
 
-type TaskProviderLike = import('../../src/providers/types.js').TaskProvider
+type TaskProviderLike = {
+  readonly name: string
+}
 
 type KaneoClientModule = typeof import('./client.js')
 type KaneoProviderModule = typeof import('./provider.js')
