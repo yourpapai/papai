@@ -13,7 +13,7 @@ const DM_USER_HELP = [
   '',
   'Commands:',
   '/help — Show this message',
-  '/config — View or edit personal settings, or choose a group to configure from DM',
+  '/config — Open your settings in the web UI (single-use link)',
   '/clear — Clear conversation history and memory',
   '/context — Show current memory context (summary and known entities)',
   '',
@@ -23,15 +23,11 @@ const DM_USER_HELP = [
 const DM_ADMIN_HELP = [
   '',
   'Admin commands:',
-  '/user add <id|@username> — Authorize a user',
-  '/user remove <id|@username> — Revoke access',
-  '/users — List authorized users',
-  '/group add <group-id> — Authorize a group',
-  '/group remove <group-id> — Revoke group access',
-  '/groups — List authorized groups',
   "/clear <user_id> — Clear a specific user's history",
   "/clear all — Clear all users' history",
-  '/announce <message> — Send announcement to all users',
+  '/dashboard — Open the operator dashboard (single-use link)',
+  '',
+  'Authorized users, groups, plugins, and announcements are managed in the web UI — open /config.',
 ].join('\n')
 
 function getDmHelpText(isAdmin: boolean): string {
@@ -44,9 +40,8 @@ function getGroupHelpText(isGroupAdmin: boolean): string {
     '',
     'Group commands:',
     '/help — Show this message',
-    '/group adduser <user-id|@username> — Add member to group',
-    '/group deluser <user-id|@username> — Remove member from group',
-    '/group users — List group members',
+    '/context — Show current memory context',
+    '/clear — Clear group conversation history',
     '',
     'Mention me with @botname for natural language queries',
   ].join('\n')
@@ -54,11 +49,8 @@ function getGroupHelpText(isGroupAdmin: boolean): string {
   if (isGroupAdmin) {
     text += [
       '',
-      'Admin commands:',
-      '/clear — Clear group conversation history',
-      '',
-      'Group settings are configured in DM with the bot.',
-      'The group must be authorized before it can use the bot in the group chat.',
+      'Group settings, membership, and authorization are configured in the web UI.',
+      'Open a DM with me and run /config.',
     ].join('\n')
   }
 

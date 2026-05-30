@@ -43,7 +43,7 @@ describe('help command', () => {
     lastHandler = registeredHelpHandler
   })
 
-  test('DM help shows user management commands for admin', async () => {
+  test('DM admin help mentions /clear, /dashboard, and web UI pointer; retired commands absent', async () => {
     const dmMsg = createDmMessage('user1', '/help')
 
     const auth = {
@@ -55,15 +55,21 @@ describe('help command', () => {
 
     await lastHandler!(dmMsg, mockReply, auth)
 
-    expect(capturedText).toContain('/user add')
-    expect(capturedText).toContain('/user remove')
-    expect(capturedText).toContain('/users')
-    expect(capturedText).toContain('/group add <group-id>')
-    expect(capturedText).toContain('/group remove <group-id>')
-    expect(capturedText).toContain('/groups')
     expect(capturedText).toContain('/config')
     expect(capturedText).toContain('/clear')
     expect(capturedText).toContain('/context')
+    expect(capturedText).toContain('/dashboard')
+    expect(capturedText).toContain('web UI')
+    // Retired commands must be absent
+    expect(capturedText).not.toContain('/setup')
+    expect(capturedText).not.toContain('/user add')
+    expect(capturedText).not.toContain('/user remove')
+    expect(capturedText).not.toContain('/users')
+    expect(capturedText).not.toContain('/group add ')
+    expect(capturedText).not.toContain('/group remove ')
+    expect(capturedText).not.toContain('/groups')
+    expect(capturedText).not.toContain('/announce')
+    expect(capturedText).not.toContain('/plugin')
   })
 
   test('DM help shows /config and core commands for non-admin users', async () => {
@@ -79,15 +85,21 @@ describe('help command', () => {
     await lastHandler!(dmMsg, mockReply, auth)
 
     expect(capturedText).toContain('/help')
-    expect(capturedText).not.toContain('/setup')
-    expect(capturedText).toContain('/config — View or edit personal settings, or choose a group to configure from DM')
+    expect(capturedText).toContain('/config')
     expect(capturedText).toContain('/clear')
     expect(capturedText).toContain('/context')
+    // Retired commands must be absent
+    expect(capturedText).not.toContain('/setup')
     expect(capturedText).not.toContain('/user add')
+    expect(capturedText).not.toContain('/users')
+    expect(capturedText).not.toContain('/group add')
+    expect(capturedText).not.toContain('/groups')
+    expect(capturedText).not.toContain('/announce')
+    expect(capturedText).not.toContain('/plugin')
     expect(capturedText).not.toContain('Admin commands:')
   })
 
-  test('Group help shows group commands', async () => {
+  test('Group help shows basic group commands; retired commands absent', async () => {
     const groupMsg = createGroupMessage('user1', '/help', false, 'group1')
 
     const auth = {
@@ -99,17 +111,23 @@ describe('help command', () => {
 
     await lastHandler!(groupMsg, mockReply, auth)
 
-    expect(capturedText).toContain('/group adduser <user-id|@username>')
-    expect(capturedText).toContain('/group deluser <user-id|@username>')
-    expect(capturedText).toContain('/group users')
+    expect(capturedText).toContain('/help')
+    expect(capturedText).toContain('/context')
+    expect(capturedText).toContain('/clear')
     expect(capturedText).toContain('@botname')
-    // Not shown to regular members
+    // Retired commands must be absent
     expect(capturedText).not.toContain('/setup')
+    expect(capturedText).not.toContain('/group adduser')
+    expect(capturedText).not.toContain('/group deluser')
+    expect(capturedText).not.toContain('/group users')
+    expect(capturedText).not.toContain('/announce')
+    expect(capturedText).not.toContain('/plugin')
+    // Non-admin should not see admin section
     expect(capturedText).not.toContain('Admin commands:')
     expect(capturedText).not.toContain('/config')
   })
 
-  test('Group admin help no longer advertises in-group /setup or /config', async () => {
+  test('Group admin help shows web UI pointer; retired commands absent', async () => {
     const groupMsg = createGroupMessage('admin1', '/help', true, 'group1')
 
     const auth = {
@@ -121,12 +139,22 @@ describe('help command', () => {
 
     await lastHandler!(groupMsg, mockReply, auth)
 
-    expect(capturedText).toContain('Group settings are configured in DM with the bot')
-    expect(capturedText).toContain('The group must be authorized before it can use the bot in the group chat.')
-    expect(capturedText).not.toContain('/setup')
-    expect(capturedText).not.toContain('/config — View group configuration')
+    expect(capturedText).toContain('/help')
+    expect(capturedText).toContain('/context')
     expect(capturedText).toContain('/clear')
-    expect(capturedText).toContain('Admin commands:')
+    expect(capturedText).toContain('web UI')
+    expect(capturedText).toContain('/config')
+    // Retired commands must be absent
+    expect(capturedText).not.toContain('/setup')
+    expect(capturedText).not.toContain('/group adduser')
+    expect(capturedText).not.toContain('/group deluser')
+    expect(capturedText).not.toContain('/group users')
+    expect(capturedText).not.toContain('/announce')
+    expect(capturedText).not.toContain('/plugin')
+    // Old stale text must be absent
+    expect(capturedText).not.toContain('Group settings are configured in DM with the bot')
+    expect(capturedText).not.toContain('The group must be authorized before it can use the bot in the group chat.')
+    expect(capturedText).not.toContain('Admin commands:')
   })
 })
 
