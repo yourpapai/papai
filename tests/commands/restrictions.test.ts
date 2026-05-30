@@ -61,7 +61,7 @@ describe('command context restrictions', () => {
 
     // Register commands
     registerClearCommand(mockChat, checkAuthorization, adminUserId)
-    registerConfigCommand(mockChat, checkAuthorization)
+    registerConfigCommand(mockChat)
     registerAdminCommands(mockChat, adminUserId)
   })
 
@@ -146,10 +146,11 @@ describe('command context restrictions', () => {
       const auth = createAuth('user456')
       auth.storageContextId = 'user456'
 
-      const { reply, buttonCalls } = createMockReply()
+      const { reply, textCalls } = createMockReply()
       await handler!(msg, reply, auth)
 
-      expect(firstCall(buttonCalls)).toContain('What do you want to configure?')
+      // /config is launcher-only: replies with a settings link or a not-configured message
+      expect(textCalls.length).toBeGreaterThan(0)
     })
   })
 

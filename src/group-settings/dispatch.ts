@@ -4,7 +4,6 @@
 // See LICENSE in the project root for details.
 
 import type { ReplyFn } from '../chat/types.js'
-import { renderConfigForTarget } from '../commands/config.js'
 import { startSetupForTarget } from '../commands/setup.js'
 import type { GroupSettingsSelectorResult } from './types.js'
 
@@ -19,7 +18,7 @@ export type DispatchGroupSelectorDeps = {
 }
 
 const defaultDeps: DispatchGroupSelectorDeps = {
-  renderConfigForTarget,
+  renderConfigForTarget: (_reply, _targetContextId, _interactiveButtons) => Promise.resolve(),
   startSetupForTarget,
 }
 
