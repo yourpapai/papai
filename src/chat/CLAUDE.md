@@ -38,7 +38,7 @@ interface ChatProvider {
 
 ## Registration
 
-Adapters register in `src/chat/registry.ts` via `createChatProvider(name)`. Built-in adapters are `telegram`, `mattermost`, and `discord`. Runtime startup wraps active adapter instances in `src/chat/router.ts` (`ChatRouter`), which fans out commands, starts/stops instances, tags incoming events with `platformInstanceId`, and routes proactive sends back to the target instance.
+Adapters register in `src/chat/registry.ts` via `createChatProviderFromConfig(...)`. Built-in adapters are `telegram`, `mattermost`, `discord`, and `kontur-talk`. Runtime startup wraps active adapter instances in `src/chat/router.ts` (`ChatRouter`), which fans out commands, starts/stops instances, tags incoming events with `platformInstanceId`, and routes proactive sends back to the target instance.
 
 ## Rules
 
@@ -47,8 +47,8 @@ Adapters register in `src/chat/registry.ts` via `createChatProvider(name)`. Buil
 - Prefer metadata-driven behavior. `capabilities`, `traits`, `threadCapabilities`, and `configRequirements` are the contract that command/startup code should feature-detect instead of hard-coding provider names.
 - Treat optional reply surfaces as capability-dependent. `reply.file`, `reply.redactMessage`, and `reply.embed` are not guaranteed on every platform.
 - Do not treat `chat.name === 'router'` as the source provider. Use `platformInstanceId` plus helpers from `src/chat/source-instance.ts` when source-specific behavior matters.
-- Group behavior differs by provider. Telegram and Mattermost observe group messages directly; Discord observes DMs plus `@bot` mentions in guild channels.
-- Thread handling is provider-specific. Telegram uses forum/message thread IDs, Mattermost uses root post IDs, and Discord currently reports no separate thread-scoped support.
+- Group behavior differs by provider. Telegram, Mattermost, and Kontur Talk observe group messages directly; Discord observes DMs plus `@bot` mentions in guild channels.
+- Thread handling is provider-specific. Telegram uses forum/message thread IDs, Mattermost uses root post IDs, Kontur Talk uses message-thread scope, and Discord currently reports no separate thread-scoped support.
 - Context rendering is adapter-owned. `/context` builds a `ContextSnapshot`, then each adapter decides whether to return plain text, formatted markdown, or an embed through `renderContext()`.
 - Button callbacks are part of the chat layer. Route interactive callbacks through `src/chat/interaction-router.ts` or adapter-specific fallback helpers before normal message handling.
 - Keep formatting and chunking helpers next to the adapter that needs them, such as Telegram markdown/entity conversion or Discord chunk splitting.

@@ -38,7 +38,7 @@
 
 ## Overview
 
-Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, or Discord, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
+Papai (**P**ersonal **A**droit **P**roactive **AI**) is a chat bot that enables natural language task management through any OpenAI-compatible LLM. Deploy it on Telegram, Mattermost, Discord, or Kontur Talk, connect it to Kaneo or YouTrack, and manage work through conversational task operations. Platform and task-provider instances are stored in SQLite after first bootstrap, so one deployment can manage multiple configured chat and task-provider instances.
 
 The bot interprets natural-language requests, invokes capability-gated tools through LLM tool-calling, and replies with task details, updates, summaries, and search results. Personal settings remain user-scoped, while DM `/setup` and `/config` can also target shared group settings for groups the user manages. Conversation history, memory, and memo storage are isolated by storage context. Telegram forum topics and Mattermost threads get separate thread-scoped context; Discord currently does not.
 
@@ -92,7 +92,7 @@ YouTrack task creation can require workflow-specific custom fields. Papai expose
 ### Prerequisites
 
 - [Bun](https://bun.sh) 1.3+
-- One supported chat platform: Telegram, Mattermost, or Discord
+- One supported chat platform: Telegram, Mattermost, Discord, or Kontur Talk
 - One supported task provider: Kaneo or YouTrack
 - OpenAI-compatible API credentials for your chosen model provider
 
@@ -202,11 +202,11 @@ flowchart TD
 <details>
 <summary><b>Startup And Bootstrap Variables</b> (click to expand)</summary>
 
-| Variable              | When required                    | Description                                                                                     | Example                                            |
-| --------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `ADMIN_USER_ID`       | Always                           | Initial authorized admin identity                                                               | Platform user ID string seen by the active adapter |
-| `CHAT_PROVIDER`       | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                             | `telegram`, `mattermost`, or `discord`             |
-| `INSTANCE_CONFIG_KEY` | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset | 64 hex chars                                       |
+| Variable              | When required                    | Description                                                                                                                                                                                        | Example                                            |
+| --------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `ADMIN_USER_ID`       | Always                           | Initial authorized admin identity                                                                                                                                                                  | Platform user ID string seen by the active adapter |
+| `CHAT_PROVIDER`       | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                                                                                                                                | `telegram`, `mattermost`, or `discord`             |
+| `INSTANCE_CONFIG_KEY` | Production deployments           | AES-256-GCM encryption key for platform/task instance config; 64 hex chars are used directly, other non-empty values are treated as passphrases via `scrypt`, and the unset fallback is host-local | 64 hex chars                                       |
 
 </details>
 
@@ -262,6 +262,15 @@ Discord support uses gateway intents including `MessageContent`. Enable the **Me
 </details>
 
 <details>
+<summary><b>Kontur Talk Configuration</b></summary>
+
+| Variable                | Description           |
+| ----------------------- | --------------------- |
+| `KONTUR_TALK_JWT_TOKEN` | Kontur Talk JWT token |
+
+</details>
+
+<details>
 <summary><b>Kaneo Configuration</b></summary>
 
 Papai no longer reads Kaneo URLs from the environment. The Kaneo client URL is now a task-instance
@@ -310,7 +319,7 @@ Admin sections include:
 - **System** at `/admin#system` — environment summary plus the credentials form (`GET`/`POST /admin/llm`) that rotates LLM keys at runtime without a restart. Sensitive values are masked in the form.
 - **Billing** at `/admin#billing` — per-subject LLM usage from `llm_usage_events` (24h / 7d / 30d / all windows) and drill-down by request.
 - **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
-- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest.
+- **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest. If a persisted instance row cannot be decrypted or decoded, list routes return readable rows plus an `unreadable` diagnostics array instead of failing the whole response.
 
 The dashboard is gated by a chat-issued session cookie rather than a static token. DM `/dashboard` to the bot to receive a single-use sign-in link (valid 5 min); clicking it sets an `HttpOnly; Secure; SameSite=Strict` session cookie (8h default). `ADMIN_USER_ID` must match the chat user who runs `/dashboard`, and for HTTPS the reverse proxy must forward `X-Forwarded-Proto: https`. Never expose the dashboard on a public interface without one of the patterns in [`docs/deployment/dashboard-access.md`](docs/deployment/dashboard-access.md).
 

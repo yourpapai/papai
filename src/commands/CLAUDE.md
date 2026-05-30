@@ -18,7 +18,7 @@ export function registerXCommand(chat: Readonly<ChatProvider>): void {
 ## Rules
 
 - Check `auth.allowed` before doing work unless the command is intentionally responsible for its own rejection message.
-- Do not import Telegram, Mattermost, or Discord modules into command handlers. Chat-specific behavior must be expressed through `ChatProvider` capabilities or `ReplyFn`.
+- Do not import Telegram, Mattermost, Discord, or Kontur Talk modules into command handlers. Chat-specific behavior must be expressed through `ChatProvider` capabilities or `ReplyFn`.
 - Use injected reply helpers only: `reply.text()`, `reply.formatted()`, `reply.buttons()`, `reply.file?.()`, `reply.embed?.()`, `reply.redactMessage?.()`.
 - Feature-detect platform affordances. Use helpers from `src/chat/capabilities.ts` and source-instance helpers instead of branching on `chat.name`; at runtime `chat` may be the `ChatRouter`, not the source adapter.
 - Group-specific behavior belongs behind `msg.contextType` and the appropriate admin gate for that flow, usually `auth.isGroupAdmin`.

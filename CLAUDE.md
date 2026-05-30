@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, or Discord), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
+papai is a chat bot that manages tasks via LLM tool-calling. A user sends natural-language messages through configured chat platform instances (Telegram, Mattermost, Discord, or Kontur Talk), the bot invokes a configurable OpenAI-compatible LLM (via Vercel AI SDK), executes capability-gated task-tracker tools, and replies with the result. Runtime behavior depends on the source platform instance, assigned task instance, conversation context, and per-user or group-targeted configuration stored in SQLite.
 
 Notable current behaviors:
 
@@ -140,9 +140,10 @@ environment variables on first start and from the DB on subsequent starts:
 - `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
 - `INSTANCE_CONFIG_KEY` — 32-byte AES-256-GCM key (64 hex chars) used to
   encrypt `platform_instances.config` and `task_instances.config` at rest.
-  Non-hex values are SHA-256-hashed. When unset, a derived host-local
-  fallback key is used and a one-shot `WARN` is logged at startup;
-  production deployments must set this explicitly.
+  Non-hex values are treated as passphrases and derived with `scrypt`.
+  When unset, a derived host-local fallback key is used and a one-shot
+  `WARN` is logged at startup; production deployments must set this
+  explicitly.
 
 If `system_config` is missing any of the three required entries at runtime,
 the bot logs `WARN` at startup and replies "the bot is not fully configured"
@@ -153,13 +154,14 @@ to incoming messages until the admin sets them via env + restart or through
 
 First-run env bootstrap requirements when the instance tables are empty:
 
-- `CHAT_PROVIDER` (`telegram`, `mattermost`, or `discord`)
+- `CHAT_PROVIDER` (`telegram`, `mattermost`, `discord`, or `kontur-talk`)
 
 Chat-provider bootstrap requirements:
 
 - Telegram: `TELEGRAM_BOT_TOKEN`
 - Mattermost: `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`
 - Discord: `DISCORD_BOT_TOKEN`
+- Kontur Talk: `KONTUR_TALK_JWT_TOKEN`
 
 `CHAT_PROVIDER` is used only by first-run env bootstrap when the platform instance table is empty. After bootstrap, platform instance selection is read from `context_settings`, platform instance base config lives in `platform_instances`, and per-context credentials stay in `user_config`.
 
@@ -194,7 +196,10 @@ and the admin stats surface lives at `/admin#stats` and uses
 `GET /stats/global` and `GET /stats/subject/:id`. The admin instances
 surface lives at `/admin#instances` and manages platform instances, task
 instances, and admin assignments through `/api/platform-instances`,
-`/api/task-instances`, and `/api/admins`.
+`/api/task-instances`, and `/api/admins`. Instance list routes degrade
+gracefully when some encrypted rows are unreadable: readable rows are
+returned alongside an `unreadable` diagnostics array, and startup skips
+unreadable active platform/task rows with warnings instead of aborting.
 
 #### Anonymity contract for `/stats/*`
 
