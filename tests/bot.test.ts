@@ -1424,6 +1424,227 @@ describe('Bot Authorization Gate (setupBot)', () => {
       expect(textCalls).toHaveLength(0)
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // createObservedCommandHandler wrapper behaviors: observation / denial / reply
+  // ---------------------------------------------------------------------------
+
+  test('records group admin observations for group commands before handling', async () => {
+    addUser('group-admin-cmd', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-obs-cmd', ADMIN_ID)
+    setupUserConfig('group-admin-cmd')
+
+    const commandHandlers = new Map<
+      string,
+      (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
+    >()
+    const mockChat = createMockChat({ commandHandlers })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    const helpHandler = commandHandlers.get('help')
+    expect(helpHandler).not.toBeUndefined()
+
+    const groupMessage = createGroupMessage('group-admin-cmd', '/help', true, 'group-obs-cmd')
+    groupMessage.contextName = 'ObsCmd'
+    groupMessage.contextParentName = 'Platform'
+
+    const { reply } = createMockReply()
+    await helpHandler!(groupMessage, reply, createAuth('group-admin-cmd', { isGroupAdmin: true }))
+
+    const db = getDrizzleDb()
+    const knownGroup = db
+      .select()
+      .from(knownGroupContexts)
+      .where(
+        and(eq(knownGroupContexts.provider, 'mock'), eq(knownGroupContexts.contextId, scopedGroup('group-obs-cmd'))),
+      )
+      .get()
+    const adminObservation = db
+      .select()
+      .from(groupAdminObservations)
+      .where(
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, scopedGroup('group-obs-cmd')),
+          eq(groupAdminObservations.userId, 'group-admin-cmd'),
+        ),
+      )
+      .get()
+
+    expect(knownGroup).toBeDefined()
+    expect(adminObservation).toBeDefined()
+  })
+
+  test('does not record group observation for DM command handler', async () => {
+    addUser('dm-cmd-user', ADMIN_ID)
+    setupUserConfig('dm-cmd-user')
+
+    const commandHandlers = new Map<
+      string,
+      (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
+    >()
+    const mockChat = createMockChat({ commandHandlers })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    const helpHandler = commandHandlers.get('help')
+    expect(helpHandler).not.toBeUndefined()
+
+    const dmMessage = createDmMessage('dm-cmd-user', '/help')
+    const { reply } = createMockReply()
+    await helpHandler!(dmMessage, reply, createAuth('dm-cmd-user', { isGroupAdmin: false }))
+
+    const adminObservation = getDrizzleDb()
+      .select()
+      .from(groupAdminObservations)
+      .where(eq(groupAdminObservations.userId, 'dm-cmd-user'))
+      .get()
+
+    expect(adminObservation).toBeUndefined()
+  })
+
+  test('does not record group observation for non-admin group command handler', async () => {
+    addUser('non-admin-cmd', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-noadmin-cmd', ADMIN_ID)
+    setupUserConfig('non-admin-cmd')
+
+    const commandHandlers = new Map<
+      string,
+      (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
+    >()
+    const mockChat = createMockChat({ commandHandlers })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    const helpHandler = commandHandlers.get('help')
+    expect(helpHandler).not.toBeUndefined()
+
+    const groupMessage = createGroupMessage('non-admin-cmd', '/help', false, 'group-noadmin-cmd')
+    groupMessage.contextName = 'NoAdmin'
+    const { reply } = createMockReply()
+    await helpHandler!(groupMessage, reply, createAuth('non-admin-cmd', { isGroupAdmin: false }))
+
+    const adminObservation = getDrizzleDb()
+      .select()
+      .from(groupAdminObservations)
+      .where(
+        and(
+          eq(groupAdminObservations.provider, 'mock'),
+          eq(groupAdminObservations.contextId, scopedGroup('group-noadmin-cmd')),
+          eq(groupAdminObservations.userId, 'non-admin-cmd'),
+        ),
+      )
+      .get()
+
+    expect(adminObservation).toBeUndefined()
+  })
+
+  test('denies group command execution when group is not allowlisted', async () => {
+    const commandHandlers = new Map<
+      string,
+      (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
+    >()
+    const mockChat = createMockChat({ commandHandlers })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    const helpHandler = commandHandlers.get('help')
+    expect(helpHandler).not.toBeUndefined()
+
+    const groupMessage = createGroupMessage('group-user', '/help', false, 'group-denied-cmd')
+    const { reply, textCalls } = createMockReply()
+    await helpHandler!(groupMessage, reply, createAuth('group-user', { isGroupAdmin: true }))
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('/group add group-denied-cmd')
+  })
+
+  test('denies group command execution when group is allowlisted but user is not permitted', async () => {
+    addAuthorizedGroupForPlatform('group-denied-members-cmd', ADMIN_ID)
+
+    const commandHandlers = new Map<
+      string,
+      (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
+    >()
+    const mockChat = createMockChat({ commandHandlers })
+    setupBot(
+      mockChat,
+      ADMIN_ID,
+      withSynchronousQueue({
+        processMessage: (): Promise<void> => Promise.resolve(),
+      }),
+    )
+
+    const helpHandler = commandHandlers.get('help')
+    expect(helpHandler).not.toBeUndefined()
+
+    const groupMessage = createGroupMessage('group-user', '/help', false, 'group-denied-members-cmd')
+    const { reply, textCalls } = createMockReply()
+    await helpHandler!(groupMessage, reply, createAuth('group-user', { isGroupAdmin: true }))
+
+    expect(textCalls).toHaveLength(1)
+    expect(textCalls[0]).toContain('/group adduser')
+  })
+
+  test('emits message:replied for command reply path', async () => {
+    addUser('group-admin-reply', ADMIN_ID)
+    addAuthorizedGroupForPlatform('group-reply-cmd', ADMIN_ID)
+    setupUserConfig('group-admin-reply')
+
+    const repliedEvents: DebugEvent[] = []
+    const listener = makeRepliedEventListener(repliedEvents)
+    subscribe(listener)
+
+    try {
+      const commandHandlers = new Map<
+        string,
+        (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
+      >()
+      const mockChat = createMockChat({ commandHandlers })
+      setupBot(
+        mockChat,
+        ADMIN_ID,
+        withSynchronousQueue({
+          processMessage: (): Promise<void> => Promise.resolve(),
+        }),
+      )
+
+      const helpHandler = commandHandlers.get('help')
+      expect(helpHandler).not.toBeUndefined()
+
+      const { reply } = createMockReply()
+      await helpHandler!(
+        createGroupMessage('group-admin-reply', '/help', true, 'group-reply-cmd'),
+        reply,
+        createAuth('group-admin-reply'),
+      )
+
+      expect(repliedEvents).toHaveLength(1)
+    } finally {
+      unsubscribe(listener)
+    }
+  })
 })
 
 describe('Demo Mode — wizard bypass (setupBot)', () => {
