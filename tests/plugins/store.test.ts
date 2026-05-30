@@ -5,6 +5,10 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 
+import { eq, sql } from 'drizzle-orm'
+
+import { getDrizzleDb } from '../../src/db/drizzle.js'
+import { pluginRuntimeEvents } from '../../src/db/schema.js'
 import {
   getPluginAdminConfig,
   getPluginAdminState,
@@ -21,6 +25,23 @@ import {
   upsertPluginAdminState,
 } from '../../src/plugins/store.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
+
+function getRecentRuntimeEvents(
+  pluginId: string,
+  limit = 20,
+): Array<{ eventType: string; message: string | null; occurredAt: string }> {
+  return getDrizzleDb()
+    .select({
+      eventType: pluginRuntimeEvents.eventType,
+      message: pluginRuntimeEvents.message,
+      occurredAt: pluginRuntimeEvents.occurredAt,
+    })
+    .from(pluginRuntimeEvents)
+    .where(eq(pluginRuntimeEvents.pluginId, pluginId))
+    .orderBy(sql`${pluginRuntimeEvents.occurredAt} DESC, rowid DESC`)
+    .limit(limit)
+    .all()
+}
 
 describe('plugin store', () => {
   beforeEach(async () => {
@@ -159,10 +180,17 @@ describe('plugin store', () => {
   describe('runtime events', () => {
     test('records an activation event', () => {
       recordRuntimeEvent('plug', 'activated', 'ok')
+      const events = getRecentRuntimeEvents('plug')
+      expect(events.length).toBe(1)
+      expect(events[0]?.eventType).toBe('activated')
+      expect(events[0]?.message).toBe('ok')
     })
 
     test('records an error event', () => {
       recordRuntimeEvent('plug', 'error', 'something broke')
+      const events = getRecentRuntimeEvents('plug')
+      const err = events.find((e) => e.eventType === 'error')
+      expect(err?.message).toBe('something broke')
     })
   })
 })
