@@ -12,12 +12,7 @@ import type { DiscordClientFactory } from '../../../src/chat/discord/index.js'
 import { toScopedContextId } from '../../../src/chat/scoped-context.js'
 import type { ContextSnapshot, IncomingMessage } from '../../../src/chat/types.js'
 import { dmTarget } from '../../../src/chat/types.js'
-import { setConfig } from '../../../src/config.js'
-import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../../src/group-settings/registry.js'
-import { startGroupSettingsSelection } from '../../../src/group-settings/selector.js'
-import { setContextSettings } from '../../../src/instances/context-store.js'
-import { insertTaskInstance } from '../../../src/instances/task-store.js'
-import { addUser as addScopedUser, setKaneoWorkspace } from '../../../src/users.js'
+import { addUser as addScopedUser } from '../../../src/users.js'
 import { mockLogger, mockMessageCache, seedCommonTestPlatformInstances, setupTestDb } from '../../utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'discord-default'
@@ -36,16 +31,6 @@ const addUser = (userId: string, addedBy: string, ...args: [] | [username: strin
   } else {
     addScopedUser({ userId, platformInstanceId: TEST_PLATFORM_ID, addedBy, username })
   }
-}
-
-const assignKaneoContext = (contextId: string): void => {
-  insertTaskInstance({
-    id: `${contextId}-kaneo`,
-    type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
-    status: 'active',
-  })
-  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'discord-default' })
 }
 
 type ReadyListener = (arg: { user: { id: string; username: string } }) => void
@@ -1085,119 +1070,6 @@ describe('DiscordChatProvider', () => {
       // No active wizard, should defer and return without error
       await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
       expect(deferred).toBe(true)
-    })
-
-    test('Discord DM group-settings callback opens config for the selected group', async () => {
-      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
-      await setupTestDb()
-      seedCommonTestPlatformInstances()
-
-      upsertKnownGroupContext({
-        contextId: scopedContextId('group-1'),
-        provider: 'discord',
-        displayName: 'Operations',
-        parentName: 'Platform',
-      })
-      addAuthorizedDiscordGroup('group-1', 'admin-id')
-      upsertGroupAdminObservation({
-        provider: 'discord',
-        contextId: scopedContextId('group-1'),
-        userId: 'user-1',
-        username: 'alice',
-        isAdmin: true,
-      })
-      startGroupSettingsSelection('user-1', 'config', true, 'discord-default')
-
-      const sends: Array<Partial<{ content: string }>> = []
-      const interaction: ButtonInteractionLike = {
-        user: { id: 'user-1', username: 'alice' },
-        customId: 'gsel:scope:group',
-        channelId: 'dm-1',
-        channel: {
-          id: 'dm-1',
-          type: 1,
-          send: (arg: Partial<{ content: string }>): Promise<{ id: string; edit: () => Promise<void> }> => {
-            sends.push(arg)
-            return Promise.resolve({ id: 'out-1', edit: (): Promise<void> => Promise.resolve() })
-          },
-          sendTyping: (): Promise<void> => Promise.resolve(),
-        },
-        message: { id: 'm-1' },
-        deferUpdate: (): Promise<void> => Promise.resolve(),
-      }
-
-      await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
-
-      assert.ok(sends[0] !== undefined)
-      assert.ok(sends[0].content !== undefined)
-      expect(sends[0].content).toContain('Choose a group to configure.')
-    })
-
-    test('Discord DM selector continues into setup when the selector command is setup', async () => {
-      const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
-      await setupTestDb()
-      seedCommonTestPlatformInstances()
-
-      upsertKnownGroupContext({
-        contextId: scopedContextId('group-1'),
-        provider: 'discord',
-        displayName: 'Operations',
-        parentName: 'Platform',
-      })
-      upsertGroupAdminObservation({
-        provider: 'discord',
-        contextId: scopedContextId('group-1'),
-        userId: 'user-1',
-        username: 'alice',
-        isAdmin: true,
-      })
-      addAuthorizedDiscordGroup('group-1', 'admin-id')
-      assignKaneoContext(scopedContextId('group-1'))
-      setConfig(scopedContextId('group-1'), 'kaneo_apikey', 'existing-key')
-      setKaneoWorkspace(scopedContextId('group-1'), 'existing-workspace')
-      startGroupSettingsSelection('user-1', 'setup', true, 'discord-default')
-
-      const groupSelectorInteraction: ButtonInteractionLike = {
-        user: { id: 'user-1', username: 'alice' },
-        customId: 'gsel:scope:group',
-        channelId: 'dm-1',
-        channel: {
-          id: 'dm-1',
-          type: 1,
-          send: (): Promise<{ id: string; edit: () => Promise<void> }> =>
-            Promise.resolve({ id: 'out-0', edit: (): Promise<void> => Promise.resolve() }),
-          sendTyping: (): Promise<void> => Promise.resolve(),
-        },
-        message: { id: 'm-0' },
-        deferUpdate: (): Promise<void> => Promise.resolve(),
-      }
-      await provider.testDispatchButtonInteraction(groupSelectorInteraction, 'bot-id', 'admin-id')
-
-      const sends: Array<Partial<{ content: string }>> = []
-      const interaction: ButtonInteractionLike = {
-        user: { id: 'user-1', username: 'alice' },
-        customId: 'gsel:group:group-1',
-        channelId: 'dm-1',
-        channel: {
-          id: 'dm-1',
-          type: 1,
-          send: (arg: Partial<{ content: string }>): Promise<{ id: string; edit: () => Promise<void> }> => {
-            sends.push(arg)
-            return Promise.resolve({ id: 'out-1', edit: (): Promise<void> => Promise.resolve() })
-          },
-          sendTyping: (): Promise<void> => Promise.resolve(),
-        },
-        message: { id: 'm-1' },
-        deferUpdate: (): Promise<void> => Promise.resolve(),
-      }
-
-      await provider.testDispatchButtonInteraction(interaction, 'bot-id', 'admin-id')
-
-      assert.ok(sends[0] !== undefined)
-      assert.ok(sends[0].content !== undefined)
-      expect(sends[0].content).toContain('Welcome to papai configuration wizard!')
     })
 
     test('handles deferUpdate failure gracefully', async () => {

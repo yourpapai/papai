@@ -32,7 +32,6 @@ import {
 } from './client-factory.js'
 import { matchDiscordCommand } from './commands.js'
 import { renderDiscordContext } from './context-renderer.js'
-import { handleDiscordGroupSettingsSelection } from './group-settings.js'
 import { resolveDiscordGroupLabel, resolveDiscordGuildFromContext, resolveDiscordUserLabel } from './label-helpers.js'
 import { mapDiscordMessage } from './map-message.js'
 import { discordCapabilities, discordConfigRequirements, discordTraits } from './metadata.js'
@@ -215,17 +214,6 @@ export class DiscordChatProvider implements ChatProvider {
     }
 
     const { incoming, channel } = result
-
-    // Handle group-settings selector callbacks before standard routing
-    if (
-      await handleDiscordGroupSettingsSelection(
-        interaction,
-        incoming.user.id,
-        incoming.platformInstanceId,
-        result.reply,
-      )
-    )
-      return
 
     if (this.interactionHandler === null) {
       const auth = checkAuthorizationExtended(

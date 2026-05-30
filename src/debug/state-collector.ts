@@ -7,7 +7,6 @@ import { getSessionSnapshots } from '../cache-snapshots.js'
 import { getPollerSnapshot } from '../deferred-prompts/poller.js'
 import { getMessageCacheSnapshot } from '../message-cache/cache.js'
 import { getSchedulerSnapshot } from '../scheduler.js'
-import { getWizardSnapshots } from '../wizard/state.js'
 import { subscribe, unsubscribe, type DebugEvent, type Scope } from './event-bus.js'
 import { recentLlm, pushTrace, handleLlmTraceEvent, type LlmTrace } from './llm-trace-collector.js'
 import { recentTurns, recentNotifications, recentToolFailures, handleTurnAssembly } from './turn-assembly.js'
@@ -53,7 +52,6 @@ export function addClient(controller: ReadableStreamDefaultController): void {
 
   const initData: Record<string, unknown> = {
     sessions: adminUserId === null ? [] : getSessionSnapshots(adminUserId),
-    wizards: adminUserId === null ? [] : getWizardSnapshots(adminUserId),
     scheduler: getSchedulerSnapshot(),
     pollers: getPollerSnapshot(),
     messageCache: getMessageCacheSnapshot(),
