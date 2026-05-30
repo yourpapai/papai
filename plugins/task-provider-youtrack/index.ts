@@ -3,21 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { PluginContext, TaskProvider } from 'papai/plugin-types'
+type PluginContextLike = import('../../src/plugins/context.js').PluginContext
+type PluginFactoryLike = import('../../src/plugins/types.js').PluginFactory
+type TaskProviderLike = import('../../src/providers/types.js').TaskProvider
 
-import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
-import { YouTrackProvider } from './provider.js'
+import { createYouTrackProvider } from './entry-runtime'
 
 // Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
-export { validateConfig } from './validate-config.js'
+export { validateConfig } from './validate-config'
 
-const factory: PluginFactory = (): PluginInstance => ({
-  activate(ctx: PluginContext): void {
-    ctx.registration.registerTaskProviderType(
-      'youtrack',
-      (config): TaskProvider =>
-        new YouTrackProvider({ baseUrl: config['baseUrl'] ?? '', token: config['token'] ?? '' }),
-    )
+const factory: PluginFactoryLike = () => ({
+  activate(ctx: PluginContextLike): void {
+    ctx.registration.registerTaskProviderType('youtrack', (config): TaskProviderLike => createYouTrackProvider(config))
   },
 })
 

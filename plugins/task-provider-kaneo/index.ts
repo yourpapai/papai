@@ -3,29 +3,18 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import type { PluginContext, TaskProvider } from 'papai/plugin-types'
+type PluginContextLike = import('../../src/plugins/context.js').PluginContext
+type PluginFactoryLike = import('../../src/plugins/types.js').PluginFactory
+type TaskProviderLike = import('../../src/providers/types.js').TaskProvider
 
-import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
-import { isKaneoSessionCookie, type KaneoConfig } from './client.js'
-import { KaneoProvider } from './provider.js'
+import { createKaneoProvider } from './entry-runtime'
 
 // Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
-export { validateConfig } from './validate-config.js'
+export { validateConfig } from './validate-config'
 
-const buildKaneoConfig = (config: Record<string, string>): KaneoConfig => {
-  const baseUrl = config['baseUrl'] ?? ''
-  const credential = config['credential'] ?? ''
-  return isKaneoSessionCookie(credential)
-    ? { apiKey: '', baseUrl, sessionCookie: credential }
-    : { apiKey: credential, baseUrl }
-}
-
-const factory: PluginFactory = (): PluginInstance => ({
-  activate(ctx: PluginContext): void {
-    ctx.registration.registerTaskProviderType(
-      'kaneo',
-      (config): TaskProvider => new KaneoProvider(buildKaneoConfig(config), config['workspaceId'] ?? ''),
-    )
+const factory: PluginFactoryLike = () => ({
+  activate(ctx: PluginContextLike): void {
+    ctx.registration.registerTaskProviderType('kaneo', (config): TaskProviderLike => createKaneoProvider(config))
   },
 })
 

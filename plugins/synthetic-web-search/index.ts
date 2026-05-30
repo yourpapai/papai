@@ -3,12 +3,15 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { z } from 'zod'
+import { getZod } from './zod-runtime'
 
-import type { PluginContext } from '../../src/plugins/context.js'
-import type { PluginFactory, PluginToolRuntimeContext } from '../../src/plugins/types.js'
+type PluginContextLike = import('../../src/plugins/context.js').PluginContext
+type PluginToolRuntimeContextLike = import('../../src/plugins/types.js').PluginToolRuntimeContext
+type PluginFactoryLike = import('../../src/plugins/types.js').PluginFactory
 
 const API_ENDPOINT = 'https://api.synthetic.new/v2/search'
+
+const { z, ZodError } = getZod()
 
 const searchInputSchema = z.object({
   query: z.string().max(400),
@@ -27,8 +30,8 @@ const searchResponseSchema = z.object({
   results: z.array(searchResultSchema),
 })
 
-type SearchResult = z.infer<typeof searchResultSchema>
-type SearchInput = z.infer<typeof searchInputSchema>
+type SearchResult = ReturnType<(typeof searchResultSchema)['parse']>
+type SearchInput = ReturnType<(typeof searchInputSchema)['parse']>
 
 function truncate(text: string, maxLength: number): string {
   if (maxLength < 0) return text
@@ -69,7 +72,7 @@ function processSearchResults(results: SearchResult[], parsed: SearchInput): unk
 
 async function executeSearch(
   input: unknown,
-  runtimeContext: PluginToolRuntimeContext,
+  runtimeContext: PluginToolRuntimeContextLike,
   abortSignal: AbortSignal | undefined,
   httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined,
 ): Promise<unknown> {
@@ -107,7 +110,7 @@ async function executeSearch(
 
     return processSearchResults(validated.results, parsed)
   } catch (err) {
-    if (err instanceof z.ZodError) {
+    if (err instanceof ZodError) {
       return { error: 'validation_error', message: err.message }
     }
     const message = err instanceof Error ? err.message : String(err)
@@ -118,11 +121,11 @@ async function executeSearch(
   }
 }
 
-const factory: PluginFactory = () => {
+const factory: PluginFactoryLike = () => {
   let httpFetch: ((url: string, init?: RequestInit) => Promise<Response>) | undefined
 
   return {
-    activate(ctx: PluginContext): void {
+    activate(ctx: PluginContextLike): void {
       httpFetch = ctx.providerRuntime?.httpFetch
 
       ctx.log.info({}, 'synthetic-web-search plugin activated')
@@ -131,7 +134,7 @@ const factory: PluginFactory = () => {
         name: 'search',
         description: 'Uses a search engine which returns title, url, and content in markdown',
         inputSchema: searchInputSchema,
-        execute: (input: unknown, runtimeContext: PluginToolRuntimeContext, options) =>
+        execute: (input: unknown, runtimeContext: PluginToolRuntimeContextLike, options) =>
           executeSearch(input, runtimeContext, options.abortSignal, httpFetch),
       })
 
@@ -142,7 +145,7 @@ const factory: PluginFactory = () => {
       })
     },
 
-    deactivate(ctx: PluginContext): void {
+    deactivate(ctx: PluginContextLike): void {
       ctx.log.info({}, 'synthetic-web-search plugin deactivated')
     },
   }

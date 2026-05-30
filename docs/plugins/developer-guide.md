@@ -87,15 +87,25 @@ Plugin entry graphs must use relative imports only. Static and deterministic lit
 The entry point must default-export a factory function returning a plugin instance:
 
 ```typescript
-import type { PluginContext } from '../../../../src/plugins/context.js'
-import type { PluginFactory } from '../../../../src/plugins/types.js'
+type PluginContextLike = {
+  log: {
+    info(data: Record<string, unknown>, msg: string): void
+  }
+}
 
-const factory: PluginFactory = () => ({
-  activate(ctx: PluginContext): void {
+type PluginInstanceLike = {
+  activate(ctx: PluginContextLike): void
+  deactivate?(ctx: PluginContextLike): void
+}
+
+type PluginFactoryLike = () => PluginInstanceLike
+
+const factory: PluginFactoryLike = () => ({
+  activate(ctx: PluginContextLike): void {
     ctx.log.info({}, 'plugin activated')
   },
 
-  deactivate(ctx: PluginContext): void {
+  deactivate(ctx: PluginContextLike): void {
     ctx.log.info({}, 'plugin deactivated')
   },
 })
@@ -263,18 +273,26 @@ Abbreviated manifest for reference:
 
 ### Entry-point factory
 
-Import types from the `papai/plugin-types` alias and register via `ctx.registration.registerTaskProviderType`:
+Keep discovered entry graphs strictly relative-only. Do not import `papai/plugin-types`, `zod`, or framework files from `src/` directly from the discovered entry graph. Use plugin-local bridges and structural types at the entry point, and keep any runtime loading behind relative plugin-owned modules:
 
 ```typescript
-import type { PluginContext, TaskProvider } from 'papai/plugin-types'
-import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
+type PluginContextLike = {
+  registration: {
+    registerTaskProviderType(type: string, factory: (config: Record<string, string>) => unknown): void
+  }
+}
 
-const factory: PluginFactory = (): PluginInstance => ({
-  activate(ctx: PluginContext): void {
-    ctx.registration.registerTaskProviderType('kaneo', {
-      factory: (config): TaskProvider => new KaneoProvider(buildConfig(config), config['workspaceId'] ?? ''),
-      validateConfig,
-    })
+type PluginInstanceLike = {
+  activate(ctx: PluginContextLike): void
+}
+
+type PluginFactoryLike = () => PluginInstanceLike
+
+import { createKaneoProvider } from './entry-runtime'
+
+const factory: PluginFactoryLike = (): PluginInstanceLike => ({
+  activate(ctx: PluginContextLike): void {
+    ctx.registration.registerTaskProviderType('kaneo', (config) => createKaneoProvider(config))
   },
 })
 

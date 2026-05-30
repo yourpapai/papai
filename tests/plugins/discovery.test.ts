@@ -81,6 +81,19 @@ describe('discoverPlugins', () => {
     expect(result.plugins.map((plugin) => plugin.manifest.id)).toEqual(['alpha', 'zeta'])
   })
 
+  test('discovers built-in plugins under strict relative-only entry-graph rules', () => {
+    const result = discoverPlugins(join(process.cwd(), 'plugins'))
+    const pluginIds = result.plugins.map((plugin) => plugin.manifest.id)
+    const errorDirectoryNames = new Set(result.errors.map((error) => error.directoryName))
+
+    expect(errorDirectoryNames.has('task-provider-kaneo')).toBe(false)
+    expect(errorDirectoryNames.has('task-provider-youtrack')).toBe(false)
+    expect(errorDirectoryNames.has('synthetic-web-search')).toBe(false)
+    expect(pluginIds.includes('task-provider-kaneo')).toBe(true)
+    expect(pluginIds.includes('task-provider-youtrack')).toBe(true)
+    expect(pluginIds.includes('synthetic-web-search')).toBe(true)
+  })
+
   test('reports invalid plugin.json as discovery error without throwing', () => {
     const root = makeTempDir()
     const pluginDir = join(root, 'broken')
