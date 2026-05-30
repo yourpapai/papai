@@ -935,6 +935,46 @@ describe('buildPluginToolSet', () => {
     )
   })
 
+  test('identity claims are bound to the runtime chat user', async () => {
+    const manifest = makeManifest({
+      permissions: ['identity', 'provider.task'],
+      contributes: {
+        tools: ['my_tool'],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['test-provider'],
+      },
+    })
+
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [
+          {
+            name: 'my_tool',
+            description: 'Claims current actor identity',
+            execute: (_input, runtime): Promise<unknown> => {
+              runtime.identity!.recordClaim('provider-user', 'provider-login', 'Display Name')
+              return Promise.resolve('ok')
+            },
+          },
+        ],
+        promptFragments: [],
+      },
+      manifest,
+    )
+
+    const tools = buildPluginToolSet(['test-plugin'], new Set(), makeRuntime({ chatUserId: 'actor-1' }))
+    const result = await getToolExecutor(tools['plugin_test_plugin__my_tool'])({})
+
+    expect(result).toBe('ok')
+    const { getIdentityMapping } = await import('../../src/identity/mapping.js')
+    expect(getIdentityMapping('actor-1', 'test-provider')?.providerUserId).toBe('provider-user')
+    expect(getIdentityMapping('victim-1', 'test-provider')).toBeNull()
+  })
+
   test('skips tools that collide with existing tool names and records a runtime event', () => {
     const manifest = makeManifest()
     contributionRegistry.register(

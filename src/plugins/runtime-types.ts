@@ -25,6 +25,7 @@ export type PluginToolRuntimeContext = {
   taskProvider: PluginTaskProviderFacade
   kv: PluginContext['kv']
   adminConfig: PluginAdminConfig
+  /** Identity claims are bound to this runtime actor. */
   identity?: PluginIdentityFacade
   rateLimit: {
     check(actorId: string): { allowed: boolean; retryAfterSec?: number }

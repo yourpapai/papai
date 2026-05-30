@@ -12,7 +12,7 @@ export type PluginIdentityFacade = {
   /** Resolve the recorded provider account for a chat context, or null. */
   lookupForChatUser(chatUserId: string): { providerUserId: string; providerLogin: string; verified: boolean } | null
   /** Record an unverified ('manual_nl') claim. Never marks the mapping verified. */
-  recordClaim(chatUserId: string, providerUserId: string, providerLogin: string, displayName?: string): void
+  recordClaim(providerUserId: string, providerLogin: string, displayName?: string): void
 }
 
 export interface IdentityFacadeDeps {
@@ -27,11 +27,14 @@ const defaultDeps: IdentityFacadeDeps = {
 
 export function buildIdentityFacade(
   providerName: string,
+  chatUserId: string,
   deps: IdentityFacadeDeps = defaultDeps,
 ): PluginIdentityFacade {
   return Object.freeze({
-    lookupForChatUser(chatUserId: string): { providerUserId: string; providerLogin: string; verified: boolean } | null {
-      const mapping = deps.getIdentityMapping(chatUserId, providerName)
+    lookupForChatUser(
+      targetChatUserId: string,
+    ): { providerUserId: string; providerLogin: string; verified: boolean } | null {
+      const mapping = deps.getIdentityMapping(targetChatUserId, providerName)
       if (mapping === null || mapping.providerUserId === null || mapping.providerUserLogin === null) {
         return null
       }
@@ -41,7 +44,7 @@ export function buildIdentityFacade(
         verified: mapping.matchMethod === 'auto',
       }
     },
-    recordClaim(chatUserId: string, providerUserId: string, providerLogin: string, displayName?: string): void {
+    recordClaim(providerUserId: string, providerLogin: string, displayName?: string): void {
       deps.setIdentityMapping({
         contextId: chatUserId,
         providerName,

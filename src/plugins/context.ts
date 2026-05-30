@@ -228,7 +228,7 @@ export function buildPluginContext(
   const [declaredProviderType] = declaredTypes
   const identity =
     permissions.has('identity') && declaredTypes.length === 1 && declaredProviderType !== undefined
-      ? buildIdentityFacade(declaredProviderType)
+      ? buildIdentityFacade(declaredProviderType, contextId)
       : undefined
 
   const ctx: PluginContext = Object.freeze({

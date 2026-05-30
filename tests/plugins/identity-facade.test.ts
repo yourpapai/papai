@@ -15,26 +15,26 @@ describe('buildIdentityFacade', () => {
   })
 
   test('recordClaim then lookup returns an unverified mapping', () => {
-    const identity = buildIdentityFacade('kaneo')
-    identity.recordClaim('ctx-1', 'kaneo-u-7', 'alice')
+    const identity = buildIdentityFacade('kaneo', 'ctx-1')
+    identity.recordClaim('kaneo-u-7', 'alice')
     const found = identity.lookupForChatUser('ctx-1')
     expect(found).toEqual({ providerUserId: 'kaneo-u-7', providerLogin: 'alice', verified: false })
   })
 
   test('lookup returns null when no mapping exists', () => {
-    const identity = buildIdentityFacade('kaneo')
+    const identity = buildIdentityFacade('kaneo', 'ctx-unknown')
     expect(identity.lookupForChatUser('ctx-unknown')).toBeNull()
   })
 
   test('recordClaim persists an optional display name', () => {
     const captured: Array<Record<string, unknown>> = []
-    const identity = buildIdentityFacade('kaneo', {
+    const identity = buildIdentityFacade('kaneo', 'ctx-2', {
       getIdentityMapping: () => null,
       setIdentityMapping: (params) => {
         captured.push({ ...params })
       },
     })
-    identity.recordClaim('ctx-2', 'kaneo-u-9', 'bob', 'Bob Builder')
+    identity.recordClaim('kaneo-u-9', 'bob', 'Bob Builder')
     expect(captured).toHaveLength(1)
     expect(captured[0]).toMatchObject({
       contextId: 'ctx-2',
@@ -48,7 +48,7 @@ describe('buildIdentityFacade', () => {
   })
 
   test('lookup returns null for a cleared mapping (provider ids are null)', () => {
-    const identity = buildIdentityFacade('kaneo', {
+    const identity = buildIdentityFacade('kaneo', 'ctx-cleared', {
       getIdentityMapping: () => ({
         contextId: 'ctx-cleared',
         providerName: 'kaneo',
@@ -65,7 +65,7 @@ describe('buildIdentityFacade', () => {
   })
 
   test('lookup reports verified when the stored match method is auto', () => {
-    const identity = buildIdentityFacade('kaneo', {
+    const identity = buildIdentityFacade('kaneo', 'ctx-3', {
       getIdentityMapping: () => ({
         contextId: 'ctx-3',
         providerName: 'kaneo',

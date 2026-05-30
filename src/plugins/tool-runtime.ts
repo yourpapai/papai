@@ -103,11 +103,11 @@ function buildRateLimit(): PluginToolRuntimeContext['rateLimit'] {
   })
 }
 
-const buildRuntimeIdentity = (manifest: PluginManifest): PluginToolRuntimeContext['identity'] => {
+const buildRuntimeIdentity = (manifest: PluginManifest, chatUserId: string): PluginToolRuntimeContext['identity'] => {
   const [providerType] = manifest.contributes.taskProviderTypes
   if (!manifest.permissions.includes('identity')) return undefined
   if (manifest.contributes.taskProviderTypes.length !== 1 || providerType === undefined) return undefined
-  return buildIdentityFacade(providerType)
+  return buildIdentityFacade(providerType, chatUserId)
 }
 
 export function buildPluginToolRuntimeContext(
@@ -116,7 +116,7 @@ export function buildPluginToolRuntimeContext(
   runtime: PluginToolSetRuntime,
 ): PluginToolRuntimeContext {
   const permissions = new Set(manifest.permissions)
-  const identity = buildRuntimeIdentity(manifest)
+  const identity = buildRuntimeIdentity(manifest, runtime.chatUserId)
   return Object.freeze({
     pluginId,
     storageContextId: runtime.storageContextId,
