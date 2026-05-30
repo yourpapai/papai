@@ -16,7 +16,12 @@ import { authHeaders, establishSession, type SettingsSession } from './helpers.j
 
 const PutResponseSchema = z.object({ contextId: z.string() })
 const GetResponseSchema = z.object({
-  endpoints: z.array(z.object({ headers: z.record(z.string(), z.string()).optional() })),
+  endpoints: z.array(
+    z.object({
+      headers: z.record(z.string(), z.string()).optional(),
+      toolFilter: z.object({ allow: z.array(z.string()).optional(), deny: z.array(z.string()).optional() }).optional(),
+    }),
+  ),
 })
 
 describe('settings mcp routes', () => {
@@ -128,5 +133,93 @@ describe('settings mcp routes', () => {
 
     // Step 4: Assert stored config still contains the original plaintext secret
     expect(getConfigValue(contextId, 'mcp_endpoints')).toContain('Bearer abcd1234')
+  })
+
+  test('PUT with a changed header value persists the new plaintext', async () => {
+    // Store original value first
+    const put1 = await handleMcpRoutes(
+      new Request('https://x/settings/api/mcp', {
+        method: 'PUT',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoints: [
+            {
+              id: 'srv1',
+              url: 'https://mcp.example.com',
+              enabled: true,
+              headers: { Authorization: 'Bearer original-secret' },
+            },
+          ],
+        }),
+      }),
+      new URL('https://x/settings/api/mcp'),
+    )
+    expect(put1.status).toBe(200)
+    const put1Body = PutResponseSchema.parse(await put1.json())
+    const contextId = put1Body.contextId
+    expect(getConfigValue(contextId, 'mcp_endpoints')).toContain('Bearer original-secret')
+
+    // Now update with a new plaintext value (not the masked form)
+    const put2 = await handleMcpRoutes(
+      new Request('https://x/settings/api/mcp', {
+        method: 'PUT',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoints: [
+            {
+              id: 'srv1',
+              url: 'https://mcp.example.com',
+              enabled: true,
+              headers: { Authorization: 'Bearer new-secret' },
+            },
+          ],
+        }),
+      }),
+      new URL('https://x/settings/api/mcp'),
+    )
+    expect(put2.status).toBe(200)
+
+    // Stored value should now be the new secret
+    const stored = getConfigValue(contextId, 'mcp_endpoints')
+    expect(stored).toContain('Bearer new-secret')
+    expect(stored).not.toContain('Bearer original-secret')
+  })
+
+  test('PUT with toolFilter persists and GET returns it', async () => {
+    const put = await handleMcpRoutes(
+      new Request('https://x/settings/api/mcp', {
+        method: 'PUT',
+        headers: { ...authHeaders(session, true), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoints: [
+            {
+              id: 'srv1',
+              url: 'https://mcp.example.com',
+              enabled: true,
+              toolFilter: { allow: ['tool_a', 'tool_b'], deny: ['tool_c'] },
+            },
+          ],
+        }),
+      }),
+      new URL('https://x/settings/api/mcp'),
+    )
+    expect(put.status).toBe(200)
+    const putBody = PutResponseSchema.parse(await put.json())
+    const contextId = putBody.contextId
+
+    // Stored config should contain toolFilter data
+    const stored = getConfigValue(contextId, 'mcp_endpoints')
+    expect(stored).toContain('tool_a')
+    expect(stored).toContain('tool_c')
+
+    // GET should return the toolFilter
+    const get = await handleMcpRoutes(
+      new Request('https://x/settings/api/mcp', { headers: authHeaders(session) }),
+      new URL('https://x/settings/api/mcp'),
+    )
+    expect(get.status).toBe(200)
+    const body = GetResponseSchema.parse(await get.json())
+    expect(body.endpoints[0]?.toolFilter?.allow).toEqual(['tool_a', 'tool_b'])
+    expect(body.endpoints[0]?.toolFilter?.deny).toEqual(['tool_c'])
   })
 })
