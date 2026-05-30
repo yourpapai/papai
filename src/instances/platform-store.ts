@@ -91,9 +91,6 @@ export const listPlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstan
   return rowsToInstancesSafe(rows, rowToInstance, decodeFailure)
 }
 
-export const listActivePlatformInstances = (): PlatformInstance[] =>
-  listPlatformInstances().filter((instance) => instance.status === 'active')
-
 export const listActivePlatformInstancesSafe = (): InstanceDecodeResult<PlatformInstance> => {
   const result = listPlatformInstancesSafe()
   return {
