@@ -10,8 +10,6 @@ export type TaskInstanceType = string
 export type BuiltinTaskType = 'kaneo' | 'youtrack'
 export type InstanceStatus = 'pending' | 'active' | 'stopped'
 
-export const isBuiltinTaskType = (type: string): type is BuiltinTaskType => type === 'kaneo' || type === 'youtrack'
-
 export interface PlatformInstance {
   id: string
   type: PlatformInstanceType

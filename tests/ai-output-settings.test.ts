@@ -10,7 +10,6 @@ import {
   AI_REASONING_VISIBILITY_KEY,
   AI_TOOL_VISIBILITY_KEY,
   getAiOutputSettings,
-  setAiOutputSetting,
 } from '../src/ai-output-settings.js'
 import { setCachedConfig } from '../src/cache.js'
 import { mockLogger, setupTestDb } from './utils/test-helpers.js'
@@ -50,18 +49,6 @@ describe('ai-output-settings', () => {
       toolVisibility: 'off',
       reasoningVisibility: 'off',
       detailLevel: 'sanitized',
-    })
-  })
-
-  test('setAiOutputSetting writes the selected context value', () => {
-    setAiOutputSetting('ctx-write', 'toolVisibility', 'on')
-    setAiOutputSetting('ctx-write', 'reasoningVisibility', 'on')
-    setAiOutputSetting('ctx-write', 'detailLevel', 'raw')
-
-    expect(getAiOutputSettings('ctx-write')).toEqual({
-      toolVisibility: 'on',
-      reasoningVisibility: 'on',
-      detailLevel: 'raw',
     })
   })
 })

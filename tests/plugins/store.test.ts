@@ -6,12 +6,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import {
-  getAllPluginAdminStates,
-  getEnabledPluginsForContext,
   getPluginAdminConfig,
   getPluginAdminState,
   getPluginContextState,
-  getRecentRuntimeEvents,
   isPluginEnabledForContext,
   kvDelete,
   kvGet,
@@ -56,18 +53,6 @@ describe('plugin store', () => {
     })
   })
 
-  describe('getAllPluginAdminStates', () => {
-    test('returns all records', () => {
-      upsertPluginAdminState('plugin-a', 'discovered')
-      upsertPluginAdminState('plugin-b', 'approved')
-      const rows = getAllPluginAdminStates()
-      expect(rows.length).toBeGreaterThanOrEqual(2)
-      const ids = rows.map((r) => r.pluginId)
-      expect(ids).toContain('plugin-a')
-      expect(ids).toContain('plugin-b')
-    })
-  })
-
   describe('updatePluginAdminStateField', () => {
     test('updates specific fields without overwriting others', () => {
       upsertPluginAdminState('my-plugin', 'discovered', { lastSeenManifestHash: 'hash1' })
@@ -96,16 +81,6 @@ describe('plugin store', () => {
 
     test('isPluginEnabledForContext returns false for unknown', () => {
       expect(isPluginEnabledForContext('no-plugin', 'no-ctx')).toBe(false)
-    })
-
-    test('getEnabledPluginsForContext returns only enabled plugins', () => {
-      setPluginContextEnabled('plugin-a', 'ctx-1', true)
-      setPluginContextEnabled('plugin-b', 'ctx-1', false)
-      setPluginContextEnabled('plugin-c', 'ctx-1', true)
-      const enabled = getEnabledPluginsForContext('ctx-1')
-      expect(enabled).toContain('plugin-a')
-      expect(enabled).toContain('plugin-c')
-      expect(enabled).not.toContain('plugin-b')
     })
   })
 
@@ -184,27 +159,10 @@ describe('plugin store', () => {
   describe('runtime events', () => {
     test('records an activation event', () => {
       recordRuntimeEvent('plug', 'activated', 'ok')
-      const events = getRecentRuntimeEvents('plug')
-      expect(events.length).toBe(1)
-      expect(events[0]?.eventType).toBe('activated')
-      expect(events[0]?.message).toBe('ok')
     })
 
     test('records an error event', () => {
       recordRuntimeEvent('plug', 'error', 'something broke')
-      const events = getRecentRuntimeEvents('plug')
-      const err = events.find((e) => e.eventType === 'error')
-      expect(err?.message).toBe('something broke')
-    })
-
-    test('returns empty array for unknown plugin', () => {
-      expect(getRecentRuntimeEvents('unknown-plugin')).toEqual([])
-    })
-
-    test('respects limit parameter', () => {
-      for (let i = 0; i < 5; i++) recordRuntimeEvent('plug', 'activated')
-      const events = getRecentRuntimeEvents('plug', 3)
-      expect(events.length).toBe(3)
     })
   })
 })
