@@ -157,7 +157,7 @@ Plugin command handlers run only when the plugin is active and eligible for the 
 
 ## Scheduled Jobs
 
-Plugin jobs are registered through `ctx.registration.registerScheduledJob()` with an `intervalMs` and an `execute(contextId)` function. Jobs are registered with owner names like `plugin:<pluginId>:<jobName>` and execute only for contexts where the plugin is enabled and eligible.
+Plugin jobs are registered through `ctx.registration.registerScheduledJob()` with an `intervalMs` and an `execute(runtime)` function. The runtime always includes `pluginId` and `contextId`, and includes a permission-gated `taskProvider` facade only when the plugin declares `tasks.read` or `tasks.write`. Jobs are registered with owner names like `plugin:<pluginId>:<jobName>` and execute only for contexts where the plugin is enabled and eligible.
 
 ## Permissions
 

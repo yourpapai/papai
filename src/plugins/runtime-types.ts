@@ -32,6 +32,13 @@ export type PluginToolRuntimeContext = {
   }
 }
 
+export type PluginScheduledJobRuntimeContext = {
+  pluginId: string
+  contextId: string
+} & Partial<{
+  taskProvider: PluginTaskProviderFacade
+}>
+
 export type PluginTool = {
   /** Raw tool name as declared in the manifest (snake_case). */
   name: string
@@ -57,7 +64,7 @@ export type PluginCommand = {
 export type PluginScheduledJob = {
   name: string
   intervalMs: number
-  execute: (contextId: string) => Promise<void> | void
+  execute: (runtime: PluginScheduledJobRuntimeContext) => Promise<void> | void
 }
 
 /** Registration result from a plugin's activate() call. */

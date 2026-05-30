@@ -383,7 +383,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -434,7 +434,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -466,7 +466,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -499,7 +499,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -546,7 +546,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -585,7 +585,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -626,7 +626,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -647,9 +647,103 @@ describe('PluginContributionRegistry', () => {
     expect(seenContexts).toEqual([])
   })
 
-  test('scheduled jobs require resolver for required task capabilities', async () => {
+  test('jobs with task permissions receive a task-provider facade', async () => {
+    seedTestPlatformInstance({ id: 'platform-a' })
+    seedTestTaskInstance({ id: 'task-a', type: 'kaneo' })
+    setContextSettings({ contextId: 'ctx-job', platformInstanceId: 'platform-a', taskInstanceId: 'task-a' })
+
+    const provider = createMockProvider()
+    const searchCalls: string[] = []
+    provider.searchTasks = (params): Promise<[]> => {
+      searchCalls.push(params.query)
+      return Promise.resolve([])
+    }
+
+    const manifest = makeManifest({
+      permissions: ['tasks.read'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['sync'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+      defaultEnabled: true,
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        jobs: [
+          {
+            name: 'sync',
+            intervalMs: 60_000,
+            execute: async (runtime): Promise<void> => {
+              await runtime.taskProvider!.searchTasks({ query: 'jobs-can-read' })
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'sync', { resolveTaskProvider: () => provider })
+
+    expect(searchCalls).toEqual(['jobs-can-read'])
+  })
+
+  test('jobs without task permissions do not resolve a provider', async () => {
+    seedTestPlatformInstance({ id: 'platform-a' })
+    seedTestTaskInstance({ id: 'task-a', type: 'kaneo' })
+    setContextSettings({ contextId: 'ctx-job', platformInstanceId: 'platform-a', taskInstanceId: 'task-a' })
+
+    let resolveCalls = 0
+    const manifest = makeManifest({
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: ['sync'],
+        configKeys: [],
+        taskProviderTypes: [],
+      },
+      defaultEnabled: true,
+    })
+    markPluginActive(manifest)
+    contributionRegistry.register(
+      'test-plugin',
+      {
+        tools: [],
+        promptFragments: [],
+        jobs: [
+          {
+            name: 'sync',
+            intervalMs: 60_000,
+            execute: (runtime): void => {
+              expect('taskProvider' in runtime).toBe(false)
+            },
+          },
+        ],
+      },
+      manifest,
+    )
+
+    await runPluginScheduledJob('test-plugin', 'sync', {
+      resolveTaskProvider: () => {
+        resolveCalls += 1
+        return createMockProvider()
+      },
+    })
+
+    expect(resolveCalls).toBe(0)
+  })
+
+  test('scheduled jobs with only required task capabilities do not resolve a provider', async () => {
     const seenContexts: string[] = []
-    const resolvedContexts: string[] = []
+    let resolveCalls = 0
     const manifest = makeManifest({
       requiredTaskCapabilities: ['workItems.list'],
       contributes: { tools: [], promptFragments: [], commands: [], jobs: ['daily'], configKeys: [] },
@@ -665,7 +759,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               seenContexts.push(contextId)
             },
           },
@@ -676,14 +770,14 @@ describe('PluginContributionRegistry', () => {
     setPluginEnabledForContext('test-plugin', 'ctx-enabled', true)
 
     await runPluginScheduledJob('test-plugin', 'daily', {
-      resolveTaskProvider: (contextId) => {
-        resolvedContexts.push(contextId)
-        return null
+      resolveTaskProvider: () => {
+        resolveCalls += 1
+        return createMockProvider()
       },
     })
 
-    expect(resolvedContexts).toEqual(['ctx-enabled'])
-    expect(seenContexts).toEqual([])
+    expect(resolveCalls).toBe(0)
+    expect(seenContexts).toEqual(['ctx-enabled'])
   })
 
   test('scheduled jobs continue after one context throws', async () => {
@@ -716,7 +810,7 @@ describe('PluginContributionRegistry', () => {
           {
             name: 'daily',
             intervalMs: 60_000,
-            execute: (contextId): void => {
+            execute: ({ contextId }): void => {
               const execution = executions.get(contextId)
               expect(execution).toBeDefined()
               execution!()

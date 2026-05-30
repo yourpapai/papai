@@ -42,7 +42,7 @@ const factory: PluginFactory = () => ({
     ctx.registration.registerScheduledJob({
       name: 'daily_hello',
       intervalMs: 24 * 60 * 60 * 1000,
-      execute(contextId: string): void {
+      execute({ contextId }): void {
         ctx.log.info({ contextId }, 'hello-world scheduled job tick')
       },
     })

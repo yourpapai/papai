@@ -6,6 +6,7 @@
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { buildIdentityFacade } from './identity-facade.js'
+import type { PluginScheduledJobRuntimeContext } from './runtime-types.js'
 import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
 
@@ -61,7 +62,7 @@ function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): Pl
   })
 }
 
-function buildTaskProviderFacade(
+export function buildPluginTaskProviderFacade(
   pluginId: string,
   provider: TaskProvider,
   canRead: boolean,
@@ -89,6 +90,26 @@ function buildTaskProviderFacade(
       return provider.updateTask(taskId, params)
     },
   }) satisfies PluginTaskProviderFacade
+}
+
+export function buildPluginScheduledJobRuntimeContext(
+  pluginId: string,
+  contextId: string,
+  manifest: PluginManifest,
+  provider: TaskProvider | undefined,
+): PluginScheduledJobRuntimeContext {
+  if (provider === undefined) return { pluginId, contextId }
+
+  return {
+    pluginId,
+    contextId,
+    taskProvider: buildPluginTaskProviderFacade(
+      pluginId,
+      provider,
+      manifest.permissions.includes('tasks.read'),
+      manifest.permissions.includes('tasks.write'),
+    ),
+  }
 }
 
 // Intentionally shares the web_fetch rate-limit bucket (20 req / 5 min per actor).
@@ -121,7 +142,7 @@ export function buildPluginToolRuntimeContext(
     pluginId,
     storageContextId: runtime.storageContextId,
     chatUserId: runtime.chatUserId,
-    taskProvider: buildTaskProviderFacade(
+    taskProvider: buildPluginTaskProviderFacade(
       pluginId,
       runtime.provider,
       permissions.has('tasks.read'),
