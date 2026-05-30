@@ -5,11 +5,12 @@
 
 import { beforeEach, describe, expect, it, test } from 'bun:test'
 
-import { buildDomainDrillView, buildDomainListView } from '../../src/commands/tool-config-view.js'
+import { buildDomainListView, buildDomainDrillView, resolveToolNameCode } from '../../src/commands/tool-config-view.js'
 import { getToolPrefs, setToolPrefs } from '../../src/tools/tool-preferences.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 const AVAILABLE = ['create_task', 'update_task', 'search_tasks', 'delete_task', 'web_fetch', 'get_current_time']
+const AVAILABLE_WITH_PLUGIN = [...AVAILABLE, 'plugin_hello_world__greet']
 
 describe('buildDomainListView', () => {
   it('lists domains present in the available set with on status by default', () => {
@@ -47,6 +48,17 @@ describe('buildDomainListView', () => {
     const taskRow = view.text.split('\n').find((l) => l.toLowerCase().includes('task'))
     expect(taskRow).toContain('🟡')
   })
+
+  it('renders a plugin domain row when plugin tools are available', () => {
+    const view = buildDomainListView('ctx', AVAILABLE_WITH_PLUGIN, {
+      domainDefaults: {},
+      toolOverrides: {},
+    })
+
+    expect(view.text).toContain('Plugin tools')
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:dom:plugin:'))).toBe(true)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:open:plugin:'))).toBe(true)
+  })
 })
 
 describe('buildDomainDrillView', () => {
@@ -69,15 +81,31 @@ describe('buildDomainDrillView', () => {
     expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
   })
 
-  it('compacts oversized tool callbacks when the context still fits', () => {
+  it('drops tool buttons when even compact callbacks cannot fit the context id', () => {
     const view = buildDomainDrillView('managed-group-context-long-id-123456789012', 'task', AVAILABLE, {
       domainDefaults: {},
       toolOverrides: {},
     })
 
-    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:t:'))).toBe(true)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:t:'))).toBe(false)
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:'))).toBe(false)
     expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:b:'))).toBe(true)
     expect(view.buttons.every((b) => Buffer.byteLength(b.callbackData, 'utf8') <= 64)).toBe(true)
+  })
+
+  it('resolves compact tool callbacks by encoded tool name, not by list order', () => {
+    expect(resolveToolNameCode('delete_task', ['create_task', 'delete_task'])).toBe('delete_task')
+    expect(resolveToolNameCode('delete_task', ['delete_task', 'create_task'])).toBe('delete_task')
+  })
+
+  it('renders plugin tools in the plugin drill view', () => {
+    const view = buildDomainDrillView('ctx', 'plugin', AVAILABLE_WITH_PLUGIN, {
+      domainDefaults: {},
+      toolOverrides: {},
+    })
+
+    expect(view.text).toContain('plugin_hello_world__greet')
+    expect(view.buttons.some((b) => b.callbackData.startsWith('tgl:tool:plugin_hello_world__greet:'))).toBe(true)
   })
 })
 
@@ -143,17 +171,17 @@ describe('external pseudo-domain', () => {
     expect(view.text).not.toContain('External')
   })
 
-  test('shown when plugin/MCP tools present', () => {
+  test('shown when unknown external tools present', () => {
     const view = buildDomainListView(
       'ctx-ext-yes',
-      ['create_task', 'plugin_foo__greet', 'mcp_bar__ping'],
+      ['create_task', 'external_runtime_tool'],
       getToolPrefs('ctx-ext-yes'),
     )
     expect(view.text).toContain('External')
   })
 
   test('no bulk-toggle button for External; only Edit', () => {
-    const view = buildDomainListView('ctx-ext-buttons', ['plugin_foo__greet'], getToolPrefs('ctx-ext-buttons'))
+    const view = buildDomainListView('ctx-ext-buttons', ['external_runtime_tool'], getToolPrefs('ctx-ext-buttons'))
     const editButtons = view.buttons.filter((b) => b.text.includes('External'))
     expect(editButtons.length).toBeGreaterThan(0)
     expect(editButtons.every((b) => b.text.startsWith('✏️'))).toBe(true)

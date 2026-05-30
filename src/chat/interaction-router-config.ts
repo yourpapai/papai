@@ -5,6 +5,7 @@
 
 import {
   handleEditorCallback,
+  matchesCallbackTargetTag,
   parseCallbackData,
   resolveCallbackKey,
   serializeCallbackData,
@@ -76,6 +77,10 @@ async function replyUnknownConfigAction(reply: ReplyFn, callbackData: string): P
   return true
 }
 
+function isLegacyUnboundDmConfigCallback(parsed: ReturnType<typeof parseCallbackData>): boolean {
+  return parsed.targetContextId === undefined && parsed.targetTag === undefined
+}
+
 async function getDmConfigTargetContextId(
   interaction: IncomingInteraction,
   targetContextId: string,
@@ -118,6 +123,9 @@ export async function defaultHandleConfigInteraction(
 
   const parsed = parseCallbackData(callbackData)
   if (parsed.action === null) return replyUnknownConfigAction(reply, callbackData)
+  if (interaction.contextType === 'dm' && isLegacyUnboundDmConfigCallback(parsed)) {
+    return replyUnknownConfigAction(reply, callbackData)
+  }
 
   const targetContextId = await getDmConfigTargetContextId(
     interaction,
@@ -126,6 +134,9 @@ export async function defaultHandleConfigInteraction(
     reply,
   )
   if (targetContextId === true) return true
+  if (!matchesCallbackTargetTag(parsed.targetTag, targetContextId)) {
+    return replyUnknownConfigAction(reply, callbackData)
+  }
 
   log.debug(
     { userId: user.id, contextId: targetContextId, action: parsed.action, key: parsed.key },
@@ -136,7 +147,7 @@ export async function defaultHandleConfigInteraction(
   if (parsed.key?.startsWith('#') === true && key === undefined) {
     return replyUnknownConfigAction(reply, callbackData)
   }
-  const result = handleEditorCallback(user.id, targetContextId, parsed.action, key)
+  const result = handleEditorCallback(user.id, targetContextId, parsed.action, key, parsed.sessionToken)
 
   if (!result.handled) {
     log.warn({ action: parsed.action, key: parsed.key }, 'Config editor callback not handled')

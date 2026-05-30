@@ -23,6 +23,7 @@ describe('config-editor types', () => {
       userId: 'user123',
       storageContextId: 'ctx456',
       startedAt: new Date(),
+      sessionToken: 'abc123',
       editingKey: 'kaneo_apikey',
       pendingValue: 'sk-test',
       originalMessageId: 'msg789',
@@ -38,6 +39,7 @@ describe('config-editor types', () => {
       userId: 'user123',
       storageContextId: 'ctx456',
       startedAt: new Date(),
+      sessionToken: 'abc123',
       editingKey: 'youtrack_token',
     }
 

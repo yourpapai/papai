@@ -8,6 +8,8 @@
  * In-memory store for active config editor sessions
  */
 
+import { randomBytes } from 'node:crypto'
+
 import { logger } from '../logger.js'
 import type { ConfigEditorSession, CreateEditorSessionParams } from './types.js'
 
@@ -19,6 +21,8 @@ const activeSessions: Map<string, ConfigEditorSession> = new Map()
 // 30 minutes TTL
 const EDITOR_SESSION_TTL_MS = 30 * 60 * 1000
 
+const createSessionToken = (): string => randomBytes(4).toString('base64url')
+
 /**
  * Create a session key from userId and storageContextId
  */
@@ -26,22 +30,21 @@ const createSessionKey = (userId: string, storageContextId: string): string => `
 
 /**
  * Create and store a new config editor session
- * Returns existing session if one already exists for this user/context
+ * Replaces any existing session for this user/context
  */
 export const createEditorSession = (params: CreateEditorSessionParams): ConfigEditorSession => {
   const { userId, storageContextId, editingKey, originalMessageId } = params
   const key = createSessionKey(userId, storageContextId)
 
-  const existingSession = activeSessions.get(key)
-  if (existingSession !== undefined) {
-    log.warn({ userId, storageContextId }, 'Editor session already exists, returning existing')
-    return existingSession
+  if (activeSessions.has(key)) {
+    log.warn({ userId, storageContextId, editingKey }, 'Editor session already exists, replacing existing')
   }
 
   const session: ConfigEditorSession = {
     userId,
     storageContextId,
     startedAt: new Date(),
+    sessionToken: createSessionToken(),
     editingKey,
     originalMessageId,
   }
@@ -84,7 +87,9 @@ export const hasActiveEditor = (userId: string, storageContextId: string): boole
  */
 export interface EditorSessionUpdate {
   pendingValue?: string
+  clearPendingValue?: boolean
   originalMessageId?: string
+  rotateSessionToken?: boolean
 }
 
 /**
@@ -102,6 +107,14 @@ export const updateEditorSession = (userId: string, storageContextId: string, up
 
   if (update.pendingValue !== undefined) {
     session.pendingValue = update.pendingValue
+  }
+
+  if (update.clearPendingValue === true) {
+    delete session.pendingValue
+  }
+
+  if (update.rotateSessionToken === true) {
+    session.sessionToken = createSessionToken()
   }
 
   if (update.originalMessageId !== undefined) {

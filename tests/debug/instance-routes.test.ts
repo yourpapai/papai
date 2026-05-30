@@ -5,6 +5,9 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { setCachedTools, userCachesForTesting } from '../../src/cache.js'
 import { ChatRouter } from '../../src/chat/router.js'
@@ -25,6 +28,10 @@ import { getPlatformInstance, insertPlatformInstance } from '../../src/instances
 import { getTaskInstance, listTaskInstances } from '../../src/instances/task-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import type { InstanceConfig, PlatformInstance, TaskInstance } from '../../src/instances/types.js'
+import { activatePlugins, deactivateAllPlugins } from '../../src/plugins/loader.js'
+import { pluginRegistry } from '../../src/plugins/registry.js'
+import type { DiscoveredPlugin, PluginManifest } from '../../src/plugins/types.js'
+import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import {
   registerContributedTaskProviderType,
   unregisterContributedTaskProviderType,
@@ -34,6 +41,7 @@ import { createMockProvider } from '../tools/mock-provider.js'
 import { getTestDb, mockLogger, setupTestDb } from '../utils/test-helpers.js'
 
 let authCookieValue: string
+const tempDirs: string[] = []
 const jsonHeaders = (): Record<string, string> => ({
   Cookie: `${SESSION_COOKIE_NAME}=${authCookieValue}`,
   'Content-Type': 'application/json',
@@ -99,6 +107,53 @@ const expectTaskInstance = (id: string): TaskInstance => {
   return instance
 }
 
+const expectConfigValue = (value: Record<string, string> | null, label: string): Record<string, string> => {
+  if (value === null) throw new Error(`expected ${label}`)
+  return value
+}
+
+const makePluginManifest = (id: string, overrides: Partial<PluginManifest> = {}): PluginManifest => ({
+  id,
+  name: 'Test Plugin',
+  version: '1.0.0',
+  description: 'A test plugin',
+  apiVersion: PLUGIN_API_VERSION,
+  main: 'index.ts',
+  contributes: {
+    tools: [],
+    promptFragments: [],
+    commands: [],
+    jobs: [],
+    configKeys: [],
+    taskProviderTypes: [],
+  },
+  permissions: [],
+  defaultEnabled: false,
+  activationTimeoutMs: 5000,
+  requiredTaskCapabilities: [],
+  requiredChatCapabilities: [],
+  configRequirements: [],
+  providerCapabilities: [],
+  providerTraits: [],
+  providerConfigSchema: [],
+  providerContextConfigSchema: [],
+  providerAllowedHosts: [],
+  ...overrides,
+})
+
+const approvePlugin = (plugin: DiscoveredPlugin): void => {
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+}
+
+const writeTempPluginModule = (source: string): string => {
+  const dir = mkdtempSync(join(tmpdir(), 'papai-instance-routes-plugin-'))
+  tempDirs.push(dir)
+  const modulePath = join(dir, 'index.mjs')
+  writeFileSync(modulePath, source)
+  return modulePath
+}
+
 const providerStartForToken = (
   startsByToken: Readonly<Record<string, () => Promise<void>>>,
   token: string | undefined,
@@ -139,15 +194,18 @@ describe('instance API routes', () => {
     mockLogger()
     userCachesForTesting.clear()
     await setupTestDb()
+    await deactivateAllPlugins()
     setStoreDb(getTestDb().$client)
     authCookieValue = mintSession('test-admin', { secure: false }).cookieValue
     clearRuntimeChatRouter()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await deactivateAllPlugins()
     clearRuntimeChatRouter()
     userCachesForTesting.clear()
     setStoreDb(null)
+    tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
   })
 
   test('creates and lists masked platform instances', async () => {
@@ -1176,16 +1234,45 @@ describe('instance API routes', () => {
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'publicish')).toBe('********')
   })
 
-  test('rejects a task-instance create when the provider validator fails', async () => {
-    registerContributedTaskProviderType('validated', {
-      pluginId: 'val',
-      factory: () => createMockProvider({ name: 'validated' }),
-      validateConfig: () => Promise.resolve({ ok: false as const, reason: 'bad url' }),
-      capabilities: new Set<never>(),
-      displayName: 'Validated',
-      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
-    })
+  test('rejects a task-instance create when an activated plugin provider validator fails', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateValidatedConfig(config) {
+        return config.baseUrl === 'https://ok.invalid'
+          ? { ok: true }
+          : { ok: false, reason: 'bad url' }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated', () => ({ name: 'validated-provider' }))
+          },
+        }
+      }
+    `)
+    const plugin: DiscoveredPlugin = {
+      manifest: makePluginManifest('val', {
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['validated'],
+        },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+        providerConfigValidator: 'validateValidatedConfig',
+      }),
+      pluginDir: tmpdir(),
+      entryPoint,
+      manifestHash: 'hash-val',
+    }
+    approvePlugin(plugin)
+
     try {
+      await activatePlugins([plugin])
+
       const res = expectResponse(
         await routeWithDeps(
           '/api/task-instances',
@@ -1198,11 +1285,13 @@ describe('instance API routes', () => {
         ),
       )
       expect(res.status).toBe(400)
-      const body = assertObject(await readJson(res))
-      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
-      expect(pick(body, 'reason')).toBe('bad url')
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated',
+        reason: 'bad url',
+      })
     } finally {
-      unregisterContributedTaskProviderType('val')
+      await deactivateAllPlugins()
     }
   })
 
@@ -1269,9 +1358,11 @@ describe('instance API routes', () => {
       )
 
       expect(res.status).toBe(400)
-      const body = assertObject(await readJson(res))
-      expect(pick(body, 'error')).toBe('invalid_task_instance_config')
-      expect(pick(body, 'reason')).toBe('bad url')
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-patch',
+        reason: 'bad url',
+      })
       expect(expectTaskInstance('validated-patch-1').config).toEqual({ baseUrl: 'https://old.invalid' })
     } finally {
       unregisterContributedTaskProviderType('val-patch')
@@ -1304,6 +1395,190 @@ describe('instance API routes', () => {
       expect(instance).not.toBeNull()
     } finally {
       unregisterContributedTaskProviderType('val-ok')
+    }
+  })
+
+  test('passes only instance-scoped descriptor fields to the provider validator', async () => {
+    let seenConfig: Record<string, string> | null = null
+    registerContributedTaskProviderType('validated-instance-fields', {
+      pluginId: 'val-instance-fields',
+      factory: () => createMockProvider({ name: 'validated-instance-fields' }),
+      validateConfig: (config) => {
+        seenConfig = config
+        return Promise.resolve({ ok: true as const })
+      },
+      capabilities: new Set<never>(),
+      displayName: 'Validated Instance Fields',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+      contextConfigSchema: [{ key: 'apiToken', label: 'Token', required: false, sensitive: true, scope: 'context' }],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'validated-instance-fields-1',
+              type: 'validated-instance-fields',
+              config: { baseUrl: 'https://ok.invalid', apiToken: 'context-secret', extra: 'ignored' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(201)
+      expect(expectConfigValue(seenConfig, 'validator config')).toEqual({ baseUrl: 'https://ok.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('val-instance-fields')
+    }
+  })
+
+  test('returns validator-specific 400 when the provider validator throws during create', async () => {
+    registerContributedTaskProviderType('validated-throw', {
+      pluginId: 'val-throw',
+      factory: () => createMockProvider({ name: 'validated-throw' }),
+      validateConfig: () => {
+        throw new Error('validator exploded')
+      },
+      capabilities: new Set<never>(),
+      displayName: 'Validated Throw',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'v-throw-1',
+              type: 'validated-throw',
+              config: { baseUrl: 'https://x.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-throw',
+        reason: 'validator exploded',
+      })
+      expect(getTaskInstance('v-throw-1')).toBeNull()
+    } finally {
+      unregisterContributedTaskProviderType('val-throw')
+    }
+  })
+
+  test('returns validator-specific 400 when the provider validator rejects during patch', async () => {
+    registerContributedTaskProviderType('validated-reject', {
+      pluginId: 'val-reject',
+      factory: () => createMockProvider({ name: 'validated-reject' }),
+      validateConfig: () => Promise.reject(new Error('validator rejected')),
+      capabilities: new Set<never>(),
+      displayName: 'Validated Reject',
+      instanceConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+    })
+    insertTaskInstance({
+      id: 'validated-reject-1',
+      type: 'validated-reject',
+      config: { baseUrl: 'https://old.invalid' },
+      status: 'active',
+    })
+    try {
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances/validated-reject-1',
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
+          {
+            method: 'PATCH',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ config: { baseUrl: 'https://new.invalid' } }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-reject',
+        reason: 'validator rejected',
+      })
+      expect(expectTaskInstance('validated-reject-1').config).toEqual({ baseUrl: 'https://old.invalid' })
+    } finally {
+      unregisterContributedTaskProviderType('val-reject')
+    }
+  })
+
+  test('returns a clear 400 when the provider validator returns an invalid failure shape', async () => {
+    const entryPoint = writeTempPluginModule(`
+      export async function validateBadShapeConfig() {
+        return { ok: false }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('validated-bad-shape', () => ({ name: 'validated-bad-shape' }))
+          },
+        }
+      }
+    `)
+    const plugin: DiscoveredPlugin = {
+      manifest: makePluginManifest('val-bad-shape', {
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['validated-bad-shape'],
+        },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+        providerConfigValidator: 'validateBadShapeConfig',
+      }),
+      pluginDir: tmpdir(),
+      entryPoint,
+      manifestHash: 'hash-val-bad-shape',
+    }
+    approvePlugin(plugin)
+
+    try {
+      await activatePlugins([plugin])
+
+      const res = expectResponse(
+        await routeWithDeps(
+          '/api/task-instances',
+          { getRuntimeChatRouter: () => null, listPlatformInstances: () => [] },
+          {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+              id: 'v-bad-shape-1',
+              type: 'validated-bad-shape',
+              config: { baseUrl: 'https://x.invalid' },
+            }),
+          },
+        ),
+      )
+
+      expect(res.status).toBe(400)
+      expect(await readJson(res)).toEqual({
+        error: 'invalid_task_instance_config',
+        type: 'validated-bad-shape',
+        reason:
+          "Plugin 'val-bad-shape' providerConfigValidator export 'validateBadShapeConfig' returned an invalid result",
+      })
+      expect(getTaskInstance('v-bad-shape-1')).toBeNull()
+    } finally {
+      await deactivateAllPlugins()
     }
   })
 

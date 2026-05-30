@@ -3,8 +3,10 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
+import { createHash } from 'node:crypto'
+
 import type { ChatButton } from '../chat/types.js'
-import { getToolMetadata, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
+import { getToolMetadata, TOOL_DOMAINS, type ToolDomain, type ToolRisk } from '../tools/tool-metadata.js'
 import {
   getDomainSummary,
   resolveToolPermission,
@@ -42,6 +44,7 @@ const DOMAIN_LABELS: Record<ToolDomain, string> = {
   identity: 'Identity',
   time: 'Time',
   mcp: 'MCP tools',
+  plugin: 'Plugin tools',
 }
 
 const RISK_EMOJI: Record<ToolRisk, string> = {
@@ -52,26 +55,7 @@ const RISK_EMOJI: Record<ToolRisk, string> = {
 }
 
 const MAX_CALLBACK_DATA_BYTES = 64
-const DOMAIN_CODES: readonly ToolDomain[] = [
-  'task',
-  'project',
-  'comment',
-  'label',
-  'status',
-  'attachment',
-  'work',
-  'sprint',
-  'query',
-  'collaboration',
-  'memo',
-  'recurring',
-  'deferred',
-  'instruction',
-  'history',
-  'web',
-  'identity',
-  'time',
-]
+const DOMAIN_CODES: readonly ToolDomain[] = TOOL_DOMAINS
 
 function callbackData(raw: string, compact: string): string | null {
   if (Buffer.byteLength(raw, 'utf8') <= MAX_CALLBACK_DATA_BYTES) return raw
@@ -86,6 +70,10 @@ function sortedToolNames(availableToolNames: readonly string[]): string[] {
   return [...availableToolNames].filter((name) => getToolMetadata(name) !== undefined).toSorted()
 }
 
+function toolNameCode(toolName: string): string {
+  return createHash('sha256').update(toolName).digest('base64url').slice(0, 5)
+}
+
 function domainCode(domain: ToolDomain): string {
   return DOMAIN_CODES.indexOf(domain).toString(36)
 }
@@ -97,6 +85,11 @@ export function resolveToolDomainCode(code: string): ToolDomain | null {
 }
 
 export function resolveToolNameCode(code: string, availableToolNames: readonly string[]): string | null {
+  if (availableToolNames.includes(code)) return code
+
+  const hashedMatches = sortedToolNames(availableToolNames).filter((name) => toolNameCode(name) === code)
+  if (hashedMatches.length === 1) return hashedMatches[0] ?? null
+
   const index = Number.parseInt(code, 36)
   if (!Number.isSafeInteger(index)) return null
   return sortedToolNames(availableToolNames)[index] ?? null
@@ -210,7 +203,6 @@ function buildNamedDomainDrillView(
   const domainTools = groupByDomain(availableToolNames).get(domain)
   const names = domainTools ?? []
   const sorted = [...names].toSorted()
-  const allSorted = sortedToolNames(availableToolNames)
   const lines = [`🧰 **${DOMAIN_LABELS[domain]}** — tap a tool to cycle its permission.\n`]
   const buttons: ChatButton[] = []
   for (const name of sorted) {
@@ -218,7 +210,7 @@ function buildNamedDomainDrillView(
     const risk = meta === undefined ? '' : RISK_EMOJI[meta.risk]
     const perm = resolveToolPermission(prefs, name)
     lines.push(`${permissionMarker(perm)} ${risk} ${name}`)
-    const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${allSorted.indexOf(name).toString(36)}:${ctx}`)
+    const toolCallback = callbackData(`tgl:tool:${name}:${ctx}`, `tgl:t:${toolNameCode(name)}:${ctx}`)
     if (toolCallback !== null) {
       buttons.push({
         text: `${permissionMarker(perm)} ${risk} ${name}`,

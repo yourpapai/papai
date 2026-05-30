@@ -5,7 +5,7 @@
 
 import { clearCachedToolsByPrefix, getCachedConfig, setCachedConfig } from '../cache.js'
 import { logger } from '../logger.js'
-import { getToolMetadata, TOOL_METADATA, type ToolDomain } from './tool-metadata.js'
+import { getToolMetadata, TOOL_DOMAINS, type ToolDomain } from './tool-metadata.js'
 
 const log = logger.child({ scope: 'tools:preferences' })
 
@@ -32,10 +32,10 @@ export function isPermission(value: unknown): value is Permission {
   return typeof value === 'string' && (PERMISSIONS as ReadonlySet<string>).has(value)
 }
 
-const TOOL_DOMAINS: ReadonlySet<string> = new Set(Object.values(TOOL_METADATA).map((m) => m.domain))
+const TOOL_DOMAIN_SET: ReadonlySet<string> = new Set(TOOL_DOMAINS)
 
 function isToolDomain(value: string): value is ToolDomain {
-  return TOOL_DOMAINS.has(value)
+  return TOOL_DOMAIN_SET.has(value)
 }
 
 export function resolveToolPermission(prefs: ToolPrefs, toolName: string): Permission {

@@ -3,17 +3,12 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { buildPluginContext } from '../../src/plugins/context.js'
 import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { PluginManifest } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION, pluginManifestSchema } from '../../src/plugins/types.js'
-import {
-  getTaskProviderConfigValidator,
-  getTaskProviderDescriptor,
-  unregisterContributedTaskProviderType,
-} from '../../src/providers/registry.js'
 import type { TaskProvider } from '../../src/providers/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import { mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -161,6 +156,13 @@ describe('buildPluginContext', () => {
     expect(Object.isFrozen(ctx.adminConfig)).toBe(true)
   })
 
+  test('exposes permissions as an immutable set', () => {
+    const { ctx } = buildPluginContext(makeManifest({ permissions: ['storage', 'http'] }), 'ctx-1')
+
+    expect(ctx.permissions.has('storage')).toBe(true)
+    expect('add' in ctx.permissions).toBe(false)
+  })
+
   test('denies kv operations when storage permission is missing', () => {
     const { ctx } = buildPluginContext(makeManifest({ permissions: [] }), 'ctx-1')
 
@@ -199,16 +201,7 @@ describe('buildPluginContext', () => {
   })
 
   describe('registerTaskProviderType', () => {
-    beforeEach(() => {
-      unregisterContributedTaskProviderType('test-plugin')
-    })
-
-    afterEach(() => {
-      unregisterContributedTaskProviderType('test-plugin')
-      unregisterContributedTaskProviderType('provider-metadata-plugin')
-    })
-
-    test('registers a declared type when provider.task is held', () => {
+    test('stages a declared type when provider.task is held', () => {
       const manifest = makeManifest({
         permissions: ['provider.task'],
         contributes: {
@@ -221,41 +214,51 @@ describe('buildPluginContext', () => {
         },
         providerCapabilities: ['labels.list'],
       })
-      const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
-      expect(requireValue(getTaskProviderDescriptor('custom-tracker'), 'custom tracker descriptor').source).toEqual({
-        plugin: 'test-plugin',
+      const { ctx, collected } = buildPluginContext(manifest, 'ctx-1')
+
+      ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)
+
+      expect(collected.taskProviderRegistration).toEqual({
+        type: 'custom-tracker',
+        factory: stubProviderFactory,
+        capabilities: new Set(['labels.list']),
+        displayName: 'Test Plugin',
+        instanceConfigSchema: [],
+        contextConfigSchema: [],
+        traits: new Set(),
       })
     })
 
-    test('registers provider context config schema from manifest', () => {
+    test('stages provider config schema from manifest', () => {
       const manifest = pluginManifestSchema.parse({
         id: 'test-plugin',
         name: 'Test Plugin',
         version: '1.0.0',
         description: 'A test plugin',
         apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
         permissions: ['provider.task'],
         contributes: { taskProviderTypes: ['custom-tracker'] },
         providerConfigSchema: [{ key: 'base_url', label: 'Base URL', required: true }],
         providerContextConfigSchema: [{ key: 'token', label: 'Token', required: true, sensitive: true }],
       })
-      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+      const { ctx, collected } = buildPluginContext(manifest, 'ctx-1')
 
-      ctx.registration.registerTaskProviderType('custom-tracker', { factory: stubProviderFactory })
+      ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)
 
-      const descriptor = requireValue(getTaskProviderDescriptor('custom-tracker'), 'custom tracker descriptor')
-      expect(descriptor.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
-      expect(descriptor.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
+      const registration = requireValue(collected.taskProviderRegistration, 'custom tracker registration')
+      expect(registration.instanceConfigSchema.map((field) => field.key)).toEqual(['base_url'])
+      expect(registration.contextConfigSchema.map((field) => field.key)).toEqual(['token'])
     })
 
-    test('registers provider storage keys and traits from manifest metadata', () => {
+    test('stages provider storage keys and traits from manifest metadata', () => {
       const manifest = pluginManifestSchema.parse({
         id: 'provider-metadata-plugin',
         name: 'Provider Metadata Plugin',
         version: '1.0.0',
         description: 'A provider metadata plugin',
         apiVersion: PLUGIN_API_VERSION,
+        main: 'index.ts',
         permissions: ['provider.task'],
         contributes: {
           tools: [],
@@ -281,45 +284,17 @@ describe('buildPluginContext', () => {
           },
         ],
       })
-      const { ctx } = buildPluginContext(manifest, '__system__')
+      const { ctx, collected } = buildPluginContext(manifest, '__system__')
 
-      ctx.registration.registerTaskProviderType('metadata-tracker', {
-        factory: () => createMockProvider({ name: 'metadata-tracker' }),
-      })
+      const factory = (): TaskProvider => createMockProvider({ name: 'metadata-tracker' })
+      ctx.registration.registerTaskProviderType('metadata-tracker', factory)
 
-      const descriptor = getTaskProviderDescriptor('metadata-tracker')
-      expect(descriptor?.traits.has('supports-command-language')).toBe(true)
-      expect(descriptor?.contextConfigSchema.find((field) => field.key === 'apiToken')?.storageKey).toBe(
+      const registration = requireValue(collected.taskProviderRegistration, 'metadata tracker registration')
+      expect(registration.traits.has('supports-command-language')).toBe(true)
+      expect(registration.factory).toBe(factory)
+      expect(registration.contextConfigSchema.find((field) => field.key === 'apiToken')?.storageKey).toBe(
         'metadata_token',
       )
-    })
-
-    test('wraps malformed direct provider validators as rejected validation results', async () => {
-      const manifest = makeManifest({
-        permissions: ['provider.task'],
-        contributes: {
-          tools: [],
-          promptFragments: [],
-          commands: [],
-          jobs: [],
-          configKeys: [],
-          taskProviderTypes: ['custom-tracker'],
-        },
-      })
-      const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      const validateConfig = (): Promise<{ ok: false; reason: string }> => Promise.resolve({ ok: false, reason: '' })
-
-      ctx.registration.registerTaskProviderType('custom-tracker', {
-        factory: stubProviderFactory,
-        validateConfig,
-      })
-
-      await expect(
-        getTaskProviderConfigValidator('custom-tracker')?.({ baseUrl: 'https://bad.invalid' }),
-      ).resolves.toEqual({
-        ok: false,
-        reason: 'Contributed task provider validator returned an invalid result',
-      })
     })
 
     test('throws without provider.task permission', () => {
@@ -335,7 +310,7 @@ describe('buildPluginContext', () => {
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      expect(() => ctx.registration.registerTaskProviderType('kaneo', { factory: stubProviderFactory })).toThrow(
+      expect(() => ctx.registration.registerTaskProviderType('kaneo', stubProviderFactory)).toThrow(
         "cannot register a task provider type without 'provider.task'",
       )
     })
@@ -353,8 +328,88 @@ describe('buildPluginContext', () => {
         },
       })
       const { ctx } = buildPluginContext(manifest, 'ctx-1')
-      expect(() => ctx.registration.registerTaskProviderType('youtrack', { factory: stubProviderFactory })).toThrow(
+      expect(() => ctx.registration.registerTaskProviderType('youtrack', stubProviderFactory)).toThrow(
         'is not declared in plugin manifest contributes.taskProviderTypes',
+      )
+    })
+
+    test('throws on duplicate task provider registration', () => {
+      const manifest = makeManifest({
+        permissions: ['provider.task'],
+        contributes: {
+          tools: [],
+          promptFragments: [],
+          commands: [],
+          jobs: [],
+          configKeys: [],
+          taskProviderTypes: ['custom-tracker'],
+        },
+      })
+      const { ctx } = buildPluginContext(manifest, 'ctx-1')
+
+      ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)
+
+      expect(() => ctx.registration.registerTaskProviderType('custom-tracker', stubProviderFactory)).toThrow(
+        "Task provider type 'custom-tracker' was registered more than once",
+      )
+    })
+  })
+
+  describe('duplicate registration rejection', () => {
+    test('throws on duplicate tool registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const tool = {
+        name: 'allowed_tool',
+        description: 'Allowed tool',
+        execute: (): Promise<unknown> => Promise.resolve<unknown>('ok'),
+      }
+
+      ctx.registration.registerTool(tool)
+
+      expect(() => ctx.registration.registerTool(tool)).toThrow("Tool 'allowed_tool' was registered more than once")
+    })
+
+    test('throws on duplicate prompt fragment registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const fragment = {
+        name: 'allowed_fragment',
+        content: 'Allowed fragment',
+      }
+
+      ctx.registration.registerPromptFragment(fragment)
+
+      expect(() => ctx.registration.registerPromptFragment(fragment)).toThrow(
+        "Prompt fragment 'allowed_fragment' was registered more than once",
+      )
+    })
+
+    test('throws on duplicate command registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const command = {
+        name: 'allowed_command',
+        description: 'Allowed command',
+        execute: (): Promise<void> => Promise.resolve(),
+      }
+
+      ctx.registration.registerCommand(command)
+
+      expect(() => ctx.registration.registerCommand(command)).toThrow(
+        "Command 'allowed_command' was registered more than once",
+      )
+    })
+
+    test('throws on duplicate scheduled job registration', () => {
+      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const job = {
+        name: 'allowed_job',
+        intervalMs: 60_000,
+        execute: (): Promise<void> => Promise.resolve(),
+      }
+
+      ctx.registration.registerScheduledJob(job)
+
+      expect(() => ctx.registration.registerScheduledJob(job)).toThrow(
+        "Scheduled job 'allowed_job' was registered more than once",
       )
     })
   })

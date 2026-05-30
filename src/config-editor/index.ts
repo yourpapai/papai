@@ -10,7 +10,12 @@
  */
 
 export { handleEditorCallback, handleEditorMessage, startEditor } from './handlers.js'
-export { parseCallbackData, resolveCallbackKey, serializeCallbackData } from './callback-data.js'
+export {
+  matchesCallbackTargetTag,
+  parseCallbackData,
+  resolveCallbackKey,
+  serializeCallbackData,
+} from './callback-data.js'
 export {
   createEditorSession,
   deleteEditorSession,

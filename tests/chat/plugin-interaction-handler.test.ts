@@ -12,7 +12,7 @@ import type { IncomingInteraction } from '../../src/chat/types.js'
 import { setPluginConfig } from '../../src/config.js'
 import { upsertGroupAdminObservation, upsertKnownGroupContext } from '../../src/group-settings/registry.js'
 import { pluginRegistry } from '../../src/plugins/registry.js'
-import { getPluginContextState, isPluginEnabledForContext } from '../../src/plugins/store.js'
+import { getPluginContextState, isPluginEnabledForContext, setPluginAdminConfig } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin } from '../../src/plugins/types.js'
 import { PLUGIN_API_VERSION } from '../../src/plugins/types.js'
 import { createMockReply, mockLogger, setupTestDb } from '../utils/test-helpers.js'
@@ -21,7 +21,8 @@ function encodeContextId(contextId: string): string {
   return Buffer.from(contextId).toString('base64url')
 }
 
-function makePlugin(pluginId: string): DiscoveredPlugin {
+function makePlugin(pluginId: string, ...rest: [] | [Partial<DiscoveredPlugin['manifest']>]): DiscoveredPlugin {
+  const overrides = rest.length === 0 ? {} : rest[0]
   return {
     manifest: {
       id: pluginId,
@@ -49,6 +50,7 @@ function makePlugin(pluginId: string): DiscoveredPlugin {
       providerConfigSchema: [],
       providerContextConfigSchema: [],
       providerAllowedHosts: [],
+      ...overrides,
     },
     pluginDir: `/tmp/${pluginId}`,
     entryPoint: `/tmp/${pluginId}/index.ts`,
@@ -66,6 +68,12 @@ function makeInteraction(callbackData: string, storageContextId: string): Incomi
     storageContextId,
     callbackData,
   }
+}
+
+function registerActivePlugin(plugin: DiscoveredPlugin): void {
+  pluginRegistry.registerDiscovered(plugin)
+  pluginRegistry.approve(plugin.manifest.id, 'admin', plugin.manifestHash)
+  pluginRegistry.markActive(plugin.manifest.id)
 }
 
 describe('handlePluginInteraction', () => {
@@ -98,9 +106,7 @@ describe('handlePluginInteraction', () => {
     const pluginId = 'interaction-configured-plugin'
     const contextId = 'interaction-user-2'
     const plugin = makePlugin(pluginId)
-    pluginRegistry.registerDiscovered(plugin)
-    pluginRegistry.approve(pluginId, 'admin', plugin.manifestHash)
-    pluginRegistry.markActive(pluginId)
+    registerActivePlugin(plugin)
     setPluginConfig(contextId, pluginId, 'api_token', 'secret-token')
 
     const { reply, textCalls } = createMockReply()
@@ -112,6 +118,25 @@ describe('handlePluginInteraction', () => {
     expect(handled).toBe(true)
     expect(isPluginEnabledForContext(pluginId, contextId)).toBe(true)
     expect(textCalls[0]).toContain('enabled')
+  })
+
+  test('enable interaction accepts admin-scoped required config from admin store', async () => {
+    const pluginId = 'admin-scoped-toggle-plugin'
+    registerActivePlugin(
+      makePlugin(pluginId, {
+        configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'admin' }],
+      }),
+    )
+    setPluginAdminConfig(pluginId, 'api_key', 'configured', 'admin-user')
+
+    const { reply, textCalls } = createMockReply()
+    await handlePluginInteraction(
+      makeInteraction(`plg:enable:${pluginId}:${Buffer.from('ctx-1').toString('base64url')}`, 'ctx-1'),
+      reply,
+    )
+
+    expect(isPluginEnabledForContext(pluginId, 'ctx-1')).toBe(true)
+    expect(textCalls.some((text) => text.includes('enabled'))).toBe(true)
   })
 
   test('enables a plugin for a scoped personal DM target context', async () => {
@@ -220,6 +245,49 @@ describe('handlePluginInteraction', () => {
 
     expect(handled).toBe(true)
     expect(textCalls[0]).toContain('no longer recognized as an admin')
+    expect(getPluginContextState(pluginId, targetContextId)).toBeUndefined()
+  })
+
+  test('uses native group id in unauthorized scoped-group message for plugin interactions', async () => {
+    const pluginId = 'interaction-unauthorized-scoped-group-plugin'
+    const platformInstanceId = 'telegram-default'
+    const nativeGroupId = 'group-9'
+    const targetContextId = toScopedContextId({ platformInstanceId, nativeContextId: nativeGroupId })
+    const plugin = makePlugin(pluginId)
+    registerActivePlugin(plugin)
+
+    upsertKnownGroupContext({
+      contextId: targetContextId,
+      provider: 'telegram',
+      displayName: 'Scoped Group',
+      parentName: null,
+    })
+    upsertGroupAdminObservation({
+      provider: 'telegram',
+      contextId: targetContextId,
+      userId: 'admin-user',
+      username: 'alice',
+      isAdmin: true,
+    })
+    addAuthorizedGroup(targetContextId, 'admin-user')
+
+    const { removeAuthorizedGroup } = await import('../../src/authorized-groups.js')
+    expect(removeAuthorizedGroup(targetContextId)).toBe(true)
+
+    const { reply, textCalls } = createMockReply()
+    const handled = await handlePluginInteraction(
+      {
+        ...makeInteraction(`plg:disable:${pluginId}:${encodeContextId(targetContextId)}`, 'admin-user'),
+        platformInstanceId,
+      },
+      reply,
+    )
+
+    expect(handled).toBe(true)
+    expect(textCalls).toEqual([
+      'That group is no longer authorized for bot use. Ask the bot admin to run `/group add group-9` in DM, then run /config or /setup again.',
+    ])
+    expect(textCalls[0]).not.toContain(targetContextId)
     expect(getPluginContextState(pluginId, targetContextId)).toBeUndefined()
   })
 })

@@ -5,6 +5,7 @@
 
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
+import { pluginRegistry } from './plugins/registry.js'
 import { getTaskProviderDescriptor } from './providers/registry.js'
 import {
   isAllowedDynamicConfigKey,
@@ -48,15 +49,38 @@ function labelForStorageKey(storageKey: string, fallback: string): string {
   return fallback
 }
 
+function getPluginContextFields(): readonly ConfigField[] {
+  return pluginRegistry.getAllEntries().flatMap((entry) => {
+    if (entry.state !== 'active') return []
+
+    const editableKeys = new Set(entry.discoveredPlugin.manifest.contributes.configKeys)
+    return entry.discoveredPlugin.manifest.configRequirements.flatMap((requirement) => {
+      if (requirement.scope !== 'context') return []
+      if (!editableKeys.has(requirement.key)) return []
+      return [
+        {
+          key: requirement.key,
+          storageKey: `plugin:${entry.discoveredPlugin.manifest.id}:${requirement.key}`,
+          label: requirement.label,
+          required: requirement.required,
+          sensitive: requirement.sensitive,
+          kind: 'plugin-context' as const,
+        },
+      ]
+    })
+  })
+}
+
 export function getConfigFieldsForContext(contextId: string): readonly ConfigField[] {
+  const pluginFields = getPluginContextFields()
   const settings = getContextSettings(contextId)
-  if (settings === null) return PREFERENCE_FIELDS
+  if (settings === null) return [...pluginFields, ...PREFERENCE_FIELDS]
 
   const instance = getTaskInstance(settings.taskInstanceId)
-  if (instance === null || instance.status !== 'active') return PREFERENCE_FIELDS
+  if (instance === null || instance.status !== 'active') return [...pluginFields, ...PREFERENCE_FIELDS]
 
   const descriptor = getTaskProviderDescriptor(instance.type)
-  if (descriptor === undefined) return PREFERENCE_FIELDS
+  if (descriptor === undefined) return [...pluginFields, ...PREFERENCE_FIELDS]
 
   const providerFields = descriptor.contextConfigSchema
     .map(
@@ -71,7 +95,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
     )
     .filter((field) => field.storageKey !== KANEO_WORKSPACE_CONFIG_KEY)
 
-  return [...providerFields, ...PREFERENCE_FIELDS]
+  return [...providerFields, ...pluginFields, ...PREFERENCE_FIELDS]
 }
 
 export function getConfigKeysForContext(contextId: string): readonly string[] {

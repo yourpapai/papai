@@ -3,8 +3,9 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { setPluginAdminConfig } from '../../src/plugins/store.js'
 import { buildPluginToolRuntimeContext, type PluginToolSetRuntime } from '../../src/plugins/tool-runtime.js'
 import { pluginManifestSchema, type PluginManifest } from '../../src/plugins/types.js'
 import { createMockProvider } from '../tools/mock-provider.js'
@@ -159,5 +160,92 @@ describe('buildPluginToolRuntimeContext', () => {
 
     expect(runtime.identity).toBeUndefined()
     expect(runtime).not.toHaveProperty('identity')
+  })
+
+  test('tool runtime exposes admin config for declared admin-scoped keys', () => {
+    setPluginAdminConfig('test-plugin', 'api_key', 'runtime-api-key', 'admin-user')
+    setPluginAdminConfig('test-plugin', 'ignored_key', 'should-not-be-exposed', 'admin-user')
+
+    const runtime = buildPluginToolRuntimeContext(
+      'test-plugin',
+      makeManifest({
+        configRequirements: [
+          {
+            key: 'api_key',
+            label: 'API Key',
+            required: true,
+            sensitive: true,
+            scope: 'admin',
+          },
+        ],
+      }),
+      makeRuntime(),
+    )
+
+    expect(runtime.adminConfig.get('api_key')).toBe('runtime-api-key')
+    expect(runtime.adminConfig.get('ignored_key')).toBeUndefined()
+  })
+
+  test('tool runtime kv throws without storage permission', () => {
+    const runtime = buildPluginToolRuntimeContext('test-plugin', makeManifest(), makeRuntime())
+
+    expect(() => runtime.kv.get('missing')).toThrow("Plugin test-plugin does not have 'storage' permission")
+    expect(() => runtime.kv.set('key', 'value')).toThrow("Plugin test-plugin does not have 'storage' permission")
+    expect(() => runtime.kv.delete('key')).toThrow("Plugin test-plugin does not have 'storage' permission")
+    expect(() => runtime.kv.list()).toThrow("Plugin test-plugin does not have 'storage' permission")
+  })
+
+  test('tool runtime read methods throw without tasks.read permission', () => {
+    const getTask = mock(() =>
+      Promise.resolve({ id: 'task-1', title: 'ignored', status: 'todo', url: 'https://test.com/1' }),
+    )
+    const listTasks = mock(() => Promise.resolve([]))
+    const searchTasks = mock(() => Promise.resolve([]))
+    const provider = createMockProvider({
+      getTask,
+      listTasks,
+      searchTasks,
+    })
+    const runtime = buildPluginToolRuntimeContext('test-plugin', makeManifest(), makeRuntime({ provider }))
+
+    expect(() => runtime.taskProvider.getTask('task-1')).toThrow(
+      "Plugin test-plugin does not have 'tasks.read' permission",
+    )
+    expect(() => runtime.taskProvider.listTasks('project-1')).toThrow(
+      "Plugin test-plugin does not have 'tasks.read' permission",
+    )
+    expect(() => runtime.taskProvider.searchTasks({ query: 'test' })).toThrow(
+      "Plugin test-plugin does not have 'tasks.read' permission",
+    )
+    expect(getTask).not.toHaveBeenCalled()
+    expect(listTasks).not.toHaveBeenCalled()
+    expect(searchTasks).not.toHaveBeenCalled()
+  })
+
+  test('tool runtime write methods throw without tasks.write permission', () => {
+    const createTask = mock(() =>
+      Promise.resolve({ id: 'task-1', title: 'ignored', status: 'todo', url: 'https://test.com/1' }),
+    )
+    const updateTask = mock(() =>
+      Promise.resolve({ id: 'task-1', title: 'ignored', status: 'todo', url: 'https://test.com/1' }),
+    )
+    const provider = createMockProvider({
+      createTask,
+      updateTask,
+    })
+    const runtime = buildPluginToolRuntimeContext(
+      'test-plugin',
+      makeManifest({ permissions: ['tasks.read'] }),
+      makeRuntime({ provider }),
+    )
+
+    expect(() => runtime.taskProvider.createTask({ projectId: 'project-1', title: 'test' })).toThrow(
+      "Plugin test-plugin does not have 'tasks.write' permission",
+    )
+    expect(() => runtime.taskProvider.updateTask('task-1', { title: 'updated' })).toThrow(
+      "Plugin test-plugin does not have 'tasks.write' permission",
+    )
+    expect(createTask).not.toHaveBeenCalled()
+    expect(updateTask).not.toHaveBeenCalled()
   })
 })

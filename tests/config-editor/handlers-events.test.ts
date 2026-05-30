@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { startEditor, handleEditorCallback, handleEditorMessage } from '../../src/config-editor/handlers.js'
-import { deleteEditorSession } from '../../src/config-editor/state.js'
+import { deleteEditorSession, getEditorSession } from '../../src/config-editor/state.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../src/instances/task-store.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from '../utils/test-helpers.js'
@@ -77,7 +77,8 @@ describe('config_editor events', () => {
     })
 
     startEditor(userId, storageContextId, 'kaneo_apikey')
-    handleEditorCallback(userId, storageContextId, 'cancel')
+    const session = getEditorSession(userId, storageContextId)
+    handleEditorCallback(userId, storageContextId, 'cancel', undefined, session?.sessionToken)
 
     const closedEvent = events.find((e) => e.type === 'config_editor:closed')
     expect(closedEvent).toBeDefined()
@@ -94,7 +95,8 @@ describe('config_editor events', () => {
 
     startEditor(userId, storageContextId, 'kaneo_apikey')
     handleEditorMessage(userId, storageContextId, 'gpt-4o')
-    handleEditorCallback(userId, storageContextId, 'save', 'kaneo_apikey')
+    const session = getEditorSession(userId, storageContextId)
+    handleEditorCallback(userId, storageContextId, 'save', 'kaneo_apikey', session?.sessionToken)
 
     const closedEvent = events.find((e) => e.type === 'config_editor:closed')
     expect(closedEvent).toBeDefined()

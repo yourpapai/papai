@@ -5,6 +5,7 @@
 
 import { describe, expect, it, test } from 'bun:test'
 
+import { getToolMetadata } from '../../src/tools/tool-metadata.js'
 import {
   cycleDomain,
   cycleTool,
@@ -59,12 +60,28 @@ describe('resolveToolPermission (enabled/disabled semantics)', () => {
     expect(resolveToolPermission(prefs, 'web_fetch')).toBe('allow')
   })
 
-  it('treats unknown (un-classified) tools as always enabled', () => {
-    const prefs: ToolPrefs = { domainDefaults: { web: 'deny' }, toolOverrides: {} }
-    expect(resolveToolPermission(prefs, 'plugin_hello_world__greet')).not.toBe('deny')
+  it('classifies plugin tools into the plugin domain', () => {
+    expect(getToolMetadata('plugin_hello_world__greet')).toEqual({
+      domain: 'plugin',
+      operation: 'read',
+      risk: 'open-world',
+    })
   })
 
-  it('lets an override=deny disable an unclassified (plugin) tool', () => {
+  it('denies plugin tools when the plugin domain is denied', () => {
+    const prefs: ToolPrefs = { domainDefaults: { plugin: 'deny' }, toolOverrides: {} }
+    expect(resolveToolPermission(prefs, 'plugin_hello_world__greet')).toBe('deny')
+  })
+
+  it('lets a per-tool override re-enable a plugin tool inside a denied plugin domain', () => {
+    const prefs: ToolPrefs = {
+      domainDefaults: { plugin: 'deny' },
+      toolOverrides: { plugin_hello_world__greet: 'allow' },
+    }
+    expect(resolveToolPermission(prefs, 'plugin_hello_world__greet')).toBe('allow')
+  })
+
+  it('lets an override=deny disable a plugin tool when the plugin domain stays allowed', () => {
     const prefs: ToolPrefs = {
       domainDefaults: {},
       toolOverrides: { plugin_hello_world__greet: 'deny' },
