@@ -125,7 +125,7 @@ const ensureRequiredConfig = async (reply: ReplyFn, contextId: string, configId:
   const missing = checkRequiredProviderConfig(configId)
   if (missing.length === 0) return
   log.warn({ contextId, configId, missing }, 'Missing required provider config keys')
-  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /setup to configure.`)
+  await reply.text(`Missing configuration: ${missing.join(', ')}.\nUse /config to finish setup in the settings web UI.`)
   throw new Error('Missing configuration')
 }
 
@@ -186,7 +186,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   const provider = deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
-    await reply.text('I need /setup before I can do that.')
+    await reply.text('I need /config before I can do that.')
     return { response: { messages: [] } }
   }
   await maybeAutoLinkIdentity(chatUserId, username, provider)

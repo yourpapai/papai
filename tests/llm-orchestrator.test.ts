@@ -315,7 +315,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-1', deps)
 
       expect(maybeProvisionCalls).toBe(0)
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('replies with bot-misconfigured when system_config is incomplete', async () => {
@@ -358,7 +358,7 @@ describe('processMessage', () => {
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
       expect(textCalls[0]).toContain('kaneo_apikey')
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
@@ -382,7 +382,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(resolverCalls).toBe(1)
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('missing provider config is derived from assigned task instance', async () => {
@@ -401,7 +401,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(textCalls[0]).toContain('youtrack_token')
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('replies with setup guidance when resolver returns null after credentials pass', async () => {
@@ -430,7 +430,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
   })
 

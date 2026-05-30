@@ -144,7 +144,7 @@ export class TaskProviderResolver {
 
   resolveStrict(contextId: string): TaskProvider {
     const provider = this.resolve(contextId)
-    if (provider === null) throw new Error(`Context ${contextId} needs /setup`)
+    if (provider === null) throw new Error(`Context ${contextId} needs /config`)
     return provider
   }
 }

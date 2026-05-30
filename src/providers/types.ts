@@ -85,7 +85,7 @@ export interface TaskProvider {
   readonly capabilities: ReadonlySet<TaskCapability>
   /** Behavioral traits this provider supports beyond generic capabilities. */
   readonly traits: ReadonlySet<TaskProviderTrait>
-  /** Config keys this provider needs (shown in /config, validated by /setup). */
+  /** Config keys this provider needs (shown and validated in /config). */
   readonly configRequirements: readonly ProviderConfigRequirement[]
   /** Which user identifier this provider prefers for assignee/watcher operations. */
   readonly preferredUserIdentifier: 'id' | 'login'
