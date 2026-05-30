@@ -6,13 +6,11 @@
 import { toSourceProvider, type StagedFileDownloadFn } from './attachments/types.js'
 import { checkAuthorizationExtended, getThreadScopedStorageContextId } from './auth.js'
 import { resolveMessageAttachments, stageGroupFileCandidates } from './bot-attachments.js'
-import { autoStartWizardIfNeeded } from './bot-auto-setup.js'
 import { recordGroupObservation } from './bot-group-observation.js'
 import { emitReplyCompletedIfNeeded, trackReplyUsage } from './bot-reply-tracking.js'
-import { maybeInterceptWizard } from './bot-settings.js'
-import { supportsFileReplies, supportsInteractiveButtons } from './chat/capabilities.js'
+import { supportsFileReplies } from './chat/capabilities.js'
 import { routeInteraction } from './chat/interaction-router.js'
-import { resolveSourceChatProvider, resolveSourceProviderName } from './chat/source-instance.js'
+import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
   registerAdminCommands,
@@ -22,8 +20,6 @@ import {
   registerDashboardCommand,
   registerGroupCommand,
   registerHelpCommand,
-  registerPluginCommand,
-  registerSetupCommand,
   registerStartCommand,
 } from './commands/index.js'
 import { emitUser } from './debug/event-bus.js'
@@ -111,13 +107,11 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   const observedChat = createObservedChatProvider(chat)
   registerHelpCommand(observedChat)
   registerStartCommand(observedChat)
-  registerSetupCommand(observedChat)
   registerConfigCommand(observedChat)
   registerContextCommand(observedChat)
   registerClearCommand(observedChat, undefined, adminUserId)
   registerAdminCommands(observedChat, adminUserId)
   registerGroupCommand(observedChat)
-  registerPluginCommand(observedChat)
   registerDashboardCommand(observedChat)
   registerPluginCommands(observedChat)
 }
@@ -225,19 +219,6 @@ async function onIncomingMessage(
     storageContextId: auth.storageContextId,
   })
   if (auth.allowed) recordGroupObservation(chat, msg)
-  const sourceChat = resolveSourceChatProvider(chat, msg.platformInstanceId)
-  if (
-    await maybeInterceptWizard(
-      msg,
-      tracked.reply,
-      auth,
-      supportsInteractiveButtons(sourceChat),
-      autoStartWizardIfNeeded,
-    )
-  ) {
-    emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
-    return
-  }
   tryStageGroupCandidates(chat, msg, auth.storageContextId)
   await handleMessage(chat, msg, tracked.reply, auth, deps)
   if (!willQueueAuthorizedMessage(msg, auth))
