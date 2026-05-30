@@ -37,7 +37,6 @@ describe('command catalog', () => {
       'user',
       'users',
       'announce',
-      'plugin',
       'dashboard',
     ])
 
@@ -102,12 +101,6 @@ describe('command catalog', () => {
         publishInGroupUser: false,
         publishInGroupAdmin: false,
       },
-      plugin: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
       dashboard: {
         publishInDmUser: false,
         publishInDmAdmin: true,
@@ -127,7 +120,6 @@ describe('command catalog', () => {
       user: 'registerAdminCommands',
       users: 'registerAdminCommands',
       announce: 'registerAdminCommands',
-      plugin: 'registerPluginCommand',
       dashboard: 'registerDashboardCommand',
     })
 

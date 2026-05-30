@@ -18,7 +18,6 @@ export type CommandRegistration =
   | 'registerDashboardCommand'
   | 'registerGroupCommand'
   | 'registerHelpCommand'
-  | 'registerPluginCommand'
   | 'registerStartCommand'
 
 export type CommandCatalogEntry = {
@@ -132,17 +131,6 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
     name: 'announce',
     description: 'Send announcement to all authorized users',
     registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'plugin',
-    description: 'Manage plugins',
-    registration: 'registerPluginCommand',
     telegram: {
       publishInDmUser: false,
       publishInDmAdmin: true,
