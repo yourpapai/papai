@@ -7,7 +7,13 @@ import { describe, expect, test } from 'bun:test'
 
 import type { HttpHandler } from 'msw'
 
-import { adminHandlers, billingHandlers, statsHandlers } from '../../../../client/stories/msw/handlers.js'
+import {
+  adminHandlers,
+  billingHandlers,
+  instancesHandlers,
+  pluginConfigHandlers,
+  statsHandlers,
+} from '../../../../client/stories/msw/handlers.js'
 
 function pathsOf(handlers: readonly HttpHandler[]): string[] {
   return handlers.map((h) => String(h.info.path))
@@ -15,7 +21,7 @@ function pathsOf(handlers: readonly HttpHandler[]): string[] {
 
 describe('msw handlers', () => {
   test('every family exposes populated / empty / error / loading variants', () => {
-    for (const family of [adminHandlers, billingHandlers, statsHandlers]) {
+    for (const family of [adminHandlers, billingHandlers, statsHandlers, pluginConfigHandlers, instancesHandlers]) {
       expect(Array.isArray(family.populated)).toBe(true)
       expect(Array.isArray(family.empty)).toBe(true)
       expect(Array.isArray(family.error)).toBe(true)
@@ -36,5 +42,16 @@ describe('msw handlers', () => {
 
   test('stats populated handlers cover /stats/global', () => {
     expect(pathsOf(statsHandlers.populated).some((p) => p.includes('/stats/global'))).toBe(true)
+  })
+
+  test('pluginConfigHandlers populated handlers cover /admin/plugin-config', () => {
+    expect(pathsOf(pluginConfigHandlers.populated).some((p) => p.includes('/admin/plugin-config'))).toBe(true)
+  })
+
+  test('instancesHandlers populated handlers cover platform and task instance routes', () => {
+    const paths = pathsOf(instancesHandlers.populated)
+    expect(paths.some((p) => p.includes('/api/platform-instances'))).toBe(true)
+    expect(paths.some((p) => p.includes('/api/task-instances'))).toBe(true)
+    expect(paths.some((p) => p.includes('/api/admins'))).toBe(true)
   })
 })
