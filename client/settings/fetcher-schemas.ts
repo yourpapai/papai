@@ -222,3 +222,33 @@ export const AnnounceResultSchema = z.object({
   failCount: z.number(),
 })
 export type AnnounceResult = z.infer<typeof AnnounceResultSchema>
+
+// --- Admin: plugin config ---
+
+export const AdminPluginConfigKeyStateSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  value: z.string().nullable(),
+  sensitive: z.boolean(),
+  required: z.boolean(),
+})
+export type AdminPluginConfigKeyState = z.infer<typeof AdminPluginConfigKeyStateSchema>
+
+export const AdminPluginConfigEntrySchema = z.object({
+  pluginId: z.string(),
+  keys: z.array(AdminPluginConfigKeyStateSchema),
+})
+export type AdminPluginConfigEntry = z.infer<typeof AdminPluginConfigEntrySchema>
+
+export const AdminPluginConfigSnapshotSchema = z.object({
+  plugins: z.array(AdminPluginConfigEntrySchema),
+})
+export type AdminPluginConfigSnapshot = z.infer<typeof AdminPluginConfigSnapshotSchema>
+
+export const AdminPluginConfigUpdateResultSchema = z.object({
+  ok: z.literal(true),
+  pluginId: z.string(),
+  key: z.string(),
+  updatedAt: z.number(),
+})
+export type AdminPluginConfigUpdateResult = z.infer<typeof AdminPluginConfigUpdateResultSchema>

@@ -26,6 +26,7 @@
   import AdminGroupsSection from './sections/admin/AdminGroupsSection.svelte'
   import AdminAdminsSection from './sections/admin/AdminAdminsSection.svelte'
   import AdminPluginsApprovalSection from './sections/admin/AdminPluginsApprovalSection.svelte'
+  import AdminPluginsConfigSection from './sections/admin/AdminPluginsConfigSection.svelte'
   import AdminAnnounceSection from './sections/admin/AdminAnnounceSection.svelte'
 
   let activeId = $state(window.location.hash.slice(1) || 'profile')
@@ -48,6 +49,7 @@
       list.push(
         { id: 'instances', label: 'Instances' },
         { id: 'system', label: 'System' },
+        { id: 'plugin-config', label: 'Plugin config' },
         { id: 'users', label: 'Users' },
         { id: 'groups', label: 'Groups' },
         { id: 'announce', label: 'Announce' },
@@ -109,6 +111,7 @@
           {#if settingsSession.isBotAdmin}
             <AdminInstancesSection />
             <AdminSystemSection />
+            <AdminPluginsConfigSection />
             <AdminUsersSection />
             <AdminGroupsSection />
             <AdminAnnounceSection />

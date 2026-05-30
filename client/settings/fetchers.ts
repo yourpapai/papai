@@ -7,6 +7,8 @@ import { readBody, requireOk } from '../shared/fetcher-helpers.js'
 import {
   AdminGroupsResponseSchema,
   AdminInstancesResponseSchema,
+  AdminPluginConfigSnapshotSchema,
+  AdminPluginConfigUpdateResultSchema,
   AdminRosterResponseSchema,
   AdminSystemResponseSchema,
   AdminUsersResponseSchema,
@@ -24,6 +26,8 @@ import {
   ToolsResponseSchema,
   type AdminGroupsResponse,
   type AdminInstancesResponse,
+  type AdminPluginConfigSnapshot,
+  type AdminPluginConfigUpdateResult,
   type AdminRosterResponse,
   type AdminSystemResponse,
   type AdminUsersResponse,
@@ -284,3 +288,13 @@ export const setPluginApproval = (input: {
 
 export const sendAnnounce = (input: { message: string }): Promise<AnnounceResult> =>
   writeJson('/settings/api/admin/announce', 'POST', input, (b) => AnnounceResultSchema.parse(b))
+
+export const fetchAdminPluginConfig = (): Promise<AdminPluginConfigSnapshot> =>
+  getJson('/settings/api/admin/plugin-config', (b) => AdminPluginConfigSnapshotSchema.parse(b))
+
+export const patchAdminPluginConfig = (input: {
+  pluginId: string
+  key: string
+  value: string
+}): Promise<AdminPluginConfigUpdateResult> =>
+  writeJson('/settings/api/admin/plugin-config', 'PATCH', input, (b) => AdminPluginConfigUpdateResultSchema.parse(b))

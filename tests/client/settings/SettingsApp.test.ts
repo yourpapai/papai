@@ -97,7 +97,16 @@ describe('SettingsApp', () => {
     seed({ isBotAdmin: true, isSuperAdmin: true })
     const component = mountApp()
     await drain()
-    for (const id of ['instances', 'system', 'users', 'groups', 'announce', 'admins', 'plugin-approval']) {
+    for (const id of [
+      'instances',
+      'system',
+      'plugin-config',
+      'users',
+      'groups',
+      'announce',
+      'admins',
+      'plugin-approval',
+    ]) {
       expect(document.querySelector(`#${id}`)).not.toBeNull()
     }
     void unmount(component)
@@ -109,6 +118,7 @@ describe('SettingsApp', () => {
     const component = mountApp()
     await drain()
     expect(document.querySelector('#instances')).not.toBeNull()
+    expect(document.querySelector('#plugin-config')).not.toBeNull()
     expect(document.querySelector('#admins')).toBeNull()
     expect(document.querySelector('#plugin-approval')).toBeNull()
     void unmount(component)
