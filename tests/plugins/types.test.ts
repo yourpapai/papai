@@ -128,6 +128,15 @@ describe('pluginManifestSchema', () => {
       })
       expect(result.success).toBe(false)
     })
+
+    test('rejects removed chat.send permission', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['chat.send'],
+      })
+
+      expect(result.success).toBe(false)
+    })
   })
 
   describe('provider permissions', () => {
@@ -302,11 +311,11 @@ describe('pluginManifestSchema', () => {
       author: 'Test Author',
       homepage: 'https://example.com',
       license: 'MIT',
-      permissions: ['storage', 'tasks.read'],
       contributes: {
         tools: ['greet'],
         promptFragments: ['greeting-hint'],
         commands: ['greet-command'],
+        jobs: ['sync-greeting'],
         configKeys: ['greeting_text'],
       },
       configRequirements: [{ key: 'greeting_text', label: 'Greeting text', required: false }],
@@ -314,6 +323,7 @@ describe('pluginManifestSchema', () => {
       requiredChatCapabilities: ['messages.buttons'],
       activationTimeoutMs: 3000,
       defaultEnabled: true,
+      permissions: ['storage', 'tasks.read', 'commands', 'scheduler'],
     })
     expect(result.success).toBe(true)
   })
