@@ -75,7 +75,7 @@ describe('buildPluginContext', () => {
   })
 
   test('accepts declared command and scheduled job registrations', () => {
-    const { ctx, collected } = buildPluginContext(makeManifest(), 'ctx-1')
+    const { ctx, collected } = buildPluginContext(makeManifest({ permissions: ['commands', 'scheduler'] }), 'ctx-1')
 
     ctx.registration.registerCommand({
       name: 'allowed_command',
@@ -137,6 +137,44 @@ describe('buildPluginContext', () => {
         execute: () => Promise.resolve(),
       }),
     ).toThrow("Scheduled job 'not_declared' is not declared in plugin manifest contributes.jobs")
+  })
+
+  test('registerCommand requires commands permission', () => {
+    const { ctx } = buildPluginContext(
+      {
+        ...makeManifest(),
+        contributes: { ...makeManifest().contributes, commands: ['sync'] },
+        permissions: [],
+      },
+      '__system__',
+    )
+
+    expect(() =>
+      ctx.registration.registerCommand({
+        name: 'sync',
+        description: 'sync',
+        execute: () => {},
+      }),
+    ).toThrow("Plugin test-plugin cannot register commands without 'commands'")
+  })
+
+  test('registerScheduledJob requires scheduler permission', () => {
+    const { ctx } = buildPluginContext(
+      {
+        ...makeManifest(),
+        contributes: { ...makeManifest().contributes, jobs: ['daily'] },
+        permissions: [],
+      },
+      '__system__',
+    )
+
+    expect(() =>
+      ctx.registration.registerScheduledJob({
+        name: 'daily',
+        intervalMs: 60_000,
+        execute: () => {},
+      }),
+    ).toThrow("Plugin test-plugin cannot register scheduled jobs without 'scheduler'")
   })
 
   test('freezes context and nested service surfaces', () => {
@@ -377,7 +415,7 @@ describe('buildPluginContext', () => {
     })
 
     test('throws on duplicate command registration', () => {
-      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const { ctx } = buildPluginContext(makeManifest({ permissions: ['commands'] }), 'ctx-1')
       const command = {
         name: 'allowed_command',
         description: 'Allowed command',
@@ -392,7 +430,7 @@ describe('buildPluginContext', () => {
     })
 
     test('throws on duplicate scheduled job registration', () => {
-      const { ctx } = buildPluginContext(makeManifest(), 'ctx-1')
+      const { ctx } = buildPluginContext(makeManifest({ permissions: ['scheduler'] }), 'ctx-1')
       const job = {
         name: 'allowed_job',
         intervalMs: 60_000,

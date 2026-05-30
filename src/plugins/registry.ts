@@ -27,7 +27,6 @@ const VALID_PLUGIN_STATES: ReadonlySet<PluginState> = new Set<PluginState>([
   'approved',
   'rejected',
   'incompatible',
-  'config_missing',
   'active',
   'error',
 ])

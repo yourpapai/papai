@@ -33,6 +33,7 @@ import {
 } from '../../src/plugins/registry.js'
 import { getRecentRuntimeEvents } from '../../src/plugins/store.js'
 import type { DiscoveredPlugin, PluginContributions, PluginManifest } from '../../src/plugins/types.js'
+import { pluginManifestSchema } from '../../src/plugins/types.js'
 import { scheduler } from '../../src/scheduler-instance.js'
 import { createMockProvider } from '../tools/mock-provider.js'
 import {
@@ -164,6 +165,36 @@ describe('plugin command and job naming', () => {
 
   test('namespaces scheduled jobs under a stable plugin owner', () => {
     expect(namespacedJobName('my-plugin', 'daily')).toBe('plugin:my-plugin:daily')
+  })
+})
+
+describe('plugin manifest permission validation', () => {
+  test('manifest rejects commands without commands permission', () => {
+    const parsed = pluginManifestSchema.safeParse({
+      id: 'cmd-plugin',
+      name: 'Cmd Plugin',
+      version: '1.0.0',
+      description: 'test',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { commands: ['sync'] },
+    })
+
+    expect(parsed.success).toBe(false)
+  })
+
+  test('manifest rejects jobs without scheduler permission', () => {
+    const parsed = pluginManifestSchema.safeParse({
+      id: 'job-plugin',
+      name: 'Job Plugin',
+      version: '1.0.0',
+      description: 'test',
+      apiVersion: 1,
+      main: 'index.ts',
+      contributes: { jobs: ['daily'] },
+    })
+
+    expect(parsed.success).toBe(false)
   })
 })
 

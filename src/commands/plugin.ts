@@ -30,7 +30,6 @@ function formatState(state: PluginState): string {
     approved: '✅',
     rejected: '❌',
     incompatible: '⚠️',
-    config_missing: '⚙️',
     active: '🟢',
     error: '🔴',
   }
