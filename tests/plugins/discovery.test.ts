@@ -3,14 +3,24 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, win32 } from 'node:path'
 
-import { discoverPlugins, isPathInsideDirectory } from '../../src/plugins/discovery.js'
+import { discoverPlugins, discoveryPathOps, isPathInsideDirectory } from '../../src/plugins/discovery.js'
 
 const tempDirs: string[] = []
+
+function realpathWithInjectedLoop(
+  path: Parameters<typeof discoveryPathOps.realpathSync>[0],
+  originalRealpathSync: typeof discoveryPathOps.realpathSync,
+  error: Error,
+): string {
+  const pathText = typeof path === 'string' ? path : path.toString()
+  if (pathText.endsWith('helper.ts')) throw error
+  return originalRealpathSync(path)
+}
 
 function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'papai-plugin-discovery-'))
@@ -319,6 +329,60 @@ describe('discoverPlugins', () => {
     expect(first.errors).toEqual([])
     expect(second.errors).toEqual([])
     expect(first.plugins[0]?.manifestHash).toBe(second.plugins[0]?.manifestHash)
+  })
+
+  test('rejects plugin when imported path realpath throws', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'realpath-fails')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'realpath-fails',
+        name: 'Realpath Fails',
+        version: '1.0.0',
+        description: 'test',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const value = 1\n', 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { value } from './helper.ts'\nexport default function createPlugin(){ return { activate(){ return value } } }\n",
+      'utf-8',
+    )
+
+    const originalRealpathSync = discoveryPathOps.realpathSync
+    const helperLoopError = Object.assign(new Error('loop'), { code: 'ELOOP' })
+    const realpathSpy = spyOn(discoveryPathOps, 'realpathSync').mockImplementation((path) =>
+      realpathWithInjectedLoop(path, originalRealpathSync, helperLoopError),
+    )
+
+    try {
+      const result = discoverPlugins(root)
+
+      expect(result.plugins).toEqual([])
+      expect(result.errors[0]?.reason).toContain('helper.ts')
+    } finally {
+      realpathSpy.mockRestore()
+    }
+  })
+
+  test('rejects bare-module imports from plugin entry graph', () => {
+    const root = makeTempDir()
+    writePlugin(
+      root,
+      'bare-import-plugin',
+      {},
+      "import 'left-pad'\nexport default function createPlugin(){ return { activate() {} } }",
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
   })
 
   test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', () => {
