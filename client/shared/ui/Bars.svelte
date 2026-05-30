@@ -14,7 +14,7 @@
   let { data, width, height = 56, color = 'var(--accent)' }: Props = $props()
 
   const safeData = $derived(data ?? [])
-  const max = $derived(Math.max(...safeData, 1))
+  const max = $derived(safeData.reduce((m, v) => (Number.isFinite(v) && v > m ? v : m), 1))
   const intrinsicW = $derived(width ?? Math.max(safeData.length * 10, 100))
   const bw = $derived(safeData.length > 0 ? intrinsicW / safeData.length : 0)
 </script>
@@ -22,14 +22,14 @@
 {#if width !== undefined}
   <svg {width} {height} class="ui-bars" aria-hidden="true">
     {#each safeData as v, i (i)}
-      {@const h = (v / max) * (height - 4)}
+      {@const h = Math.max(0, (v / max) * (height - 4))}
       <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
     {/each}
   </svg>
 {:else}
   <svg viewBox="0 0 {intrinsicW} {height}" preserveAspectRatio="none" class="ui-bars ui-bars--fluid" aria-hidden="true">
     {#each safeData as v, i (i)}
-      {@const h = (v / max) * (height - 4)}
+      {@const h = Math.max(0, (v / max) * (height - 4))}
       <rect x={i * bw + 1} y={height - h} width={bw - 2} height={h} fill={color} fill-opacity="0.85" />
     {/each}
   </svg>
