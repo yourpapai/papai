@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import type { ChatProvider, CommandHandler } from '../../src/chat/types.js'
-import { registerAdminCommands } from '../../src/commands/admin.js'
 import { registerClearCommand } from '../../src/commands/clear.js'
 import { registerConfigCommand } from '../../src/commands/config.js'
 import { addAdmin } from '../../src/instances/admin-store.js'
@@ -62,7 +61,6 @@ describe('command context restrictions', () => {
     // Register commands
     registerClearCommand(mockChat, checkAuthorization, adminUserId)
     registerConfigCommand(mockChat)
-    registerAdminCommands(mockChat, adminUserId)
   })
 
   describe('/clear command', () => {
@@ -151,59 +149,6 @@ describe('command context restrictions', () => {
 
       // /config is launcher-only: replies with a settings link or a not-configured message
       expect(textCalls.length).toBeGreaterThan(0)
-    })
-  })
-
-  describe('/user command', () => {
-    test('rejected in group', async () => {
-      const handler = commandHandlers.get('user')
-      expect(handler).toBeDefined()
-
-      const msg = createGroupMessage(adminUserId, '', true, 'group1')
-      msg.commandMatch = 'add user789'
-
-      const { reply, textCalls } = createMockReply()
-      await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true, isGroupAdmin: true }))
-
-      expect(firstCall(textCalls)).toBe('This command is only available in direct messages.')
-    })
-
-    test('allowed in DM for admin', async () => {
-      const handler = commandHandlers.get('user')
-
-      const msg = createDmMessage(adminUserId)
-      msg.commandMatch = 'add user789'
-
-      const { reply, textCalls } = createMockReply()
-      await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true }))
-
-      expect(firstCall(textCalls)).toBe('User @user789 authorized.')
-    })
-  })
-
-  describe('/users command', () => {
-    test('rejected in group', async () => {
-      const handler = commandHandlers.get('users')
-      expect(handler).toBeDefined()
-
-      const msg = createGroupMessage(adminUserId, '', true, 'group1')
-
-      const { reply, textCalls } = createMockReply()
-      await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true, isGroupAdmin: true }))
-
-      expect(firstCall(textCalls)).toBe('This command is only available in direct messages.')
-    })
-
-    test('allowed in DM for admin', async () => {
-      const handler = commandHandlers.get('users')
-
-      const msg = createDmMessage(adminUserId)
-
-      const { reply, textCalls } = createMockReply()
-      await handler!(msg, reply, createAuth(adminUserId, { isBotAdmin: true }))
-
-      expect(firstCall(textCalls)).toContain(adminUserId)
-      expect(firstCall(textCalls)).toContain('(admin)')
     })
   })
 })

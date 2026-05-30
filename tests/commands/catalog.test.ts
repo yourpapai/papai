@@ -26,7 +26,7 @@ describe('command catalog', () => {
     const registrations = Object.fromEntries(entries.map((entry) => [entry.name, entry.registration]))
     const telegramVisibility = Object.fromEntries(entries.map((entry) => [entry.name, entry.telegram]))
 
-    expect(names).toEqual(['help', 'start', 'config', 'context', 'clear', 'user', 'users', 'announce', 'dashboard'])
+    expect(names).toEqual(['help', 'start', 'config', 'context', 'clear', 'dashboard'])
 
     expect(telegramVisibility).toEqual({
       help: {
@@ -59,24 +59,6 @@ describe('command catalog', () => {
         publishInGroupUser: true,
         publishInGroupAdmin: true,
       },
-      user: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      users: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      announce: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
       dashboard: {
         publishInDmUser: false,
         publishInDmAdmin: true,
@@ -91,9 +73,6 @@ describe('command catalog', () => {
       config: 'registerConfigCommand',
       context: 'registerContextCommand',
       clear: 'registerClearCommand',
-      user: 'registerAdminCommands',
-      users: 'registerAdminCommands',
-      announce: 'registerAdminCommands',
       dashboard: 'registerDashboardCommand',
     })
 

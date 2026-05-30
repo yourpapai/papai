@@ -11,7 +11,6 @@ export type TelegramCommandVisibility = {
 }
 
 export type CommandRegistration =
-  | 'registerAdminCommands'
   | 'registerClearCommand'
   | 'registerConfigCommand'
   | 'registerContextCommand'
@@ -80,39 +79,6 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
       publishInDmAdmin: true,
       publishInGroupUser: true,
       publishInGroupAdmin: true,
-    },
-  },
-  {
-    name: 'user',
-    description: 'Manage users',
-    registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'users',
-    description: 'List authorized users',
-    registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
-    },
-  },
-  {
-    name: 'announce',
-    description: 'Send announcement to all authorized users',
-    registration: 'registerAdminCommands',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
     },
   },
   {

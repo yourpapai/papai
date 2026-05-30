@@ -13,7 +13,6 @@ import { routeInteraction } from './chat/interaction-router.js'
 import { resolveSourceProviderName } from './chat/source-instance.js'
 import type { AuthorizationResult, ChatProvider, IncomingInteraction, IncomingMessage, ReplyFn } from './chat/types.js'
 import {
-  registerAdminCommands,
   registerClearCommand,
   registerConfigCommand,
   registerContextCommand,
@@ -101,7 +100,6 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerConfigCommand(observedChat)
   registerContextCommand(observedChat)
   registerClearCommand(observedChat, undefined, adminUserId)
-  registerAdminCommands(observedChat, adminUserId)
   registerDashboardCommand(observedChat)
   registerPluginCommands(observedChat)
 }
