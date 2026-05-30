@@ -35,4 +35,15 @@ describe('trackSourceWrite', () => {
     expect(trackSourceWrite(null)).toBe(false)
     expect(trackSourceWrite(undefined)).toBe(false)
   })
+
+  test('normalizes absolute paths when cwd is provided', () => {
+    const cwd = '/Users/ki/Projects/papai'
+    expect(trackSourceWrite('/Users/ki/Projects/papai/src/tools/foo.ts', cwd)).toBe(true)
+    expect(trackSourceWrite('/Users/ki/Projects/papai/client/debug/bar.tsx', cwd)).toBe(true)
+    expect(trackSourceWrite('/Users/ki/Projects/papai/tests/foo.test.ts', cwd)).toBe(false)
+  })
+
+  test('absolute path without cwd falls back to prefix check (false)', () => {
+    expect(trackSourceWrite('/Users/ki/Projects/papai/src/tools/foo.ts')).toBe(false)
+  })
 })

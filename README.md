@@ -111,9 +111,8 @@ Edit `.env`:
 # Required for all setups
 ADMIN_USER_ID=123456789         # Your platform user ID
 
-# First-run instance bootstrap. Used only when instance tables are empty.
+# First-run platform-instance bootstrap. Used only when the platform instance table is empty.
 CHAT_PROVIDER=telegram          # or: mattermost, discord
-TASK_PROVIDER=kaneo             # or: youtrack
 # INSTANCE_CONFIG_KEY=64_hex_chars_for_production_config_encryption
 
 # Central LLM credentials (seeded once into system_config on first start)
@@ -125,10 +124,12 @@ MAIN_MODEL=gpt-4o-mini
 
 # Platform-specific
 TELEGRAM_BOT_TOKEN=your_token_here
-
-# Provider-specific
-KANEO_CLIENT_URL=https://kaneo.example.com
 ```
+
+> Task providers are no longer env-bootstrapped. After the bot starts, create a task
+> instance via `/admin#instances`, then approve its plugin with `/plugin approve task-provider-kaneo`
+> or `/plugin approve task-provider-youtrack` (DM, bot admin). The provider base URL is an
+> instance config field set in `/admin#instances`, not an env var.
 
 Start the bot:
 
@@ -146,7 +147,7 @@ For groups, run `/setup` or `/config` in DM and choose either personal settings 
 
 > LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and live in the `system_config` SQLite table. They are seeded from env vars on first start and can be rotated later via `/admin#system` without restarting the bot.
 
-> `CHAT_PROVIDER` and `TASK_PROVIDER` seed the first platform/task instances only when the instance tables are empty. After bootstrap, platform instances, task instances, and admins are managed from SQLite and the admin Instances surface (`/admin#instances`).
+> `CHAT_PROVIDER` seeds the first platform instance only when the platform instance table is empty. Task instances are never env-bootstrapped — create them via `/admin#instances` and approve the relevant task-provider plugin. After bootstrap, platform instances, task instances, and admins are managed from SQLite and the admin Instances surface (`/admin#instances`).
 
 ---
 
@@ -181,7 +182,7 @@ flowchart TD
 | `src/chat/`                                        | Telegram, Mattermost, and Discord adapters plus capability metadata and the `ChatRouter`   |
 | `src/llm-orchestrator.ts`                          | LLM tool-calling orchestration                                                             |
 | `src/tools/`                                       | Context-aware, capability-gated tool assembly                                              |
-| `src/providers/`                                   | Kaneo and YouTrack provider adapters                                                       |
+| `src/providers/`                                   | Shared normalized provider types/utilities; Kaneo and YouTrack ship as first-party plugins |
 | `src/instances/`                                   | DB-backed platform/task/admin stores, encrypted instance config, and env bootstrap         |
 | `src/identity/`                                    | Chat-to-provider identity mapping and “me” resolution                                      |
 | `src/attachments/`                                 | Durable attachment workspace: ingest, S3 blob store, metadata, manifest building, resolver |
@@ -204,8 +205,7 @@ flowchart TD
 | Variable              | When required                    | Description                                                                                     | Example                                            |
 | --------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `ADMIN_USER_ID`       | Always                           | Initial authorized admin identity                                                               | Platform user ID string seen by the active adapter |
-| `CHAT_PROVIDER`       | First run with empty instance DB | Platform bootstrap source                                                                       | `telegram`, `mattermost`, or `discord`             |
-| `TASK_PROVIDER`       | First run with empty instance DB | Task-provider bootstrap source                                                                  | `kaneo` or `youtrack`                              |
+| `CHAT_PROVIDER`       | First run with empty platform DB | Platform bootstrap source (task providers are not env-bootstrapped)                             | `telegram`, `mattermost`, or `discord`             |
 | `INSTANCE_CONFIG_KEY` | Production deployments           | AES-256-GCM encryption key for platform/task instance config; fallback is host-local when unset | 64 hex chars                                       |
 
 </details>
@@ -264,35 +264,40 @@ Discord support uses gateway intents including `MessageContent`. Enable the **Me
 <details>
 <summary><b>Kaneo Configuration</b></summary>
 
-| Variable             | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| `KANEO_CLIENT_URL`   | Public Kaneo client URL                            |
-| `KANEO_INTERNAL_URL` | Optional internal API URL for bot-to-Kaneo traffic |
+Papai no longer reads Kaneo URLs from the environment. The Kaneo client URL is now a task-instance
+config field: create the task instance in `/admin#instances`, then run `/plugin approve task-provider-kaneo`.
+Per-user credentials (`plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`)
+are set through `/setup` and `/config`.
 
-Kaneo can auto-provision user accounts for the bot workflow. In self-hosted deployments, `docker-compose.yml` also expects Kaneo-specific database/auth variables such as `KANEO_POSTGRES_PASSWORD` and `KANEO_AUTH_SECRET`.
+Kaneo can auto-provision user accounts for the bot workflow. In self-hosted deployments, `docker-compose.yml`
+still expects Kaneo-service variables such as `KANEO_CLIENT_URL` (consumed by the bundled Kaneo and Caddy
+services, not papai), `KANEO_POSTGRES_PASSWORD`, and `KANEO_AUTH_SECRET`.
 
 </details>
 
 <details>
 <summary><b>YouTrack Configuration</b></summary>
 
-| Variable       | Description           |
-| -------------- | --------------------- |
-| `YOUTRACK_URL` | YouTrack instance URL |
-
-Runtime setup still requires a per-user `youtrack_token`, configured through the bot.
+Papai no longer reads `YOUTRACK_URL` from the environment. The YouTrack instance URL is a task-instance
+config field: create the task instance in `/admin#instances`, then run `/plugin approve task-provider-youtrack`.
+Runtime setup still requires a per-user token (`plugin:task-provider-youtrack:provider:token`), configured
+through the bot.
 
 </details>
 
 <details>
 <summary><b>Optional Debug Server</b></summary>
 
-| Variable         | Description                                                                  |
-| ---------------- | ---------------------------------------------------------------------------- |
-| `DEBUG_SERVER`   | Set to `true` to start the local debug server                                |
-| `DEBUG_HOSTNAME` | Debug server bind host (default `127.0.0.1`)                                 |
-| `DEBUG_PORT`     | Debug server bind port (default `9100`)                                      |
-| `DEBUG_TOKEN`    | Optional bearer token for debug/admin routes; required for `POST /admin/llm` |
+| Variable                        | Description                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| `DEBUG_SERVER`                  | Set to `true` to start the local debug server                                        |
+| `DEBUG_HOSTNAME`                | Debug server bind host (default `127.0.0.1`)                                         |
+| `DEBUG_PORT`                    | Debug server bind port (default `9100`)                                              |
+| `DASHBOARD_BASE_URL`            | Origin embedded in the sign-in link (default `http://{DEBUG_HOSTNAME}:{DEBUG_PORT}`) |
+| `DASHBOARD_SESSION_TTL_SECONDS` | Session lifetime (default `28800`, i.e. 8h)                                          |
+| `DASHBOARD_CLAIM_TTL_SECONDS`   | Sign-in link lifetime (default `300`, i.e. 5 min)                                    |
+
+`DEBUG_TOKEN` is no longer used; if set it is ignored and the bot logs a one-shot startup warning. Dashboard auth is now chat-issued.
 
 When the debug server is enabled, the local surfaces are split by audience:
 
@@ -307,7 +312,7 @@ Admin sections include:
 - **Stats** at `/admin#stats` — bot-wide anonymous structural counts and per-subject sub-panel backed by `GET /stats/global` and `GET /stats/subject/:id`. Both routes return counts, byte sizes, timestamps, enum distributions, and keyed-hashed identifiers only - never message text, memo bodies, observation text, attachment filenames, usernames, or other free-form content.
 - **Instances** at `/admin#instances` — platform instances, task instances, and admin assignments backed by `/api/platform-instances`, `/api/task-instances`, and `/api/admins`. Instance config values are masked on read and encrypted at rest.
 
-When `DEBUG_TOKEN` is set, debug/admin routes are gated by the bearer token. When it is unset, read-only debug/admin routes remain available without a token. `POST /admin/llm` is the special case: it returns 401 when `DEBUG_TOKEN` is unset, so production-style deployments behind a reverse proxy keep the write surface closed by default.
+The dashboard is gated by a chat-issued session cookie rather than a static token. DM `/dashboard` to the bot to receive a single-use sign-in link (valid 5 min); clicking it sets an `HttpOnly; Secure; SameSite=Strict` session cookie (8h default). `ADMIN_USER_ID` must match the chat user who runs `/dashboard`, and for HTTPS the reverse proxy must forward `X-Forwarded-Proto: https`. Never expose the dashboard on a public interface without one of the patterns in [`docs/deployment/dashboard-access.md`](docs/deployment/dashboard-access.md).
 
 </details>
 
@@ -342,16 +347,17 @@ Use the bot’s DM-based configuration flow:
 
 Runtime keys shown by `/setup` and `/config` include:
 
-| Key              | Description                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------------ |
-| `kaneo_apikey`   | Kaneo API key or session token                                                                   |
-| `youtrack_token` | YouTrack permanent token                                                                         |
-| `timezone`       | User timezone for local date/time interpretation                                                 |
-| `mcp_endpoints`  | JSON array of external MCP server endpoints whose tools are merged into the context (HTTPS only) |
+| Key                                               | Description                                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `plugin:task-provider-kaneo:provider:credential`  | Kaneo API key or session token (plugin-namespaced)                                               |
+| `plugin:task-provider-kaneo:provider:workspaceId` | Kaneo workspace ID (plugin-namespaced)                                                           |
+| `plugin:task-provider-youtrack:provider:token`    | YouTrack permanent token (plugin-namespaced)                                                     |
+| `timezone`                                        | User timezone for local date/time interpretation                                                 |
+| `mcp_endpoints`                                   | JSON array of external MCP server endpoints whose tools are merged into the context (HTTPS only) |
 
 LLM credentials (`llm_apikey`, `llm_baseurl`, `main_model`, `small_model`, `embedding_model`) are admin-owned and managed via env vars or `/admin#system` - not through `/setup` or `/config`.
 
-Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates `<provider>-default` instance rows from `CHAT_PROVIDER`, `TASK_PROVIDER`, and provider-specific env vars only when the instance tables are empty. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences remain in `/setup` and `/config`.
+Platform and task-provider base configuration is instance-owned. First-run env bootstrap creates a single `<provider>-default` platform instance row from `CHAT_PROVIDER` and the platform-specific env vars only when the platform instance table is empty. Task instances are never env-bootstrapped: create them through `/admin#instances` and approve the matching task-provider plugin. After that, manage instance lifecycle and admin assignment through `/admin#instances`; per-context credentials and preferences remain in `/setup` and `/config`.
 
 ---
 
@@ -557,14 +563,14 @@ services:
     image: ghcr.io/yourpapai/papai:latest
     environment:
       CHAT_PROVIDER: telegram
-      TASK_PROVIDER: kaneo
       ADMIN_USER_ID: '123456789'
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      KANEO_CLIENT_URL: https://kaneo.example.com
       INSTANCE_CONFIG_KEY: ${INSTANCE_CONFIG_KEY}
 ```
 
-For a real deployment, prefer the checked-in `docker-compose.yml` and `.env.example` together, because the full stack is Kaneo-specific and also needs Kaneo database/auth settings. For YouTrack deployments, you typically run `papai` against an external YouTrack instance instead of this full bundled stack.
+After the stack is up, create the Kaneo task instance via `/admin#instances` and approve it with `/plugin approve task-provider-kaneo`; the Kaneo client URL is an instance config field, not a papai env var.
+
+For a real deployment, prefer the checked-in `docker-compose.yml` and `.env.example` together, because the full stack is Kaneo-specific and also needs Kaneo service settings (`KANEO_CLIENT_URL`, `KANEO_POSTGRES_PASSWORD`, `KANEO_AUTH_SECRET`) consumed by the bundled Kaneo and Caddy services. For YouTrack deployments, you typically run `papai` against an external YouTrack instance instead of this full bundled stack.
 
 ### GitHub Actions Deployment
 
