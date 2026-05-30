@@ -775,6 +775,7 @@ describe('activatePlugins', () => {
     approvePlugin(plugin)
 
     await activatePlugins([plugin])
+    await activatePlugins([plugin])
     await deactivateAllPlugins()
 
     expect(globalThis.papaiDeactivateOrder).toEqual(['single-pass'])
