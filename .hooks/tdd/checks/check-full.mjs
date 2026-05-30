@@ -3,7 +3,15 @@ import { execFileSync } from 'node:child_process'
 import { parseCheckOutput } from './parse-check-output.mjs'
 
 export function formatCheckResult(failures) {
-  return failures.map(({ check }) => `- ${check} -> rerun: bun run ${check}`).join('\n')
+  const checks = failures.map(({ check }) => `- ${check}`)
+  const reruns = failures.map(({ check }) => `bun run ${check}`)
+  return [
+    '`bun check:full` failed with the following failed checks:',
+    ...checks,
+    '',
+    'Fix the failed check(s), then rerun:',
+    ...reruns,
+  ].join('\n')
 }
 
 export function checkFull(ctx) {

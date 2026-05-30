@@ -5,7 +5,15 @@ import { formatCheckResult } from '../../../tdd/checks/check-full.mjs'
 describe('formatCheckResult', () => {
   test('formats single failure', () => {
     const result = formatCheckResult([{ check: 'lint', files: ['src/foo.ts', 'src/bar.ts'] }])
-    expect(result).toBe('- lint -> rerun: bun run lint')
+    expect(result).toBe(
+      [
+        '`bun check:full` failed with the following failed checks:',
+        '- lint',
+        '',
+        'Fix the failed check(s), then rerun:',
+        'bun run lint',
+      ].join('\n'),
+    )
   })
 
   test('formats multiple failures', () => {
@@ -16,15 +24,29 @@ describe('formatCheckResult', () => {
     ])
     expect(result).toBe(
       [
-        '- lint -> rerun: bun run lint',
-        '- typecheck -> rerun: bun run typecheck',
-        '- test -> rerun: bun run test',
+        '`bun check:full` failed with the following failed checks:',
+        '- lint',
+        '- typecheck',
+        '- test',
+        '',
+        'Fix the failed check(s), then rerun:',
+        'bun run lint',
+        'bun run typecheck',
+        'bun run test',
       ].join('\n'),
     )
   })
 
   test('formats failure with no parseable files', () => {
     const result = formatCheckResult([{ check: 'knip', files: [] }])
-    expect(result).toBe('- knip -> rerun: bun run knip')
+    expect(result).toBe(
+      [
+        '`bun check:full` failed with the following failed checks:',
+        '- knip',
+        '',
+        'Fix the failed check(s), then rerun:',
+        'bun run knip',
+      ].join('\n'),
+    )
   })
 })
