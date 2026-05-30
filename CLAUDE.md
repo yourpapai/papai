@@ -306,13 +306,18 @@ Optional: debug server + debug/admin clients
   `plugins-routes.ts`, `identity-routes.ts`, `provision-routes.ts`,
   `group-routes.ts`) and `src/debug/settings/admin/` for the bot-admin/super-admin
   wrappers (`instances-routes.ts`, `system-access-routes.ts`,
-  `roster-plugins-routes.ts`; shared guard in `admin-guard.ts`). Every handler
+  `roster-plugins-routes.ts`, `plugin-config-routes.ts`; shared guard in
+  `admin-guard.ts`). Every handler
   authenticates the settings session, verifies the `X-Settings-CSRF` header on
   writes, and resolves a validated `contextId` through `requireScope` before
   delegating to the same stores the settings web UI and the
   `DEBUG_TOKEN`-gated `/api/*` + `/admin/*` handlers use. Admin routes are thin
-  wrappers (no settings cookie ever satisfies a `DEBUG_TOKEN` route). Admin
-  plugin-config view is deferred.
+  wrappers (no settings cookie ever satisfies a `DEBUG_TOKEN` route). The admin
+  plugin-config view is served at `/settings/api/admin/plugin-config`
+  (`requireAdmin` read/write), reusing `buildPluginConfigDescriptors` +
+  `getAdminPluginConfigSnapshot`/`applyAdminPluginConfigUpdate` from
+  `src/debug/admin-plugin-config.ts` — the same logic the `DEBUG_TOKEN`-gated
+  `/admin/plugin-config` route uses.
 
 ## Plugin System
 
