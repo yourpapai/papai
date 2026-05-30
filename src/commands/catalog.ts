@@ -16,7 +16,6 @@ export type CommandRegistration =
   | 'registerConfigCommand'
   | 'registerContextCommand'
   | 'registerDashboardCommand'
-  | 'registerGroupCommand'
   | 'registerHelpCommand'
   | 'registerStartCommand'
 
@@ -81,28 +80,6 @@ const COMMAND_CATALOG: readonly CommandCatalogEntry[] = [
       publishInDmAdmin: true,
       publishInGroupUser: true,
       publishInGroupAdmin: true,
-    },
-  },
-  {
-    name: 'group',
-    description: 'Manage group authorization or membership',
-    registration: 'registerGroupCommand',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: true,
-      publishInGroupAdmin: true,
-    },
-  },
-  {
-    name: 'groups',
-    description: 'List authorized groups',
-    registration: 'registerGroupCommand',
-    telegram: {
-      publishInDmUser: false,
-      publishInDmAdmin: true,
-      publishInGroupUser: false,
-      publishInGroupAdmin: false,
     },
   },
   {

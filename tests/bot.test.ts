@@ -998,37 +998,6 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(textCalls[0]).toContain('Context total=')
   })
 
-  test('returns bot-admin denial for unauthorized DM /group and /groups commands in wrapped runtime path', async () => {
-    const commandHandlers = new Map<
-      string,
-      (msg: IncomingMessage, reply: ReplyFn, auth: ReturnType<typeof createAuth>) => Promise<void>
-    >()
-    const mockChat = createMockChat({ commandHandlers })
-    setupBot(
-      mockChat,
-      ADMIN_ID,
-      withSynchronousQueue({
-        processMessage: (): Promise<void> => Promise.resolve(),
-      }),
-    )
-
-    const groupHandler = commandHandlers.get('group')
-    const groupsHandler = commandHandlers.get('groups')
-    expect(groupHandler).not.toBeUndefined()
-    expect(groupsHandler).not.toBeUndefined()
-
-    const dmGroupMessage = createDmMessage('non-admin-user', 'add group-123')
-    const { reply: groupReply, textCalls: groupTextCalls } = createMockReply()
-    await groupHandler!(dmGroupMessage, groupReply, createAuth('non-admin-user'))
-
-    const dmGroupsMessage = createDmMessage('non-admin-user')
-    const { reply: groupsReply, textCalls: groupsTextCalls } = createMockReply()
-    await groupsHandler!(dmGroupsMessage, groupsReply, createAuth('non-admin-user'))
-
-    expect(groupTextCalls).toEqual(['Only bot admins can manage authorized groups.'])
-    expect(groupsTextCalls).toEqual(['Only bot admins can list authorized groups.'])
-  })
-
   test('emits message:replied for unauthorized mention denial path', async () => {
     const repliedEvents: DebugEvent[] = []
     const listener = makeRepliedEventListener(repliedEvents)
@@ -1047,7 +1016,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     }
   })
 
-  test('returns bot-admin denial and hides admin help for authorized non-admin DM user in wrapped runtime path', async () => {
+  test('hides admin help for authorized non-admin DM user in wrapped runtime path', async () => {
     addUser('authorized-user', ADMIN_ID)
     setupUserConfig('authorized-user')
 
@@ -1064,24 +1033,12 @@ describe('Bot Authorization Gate (setupBot)', () => {
       }),
     )
 
-    const groupHandler = commandHandlers.get('group')
-    const groupsHandler = commandHandlers.get('groups')
     const helpHandler = commandHandlers.get('help')
-    expect(groupHandler).not.toBeUndefined()
-    expect(groupsHandler).not.toBeUndefined()
     expect(helpHandler).not.toBeUndefined()
-
-    const { reply: groupReply, textCalls: groupTextCalls } = createMockReply()
-    await groupHandler!(createDmMessage('authorized-user', 'add group-123'), groupReply, createAuth('authorized-user'))
-
-    const { reply: groupsReply, textCalls: groupsTextCalls } = createMockReply()
-    await groupsHandler!(createDmMessage('authorized-user'), groupsReply, createAuth('authorized-user'))
 
     const { reply: helpReply, textCalls: helpTextCalls } = createMockReply()
     await helpHandler!(createDmMessage('authorized-user', '/help'), helpReply, createAuth('authorized-user'))
 
-    expect(groupTextCalls).toEqual(['Only bot admins can manage authorized groups.'])
-    expect(groupsTextCalls).toEqual(['Only bot admins can list authorized groups.'])
     expect(helpTextCalls).toHaveLength(1)
     expect(helpTextCalls[0]).not.toContain('/group add <group-id>')
     expect(helpTextCalls[0]).not.toContain('/group remove <group-id>')

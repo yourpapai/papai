@@ -18,7 +18,6 @@ import {
   registerConfigCommand,
   registerContextCommand,
   registerDashboardCommand,
-  registerGroupCommand,
   registerHelpCommand,
   registerStartCommand,
 } from './commands/index.js'
@@ -53,12 +52,6 @@ async function replyToUnauthorized(reply: ReplyFn, auth: AuthorizationResult, gr
   const message = getUnauthorizedReplyText(auth, groupId)
   if (message !== null) await reply.text(message)
 }
-function shouldDeferUnauthorizedDmCommand(commandName: string, msg: IncomingMessage): boolean {
-  if (msg.contextType !== 'dm') return false
-  if (commandName === 'group') return true
-  if (commandName === 'groups') return true
-  return false
-}
 function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
   return checkAuthorizationExtended(
     msg.user.id,
@@ -72,7 +65,6 @@ function resolveMessageAuth(msg: IncomingMessage): AuthorizationResult {
 }
 function createObservedCommandHandler(
   chat: ChatProvider,
-  commandName: string,
   handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>,
 ): (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void> {
   return async (msg, reply, _auth): Promise<void> => {
@@ -80,8 +72,7 @@ function createObservedCommandHandler(
     const tracked = trackReplyUsage(reply, supportsFileReplies(chat))
     const auth = resolveMessageAuth(msg)
     if (!auth.allowed) {
-      if (shouldDeferUnauthorizedDmCommand(commandName, msg)) await handler(msg, tracked.reply, auth)
-      else await replyToUnauthorized(tracked.reply, auth, msg.contextId)
+      await replyToUnauthorized(tracked.reply, auth, msg.contextId)
       emitReplyCompletedIfNeeded(tracked, msg.user.id, auth.storageContextId, start)
       return
     }
@@ -96,7 +87,7 @@ function createObservedChatProvider(chat: ChatProvider): ChatProvider {
     get(target, prop: keyof ChatProvider) {
       if (prop === 'registerCommand') {
         return (name: string, handler: (m: IncomingMessage, r: ReplyFn, a: AuthorizationResult) => Promise<void>) => {
-          registerCommand(name, createObservedCommandHandler(chat, name, handler))
+          registerCommand(name, createObservedCommandHandler(chat, handler))
         }
       }
       return target[prop]
@@ -111,7 +102,6 @@ function registerCommands(chat: ChatProvider, adminUserId: string): void {
   registerContextCommand(observedChat)
   registerClearCommand(observedChat, undefined, adminUserId)
   registerAdminCommands(observedChat, adminUserId)
-  registerGroupCommand(observedChat)
   registerDashboardCommand(observedChat)
   registerPluginCommands(observedChat)
 }
