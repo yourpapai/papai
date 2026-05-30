@@ -182,6 +182,7 @@ export class PluginRegistry {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined) {
       entry.state = 'active'
+      updatePluginAdminStateField(pluginId, { state: 'active', compatibilityReason: null })
     }
     log.info({ pluginId }, 'Plugin marked active')
   }
@@ -191,6 +192,7 @@ export class PluginRegistry {
     if (entry !== undefined) {
       entry.state = 'error'
       entry.compatibilityReason = reason
+      updatePluginAdminStateField(pluginId, { state: 'error', compatibilityReason: reason })
     }
     log.error({ pluginId, reason }, 'Plugin marked as error')
   }
@@ -199,6 +201,7 @@ export class PluginRegistry {
     const entry = this.entries.get(pluginId)
     if (entry !== undefined && entry.state === 'active') {
       entry.state = 'approved'
+      updatePluginAdminStateField(pluginId, { state: 'approved', compatibilityReason: null })
     }
   }
 

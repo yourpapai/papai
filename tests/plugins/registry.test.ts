@@ -173,6 +173,16 @@ describe('PluginRegistry', () => {
     expectEntryState(registry, 'test-plugin', 'active')
   })
 
+  test('markActive persists active state to plugin_admin_state', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.markActive('test-plugin')
+
+    expect(getPluginAdminState('test-plugin')?.state).toBe('active')
+  })
+
   test('markError records reason and sets error state', () => {
     const plugin = makePlugin()
     registry.registerDiscovered(plugin)
@@ -182,6 +192,17 @@ describe('PluginRegistry', () => {
     expectEntryReason(registry, 'test-plugin', 'timeout')
   })
 
+  test('markError persists error state and reason to plugin_admin_state', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+
+    registry.markError('test-plugin', 'activation failed')
+
+    expect(getPluginAdminState('test-plugin')?.state).toBe('error')
+    expect(getPluginAdminState('test-plugin')?.compatibilityReason).toBe('activation failed')
+  })
+
   test('markDeactivated transitions active plugin back to approved', () => {
     const plugin = makePlugin()
     registry.registerDiscovered(plugin)
@@ -189,6 +210,17 @@ describe('PluginRegistry', () => {
     registry.markActive('test-plugin')
     registry.markDeactivated('test-plugin')
     expectEntryState(registry, 'test-plugin', 'approved')
+  })
+
+  test('markDeactivated persists approved state after active runtime', () => {
+    const plugin = makePlugin()
+    registry.registerDiscovered(plugin)
+    registry.approve('test-plugin', 'admin', 'hash-abc')
+    registry.markActive('test-plugin')
+
+    registry.markDeactivated('test-plugin')
+
+    expect(getPluginAdminState('test-plugin')?.state).toBe('approved')
   })
 
   test('evaluateCompatibilityAcrossInstances marks incompatible when capability missing', () => {
