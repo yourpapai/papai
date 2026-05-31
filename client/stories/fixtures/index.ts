@@ -73,6 +73,9 @@ export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalSta
     toolMix: {
       topTools: [{ toolName: 'create_task', count: 30, successRate: 0.96 }],
       errorTypeCounts: { validation: 2 },
+      totalCalls: 120,
+      totalSuccessRate: 0.95,
+      toolCallGrowth30d: [{ date: '2026-05-20', count: 8 }],
     },
     llmUsage: {
       totalCalls: 42,

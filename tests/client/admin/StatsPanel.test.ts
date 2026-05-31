@@ -52,6 +52,9 @@ const globalPayload = (overrides: Partial<GlobalStats> | null): GlobalStats => {
     toolMix: {
       topTools: [{ toolName: 'create_task', count: 8, successRate: 1 }],
       errorTypeCounts: {},
+      totalCalls: 8,
+      totalSuccessRate: 1,
+      toolCallGrowth30d: [],
     },
     llmUsage: {
       totalCalls: 0,
