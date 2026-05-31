@@ -79,10 +79,10 @@ describe('MemosSection', () => {
 
   test('only offers supported memo states', () => {
     const { target, component } = render()
-    const stateSelect = target.querySelector<HTMLSelectElement>('[data-testid="memos-state"]')
-    expect(stateSelect).not.toBeNull()
+    const segBtns = target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')
+    expect(segBtns.length).toBeGreaterThan(0)
 
-    const optionValues = Array.from(stateSelect!.querySelectorAll('option')).map((option) => option.value)
+    const optionValues = Array.from(segBtns).map((btn) => btn.textContent?.trim())
 
     expect(optionValues).toEqual(['active', 'archived'])
 
@@ -95,11 +95,13 @@ describe('MemosSection', () => {
 
     const { target, component } = render()
     const userInput = target.querySelector<HTMLInputElement>('[data-testid="memos-user-id"]')
-    const stateSelect = target.querySelector<HTMLSelectElement>('[data-testid="memos-state"]')
+    const archivedBtn = Array.from(target.querySelectorAll<HTMLButtonElement>('.ui-seg__btn')).find(
+      (btn) => btn.textContent === 'archived',
+    )
+    expect(archivedBtn).not.toBeUndefined()
     userInput!.value = 'user-2'
     userInput!.dispatchEvent(new Event('input', { bubbles: true }))
-    stateSelect!.value = 'archived'
-    stateSelect!.dispatchEvent(new Event('change', { bubbles: true }))
+    archivedBtn!.click()
     flushSync()
 
     target.querySelector<HTMLButtonElement>('[data-testid="memos-load"]')!.click()
