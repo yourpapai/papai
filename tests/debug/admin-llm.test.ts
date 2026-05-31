@@ -39,8 +39,23 @@ describe('getAdminLlmSnapshot', () => {
   test('returns nulls for every key when system_config is empty', () => {
     const snap = getAdminLlmSnapshot()
     for (const key of ['llm_apikey', 'llm_baseurl', 'main_model', 'small_model', 'embedding_model'] as const) {
-      expect(snap[key]).toEqual({ value: null, updatedAt: null, updatedBy: null })
+      expect(snap[key].value).toBeNull()
+      expect(snap[key].updatedAt).toBeNull()
+      expect(snap[key].updatedBy).toBeNull()
     }
+  })
+
+  test('marks llm_apikey, llm_baseurl, and main_model as required', () => {
+    const snap = getAdminLlmSnapshot()
+    expect(snap.llm_apikey.required).toBe(true)
+    expect(snap.llm_baseurl.required).toBe(true)
+    expect(snap.main_model.required).toBe(true)
+  })
+
+  test('marks small_model and embedding_model as optional', () => {
+    const snap = getAdminLlmSnapshot()
+    expect(snap.small_model.required).toBe(false)
+    expect(snap.embedding_model.required).toBe(false)
   })
 
   test('returns masked llm_apikey and cleartext for other keys', () => {
@@ -58,8 +73,8 @@ describe('getAdminLlmSnapshot', () => {
 
     expect(snap.main_model.value).toBe('gpt-9')
 
-    expect(snap.small_model).toEqual({ value: null, updatedAt: null, updatedBy: null })
-    expect(snap.embedding_model).toEqual({ value: null, updatedAt: null, updatedBy: null })
+    expect(snap.small_model).toEqual({ value: null, updatedAt: null, updatedBy: null, required: false })
+    expect(snap.embedding_model).toEqual({ value: null, updatedAt: null, updatedBy: null, required: false })
   })
 })
 

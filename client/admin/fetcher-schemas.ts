@@ -196,6 +196,7 @@ const AdminLlmKeyStateSchema = z.object({
   value: z.string().nullable(),
   updatedAt: z.number().nullable(),
   updatedBy: z.string().nullable(),
+  required: z.boolean(),
 })
 
 export const AdminLlmSnapshotSchema = z.object({

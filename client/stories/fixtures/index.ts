@@ -92,11 +92,11 @@ export function makeGlobalStats(overrides: Partial<GlobalStats> = {}): GlobalSta
 export function makeAdminLlmSnapshot(overrides: Partial<AdminLlmSnapshot> = {}): AdminLlmSnapshot {
   const base = { updatedAt: FIXED_TS, updatedBy: 'admin' }
   return {
-    llm_apikey: { ...base, value: '***' },
-    llm_baseurl: { ...base, value: 'https://api.example.com' },
-    main_model: { ...base, value: 'gpt-4o-mini' },
-    small_model: { ...base, value: 'gpt-4o-mini' },
-    embedding_model: { ...base, value: 'text-embedding-3-small' },
+    llm_apikey: { ...base, value: '***', required: true },
+    llm_baseurl: { ...base, value: 'https://api.example.com', required: true },
+    main_model: { ...base, value: 'gpt-4o-mini', required: true },
+    small_model: { ...base, value: 'gpt-4o-mini', required: false },
+    embedding_model: { ...base, value: 'text-embedding-3-small', required: false },
     ...overrides,
   }
 }

@@ -49,11 +49,11 @@ export const adminHandlers: HandlerFamily = {
     http.get('/admin/llm', () =>
       HttpResponse.json(
         makeAdminLlmSnapshot({
-          llm_apikey: { value: null, updatedAt: null, updatedBy: null },
-          llm_baseurl: { value: null, updatedAt: null, updatedBy: null },
-          main_model: { value: null, updatedAt: null, updatedBy: null },
-          small_model: { value: null, updatedAt: null, updatedBy: null },
-          embedding_model: { value: null, updatedAt: null, updatedBy: null },
+          llm_apikey: { value: null, updatedAt: null, updatedBy: null, required: true },
+          llm_baseurl: { value: null, updatedAt: null, updatedBy: null, required: true },
+          main_model: { value: null, updatedAt: null, updatedBy: null, required: true },
+          small_model: { value: null, updatedAt: null, updatedBy: null, required: false },
+          embedding_model: { value: null, updatedAt: null, updatedBy: null, required: false },
         }),
       ),
     ),

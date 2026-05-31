@@ -92,6 +92,25 @@ const expectDefined = <T>(value: T | undefined | null, message: string): NonNull
 
 describe('fetchAdminLlm', () => {
   test('GETs /admin/llm', async () => {
+    const empty = { value: null, updatedAt: null, updatedBy: null, required: false }
+    installFetch(200, {
+      llm_apikey: { ...empty, required: true },
+      llm_baseurl: { ...empty, required: true },
+      main_model: { ...empty, required: true },
+      small_model: empty,
+      embedding_model: empty,
+    })
+    const snap = await fetchAdminLlm()
+    expect(firstCaptured().url).toBe('/admin/llm')
+    expect(snap.llm_apikey.value).toBeNull()
+    expect(snap.llm_apikey.required).toBe(true)
+    expect(snap.llm_baseurl.required).toBe(true)
+    expect(snap.main_model.required).toBe(true)
+    expect(snap.small_model.required).toBe(false)
+    expect(snap.embedding_model.required).toBe(false)
+  })
+
+  test('rejects snapshot missing required flag', async () => {
     const empty = { value: null, updatedAt: null, updatedBy: null }
     installFetch(200, {
       llm_apikey: empty,
@@ -100,9 +119,7 @@ describe('fetchAdminLlm', () => {
       small_model: empty,
       embedding_model: empty,
     })
-    const snap = await fetchAdminLlm()
-    expect(firstCaptured().url).toBe('/admin/llm')
-    expect(snap.llm_apikey.value).toBeNull()
+    await expect(fetchAdminLlm()).rejects.toThrow()
   })
 })
 
