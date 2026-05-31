@@ -140,9 +140,10 @@ environment variables on first start and from the DB on subsequent starts:
 - `EMBEDDING_MODEL` — optional; memo semantic search degrades to keyword-only
 - `INSTANCE_CONFIG_KEY` — 32-byte AES-256-GCM key (64 hex chars) used to
   encrypt `platform_instances.config` and `task_instances.config` at rest.
-  Non-hex values are SHA-256-hashed. When unset, a derived host-local
-  fallback key is used and a one-shot `WARN` is logged at startup;
-  production deployments must set this explicitly.
+  Non-hex values are treated as passphrases and derived with `scrypt`.
+  When unset, a derived host-local fallback key is used and a one-shot
+  `WARN` is logged at startup; production deployments must set this
+  explicitly.
 
 If `system_config` is missing any of the three required entries at runtime,
 the bot logs `WARN` at startup and replies "the bot is not fully configured"
@@ -200,7 +201,10 @@ and the admin stats surface lives at `/admin#stats` and uses
 `GET /stats/global` and `GET /stats/subject/:id`. The admin instances
 surface lives at `/admin#instances` and manages platform instances, task
 instances, and admin assignments through `/api/platform-instances`,
-`/api/task-instances`, and `/api/admins`.
+`/api/task-instances`, and `/api/admins`. Instance list routes degrade
+gracefully when some encrypted rows are unreadable: readable rows are
+returned alongside an `unreadable` diagnostics array, and startup skips
+unreadable active platform/task rows with warnings instead of aborting.
 
 #### Anonymity contract for `/stats/*`
 

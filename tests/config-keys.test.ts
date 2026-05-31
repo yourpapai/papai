@@ -7,7 +7,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { getConfigFieldsForContext, getConfigKeysForContext } from '../src/config-keys.js'
+import { setCachedConfig } from '../src/cache.js'
+import {
+  getConfigFieldsForContext,
+  getConfigKeysForContext,
+  getRequiredProviderConfigKeysForContext,
+  isSensitiveProviderStorageKey,
+} from '../src/config-keys.js'
 import { setConfig, getAllConfig } from '../src/config.js'
 import { taskInstances } from '../src/db/schema.js'
 import { setContextSettings } from '../src/instances/context-store.js'
@@ -145,8 +151,10 @@ describe('getConfigKeysForContext', () => {
     registerYouTrackContributed()
     insertTaskInstance({ id: 'yt-prod', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     setContextSettings({ contextId: 'ctx-yt', taskInstanceId: 'yt-prod', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
-    setConfig('ctx-yt', 'youtrack_token', 'perm:abc')
+    // Simulate stale flat-key rows that may remain in cache from pre-migration data;
+    // these are not ConfigKey members and should not appear in getAllConfig output.
+    setCachedConfig('ctx-yt', 'kaneo_apikey', 'hidden-kaneo-key')
+    setCachedConfig('ctx-yt', 'youtrack_token', 'perm:abc')
     setConfig('ctx-yt', 'timezone', 'UTC')
 
     // The contributed youtrack token uses plugin-namespaced key; legacy 'youtrack_token' is not visible
@@ -227,5 +235,122 @@ describe('getConfigFieldsForContext', () => {
     expect(fields.map((field) => field.storageKey)).toContain('plugin:plugin-tracker:provider:custom_token')
     expect(fields.map((field) => field.storageKey)).not.toContain('plugin:plugin-tracker:provider:token')
     expect(fields.map((field) => field.storageKey)).not.toContain('custom_token')
+  })
+
+  test('provider context field label comes from the descriptor field, not a hardcoded map', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        {
+          key: 'token',
+          label: 'My Distinct Token Label',
+          required: true,
+          sensitive: true,
+          scope: 'context',
+        },
+      ],
+    })
+    insertTaskInstance({
+      id: 'plugin-prod',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-plugin',
+      taskInstanceId: 'plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const fields = getConfigFieldsForContext('ctx-plugin')
+    const tokenField = fields.find((f) => f.storageKey.endsWith(':provider:token'))
+
+    expect(tokenField?.label).toBe('My Distinct Token Label')
+  })
+})
+
+describe('getRequiredProviderConfigKeysForContext', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
+  test('returns the namespaced required provider context keys, excluding preferences and workspace', () => {
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        { key: 'credential', label: 'Plugin Credential', required: true, sensitive: true, scope: 'context' },
+      ],
+    })
+    insertTaskInstance({
+      id: 'plugin-prod',
+      type: 'plugin-tracker',
+      config: { baseUrl: 'https://plugin.invalid' },
+      status: 'active',
+    })
+    setContextSettings({
+      contextId: 'ctx-plugin',
+      taskInstanceId: 'plugin-prod',
+      platformInstanceId: 'telegram-default',
+    })
+
+    const keys = getRequiredProviderConfigKeysForContext('ctx-plugin')
+
+    expect(keys).toContain('plugin:plugin-tracker:provider:credential')
+    expect(keys).not.toContain('timezone')
+    expect(keys).not.toContain('mcp_endpoints')
+  })
+
+  test('returns no provider keys when the context has no active task assignment', () => {
+    const keys = getRequiredProviderConfigKeysForContext('unassigned-context')
+
+    expect(keys.filter((k) => k.startsWith('plugin:'))).toHaveLength(0)
+  })
+})
+
+describe('isSensitiveProviderStorageKey', () => {
+  beforeEach(async () => {
+    mockLogger()
+    await setupTestDb()
+    seedCommonTestPlatformInstances()
+    process.env['INSTANCE_CONFIG_KEY'] = '5'.repeat(64)
+    registerContributedTaskProviderType('plugin-tracker', {
+      pluginId: 'plugin-tracker',
+      factory: () => createMockProvider({ name: 'plugin-tracker' }),
+      capabilities: new Set(),
+      displayName: 'Plugin Tracker',
+      instanceConfigSchema: [],
+      contextConfigSchema: [
+        { key: 'credential', label: 'Plugin Credential', required: true, sensitive: true, scope: 'context' },
+        { key: 'workspaceId', label: 'Workspace ID', required: false, sensitive: false, scope: 'context' },
+      ],
+    })
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType('plugin-tracker')
+  })
+
+  test('true for a sensitive namespaced provider credential key', () => {
+    expect(isSensitiveProviderStorageKey('plugin:plugin-tracker:provider:credential')).toBe(true)
+  })
+
+  test('false for a non-sensitive provider field and for unknown/static keys', () => {
+    expect(isSensitiveProviderStorageKey('plugin:plugin-tracker:provider:workspaceId')).toBe(false)
+    expect(isSensitiveProviderStorageKey('timezone')).toBe(false)
   })
 })

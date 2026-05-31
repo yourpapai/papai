@@ -4,12 +4,14 @@
 // See LICENSE in the project root for details.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 
 import {
   decryptInstanceConfig,
   encryptInstanceConfig,
   maskConfig,
   resolveInstanceConfigKey,
+  resolveInstanceConfigKeyInfo,
 } from '../../src/instances/encryption.js'
 
 describe('maskConfig with explicit sensitive keys', () => {
@@ -75,19 +77,30 @@ describe('encryption', () => {
     expect(key[0]).toBe(0xaa)
   })
 
-  test('resolveInstanceConfigKey hashes non-hex strings with SHA-256', () => {
+  test('resolveInstanceConfigKey derives non-hex passphrases with scrypt instead of SHA-256', () => {
     process.env['INSTANCE_CONFIG_KEY'] = 'not-a-hex-key'
-    const key = resolveInstanceConfigKey()
-    expect(key.length).toBe(32)
+
+    const info = resolveInstanceConfigKeyInfo()
+    const bareSha = createHash('sha256').update('not-a-hex-key', 'utf8').digest()
+
+    expect(info.mode).toBe('passphrase')
+    expect(info.key.length).toBe(32)
+    expect(info.key.equals(bareSha)).toBe(false)
+    expect(resolveInstanceConfigKey().equals(info.key)).toBe(true)
   })
 
-  test('resolveInstanceConfigKey returns derived fallback when env missing', () => {
+  test('resolveInstanceConfigKey derives missing-key fallback from host material', () => {
     delete process.env['INSTANCE_CONFIG_KEY']
-    const key = resolveInstanceConfigKey()
-    expect(key.length).toBe(32)
-    // Same fallback should be deterministic
-    const again = resolveInstanceConfigKey()
-    expect(again.equals(key)).toBe(true)
+
+    const left = resolveInstanceConfigKeyInfo({ hostname: () => 'host-a', homeDir: () => '/home/a' })
+    const right = resolveInstanceConfigKeyInfo({ hostname: () => 'host-b', homeDir: () => '/home/a' })
+    const repeat = resolveInstanceConfigKeyInfo({ hostname: () => 'host-a', homeDir: () => '/home/a' })
+
+    expect(left.mode).toBe('host-local-fallback')
+    expect(left.key.length).toBe(32)
+    expect(left.warning).toContain('not portable')
+    expect(left.key.equals(right.key)).toBe(false)
+    expect(left.key.equals(repeat.key)).toBe(true)
   })
 
   test('maskConfig masks secret-like keys and preserves others', () => {

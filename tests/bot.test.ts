@@ -28,7 +28,7 @@ import type {
   ReplyFn,
   ResolveUserContext,
 } from '../src/chat/types.js'
-import { setConfig } from '../src/config.js'
+import { setConfig, setConfigValue } from '../src/config.js'
 import { getDrizzleDb } from '../src/db/drizzle.js'
 import { groupAdminObservations, groupUserObservations, knownGroupContexts } from '../src/db/schema.js'
 import { subscribe, unsubscribe, type DebugEvent } from '../src/debug/event-bus.js'
@@ -39,6 +39,7 @@ import { setContextSettings } from '../src/instances/context-store.js'
 import { getTaskInstance, insertTaskInstance } from '../src/instances/task-store.js'
 import { contributionRegistry } from '../src/plugins/contributions.js'
 import { PLUGIN_API_VERSION, type PluginManifest } from '../src/plugins/types.js'
+import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../src/types/config.js'
 import {
   addUser as addScopedUser,
   isAuthorized as isAuthorizedScoped,
@@ -424,7 +425,7 @@ function setupContextTaskAssignment(contextId: string, ...args: [] | [platformIn
 function setupUserConfig(userId: string): void {
   for (const contextId of new Set([userId, scopedDm(userId), scopedGroup(userId)])) {
     setupContextTaskAssignment(contextId)
-    setConfig(contextId, 'kaneo_apikey', 'test-kaneo-key')
+    setConfigValue(contextId, KANEO_PLUGIN_CREDENTIAL_KEY, 'test-kaneo-key')
     setConfig(contextId, 'timezone', 'UTC')
   }
 }

@@ -3,8 +3,11 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-// NOTE: validates instance-scoped config only (baseUrl). The context-scoped token
-// is not available at instance-config validation time; token validation happens during /setup.
+// NOTE: this validator only inspects the instance-scoped baseUrl. It is reached both
+// from task-instance config validation and from resolver-time
+// validateEffectiveTaskProviderConfigResult (which passes the merged config including
+// the context-scoped token). The token is intentionally ignored here; token validation
+// happens during /setup.
 export function validateConfig(config: Record<string, string>): Promise<{ ok: true } | { ok: false; reason: string }> {
   const baseUrl = config['baseUrl']?.trim() ?? ''
   if (baseUrl.length === 0) return Promise.resolve({ ok: false, reason: 'baseUrl is required' })

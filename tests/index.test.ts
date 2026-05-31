@@ -8,7 +8,13 @@ import assert from 'node:assert/strict'
 
 import type { BotDeps } from '../src/bot.js'
 import type { ChatProvider } from '../src/chat/types.js'
-import type { InstanceConfig, PlatformInstance, PlatformInstanceType } from '../src/instances/types.js'
+import type {
+  InstanceConfig,
+  InstanceDecodeResult,
+  PlatformInstance,
+  PlatformInstanceType,
+  TaskInstance,
+} from '../src/instances/types.js'
 import type { TaskProvider } from '../src/providers/types.js'
 
 const indexModuleCoverage: null | typeof import('../src/index.js') = null
@@ -265,10 +271,16 @@ describe('index.ts - graceful shutdown', () => {
       }),
     }))
     void mock.module('../src/instances/platform-store.js', () => ({
-      listActivePlatformInstances: (): readonly PlatformInstance[] => activePlatformInstances,
+      listActivePlatformInstancesSafe: (): InstanceDecodeResult<PlatformInstance> => ({
+        instances: [...activePlatformInstances],
+        failures: [],
+      }),
     }))
     void mock.module('../src/instances/task-store.js', () => ({
-      listTaskInstances: (): readonly [] => [],
+      listTaskInstancesSafe: (): InstanceDecodeResult<TaskInstance> => ({
+        instances: [],
+        failures: [],
+      }),
     }))
     void mock.module('../src/deferred-prompts/poller.js', () => ({
       startPollers: (_chat: ChatProvider, resolveProvider: (contextId: string) => TaskProvider | null): void => {

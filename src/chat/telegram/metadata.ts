@@ -22,5 +22,5 @@ export const telegramTraits: ChatProviderTraits = {
 }
 
 export const telegramConfigRequirements: readonly ChatProviderConfigRequirement[] = [
-  { key: 'TELEGRAM_BOT_TOKEN', label: 'Telegram Bot Token', required: true },
+  { key: 'token', label: 'Telegram Bot Token', required: true },
 ]

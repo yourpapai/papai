@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { listTaskInstances, updateTaskInstance } from '../instances/task-store.js'
+import { listTaskInstances, listTaskInstancesSafe, updateTaskInstance } from '../instances/task-store.js'
 import { logger } from '../logger.js'
 import {
   listContributedTaskProviderTypesForPlugin,
@@ -22,7 +22,7 @@ export type DeactivateContributedTaskProviderTypesDeps = Readonly<{
 const defaultDeps: DeactivateContributedTaskProviderTypesDeps = {
   listTypesForPlugin: listContributedTaskProviderTypesForPlugin,
   unregisterTypesForPlugin: unregisterContributedTaskProviderType,
-  listTaskInstances,
+  listTaskInstances: () => listTaskInstancesSafe().instances,
   updateTaskInstance,
 }
 

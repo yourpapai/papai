@@ -77,11 +77,9 @@ export class TelegramChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(...args: [TelegramConstructorConfig] | [string | undefined, string]) {
-    const config = typeof args[0] === 'object' ? args[0] : undefined
-    const tokenOverride = typeof args[0] === 'string' || args[0] === undefined ? args[0] : undefined
-    const token = config === undefined ? (tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']) : config.token
-    const platformInstanceId = resolvePlatformInstanceId(config === undefined ? args[1] : config.platformInstanceId)
+  constructor(config: TelegramConstructorConfig) {
+    const token = config.token
+    const platformInstanceId = resolvePlatformInstanceId(config.platformInstanceId)
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }

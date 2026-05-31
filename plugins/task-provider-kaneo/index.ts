@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createKaneoProvider } from './entry-runtime'
+import { createKaneoProvider } from './entry-runtime.js'
 
 type TaskProviderLike = {
   readonly name: string
@@ -51,7 +51,7 @@ function isKaneoProvisionModule(value: unknown): value is KaneoProvisionModule {
 }
 
 function getKaneoProvisionModule(): KaneoProvisionModule {
-  const moduleValue: unknown = requireModule('./provision.js')
+  const moduleValue: unknown = requireModule('./auto-provision.js')
   if (!isKaneoProvisionModule(moduleValue)) {
     throw new Error('Invalid Kaneo provision module contract')
   }
@@ -59,10 +59,12 @@ function getKaneoProvisionModule(): KaneoProvisionModule {
 }
 
 // Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
-export { validateConfig } from './validate-config'
+export { validateConfig } from './validate-config.js'
 
 const factory: PluginFactoryLike = () => ({
   activate(ctx: PluginContextLike): void {
+    // KNOWN GAP (#15): provider clients still use global fetch instead of ctx.providerRuntime.
+    // Provider runtime enforcement needs factory/client plumbing plus dynamic-host admission.
     ctx.registration.registerTaskProviderType('kaneo', {
       factory: (config): TaskProviderLike => createKaneoProvider(config),
       autoProvision: getKaneoProvisionModule().kaneoAutoProvision,

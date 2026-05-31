@@ -4,8 +4,8 @@
 // See LICENSE in the project root for details.
 
 import { getCachedConfig } from './cache.js'
-import { getConfigKeysForContext } from './config-keys.js'
-import { getConfig } from './config.js'
+import { getRequiredProviderConfigKeysForContext } from './config-keys.js'
+import { getConfig, getConfigValue } from './config.js'
 import { getSystemConfig } from './system-config.js'
 
 export interface LlmConfig {
@@ -14,17 +14,15 @@ export interface LlmConfig {
   mainModel: string
 }
 
-const readConfig = (contextId: string, key: 'kaneo_apikey' | 'youtrack_token' | 'timezone'): string | null => {
+const readConfig = (contextId: string, key: 'timezone'): string | null => {
   const value = getConfig(contextId, key)
   if (value !== null) return value
   return getCachedConfig(contextId, key)
 }
 
 export const checkRequiredProviderConfig = (contextId: string): string[] => {
-  const requiredKeys = getConfigKeysForContext(contextId).filter(
-    (key): key is 'kaneo_apikey' | 'youtrack_token' => key === 'kaneo_apikey' || key === 'youtrack_token',
-  )
-  return requiredKeys.filter((key) => readConfig(contextId, key) === null)
+  const requiredKeys = getRequiredProviderConfigKeysForContext(contextId)
+  return requiredKeys.filter((key) => getConfigValue(contextId, key) === null)
 }
 
 export const getLlmConfig = (): LlmConfig => {

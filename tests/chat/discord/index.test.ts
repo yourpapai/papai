@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { addAuthorizedGroup } from '../../../src/authorized-groups.js'
@@ -65,47 +65,30 @@ function makeOnInteractionCreateRouter(
 }
 
 describe('DiscordChatProvider', () => {
-  const originalToken = process.env['DISCORD_BOT_TOKEN']
-
   beforeEach(async () => {
     mockLogger()
     mockMessageCache()
     await setupTestDb()
     seedCommonTestPlatformInstances()
-    process.env['DISCORD_BOT_TOKEN'] = 'fake-token-123'
     process.env['ADMIN_USER_ID'] = 'admin-id'
   })
 
   type SendCapture = Partial<{ content: string; components: unknown[] }>
 
-  afterEach(() => {
-    if (originalToken === undefined) {
-      delete process.env['DISCORD_BOT_TOKEN']
-    } else {
-      process.env['DISCORD_BOT_TOKEN'] = originalToken
-    }
-  })
-
-  test('constructor throws when DISCORD_BOT_TOKEN is missing', async () => {
-    delete process.env['DISCORD_BOT_TOKEN']
+  test('constructor requires explicit token and platform instance id', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
     expect(() => new DiscordChatProvider({ platformInstanceId: TEST_PLATFORM_ID })).toThrow(
       'DISCORD_BOT_TOKEN environment variable is required',
     )
-  })
-
-  test('constructor throws when DISCORD_BOT_TOKEN is whitespace only', async () => {
-    process.env['DISCORD_BOT_TOKEN'] = '   '
-    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider({ token: '   ', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
-      'DISCORD_BOT_TOKEN environment variable is required',
+    expect(() => new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: '   ' })).toThrow(
+      'platformInstanceId is required',
     )
   })
 
-  test('constructor throws when platformInstanceId is blank', async () => {
+  test('constructor rejects whitespace-only token', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: '   ' })).toThrow(
-      'platformInstanceId is required',
+    expect(() => new DiscordChatProvider({ token: '   ', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
+      'DISCORD_BOT_TOKEN environment variable is required',
     )
   })
 
@@ -140,7 +123,7 @@ describe('DiscordChatProvider', () => {
       reference: null,
       type: 0,
     }
-    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
 
     expect(captured).toHaveLength(1)
     expect(captured[0]!.text).toBe('/help')
@@ -171,7 +154,7 @@ describe('DiscordChatProvider', () => {
       reference: null,
       type: 0,
     }
-    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
 
     expect(seen).toHaveLength(1)
     expect(seen[0]!.text).toBe('what is the weather')
@@ -179,7 +162,7 @@ describe('DiscordChatProvider', () => {
 
   test('onMessage receives constructor-provided platform instance ID', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined, 'fake-discord-token', 'discord-secondary')
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: 'discord-secondary' })
 
     const seen: IncomingMessage[] = []
     provider.onMessage((msg): Promise<void> => {
@@ -202,7 +185,7 @@ describe('DiscordChatProvider', () => {
       reference: null,
       type: 0,
     }
-    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
 
     expect(seen).toHaveLength(1)
     expect(seen[0]!.platformInstanceId).toBe('discord-secondary')
@@ -233,7 +216,7 @@ describe('DiscordChatProvider', () => {
       reference: null,
       type: 0,
     }
-    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
 
     expect(seen).toHaveLength(1)
     expect(seen[0]!.platformInstanceId).toBe('discord-default')
@@ -262,7 +245,7 @@ describe('DiscordChatProvider', () => {
       reference: null,
       type: 0,
     }
-    await provider.testDispatchMessage(fakeMessage, 'bot_id', 'admin_id')
+    await provider.testDispatchMessage(fakeMessage, 'bot_id')
     expect(seen).toHaveLength(0)
   })
 
@@ -795,7 +778,7 @@ describe('DiscordChatProvider', () => {
         },
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(deferred).toBe(true)
       expect(seen).toHaveLength(1)
@@ -849,7 +832,7 @@ describe('DiscordChatProvider', () => {
         deferUpdate: (): Promise<void> => Promise.resolve(),
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(sends).toHaveLength(0)
       expect(edits).toHaveLength(2)
@@ -908,7 +891,7 @@ describe('DiscordChatProvider', () => {
         deferUpdate: (): Promise<void> => Promise.resolve(),
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(edits).toHaveLength(0)
       expect(sends).toHaveLength(2)
@@ -948,7 +931,7 @@ describe('DiscordChatProvider', () => {
         deferUpdate: (): Promise<void> => Promise.resolve(),
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(captured).toHaveLength(1)
       expect(captured[0]!.text).toBe('/help')
@@ -982,7 +965,7 @@ describe('DiscordChatProvider', () => {
         deferUpdate: (): Promise<void> => Promise.resolve(),
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(seen[0]!.contextId).toBe('user-77')
       expect(seen[0]!.contextType).toBe('dm')
@@ -1017,7 +1000,7 @@ describe('DiscordChatProvider', () => {
         deferUpdate: (): Promise<void> => Promise.resolve(),
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(seen[0]!.contextId).toBe('guild-channel-99')
       expect(seen[0]!.contextType).toBe('group')
@@ -1042,7 +1025,7 @@ describe('DiscordChatProvider', () => {
         deferUpdate: (): Promise<void> => Promise.resolve(),
       }
 
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
 
       expect(seen).toHaveLength(0)
     })
@@ -1073,7 +1056,7 @@ describe('DiscordChatProvider', () => {
       }
 
       // No active editor, should defer and return without error
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
       expect(deferred).toBe(true)
     })
 
@@ -1103,7 +1086,7 @@ describe('DiscordChatProvider', () => {
       }
 
       // No active wizard, should defer and return without error
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
       expect(deferred).toBe(true)
     })
 
@@ -1136,7 +1119,7 @@ describe('DiscordChatProvider', () => {
       }
 
       // Should still route to message handler despite defer failure
-      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42', 'admin-id')
+      await provider.testDispatchButtonInteraction(fakeInteraction, 'bot-42')
       expect(seen).toHaveLength(1)
       expect(seen[0]!.text).toBe('fallback:action')
     })

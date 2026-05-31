@@ -17,7 +17,7 @@ describe('chat registry', () => {
       token: 'secret',
     })
     const discord = createChatProviderFromConfig('discord-default', 'discord', { token: 'secret-token' })
-    const konturTalk = createChatProviderFromConfig('kontur-talk-default', 'kontur-talk', { jwtToken: 'secret-token' })
+    const konturTalk = createChatProviderFromConfig('kontur-talk-main', 'kontur-talk', { jwtToken: 'secret-token' })
 
     expect(telegram.name).toBe('telegram')
     expect('start' in telegram).toBe(true)
@@ -66,13 +66,13 @@ describe('chat registry', () => {
   })
 
   test('createChatProviderFromConfig creates kontur talk from encrypted-row config jwtToken', () => {
-    const provider = createChatProviderFromConfig('kontur-talk-default', 'kontur-talk', { jwtToken: 'test-token' })
+    const provider = createChatProviderFromConfig('kontur-talk-main', 'kontur-talk', { jwtToken: 'test-token' })
 
     expect(provider.name).toBe('kontur-talk')
   })
 
   test('createChatProviderFromConfig rejects kontur talk missing JWT token', () => {
-    expect(() => createChatProviderFromConfig('kontur-talk-default', 'kontur-talk', {})).toThrow(
+    expect(() => createChatProviderFromConfig('kontur-talk-main', 'kontur-talk', {})).toThrow(
       'Missing kontur-talk instance config',
     )
   })

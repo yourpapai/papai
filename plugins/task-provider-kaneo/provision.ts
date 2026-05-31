@@ -11,8 +11,12 @@ import { getConfigValue, setConfigValue } from '../../src/config.js'
 import { getContextSettings } from '../../src/instances/context-store.js'
 import { getTaskInstance } from '../../src/instances/task-store.js'
 import { logger } from '../../src/logger.js'
-import type { TaskProviderAutoProvision } from '../../src/providers/registry.js'
 import { KANEO_PLUGIN_CREDENTIAL_KEY, KANEO_PLUGIN_WORKSPACE_KEY } from '../../src/types/config.js'
+import {
+  formatKaneoProvisionedMessage,
+  formatKaneoProvisionFailureMessage,
+  KANEO_REGISTRATION_DISABLED_MESSAGE,
+} from './provision-messages.js'
 
 const log = logger.child({ scope: 'kaneo:provision' })
 
@@ -38,6 +42,10 @@ const REGISTRATION_DISABLED_MARKERS = ['signup_disabled', 'registration disabled
 
 function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): string | undefined {
   return config['baseUrl']
+}
+
+function getTaskInstanceInternalUrl(config: Readonly<Record<string, string>>): string | undefined {
+  return config['internalUrl']
 }
 
 function generatePassword(): string {
@@ -269,30 +277,24 @@ export async function maybeProvisionKaneo(
   }
 
   const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
-  const internalUrl = taskInstance.config['internalUrl']
+  const internalUrl = getTaskInstanceInternalUrl(taskInstance.config)
 
   provLog.info({ contextId, username }, 'Auto-provisioning Kaneo account')
   const outcome = await provisionAndConfigure(contextId, username, { publicUrl, internalUrl })
 
   if (outcome.status === 'provisioned') {
-    await reply.text(
-      `✅ Your Kaneo account has been created!\n🌐 ${outcome.kaneoUrl}\n📧 Email: ${outcome.email}\n🔑 Password: ${outcome.password}\n\nThe bot is already configured and ready to use.`,
-    )
+    await reply.text(formatKaneoProvisionedMessage(outcome))
     provLog.info({ contextId, workspaceId: outcome.workspaceId }, 'Kaneo account auto-provisioned')
     return true
   }
 
   if (outcome.status === 'registration_disabled') {
-    await reply.text(
-      'Kaneo account could not be created — registration is currently disabled on this instance.\n\nPlease ask the admin to provision your account.',
-    )
+    await reply.text(KANEO_REGISTRATION_DISABLED_MESSAGE)
     provLog.warn({ contextId }, 'Kaneo auto-provisioning failed: registration disabled')
     return true
   }
 
-  await reply.text(`Kaneo account could not be created — ${outcome.error}. Please ask the admin to check setup.`)
+  await reply.text(formatKaneoProvisionFailureMessage(outcome.error))
   provLog.error({ contextId, error: outcome.error }, 'Kaneo auto-provisioning failed')
   return true
 }
-export const kaneoAutoProvision: TaskProviderAutoProvision = ({ reply, contextId, username }) =>
-  maybeProvisionKaneo(reply, contextId, username)

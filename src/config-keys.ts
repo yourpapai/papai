@@ -6,7 +6,7 @@
 import { getContextSettings } from './instances/context-store.js'
 import { getTaskInstance } from './instances/task-store.js'
 import { pluginRegistry } from './plugins/registry.js'
-import { getTaskProviderDescriptor } from './providers/registry.js'
+import { getTaskProviderDescriptor, listTaskProviderTypes } from './providers/registry.js'
 import {
   isAllowedDynamicConfigKey,
   KANEO_PLUGIN_WORKSPACE_KEY,
@@ -42,11 +42,6 @@ const storageKeyForProviderField = (
     return `plugin:${descriptor.source.plugin}:provider:${field.storageKey ?? field.key}`
   if (field.storageKey !== undefined) return field.storageKey
   return field.key
-}
-
-function labelForStorageKey(storageKey: string, fallback: string): string {
-  if (storageKey === 'youtrack_token') return 'YouTrack Token'
-  return fallback
 }
 
 function getPluginContextFields(): readonly ConfigField[] {
@@ -87,7 +82,7 @@ export function getConfigFieldsForContext(contextId: string): readonly ConfigFie
       (field): ConfigField => ({
         key: field.key,
         storageKey: storageKeyForProviderField(descriptor, field),
-        label: labelForStorageKey(storageKeyForProviderField(descriptor, field), field.label),
+        label: field.label,
         required: field.required,
         sensitive: field.sensitive,
         kind: 'provider-context',
@@ -103,4 +98,18 @@ export function getConfigKeysForContext(contextId: string): readonly string[] {
     .map((field) => field.storageKey)
     .filter((key) => isAllowedDynamicConfigKey(key))
   return keys.length === 0 ? PREFERENCE_KEYS : keys
+}
+
+export function getRequiredProviderConfigKeysForContext(contextId: string): string[] {
+  return getConfigFieldsForContext(contextId)
+    .filter((field) => field.required && field.kind !== 'preference')
+    .map((field) => field.storageKey)
+}
+
+export function isSensitiveProviderStorageKey(key: string): boolean {
+  return listTaskProviderTypes().some((descriptor) =>
+    [...descriptor.contextConfigSchema, ...descriptor.instanceConfigSchema].some(
+      (field) => storageKeyForProviderField(descriptor, field) === key && field.sensitive,
+    ),
+  )
 }

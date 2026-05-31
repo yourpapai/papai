@@ -102,15 +102,24 @@ The interface approach keeps tool definitions stable across all providers — th
 
 **Status**: Implemented
 
+> **Update (2026-05, task-provider→plugin migration):** the normalized `TaskProvider`
+> interface and capability model below still hold, but provider _registration_ and
+> _selection_ have since moved. Both first-party providers are now plugin-contributed
+> packages under `plugins/task-provider-*/` (not `src/providers/<name>/`), and the active
+> provider is resolved per context from DB-backed task instances rather than a global
+> `TASK_PROVIDER` env var. Per-user / per-context multi-provider configuration is now
+> supported, superseding the "global deployment-level setting" consequence noted above.
+> The bullets below reflect this current state.
+
 Evidence:
 
 - `src/providers/types.ts` defines `TaskProvider`, `Capability`, and common domain types (`Task`, `TaskListItem`, `TaskSearchResult`, `Project`, `Comment`, `Label`, `Column`, `TaskRelation`, `RelationType`).
-- `src/providers/registry.ts` exports `createProvider(name, config)` with `kaneo` and `youtrack` registered.
-- `src/providers/kaneo/` contains `KaneoProvider` in `index.ts`, with `schemas/`, `operations/` (tasks, comments, labels, projects, statuses, relations), `client.ts`, `classify-error.ts`, and `frontmatter.ts`.
-- `src/providers/youtrack/` contains `YouTrackProvider` in `index.ts`, with `schemas/`, `operations/` (tasks, comments, projects), `client.ts`, `classify-error.ts`.
+- `src/providers/registry.ts` exports `createProvider(name, config)`; both `kaneo` and `youtrack` are resolved through the plugin-contributed registry (`registerContributedTaskProviderType`), as there are no built-in task-provider factories (`builtinDescriptorSeeds` is empty).
+- `plugins/task-provider-kaneo/` is the Kaneo provider plugin: an `index.ts` factory that calls `ctx.registration.registerTaskProviderType('kaneo', ...)`, plus `provider.ts`, `schemas/`, `operations/` (tasks, comments, labels, projects, statuses, relations), `client.ts`, and `classify-error.ts`.
+- `plugins/task-provider-youtrack/` is the YouTrack provider plugin: an `index.ts` factory registering the `youtrack` type, plus `schemas/`, `operations/` (tasks, comments, projects), `client.ts`, and `classify-error.ts`.
 - `src/providers/errors.ts` defines `ProviderError`, `providerError` constructors, `getProviderMessage`, and `ProviderClassifiedError`.
 - `src/tools/index.ts` exports `makeTools(provider: TaskProvider, userId?: string)` with full capability-gated tool assembly across 8 `maybeAdd*` helpers.
-- `src/llm-orchestrator.ts` reads `TASK_PROVIDER` env var and calls `createProvider` to build the active provider per request.
+- `src/llm-orchestrator.ts` resolves the active provider per context through `TaskProviderResolver.resolve(contextId)` against the DB-backed task instance and descriptor registry; there is no `TASK_PROVIDER` env var.
 - Both Kaneo and YouTrack providers implement `getPromptAddendum()` with provider-specific LLM instructions.
 
 ## Related Plans

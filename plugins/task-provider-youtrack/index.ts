@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { createYouTrackProvider } from './entry-runtime'
+import { createYouTrackProvider } from './entry-runtime.js'
 
 type TaskProviderLike = {
   readonly name: string
@@ -22,10 +22,12 @@ type PluginInstanceLike = {
 type PluginFactoryLike = () => PluginInstanceLike
 
 // Named export resolved by the plugin loader from the manifest's `providerConfigValidator`.
-export { validateConfig } from './validate-config'
+export { validateConfig } from './validate-config.js'
 
 const factory: PluginFactoryLike = () => ({
   activate(ctx: PluginContextLike): void {
+    // KNOWN GAP (#15): provider clients still use global fetch instead of ctx.providerRuntime.
+    // Provider runtime enforcement needs factory/client plumbing plus dynamic-host admission.
     ctx.registration.registerTaskProviderType('youtrack', (config): TaskProviderLike => createYouTrackProvider(config))
   },
 })

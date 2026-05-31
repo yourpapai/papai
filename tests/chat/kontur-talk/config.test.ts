@@ -3,44 +3,28 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 
 import { resolveKonturTalkConfig } from '../../../src/chat/kontur-talk/config.js'
 
 describe('resolveKonturTalkConfig', () => {
-  const origEnv = { ...process.env }
-
-  beforeEach(() => {
-    process.env['KONTUR_TALK_JWT_TOKEN'] = 'test-jwt-token'
-  })
-
-  afterEach(() => {
-    process.env = { ...origEnv }
-  })
-
-  test('resolves from env when no constructor config provided', () => {
-    const config = resolveKonturTalkConfig({})
-    expect(config.jwtToken).toBe('test-jwt-token')
-    expect(config.platformInstanceId).toBe('kontur-talk-default')
-  })
-
-  test('constructor config takes precedence over env', () => {
-    const config = resolveKonturTalkConfig({ jwtToken: 'explicit-token' })
+  test('uses explicit constructor config only', () => {
+    const config = resolveKonturTalkConfig({ jwtToken: 'explicit-token', platformInstanceId: 'custom-id' })
     expect(config.jwtToken).toBe('explicit-token')
-  })
-
-  test('throws when jwtToken is missing', () => {
-    delete process.env['KONTUR_TALK_JWT_TOKEN']
-    expect(() => resolveKonturTalkConfig({})).toThrow(/KONTUR_TALK_JWT_TOKEN/iu)
+    expect(config.platformInstanceId).toBe('custom-id')
   })
 
   test('throws when jwtToken is whitespace', () => {
-    delete process.env['KONTUR_TALK_JWT_TOKEN']
-    expect(() => resolveKonturTalkConfig({ jwtToken: '  ' })).toThrow(/KONTUR_TALK_JWT_TOKEN/iu)
+    expect(() => resolveKonturTalkConfig({ jwtToken: '  ', platformInstanceId: 'custom-id' })).toThrow(
+      /KONTUR_TALK_JWT_TOKEN/iu,
+    )
   })
 
-  test('uses custom platformInstanceId when provided', () => {
-    const config = resolveKonturTalkConfig({ platformInstanceId: 'custom-id' })
-    expect(config.platformInstanceId).toBe('custom-id')
+  test('throws when jwtToken is missing', () => {
+    expect(() => resolveKonturTalkConfig({ platformInstanceId: 'custom-id' })).toThrow(/KONTUR_TALK_JWT_TOKEN/iu)
+  })
+
+  test('throws when platformInstanceId is missing', () => {
+    expect(() => resolveKonturTalkConfig({ jwtToken: 'explicit-token' })).toThrow('platformInstanceId is required')
   })
 })

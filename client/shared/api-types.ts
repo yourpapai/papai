@@ -228,7 +228,14 @@ export type AdminInstanceView = Readonly<
 
 export type ApplyFailure = Readonly<{
   id: string
-  action: 'remove' | 'recreate' | 'start' | 'stop'
+  action: 'remove' | 'recreate' | 'start'
+  error: string
+}>
+
+export type InstanceDecodeFailure = Readonly<{
+  table: 'platform_instances' | 'task_instances'
+  id: string
+  type: string
   error: string
 }>
 
@@ -237,9 +244,11 @@ export type ApplyInstancesResult = Readonly<{
   started: readonly string[]
   stopped: readonly string[]
   removed: readonly string[]
+  removedDetails?: readonly { readonly id: string; readonly desiredStatus: 'pending' | 'stopped' | null }[]
   recreated: readonly string[]
   unchanged: readonly string[]
   failed: readonly ApplyFailure[]
+  unreadable?: readonly InstanceDecodeFailure[]
 }>
 
 export type AdminPluginConfigKeyState = {

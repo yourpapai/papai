@@ -30,7 +30,7 @@ import {
   setPlatformInstanceStatus,
   submitAdminLlm,
 } from '../../../client/admin/fetchers.js'
-import type { AdminInstanceView } from '../../../client/shared/api-types.js'
+import type { AdminInstanceView, ApplyInstancesResult } from '../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../utils/test-helpers.js'
 
 type Equal<Left, Right> = [Left] extends [Right] ? ([Right] extends [Left] ? true : false) : false
@@ -38,8 +38,29 @@ type Expect<Actual extends true> = Actual
 type ExpectedAdminInstanceView = Readonly<
   { userId: string; platformInstanceId: string } & Partial<{ createdAt: string }>
 >
+type ExpectedApplyInstancesResult = Readonly<{
+  applied: number
+  started: readonly string[]
+  stopped: readonly string[]
+  removed: readonly string[]
+  removedDetails?: readonly { readonly id: string; readonly desiredStatus: 'pending' | 'stopped' | null }[]
+  recreated: readonly string[]
+  unchanged: readonly string[]
+  failed: readonly {
+    readonly id: string
+    readonly action: 'remove' | 'recreate' | 'start'
+    readonly error: string
+  }[]
+  unreadable?: readonly {
+    readonly table: 'platform_instances' | 'task_instances'
+    readonly id: string
+    readonly type: string
+    readonly error: string
+  }[]
+}>
 type PlatformStatusInput = Parameters<typeof setPlatformInstanceStatus>[1]
 const adminInstanceViewContract: Expect<Equal<AdminInstanceView, ExpectedAdminInstanceView>> = true
+const applyInstancesResultContract: Expect<Equal<ApplyInstancesResult, ExpectedApplyInstancesResult>> = true
 const platformStatusInputContract: Expect<Equal<PlatformStatusInput, 'active' | 'stopped'>> = true
 
 const applyResult = {
@@ -47,9 +68,11 @@ const applyResult = {
   started: ['telegram-main'],
   stopped: [],
   removed: [],
+  removedDetails: [],
   recreated: [],
   unchanged: [],
   failed: [],
+  unreadable: [],
 } as const
 
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
@@ -60,6 +83,7 @@ beforeEach(() => {
 
 test('compile-time instance client contracts are enforced', () => {
   expect(adminInstanceViewContract).toBe(true)
+  expect(applyInstancesResultContract).toBe(true)
   expect(platformStatusInputContract).toBe(true)
 })
 
@@ -438,6 +462,18 @@ describe('instance API fetchers', () => {
     expect(result).toEqual([platformInstance])
   })
 
+  test('fetchPlatformInstances accepts unreadable diagnostics object shape', async () => {
+    installFetch(200, {
+      instances: [platformInstance],
+      unreadable: [{ table: 'platform_instances', id: 'bad', type: 'telegram', error: 'Encrypted payload' }],
+    })
+
+    const result = await fetchPlatformInstances()
+
+    expect(firstCaptured().url).toBe('/api/platform-instances')
+    expect(result).toEqual([platformInstance])
+  })
+
   test('createPlatformInstance POSTs JSON and returns the created instance', async () => {
     installFetch(201, platformInstance)
 
@@ -491,8 +527,37 @@ describe('instance API fetchers', () => {
     expect(result).toEqual(applyResult)
   })
 
+  test('applyPlatformInstances defaults missing removedDetails in legacy responses', async () => {
+    installFetch(200, {
+      applied: 1,
+      started: ['telegram-main'],
+      stopped: [],
+      removed: [],
+      recreated: [],
+      unchanged: [],
+      failed: [],
+    })
+
+    const result = await applyPlatformInstances()
+
+    expect(firstCaptured().url).toBe('/api/platform-instances/apply')
+    expect(result.removedDetails).toEqual([])
+  })
+
   test('fetchTaskInstances GETs task instances', async () => {
     installFetch(200, [taskInstance])
+
+    const result = await fetchTaskInstances()
+
+    expect(firstCaptured().url).toBe('/api/task-instances')
+    expect(result).toEqual([taskInstance])
+  })
+
+  test('fetchTaskInstances accepts unreadable diagnostics object shape', async () => {
+    installFetch(200, {
+      instances: [taskInstance],
+      unreadable: [{ table: 'task_instances', id: 'bad', type: 'kaneo', error: 'Encrypted payload' }],
+    })
 
     const result = await fetchTaskInstances()
 

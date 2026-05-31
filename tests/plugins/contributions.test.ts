@@ -113,7 +113,9 @@ function makeManifest(...args: MakeManifestArgs): PluginManifest {
     requiredChatCapabilities: [],
     configRequirements: [],
     providerCapabilities: [],
+    providerTraits: [],
     providerConfigSchema: [],
+    providerContextConfigSchema: [],
     providerAllowedHosts: [],
   }
   return { ...base, ...overrides, contributes: { ...base.contributes, ...overrides.contributes } }

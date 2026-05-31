@@ -5,9 +5,11 @@
 
 import type { Database } from 'bun:sqlite'
 
+import { logger } from '../../logger.js'
 import type { Migration } from '../migrate.js'
 
 const UNSCOPED_LEGACY_PLATFORM_INSTANCE_ID = '__unscoped_legacy__'
+const log = logger.child({ scope: 'migration:041' })
 
 const createUsersNewTable = (db: Database): void => {
   db.run(`
@@ -133,6 +135,7 @@ const up = (db: Database): void => {
   recreateRecurringTasksWithoutUserForeignKey(db)
   recreateUsersTable(db)
   createIndexes(db)
+  log.info('migration 041: users platform instance index complete')
 }
 
 export const migration041UsersPlatformInstanceIndex: Migration = {

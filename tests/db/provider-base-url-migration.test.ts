@@ -4,17 +4,19 @@
 // See LICENSE in the project root for details.
 
 import { Database } from 'bun:sqlite'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 import { MIGRATIONS } from '../../src/db/index.js'
 import type { Migration } from '../../src/db/migrate.js'
 import { decryptInstanceConfig, encryptInstanceConfig } from '../../src/instances/encryption.js'
-import { mockLogger } from '../utils/test-helpers.js'
+import { createTrackedLoggerMock, mockLogger } from '../utils/test-helpers.js'
 
 const requireDefined = <T>(value: T | undefined): T => {
   if (value === undefined) throw new Error('expected value to be defined')
   return value
 }
+
+type Migration045Module = typeof import('../../src/db/migrations/045_provider_base_url.js')
 
 const createInstanceTables = (db: Database): void => {
   db.run(`
@@ -39,6 +41,23 @@ const createInstanceTables = (db: Database): void => {
 
 const getMigration = (): Migration =>
   requireDefined(MIGRATIONS.find((migration) => migration.id === '045_provider_base_url'))
+
+const isMigration045Module = (module: unknown): module is Migration045Module =>
+  typeof module === 'object' &&
+  module !== null &&
+  'migration045ProviderBaseUrl' in module &&
+  typeof module.migration045ProviderBaseUrl === 'object' &&
+  module.migration045ProviderBaseUrl !== null &&
+  'up' in module.migration045ProviderBaseUrl &&
+  typeof module.migration045ProviderBaseUrl.up === 'function'
+
+const loadMigration045Module = async (): Promise<Migration045Module> => {
+  const module: unknown = await import(`../../src/db/migrations/045_provider_base_url.js?test=${crypto.randomUUID()}`)
+  if (!isMigration045Module(module)) {
+    throw new Error('Failed to load migration 045 module for testing')
+  }
+  return module
+}
 
 const insertInstance = (
   db: Database,
@@ -116,6 +135,22 @@ describe('migration 045 provider baseUrl backfill', () => {
     expect(readConfig(db, 'task_instances', 'kaneo-default')).toMatchObject({
       baseUrl: 'https://new-kaneo.invalid',
       url: 'https://old-kaneo.invalid',
+    })
+  })
+
+  test('logs completion when the migration finishes', async () => {
+    const trackedLogger = createTrackedLoggerMock()
+    void mock.module('../../src/logger.js', () => ({
+      getLogLevel: trackedLogger.getLogLevel,
+      logger: trackedLogger.logger,
+    }))
+    const { migration045ProviderBaseUrl } = await loadMigration045Module()
+
+    migration045ProviderBaseUrl.up(db)
+
+    expect(trackedLogger.getCallsByLevel('info')).toContainEqual({
+      level: 'info',
+      args: ['migration 045: provider baseUrl backfill complete'],
     })
   })
 })

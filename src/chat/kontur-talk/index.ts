@@ -54,8 +54,7 @@ export class KonturTalkChatProvider implements ChatProvider {
   private botUserId: string | null = null
   private running = false
 
-  constructor(...args: [] | [KonturTalkConstructorConfig]) {
-    const config = args[0] ?? {}
+  constructor(config: KonturTalkConstructorConfig) {
     const resolved = resolveKonturTalkConfig(config)
     this.jwtToken = resolved.jwtToken
     this.platformInstanceId = resolved.platformInstanceId

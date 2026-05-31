@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
-import { setConfig, setConfigValue } from '../../src/config.js'
+import { setConfigValue } from '../../src/config.js'
 import { setContextSettings } from '../../src/instances/context-store.js'
 import { deleteTaskInstance, insertTaskInstance } from '../../src/instances/task-store.js'
 import {
@@ -136,7 +136,8 @@ describe('TaskProviderResolver', () => {
       status: 'stopped',
     })
     setContextSettings({ contextId: 'ctx-1', taskInstanceId: 'yt-stopped', platformInstanceId: 'telegram-default' })
-    setConfig('ctx-1', 'youtrack_token', 'perm:abc')
+    // Provider token is now plugin-namespaced
+    setConfigValue('ctx-1', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
     const resolver = makeResolver()
 
     expect(await resolver.resolve('ctx-1')).toBeNull()
@@ -154,6 +155,33 @@ describe('TaskProviderResolver', () => {
     const resolver = new TaskProviderResolver()
 
     expect(await resolver.resolve('ctx-plugin-gone')).toBeNull()
+  })
+
+  test('resolve returns null without calling createProvider when the descriptor is unknown', async () => {
+    const createProvider = mock((): ReturnType<TaskProviderResolverDeps['createProvider']> => {
+      throw new Error('createProvider must not be called for unknown descriptor')
+    })
+    const resolver = new TaskProviderResolver({
+      getContextSettings: (): ReturnType<TaskProviderResolverDeps['getContextSettings']> => ({
+        contextId: 'c',
+        taskInstanceId: 't',
+        platformInstanceId: 'p',
+      }),
+      getTaskInstance: (): ReturnType<TaskProviderResolverDeps['getTaskInstance']> => ({
+        id: 't',
+        type: 'ghost',
+        config: { baseUrl: 'https://x' },
+        status: 'active',
+        createdAt: '2026-05-31T00:00:00.000Z',
+      }),
+      getTaskProviderDescriptor: (): ReturnType<TaskProviderResolverDeps['getTaskProviderDescriptor']> => undefined,
+      getTaskProviderConfigValidator: (): ReturnType<TaskProviderResolverDeps['getTaskProviderConfigValidator']> =>
+        undefined,
+      getConfig: (): ReturnType<TaskProviderResolverDeps['getConfig']> => null,
+      createProvider,
+    })
+    expect(await resolver.resolve('c')).toBeNull()
+    expect(createProvider).not.toHaveBeenCalled()
   })
 
   test('builds a YouTrack provider from instance baseUrl and per-context token', async () => {
@@ -306,6 +334,27 @@ describe('TaskProviderResolver', () => {
       kind: 'invalid_task_instance_config',
       type: 'storage-tracker',
       missing: ['baseUrl'],
+      invalidUrls: [],
+    })
+  })
+
+  test('admin-style task config validation does not require context-scoped fields', async () => {
+    registerYouTrackContributed()
+    const failure = await validateTaskInstanceConfigResult('youtrack', { baseUrl: 'https://yt.invalid' })
+
+    expect(failure).toBeNull()
+  })
+
+  test('effective task config validation requires context-scoped fields', async () => {
+    registerYouTrackContributed()
+    const { validateEffectiveTaskProviderConfigResult } = await import('../../src/providers/config-validation.js')
+
+    const failure = await validateEffectiveTaskProviderConfigResult('youtrack', { baseUrl: 'https://yt.invalid' })
+
+    expect(failure).toEqual({
+      kind: 'invalid_task_instance_config',
+      type: 'youtrack',
+      missing: ['token'],
       invalidUrls: [],
     })
   })
@@ -504,7 +553,8 @@ describe('TaskProviderResolver', () => {
       taskInstanceId: 'yt-legacy-url',
       platformInstanceId: 'telegram-default',
     })
-    setConfig('ctx-legacy-url', 'youtrack_token', 'perm:abc')
+    // Provider token is now plugin-namespaced
+    setConfigValue('ctx-legacy-url', 'plugin:task-provider-youtrack:provider:token', 'perm:abc')
     const resolver = makeResolver()
 
     expect(await resolver.resolve('ctx-legacy-url')).toBeNull()

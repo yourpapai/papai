@@ -159,7 +159,7 @@ function buildRegisterTaskProviderType(
       contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
         toProviderConfigField(field, 'context'),
       ),
-      traits: new Set(manifest.providerTraits ?? []),
+      traits: new Set(manifest.providerTraits),
     }
   }
 }

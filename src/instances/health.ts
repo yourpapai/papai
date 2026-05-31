@@ -5,7 +5,7 @@
 
 import { logger } from '../logger.js'
 import { getTaskProviderDescriptor } from '../providers/registry.js'
-import { listTaskInstances } from './task-store.js'
+import { listTaskInstancesSafe } from './task-store.js'
 
 const KNOWN_PLUGIN_FOR_TYPE: Readonly<Record<string, string>> = {
   kaneo: 'task-provider-kaneo',
@@ -16,7 +16,7 @@ const pluginIdFor = (type: string): string =>
   KNOWN_PLUGIN_FOR_TYPE[type] ?? `(provider plugin contributing type '${type}')`
 
 export function warnUnresolvedTaskInstances(): void {
-  const instances = listTaskInstances()
+  const instances = listTaskInstancesSafe().instances
   const offenders = instances.filter((instance) => getTaskProviderDescriptor(instance.type) === undefined)
   if (offenders.length === 0) return
   const types = [...new Set(offenders.map((instance) => instance.type))]
