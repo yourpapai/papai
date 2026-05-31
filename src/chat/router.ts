@@ -90,9 +90,12 @@ export class ChatRouter implements ChatProvider {
   async removeInstanceStrict(id: string): Promise<void> {
     const instance = this.instances.get(id)
     if (instance === undefined) return
-    await instance.provider.stop()
-    instance.status = 'stopped'
-    this.instances.delete(id)
+    try {
+      await instance.provider.stop()
+    } finally {
+      instance.status = 'stopped'
+      this.instances.delete(id)
+    }
   }
 
   getInstance(id: string): ManagedChatInstance | null {
@@ -269,13 +272,9 @@ export class ChatRouter implements ChatProvider {
   }
 
   private providerForResolveContext(context: ResolveUserContext): ChatProvider | null {
-    const platformInstanceId = this.platformInstanceIdForResolveContext(context)
+    const platformInstanceId =
+      context.platformInstanceId ?? getContextSettings(context.contextId)?.platformInstanceId ?? null
     return platformInstanceId === null ? null : providerForManagedInstance(this.instances.get(platformInstanceId))
-  }
-
-  private platformInstanceIdForResolveContext(context: ResolveUserContext): string | null {
-    if (context.platformInstanceId !== undefined) return context.platformInstanceId
-    return getContextSettings(context.contextId)?.platformInstanceId ?? null
   }
 
   private async stopInstanceSafely(instance: ManagedChatInstance): Promise<void> {

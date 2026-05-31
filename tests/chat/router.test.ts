@@ -550,7 +550,7 @@ describe('ChatRouter', () => {
     expect(instanceStatus('good')).toBe('stopped')
   })
 
-  test('removeInstanceStrict preserves instance when provider stop fails', async () => {
+  test('removeInstanceStrict deletes the instance even when provider.stop throws', async () => {
     factory = (id: string, type: PlatformInstanceType): ChatProvider => {
       const fakeProvider = makeProvider(type, { stop: () => Promise.reject(new Error(`stop ${id}`)) })
       providers[id] = fakeProvider
@@ -561,7 +561,7 @@ describe('ChatRouter', () => {
 
     await expect(router.removeInstanceStrict('telegram-main')).rejects.toThrow('stop telegram-main')
 
-    expect(router.getInstance('telegram-main')).not.toBeNull()
+    expect(router.getInstance('telegram-main')).toBeNull()
   })
 
   test('exposes metadata and delegates per-instance operations', async () => {
