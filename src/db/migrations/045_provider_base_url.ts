@@ -18,13 +18,24 @@ const withBaseUrlBackfill = (config: InstanceConfig): InstanceConfig => {
   return { ...config, baseUrl: config['url'] }
 }
 
-const backfillBaseUrl = (db: Database, table: 'platform_instances' | 'task_instances'): void => {
-  const rows = db.query<InstanceConfigRow, []>(`SELECT id, config FROM ${table}`).all()
-  rows.forEach((row) => {
+const backfillRow = (db: Database, table: 'platform_instances' | 'task_instances', row: InstanceConfigRow): void => {
+  try {
     const config = decryptInstanceConfig(row.config)
     const nextConfig = withBaseUrlBackfill(config)
     if (nextConfig === config) return
     db.query(`UPDATE ${table} SET config = ? WHERE id = ?`).run(encryptInstanceConfig(nextConfig), row.id)
+  } catch (error) {
+    log.warn(
+      { table, id: row.id, error: error instanceof Error ? error.message : String(error) },
+      'migration 045: skipping undecryptable instance row',
+    )
+  }
+}
+
+const backfillBaseUrl = (db: Database, table: 'platform_instances' | 'task_instances'): void => {
+  const rows = db.query<InstanceConfigRow, []>(`SELECT id, config FROM ${table}`).all()
+  rows.forEach((row) => {
+    backfillRow(db, table, row)
   })
 }
 
