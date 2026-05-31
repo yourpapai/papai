@@ -10,6 +10,7 @@ type ImportScanResult = {
   dynamicSpecifiers: string[]
   importMetaRequireSpecifiers: string[]
   hasNonDeterministicDynamicImport: boolean
+  hasNonDeterministicImportMetaRequire: boolean
 }
 
 type PendingPluginSource = {
@@ -56,6 +57,7 @@ function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
   const dynamicSpecifiers: string[] = []
   const importMetaRequireSpecifiers: string[] = []
   let hasNonDeterministicDynamicImport = false
+  let hasNonDeterministicImportMetaRequire = false
 
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node)) {
@@ -79,7 +81,11 @@ function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
 
     if (isImportMetaRequireCall(node)) {
       const specifier = readDynamicImportSpecifier(node)
-      if (specifier !== null) importMetaRequireSpecifiers.push(specifier)
+      if (specifier === null) {
+        hasNonDeterministicImportMetaRequire = true
+      } else {
+        importMetaRequireSpecifiers.push(specifier)
+      }
     }
 
     ts.forEachChild(node, visit)
@@ -87,7 +93,13 @@ function collectImports(sourceFile: ts.SourceFile): ImportScanResult {
 
   visit(sourceFile)
 
-  return { staticSpecifiers, dynamicSpecifiers, importMetaRequireSpecifiers, hasNonDeterministicDynamicImport }
+  return {
+    staticSpecifiers,
+    dynamicSpecifiers,
+    importMetaRequireSpecifiers,
+    hasNonDeterministicDynamicImport,
+    hasNonDeterministicImportMetaRequire,
+  }
 }
 
 function parseSource(source: string): ts.SourceFile {
@@ -161,7 +173,20 @@ export function readLiteralDynamicImports(source: string): string[] {
 }
 
 export function readLiteralImportMetaRequires(source: string): string[] {
-  return collectImports(parseSource(source)).importMetaRequireSpecifiers
+  const result = collectImports(parseSource(source))
+  if (result.hasNonDeterministicImportMetaRequire) {
+    throw new Error('Unresolvable plugin import.meta.require in source')
+  }
+
+  return result.importMetaRequireSpecifiers
+}
+
+function readPluginImportMetaRequireSpecifiers(currentPath: string, source: string): string[] {
+  try {
+    return readLiteralImportMetaRequires(source)
+  } catch {
+    throw new Error(`Unresolvable plugin import.meta.require in ${currentPath}`)
+  }
 }
 
 export function readPluginSourceGraph(
@@ -186,7 +211,13 @@ export function readPluginSourceGraph(
 
     const source = readFileSync(current.path, 'utf-8')
     addPendingStaticImports(pending, current.path, pluginDir, readPluginDynamicImports(current.path, source), deps)
-    addPendingRequireImports(pending, current, pluginDir, readLiteralImportMetaRequires(source), deps)
+    addPendingRequireImports(
+      pending,
+      current,
+      pluginDir,
+      readPluginImportMetaRequireSpecifiers(current.path, source),
+      deps,
+    )
     addPendingStaticImports(pending, current.path, pluginDir, readStaticImportSpecifiers(source), deps)
   }
 
