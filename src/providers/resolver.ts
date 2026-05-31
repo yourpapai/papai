@@ -163,7 +163,7 @@ export class TaskProviderResolver {
 
   async resolveStrict(contextId: string): Promise<TaskProvider> {
     const provider = await this.resolve(contextId)
-    if (provider === null) throw new Error(`Context ${contextId} needs /setup`)
+    if (provider === null) throw new Error(`Context ${contextId} needs /config`)
     return provider
   }
 }

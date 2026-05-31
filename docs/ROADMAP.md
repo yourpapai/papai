@@ -46,6 +46,15 @@ See LICENSE in the project root for details.
 - [x] Configurable LLM provider — swap GPT-4o for other models
 - [x] ~~Rate limiting and request throttling~~ (Not planned)
 
+## Settings Web UI & Command Retirement (Completed)
+
+- [x] Settings web UI — single-use auth-code links, SQLite-backed sessions, CSRF protection, per-capability data routes under `/settings/api/*`
+- [x] Chat command surface reduced to `/help`, `/start`, `/config`, `/context`, `/clear`, `/dashboard`
+- [x] `/config` is launcher-only — issues a single-use link to the settings web UI; requires `SETTINGS_PUBLIC_BASE_URL`
+- [x] Retired chat commands: `/setup`, `/plugin`, `/group`, `/groups`, `/user`, `/users`, `/announce`; all flows (personal config, group management, plugin approve/enable, identity, instances, system LLM, announce) now live in the settings web UI
+- [x] Message interception removed — non-command text goes straight to the LLM orchestrator
+- [x] Interactive chat callbacks retired (`gsel:`, `cfg:`, `wizard_`, `plg:`, `tgl:`); interaction router authorizes actor and matches nothing
+
 ## Phase 6: Personal Memory & Recall
 
 > See [design doc](docs/plans/2026-03-04-personal-assistant-expansion-design.md) for full specification.

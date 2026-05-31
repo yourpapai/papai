@@ -11,20 +11,20 @@ import CredentialsForm from '../../../../client/admin/components/CredentialsForm
 import type { AdminLlmSnapshot } from '../../../../client/shared/api-types.js'
 import { restoreFetch, setMockFetch } from '../../../utils/test-helpers.js'
 
-const emptyKey = { value: null, updatedAt: null, updatedBy: null }
+const emptyKey = { value: null, updatedAt: null, updatedBy: null, required: false }
 
 const emptySnapshot: AdminLlmSnapshot = {
-  llm_apikey: emptyKey,
-  llm_baseurl: emptyKey,
-  main_model: emptyKey,
+  llm_apikey: { ...emptyKey, required: true },
+  llm_baseurl: { ...emptyKey, required: true },
+  main_model: { ...emptyKey, required: true },
   small_model: emptyKey,
   embedding_model: emptyKey,
 }
 
 const populated: AdminLlmSnapshot = {
-  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin' },
-  llm_baseurl: { value: 'https://api.example.com', updatedAt: 2, updatedBy: 'env' },
-  main_model: { value: 'gpt-9', updatedAt: 3, updatedBy: 'admin' },
+  llm_apikey: { value: '****1234', updatedAt: 1, updatedBy: 'admin', required: true },
+  llm_baseurl: { value: 'https://api.example.com', updatedAt: 2, updatedBy: 'env', required: true },
+  main_model: { value: 'gpt-9', updatedAt: 3, updatedBy: 'admin', required: true },
   small_model: emptyKey,
   embedding_model: emptyKey,
 }
@@ -138,6 +138,16 @@ describe('CredentialsForm', () => {
     flushSync()
     const input = target.querySelector<HTMLInputElement>('[data-testid="input-main_model"]')
     expect(input).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('shows "required" badge for required keys and "optional" badge for optional keys', () => {
+    const { target, component } = render(populated)
+    expect(target.querySelector('[data-testid="badge-required-llm_apikey"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-required-llm_baseurl"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-required-main_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-optional-small_model"]')).not.toBeNull()
+    expect(target.querySelector('[data-testid="badge-optional-embedding_model"]')).not.toBeNull()
     void unmount(component)
   })
 

@@ -177,8 +177,7 @@ describe('registerTelegramCommands', () => {
     expectCommandPayload(privateDmCall[0], [
       { command: 'help', description: 'Show available commands' },
       { command: 'start', description: 'Show welcome and getting-started guidance' },
-      { command: 'setup', description: 'Interactive configuration wizard' },
-      { command: 'config', description: 'View or edit current configuration' },
+      { command: 'config', description: 'Open your settings in the web UI' },
       { command: 'context', description: 'Show current LLM context usage' },
       { command: 'clear', description: 'Clear conversation history and memory' },
     ])
@@ -187,16 +186,9 @@ describe('registerTelegramCommands', () => {
     expectCommandPayload(adminDmCall[0], [
       { command: 'help', description: 'Show available commands' },
       { command: 'start', description: 'Show welcome and getting-started guidance' },
-      { command: 'setup', description: 'Interactive configuration wizard' },
-      { command: 'config', description: 'View or edit current configuration' },
+      { command: 'config', description: 'Open your settings in the web UI' },
       { command: 'context', description: 'Show current LLM context usage' },
       { command: 'clear', description: 'Clear conversation history and memory' },
-      { command: 'group', description: 'Manage group authorization or membership' },
-      { command: 'groups', description: 'List authorized groups' },
-      { command: 'user', description: 'Manage users' },
-      { command: 'users', description: 'List authorized users' },
-      { command: 'announce', description: 'Send announcement to all authorized users' },
-      { command: 'plugin', description: 'Manage plugins' },
       { command: 'dashboard', description: 'Issue a one-time dashboard sign-in link' },
     ])
     expect(adminDmCall[1]).toEqual({ scope: { type: 'chat', chat_id: 12345 } })
@@ -205,7 +197,6 @@ describe('registerTelegramCommands', () => {
       { command: 'help', description: 'Show available commands' },
       { command: 'context', description: 'Show current LLM context usage' },
       { command: 'clear', description: 'Clear conversation history and memory' },
-      { command: 'group', description: 'Manage group authorization or membership' },
     ])
     expect(groupUserCall[1]).toEqual({ scope: { type: 'all_group_chats' } })
 
@@ -213,7 +204,6 @@ describe('registerTelegramCommands', () => {
       { command: 'help', description: 'Show available commands' },
       { command: 'context', description: 'Show current LLM context usage' },
       { command: 'clear', description: 'Clear conversation history and memory' },
-      { command: 'group', description: 'Manage group authorization or membership' },
     ])
     expect(groupAdminCall[1]).toEqual({ scope: { type: 'all_chat_administrators' } })
   })

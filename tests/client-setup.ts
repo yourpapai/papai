@@ -8,7 +8,7 @@ import { plugin } from 'bun'
 
 import { sveltePlugin } from '../scripts/svelte-plugin.js'
 
-GlobalRegistrator.register()
+GlobalRegistrator.register({ url: 'http://localhost' })
 void plugin(sveltePlugin({ dev: true }))
 
 // happy-dom doesn't ship EventSource; stub it so dashboard code that opens

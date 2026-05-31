@@ -20,7 +20,7 @@
 
 - User MCP tools (`buildMcpToolSet`) are added whenever `storageContextId` is set.
 - Plugin MCP tools (`buildPluginMcpToolSet`, via `buildPluginAndMcpTools`) are added when both `storageContextId` and `chatUserId` are set, for active plugins whose manifest declares `mcp`.
-- Final merge order is `{ ...builtins, ...mcpTools, ...pluginTools }`, then the per-context tool denylist from `tool-preferences.ts` is applied last.
+- Final merge order is `{ ...builtins, ...mcpTools, ...pluginTools }`, then the per-context three-state tool permissions (`allow`/`ask`/`deny`) from `tool-preferences.ts` are applied last.
 
 ## Rules
 

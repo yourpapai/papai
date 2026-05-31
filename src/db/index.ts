@@ -60,6 +60,7 @@ import { migration046ParentSharedContextEntities } from './migrations/046_parent
 import { migration047DashboardSessions } from './migrations/047_dashboard_sessions.js'
 import { migration048NamespaceKaneoConfig } from './migrations/048_namespace_kaneo_config.js'
 import { migration049NamespaceYoutrackConfig } from './migrations/049_namespace_youtrack_config.js'
+import { migration050SettingsAuth } from './migrations/050_settings_auth.js'
 
 const getDbPath = (): string => {
   const dbPath = process.env['DB_PATH']
@@ -144,6 +145,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration047DashboardSessions,
   migration048NamespaceKaneoConfig,
   migration049NamespaceYoutrackConfig,
+  migration050SettingsAuth,
 ]
 
 export const initDb = (): void => {

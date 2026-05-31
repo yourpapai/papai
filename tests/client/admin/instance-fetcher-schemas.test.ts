@@ -94,7 +94,8 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'active',
       createdAt: '2026-05-29T00:00:00.000Z',
-      unresolvedReason: "Provider plugin for type 'no-such-provider' is not active. Run /plugin approve.",
+      unresolvedReason:
+        "Provider plugin for type 'no-such-provider' is not active. Approve it in the settings web UI admin area (Plugins approval).",
     })
     expect(result.success).toBe(true)
   })

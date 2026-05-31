@@ -151,6 +151,7 @@ export type AdminLlmKeyState = {
   value: string | null
   updatedAt: number | null
   updatedBy: string | null
+  required: boolean
 }
 
 export type AdminLlmSnapshot = {

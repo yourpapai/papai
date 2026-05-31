@@ -181,6 +181,9 @@ export interface WebFetchHostsGlobal {
 export interface ToolMixGlobal {
   topTools: Array<{ toolName: string; count: number; successRate: number }>
   errorTypeCounts: Record<string, number>
+  totalCalls: number
+  totalSuccessRate: number
+  toolCallGrowth30d: Array<{ date: string; count: number }>
 }
 
 export interface LlmUsageGlobal {

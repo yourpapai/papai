@@ -50,17 +50,17 @@ describe('createMattermostReplyFn', () => {
         reply.buttons('choose', {
           buttons: [{ text: 'Yes', callbackData: 'cb:y' }],
         }),
-      ).rejects.toThrow('Mattermost does not support interactive buttons')
+      ).rejects.toThrow('This platform does not support interactive buttons.')
     })
 
-    test('error message mentions supportsInteractiveButtons', async () => {
+    test('error message states platform does not support interactive buttons', async () => {
       const { reply } = makeReplyFn()
 
       await expect(
         reply.buttons('choose', {
           buttons: [{ text: 'Yes', callbackData: 'cb:y' }],
         }),
-      ).rejects.toThrow('supportsInteractiveButtons')
+      ).rejects.toThrow('This platform does not support interactive buttons.')
     })
   })
 

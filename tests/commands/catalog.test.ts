@@ -26,21 +26,7 @@ describe('command catalog', () => {
     const registrations = Object.fromEntries(entries.map((entry) => [entry.name, entry.registration]))
     const telegramVisibility = Object.fromEntries(entries.map((entry) => [entry.name, entry.telegram]))
 
-    expect(names).toEqual([
-      'help',
-      'start',
-      'setup',
-      'config',
-      'context',
-      'clear',
-      'group',
-      'groups',
-      'user',
-      'users',
-      'announce',
-      'plugin',
-      'dashboard',
-    ])
+    expect(names).toEqual(['help', 'start', 'config', 'context', 'clear', 'dashboard'])
 
     expect(telegramVisibility).toEqual({
       help: {
@@ -50,12 +36,6 @@ describe('command catalog', () => {
         publishInGroupAdmin: true,
       },
       start: {
-        publishInDmUser: true,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      setup: {
         publishInDmUser: true,
         publishInDmAdmin: true,
         publishInGroupUser: false,
@@ -79,42 +59,6 @@ describe('command catalog', () => {
         publishInGroupUser: true,
         publishInGroupAdmin: true,
       },
-      group: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: true,
-        publishInGroupAdmin: true,
-      },
-      groups: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      user: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      users: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      announce: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
-      plugin: {
-        publishInDmUser: false,
-        publishInDmAdmin: true,
-        publishInGroupUser: false,
-        publishInGroupAdmin: false,
-      },
       dashboard: {
         publishInDmUser: false,
         publishInDmAdmin: true,
@@ -126,16 +70,9 @@ describe('command catalog', () => {
     expect(registrations).toEqual({
       help: 'registerHelpCommand',
       start: 'registerStartCommand',
-      setup: 'registerSetupCommand',
       config: 'registerConfigCommand',
       context: 'registerContextCommand',
       clear: 'registerClearCommand',
-      group: 'registerGroupCommand',
-      groups: 'registerGroupCommand',
-      user: 'registerAdminCommands',
-      users: 'registerAdminCommands',
-      announce: 'registerAdminCommands',
-      plugin: 'registerPluginCommand',
       dashboard: 'registerDashboardCommand',
     })
 

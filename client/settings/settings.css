@@ -1,0 +1,124 @@
+/* SPDX-License-Identifier: BUSL-1.1 */
+/* Copyright (c) 2026 Dmitriy Lazarev */
+/* Use of this software is governed by the Business Source License 1.1. */
+/* See LICENSE in the project root for details. */
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: var(--fg3);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+}
+
+.settings-grid__main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  min-width: 0;
+}
+
+.settings-section {
+  padding: 20px;
+  scroll-margin-top: 96px;
+  color: var(--fg);
+}
+
+.settings-section-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.settings-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.settings-form input,
+.settings-form select,
+.settings-form button,
+.settings-section-header button {
+  padding: 10px 12px;
+  border: 1px solid var(--strong);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.settings-table-wrap {
+  overflow-x: auto;
+}
+
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.settings-table th,
+.settings-table td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.status-error {
+  color: var(--danger);
+}
+
+.status-success {
+  color: var(--success);
+}
+
+.placeholder {
+  color: var(--fg2);
+}
+
+.masked-value {
+  background: var(--inset);
+  border: 1px solid var(--hair);
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg3);
+  letter-spacing: 0.04em;
+}
+
+.settings-gate {
+  font-family: var(--font-mono);
+  max-width: 540px;
+  margin: 4rem auto;
+  padding: 1rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+@media (max-width: 720px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

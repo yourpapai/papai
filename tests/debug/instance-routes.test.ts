@@ -288,7 +288,7 @@ describe('instance API routes', () => {
     const listed = expectResponse(await route('/api/platform-instances'))
 
     expect(listed.status).toBe(200)
-    const rows = assertArray(await readJson(listed))
+    const rows = assertArray(pick(assertObject(await readJson(listed)), 'instances'))
     expect(rows).toHaveLength(1)
     expect(pick(assertObject(rows[0]), 'config')).toEqual({ token: '********', label: 'main' })
   })
@@ -298,7 +298,7 @@ describe('instance API routes', () => {
 
     const res = expectResponse(await route('/api/platform-instances'))
 
-    const body = assertArray(await readJson(res))
+    const body = assertArray(pick(assertObject(await readJson(res)), 'instances'))
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'token')).toBe('********')
   })
 
@@ -1047,7 +1047,7 @@ describe('instance API routes', () => {
     const res = expectResponse(await route('/api/task-instances'))
 
     expect(res.status).toBe(200)
-    const row = assertObject(assertArray(await readJson(res))[0])
+    const row = assertObject(assertArray(pick(assertObject(await readJson(res)), 'instances'))[0])
     expect(pick(row, 'referencingContextIds')).toEqual(['ctx-1', 'ctx-2'])
     expect(pick(row, 'referencingContextCount')).toBe(2)
   })
@@ -1094,7 +1094,9 @@ describe('instance API routes', () => {
 
     expect(listed.status).toBe(200)
     expect(listTaskInstances()).toHaveLength(1)
-    expect(pick(assertObject(assertArray(await readJson(listed))[0]), 'config')).toEqual({
+    expect(
+      pick(assertObject(assertArray(pick(assertObject(await readJson(listed)), 'instances'))[0]), 'config'),
+    ).toEqual({
       baseUrl: 'https://kaneo.invalid',
     })
   })
@@ -1299,7 +1301,7 @@ describe('instance API routes', () => {
 
     const res = expectResponse(await route('/api/task-instances'))
 
-    const body = assertArray(await readJson(res))
+    const body = assertArray(pick(assertObject(await readJson(res)), 'instances'))
     expect(pick(assertObject(pick(assertObject(body[0]), 'config')), 'publicish')).toBe('********')
   })
 
@@ -1308,7 +1310,7 @@ describe('instance API routes', () => {
 
     const res = expectResponse(await route('/api/task-instances'))
 
-    const body = assertArray(await readJson(res))
+    const body = assertArray(pick(assertObject(await readJson(res)), 'instances'))
     const row = assertObject(body.find((entry) => pick(assertObject(entry), 'id') === 'no-plugin-1'))
     const unresolvedReason = pick(row, 'unresolvedReason')
     expect(typeof unresolvedReason).toBe('string')
@@ -1799,7 +1801,7 @@ describe('instance API routes', () => {
       )
 
       expect(listed.status).toBe(200)
-      const rows = assertArray(await readJson(listed))
+      const rows = assertArray(pick(assertObject(await readJson(listed)), 'instances'))
       const masktestRow = rows.find((row) => pick(assertObject(row), 'type') === 'masktest')
       const listedConfig = assertObject(pick(assertObject(masktestRow), 'config'))
       expect(pick(listedConfig, 'baseUrl')).toBe('https://masktest.invalid')
@@ -1836,7 +1838,7 @@ describe('instance API routes', () => {
 
       const listed = expectResponse(await route('/api/task-instances'))
 
-      const rows = assertArray(await readJson(listed))
+      const rows = assertArray(pick(assertObject(await readJson(listed)), 'instances'))
       const storageMaskRow = rows.find((row) => pick(assertObject(row), 'type') === 'storage-mask')
       const listedConfig = assertObject(pick(assertObject(storageMaskRow), 'config'))
       expect(pick(listedConfig, 'credential_value')).toBe('********')

@@ -10,7 +10,11 @@
 
 import type { ConfigField } from '../types/config.js'
 import { normalizeTimezone } from '../utils/timezone.js'
-import type { ValidationResult } from './types.js'
+
+export interface ValidationResult {
+  valid: boolean
+  error?: string
+}
 
 function validateTimezone(value: string): ValidationResult {
   const normalized = normalizeTimezone(value.trim())

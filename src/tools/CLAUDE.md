@@ -32,9 +32,12 @@ export function makeExampleTool(provider: Readonly<TaskProvider>): ToolSet[strin
   plugin tools. MCP tool building is wrapped in `try/catch` and never breaks the pipeline;
   see `src/mcp/CLAUDE.md`.
 - After capability + context gating and the plugin/MCP merge, `makeTools()` applies the
-  per-context tool denylist from `src/tools/tool-preferences.ts` (default all-on) as the
-  final filter. Disabled tools are physically removed from the returned `ToolSet`, so they
-  cannot be invoked. Preferences are keyed by the same `storageContextId` used elsewhere.
+  per-context tool permissions from `src/tools/tool-preferences.ts` as the final step. Each
+  tool resolves to a three-state `Permission` (`allow` | `ask` | `deny`, default `allow`)
+  via `resolveToolPermission`: `deny` removes the tool from the returned `ToolSet` (cannot be
+  invoked); `allow` exposes it unchanged; `ask` exposes it wrapped so each call requires user
+  permission (the input schema gains `_permission_reason` and execution is gated). Preferences
+  are keyed by the same `storageContextId` used elsewhere.
 
 `MakeToolsOptions` controls tool exposure:
 

@@ -1,0 +1,133 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
+
+import { readBody, requireOk } from '../shared/fetcher-helpers.js'
+import {
+  AdminGroupsResponseSchema,
+  AdminInstancesResponseSchema,
+  AdminPluginConfigSnapshotSchema,
+  AdminPluginConfigUpdateResultSchema,
+  AdminRosterResponseSchema,
+  AdminSystemResponseSchema,
+  AdminUsersResponseSchema,
+  AnnounceResultSchema,
+  PluginApprovalResultSchema,
+  ProviderTypesResponseSchema,
+  type AdminGroupsResponse,
+  type AdminInstancesResponse,
+  type AdminPluginConfigSnapshot,
+  type AdminPluginConfigUpdateResult,
+  type AdminRosterResponse,
+  type AdminSystemResponse,
+  type AdminUsersResponse,
+  type AnnounceResult,
+  type PluginApprovalResult,
+  type ProviderTypesResponse,
+} from './fetcher-schemas.js'
+import { getJson, settingsFetch, writeJson } from './fetchers.js'
+
+// --- Admin: instances ---
+
+export const fetchAdminPlatformInstances = (): Promise<AdminInstancesResponse> =>
+  getJson('/settings/api/admin/platform-instances', (b) => AdminInstancesResponseSchema.parse(b))
+
+export const fetchAdminTaskInstances = (): Promise<AdminInstancesResponse> =>
+  getJson('/settings/api/admin/task-instances', (b) => AdminInstancesResponseSchema.parse(b))
+
+export const fetchAdminPlatformProviderTypes = (): Promise<ProviderTypesResponse> =>
+  getJson('/settings/api/admin/platform-provider-types', (b) => ProviderTypesResponseSchema.parse(b))
+
+export const fetchAdminTaskProviderTypes = (): Promise<ProviderTypesResponse> =>
+  getJson('/settings/api/admin/task-provider-types', (b) => ProviderTypesResponseSchema.parse(b))
+
+export const createAdminPlatformInstance = (input: {
+  id: string
+  type: string
+  config: Record<string, string>
+}): Promise<unknown> => writeJson('/settings/api/admin/platform-instances', 'POST', input, (b) => b)
+
+export const createAdminTaskInstance = (input: {
+  id: string
+  type: string
+  config: Record<string, string>
+}): Promise<unknown> => writeJson('/settings/api/admin/task-instances', 'POST', input, (b) => b)
+
+export const updateAdminPlatformInstance = (
+  id: string,
+  input: { status?: string; config?: Record<string, string> },
+): Promise<unknown> =>
+  writeJson(`/settings/api/admin/platform-instances/${encodeURIComponent(id)}`, 'PATCH', input, (b) => b)
+
+export const deleteAdminPlatformInstance = (id: string): Promise<unknown> =>
+  settingsFetch(`/settings/api/admin/platform-instances/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(
+    async (res) => {
+      const body = await readBody(res)
+      requireOk(res, body)
+      return body
+    },
+  )
+
+export const deleteAdminTaskInstance = (id: string): Promise<unknown> =>
+  settingsFetch(`/settings/api/admin/task-instances/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(
+    async (res) => {
+      const body = await readBody(res)
+      requireOk(res, body)
+      return body
+    },
+  )
+
+// --- Admin: system / access / roster / plugins / announce ---
+
+export const fetchAdminSystem = (): Promise<AdminSystemResponse> =>
+  getJson('/settings/api/admin/system', (b) => AdminSystemResponseSchema.parse(b))
+
+export const submitAdminSystem = (input: { key: string; value: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/system', 'POST', input, (b) => b)
+
+export const fetchAdminUsers = (): Promise<AdminUsersResponse> =>
+  getJson('/settings/api/admin/users', (b) => AdminUsersResponseSchema.parse(b))
+
+export const addAdminUser = (input: { userId: string; username?: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/users', 'POST', input, (b) => b)
+
+export const removeAdminUser = (input: { userId: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/users', 'DELETE', input, (b) => b)
+
+export const fetchAdminGroups = (): Promise<AdminGroupsResponse> =>
+  getJson('/settings/api/admin/groups', (b) => AdminGroupsResponseSchema.parse(b))
+
+export const addAdminGroup = (input: { groupId: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/groups', 'POST', input, (b) => b)
+
+export const removeAdminGroup = (input: { groupId: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/groups', 'DELETE', input, (b) => b)
+
+export const fetchAdminRoster = (): Promise<AdminRosterResponse> =>
+  getJson('/settings/api/admin/admins', (b) => AdminRosterResponseSchema.parse(b))
+
+export const addRosterAdmin = (input: { userId: string; platformInstanceId: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/admins', 'POST', input, (b) => b)
+
+export const removeRosterAdmin = (input: { userId: string; platformInstanceId: string }): Promise<unknown> =>
+  writeJson('/settings/api/admin/admins', 'DELETE', input, (b) => b)
+
+export const setPluginApproval = (input: {
+  pluginId: string
+  action: 'approve' | 'reject'
+}): Promise<PluginApprovalResult> =>
+  writeJson('/settings/api/admin/plugin-approval', 'POST', input, (b) => PluginApprovalResultSchema.parse(b))
+
+export const sendAnnounce = (input: { message: string }): Promise<AnnounceResult> =>
+  writeJson('/settings/api/admin/announce', 'POST', input, (b) => AnnounceResultSchema.parse(b))
+
+export const fetchAdminPluginConfig = (): Promise<AdminPluginConfigSnapshot> =>
+  getJson('/settings/api/admin/plugin-config', (b) => AdminPluginConfigSnapshotSchema.parse(b))
+
+export const patchAdminPluginConfig = (input: {
+  pluginId: string
+  key: string
+  value: string
+}): Promise<AdminPluginConfigUpdateResult> =>
+  writeJson('/settings/api/admin/plugin-config', 'PATCH', input, (b) => AdminPluginConfigUpdateResultSchema.parse(b))

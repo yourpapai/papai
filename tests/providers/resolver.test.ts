@@ -264,7 +264,7 @@ describe('TaskProviderResolver', () => {
   test('resolveStrict throws clear setup guidance when resolution fails', async () => {
     const resolver = makeResolver()
 
-    await expect(resolver.resolveStrict('ctx-missing')).rejects.toThrow('Context ctx-missing needs /setup')
+    await expect(resolver.resolveStrict('ctx-missing')).rejects.toThrow('Context ctx-missing needs /config')
   })
 
   test('resolves a contributed provider type by passing instance config through unchanged', async () => {

@@ -76,6 +76,8 @@ describe('start command — demo mode auto-add', () => {
 
     expect(isAuthorized('demo-start-1')).toBe(true)
     expect(capturedFormatted).toContain('Welcome')
+    expect(capturedFormatted).toContain('/config')
+    expect(capturedFormatted).not.toContain('/setup')
   })
 
   test('demo mode off: unknown user is NOT auto-added via /start', async () => {
@@ -123,5 +125,7 @@ describe('start command — demo mode auto-add', () => {
 
     expect(isAuthorized('existing-1')).toBe(true)
     expect(capturedFormatted).toContain('Welcome')
+    expect(capturedFormatted).toContain('/config')
+    expect(capturedFormatted).not.toContain('/setup')
   })
 })

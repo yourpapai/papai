@@ -150,7 +150,9 @@ function buildRegisterTaskProviderType(
       capabilities: new Set(manifest.providerCapabilities),
       displayName: manifest.name,
       instanceConfigSchema: manifest.providerConfigSchema.map((field) => toProviderConfigField(field, 'instance')),
-      contextConfigSchema: manifest.providerContextConfigSchema.map((field) => toProviderConfigField(field, 'context')),
+      contextConfigSchema: (manifest.providerContextConfigSchema ?? []).map((field) =>
+        toProviderConfigField(field, 'context'),
+      ),
       traits: new Set(manifest.providerTraits),
     }
   }

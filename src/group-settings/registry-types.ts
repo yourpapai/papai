@@ -25,11 +25,3 @@ export interface UpsertGroupUserObservationInput {
   readonly username: string | null
   readonly displayLabel: string
 }
-
-export interface GroupUserObservation {
-  readonly provider: string
-  readonly contextId: string
-  readonly userId: string
-  readonly username: string | null
-  readonly displayLabel: string
-}

@@ -38,7 +38,7 @@ interface ChatProvider {
 
 ## Registration
 
-Adapters register in `src/chat/registry.ts` via `createChatProviderFromConfig(...)`. Built-in adapters are `telegram`, `mattermost`, `discord`, and `kontur-talk`. Runtime startup wraps active adapter instances in `src/chat/router.ts` (`ChatRouter`), which fans out commands, starts/stops instances, tags incoming events with `platformInstanceId`, and routes proactive sends back to the target instance.
+Adapters register in `src/chat/registry.ts` via `createChatProviderFromConfig(id, type, config)`. Built-in adapters are `telegram`, `mattermost`, `discord`, and `kontur-talk`. Runtime startup wraps active adapter instances in `src/chat/router.ts` (`ChatRouter`), which fans out commands, starts/stops instances, tags incoming events with `platformInstanceId`, and routes proactive sends back to the target instance.
 
 ## Rules
 
@@ -50,5 +50,5 @@ Adapters register in `src/chat/registry.ts` via `createChatProviderFromConfig(..
 - Group behavior differs by provider. Telegram, Mattermost, and Kontur Talk observe group messages directly; Discord observes DMs plus `@bot` mentions in guild channels.
 - Thread handling is provider-specific. Telegram uses forum/message thread IDs, Mattermost uses root post IDs, Kontur Talk uses message-thread scope, and Discord currently reports no separate thread-scoped support.
 - Context rendering is adapter-owned. `/context` builds a `ContextSnapshot`, then each adapter decides whether to return plain text, formatted markdown, or an embed through `renderContext()`.
-- Button callbacks are part of the chat layer. Route interactive callbacks through `src/chat/interaction-router.ts` or adapter-specific fallback helpers before normal message handling.
+- Button callbacks are part of the chat layer. Route interactive callbacks through `src/chat/interaction-router.ts` before normal message handling. Note: all config-flow callback routes (`gsel:`, `cfg:`, `wizard_`, `plg:`, `tgl:`) were retired with the move to the settings web UI. The router now only authorizes the actor and otherwise matches nothing — it is retained as a safe sink for adapters that still emit interaction events.
 - Keep formatting and chunking helpers next to the adapter that needs them, such as Telegram markdown/entity conversion or Discord chunk splitting.

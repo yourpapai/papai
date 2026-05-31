@@ -47,6 +47,10 @@ const mentionsNotFound =
   (text: string): boolean =>
     text.includes(id) && text.includes('not found')
 
+/** Returns true when a reply is the restored required-config guard prompt. */
+const mentionsMissingConfig = (text: string): boolean =>
+  text.includes('Missing configuration') && text.includes('/config')
+
 const containsFact = (
   facts: readonly MemoryFact[],
   expected: Readonly<Pick<MemoryFact, 'identifier' | 'title' | 'url'>>,
@@ -372,7 +376,7 @@ describe('processMessage', () => {
       await processMessage(reply, freshGroupCtx, 'user-1', null, 'hello', 'group', 'group-yt', deps)
 
       expect(maybeProvisionCalls).toBe(0)
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('replies with bot-misconfigured when system_config is incomplete', async () => {
@@ -383,7 +387,7 @@ describe('processMessage', () => {
 
       expect(textCalls.length).toBeGreaterThanOrEqual(1)
       expect(textCalls[0]).toContain('not fully configured')
-      expect(textCalls[0]).not.toContain('/setup')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('bot-misconfigured path does not send typing', async () => {
@@ -394,12 +398,12 @@ describe('processMessage', () => {
 
       expect(typingCalls).toHaveLength(0)
       expect(textCalls[0]).toContain('not fully configured')
+      expect(textCalls[0]).toContain('/config')
     })
 
     test('missing YouTrack provider config is derived from assigned task instance', async () => {
-      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
-      // plugin-namespaced token key. The /setup guidance is now triggered by resolver returning null
-      // when the token is absent. Simulate by having resolve return null.
+      // YouTrack requires a context-scoped token. With the required-config guard restored,
+      // an unconfigured context is told to finish setup via /config before the resolver runs.
       const freshCtx = 'missing-youtrack-token-2'
       assignYouTrackContext(freshCtx)
 
@@ -414,8 +418,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls.length).toBeGreaterThanOrEqual(1)
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls.some(mentionsMissingConfig)).toBe(true)
     })
 
     test('replies with setup guidance when resolver returns null for assigned Kaneo without workspace', async () => {
@@ -438,12 +441,12 @@ describe('processMessage', () => {
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
       expect(resolverCalls).toBe(1)
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
 
     test('missing provider config is derived from assigned task instance', async () => {
-      // youtrack is now plugin-contributed; checkRequiredProviderConfig no longer matches its
-      // plugin-namespaced token key. Simulate missing credentials via resolver returning null.
+      // With the required-config guard restored, a context assigned to a provider whose
+      // required context-scoped credential is unset is told to finish setup via /config.
       const freshCtx = 'missing-youtrack-token'
       assignYouTrackContext(freshCtx)
       const deps: LlmOrchestratorDeps = {
@@ -457,7 +460,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls[0]).toContain('/setup')
+      expect(textCalls.some(mentionsMissingConfig)).toBe(true)
     })
 
     test('replies with setup guidance when resolver returns null after credentials pass', async () => {
@@ -485,7 +488,7 @@ describe('processMessage', () => {
       const { reply, textCalls } = createMockReply()
       await processMessage(reply, freshCtx, 'user-1', null, 'hello', 'dm', undefined, deps)
 
-      expect(textCalls).toContain('I need /setup before I can do that.')
+      expect(textCalls).toContain('I need /config before I can do that.')
     })
   })
 

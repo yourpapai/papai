@@ -21,4 +21,38 @@ describe('Bars.svelte', () => {
     expect(target.querySelectorAll('rect').length).toBe(4)
     void unmount(component)
   })
+
+  test('renders empty svg for undefined data', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Bars, { target, props: { data: undefined, width: 200, height: 40 } })
+    expect(target.querySelector('svg')).not.toBeNull()
+    expect(target.querySelectorAll('rect').length).toBe(0)
+    void unmount(component)
+  })
+
+  test('renders one rect for single-value data', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Bars, { target, props: { data: [5], width: 200, height: 40 } })
+    expect(target.querySelectorAll('rect').length).toBe(1)
+    void unmount(component)
+  })
+
+  test('renders flat baseline for all-zero data', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Bars, { target, props: { data: [0, 0, 0, 0], width: 200, height: 40 } })
+    expect(target.querySelectorAll('rect').length).toBe(4)
+    void unmount(component)
+  })
+
+  test('svg uses viewBox when width is omitted', () => {
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.body.querySelector<HTMLElement>('#root')!
+    const component = mount(Bars, { target, props: { data: [1, 2, 3] } })
+    const svg = target.querySelector('svg')
+    expect(svg?.getAttribute('viewBox')).not.toBeNull()
+    void unmount(component)
+  })
 })
