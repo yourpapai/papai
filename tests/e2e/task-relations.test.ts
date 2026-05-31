@@ -9,12 +9,12 @@ import { z } from 'zod'
 
 setDefaultTimeout(10000)
 
-import { addTaskRelation } from '../../src/providers/kaneo/add-task-relation.js'
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createTask } from '../../src/providers/kaneo/create-task.js'
-import { getTask } from '../../src/providers/kaneo/get-task.js'
-import { removeTaskRelation } from '../../src/providers/kaneo/remove-task-relation.js'
-import { updateTaskRelation } from '../../src/providers/kaneo/update-task-relation.js'
+import { addTaskRelation } from '../../plugins/task-provider-kaneo/add-task-relation.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
+import { getTask } from '../../plugins/task-provider-kaneo/get-task.js'
+import { removeTaskRelation } from '../../plugins/task-provider-kaneo/remove-task-relation.js'
+import { updateTaskRelation } from '../../plugins/task-provider-kaneo/update-task-relation.js'
 import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, KaneoTestClient } from './kaneo-test-client.js'
 

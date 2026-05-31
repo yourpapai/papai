@@ -89,24 +89,35 @@ describe('DiscordChatProvider', () => {
   test('constructor throws when DISCORD_BOT_TOKEN is missing', async () => {
     delete process.env['DISCORD_BOT_TOKEN']
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider(undefined)).toThrow('DISCORD_BOT_TOKEN environment variable is required')
+    expect(() => new DiscordChatProvider({ platformInstanceId: TEST_PLATFORM_ID })).toThrow(
+      'DISCORD_BOT_TOKEN environment variable is required',
+    )
   })
 
   test('constructor throws when DISCORD_BOT_TOKEN is whitespace only', async () => {
     process.env['DISCORD_BOT_TOKEN'] = '   '
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    expect(() => new DiscordChatProvider(undefined)).toThrow('DISCORD_BOT_TOKEN environment variable is required')
+    expect(() => new DiscordChatProvider({ token: '   ', platformInstanceId: TEST_PLATFORM_ID })).toThrow(
+      'DISCORD_BOT_TOKEN environment variable is required',
+    )
+  })
+
+  test('constructor throws when platformInstanceId is blank', async () => {
+    const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
+    expect(() => new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: '   ' })).toThrow(
+      'platformInstanceId is required',
+    )
   })
 
   test('constructor succeeds with a non-empty token and exposes name="discord"', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
     expect(provider.name).toBe('discord')
   })
 
   test('registerCommand routes a matching /help text through the command handler', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     const captured: IncomingMessage[] = []
     provider.registerCommand('help', (msg): Promise<void> => {
@@ -137,7 +148,7 @@ describe('DiscordChatProvider', () => {
 
   test('onMessage receives non-command messages after mapping', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     const seen: IncomingMessage[] = []
     provider.onMessage((msg): Promise<void> => {
@@ -199,7 +210,7 @@ describe('DiscordChatProvider', () => {
 
   test('onMessage receives default Discord platform instance ID when constructor omits it', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     const seen: IncomingMessage[] = []
     provider.onMessage((msg): Promise<void> => {
@@ -230,7 +241,7 @@ describe('DiscordChatProvider', () => {
 
   test('bot-authored messages are ignored', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
     const seen: IncomingMessage[] = []
     provider.onMessage((msg): Promise<void> => {
       seen.push(msg)
@@ -257,7 +268,7 @@ describe('DiscordChatProvider', () => {
 
   test('stop() calls client.destroy when a client exists', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
     let destroyed = false
     provider.testSetClient({
       destroy: (): Promise<void> => {
@@ -271,7 +282,7 @@ describe('DiscordChatProvider', () => {
 
   test('sendMessage creates a DM channel and sends the markdown', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     const sends: Array<Partial<{ content: string }>> = []
     const dmChannel = {
@@ -302,7 +313,7 @@ describe('DiscordChatProvider', () => {
 
   test('sendMessage throws when a group channel is not sendable', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider()
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     provider.testSetClient({
       destroy: (): Promise<void> => Promise.resolve(),
@@ -338,7 +349,7 @@ describe('DiscordChatProvider', () => {
 
   test('sendMessage throws when a fetched group channel reports isSendable() false', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider()
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     provider.testSetClient({
       destroy: (): Promise<void> => Promise.resolve(),
@@ -378,7 +389,7 @@ describe('DiscordChatProvider', () => {
 
   test('resolveUserId returns snowflake as-is when the input is numeric', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
     const result = await provider.resolveUserId('1234567890', {
       contextId: 'c1',
       contextType: 'group',
@@ -388,14 +399,14 @@ describe('DiscordChatProvider', () => {
 
   test('resolveUserId returns null in DMs (no guild context)', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
     const result = await provider.resolveUserId('@alice', { contextId: 'u1', contextType: 'dm' })
     expect(result).toBeNull()
   })
 
   test('resolveUserId searches members in the channel guild for group context', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     const fakeGuild = {
       members: {
@@ -426,7 +437,7 @@ describe('DiscordChatProvider', () => {
 
   test('resolveUserId fetches an uncached channel before searching the guild', async () => {
     const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-    const provider = new DiscordChatProvider(undefined)
+    const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
     const fakeGuild = {
       members: {
@@ -462,7 +473,7 @@ describe('DiscordChatProvider', () => {
   describe('renderContext', () => {
     test('returns embed method result with context snapshot', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       const snapshot: ContextSnapshot = {
         modelName: 'gpt-4o',
@@ -514,7 +525,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
       const startPromise = provider.start()
 
       await Promise.resolve()
@@ -540,7 +555,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
       const startPromise = provider.start()
 
       await Promise.resolve()
@@ -567,7 +586,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
 
       let resolveReceived!: (msg: IncomingMessage) => void
       const received = new Promise<IncomingMessage>((res) => {
@@ -622,7 +645,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
       const startPromise = provider.start()
       await Promise.resolve()
       readyListeners[0]!({ user: { id: 'bot-42', username: 'testbot' } })
@@ -649,7 +676,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
 
       const seen: IncomingMessage[] = []
       provider.onMessage((msg): Promise<void> => {
@@ -686,7 +717,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
 
       let resolveReceived!: (msg: IncomingMessage) => void
       const received = new Promise<IncomingMessage>((res) => {
@@ -730,7 +765,7 @@ describe('DiscordChatProvider', () => {
   describe('testDispatchButtonInteraction', () => {
     test('calls deferUpdate and routes customId to message handler', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       // Authorize the user
       addUser('u1', 'admin-id', 'alice')
@@ -769,7 +804,7 @@ describe('DiscordChatProvider', () => {
 
     test('builds interaction replies around the clicked editable message', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       const sends: SendCapture[] = []
       const edits: SendCapture[] = []
@@ -828,7 +863,7 @@ describe('DiscordChatProvider', () => {
 
     test('falls back to new messages when the clicked message is not editable', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       const sends: SendCapture[] = []
       const edits: SendCapture[] = []
@@ -887,7 +922,7 @@ describe('DiscordChatProvider', () => {
 
     test('routes slash-prefixed customId to registered command handler', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       // Authorize the user
       addUser('u2', 'admin-id', 'bob')
@@ -921,7 +956,7 @@ describe('DiscordChatProvider', () => {
 
     test('uses user ID as contextId in DM channels (type=1)', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       // Authorize the user
       addUser('user-77', 'admin-id', 'carol')
@@ -955,7 +990,7 @@ describe('DiscordChatProvider', () => {
 
     test('uses channelId as contextId in guild channels (type=0)', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       // Authorize the user
       addAuthorizedDiscordGroup('guild-channel-99', 'admin-id')
@@ -990,7 +1025,7 @@ describe('DiscordChatProvider', () => {
 
     test('skips dispatch when channel is null', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       const seen: IncomingMessage[] = []
       provider.onMessage((msg): Promise<void> => {
@@ -1016,7 +1051,7 @@ describe('DiscordChatProvider', () => {
       await setupTestDb()
       seedCommonTestPlatformInstances()
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       let deferred = false
       const fakeInteraction: ButtonInteractionLike = {
@@ -1046,7 +1081,7 @@ describe('DiscordChatProvider', () => {
       await setupTestDb()
       seedCommonTestPlatformInstances()
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       let deferred = false
       const fakeInteraction: ButtonInteractionLike = {
@@ -1074,7 +1109,7 @@ describe('DiscordChatProvider', () => {
 
     test('handles deferUpdate failure gracefully', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       // Authorize the user
       addUser('u-def', 'admin-id', 'defer-fail')
@@ -1123,7 +1158,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
 
       provider.onMessage((): Promise<void> => Promise.reject(new Error('handler boom')))
 
@@ -1159,7 +1198,7 @@ describe('DiscordChatProvider', () => {
 
     test('resolveGroupLabel returns the fetched channel name', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       provider.testSetClient({
         destroy: (): Promise<void> => Promise.resolve(),
@@ -1178,7 +1217,7 @@ describe('DiscordChatProvider', () => {
 
     test('resolveUserLabel prefers guild member display name and username', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       provider.testSetClient({
         destroy: (): Promise<void> => Promise.resolve(),
@@ -1220,7 +1259,7 @@ describe('DiscordChatProvider', () => {
 
     test('resolveUserLabel falls back to global user fetch when guild context is unavailable', async () => {
       const { DiscordChatProvider } = await import('../../../src/chat/discord/index.js')
-      const provider = new DiscordChatProvider(undefined)
+      const provider = new DiscordChatProvider({ token: 'fake-discord-token', platformInstanceId: TEST_PLATFORM_ID })
 
       provider.testSetClient({
         destroy: (): Promise<void> => Promise.resolve(),
@@ -1263,7 +1302,11 @@ describe('DiscordChatProvider', () => {
       }
 
       const factory: DiscordClientFactory = () => fakeClient
-      const provider = new DiscordChatProvider(factory)
+      const provider = new DiscordChatProvider({
+        clientFactory: factory,
+        token: 'fake-discord-token',
+        platformInstanceId: TEST_PLATFORM_ID,
+      })
 
       // message handler throws so the full dispatch path rejects
       provider.onMessage((): Promise<void> => Promise.reject(new Error('interaction boom')))

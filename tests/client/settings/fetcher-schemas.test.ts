@@ -45,12 +45,15 @@ describe('fetcher-schemas', () => {
     expect(parsed.fields[0]!.kind).toBe('preference')
   })
 
-  test('ToolsResponseSchema parses domains and tool risk', () => {
+  test('ToolsResponseSchema parses domains and tool risk (three-state model)', () => {
     const parsed = ToolsResponseSchema.parse({
       contextId: 'user:1',
-      domains: [{ domain: 'task', status: 'partial', tools: [{ name: 'create_task', enabled: true, risk: 'write' }] }],
+      domains: [
+        { domain: 'task', summary: 'partial', tools: [{ name: 'create_task', permission: 'allow', risk: 'write' }] },
+      ],
     })
-    expect(parsed.domains[0]!.status).toBe('partial')
+    expect(parsed.domains[0]!.summary).toBe('partial')
+    expect(parsed.domains[0]!.tools[0]!.permission).toBe('allow')
     expect(parsed.domains[0]!.tools[0]!.risk).toBe('write')
   })
 

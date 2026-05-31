@@ -24,6 +24,7 @@ export const TaskInstanceViewSchema = InstanceViewBaseSchema.extend({
   type: z.string(),
   referencingContextIds: z.array(z.string()).optional(),
   referencingContextCount: z.number().optional(),
+  unresolvedReason: z.string().nullable(),
 })
 
 const ProviderConfigRequirementViewSchema = z.object({
@@ -66,4 +67,18 @@ export const AdminInstanceViewSchema = z.object({
   createdAt: z.string().optional(),
 })
 
-export const ApplyInstancesResultSchema = z.object({ applied: z.number() })
+export const ApplyFailureSchema = z.object({
+  id: z.string(),
+  action: z.enum(['remove', 'recreate', 'start', 'stop']),
+  error: z.string(),
+})
+
+export const ApplyInstancesResultSchema = z.object({
+  applied: z.number(),
+  started: z.array(z.string()),
+  stopped: z.array(z.string()),
+  removed: z.array(z.string()),
+  recreated: z.array(z.string()),
+  unchanged: z.array(z.string()),
+  failed: z.array(ApplyFailureSchema),
+})

@@ -4,7 +4,8 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fetchPlugins, setPluginApproval } from '../../fetchers.js'
+  import { setPluginApproval } from '../../admin-fetchers.js'
+  import { fetchPlugins } from '../../fetchers.js'
   import type { PluginEntry } from '../../fetcher-schemas.js'
 
   interface Props {

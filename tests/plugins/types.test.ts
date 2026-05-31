@@ -15,6 +15,7 @@ const baseManifest: z.input<typeof pluginManifestSchema> = {
   version: '1.0.0',
   description: 'A test plugin',
   apiVersion: PLUGIN_API_VERSION,
+  main: 'index.ts',
   contributes: { taskProviderTypes: [] },
 }
 
@@ -199,6 +200,16 @@ describe('pluginManifestSchema', () => {
       })
       expect(result.success).toBe(false)
     })
+
+    test('rejects providerConfigValidator without a contributed task provider type', () => {
+      const result = pluginManifestSchema.safeParse({
+        ...baseManifest,
+        permissions: ['provider.task'],
+        contributes: { ...baseManifest.contributes, taskProviderTypes: [] },
+        providerConfigValidator: 'validateTrackerConfig',
+      })
+      expect(result.success).toBe(false)
+    })
   })
 
   describe('activationTimeoutMs validation', () => {
@@ -234,6 +245,52 @@ describe('pluginManifestSchema', () => {
       const result = pluginManifestSchema.safeParse({
         ...baseManifest,
         configRequirements: [{ key: 'api_key', label: 'API Key', required: true, sensitive: true, scope: 'invalid' }],
+      })
+      expect(result.success).toBe(false)
+    })
+  })
+
+  describe('provider config field key validation', () => {
+    test('provider config field keys accept camelCase', () => {
+      const result = pluginManifestSchema.safeParse({
+        id: 'task-provider-kaneo',
+        name: 'Kaneo',
+        version: '1.0.0',
+        description: 'x',
+        apiVersion: 1,
+        main: 'index.ts',
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['kaneo'] },
+        providerConfigSchema: [{ key: 'baseUrl', label: 'URL', required: true, sensitive: false, scope: 'instance' }],
+        providerContextConfigSchema: [
+          { key: 'workspaceId', label: 'Workspace', required: true, sensitive: false, scope: 'context' },
+        ],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    test('plugin configKeys still reject camelCase', () => {
+      const result = pluginManifestSchema.safeParse({
+        id: 'hello-world',
+        name: 'x',
+        version: '1.0.0',
+        description: 'x',
+        apiVersion: 1,
+        contributes: { configKeys: ['camelCase'] },
+      })
+      expect(result.success).toBe(false)
+    })
+
+    test.each(['1url', 'base-url', '_key', 'BaseUrl', ''])('rejects invalid provider config field key "%s"', (key) => {
+      const result = pluginManifestSchema.safeParse({
+        id: 'task-provider-kaneo',
+        name: 'Kaneo',
+        version: '1.0.0',
+        description: 'x',
+        apiVersion: 1,
+        permissions: ['provider.task'],
+        contributes: { taskProviderTypes: ['kaneo'] },
+        providerConfigSchema: [{ key, label: 'Label', required: true, sensitive: false, scope: 'instance' }],
       })
       expect(result.success).toBe(false)
     })

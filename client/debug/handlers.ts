@@ -91,7 +91,6 @@ export function handleCacheEvent(state: DashboardState, d: CacheEvent): void {
       factsCount: 0,
       summary: null,
       configKeys: [],
-      workspaceId: null,
     })
     return
   }

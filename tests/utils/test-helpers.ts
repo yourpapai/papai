@@ -200,7 +200,7 @@ export function seedTestTaskInstance(input: SeedTestTaskInstanceInput): void {
     .values({
       id: input.id,
       type: input.type ?? 'kaneo',
-      config: encryptInstanceConfig(input.config ?? { url: 'https://tasks.invalid' }),
+      config: encryptInstanceConfig(input.config ?? { baseUrl: 'https://tasks.invalid' }),
       status: input.status ?? 'active',
     })
     .onConflictDoNothing({ target: schema.taskInstances.id })
@@ -773,9 +773,9 @@ export function getToolExecutor(tool: unknown): (...args: unknown[]) => Promise<
 
 import type { z } from 'zod'
 
-import type { CreateLabelResponseSchema } from '../../src/providers/kaneo/schemas/create-label.js'
-import { TaskSchema } from '../../src/providers/kaneo/schemas/create-task.js'
-import { ActivityItemSchema } from '../../src/providers/kaneo/schemas/global-search.js'
+import type { CreateLabelResponseSchema } from '../../plugins/task-provider-kaneo/schemas/create-label.js'
+import { TaskSchema } from '../../plugins/task-provider-kaneo/schemas/create-task.js'
+import { ActivityItemSchema } from '../../plugins/task-provider-kaneo/schemas/global-search.js'
 
 type CreateTaskResponse = z.infer<typeof TaskSchema>
 type CreateProjectResponse = {

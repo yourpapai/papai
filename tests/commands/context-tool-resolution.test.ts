@@ -90,8 +90,8 @@ describe('context-tool-resolution', () => {
     expect(result).toBeInstanceOf(Promise)
   })
 
-  test('safeBuildProvider returns null when resolver has no provider', () => {
-    const result = safeBuildProvider('user-1')
+  test('safeBuildProvider returns null when resolver has no provider', async () => {
+    const result = await safeBuildProvider('user-1')
 
     expect(result).toBeNull()
   })

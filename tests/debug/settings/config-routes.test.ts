@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import assert from 'node:assert/strict'
 
 import { z } from 'zod'
@@ -12,7 +12,12 @@ import { getConfigValue, maskSensitiveValue, setConfigValue } from '../../../src
 import { handleConfigRoutes } from '../../../src/debug/settings/config-routes.js'
 import { setContextSettings } from '../../../src/instances/context-store.js'
 import { insertTaskInstance } from '../../../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../../../src/providers/registry.js'
 import { resolveSettingsPrincipal } from '../../../src/settings/principal.js'
+import { KANEO_PLUGIN_CREDENTIAL_KEY } from '../../../src/types/config.js'
 import { addUser } from '../../../src/users.js'
 import { mockLogger, seedTestPlatformInstance, setupTestDb } from '../../utils/test-helpers.js'
 import { authHeaders, establishSession, type SettingsSession } from './helpers.js'
@@ -23,6 +28,23 @@ const GetResponseSchema = z.object({
 const PatchResponseSchema = z.object({ contextId: z.string() })
 const PatchUnchangedResponseSchema = z.object({ ok: z.literal(true), unchanged: z.literal(true) })
 
+const KANEO_PLUGIN_ID = 'task-provider-kaneo'
+
+const registerKaneoProviderType = (): void => {
+  registerContributedTaskProviderType('kaneo', {
+    pluginId: KANEO_PLUGIN_ID,
+    factory: () => {
+      throw new Error('kaneo factory not needed in config-routes tests')
+    },
+    capabilities: new Set(),
+    displayName: 'Kaneo',
+    instanceConfigSchema: [],
+    contextConfigSchema: [
+      { key: 'credential', label: 'Kaneo API Key', required: true, sensitive: true, scope: 'context' },
+    ],
+  })
+}
+
 describe('settings config routes', () => {
   let session: SettingsSession
 
@@ -32,6 +54,10 @@ describe('settings config routes', () => {
     seedTestPlatformInstance({ id: 'pi-1' })
     addUser({ userId: 'u-1', platformInstanceId: 'pi-1', addedBy: 'admin', username: undefined })
     session = await establishSession({ platformInstanceId: 'pi-1', platformUserId: 'u-1' })
+  })
+
+  afterEach(() => {
+    unregisterContributedTaskProviderType(KANEO_PLUGIN_ID)
   })
 
   test('GET returns field descriptors with masked values', async () => {
@@ -80,16 +106,16 @@ describe('settings config routes', () => {
   // ── New coverage gaps ─────────────────────────────────────────────────────
 
   test('GET masks sensitive field value in response (security contract)', async () => {
-    // Arrange: link a kaneo task instance to the personal context so that the
-    // sensitive `kaneo_apikey` field appears in getConfigFieldsForContext().
+    // Arrange: register the kaneo provider type so the sensitive `credential` field
+    // appears in getConfigFieldsForContext() when a kaneo task instance is assigned.
+    registerKaneoProviderType()
     const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
     insertTaskInstance({ id: 'kaneo-t1', type: 'kaneo', config: {}, status: 'active' })
     setContextSettings({ contextId: personalConfigContextId, taskInstanceId: 'kaneo-t1', platformInstanceId: 'pi-1' })
 
-    // Store a known plaintext value for the sensitive storage key.
-    const sensitiveStorageKey = 'kaneo_apikey'
+    // Store a known plaintext value under the namespaced plugin credential key.
     const plaintext = 'super-secret-1234'
-    setConfigValue(personalConfigContextId, sensitiveStorageKey, plaintext)
+    setConfigValue(personalConfigContextId, KANEO_PLUGIN_CREDENTIAL_KEY, plaintext)
 
     // Act: GET the config fields.
     const res = await handleConfigRoutes(
@@ -110,7 +136,9 @@ describe('settings config routes', () => {
   })
 
   test('PATCH sensitive field with empty value returns unchanged=true (no-change branch)', async () => {
-    // Arrange: link a kaneo instance so the sensitive `credential` field is visible.
+    // Arrange: register kaneo provider type and link a kaneo instance so the
+    // sensitive `credential` field is visible in getConfigFieldsForContext().
+    registerKaneoProviderType()
     const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
     insertTaskInstance({ id: 'kaneo-t2', type: 'kaneo', config: {}, status: 'active' })
     setContextSettings({ contextId: personalConfigContextId, taskInstanceId: 'kaneo-t2', platformInstanceId: 'pi-1' })
@@ -139,14 +167,16 @@ describe('settings config routes', () => {
   })
 
   test('PATCH sensitive field with masked value echoed back returns unchanged=true without overwriting stored secret', async () => {
-    // Arrange: link a kaneo instance so the sensitive `credential` field is visible.
+    // Arrange: register kaneo provider type and link a kaneo instance so the
+    // sensitive `credential` field is visible in getConfigFieldsForContext().
+    registerKaneoProviderType()
     const { personalConfigContextId } = resolveSettingsPrincipal('pi-1', 'u-1')
     insertTaskInstance({ id: 'kaneo-t3', type: 'kaneo', config: {}, status: 'active' })
     setContextSettings({ contextId: personalConfigContextId, taskInstanceId: 'kaneo-t3', platformInstanceId: 'pi-1' })
 
-    // Seed a known plaintext value.
+    // Seed a known plaintext value under the namespaced plugin credential key.
     const plaintext = 'my-secret-api-key'
-    setConfigValue(personalConfigContextId, 'kaneo_apikey', plaintext)
+    setConfigValue(personalConfigContextId, KANEO_PLUGIN_CREDENTIAL_KEY, plaintext)
 
     // Compute what the GET response would return for this sensitive field.
     const masked = maskSensitiveValue(plaintext)
@@ -164,7 +194,7 @@ describe('settings config routes', () => {
     const body = PatchUnchangedResponseSchema.parse(await res.json())
     expect(body.unchanged).toBe(true)
     assert(
-      getConfigValue(personalConfigContextId, 'kaneo_apikey') === plaintext,
+      getConfigValue(personalConfigContextId, KANEO_PLUGIN_CREDENTIAL_KEY) === plaintext,
       'stored secret must not be overwritten with the masked sentinel value',
     )
   })

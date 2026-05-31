@@ -58,18 +58,18 @@ Supported optional fields:
 
 | Field                           | Description                                                                                                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main`                          | Entry point path, defaulting to `index.ts`.                                                                                                       |
+| `main`                          | Entry point path for non-MCP-only plugins.                                                                                                        |
 | `contributes.tools`             | Tool names the plugin may register with `ctx.registration.registerTool()`.                                                                        |
 | `contributes.promptFragments`   | Prompt fragment names the plugin may register with `ctx.registration.registerPromptFragment()`.                                                   |
 | `contributes.commands`          | Command names the plugin may register with `ctx.registration.registerCommand()`. Runtime commands are exposed as `plugin_<plugin_id>_<command>`.  |
 | `contributes.jobs`              | Scheduled job names the plugin may register with `ctx.registration.registerScheduledJob()`. Runtime job owners are `plugin:<pluginId>:<jobName>`. |
-| `contributes.configKeys`        | Plugin-owned context config keys shown by docs and admin UX.                                                                                      |
+| `contributes.configKeys`        | Plugin-owned context config keys exposed in `/config`. Each key must have a matching context-scoped `configRequirements` entry.                   |
 | `contributes.taskProviderTypes` | At most one plugin-owned task provider type. Requires `provider.task`.                                                                            |
 | `providerCapabilities`          | Task capabilities exposed by the contributed provider type.                                                                                       |
 | `providerConfigSchema`          | Instance-scoped config fields for the contributed provider type.                                                                                  |
 | `providerContextConfigSchema`   | Context-scoped credential/config fields for the contributed provider type.                                                                        |
-| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`.                                                                                         |
-| `providerConfigValidator`       | Optional exported validator function name for provider instance and context config.                                                               |
+| `providerAllowedHosts`          | Host allowlist used by `ctx.providerRuntime.httpFetch()`. Available to `http` plugins and contributed task-provider plugins.                      |
+| `providerConfigValidator`       | Optional named export for validating contributed provider config before task-instance writes are persisted.                                       |
 | `mcp`                           | Optional plugin-owned MCP server config. Runtime support is `streamable-http`; `stdio` is schema-reserved.                                        |
 | `permissions`                   | Permission claims checked by framework facades.                                                                                                   |
 | `defaultEnabled`                | Whether the plugin is selected by default for contexts that have no explicit opt-in/out row.                                                      |
@@ -141,7 +141,7 @@ When a plugin declares `permissions: ["identity"]` and exactly one `contributes.
 
 ## Prompt Fragments
 
-Prompt fragments are synchronous strings or synchronous functions returning strings. Async prompt fragments are not supported. Fragments are delimited in the system prompt and budgeted at 2,000 characters per fragment and 8,000 characters total across active plugins.
+Prompt fragments are synchronous strings or synchronous functions returning strings. Async prompt fragments are not supported. Fragments are delimited in the system prompt and budgeted at 2,000 characters of plugin content per fragment and 8,000 characters total across active plugins.
 
 ## Commands
 
@@ -181,6 +181,8 @@ Unsupported in the MVP: raw chat provider access, raw task provider access, raw 
 
 Required `configRequirements` are evaluated per target context. Missing required config does not globally break activation; it makes that plugin ineligible for that context, so tools and prompt fragments are hidden and enable actions report the missing keys. Sensitive plugin config values are masked in `/config` output.
 
+Admin-scoped plugin config stays in the admin UI. Context-scoped plugin config declared through `contributes.configKeys` appears in `/config` and is written to the per-context plugin config store under the plugin's namespace.
+
 Capability requirements are evaluated in two layers. At startup, Papai checks approved plugins against the union of active platform/task instances and marks a plugin globally incompatible only when no active instance combination can satisfy the manifest. At request or scheduled-job time, `getPluginContextEligibility(pluginId, contextId)` checks the context's assigned platform and task instances. If that concrete assignment lacks required capabilities, the plugin is ineligible for that context with `capability_missing`, and its tools, prompt fragments, and jobs are hidden there without affecting other contexts.
 
 ## Admin Workflow
@@ -217,6 +219,91 @@ Run the broader release gate before merging plugin-system changes:
 bun check:full
 bun security
 ```
+
+## Provider Plugins (worked example: Kaneo)
+
+A plugin may contribute one task provider type by declaring `contributes.taskProviderTypes` in its manifest. The Kaneo plugin at `plugins/task-provider-kaneo/` is the canonical first-party example.
+
+### Manifest shape
+
+Provider plugin manifests split config into two schemas:
+
+- **`providerConfigSchema`** — instance-scoped fields stored in `task_instances.config` (e.g. `baseUrl`, `internalUrl`). Validated by `validateConfig` at instance creation.
+- **`providerContextConfigSchema`** — context-scoped fields stored per-user in `user_config` under the `plugin:<id>:provider:<fieldKey>` namespace (e.g. `plugin:task-provider-kaneo:provider:credential`, `plugin:task-provider-kaneo:provider:workspaceId`). Not available at instance-config validation time.
+
+Keys are **camelCase** and there is no `storageKey` property. Set `providerAllowedHosts: []` when the plugin uses the instance `baseUrl` dynamically rather than a fixed allowlist.
+
+Abbreviated manifest for reference:
+
+```json
+{
+  "id": "task-provider-kaneo",
+  "permissions": ["provider.task", "identity"],
+  "contributes": { "taskProviderTypes": ["kaneo"] },
+  "providerCapabilities": ["comments.create", "labels.list", "projects.list"],
+  "providerConfigSchema": [
+    { "key": "baseUrl", "label": "Kaneo URL", "required": true, "sensitive": false, "scope": "instance" },
+    { "key": "internalUrl", "label": "Kaneo Internal URL", "required": false, "sensitive": false, "scope": "instance" }
+  ],
+  "providerContextConfigSchema": [
+    { "key": "credential", "label": "Kaneo API Key", "required": true, "sensitive": true, "scope": "context" },
+    { "key": "workspaceId", "label": "Workspace ID", "required": true, "sensitive": false, "scope": "context" }
+  ],
+  "providerAllowedHosts": [],
+  "providerConfigValidator": "validateConfig"
+}
+```
+
+### Entry-point factory
+
+Import types from the `papai/plugin-types` alias and register via `ctx.registration.registerTaskProviderType`:
+
+```typescript
+import type { PluginContext, TaskProvider } from 'papai/plugin-types'
+import type { PluginFactory, PluginInstance } from '../../src/plugins/types.js'
+
+const factory: PluginFactory = (): PluginInstance => ({
+  activate(ctx: PluginContext): void {
+    ctx.registration.registerTaskProviderType('kaneo', {
+      factory: (config): TaskProvider => new KaneoProvider(buildConfig(config), config['workspaceId'] ?? ''),
+      validateConfig,
+    })
+  },
+})
+
+export default factory
+```
+
+### `validateConfig` contract
+
+`validateConfig` receives only the **instance-scoped** config (fields from `providerConfigSchema`). Context-scoped fields such as `credential` and `workspaceId` are not available here — they live per-user in `user_config` and are injected at request time. Validate URL shape and required instance fields only; credential validation happens during `/setup`.
+
+```typescript
+export function validateConfig(config: Record<string, string>): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const baseUrl = config['baseUrl']?.trim() ?? ''
+  if (!baseUrl) return Promise.resolve({ ok: false, reason: 'baseUrl is required' })
+  // ... URL shape check ...
+  return Promise.resolve({ ok: true })
+}
+```
+
+### Context config namespace
+
+Context-scoped provider config (fields from `providerContextConfigSchema`) is stored under the namespaced key pattern:
+
+```
+plugin:<plugin-id>:provider:<fieldKey>
+```
+
+For Kaneo: `plugin:task-provider-kaneo:provider:credential` and `plugin:task-provider-kaneo:provider:workspaceId`. Migration `048_namespace_kaneo_config` renamed the legacy flat `kaneo_apikey` and `kaneo_workspace_id` rows to this namespace.
+
+### Operator workflow
+
+1. Create a task instance in `/admin#instances` (fills `providerConfigSchema` fields).
+2. Run `/plugin approve task-provider-kaneo` (DM, super admin) and restart. Until approved, affected contexts won't resolve and `/admin#instances` shows an "unresolved" label; a startup `WARN` lists pending approvals.
+3. Users configure context-scoped fields (`credential`, `workspaceId`) via `/setup`.
+
+See `plugins/task-provider-kaneo/` for the complete source. The YouTrack plugin at `plugins/task-provider-youtrack/` is a second provider-plugin example with a simpler config schema: one instance field (**`baseUrl`**) and one context credential (**`token`**).
 
 ## Example Plugin
 

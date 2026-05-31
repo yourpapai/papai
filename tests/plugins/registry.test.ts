@@ -462,7 +462,7 @@ describe('singleton registry helpers', () => {
       },
       manifestHash: 'hash-task-capability',
     })
-    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { url: 'https://kaneo.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'kaneo-a', type: 'kaneo', config: { baseUrl: 'https://kaneo.invalid' }, status: 'active' })
     seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'kaneo-a', platformInstanceId: 'telegram-a' })
 
@@ -491,7 +491,7 @@ describe('singleton registry helpers', () => {
       },
       manifestHash: 'hash-chat-capability',
     })
-    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set() }))
@@ -522,7 +522,7 @@ describe('singleton registry helpers', () => {
       },
       manifestHash: 'hash-stopped-chat-capability',
     })
-    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { url: 'https://yt.invalid' }, status: 'active' })
+    insertTaskInstance({ id: 'yt-a', type: 'youtrack', config: { baseUrl: 'https://yt.invalid' }, status: 'active' })
     seedTestPlatformInstance({ id: 'telegram-a' })
     setContextSettings({ contextId, taskInstanceId: 'yt-a', platformInstanceId: 'telegram-a' })
     const router = new ChatRouter(() => createMockChat({ capabilities: new Set(['messages.buttons']) }))

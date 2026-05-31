@@ -15,8 +15,7 @@ export type LlmOrchestratorDeps = {
   generateText: typeof generateText
   stepCountIs: typeof stepCountIs
   buildOpenAI: (apiKey: string, baseURL: string) => ReturnType<typeof createOpenAICompatible>
-  resolve: (contextId: string) => TaskProvider | null
-  getKaneoWorkspace: (userId: string) => string | null
+  resolve: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   maybeProvisionKaneo: (reply: ReplyFn, contextId: string, username: string | null) => Promise<void>
 } & Partial<Record<'stagedDownloadFn', StagedFileDownloadFn>>
 

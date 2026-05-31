@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { sendAnnounce } from '../../fetchers.js'
+  import { sendAnnounce } from '../../admin-fetchers.js'
   import type { AnnounceResult } from '../../fetcher-schemas.js'
 
   let message = $state('')

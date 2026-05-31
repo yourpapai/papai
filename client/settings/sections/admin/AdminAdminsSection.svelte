@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { addRosterAdmin, fetchAdminRoster, removeRosterAdmin } from '../../fetchers.js'
+  import { addRosterAdmin, fetchAdminRoster, removeRosterAdmin } from '../../admin-fetchers.js'
   import type { AdminRosterRow } from '../../fetcher-schemas.js'
 
   let admins: AdminRosterRow[] = $state([])

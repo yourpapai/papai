@@ -108,7 +108,6 @@ describe('getSessionSnapshots', () => {
         ['llm_apikey', 'sk-test'],
         ['main_model', 'gpt-4o'],
       ]),
-      workspaceId: 'ws-1',
       tools: {},
       lastAccessed: Date.now(),
     })
@@ -118,7 +117,6 @@ describe('getSessionSnapshots', () => {
       facts: [],
       instructions: null,
       config: new Map(),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     })
@@ -132,7 +130,6 @@ describe('getSessionSnapshots', () => {
     expect(snaps[0]!.facts).toHaveLength(1)
     expect(snaps[0]!.configKeys).toContain('llm_apikey')
     expect(snaps[0]!.configKeys).toContain('main_model')
-    expect(snaps[0]!.workspaceId).toBe('ws-1')
     expect(snaps[0]!.hasTools).toBe(true)
     expect(snaps[0]!.instructionsCount).toBe(1)
   })
@@ -144,7 +141,6 @@ describe('getSessionSnapshots', () => {
       facts: [],
       instructions: null,
       config: new Map([['llm_apikey', 'sk-secret-key']]),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     })
@@ -167,7 +163,6 @@ describe('getSessionSnapshots', () => {
         ['history_loaded', 'true'],
         ['summary_loaded', 'true'],
       ]),
-      workspaceId: null,
       tools: null,
       lastAccessed: Date.now(),
     })

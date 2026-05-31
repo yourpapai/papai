@@ -9,10 +9,10 @@ import { z } from 'zod'
 
 setDefaultTimeout(30000)
 
-import { addComment } from '../../src/providers/kaneo/add-comment.js'
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createTask } from '../../src/providers/kaneo/create-task.js'
-import { getComments } from '../../src/providers/kaneo/get-comments.js'
+import { addComment } from '../../plugins/task-provider-kaneo/add-comment.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
+import { getComments } from '../../plugins/task-provider-kaneo/get-comments.js'
 import { cleanupE2E } from './global-setup.js'
 import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, type KaneoTestClient } from './kaneo-test-client.js'
@@ -185,7 +185,7 @@ describe('E2E: Task Comments', () => {
 
     expect(comment.id).toBeTruthy()
 
-    const { updateComment } = await import('../../src/providers/kaneo/update-comment.js')
+    const { updateComment } = await import('../../plugins/task-provider-kaneo/update-comment.js')
     const updated = await updateComment({
       config: kaneoConfig,
       taskId: task.id,
@@ -212,7 +212,7 @@ describe('E2E: Task Comments', () => {
       comment: 'Original text',
     })
 
-    const { updateComment } = await import('../../src/providers/kaneo/update-comment.js')
+    const { updateComment } = await import('../../plugins/task-provider-kaneo/update-comment.js')
     const updated = await updateComment({
       config: kaneoConfig,
       taskId: task.id,
@@ -228,7 +228,7 @@ describe('E2E: Task Comments', () => {
     expect(updatedComment?.id).toBe(comment.id)
     expect(updatedComment?.comment).toBe('Updated text')
 
-    const { removeComment } = await import('../../src/providers/kaneo/remove-comment.js')
+    const { removeComment } = await import('../../plugins/task-provider-kaneo/remove-comment.js')
     const removed = await removeComment({
       config: kaneoConfig,
       activityId: comment.id,
@@ -254,7 +254,7 @@ describe('E2E: Task Comments', () => {
 
     expect(comment.id).toBeTruthy()
 
-    const { removeComment } = await import('../../src/providers/kaneo/remove-comment.js')
+    const { removeComment } = await import('../../plugins/task-provider-kaneo/remove-comment.js')
     const removed = await removeComment({
       config: kaneoConfig,
       activityId: comment.id,

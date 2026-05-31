@@ -3,7 +3,7 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 
 import type { TaskInstance } from '../../src/instances/types.js'
 import {
@@ -24,18 +24,24 @@ import { mockLogger } from '../utils/test-helpers.js'
 const taskInstance = (type: TaskInstance['type']): TaskInstance => ({
   id: `${type}-default`,
   type,
-  config: { url: `https://${type}.invalid` },
+  config: { baseUrl: `https://${type}.invalid` },
   status: 'active',
   createdAt: 'now',
 })
 
 const fakeProvider: TaskProvider = createMockProvider()
+const requireDescriptor = <T>(descriptor: T | undefined): T => {
+  if (descriptor === undefined) throw new Error('Expected provider descriptor')
+  return descriptor
+}
+
 const entry = {
   pluginId: 'task-provider-kaneo',
   factory: (): TaskProvider => fakeProvider,
   capabilities: new Set<TaskCapability>(),
   displayName: 'Kaneo (Plugin)',
-  configSchema: [] as const,
+  instanceConfigSchema: [] as const,
+  contextConfigSchema: [] as const,
 }
 
 const makeEntry = (pluginId: string): ContributedTaskProviderEntry => ({
@@ -43,36 +49,18 @@ const makeEntry = (pluginId: string): ContributedTaskProviderEntry => ({
   factory: (): TaskProvider => createMockProvider({ name: 'dup' }),
   capabilities: new Set<never>(),
   displayName: pluginId,
-  configSchema: [],
+  instanceConfigSchema: [],
+  contextConfigSchema: [],
 })
-
-const validator = (): Promise<{ ok: true }> => Promise.resolve({ ok: true })
 
 function requireValue<T>(value: T | undefined, label: string): T {
   if (value === undefined) throw new Error(`${label} was unexpectedly undefined`)
   return value
 }
 
-function findValue<T>(items: readonly T[], predicate: (item: T) => boolean, label: string): T {
-  return requireValue(
-    items.find((item) => predicate(item)),
-    label,
-  )
-}
-
 describe('provider registry capability lookup', () => {
-  test('returns Kaneo task capabilities without requiring context credentials', () => {
-    const capabilities = getCapabilitiesForTaskInstance(taskInstance('kaneo'))
-
-    expect(capabilities.has('comments.read')).toBe(true)
-    expect(capabilities.has('workItems.list')).toBe(false)
-  })
-
-  test('returns YouTrack task capabilities without requiring context credentials', () => {
-    const capabilities = getCapabilitiesForTaskInstance(taskInstance('youtrack'))
-
-    expect(capabilities.has('comments.read')).toBe(true)
-    expect(capabilities.has('workItems.list')).toBe(true)
+  test('throws for unknown provider type (youtrack is no longer a built-in)', () => {
+    expect(() => getCapabilitiesForTaskInstance(taskInstance('youtrack'))).toThrow(/Unknown provider/u)
   })
 })
 
@@ -104,7 +92,8 @@ describe('contributed task provider registry', () => {
         factory: (): TaskProvider => otherProvider,
         capabilities: new Set<TaskCapability>(),
         displayName: 'Other',
-        configSchema: [] as const,
+        instanceConfigSchema: [] as const,
+        contextConfigSchema: [] as const,
       }),
     ).not.toThrow()
 
@@ -124,28 +113,41 @@ describe('contributed task provider registry', () => {
     expect(() => createProvider('custom-tracker', {})).toThrow('Unknown provider: custom-tracker')
   })
 
-  test('rejects registering a type that shadows a built-in', () => {
+  test('youtrack is no longer a built-in; registering it as contributed does not throw', () => {
     mockLogger()
-    expect(() => registerContributedTaskProviderType('kaneo', entry)).toThrow()
-    expect(() => registerContributedTaskProviderType('youtrack', entry)).toThrow()
+    expect(() => registerContributedTaskProviderType('youtrack', entry)).not.toThrow()
   })
 
-  test('listTaskProviderTypes includes contributed descriptors with displayName and configSchema', () => {
+  test('kaneo is no longer a built-in; it must be plugin-contributed', () => {
+    expect(() => createProvider('kaneo', { baseUrl: 'x' })).toThrow(/Unknown provider/u)
+  })
+
+  test('listTaskProviderTypes does not include kaneo when no plugin is registered', () => {
+    const types = listTaskProviderTypes().map((descriptor) => descriptor.type)
+    expect(types).not.toContain('kaneo')
+  })
+
+  test('listTaskProviderTypes includes contributed descriptors with displayName and split config schemas', () => {
     mockLogger()
     registerContributedTaskProviderType('demo-tracker', {
       pluginId: 'task-provider-demo',
       factory: () => createMockProvider(),
       capabilities: new Set<TaskCapability>(['comments.read']),
       displayName: 'Demo Tracker',
-      configSchema: [{ key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false }],
+      instanceConfigSchema: [
+        { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
+      ],
+      contextConfigSchema: [],
     })
 
-    const descriptor = findValue(listTaskProviderTypes(), (d) => d.type === 'demo-tracker', 'demo tracker descriptor')
+    const descriptor = requireDescriptor(listTaskProviderTypes().find((d) => d.type === 'demo-tracker'))
     expect(descriptor.displayName).toBe('Demo Tracker')
     expect(descriptor.source).toEqual({ plugin: 'task-provider-demo' })
-    expect(descriptor.configSchema).toEqual([
+    expect('configSchema' in descriptor).toBe(false)
+    expect(descriptor.instanceConfigSchema).toEqual([
       { key: 'baseUrl', label: 'Demo URL', required: true, sensitive: false, scope: 'instance' },
     ])
+    expect(descriptor.contextConfigSchema).toEqual([])
     expect(descriptor.capabilities.has('comments.read')).toBe(true)
   })
 
@@ -158,7 +160,8 @@ describe('contributed task provider registry', () => {
       capabilities: new Set<TaskCapability>(['tasks.commands']),
       displayName: 'Traited Tracker',
       traits,
-      configSchema: [] as const,
+      instanceConfigSchema: [] as const,
+      contextConfigSchema: [] as const,
     })
 
     const descriptor = getTaskProviderDescriptor('traited-tracker')
@@ -171,99 +174,42 @@ describe('contributed task provider registry', () => {
 })
 
 describe('listTaskProviderTypes (built-in catalog)', () => {
-  test('built-in descriptors expose split instance and context schemas plus traits', () => {
-    const kaneo = findValue(listTaskProviderTypes(), (d) => d.type === 'kaneo', 'kaneo descriptor')
-    const youtrack = findValue(listTaskProviderTypes(), (d) => d.type === 'youtrack', 'youtrack descriptor')
-
-    const kaneoCredential = findValue(
-      kaneo.contextConfigSchema,
-      (f) => f.key === 'credential',
-      'kaneo credential field',
-    )
-    const kaneoWorkspace = findValue(kaneo.contextConfigSchema, (f) => f.key === 'workspaceId', 'kaneo workspace field')
-    const youtrackToken = findValue(youtrack.contextConfigSchema, (f) => f.key === 'token', 'youtrack token field')
-
-    expect(kaneo.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl', 'internalUrl'])
-    expect(kaneoCredential.storageKey).toBe('kaneo_apikey')
-    expect(kaneoWorkspace.storageKey).toBe('kaneo_workspace_id')
-    expect(kaneo.traits.has('workspace-scoped')).toBe(true)
-
-    expect(youtrack.instanceConfigSchema.map((f) => f.key)).toEqual(['baseUrl'])
-    expect(youtrackToken.storageKey).toBe('youtrack_token')
-    expect(youtrack.traits.has('command-language:youtrack')).toBe(true)
-  })
-
-  test('includes kaneo and youtrack as built-in descriptors', () => {
+  test('built-in catalog is empty (both kaneo and youtrack are plugin-contributed)', () => {
     const types = listTaskProviderTypes()
-
-    expect(types).toHaveLength(2)
-
-    const kaneo = findValue(types, (descriptor) => descriptor.type === 'kaneo', 'kaneo descriptor')
-    const youtrack = findValue(types, (descriptor) => descriptor.type === 'youtrack', 'youtrack descriptor')
-
-    expect(kaneo.source).toBe('builtin')
-    expect(kaneo.displayName).toBe('Kaneo')
-    expect(kaneo.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
-    expect(kaneo.capabilities.size).toBeGreaterThan(0)
-
-    expect(youtrack.source).toBe('builtin')
-    expect(youtrack.displayName).toBe('YouTrack')
-    expect(youtrack.configSchema.find((f) => f.key === 'baseUrl')).toBeDefined()
+    expect(types).toHaveLength(0)
+    expect(types.map((d) => d.type)).not.toContain('youtrack')
+    expect(types.map((d) => d.type)).not.toContain('kaneo')
   })
 
-  test('built-in provider runtime traits equal descriptor traits', () => {
-    const kaneoDescriptor = getTaskProviderDescriptor('kaneo')
-    const youtrackDescriptor = getTaskProviderDescriptor('youtrack')
+  test('youtrack is no longer in the built-in catalog', () => {
+    expect(getTaskProviderDescriptor('youtrack')).toBeUndefined()
+  })
 
-    const kaneoProvider = createProvider('kaneo', {
-      baseUrl: 'https://kaneo.invalid',
-      credential: 'kaneo-token',
-      workspaceId: 'workspace-1',
-    })
-    const youtrackProvider = createProvider('youtrack', {
-      baseUrl: 'https://youtrack.invalid',
-      token: 'perm-token',
-    })
-
-    expect(kaneoDescriptor).toBeDefined()
-    expect(youtrackDescriptor).toBeDefined()
-    expect(kaneoProvider.traits).toEqual(kaneoDescriptor!.traits)
-    expect(youtrackProvider.traits).toEqual(youtrackDescriptor!.traits)
+  test('createProvider throws for youtrack when no plugin has registered it', () => {
+    expect(() => createProvider('youtrack', { baseUrl: 'https://youtrack.invalid', token: 'perm-token' })).toThrow(
+      /Unknown provider/u,
+    )
   })
 })
 
 describe('listTaskProviderTypes built-in scopes', () => {
-  test('kaneo declares instance baseUrl and context credential + workspaceId', () => {
-    const kaneo = findValue(listTaskProviderTypes(), (d) => d.type === 'kaneo', 'kaneo descriptor')
-    const baseUrl = findValue(kaneo.configSchema, (f) => f.key === 'baseUrl', 'kaneo baseUrl field')
-    const credential = findValue(kaneo.contextConfigSchema, (f) => f.key === 'credential', 'kaneo credential field')
-    const workspaceId = findValue(kaneo.contextConfigSchema, (f) => f.key === 'workspaceId', 'kaneo workspaceId field')
-    expect(baseUrl.scope).toBe('instance')
-    expect(credential.scope).toBe('context')
-    expect(credential.sensitive).toBe(true)
-    expect(workspaceId.scope).toBe('context')
-  })
-
-  test('youtrack declares instance baseUrl and context token', () => {
-    const yt = findValue(listTaskProviderTypes(), (d) => d.type === 'youtrack', 'youtrack descriptor')
-    const baseUrl = findValue(yt.configSchema, (f) => f.key === 'baseUrl', 'youtrack baseUrl field')
-    const token = findValue(yt.contextConfigSchema, (f) => f.key === 'token', 'youtrack token field')
-    expect(baseUrl.scope).toBe('instance')
-    expect(token.scope).toBe('context')
-    expect(token.sensitive).toBe(true)
+  test('no built-in scopes exist; youtrack is no longer a built-in', () => {
+    const yt = listTaskProviderTypes().find((d) => d.type === 'youtrack')
+    expect(yt).toBeUndefined()
   })
 })
 
 describe('getCapabilitiesForTaskInstance without credentials', () => {
-  test('returns kaneo capabilities for an instance with no credentials in config', () => {
-    const caps = getCapabilitiesForTaskInstance({
-      id: 'k',
-      type: 'kaneo',
-      config: { baseUrl: 'https://k.invalid' },
-      status: 'active',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    })
-    expect(caps.has('comments.create')).toBe(true)
+  test('throws for youtrack when no plugin has registered it (not a builtin)', () => {
+    expect(() =>
+      getCapabilitiesForTaskInstance({
+        id: 'yt',
+        type: 'youtrack',
+        config: { baseUrl: 'https://yt.invalid' },
+        status: 'active',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toThrow(/Unknown provider/u)
   })
 })
 
@@ -282,43 +228,78 @@ describe('registerContributedTaskProviderType duplicates', () => {
     }
   })
 
-  test('a contributed type that shadows a built-in still throws', () => {
+  test('youtrack can be registered as contributed now that it is not a built-in', () => {
     mockLogger()
     expect(() =>
-      registerContributedTaskProviderType('kaneo', {
-        pluginId: 'evil',
-        factory: () => createMockProvider({ name: 'kaneo' }),
+      registerContributedTaskProviderType('youtrack', {
+        pluginId: 'task-provider-youtrack',
+        factory: () => createMockProvider({ name: 'youtrack' }),
         capabilities: new Set<never>(),
-        displayName: 'evil',
-        configSchema: [] as const,
+        displayName: 'YouTrack',
+        instanceConfigSchema: [] as const,
+        contextConfigSchema: [] as const,
       }),
-    ).toThrow()
+    ).not.toThrow()
+    unregisterContributedTaskProviderType('task-provider-youtrack')
   })
 })
 
 describe('getTaskProviderConfigValidator', () => {
-  test('returns the validator function for a contributed type that declares one', async () => {
+  test('returns a validator that delegates to the contributed validator', async () => {
     mockLogger()
+    const validator = mock((config: Record<string, string>): Promise<{ ok: true }> => {
+      expect(config).toEqual({ baseUrl: 'https://ok.invalid' })
+      return Promise.resolve({ ok: true })
+    })
     registerContributedTaskProviderType('validated-reg', {
       pluginId: 'validator-plugin',
       factory: () => createMockProvider({ name: 'validated-reg' }),
       validateConfig: validator,
       capabilities: new Set<never>(),
       displayName: 'Validated Reg',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('validated-reg')
-      expect(resolved).toBe(validator)
+      expect(resolved).toBeDefined()
       const result = await resolved!({ baseUrl: 'https://ok.invalid' })
+      expect(validator).toHaveBeenCalledTimes(1)
       expect(result).toEqual({ ok: true })
     } finally {
       unregisterContributedTaskProviderType('validator-plugin')
     }
   })
 
-  test('returns undefined for a built-in type (kaneo)', () => {
-    const resolved = getTaskProviderConfigValidator('kaneo')
+  test('returns a validation failure when a contributed validator returns an invalid result', async () => {
+    mockLogger()
+    const validator = mock((): Promise<{ ok: false; reason: string }> => Promise.resolve({ ok: false, reason: '' }))
+    registerContributedTaskProviderType('invalid-validator-reg', {
+      pluginId: 'invalid-validator-plugin',
+      factory: () => createMockProvider({ name: 'invalid-validator-reg' }),
+      validateConfig: validator,
+      capabilities: new Set<never>(),
+      displayName: 'Invalid Validator Reg',
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
+    })
+    try {
+      const resolved = getTaskProviderConfigValidator('invalid-validator-reg')
+      expect(resolved).toBeDefined()
+      const result = await resolved!({ baseUrl: 'https://bad.invalid' })
+
+      expect(validator).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({
+        ok: false,
+        reason: 'Contributed task provider validator returned an invalid result',
+      })
+    } finally {
+      unregisterContributedTaskProviderType('invalid-validator-plugin')
+    }
+  })
+
+  test('returns undefined for an unregistered type', () => {
+    const resolved = getTaskProviderConfigValidator('not-registered-anywhere')
     expect(resolved).toBeUndefined()
   })
 
@@ -329,7 +310,8 @@ describe('getTaskProviderConfigValidator', () => {
       factory: () => createMockProvider({ name: 'no-validator' }),
       capabilities: new Set<never>(),
       displayName: 'No Validator',
-      configSchema: [],
+      instanceConfigSchema: [],
+      contextConfigSchema: [],
     })
     try {
       const resolved = getTaskProviderConfigValidator('no-validator')
@@ -337,21 +319,5 @@ describe('getTaskProviderConfigValidator', () => {
     } finally {
       unregisterContributedTaskProviderType('no-validator-plugin')
     }
-  })
-})
-
-describe('createProvider kaneo credential branching', () => {
-  test('treats a non-cookie credential as an API key', () => {
-    const provider = createProvider('kaneo', { baseUrl: 'https://k.invalid', credential: 'kn-key', workspaceId: 'w' })
-    expect(provider.name).toBe('kaneo')
-  })
-
-  test('treats a session-cookie credential as a cookie', () => {
-    const provider = createProvider('kaneo', {
-      baseUrl: 'https://k.invalid',
-      credential: 'better-auth.session_token=abc',
-      workspaceId: 'w',
-    })
-    expect(provider.name).toBe('kaneo')
   })
 })

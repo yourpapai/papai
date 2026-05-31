@@ -41,6 +41,16 @@ type PlatformStatusInput = Parameters<typeof setPlatformInstanceStatus>[1]
 const adminInstanceViewContract: Expect<Equal<AdminInstanceView, ExpectedAdminInstanceView>> = true
 const platformStatusInputContract: Expect<Equal<PlatformStatusInput, 'active' | 'stopped'>> = true
 
+const applyResult = {
+  applied: 1,
+  started: ['telegram-main'],
+  stopped: [],
+  removed: [],
+  recreated: [],
+  unchanged: [],
+  failed: [],
+} as const
+
 const captured: Array<{ readonly url: string; readonly init: RequestInit }> = []
 
 beforeEach(() => {
@@ -351,6 +361,7 @@ describe('instance API fetchers', () => {
     config: { KANEO_INTERNAL_URL: 'https://kaneo.example' },
     status: 'active',
     createdAt: '2026-05-24T00:00:00.000Z',
+    unresolvedReason: null,
   } as const
 
   test('fetchPlatformInstances GETs and validates /api/platform-instances', async () => {
@@ -404,15 +415,15 @@ describe('instance API fetchers', () => {
     })
   })
 
-  test('applyPlatformInstances POSTs apply and parses the applied count', async () => {
-    installFetch(200, { applied: 1 })
+  test('applyPlatformInstances POSTs apply and parses detailed reconciliation results', async () => {
+    installFetch(200, applyResult)
 
     const result = await applyPlatformInstances()
     const call = firstCaptured()
 
     expect(call.url).toBe('/api/platform-instances/apply')
     expect(call.init.method).toBe('POST')
-    expect(result.applied).toBe(1)
+    expect(result).toEqual(applyResult)
   })
 
   test('fetchTaskInstances GETs task instances', async () => {

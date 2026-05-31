@@ -12,7 +12,6 @@ describe('instances/types', () => {
     const succeeded: BootstrapResult = {
       bootstrapped: true,
       platformInstanceId: 'pi-1',
-      taskInstanceId: 'ti-1',
     }
     const skipped: BootstrapResult = { bootstrapped: false, reason: 'already-bootstrapped' }
 

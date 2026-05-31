@@ -9,14 +9,14 @@ import { z } from 'zod'
 
 setDefaultTimeout(10000)
 
-import { addTaskLabel } from '../../src/providers/kaneo/add-task-label.js'
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createLabel } from '../../src/providers/kaneo/create-label.js'
-import { createTask } from '../../src/providers/kaneo/create-task.js'
-import { listLabels } from '../../src/providers/kaneo/list-labels.js'
-import { removeLabel } from '../../src/providers/kaneo/remove-label.js'
-import { removeTaskLabel } from '../../src/providers/kaneo/remove-task-label.js'
-import { updateLabel } from '../../src/providers/kaneo/update-label.js'
+import { addTaskLabel } from '../../plugins/task-provider-kaneo/add-task-label.js'
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createLabel } from '../../plugins/task-provider-kaneo/create-label.js'
+import { createTask } from '../../plugins/task-provider-kaneo/create-task.js'
+import { listLabels } from '../../plugins/task-provider-kaneo/list-labels.js'
+import { removeLabel } from '../../plugins/task-provider-kaneo/remove-label.js'
+import { removeTaskLabel } from '../../plugins/task-provider-kaneo/remove-task-label.js'
+import { updateLabel } from '../../plugins/task-provider-kaneo/update-label.js'
 import { kaneoApiJsonParsed } from './kaneo-api-helpers.js'
 import { createTestClient, type KaneoTestClient } from './kaneo-test-client.js'
 

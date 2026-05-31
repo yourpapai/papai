@@ -44,15 +44,22 @@ export type ConfigResponse = z.infer<typeof ConfigResponseSchema>
 export const ToolRiskSchema = z.enum(['read', 'write', 'destructive', 'open-world'])
 export type ToolRisk = z.infer<typeof ToolRiskSchema>
 
-export const ToolEntrySchema = z.object({ name: z.string(), enabled: z.boolean(), risk: ToolRiskSchema })
+export const ToolPermissionSchema = z.enum(['allow', 'ask', 'deny'])
+export type ToolPermission = z.infer<typeof ToolPermissionSchema>
+
+export const ToolDomainSummarySchema = z.enum(['allow', 'ask', 'deny', 'partial'])
+export type ToolDomainSummary = z.infer<typeof ToolDomainSummarySchema>
+
+export const ToolEntrySchema = z.object({ name: z.string(), permission: ToolPermissionSchema, risk: ToolRiskSchema })
 export const ToolDomainSchema = z.object({
   domain: z.string(),
-  status: z.enum(['on', 'off', 'partial']),
+  summary: ToolDomainSummarySchema,
   tools: z.array(ToolEntrySchema),
 })
 export const ToolsResponseSchema = z.object({ contextId: z.string(), domains: z.array(ToolDomainSchema) })
 export type ToolsResponse = z.infer<typeof ToolsResponseSchema>
 export type ToolDomainView = z.infer<typeof ToolDomainSchema>
+export type ToolEntry = z.infer<typeof ToolEntrySchema>
 
 // --- MCP ---
 

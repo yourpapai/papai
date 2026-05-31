@@ -6,7 +6,7 @@
 import type { TaskProvider } from '../providers/types.js'
 import { consumeWebFetchQuota } from '../web/rate-limit.js'
 import { buildIdentityFacade } from './identity-facade.js'
-import { kvDelete, kvGet, kvList, kvSet } from './store.js'
+import { getPluginAdminConfig, kvDelete, kvGet, kvList, kvSet } from './store.js'
 import type { PluginManifest, PluginTaskProviderFacade, PluginToolRuntimeContext } from './types.js'
 
 export type PluginToolSetRuntime = {
@@ -46,6 +46,17 @@ function buildRuntimeKv(
     },
     list(prefix?: string): Array<{ key: string; value: string }> {
       return kvList(pluginId, contextId, prefix).map((row) => ({ key: row.key, value: row.value }))
+    },
+  })
+}
+
+function buildRuntimeAdminConfig(pluginId: string, manifest: PluginManifest): PluginToolRuntimeContext['adminConfig'] {
+  const adminKeys = new Set(manifest.configRequirements.filter((req) => req.scope === 'admin').map((req) => req.key))
+
+  return Object.freeze({
+    get(key: string): string | undefined {
+      if (!adminKeys.has(key)) return undefined
+      return getPluginAdminConfig(pluginId, key)
     },
   })
 }
@@ -117,6 +128,7 @@ export function buildPluginToolRuntimeContext(
       permissions.has('tasks.write'),
     ),
     kv: buildRuntimeKv(pluginId, runtime.storageContextId, permissions.has('storage')),
+    adminConfig: buildRuntimeAdminConfig(pluginId, manifest),
     ...(identity === undefined ? {} : { identity }),
     rateLimit: buildRateLimit(),
   })

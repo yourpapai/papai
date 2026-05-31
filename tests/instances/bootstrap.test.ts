@@ -55,19 +55,38 @@ describe('bootstrapInstancesFromEnv', () => {
     restoreEnv(envSnap)
   })
 
-  test('empty DB + complete telegram + kaneo env → seeds defaults', () => {
+  test('bootstrap does not read TASK_PROVIDER or task env vars', () => {
     process.env['CHAT_PROVIDER'] = 'telegram'
+    process.env['TELEGRAM_BOT_TOKEN'] = 'tg'
+    process.env['ADMIN_USER_ID'] = '1'
     process.env['TASK_PROVIDER'] = 'kaneo'
+    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
+
+    const result = bootstrapInstancesFromEnv()
+
+    expect(result).toMatchObject({ bootstrapped: true, platformInstanceId: 'telegram-default' })
+    expect(result).not.toHaveProperty('taskInstanceId')
+    expect(listTaskInstances()).toHaveLength(0)
+  })
+
+  test('bootstrap accepts a deployment with no task env vars set', () => {
+    process.env['CHAT_PROVIDER'] = 'telegram'
+    process.env['TELEGRAM_BOT_TOKEN'] = 'tg'
+    process.env['ADMIN_USER_ID'] = '1'
+
+    expect(bootstrapInstancesFromEnv().bootstrapped).toBe(true)
+  })
+
+  test('empty DB + complete telegram env seeds platform and admin rows', () => {
+    process.env['CHAT_PROVIDER'] = 'telegram'
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['TELEGRAM_BOT_TOKEN'] = 'tg-token'
-    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
 
     const result = bootstrapInstancesFromEnv()
 
     expect(result).toEqual({
       bootstrapped: true,
       platformInstanceId: 'telegram-default',
-      taskInstanceId: 'kaneo-default',
     })
 
     const platforms = listPlatformInstances()
@@ -76,11 +95,7 @@ describe('bootstrapInstancesFromEnv', () => {
     expect(platforms[0]?.status).toBe('active')
     expect(platforms[0]?.config['token']).toBe('tg-token')
 
-    const tasks = listTaskInstances()
-    expect(tasks).toHaveLength(1)
-    expect(tasks[0]?.type).toBe('kaneo')
-    expect(tasks[0]?.config).toMatchObject({ baseUrl: 'https://kaneo.invalid' })
-    expect(tasks[0]?.config).not.toHaveProperty('url')
+    expect(listTaskInstances()).toHaveLength(0)
 
     expect(isAdmin('admin-1', SUPER_ADMIN_PLATFORM_ID)).toBe(true)
     expect(isAdmin('admin-1', 'telegram-default')).toBe(true)
@@ -88,11 +103,9 @@ describe('bootstrapInstancesFromEnv', () => {
 
   test('mattermost requires both url and token', () => {
     process.env['CHAT_PROVIDER'] = 'mattermost'
-    process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['MATTERMOST_URL'] = 'https://mm.invalid'
     // MATTERMOST_BOT_TOKEN intentionally missing
-    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
 
     const result = bootstrapInstancesFromEnv()
 
@@ -105,22 +118,6 @@ describe('bootstrapInstancesFromEnv', () => {
     expect(listTaskInstances()).toHaveLength(0)
   })
 
-  test('youtrack requires YOUTRACK_URL', () => {
-    process.env['CHAT_PROVIDER'] = 'telegram'
-    process.env['TASK_PROVIDER'] = 'youtrack'
-    process.env['ADMIN_USER_ID'] = 'admin-1'
-    process.env['TELEGRAM_BOT_TOKEN'] = 'tg-token'
-    // YOUTRACK_URL missing
-
-    const result = bootstrapInstancesFromEnv()
-
-    expect(result).toEqual({
-      bootstrapped: false,
-      reason: 'partial-env',
-      missing: ['YOUTRACK_URL'],
-    })
-  })
-
   test('empty DB + no env returns no-env (does not throw)', () => {
     const result = bootstrapInstancesFromEnv()
     expect(result).toEqual({ bootstrapped: false, reason: 'no-env' })
@@ -129,78 +126,65 @@ describe('bootstrapInstancesFromEnv', () => {
 
   test('rerunning with the same env is idempotent (already-bootstrapped)', () => {
     process.env['CHAT_PROVIDER'] = 'telegram'
-    process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['TELEGRAM_BOT_TOKEN'] = 'tg-token'
-    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
 
     bootstrapInstancesFromEnv()
     const second = bootstrapInstancesFromEnv()
 
     expect(second).toEqual({ bootstrapped: false, reason: 'already-bootstrapped' })
     expect(listPlatformInstances()).toHaveLength(1)
-    expect(listTaskInstances()).toHaveLength(1)
+    expect(listTaskInstances()).toHaveLength(0)
   })
 
   test('seeds discord platform when CHAT_PROVIDER=discord', () => {
     process.env['CHAT_PROVIDER'] = 'discord'
-    process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['DISCORD_BOT_TOKEN'] = 'dc-token'
-    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
 
     const result = bootstrapInstancesFromEnv()
     expect(result).toEqual({
       bootstrapped: true,
       platformInstanceId: 'discord-default',
-      taskInstanceId: 'kaneo-default',
     })
     expect(listPlatformInstances()[0]?.config['token']).toBe('dc-token')
+    expect(listTaskInstances()).toHaveLength(0)
   })
 
-  test('empty DB + complete mattermost + youtrack env writes descriptor-shaped baseUrl configs', () => {
+  test('empty DB + complete mattermost env writes descriptor-shaped baseUrl config', () => {
     process.env['CHAT_PROVIDER'] = 'mattermost'
-    process.env['TASK_PROVIDER'] = 'youtrack'
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['MATTERMOST_URL'] = 'https://mattermost.invalid'
     process.env['MATTERMOST_BOT_TOKEN'] = 'mm-token'
-    process.env['YOUTRACK_URL'] = 'https://youtrack.invalid'
 
     const result = bootstrapInstancesFromEnv()
 
     expect(result).toEqual({
       bootstrapped: true,
       platformInstanceId: 'mattermost-default',
-      taskInstanceId: 'youtrack-default',
     })
 
     expect(listPlatformInstances()[0]?.config).toMatchObject({ baseUrl: 'https://mattermost.invalid' })
     expect(listPlatformInstances()[0]?.config).not.toHaveProperty('url')
-    expect(listTaskInstances()[0]?.config).toMatchObject({ baseUrl: 'https://youtrack.invalid' })
-    expect(listTaskInstances()[0]?.config).not.toHaveProperty('url')
+    expect(listTaskInstances()).toHaveLength(0)
   })
 
   test('bootstrap is atomic: a failure mid-seed leaves the DB clean', () => {
     process.env['CHAT_PROVIDER'] = 'telegram'
-    process.env['TASK_PROVIDER'] = 'kaneo'
     process.env['ADMIN_USER_ID'] = 'admin-1'
     process.env['TELEGRAM_BOT_TOKEN'] = 'tg-token'
-    process.env['KANEO_CLIENT_URL'] = 'https://kaneo.invalid'
 
-    // Force the second store write (`insertTaskInstance`) to fail by dropping
-    // the table out from under it. The bootstrap should propagate the error
-    // AND roll back the platform-instance row that was inserted first.
+    // Force the platform insert to fail by dropping the table out from under it.
+    // The bootstrap should propagate the error AND roll back any rows inserted
+    // before the failure so the DB stays clean.
     const db = getDrizzleDb()
-    db.run(sql`DROP TABLE task_instances`)
+    db.run(sql`DROP TABLE platform_instances`)
 
     expect(() => bootstrapInstancesFromEnv()).toThrow()
 
-    // Re-create `task_instances` so the post-throw assertion can read both
-    // tables without tripping over the missing one. If the seed had been
-    // non-transactional, the platform row from write #1 would still be
-    // present here.
+    // Re-create the table so the post-throw assertion can query it cleanly.
     db.run(sql`
-      CREATE TABLE task_instances (
+      CREATE TABLE platform_instances (
         id TEXT PRIMARY KEY NOT NULL,
         type TEXT NOT NULL,
         config TEXT NOT NULL,

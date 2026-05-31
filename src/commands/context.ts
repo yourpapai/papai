@@ -35,7 +35,7 @@ const log = logger.child({ scope: 'commands:context' })
 
 export interface ContextCommandDeps {
   collectContext: (contextId: string, collectorDeps: ContextCollectorDeps) => ContextSnapshot
-  buildProvider: (contextId: string) => TaskProvider | null
+  buildProvider: (contextId: string) => Promise<TaskProvider | null> | TaskProvider | null
   buildLiveToolSet: BuildLiveToolSet
   resolveActiveToolDefinitions: (resolvedToolSurface: ResolvedContextToolSurface) => Record<string, unknown>
   resolveToolSurface: (
@@ -203,7 +203,7 @@ async function handleContextCommand(
 ): Promise<void> {
   log.debug({ userId: msg.user.id, storageContextId: auth.storageContextId }, '/context command called')
 
-  const provider = deps.buildProvider(auth.storageContextId)
+  const provider = await deps.buildProvider(auth.storageContextId)
   const lastUserText = getLastUserText(loadHistory(auth.storageContextId))
   const resolvedToolSurface = await deps.resolveToolSurface(
     auth.storageContextId,

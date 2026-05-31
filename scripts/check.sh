@@ -183,7 +183,33 @@ if [ "$STAGED_MODE" = true ]; then
   # Run format:check on staged files
   (
     exit_code=0
-    bunx oxfmt --check --ignore-path=.oxfmtignore "${relevant_files[@]}" >"$TMPDIR/format_check.out" 2>&1 || exit_code=$?
+    format_checked_files=()
+    for file in "${relevant_files[@]}"; do
+      keep=true
+      case "$file" in
+        package-lock.json|*/package-lock.json) keep=false ;;
+      esac
+      if $keep && [ -f .oxfmtignore ]; then
+        while IFS= read -r pattern; do
+          [ -z "$pattern" ] && continue
+          case "$pattern" in
+            \#*) continue ;;
+          esac
+          case "$file" in
+            ${pattern}*) keep=false; break ;;
+          esac
+        done < .oxfmtignore
+      fi
+      if $keep; then
+        format_checked_files+=("$file")
+      fi
+    done
+
+    if [ ${#format_checked_files[@]} -eq 0 ]; then
+      printf '%s\n' 'ℹ No format-checkable staged files for oxfmt' >"$TMPDIR/format_check.out"
+    else
+      bunx oxfmt --check --ignore-path=.oxfmtignore "${format_checked_files[@]}" >"$TMPDIR/format_check.out" 2>&1 || exit_code=$?
+    fi
     echo "$exit_code" >"$TMPDIR/format_check.exit"
   ) &
   format_pid=$!

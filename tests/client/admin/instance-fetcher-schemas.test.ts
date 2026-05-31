@@ -6,10 +6,27 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  ApplyInstancesResultSchema,
   PlatformProviderTypeViewSchema,
   TaskInstanceViewSchema,
   TaskProviderTypeViewSchema,
 } from '../../../client/admin/instance-fetcher-schemas.js'
+
+describe('ApplyInstancesResultSchema', () => {
+  test('ApplyInstancesResultSchema accepts detailed reconciliation result', () => {
+    const result = ApplyInstancesResultSchema.safeParse({
+      applied: 2,
+      started: ['telegram-main'],
+      stopped: ['discord-old'],
+      removed: ['discord-old'],
+      recreated: ['mattermost-main'],
+      unchanged: ['telegram-secondary'],
+      failed: [{ id: 'telegram-bad', action: 'stop', error: 'boom' }],
+    })
+
+    expect(result.success).toBe(true)
+  })
+})
 
 describe('TaskInstanceViewSchema', () => {
   test('accepts any string type after the enum was opened', () => {
@@ -19,6 +36,7 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'active',
       createdAt: '2026-05-26T00:00:00.000Z',
+      unresolvedReason: null,
     })
     expect(result.success).toBe(true)
   })
@@ -30,6 +48,19 @@ describe('TaskInstanceViewSchema', () => {
       config: {},
       status: 'pending',
       createdAt: '2026-05-26T00:00:00.000Z',
+      unresolvedReason: null,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('accepts a non-null unresolvedReason when the provider plugin is not active', () => {
+    const result = TaskInstanceViewSchema.safeParse({
+      id: 'missing-1',
+      type: 'no-such-provider',
+      config: {},
+      status: 'active',
+      createdAt: '2026-05-29T00:00:00.000Z',
+      unresolvedReason: "Provider plugin for type 'no-such-provider' is not active. Run /plugin approve.",
     })
     expect(result.success).toBe(true)
   })

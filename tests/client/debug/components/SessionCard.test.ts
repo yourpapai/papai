@@ -18,7 +18,6 @@ function baseSession(overrides: Partial<Session> = {}): Session {
     factsCount: 2,
     summary: null,
     configKeys: [],
-    workspaceId: null,
     ...overrides,
   }
 }

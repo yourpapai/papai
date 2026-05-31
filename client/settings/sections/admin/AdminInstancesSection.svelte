@@ -15,7 +15,7 @@
     fetchAdminTaskInstances,
     fetchAdminTaskProviderTypes,
     updateAdminPlatformInstance,
-  } from '../../fetchers.js'
+  } from '../../admin-fetchers.js'
 
   let platforms: AdminInstanceRow[] = $state([])
   let tasks: AdminInstanceRow[] = $state([])

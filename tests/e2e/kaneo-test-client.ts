@@ -5,12 +5,12 @@
 
 import { z } from 'zod'
 
+import type { KaneoConfig } from '../../plugins/task-provider-kaneo/client.js'
+import { createProject } from '../../plugins/task-provider-kaneo/create-project.js'
+import { deleteProject } from '../../plugins/task-provider-kaneo/delete-project.js'
+import { deleteTask } from '../../plugins/task-provider-kaneo/delete-task.js'
+import { removeLabel } from '../../plugins/task-provider-kaneo/remove-label.js'
 import { logger } from '../../src/logger.js'
-import type { KaneoConfig } from '../../src/providers/kaneo/client.js'
-import { createProject } from '../../src/providers/kaneo/create-project.js'
-import { deleteProject } from '../../src/providers/kaneo/delete-project.js'
-import { deleteTask } from '../../src/providers/kaneo/delete-task.js'
-import { removeLabel } from '../../src/providers/kaneo/remove-label.js'
 import { getE2EConfigSync, type E2EConfig } from './global-setup.js'
 import { generateUniqueSuffix } from './test-helpers.js'
 

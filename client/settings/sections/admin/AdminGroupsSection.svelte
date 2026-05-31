@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { addAdminGroup, fetchAdminGroups, removeAdminGroup } from '../../fetchers.js'
+  import { addAdminGroup, fetchAdminGroups, removeAdminGroup } from '../../admin-fetchers.js'
   import type { AdminGroupRow } from '../../fetcher-schemas.js'
 
   let groups: AdminGroupRow[] = $state([])

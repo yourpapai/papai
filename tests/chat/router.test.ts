@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
+import { compareConfigKeyOrder } from '../../src/chat/router-helpers.js'
 import { ChatRouter, type ManagedChatInstance, type ManagedChatInstanceFactory } from '../../src/chat/router.js'
 import { dmTarget } from '../../src/chat/types.js'
 import type {
@@ -227,6 +228,14 @@ const makeInteraction = (platformInstanceId: string): IncomingInteraction => ({
   callbackData: 'callback',
 })
 
+const snapshotFingerprint = (type: PlatformInstanceType, config: InstanceConfig): string => {
+  const fingerprintRouter = new ChatRouter((_id, providerType) => makeProvider(providerType, {}))
+  fingerprintRouter.addInstance('fingerprint-test', type, config)
+  const [snapshot] = fingerprintRouter.listInstances()
+  if (snapshot === undefined) throw new Error('missing fingerprint snapshot')
+  return snapshot.configFingerprint
+}
+
 describe('ChatRouter', () => {
   let providers: Record<string, FakeProvider>
   let factory: ManagedChatInstanceFactory
@@ -413,12 +422,45 @@ describe('ChatRouter', () => {
 
     const snapshots = router.listInstances()
 
-    expect(snapshots).toEqual([
+    expect(snapshots.map(({ id, type, status }) => ({ id, type, status }))).toEqual([
       { id: 'telegram-main', type: 'telegram', status: 'active' },
       { id: 'discord-main', type: 'discord', status: 'stopped' },
     ])
+    expect(snapshots[0]?.configFingerprint).toBeString()
+    expect(snapshots[1]?.configFingerprint).toBeString()
     expect('provider' in snapshots[0]!).toBe(false)
     expect(snapshots[0]).not.toBe(routerInstance('telegram-main'))
+  })
+
+  test('listInstances exposes safe config fingerprints without raw config', () => {
+    const snapshotRouter = new ChatRouter((_id, type, _config) => makeProvider(type, {}))
+
+    snapshotRouter.addInstance('telegram-main', 'telegram', { token: 'secret-token' })
+
+    const [snapshot] = snapshotRouter.listInstances()
+
+    expect(snapshot).toMatchObject({ id: 'telegram-main', type: 'telegram', status: 'pending' })
+    expect(snapshot?.configFingerprint).toBeString()
+    expect(snapshot?.configFingerprint).toMatch(/^[a-f0-9]{64}$/u)
+    expect(JSON.stringify(snapshot)).not.toContain('secret-token')
+  })
+
+  test('config fingerprints are stable across key order', () => {
+    const left = snapshotFingerprint('telegram', { token: 'secret-token', url: 'https://example.test' })
+    const right = snapshotFingerprint('telegram', { url: 'https://example.test', token: 'secret-token' })
+
+    expect(left).toBe(right)
+  })
+
+  test('config fingerprint sorting uses code point key order', () => {
+    expect(['z', 'ä'].toSorted(compareConfigKeyOrder)).toEqual(['z', 'ä'])
+  })
+
+  test('config fingerprints change when config or platform type changes', () => {
+    const baseline = snapshotFingerprint('telegram', { token: 'secret-token' })
+
+    expect(snapshotFingerprint('telegram', { token: 'rotated-token' })).not.toBe(baseline)
+    expect(snapshotFingerprint('discord', { token: 'secret-token' })).not.toBe(baseline)
   })
 
   test('isolates start failures and starts remaining instances', async () => {

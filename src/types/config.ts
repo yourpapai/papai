@@ -12,6 +12,12 @@
 export type TaskProviderConfigKey = 'kaneo_apikey' | 'kaneo_workspace_id' | 'youtrack_token'
 export const KANEO_WORKSPACE_CONFIG_KEY = 'kaneo_workspace_id' satisfies TaskProviderConfigKey
 
+// Plugin-namespaced config keys for the task-provider-kaneo plugin.
+// These are plain string constants (not ConfigKey union members) used after
+// migration 048 renames the flat keys in user_config.
+export const KANEO_PLUGIN_CREDENTIAL_KEY = 'plugin:task-provider-kaneo:provider:credential'
+export const KANEO_PLUGIN_WORKSPACE_KEY = 'plugin:task-provider-kaneo:provider:workspaceId'
+
 // User preference config keys (always available)
 export type PreferenceConfigKey = 'timezone'
 
@@ -28,7 +34,7 @@ export type ConfigField = {
   readonly label: string
   readonly required: boolean
   readonly sensitive: boolean
-  readonly kind: 'preference' | 'provider-context'
+  readonly kind: 'preference' | 'provider-context' | 'plugin-context'
 }
 
 // All valid config keys (not filtered by provider)
@@ -49,7 +55,8 @@ export function isConfigKey(key: string): key is ConfigKey {
 }
 
 const PLUGIN_PROVIDER_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:provider:[A-Za-z0-9][A-Za-z0-9_.-]*$/u
+const PLUGIN_CONTEXT_CONFIG_KEY_PATTERN = /^plugin:[a-z0-9][a-z0-9-]*:[a-z][a-z0-9_]*$/u
 
 export function isAllowedDynamicConfigKey(key: string): boolean {
-  return isConfigKey(key) || PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key)
+  return isConfigKey(key) || PLUGIN_PROVIDER_CONFIG_KEY_PATTERN.test(key) || PLUGIN_CONTEXT_CONFIG_KEY_PATTERN.test(key)
 }

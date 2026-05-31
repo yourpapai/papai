@@ -1,11 +1,9 @@
-// .opencode/plugins/tdd-enforcement.ts
-// OpenCode plugin TDD enforcement following ADR-0070: Silent PostToolUse + Stop-Gated Full Check
-// Delegates to .hooks/tdd/checks/* for all check implementations
-//
-// NOTE: session.idle is used because OpenCode does not provide a blocking session.stop hook.
-// The full check runs after the agent loop breaks and sends a follow-up prompt on failure.
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Dmitriy Lazarev
+// Use of this software is governed by the Business Source License 1.1.
+// See LICENSE in the project root for details.
 
-import type { Plugin } from '@opencode-ai/plugin'
+import type { Hooks, Plugin } from '@opencode-ai/plugin'
 
 import { blockGitCheckoutDiscard } from '../../.hooks/git/checks/block-git-checkout-discard.mjs'
 import { blockGitStash } from '../../.hooks/git/checks/block-git-stash.mjs'
@@ -14,137 +12,193 @@ import { enforceTdd } from '../../.hooks/tdd/checks/enforce-tdd.mjs'
 import { enforceWritePolicy } from '../../.hooks/tdd/checks/enforce-write-policy.mjs'
 import { trackTestWrite } from '../../.hooks/tdd/checks/track-test-write.mjs'
 import { verifyTestImport } from '../../.hooks/tdd/checks/verify-test-import.mjs'
-import { getSessionBaseline } from '../../.hooks/tdd/coverage-session.mjs'
 import { getSessionsDir } from '../../.hooks/tdd/paths.mjs'
 import { SessionState } from '../../.hooks/tdd/session-state.mjs'
 
-// OpenCode edit tools that use filePath
 const EDIT_TOOLS = new Set(['write', 'edit', 'multiedit'])
 
-export const TddEnforcement: Plugin = async ({ client, directory }) => {
-  // Track active session ID across tool events so session.idle has the correct ID
+type ToolBeforeHook = NonNullable<Hooks['tool.execute.before']>
+type ToolBeforeInput = Parameters<ToolBeforeHook>[0]
+type ToolBeforeOutput = Parameters<ToolBeforeHook>[1]
+type ToolAfterHook = NonNullable<Hooks['tool.execute.after']>
+type ToolAfterInput = Parameters<ToolAfterHook>[0]
+type EventHook = NonNullable<Hooks['event']>
+type EventInput = Parameters<EventHook>[0]
+
+type TddContext = {
+  tool_name: string | undefined
+  tool_input: Record<string, unknown>
+  session_id: string
+  cwd: string
+}
+
+type PostWriteContext = {
+  tool_input: { file_path: string }
+  session_id: string
+  cwd: string
+}
+
+const getCommand = (args: unknown): string => {
+  if (args === null || typeof args !== 'object') return ''
+  const command: unknown = Reflect.get(args, 'command')
+  if (typeof command !== 'string') return ''
+  return command
+}
+
+const getFilePath = (args: unknown): string | undefined => {
+  if (args === null || typeof args !== 'object') return undefined
+  const filePath: unknown = Reflect.get(args, 'filePath')
+  if (typeof filePath !== 'string' || filePath.length === 0) return undefined
+  return filePath
+}
+
+const blockBashCommand = (command: string): void => {
+  const gitStashResult = blockGitStash({ tool_name: 'bash', tool_input: { command } })
+  if (gitStashResult) throw new Error(gitStashResult.reason)
+
+  const gitCheckoutResult = blockGitCheckoutDiscard({
+    tool_name: 'bash',
+    tool_input: { command },
+  })
+  if (gitCheckoutResult) throw new Error(gitCheckoutResult.reason)
+}
+
+const createPreWriteContext = (
+  input: ToolBeforeInput,
+  args: Record<string, unknown>,
+  filePath: string,
+  directory: string,
+): TddContext => {
+  return {
+    tool_name: input.tool,
+    tool_input: { ...args, file_path: filePath },
+    session_id: input.sessionID,
+    cwd: directory,
+  }
+}
+
+const createPostWriteContext = (filePath: string, sessionID: string, directory: string): PostWriteContext => {
+  return {
+    tool_input: { file_path: filePath },
+    session_id: sessionID,
+    cwd: directory,
+  }
+}
+
+const toToolArgsRecord = (args: unknown): Record<string, unknown> | null => {
+  if (args === null || typeof args !== 'object') return null
+
+  const record: Record<string, unknown> = {}
+  for (const key of Reflect.ownKeys(args)) {
+    if (typeof key !== 'string') continue
+    record[key] = Reflect.get(args, key)
+  }
+
+  return record
+}
+
+const handleToolExecuteBefore = (directory: string, input: ToolBeforeInput, output: ToolBeforeOutput): void => {
+  if (input.tool === 'bash') {
+    blockBashCommand(getCommand(output.args))
+  }
+
+  if (!EDIT_TOOLS.has(input.tool)) return
+
+  const filePath = getFilePath(output.args)
+  if (filePath === undefined) return
+
+  const toolArgs = toToolArgsRecord(output.args)
+  if (toolArgs === null) return
+
+  const ctx = createPreWriteContext(input, toolArgs, filePath, directory)
+
+  const writePolicyResult = enforceWritePolicy(ctx)
+  if (writePolicyResult) {
+    throw new Error(writePolicyResult.reason)
+  }
+
+  const tddResult = enforceTdd(ctx)
+  if (tddResult) {
+    throw new Error(tddResult.reason)
+  }
+
+  const state = new SessionState(input.sessionID, getSessionsDir(directory))
+  state.setNeedsRecheck(true)
+}
+
+const notifySession = (client: Parameters<Plugin>[0]['client'], sessionID: string, text: string): void => {
+  void client.session.promptAsync({
+    path: { id: sessionID },
+    body: {
+      parts: [{ type: 'text', text }],
+    },
+  })
+}
+
+const handleToolExecuteAfter = (
+  client: Parameters<Plugin>[0]['client'],
+  directory: string,
+  input: ToolAfterInput,
+): void => {
+  if (!EDIT_TOOLS.has(input.tool)) return
+
+  const filePath = getFilePath(input.args)
+  if (filePath === undefined) return
+
+  const ctx = createPostWriteContext(filePath, input.sessionID, directory)
+
+  trackTestWrite(ctx)
+
+  const importResult = verifyTestImport(ctx)
+  if (!importResult) return
+
+  notifySession(client, input.sessionID, importResult.reason)
+}
+
+const handleSessionIdle = (
+  client: Parameters<Plugin>[0]['client'],
+  directory: string,
+  input: EventInput,
+  sessionID: string,
+): void => {
+  if (input.event.type !== 'session.idle') return
+  if (sessionID.length === 0) return
+
+  const state = new SessionState(sessionID, getSessionsDir(directory))
+  if (state.getNeedsRecheck() === false) {
+    state.setNeedsRecheck(true)
+    return
+  }
+
+  const result = checkFull({ cwd: directory, session_id: sessionID })
+  if (!result) {
+    state.setNeedsRecheck(true)
+    return
+  }
+
+  notifySession(client, sessionID, result.reason)
+  state.setNeedsRecheck(false)
+}
+
+export const TddEnforcement: Plugin = ({ client, directory }) => {
   let currentSessionID = ''
 
-  return {
-    // PRE-WRITE HOOK (runs before Write/Edit/MultiEdit)
-    'tool.execute.before': async (input, output) => {
-      // Capture session ID from every tool call so session.idle always knows it
+  return Promise.resolve({
+    'tool.execute.before': (input, output) => {
       currentSessionID = input.sessionID
-
-      // Block destructive git commands regardless of tool type
-      if (input.tool === 'bash') {
-        const command = (output.args?.command as string) ?? ''
-        const gitStashResult = blockGitStash({ tool_name: 'bash', tool_input: { command } })
-        if (gitStashResult) throw new Error(gitStashResult.reason)
-        const gitCheckoutResult = blockGitCheckoutDiscard({
-          tool_name: 'bash',
-          tool_input: { command },
-        })
-        if (gitCheckoutResult) throw new Error(gitCheckoutResult.reason)
-      }
-
-      // Only process edit tools
-      if (!EDIT_TOOLS.has(input.tool)) return
-
-      const toolArgs = output.args as Record<string, unknown>
-      const filePath = toolArgs['filePath'] as string
-      if (!filePath) return
-
-      const ctx = {
-        tool_name: input.tool,
-        tool_input: { ...toolArgs, file_path: filePath },
-        session_id: input.sessionID,
-        cwd: directory,
-      }
-
-      // [0] enforceWritePolicy - Block protected config edits and inline suppressions
-      const writePolicyResult = enforceWritePolicy(ctx)
-      if (writePolicyResult) {
-        throw new Error(writePolicyResult.reason)
-      }
-
-      // Capture coverage baseline BEFORE any edits to ensure it reflects the
-      // pre-edit state, not the state after the first edit (fixes lazy capture bug)
-      getSessionBaseline(input.sessionID, directory)
-
-      // [1] enforceTdd - Block impl writes without test
-      const tddResult = enforceTdd(ctx)
-      if (tddResult) {
-        throw new Error(tddResult.reason)
-      }
-
-      // Set needsRecheck flag so Stop hook knows to run full check
-      const state = new SessionState(input.sessionID, getSessionsDir(directory))
-      state.setNeedsRecheck(true)
+      handleToolExecuteBefore(directory, input, output)
+      return Promise.resolve()
     },
 
-    // POST-WRITE HOOK (runs after Write/Edit/MultiEdit)
-    'tool.execute.after': async (input) => {
+    'tool.execute.after': (input) => {
       currentSessionID = input.sessionID
-
-      if (!EDIT_TOOLS.has(input.tool)) return
-
-      const filePath = input.args['filePath'] as string
-      if (!filePath) return
-
-      // Delegate to hook checks with OpenCode-compatible context shape
-      const ctx = {
-        tool_input: { file_path: filePath },
-        session_id: input.sessionID,
-        cwd: directory,
-      }
-
-      // [4] trackTestWrite - Record test files written this session
-      trackTestWrite(ctx)
-
-      // [5] verifyTestImport - Verify test files import their implementation module
-      const importResult = verifyTestImport(ctx)
-      if (importResult) {
-        void client.session.promptAsync({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: 'text', text: importResult.reason }],
-          },
-        })
-        return
-      }
-
-      // Note: verifyTestsPass and verifyNoNewSurface were removed from post-write
-      // They now run in the Stop hook instead (ADR-0070)
+      handleToolExecuteAfter(client, directory, input)
+      return Promise.resolve()
     },
 
-    // IDLE HOOK (runs when session becomes idle - after agent stops)
-    // Note: OpenCode does not currently support blocking agent stop.
-    // See: https://github.com/anomalyco/opencode/issues/16626
-    // The check still runs to surface issues to the user.
-    'session.idle': async () => {
-      const sessionID = currentSessionID
-      const state = new SessionState(sessionID, getSessionsDir(directory))
-
-      // If needsRecheck is false, LLM was blocked and did nothing → skip check
-      if (!state.getNeedsRecheck()) {
-        state.setNeedsRecheck(true)
-        return
-      }
-
-      // Run full check
-      const result = checkFull({ cwd: directory, session_id: sessionID })
-
-      if (result) {
-        // Cannot block here, but we can notify via prompt
-        // Note: session.idle runs after the loop breaks, so this creates a follow-up
-        void client.session.promptAsync({
-          path: { id: sessionID },
-          body: {
-            parts: [{ type: 'text', text: result.reason }],
-          },
-        })
-        state.setNeedsRecheck(false)
-        return
-      }
-
-      // All checks passed
-      state.setNeedsRecheck(true)
+    event: (input) => {
+      handleSessionIdle(client, directory, input, currentSessionID)
+      return Promise.resolve()
     },
-  }
+  })
 }

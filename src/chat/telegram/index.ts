@@ -53,12 +53,12 @@ import {
 export { extractReplyContext } from './message-extraction.js'
 const log = logger.child({ scope: 'chat:telegram' })
 const ignoreTelegramTypingError = (): null => null
-const resolveConfigValue = (value: string | undefined, fallback: string | undefined): string | undefined => {
-  if (value === undefined) return fallback
-  return value
+type TelegramConstructorConfig = {
+  readonly token?: string
+  readonly platformInstanceId: string
 }
 const resolvePlatformInstanceId = (value: string | undefined): string => {
-  if (value === undefined) return 'telegram-default'
+  if (value === undefined || value.trim() === '') throw new Error('platformInstanceId is required')
   return value
 }
 export class TelegramChatProvider implements ChatProvider {
@@ -77,9 +77,11 @@ export class TelegramChatProvider implements ChatProvider {
   private botUsername: string | null = null
   private interactionHandler: ((interaction: IncomingInteraction, reply: ReplyFn) => Promise<void>) | undefined
 
-  constructor(...args: [] | [string | undefined] | [string | undefined, string | undefined]) {
-    const token = resolveConfigValue(args[0], process.env['TELEGRAM_BOT_TOKEN'])
-    const platformInstanceId = resolvePlatformInstanceId(args[1])
+  constructor(...args: [TelegramConstructorConfig] | [string | undefined, string]) {
+    const config = typeof args[0] === 'object' ? args[0] : undefined
+    const tokenOverride = typeof args[0] === 'string' || args[0] === undefined ? args[0] : undefined
+    const token = config === undefined ? (tokenOverride ?? process.env['TELEGRAM_BOT_TOKEN']) : config.token
+    const platformInstanceId = resolvePlatformInstanceId(config === undefined ? args[1] : config.platformInstanceId)
     if (token === undefined || token.trim() === '') {
       throw new Error('TELEGRAM_BOT_TOKEN environment variable is required')
     }

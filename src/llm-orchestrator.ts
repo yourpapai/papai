@@ -6,6 +6,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText, stepCountIs, type ModelMessage } from 'ai'
 
+import { maybeProvisionKaneo } from '../plugins/task-provider-kaneo/provision.js'
 import { getAiOutputSettings } from './ai-output-settings.js'
 import { createAiProgressReporter, type AiProgressReporter } from './ai-progress-reporter.js'
 import { getCachedHistory } from './cache.js'
@@ -25,16 +26,14 @@ import {
   type ProcessMessageRest,
 } from './llm-orchestrator-process-args.js'
 import { handleLlmTurnError, logProcessMessage } from './llm-orchestrator-support.js'
-import { prepareLlmInvocation } from './llm-orchestrator-tools.js'
+import { buildLlmInvocationOpts, prepareLlmInvocation } from './llm-orchestrator-tools.js'
 import type { InvokeModelArgs, LlmOrchestratorDeps } from './llm-orchestrator-types.js'
 import { logger } from './logger.js'
 import { extractFactToolCalls, extractFactToolResults } from './memory-tool-steps.js'
 import { extractFactsFromSdkResults, upsertFact } from './memory.js'
-import { maybeProvisionKaneo } from './providers/kaneo/provision.js'
 import { defaultTaskProviderResolver } from './providers/resolver.js'
 import type { TaskProvider } from './providers/types.js'
 import { getSystemConfig, isSystemConfigComplete, missingSystemConfigKeys } from './system-config.js'
-import { getKaneoWorkspace } from './users.js'
 import { fetchWithoutTimeout } from './utils/fetch.js'
 
 const log = logger.child({ scope: 'llm-orchestrator' })
@@ -48,7 +47,6 @@ const defaultDeps: LlmOrchestratorDeps = {
   buildOpenAI: (apiKey: string, baseURL: string) =>
     createOpenAICompatible({ name: 'openai-compatible', apiKey, baseURL, fetch: fetchWithoutTimeout }),
   resolve: (contextId: string) => defaultTaskProviderResolver.resolve(contextId),
-  getKaneoWorkspace,
   maybeProvisionKaneo: (reply, contextId, username) => maybeProvisionKaneo(reply, contextId, username),
 }
 export { defaultDeps }
@@ -175,7 +173,7 @@ type CallLlmArgs = {
 }
 
 const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: ModelMessage[] } }> => {
-  const { reply, contextId, chatUserId, username, history, userText, contextType, deps, configContextId, turnId } = args
+  const { reply, contextId, chatUserId, username, contextType, deps, configContextId, turnId } = args
   const configId = resolveConfigId(contextId, configContextId)
   if (contextType === 'dm') {
     await deps.maybeProvisionKaneo(reply, configId, username)
@@ -183,7 +181,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   await ensureRequiredConfig(reply, contextId, configId)
   const { llmApiKey, llmBaseUrl, mainModel } = getLlmConfig()
   const model = deps.buildOpenAI(llmApiKey, llmBaseUrl)(mainModel)
-  const provider = deps.resolve(configId)
+  const provider = await deps.resolve(configId)
   if (provider === null) {
     log.warn({ contextId, configId }, 'Task provider unavailable for LLM turn')
     await reply.text('I need /config before I can do that.')
@@ -191,15 +189,7 @@ const callLlm = async (args: CallLlmArgs): Promise<{ response: { messages: Model
   }
   await maybeAutoLinkIdentity(chatUserId, username, provider)
   const { routingResult, validatedMessages, enabledToolNames } = await prepareLlmInvocation(
-    contextId,
-    configId,
-    chatUserId,
-    username,
-    contextType,
-    provider,
-    history,
-    userText,
-    deps.stagedDownloadFn,
+    buildLlmInvocationOpts(args, configId, provider, deps.stagedDownloadFn),
   )
   const progressReporter = createProgressReporterForContext(reply, contextId)
   const result = await invokeModelWithTyping(reply, {

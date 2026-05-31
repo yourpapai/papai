@@ -6,8 +6,8 @@
 <script lang="ts">
   import Pill from '../../shared/ui/Pill.svelte'
 
-  import type { ToolDomainView, ToolRisk } from '../fetcher-schemas.js'
-  import { fetchTools, toggleTool } from '../fetchers.js'
+  import type { ToolDomainSummary, ToolDomainView, ToolPermission, ToolRisk } from '../fetcher-schemas.js'
+  import { fetchTools, setToolPermission } from '../fetchers.js'
 
   interface Props {
     contextId: string
@@ -27,6 +27,13 @@
     return 'danger'
   }
 
+  /** Cycle summary: partial → allow → ask → deny → allow */
+  const nextDomainPermission = (summary: ToolDomainSummary): ToolPermission => {
+    if (summary === 'partial' || summary === 'deny') return 'allow'
+    if (summary === 'allow') return 'ask'
+    return 'deny'
+  }
+
   async function load(id: string): Promise<void> {
     error = null
     loading = true
@@ -40,19 +47,20 @@
     }
   }
 
-  async function onToggleDomain(domain: string): Promise<void> {
+  async function onSetDomainPermission(domain: string, summary: ToolDomainSummary): Promise<void> {
     error = null
+    const permission = nextDomainPermission(summary)
     try {
-      domains = (await toggleTool({ kind: 'domain', domain, contextId })).domains
+      domains = (await setToolPermission({ kind: 'domain', domain, permission, contextId })).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
   }
 
-  async function onToggleTool(tool: string): Promise<void> {
+  async function onSetToolPermission(tool: string, permission: ToolPermission): Promise<void> {
     error = null
     try {
-      domains = (await toggleTool({ kind: 'tool', tool, contextId })).domains
+      domains = (await setToolPermission({ kind: 'tool', tool, permission, contextId })).domains
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -89,12 +97,12 @@
               onclick={() => (expanded[domain.domain] = !expanded[domain.domain])}>
               {expanded[domain.domain] ? '▾' : '▸'} {domain.domain}
             </button>
-            <span class="settings-tools__status">{domain.status}</span>
+            <span class="settings-tools__summary" data-testid={`domain-summary-${domain.domain}`}>{domain.summary}</span>
             <button
               type="button"
               data-testid={`domain-toggle-${domain.domain}`}
-              onclick={() => void onToggleDomain(domain.domain)}>
-              {domain.status === 'off' ? 'Enable all' : 'Disable all'}
+              onclick={() => void onSetDomainPermission(domain.domain, domain.summary)}>
+              {domain.summary === 'deny' ? 'Allow all' : domain.summary === 'ask' ? 'Deny all' : domain.summary === 'allow' ? 'Ask all' : 'Allow all'}
             </button>
           </div>
           {#if expanded[domain.domain]}
@@ -103,12 +111,29 @@
                 <li class="settings-tools__tool">
                   <span class="settings-tools__name">{tool.name}</span>
                   <Pill tone={riskTone(tool.risk)}>{#snippet children()}{tool.risk}{/snippet}</Pill>
-                  <button
-                    type="button"
-                    data-testid={`tool-toggle-${tool.name}`}
-                    onclick={() => void onToggleTool(tool.name)}>
-                    {tool.enabled ? 'Disable' : 'Enable'}
-                  </button>
+                  <div class="settings-tools__perm-group" role="group" aria-label={`Permission for ${tool.name}`}>
+                    <button
+                      type="button"
+                      data-testid={`tool-perm-allow-${tool.name}`}
+                      class:active={tool.permission === 'allow'}
+                      onclick={() => void onSetToolPermission(tool.name, 'allow')}>
+                      Allow
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`tool-perm-ask-${tool.name}`}
+                      class:active={tool.permission === 'ask'}
+                      onclick={() => void onSetToolPermission(tool.name, 'ask')}>
+                      Ask
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`tool-perm-deny-${tool.name}`}
+                      class:active={tool.permission === 'deny'}
+                      onclick={() => void onSetToolPermission(tool.name, 'deny')}>
+                      Deny
+                    </button>
+                  </div>
                 </li>
               {/each}
             </ul>
@@ -146,14 +171,13 @@
     font-size: 12px;
     cursor: pointer;
   }
-  .settings-tools__status {
+  .settings-tools__summary {
     color: var(--fg3);
     font-family: var(--font-mono);
     font-size: 11px;
     text-transform: uppercase;
   }
-  .settings-tools__domain-head button:last-child,
-  .settings-tools__tool button {
+  .settings-tools__domain-head button:last-child {
     margin-left: auto;
     border: 1px solid var(--strong);
     background: var(--bg);
@@ -176,5 +200,22 @@
   .settings-tools__name {
     font-family: var(--font-mono);
     font-size: 12px;
+  }
+  .settings-tools__perm-group {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+  }
+  .settings-tools__perm-group button {
+    border: 1px solid var(--strong);
+    background: var(--bg);
+    color: var(--fg);
+    padding: 4px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .settings-tools__perm-group button.active {
+    background: var(--strong);
+    color: var(--bg);
   }
 </style>

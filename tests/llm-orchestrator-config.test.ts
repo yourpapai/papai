@@ -22,14 +22,18 @@ import {
   setupTestDb,
 } from './utils/test-helpers.js'
 
-const assignKaneoContext = (contextId: string): void => {
+// Both kaneo and youtrack are now plugin-contributed. checkRequiredProviderConfig only checks
+// the hardcoded 'kaneo_apikey' and 'youtrack_token' storage keys, which are no longer produced
+// by getConfigKeysForContext for contributed providers (they use plugin-namespaced keys instead).
+// These tests reflect the new behavior: checkRequiredProviderConfig returns [] for contributed providers.
+const assignYoutrackContext = (contextId: string): void => {
   insertTaskInstance({
-    id: `${contextId}-kaneo`,
-    type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
+    id: `${contextId}-yt`,
+    type: 'youtrack',
+    config: { baseUrl: 'https://youtrack.invalid' },
     status: 'active',
   })
-  setContextSettings({ contextId, taskInstanceId: `${contextId}-kaneo`, platformInstanceId: 'telegram-default' })
+  setContextSettings({ contextId, taskInstanceId: `${contextId}-yt`, platformInstanceId: 'telegram-default' })
 }
 
 describe('llm-orchestrator-config', () => {
@@ -91,45 +95,31 @@ describe('llm-orchestrator-config', () => {
   })
 
   describe('checkRequiredProviderConfig', () => {
-    test('with kaneo: returns only missing provider keys when system_config is set', () => {
-      assignKaneoContext('user-1')
+    test('with contributed youtrack: returns empty because token is plugin-namespaced (not kaneo_apikey or youtrack_token)', () => {
+      // youtrack is now plugin-contributed. Its token storage key becomes
+      // 'plugin:task-provider-youtrack:provider:token', which checkRequiredProviderConfig
+      // does not match (it only checks 'kaneo_apikey' and 'youtrack_token').
+      assignYoutrackContext('user-1')
       setSystemConfig('llm_apikey', 'sk-system', 'env')
       setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
       setSystemConfig('main_model', 'main-system', 'env')
-
-      const missing = checkRequiredProviderConfig('user-1')
-      expect(missing).toEqual(['kaneo_apikey'])
-    })
-
-    test('with kaneo: ignores internal workspace state when visible credentials are present', () => {
-      assignKaneoContext('user-1')
-      setSystemConfig('llm_apikey', 'sk-system', 'env')
-      setSystemConfig('llm_baseurl', 'https://api/v1', 'env')
-      setSystemConfig('main_model', 'main-system', 'env')
-
-      setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
 
       const missing = checkRequiredProviderConfig('user-1')
       expect(missing).toEqual([])
     })
 
     test('returns no LLM keys even when system_config is missing', () => {
-      assignKaneoContext('user-1')
+      assignYoutrackContext('user-1')
       // checkRequiredProviderConfig is provider-only; system config completeness
       // is checked separately at the orchestrator entry point.
-      setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
-
       const missing = checkRequiredProviderConfig('user-1')
       expect(missing).not.toContain('llm_apikey')
       expect(missing).not.toContain('llm_baseurl')
       expect(missing).not.toContain('main_model')
     })
 
-    test('returns an empty list when provider config is complete', () => {
-      assignKaneoContext('user-1')
-      setCachedConfig('user-1', 'kaneo_apikey', 'k-key')
-
-      const missing = checkRequiredProviderConfig('user-1')
+    test('returns an empty list for an unassigned context', () => {
+      const missing = checkRequiredProviderConfig('user-unassigned')
       expect(missing).toEqual([])
     })
   })

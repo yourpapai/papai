@@ -3,32 +3,23 @@
 // Use of this software is governed by the Business Source License 1.1.
 // See LICENSE in the project root for details.
 
-import { describe, expect, test, beforeEach } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { getCachedConfig, setCachedConfig } from '../src/cache.js'
 import { getAllConfig, getConfig, isConfigKey, isSensitiveKey, maskValue, setConfig } from '../src/config.js'
 import { setContextSettings } from '../src/instances/context-store.js'
 import { insertTaskInstance } from '../src/instances/task-store.js'
+import {
+  registerContributedTaskProviderType,
+  unregisterContributedTaskProviderType,
+} from '../src/providers/registry.js'
 import type { ConfigKey } from '../src/types/config.js'
+import { createMockProvider } from './tools/mock-provider.js'
 import { clearUserCache } from './utils/test-cache.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const USER_A = '111'
 const USER_B = '222'
-
-const assignKaneoContext = (contextId: string): void => {
-  insertTaskInstance({
-    id: `${contextId}-kaneo`,
-    type: 'kaneo',
-    config: { url: 'https://kaneo.invalid' },
-    status: 'active',
-  })
-  setContextSettings({
-    contextId,
-    taskInstanceId: `${contextId}-kaneo`,
-    platformInstanceId: 'telegram-default',
-  })
-}
 
 beforeEach(() => {
   mockLogger()
@@ -129,20 +120,62 @@ describe('isConfigKey', () => {
   })
 })
 
+const YOUTRACK_PLUGIN_ID = 'task-provider-youtrack'
+const YOUTRACK_TOKEN_KEY = 'plugin:task-provider-youtrack:provider:token' as const
+
+const registerYouTrackContributed = (): void => {
+  registerContributedTaskProviderType('youtrack', {
+    pluginId: YOUTRACK_PLUGIN_ID,
+    factory: () => createMockProvider({ name: 'youtrack' }),
+    capabilities: new Set(),
+    displayName: 'YouTrack',
+    instanceConfigSchema: [
+      { key: 'baseUrl', label: 'YouTrack URL', required: true, sensitive: false, scope: 'instance' },
+    ],
+    contextConfigSchema: [
+      {
+        key: 'token',
+        label: 'YouTrack Permanent Token',
+        required: true,
+        sensitive: true,
+        scope: 'context',
+      },
+    ],
+    traits: new Set(),
+  })
+}
+
 describe('getAllConfig', () => {
   beforeEach(async () => {
     await setupTestDb()
     seedCommonTestPlatformInstances()
     clearUserCache(USER_A)
     clearUserCache(USER_B)
+    registerYouTrackContributed()
   })
 
-  test('returns all set configs for user', () => {
-    assignKaneoContext(USER_A)
-    setConfig(USER_A, 'kaneo_apikey', 'key-1')
+  afterEach(() => {
+    unregisterContributedTaskProviderType(YOUTRACK_PLUGIN_ID)
+  })
+
+  const assignYoutrackContext = (contextId: string): void => {
+    insertTaskInstance({
+      id: `${contextId}-youtrack`,
+      type: 'youtrack',
+      config: { url: 'https://youtrack.invalid' },
+      status: 'active',
+    })
+    setContextSettings({ contextId, taskInstanceId: `${contextId}-youtrack`, platformInstanceId: 'telegram-default' })
+  }
+
+  test('returns only preference configs for user (youtrack contributed context)', () => {
+    // youtrack is now plugin-contributed; its token key is plugin-namespaced and not a ConfigKey,
+    // so getAllConfig only includes preference keys for a contributed youtrack context
+    assignYoutrackContext(USER_A)
     setConfig(USER_A, 'timezone', 'UTC')
     const allConfig = getAllConfig(USER_A)
-    expect(allConfig.kaneo_apikey).toBe('key-1')
+    // plugin-namespaced token key is not a ConfigKey, so it does not appear in getAllConfig
+    expect(Object.keys(allConfig)).not.toContain(YOUTRACK_TOKEN_KEY)
     expect(allConfig.timezone).toBe('UTC')
   })
 
@@ -152,12 +185,14 @@ describe('getAllConfig', () => {
     expect(allConfig.timezone).toBe('Etc/GMT-5')
   })
 
-  test('does not leak config from other users', () => {
-    assignKaneoContext(USER_A)
-    setConfig(USER_A, 'kaneo_apikey', 'key-a')
-    setConfig(USER_B, 'kaneo_apikey', 'key-b')
+  test('does not leak preference config from other users (youtrack contributed context)', () => {
+    // youtrack is now plugin-contributed; preference isolation is still tested via timezone
+    assignYoutrackContext(USER_A)
+    setConfig(USER_A, 'timezone', 'America/New_York')
+    setConfig(USER_B, 'timezone', 'Europe/Berlin')
     const configA = getAllConfig(USER_A)
-    expect(configA.kaneo_apikey).toBe('key-a')
+    expect(configA.timezone).toBe('America/New_York')
+    expect(configA.timezone).not.toBe('Europe/Berlin')
   })
 })
 

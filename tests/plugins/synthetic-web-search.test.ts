@@ -69,7 +69,7 @@ function createMockContext(
 }
 
 function createMockRuntimeContext(
-  overrides: { allowed?: boolean; retryAfterSec?: number } = {},
+  overrides: { allowed?: boolean; retryAfterSec?: number; apiKey?: string } = {},
 ): PluginToolRuntimeContext {
   const notImplemented = (): Promise<never> => Promise.reject(new Error('not implemented'))
 
@@ -96,7 +96,11 @@ function createMockRuntimeContext(
         retryAfterSec: overrides.retryAfterSec,
       }),
     },
-  }
+    adminConfig: {
+      get: (key: string) =>
+        key === 'api_key' ? ('apiKey' in overrides ? overrides.apiKey : 'test-api-key') : undefined,
+    },
+  } as PluginToolRuntimeContext
 }
 
 function createMockOptions(): ToolExecutionOptions {
@@ -163,6 +167,34 @@ describe('synthetic-web-search plugin', () => {
     })
   })
 
+  test('search tool reads updated admin API key at execution time without restart', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ apiKey: 'stale-api-key', httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext({ apiKey: 'updated-api-key' })
+    const options = createMockOptions()
+
+    await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(mockHttpFetch).toHaveBeenCalledWith(
+      'https://api.synthetic.new/v2/search',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer updated-api-key',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: 'test query' }),
+      }),
+    )
+  })
+
   test('search tool returns rate_limited error when rate limit exceeded', async () => {
     const { ctx, registeredTool } = createMockContext()
     const instance = factory()
@@ -174,6 +206,28 @@ describe('synthetic-web-search plugin', () => {
     const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
 
     expect(result).toEqual({ error: 'rate_limited', retryAfterSec: 30 })
+  })
+
+  test('search tool rate-limits by chat user when available', async () => {
+    const check = mock(() => ({ allowed: true }))
+    const { ctx, registeredTool } = createMockContext({
+      httpFetch: mock().mockResolvedValue(
+        new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      ),
+    })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = {
+      ...createMockRuntimeContext(),
+      rateLimit: { check },
+    } as PluginToolRuntimeContext
+    const options = createMockOptions()
+
+    await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(check).toHaveBeenCalledWith('test-user')
   })
 
   test('search tool returns single result when index is specified', async () => {
@@ -267,7 +321,7 @@ describe('synthetic-web-search plugin', () => {
     void instance.activate(ctx)
 
     const tool = registeredTool.value!
-    const runtimeCtx = createMockRuntimeContext()
+    const runtimeCtx = createMockRuntimeContext({ apiKey: undefined })
     const options = createMockOptions()
     const result = await tool.execute({ query: 'test query' }, runtimeCtx, options)
 
@@ -302,6 +356,61 @@ describe('synthetic-web-search plugin', () => {
         { title: 'Result 2', url: 'https://example.com/2', text: 'BBBBBBBBBB...', published: undefined },
       ],
     })
+  })
+
+  test('search tool truncates each selected result even when max_length is smaller than result count', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            { url: 'https://example.com/1', title: 'Result 1', text: 'Alpha' },
+            { url: 'https://example.com/2', title: 'Result 2', text: 'Beta' },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const options = createMockOptions()
+    const result = await tool.execute({ query: 'test query', max_length: 1 }, runtimeCtx, options)
+
+    expect(result).toEqual({
+      results: [
+        { title: 'Result 1', url: 'https://example.com/1', text: '...', published: undefined },
+        { title: 'Result 2', url: 'https://example.com/2', text: '...', published: undefined },
+      ],
+    })
+  })
+
+  test('search tool forwards abortSignal to outbound fetch', async () => {
+    const mockHttpFetch = mock().mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const { ctx, registeredTool } = createMockContext({ httpFetch: mockHttpFetch })
+    const instance = factory()
+    void instance.activate(ctx)
+
+    const tool = registeredTool.value!
+    const runtimeCtx = createMockRuntimeContext()
+    const abortController = new AbortController()
+    const options: ToolExecutionOptions = {
+      ...createMockOptions(),
+      abortSignal: abortController.signal,
+    }
+
+    await tool.execute({ query: 'test query' }, runtimeCtx, options)
+
+    expect(mockHttpFetch).toHaveBeenCalledWith(
+      'https://api.synthetic.new/v2/search',
+      expect.objectContaining({ signal: abortController.signal }),
+    )
   })
 
   test('search tool returns timeout error on AbortError', async () => {

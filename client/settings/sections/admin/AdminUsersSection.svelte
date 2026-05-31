@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { addAdminUser, fetchAdminUsers, removeAdminUser } from '../../fetchers.js'
+  import { addAdminUser, fetchAdminUsers, removeAdminUser } from '../../admin-fetchers.js'
   import type { AdminUserRow } from '../../fetcher-schemas.js'
 
   let users: AdminUserRow[] = $state([])

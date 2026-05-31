@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fetchAdminSystem, submitAdminSystem } from '../../fetchers.js'
+  import { fetchAdminSystem, submitAdminSystem } from '../../admin-fetchers.js'
   import type { AdminSystemResponse } from '../../fetcher-schemas.js'
 
   const SENSITIVE_SYSTEM_KEYS = new Set<string>(['llm_apikey'])

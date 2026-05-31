@@ -12,10 +12,20 @@
     "scripts/behavior-audit/tune-embedding.ts!",
     "scripts/behavior-audit/reset.ts!",
     "scripts/behavior-audit/migrate-trust.ts!",
+    // First-party plugin entry points are loaded dynamically by the plugin loader,
+    // so they have no static importer; declare them as entries.
+    "plugins/*/index.ts!",
   ],
 
-  // All source files (production only)
-  "project": ["src/**/*.ts!", "client/**/*.ts!", "review-loop/src/**/*.ts!", "scripts/behavior-audit/**/*.ts!"],
+  // All source files (production only). plugins/** is included so knip tracks
+  // plugin->src usage (e.g. clearCachedTools, consumed only by a provider plugin).
+  "project": [
+    "src/**/*.ts!",
+    "client/**/*.ts!",
+    "review-loop/src/**/*.ts!",
+    "scripts/behavior-audit/**/*.ts!",
+    "plugins/**/*.ts!",
+  ],
 
   // All issue types treated as hard errors
   "rules": {
@@ -59,6 +69,10 @@
     "src/stats/index.ts": ["exports"],
     // resetUsageRecorderForTesting is a test-only seam.
     "src/usage/index.ts": ["exports"],
+    // resetPermissionPromptForTesting is a test-only seam.
+    "src/chat/permission-prompt.ts": ["exports"],
+    // partitionToolNames is a test-only seam.
+    "src/tools/tool-preferences.ts": ["exports"],
     // deleteAdminsByPlatformInstance, listAdminsForPlatform are test-only seams.
     "src/instances/admin-store.ts": ["exports"],
     // deleteContextsByTaskInstance, deleteContextsByPlatformInstance are test-only seams.
@@ -93,11 +107,22 @@
     // Settings client: .svelte components consume these, but knip can't follow .svelte imports.
     "client/settings/fetcher-schemas.ts": ["types"],
     "client/settings/fetchers.ts": ["exports"],
+    "client/settings/admin-fetchers.ts": ["exports"],
     "client/settings/scrollspy.ts": ["exports"],
     "client/settings/session.svelte.ts": ["exports"],
     "client/shared/fetcher-helpers.ts": ["exports"],
     "client/shared/helpers.ts": ["exports"],
     "client/shared/api-types.ts": ["types"],
+    // Plugin entry-point default exports are imported dynamically by the plugin
+    // loader (by path), so knip sees no static importer. Each new plugin adds a line.
+    "plugins/synthetic-web-search/index.ts": ["exports"],
+    "plugins/task-provider-kaneo/index.ts": ["exports"],
+    "plugins/task-provider-youtrack/index.ts": ["exports"],
+    // validateConfig is resolved dynamically by the loader from the manifest's
+    // `providerConfigValidator` named export (re-exported through index.ts), so knip
+    // sees no static consumer of the implementation.
+    "plugins/task-provider-kaneo/validate-config.ts": ["exports"],
+    "plugins/task-provider-youtrack/validate-config.ts": ["exports"],
   },
 
   // Report unused exports even in entry files

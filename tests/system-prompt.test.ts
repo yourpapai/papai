@@ -179,7 +179,7 @@ describe('buildSystemPrompt fragment coherence', () => {
 
   test('appends safety-net line for partially-disabled domain tools', () => {
     const contextId = 'frag-safety-net-ctx'
-    setToolPrefs(contextId, { disabledDomains: [], toolOverrides: { delete_task: false } })
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { delete_task: 'deny' } })
     const enabled = new Set(['create_task', 'update_task', 'search_tasks', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, contextId, enabled)
     expect(prompt).toContain('Unavailable tools')
@@ -197,5 +197,49 @@ describe('buildSystemPrompt fragment coherence', () => {
     const enabled = new Set(['create_task', 'get_current_time'])
     const prompt = buildSystemPrompt(provider, 'frag-deferred-off', enabled)
     expect(prompt).not.toContain('DEFERRED PROMPTS')
+  })
+})
+
+describe('ask-tools instruction', () => {
+  const provider = createMockProvider()
+
+  beforeEach(async () => {
+    mockLogger()
+    mock.restore()
+    await setupTestDb()
+  })
+
+  test('includes _permission_reason and tool name when at least one enabled tool is set to ask', () => {
+    const contextId = 'ask-tools-present-ctx'
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const enabled = new Set(['create_task', 'update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled)
+    expect(prompt).toContain('_permission_reason')
+    expect(prompt).toContain('create_task')
+  })
+
+  test('does not include _permission_reason when no exposed tool is set to ask', () => {
+    const contextId = 'ask-tools-absent-ctx'
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'deny' } })
+    const enabled = new Set(['update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled)
+    expect(prompt).not.toContain('_permission_reason')
+  })
+
+  test('does not include ask fragment when askPermissionAvailable is false (proactive turn)', () => {
+    const contextId = 'ask-proactive-ctx'
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const enabled = new Set(['create_task', 'update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled, { askPermissionAvailable: false })
+    expect(prompt).not.toContain('_permission_reason')
+  })
+
+  test('includes ask fragment when askPermissionAvailable is true (interactive turn)', () => {
+    const contextId = 'ask-interactive-ctx'
+    setToolPrefs(contextId, { domainDefaults: {}, toolOverrides: { create_task: 'ask' } })
+    const enabled = new Set(['create_task', 'update_task', 'get_current_time'])
+    const prompt = buildSystemPrompt(provider, contextId, enabled, { askPermissionAvailable: true })
+    expect(prompt).toContain('_permission_reason')
+    expect(prompt).toContain('create_task')
   })
 })

@@ -19,6 +19,7 @@ import { afterEach, beforeEach, mock } from 'bun:test'
 import * as _openaiCompat from '@ai-sdk/openai-compatible'
 import * as _ai from 'ai'
 
+import * as _provision from '../plugins/task-provider-kaneo/provision.js'
 // Additional modules mocked by tests/index.test.ts (graceful shutdown tests).
 // Bun's mock.module() is process-wide, so any module mocked there leaks into
 // subsequent test files. Capturing originals here lets the global beforeEach
@@ -59,7 +60,6 @@ import * as _messageQueueIndex from '../src/message-queue/index.js'
 import * as _pluginDiscovery from '../src/plugins/discovery.js'
 import * as _pluginLoader from '../src/plugins/loader.js'
 import * as _pluginRegistry from '../src/plugins/registry.js'
-import * as _provision from '../src/providers/kaneo/provision.js'
 import * as _taskProviderResolver from '../src/providers/resolver.js'
 import * as _recurring from '../src/recurring.js'
 import * as _schedulerInstance from '../src/scheduler-instance.js'
@@ -72,7 +72,7 @@ import * as _users from '../src/users.js'
 const originals: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['../src/logger.js', { ..._logger }],
   ['../src/message-cache/cache.js', { ..._messageCache }],
-  ['../src/providers/kaneo/provision.js', { ..._provision }],
+  ['../plugins/task-provider-kaneo/provision.js', { ..._provision }],
   ['../src/chat/interaction-router.js', { ..._interactionRouter }],
   ['ai', { ..._ai }],
   ['@ai-sdk/openai-compatible', { ..._openaiCompat }],

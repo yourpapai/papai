@@ -44,7 +44,6 @@ const mockProvider: TaskProvider = {
   name: 'mock',
   capabilities: new Set(),
   traits: new Set(),
-  configRequirements: [],
   preferredUserIdentifier: 'id',
   identityResolver: {
     searchUsers: searchUsersDefault,

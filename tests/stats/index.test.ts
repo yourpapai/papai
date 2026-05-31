@@ -74,7 +74,7 @@ describe('getSubjectStats', () => {
       .run()
     getDrizzleDb()
       .insert(userConfig)
-      .values({ userId: scopedUserId, key: 'kaneo_workspace_id', value: 'workspace-1' })
+      .values({ userId: scopedUserId, key: 'plugin:task-provider-kaneo:provider:workspaceId', value: 'workspace-1' })
       .run()
 
     const result = getSubjectStats(scopedUserId)

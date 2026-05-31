@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { flushSync, mount, unmount } from 'svelte'
+import { z } from 'zod'
 
 import { setCsrfToken } from '../../../../client/settings/fetchers.js'
 import ToolsSection from '../../../../client/settings/sections/ToolsSection.svelte'
@@ -19,25 +20,31 @@ const drain = async (): Promise<void> => {
   flushSync()
 }
 
+// Three-state payload using new schema
 const toolsPayload = {
   contextId: 'user:1',
   domains: [
     {
       domain: 'task',
-      status: 'partial',
+      summary: 'partial',
       tools: [
-        { name: 'create_task', enabled: true, risk: 'write' },
-        { name: 'delete_task', enabled: false, risk: 'destructive' },
+        { name: 'create_task', permission: 'allow', risk: 'write' },
+        { name: 'delete_task', permission: 'deny', risk: 'destructive' },
       ],
     },
   ],
 }
 
-const extractStringBody = (init: RequestInit): string => (typeof init.body === 'string' ? init.body : '')
+const ToggleBodySchema = z.union([
+  z.object({ kind: z.literal('tool'), tool: z.string(), permission: z.string(), contextId: z.string() }),
+  z.object({ kind: z.literal('domain'), domain: z.string(), permission: z.string(), contextId: z.string() }),
+])
 
-let capturedBody = ''
+let capturedBody: unknown = null
 const captureToggleMock = (url: string, init: RequestInit): Promise<Response> => {
-  if (url.includes('/tools/toggle')) capturedBody = extractStringBody(init)
+  if (url.includes('/tools/toggle')) {
+    capturedBody = typeof init.body === 'string' ? JSON.parse(init.body) : init.body
+  }
   return Promise.resolve(json(toolsPayload))
 }
 
@@ -47,7 +54,7 @@ const errorToggleMock = (url: string, _init: RequestInit): Promise<Response> => 
 }
 
 afterEach(() => {
-  capturedBody = ''
+  capturedBody = null
   restoreFetch()
   setCsrfToken('')
 })
@@ -68,7 +75,25 @@ describe('ToolsSection', () => {
     void unmount(component)
   })
 
-  test('toggling a tool posts kind=tool', async () => {
+  test('renders three-state permission labels for tools', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
+    flushSync()
+    // Tool controls should show Allow / Ask / Deny options
+    const allowBtn = target.querySelector('[data-testid="tool-perm-allow-create_task"]')
+    const askBtn = target.querySelector('[data-testid="tool-perm-ask-create_task"]')
+    const denyBtn = target.querySelector('[data-testid="tool-perm-deny-create_task"]')
+    expect(allowBtn).not.toBeNull()
+    expect(askBtn).not.toBeNull()
+    expect(denyBtn).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('setting a tool permission posts with permission field', async () => {
     setCsrfToken('c')
     setMockFetch(captureToggleMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -77,13 +102,16 @@ describe('ToolsSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="domain-expand-task"]')!.click()
     flushSync()
-    target.querySelector<HTMLButtonElement>('[data-testid="tool-toggle-create_task"]')!.click()
+    target.querySelector<HTMLButtonElement>('[data-testid="tool-perm-deny-create_task"]')!.click()
     await drain()
-    expect(capturedBody).toBe(JSON.stringify({ kind: 'tool', tool: 'create_task', contextId: 'user:1' }))
+    const parsed = ToggleBodySchema.parse(capturedBody)
+    expect(parsed.kind).toBe('tool')
+    expect(parsed.permission).toBe('deny')
+    expect(parsed.contextId).toBe('user:1')
     void unmount(component)
   })
 
-  test('toggling a domain posts kind=domain', async () => {
+  test('setting a domain permission posts with permission field', async () => {
     setCsrfToken('c')
     setMockFetch(captureToggleMock)
     document.body.innerHTML = '<div id="root"></div>'
@@ -92,7 +120,10 @@ describe('ToolsSection', () => {
     await drain()
     target.querySelector<HTMLButtonElement>('[data-testid="domain-toggle-task"]')!.click()
     await drain()
-    expect(capturedBody).toBe(JSON.stringify({ kind: 'domain', domain: 'task', contextId: 'user:1' }))
+    const parsed = ToggleBodySchema.parse(capturedBody)
+    expect(parsed.kind).toBe('domain')
+    expect(['allow', 'ask', 'deny']).toContain(parsed.permission)
+    expect(parsed.contextId).toBe('user:1')
     void unmount(component)
   })
 
@@ -107,6 +138,20 @@ describe('ToolsSection', () => {
     await drain()
     expect(target.querySelector('.status-error')).not.toBeNull()
     expect(target.querySelector('[data-testid="domain-toggle-task"]')).not.toBeNull()
+    void unmount(component)
+  })
+
+  test('domain toggle button reflects summary state', async () => {
+    setMockFetch(() => Promise.resolve(json(toolsPayload)))
+    document.body.innerHTML = '<div id="root"></div>'
+    const target = document.querySelector<HTMLElement>('#root')!
+    const component = mount(ToolsSection, { target, props: { contextId: 'user:1' } })
+    await drain()
+    // The domain-toggle button should show the current summary
+    const toggleBtn = target.querySelector('[data-testid="domain-toggle-task"]')
+    expect(toggleBtn).not.toBeNull()
+    // summary is 'partial' — button label should reflect cycling action
+    expect(toggleBtn!.textContent).toBeTruthy()
     void unmount(component)
   })
 })

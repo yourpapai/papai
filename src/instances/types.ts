@@ -7,7 +7,6 @@ export type InstanceConfig = Record<string, string>
 
 export type PlatformInstanceType = 'telegram' | 'mattermost' | 'discord' | 'kontur-talk'
 export type TaskInstanceType = string
-export type BuiltinTaskType = 'kaneo' | 'youtrack'
 export type InstanceStatus = 'pending' | 'active' | 'stopped'
 
 export interface PlatformInstance {
@@ -39,5 +38,5 @@ export interface AdminRecord {
 }
 
 export type BootstrapResult =
-  | { bootstrapped: true; platformInstanceId: string; taskInstanceId: string }
+  | { bootstrapped: true; platformInstanceId: string }
   | { bootstrapped: false; reason: 'no-env' | 'already-bootstrapped' | 'partial-env'; missing?: string[] }

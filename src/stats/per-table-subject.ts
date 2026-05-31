@@ -15,7 +15,7 @@ import {
   userIdentityMappings,
   users,
 } from '../db/schema.js'
-import { KANEO_WORKSPACE_CONFIG_KEY } from '../types/config.js'
+import { KANEO_PLUGIN_WORKSPACE_KEY } from '../types/config.js'
 import type { GroupBlockStats, StagedFileStats, UserBlockStats } from './types.js'
 
 export function identityForSubject(storageContextId: string): Record<string, number> {
@@ -75,7 +75,7 @@ export function userBlockForSubject(storageContextId: string): UserBlockStats | 
   const workspace = getDrizzleDb()
     .select({ value: userConfig.value })
     .from(userConfig)
-    .where(and(eq(userConfig.userId, storageContextId), eq(userConfig.key, KANEO_WORKSPACE_CONFIG_KEY)))
+    .where(and(eq(userConfig.userId, storageContextId), eq(userConfig.key, KANEO_PLUGIN_WORKSPACE_KEY)))
     .get()
 
   return {

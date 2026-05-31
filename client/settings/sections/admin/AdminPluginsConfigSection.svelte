@@ -4,7 +4,7 @@
 <!-- See LICENSE in the project root for details. -->
 
 <script lang="ts">
-  import { fetchAdminPluginConfig, patchAdminPluginConfig } from '../../fetchers.js'
+  import { fetchAdminPluginConfig, patchAdminPluginConfig } from '../../admin-fetchers.js'
   import type { AdminPluginConfigEntry } from '../../fetcher-schemas.js'
 
   let plugins: AdminPluginConfigEntry[] = $state([])

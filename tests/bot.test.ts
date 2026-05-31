@@ -413,7 +413,7 @@ function setupContextTaskAssignment(contextId: string, ...args: [] | [platformIn
       insertTaskInstance({
         id: taskInstanceId,
         type: 'kaneo',
-        config: { url: 'https://kaneo.invalid' },
+        config: { baseUrl: 'https://kaneo.invalid' },
         status: 'active',
       })
     }

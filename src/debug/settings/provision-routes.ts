@@ -5,8 +5,8 @@
 
 import { z } from 'zod'
 
+import { provisionAndConfigure, type ProvisionOutcome } from '../../../plugins/task-provider-kaneo/provision.js'
 import { logger } from '../../logger.js'
-import { provisionAndConfigure, type ProvisionOutcome } from '../../providers/kaneo/provision.js'
 import { listUsers } from '../../users.js'
 import { authenticate, parseJsonBody, requireCsrf, resolveContextScope, settingsJson } from './respond.js'
 import type { ContextScope } from './respond.js'

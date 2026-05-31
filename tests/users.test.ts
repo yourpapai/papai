@@ -7,20 +7,11 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 
 import { eq } from 'drizzle-orm'
 
-import { userCachesForTesting } from '../src/cache.js'
+import { userCachesForTesting, setCachedConfig } from '../src/cache.js'
 import { toScopedContextId } from '../src/chat/scoped-context.js'
 import * as schema from '../src/db/schema.js'
 import { addAdmin, SUPER_ADMIN_PLATFORM_ID } from '../src/instances/admin-store.js'
-import {
-  addUser,
-  removeUser,
-  isAuthorized,
-  isDemoUser,
-  resolveUserByUsername,
-  listUsers,
-  getKaneoWorkspace,
-  setKaneoWorkspace,
-} from '../src/users.js'
+import { addUser, removeUser, isAuthorized, isDemoUser, resolveUserByUsername, listUsers } from '../src/users.js'
 import { mockLogger, seedCommonTestPlatformInstances, setupTestDb } from './utils/test-helpers.js'
 
 const TEST_PLATFORM_ID = 'telegram-default'
@@ -177,9 +168,9 @@ describe('removeUser', () => {
     expect(secondResult).toBe(false)
   })
 
-  test('evicts cached workspace entry when a user is removed', () => {
+  test('evicts cache entry when a user is removed', () => {
     addUser({ userId: 'cache-test', platformInstanceId: TEST_PLATFORM_ID, addedBy: '999' })
-    setKaneoWorkspace('cache-test', 'workspace-1')
+    setCachedConfig('cache-test', 'some_key', 'some_value')
 
     expect(userCachesForTesting.has('cache-test')).toBe(true)
 
@@ -354,34 +345,5 @@ describe('platform-scoped authorization', () => {
     addUser({ userId: 'ds-user', platformInstanceId: 'discord-default', addedBy: 'admin-1' })
 
     expect(listUsers('telegram-default').map((u) => u.platform_user_id)).toEqual(['tg-user'])
-  })
-})
-
-describe('getKaneoWorkspace / setKaneoWorkspace', () => {
-  beforeEach(async () => {
-    await setupTestDb()
-    userCachesForTesting.clear()
-  })
-
-  test('returns null when no workspace is set', () => {
-    expect(getKaneoWorkspace('ws-user-1')).toBeNull()
-  })
-
-  test('set then get returns workspace ID', () => {
-    setKaneoWorkspace('ws-user-2', 'ws-abc')
-    expect(getKaneoWorkspace('ws-user-2')).toBe('ws-abc')
-  })
-
-  test('overwrites previous workspace', () => {
-    setKaneoWorkspace('ws-user-3', 'ws-1')
-    setKaneoWorkspace('ws-user-3', 'ws-2')
-    expect(getKaneoWorkspace('ws-user-3')).toBe('ws-2')
-  })
-
-  test('user isolation — different users have independent workspaces', () => {
-    setKaneoWorkspace('ws-user-4', 'ws-A')
-    setKaneoWorkspace('ws-user-5', 'ws-B')
-    expect(getKaneoWorkspace('ws-user-4')).toBe('ws-A')
-    expect(getKaneoWorkspace('ws-user-5')).toBe('ws-B')
   })
 })
