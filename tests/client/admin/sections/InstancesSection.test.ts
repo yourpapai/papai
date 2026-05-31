@@ -53,7 +53,7 @@ const applyResult = {
 const failedApplyResult = {
   ...applyResult,
   started: [],
-  failed: [{ id: 'telegram-main', action: 'stop', error: 'stop failed' }],
+  failed: [{ id: 'telegram-main', action: 'remove', error: 'remove failed' }],
 } as const
 
 let nextApplyResult: unknown = applyResult
@@ -383,7 +383,7 @@ describe('InstancesSection', () => {
     expect(callNames(calls)).toContain('POST /api/platform-instances/apply')
     expect(target.querySelector('[data-testid="platform-unapplied-indicator"]')).not.toBeNull()
     expect(target.textContent).toContain('Failed to apply 1 platform change')
-    expect(target.textContent).toContain('telegram-main stop failed: stop failed')
+    expect(target.textContent).toContain('telegram-main remove failed: remove failed')
 
     void unmount(component)
   })

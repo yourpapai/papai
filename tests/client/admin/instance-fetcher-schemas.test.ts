@@ -25,7 +25,7 @@ describe('ApplyInstancesResultSchema', () => {
       removedDetails: [{ id: 'discord-old', desiredStatus: 'stopped' }],
       recreated: ['mattermost-main'],
       unchanged: ['telegram-secondary'],
-      failed: [{ id: 'telegram-bad', action: 'stop', error: 'boom' }],
+      failed: [{ id: 'telegram-bad', action: 'remove', error: 'boom' }],
     })
 
     expect(result.success).toBe(true)

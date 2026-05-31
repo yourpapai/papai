@@ -25,7 +25,7 @@ export type InstanceApiDeps = {
 const INSTANCE_APPLY_CONCURRENCY = 4
 const instanceApplyLock = pLimit(1)
 
-type ApplyFailureAction = 'remove' | 'recreate' | 'start' | 'stop'
+type ApplyFailureAction = 'remove' | 'recreate' | 'start'
 
 type ApplyFailure = Readonly<{
   id: string

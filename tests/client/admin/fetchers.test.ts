@@ -47,7 +47,7 @@ type ExpectedApplyInstancesResult = Readonly<{
   unchanged: readonly string[]
   failed: readonly {
     readonly id: string
-    readonly action: 'remove' | 'recreate' | 'start' | 'stop'
+    readonly action: 'remove' | 'recreate' | 'start'
     readonly error: string
   }[]
   unreadable?: readonly {
