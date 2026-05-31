@@ -5,7 +5,7 @@
 
 import path from 'node:path'
 
-import { listAuthorizedGroups } from '../authorized-groups.js'
+import { listAuthorizedGroups, removeAuthorizedGroup } from '../authorized-groups.js'
 import { authenticate, recordActivity } from '../dashboard-auth/index.js'
 import { listScheduledPrompts } from '../deferred-prompts/scheduled.js'
 import { getIdentityMapping, listAllIdentityMappings } from '../identity/mapping.js'
@@ -180,11 +180,6 @@ function resolveParamDefault(value: string | null, fallback: string): string {
   return fallback
 }
 
-function handleAuthGroups(): Response {
-  const groups = listAuthorizedGroups()
-  return jsonResponse(groups)
-}
-
 function routeAdminPaths(req: Request, url: URL): Response | Promise<Response> | null {
   if (url.pathname === '/admin/system') {
     if (req.method === 'GET') return handleAdminSystem()
@@ -237,7 +232,12 @@ async function routeRequest(req: Request): Promise<Response> {
   if (url.pathname === '/deferred') return handleDeferred(url)
   if (url.pathname === '/memos') return handleMemos(url)
   if (url.pathname === '/identity') return handleIdentity(url)
-  if (url.pathname === '/auth/groups') return handleAuthGroups()
+  if (url.pathname === '/auth/groups') return jsonResponse(listAuthorizedGroups())
+  if (url.pathname.startsWith('/auth/groups/')) {
+    const groupId = decodeURIComponent(url.pathname.slice('/auth/groups/'.length))
+    if (req.method === 'DELETE') return jsonResponse({ removed: removeAuthorizedGroup(groupId) })
+    return new Response('Method not allowed', { status: 405 })
+  }
   if (url.pathname === '/mcp/status') {
     if (req.method === 'GET') return handleMcpStatus()
     return new Response('Method not allowed', { status: 405 })
@@ -246,20 +246,15 @@ async function routeRequest(req: Request): Promise<Response> {
   if (url.pathname.startsWith('/billing/subject/')) return handleBillingSubject(url)
   if (url.pathname === '/stats/global') return handleStatsGlobal(url)
   if (url.pathname.startsWith('/stats/subject/')) return handleStatsSubject(url)
-
   const adminResponse = routeAdminPaths(req, url)
   if (adminResponse !== null) return adminResponse
-
   if (url.pathname === '/debug' || url.pathname === '/debug.js' || url.pathname === '/debug.css') {
     return handleClientFile('debug', url.pathname)
   }
-  if (url.pathname === '/dashboard') {
-    return new Response(null, { status: 301, headers: { Location: '/debug' } })
-  }
+  if (url.pathname === '/dashboard') return new Response(null, { status: 301, headers: { Location: '/debug' } })
   if (url.pathname.startsWith('/dashboard.') || url.pathname.startsWith('/dashboard-')) {
     return new Response('Not found', { status: 404 })
   }
-
   return new Response('Not found', { status: 404 })
 }
 
