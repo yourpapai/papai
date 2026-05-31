@@ -141,10 +141,7 @@ function addPendingRequireImports(
 ): void {
   for (const specifier of specifiers) {
     if (!deps.isRelativePluginImport(specifier)) {
-      if (current.fromRequire) {
-        throw new Error(`Bare-module imports are not allowed in plugin entry graphs: ${specifier}`)
-      }
-      continue
+      throw new Error(`Bare-module imports are not allowed in plugin entry graphs: ${specifier}`)
     }
     enqueueResolvedImport(pending, current.path, pluginDir, specifier, true, deps)
   }

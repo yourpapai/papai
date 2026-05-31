@@ -456,6 +456,35 @@ describe('discoverPlugins', () => {
     expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
   })
 
+  test('rejects bare import.meta.require calls from plugin-owned imported modules', () => {
+    const root = makeTempDir()
+    const pluginDir = join(root, 'bare-import-meta-require-plugin')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        id: 'bare-import-meta-require-plugin',
+        name: 'Bare Import Meta Require Plugin',
+        version: '1.0.0',
+        description: 'reject bare import.meta.require',
+        apiVersion: 1,
+        main: 'index.ts',
+      }),
+      'utf-8',
+    )
+    writeFileSync(join(pluginDir, 'runtime-bridge.ts'), "export const zod = import.meta.require('zod')\n", 'utf-8')
+    writeFileSync(
+      join(pluginDir, 'index.ts'),
+      "import { zod } from './runtime-bridge.ts'\nexport default function createPlugin(){ return { activate(){ return zod } } }\n",
+      'utf-8',
+    )
+
+    const result = discoverPlugins(root)
+
+    expect(result.plugins).toEqual([])
+    expect(result.errors[0]?.reason).toContain('Bare-module imports are not allowed in plugin entry graphs')
+  })
+
   test('rejects plugin-owned dynamic imports that cannot be resolved deterministically', () => {
     const root = makeTempDir()
     writePlugin(
