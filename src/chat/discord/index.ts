@@ -136,19 +136,18 @@ export class DiscordChatProvider implements ChatProvider {
   }
 
   start(): Promise<void> {
-    const adminUserId = typeof process.env['ADMIN_USER_ID'] === 'string' ? process.env['ADMIN_USER_ID'] : ''
     const client = this.clientFactory()
     this.client = client
     client.on('messageCreate', (rawMsg) => {
       if (!isDispatchableMessage(rawMsg)) return
-      this.dispatchMessage(rawMsg, client.user === null ? '' : client.user.id, adminUserId).catch((error: unknown) => {
+      this.dispatchMessage(rawMsg, client.user === null ? '' : client.user.id).catch((error: unknown) => {
         log.error({ error: error instanceof Error ? error.message : String(error) }, 'messageCreate dispatch failed')
       })
     })
 
     client.on('interactionCreate', (rawInteraction) => {
       if (!isButtonInteraction(rawInteraction)) return
-      this.dispatchButtonInteraction(rawInteraction, adminUserId).catch((error: unknown) => {
+      this.dispatchButtonInteraction(rawInteraction).catch((error: unknown) => {
         log.error(
           { error: error instanceof Error ? error.message : String(error) },
           'interactionCreate dispatch failed',
@@ -179,22 +178,18 @@ export class DiscordChatProvider implements ChatProvider {
   testSetClient(c: DiscordClientLike): void {
     this.client = c
   }
-  testDispatchMessage(message: DispatchableMessage, botId: string, adminUserId: string): Promise<void> {
-    return this.dispatchMessage(message, botId, adminUserId)
+  testDispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
+    return this.dispatchMessage(message, botId)
   }
 
-  async testDispatchButtonInteraction(
-    interaction: ButtonInteractionLike,
-    _botId: string,
-    adminUserId: string,
-  ): Promise<void> {
-    await this.dispatchButtonInteraction(interaction, adminUserId)
+  async testDispatchButtonInteraction(interaction: ButtonInteractionLike, _botId: string): Promise<void> {
+    await this.dispatchButtonInteraction(interaction)
   }
 
-  private async dispatchButtonInteraction(interaction: ButtonInteractionLike, adminUserId: string): Promise<void> {
+  private async dispatchButtonInteraction(interaction: ButtonInteractionLike): Promise<void> {
     await tryDeferUpdate(interaction)
 
-    const result = buildInteraction(interaction, adminUserId, this.platformInstanceId)
+    const result = buildInteraction(interaction, this.platformInstanceId)
     if (result === null) {
       log.debug({ customId: interaction.customId }, 'Could not build incoming interaction, skipping')
       return
@@ -230,7 +225,6 @@ export class DiscordChatProvider implements ChatProvider {
         channel,
         incoming.contextId,
         incoming.contextType,
-        adminUserId,
         this.commands,
         this.messageHandler,
         this.platformInstanceId,
@@ -240,8 +234,8 @@ export class DiscordChatProvider implements ChatProvider {
     await this.interactionHandler(incoming, result.reply)
   }
 
-  private async dispatchMessage(message: DispatchableMessage, botId: string, adminUserId: string): Promise<void> {
-    const mapped = mapDiscordMessage(message, botId, adminUserId, this.platformInstanceId)
+  private async dispatchMessage(message: DispatchableMessage, botId: string): Promise<void> {
+    const mapped = mapDiscordMessage(message, botId, this.platformInstanceId)
     if (mapped === null) return
     const reply = createDiscordReplyFn({
       channel: message.channel,

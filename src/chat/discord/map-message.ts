@@ -32,7 +32,6 @@ const ACCEPTED_MESSAGE_TYPES = new Set<number>([0, 19])
 export function mapDiscordMessage(
   message: DiscordMessageLike,
   botId: string,
-  _adminUserId: string,
   platformInstanceId: string,
 ): IncomingMessage | null {
   if (message.author.bot) {

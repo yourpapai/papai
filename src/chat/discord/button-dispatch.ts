@@ -23,7 +23,6 @@ type RouteButtonFallbackArgs = [
   channel: NonNullable<ButtonInteractionLike['channel']>,
   contextId: string,
   contextType: 'dm' | 'group',
-  _adminUserId: string,
   commands: Map<string, CommandHandler>,
   messageHandler: ((msg: IncomingMessage, reply: ReplyFn) => Promise<void>) | null,
   platformInstanceId: string,
@@ -45,7 +44,6 @@ export async function tryDeferUpdate(interaction: ButtonInteractionLike): Promis
 
 export function buildInteraction(
   interaction: ButtonInteractionLike,
-  _adminUserId: string,
   platformInstanceId: string,
 ): {
   incoming: IncomingInteraction
@@ -164,7 +162,7 @@ async function executeCommand(
 }
 
 export async function routeButtonFallback(...args: RouteButtonFallbackArgs): Promise<void> {
-  const [interaction, channel, contextId, contextType, , commands, messageHandler, platformInstanceId] = args
+  const [interaction, channel, contextId, contextType, commands, messageHandler, platformInstanceId] = args
   const resolvedPlatformInstanceId = requirePlatformInstanceId(platformInstanceId)
   const data = interaction.customId
 
