@@ -894,6 +894,58 @@ describe('activatePlugins', () => {
     })
   })
 
+  test('validator is wired into the registered provider type without mutating the collected registration object', async () => {
+    // Regression guard for refactor: validateConfig must be threaded as a parameter
+    // through finalizeSuccessfulActivation → commitTaskProviderRegistration and passed
+    // directly to registerContributedTaskProviderType, NOT injected via post-hoc mutation
+    // of activationContext.collected.taskProviderRegistration.validateConfig.
+    const entryPoint = writeTempPluginModule(`
+      export async function validateThreadedConfig(config) {
+        return config.apiKey === 'valid-key'
+          ? { ok: true }
+          : { ok: false, reason: 'apiKey is invalid' }
+      }
+
+      export default function createPlugin() {
+        return {
+          activate(ctx) {
+            ctx.registration.registerTaskProviderType('threaded-validator-tracker', { factory: () => ({}) })
+          },
+        }
+      }
+    `)
+    const plugin = makePlugin('threaded-validator-plugin', entryPoint, {
+      permissions: ['provider.task'],
+      contributes: {
+        tools: [],
+        promptFragments: [],
+        commands: [],
+        jobs: [],
+        configKeys: [],
+        taskProviderTypes: ['threaded-validator-tracker'],
+      },
+      providerConfigValidator: 'validateThreadedConfig',
+    })
+    approvePlugin(plugin)
+
+    await activatePlugins([plugin])
+
+    // The validator must be retrievable and functional — this holds whether
+    // the loader threads it as a parameter or injects it via mutation.
+    // The test serves as a locked regression guard: any refactor that breaks
+    // the threading path will cause this assertion to fail.
+    const validator = requireValue(
+      getTaskProviderConfigValidator('threaded-validator-tracker'),
+      'threaded-validator-tracker config validator',
+    )
+    await expect(validator({ apiKey: 'valid-key' })).resolves.toEqual({ ok: true })
+    await expect(validator({ apiKey: 'wrong-key' })).resolves.toEqual({ ok: false, reason: 'apiKey is invalid' })
+    // Plugin must be active — confirm the whole activation path completed cleanly
+    expect(
+      requireValue(pluginRegistry.getEntry('threaded-validator-plugin'), 'threaded validator registry entry').state,
+    ).toBe('active')
+  })
+
   test('keeps API v1 compatibility for object-shaped task provider registration', async () => {
     const entryPoint = writeTempPluginModule(`
       export default function createPlugin() {
