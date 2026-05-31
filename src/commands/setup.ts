@@ -74,6 +74,10 @@ function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): str
   return config['baseUrl']
 }
 
+function getTaskInstanceInternalUrl(config: Readonly<Record<string, string>>): string | undefined {
+  return config['internalUrl']
+}
+
 function getKaneoProvisionConfig(
   targetContextId: string,
   deps: SetupCommandDeps,
@@ -83,7 +87,7 @@ function getKaneoProvisionConfig(
   const taskInstance = deps.getTaskInstance(settings.taskInstanceId)
   if (taskInstance === null || taskInstance.status !== 'active' || taskInstance.type !== 'kaneo') return null
   const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
-  return { publicUrl, internalUrl: taskInstance.config['internalUrl'] }
+  return { publicUrl, internalUrl: getTaskInstanceInternalUrl(taskInstance.config) }
 }
 
 async function replyForProvisionOutcome(reply: ReplyFn, outcome: ProvisionOutcome): Promise<boolean> {

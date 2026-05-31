@@ -42,6 +42,10 @@ function getTaskInstancePublicUrl(config: Readonly<Record<string, string>>): str
   return config['baseUrl']
 }
 
+function getTaskInstanceInternalUrl(config: Readonly<Record<string, string>>): string | undefined {
+  return config['internalUrl']
+}
+
 function generatePassword(): string {
   const uuid = crypto.randomUUID().replaceAll('-', '')
   return `${uuid.slice(0, 20)}Aa1!`
@@ -267,7 +271,7 @@ export async function maybeProvisionKaneo(reply: ReplyFn, contextId: string, use
   }
 
   const publicUrl = getTaskInstancePublicUrl(taskInstance.config)
-  const internalUrl = taskInstance.config['internalUrl']
+  const internalUrl = getTaskInstanceInternalUrl(taskInstance.config)
 
   provLog.info({ contextId, username }, 'Auto-provisioning Kaneo account')
   const outcome = await provisionAndConfigure(contextId, username, { publicUrl, internalUrl })
