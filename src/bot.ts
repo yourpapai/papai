@@ -41,9 +41,9 @@ const log = logger.child({ scope: 'bot' })
 export { checkAuthorizationExtended, getThreadScopedStorageContextId }
 function getUnauthorizedReplyText(auth: AuthorizationResult, groupId: string): string | null {
   if (auth.reason === 'group_not_allowed')
-    return `This group is not authorized to use this bot. Ask the bot admin to run \`/group add ${groupId}\` in a DM with the bot.`
+    return `This group (${groupId}) is not authorized to use this bot. Ask the bot admin to authorize it in the settings web UI — they can open it with \`/config\` in a DM.`
   if (auth.reason === 'group_member_not_allowed')
-    return "You're not authorized to use this bot in this group. Ask a group admin to add you with `/group adduser <user-id|@username>`"
+    return "You're not authorized to use this bot in this group. Ask a group admin to add you in the settings web UI — they can open it with `/config` in a DM."
   if (auth.reason === 'dm_not_allowed') return 'You are not authorized to use this bot.'
   return null
 }

@@ -924,7 +924,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await messageHandler!(groupMessage, reply)
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group add group-blocked')
+    expect(textCalls[0]).toContain('group-blocked')
     expect(listManageableGroups('group-admin')).toHaveLength(0)
   })
 
@@ -1057,7 +1057,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     expect(processMessageCallCount).toBe(0)
     expect(textCalls).toHaveLength(1)
     expect(textCalls[0]).toContain('not authorized')
-    expect(textCalls[0]).toContain('/group add group-auth')
+    expect(textCalls[0]).toContain('group-auth')
   })
 
   test('replies with member-level hint for unauthorized user in allowlisted mentioned group', async () => {
@@ -1072,7 +1072,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
 
     expect(processMessageCallCount).toBe(0)
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group adduser')
+    expect(textCalls[0]).toContain('Ask a group admin to add you')
   })
 
   test('does not record group observations for ignored non-mentioned natural language', async () => {
@@ -1237,7 +1237,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await interactionHandler!(interaction, reply)
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group add group-missing')
+    expect(textCalls[0]).toContain('group-missing')
   })
 
   test('interaction handler replies with member hint for allowlisted groups', async () => {
@@ -1269,7 +1269,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await interactionHandler!(interaction, reply)
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group adduser')
+    expect(textCalls[0]).toContain('Ask a group admin to add you')
   })
 
   test('interaction handler replies with error message when routeInteraction throws', async () => {
@@ -1530,7 +1530,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await helpHandler!(groupMessage, reply, createAuth('group-user', { isGroupAdmin: true }))
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group add group-denied-cmd')
+    expect(textCalls[0]).toContain('group-denied-cmd')
   })
 
   test('denies group command execution when group is allowlisted but user is not permitted', async () => {
@@ -1557,7 +1557,7 @@ describe('Bot Authorization Gate (setupBot)', () => {
     await helpHandler!(groupMessage, reply, createAuth('group-user', { isGroupAdmin: true }))
 
     expect(textCalls).toHaveLength(1)
-    expect(textCalls[0]).toContain('/group adduser')
+    expect(textCalls[0]).toContain('Ask a group admin to add you')
   })
 
   test('emits message:replied for command reply path', async () => {

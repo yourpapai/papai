@@ -20,11 +20,11 @@ export function warnUnresolvedTaskInstances(): void {
   const offenders = instances.filter((instance) => getTaskProviderDescriptor(instance.type) === undefined)
   if (offenders.length === 0) return
   const types = [...new Set(offenders.map((instance) => instance.type))]
-  const commands = types.map((type) => `/plugin approve ${pluginIdFor(type)}`)
+  const pluginIds = types.map((type) => pluginIdFor(type))
   logger
     .child({ scope: 'instances:health' })
     .warn(
       { unresolvedTypes: types, instanceIds: offenders.map((instance) => instance.id) },
-      `Found ${offenders.length} task_instances row(s) whose provider plugin is not active. Run: ${commands.join('; ')}`,
+      `Found ${offenders.length} task_instances row(s) whose provider plugin is not active. Approve the provider plugin(s) in the settings web UI admin area (Plugins approval): ${pluginIds.join(', ')}`,
     )
 }
